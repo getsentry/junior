@@ -22,7 +22,7 @@ test("inspects all reporting events and searches full event data", async ({
   });
   const toolRow = transcript.getByRole("button", { name: /^webSearch/ });
   const activity = transcript
-    .locator("details")
+    .locator('[data-slot="collapsible"]')
     .filter({
       has: page.getByRole("button", {
         includeHidden: true,
@@ -30,7 +30,7 @@ test("inspects all reporting events and searches full event data", async ({
       }),
     })
     .first();
-  await activity.locator(":scope > summary").click();
+  await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
   const toolResult = transcript
@@ -151,7 +151,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(localTime).toHaveText("ET");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await page.reload();
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
@@ -166,13 +166,23 @@ test("inspects all reporting events and searches full event data", async ({
   await secondToggle.click();
   await expect(localTime).toHaveAttribute("aria-pressed", "false");
   await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
+  // UTC mode reads like local mode. The header leaves out milliseconds, so
+  // it fits beside the actions. The tooltip and ISO value keep them.
   await expect(panel.locator("header time")).toHaveText(
+    "Aug 7, 2026, 11:54:09 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "title",
+    "Aug 7, 2026, 11:54:09.000 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "datetime",
     report.events.find((event: { seq: number }) => event.seq === 3).createdAt,
   );
   await secondTab.close();
   await page.bringToFront();
   await localTime.click();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await panel.getByText("Raw JSON", { exact: true }).click();
   const rawJson = JSON.stringify(
     report.events.find((event: { seq: number }) => event.seq === 3),
@@ -285,7 +295,12 @@ test("inspects all reporting events and searches full event data", async ({
     forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
   ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
-  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
+  await expect(
+    forkDialog.getByRole("textbox", { name: "Message" }),
+  ).toBeFocused();
+  await forkDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(forkDialog).toBeHidden();
+  await expect(forkAction).toBeFocused();
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   const reply = report.events.findLast(
     (event: { data: { type: string; role?: string } }) =>

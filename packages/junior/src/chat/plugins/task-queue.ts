@@ -10,6 +10,7 @@ import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
+  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import {
@@ -137,6 +138,11 @@ export function createVercelPluginTaskCallback(): (
   request: Request,
 ) => Promise<Response> {
   return pluginTaskCallback().create();
+}
+
+/** Return the queue consumer for plugin tasks, for a pulling queue worker. */
+export function pluginTaskQueueConsumer(): QueueConsumer {
+  return pluginTaskCallback().consumer;
 }
 
 /** Register the local-dev consumer for plugin tasks. */
