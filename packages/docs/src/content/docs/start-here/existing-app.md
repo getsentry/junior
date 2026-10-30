@@ -80,6 +80,11 @@ export default withSentryConfig(config, {
 app. Junior pins their versions, and a different version cannot use the Sentry
 client that `initSentry()` creates.
 
+Your app owns the `nitro` dependency. `@sentry/junior` lists the Nitro versions
+that it supports as a peer dependency. Use one of those versions. If your
+version is not in that list, your package manager shows a peer dependency
+warning.
+
 If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/agent-dispatch`, `/api/internal/agent/continue`, `/api/internal/plugin/tasks`, `/api/internal/heartbeat`, and `/health`. Do not split those routes across independent runtime instances. When mounted, `@sentry/junior-dashboard` owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`.
 
 Some packages export runtime hooks instead of `plugin.yaml`. Add those

@@ -23,6 +23,8 @@ Install the dashboard package next to `@sentry/junior`:
 pnpm add @sentry/junior-dashboard
 ```
 
+The dashboard uses the `@sentry/junior` package that your app installs. It is a peer dependency, so install the same version of both packages.
+
 ## Configure the dashboard
 
 Pass `dashboard` to `createApp()`. Dashboard sign-in requires at least one
