@@ -8,7 +8,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { identityFromRuntimeActor } from "@/chat/conversations/sql/actor-identity";
+import { identityForActor } from "@/chat/identities/actor";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -183,8 +183,8 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  const key = identityFromRuntimeActor(actor);
-  if (!key) return undefined;
+  const key = identityForActor(actor);
+  if (key?.kind !== "user") return undefined;
   const rows = await db
     .select({
       identity: juniorIdentities,

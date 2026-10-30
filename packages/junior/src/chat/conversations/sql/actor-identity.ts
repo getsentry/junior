@@ -1,64 +1,11 @@
-import {
-  toStoredSlackActor,
-  type Actor,
-  type StoredSlackActor,
-} from "@/chat/actor";
+import type { StoredSlackActor } from "@/chat/actor";
+import { identityForStoredActor } from "@/chat/identities/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
+import { logWarn } from "@/chat/logging";
 import type { Conversation, ConversationSource } from "../store";
 import type { juniorIdentities } from "@/db/schema";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
-
-/** Build a durable identity observation from a stored conversation actor. */
-export function identityFromActor(
-  actor: StoredSlackActor | undefined,
-): IdentityUpsert | undefined {
-  if (actor?.slackUserId) {
-    return {
-      kind: "user",
-      provider: "slack",
-      providerTenantId: actor.teamId,
-      providerSubjectId: actor.slackUserId,
-      ...(actor.fullName ? { displayName: actor.fullName } : undefined),
-      ...(actor.slackUserName ? { handle: actor.slackUserName } : undefined),
-      ...(actor.email
-        ? { email: actor.email, emailVerified: true }
-        : undefined),
-      metadata: { platform: "slack" },
-    };
-  }
-  // Dashboard/web actors store a verified email without a Slack subject.
-  const email = actor?.email?.trim().toLowerCase();
-  if (!email) {
-    return undefined;
-  }
-  return {
-    kind: "user",
-    provider: "junior",
-    providerSubjectId: email,
-    email,
-    emailVerified: true,
-    ...(actor?.fullName ? { displayName: actor.fullName } : undefined),
-    metadata: { platform: "web" },
-  };
-}
-
-/**
- * Build the identity observation for one runtime actor with the same key the
- * Conversation write path stores. Local and system actors have no user
- * identity.
- */
-export function identityFromRuntimeActor(
-  actor: Actor,
-): IdentityUpsert | undefined {
-  if (actor.platform === "slack") {
-    return identityFromActor(toStoredSlackActor(actor));
-  }
-  if (actor.platform === "web") {
-    return identityFromActor(actor.email ? { email: actor.email } : undefined);
-  }
-  return undefined;
-}
 
 /** Build a system identity when a conversation has no user actor. */
 export function systemIdentityFromSource(
@@ -91,14 +38,26 @@ export function systemIdentityFromSource(
   return undefined;
 }
 
-/** Prefer the user actor identity, else a source-derived system identity. */
+/**
+ * Prefer the user actor identity, else a source-derived system identity.
+ *
+ * TODO(dcramer): Remove the source fallback after every ingress supplies an
+ * Actor. `conversation.actor.missing` shows the writes that still use it.
+ */
 export function actorIdentityForConversation(
   conversation: Conversation,
 ): IdentityUpsert | undefined {
-  return (
-    identityFromActor(conversation.actor) ??
-    systemIdentityFromSource(conversation.source)
-  );
+  const identity = identityForStoredActor(conversation.actor);
+  if (identity) {
+    return identity;
+  }
+  const fallback = systemIdentityFromSource(conversation.source);
+  if (fallback) {
+    logWarn("conversation.actor.missing", {
+      "app.conversation.source": conversation.source,
+    });
+  }
+  return fallback;
 }
 
 /**

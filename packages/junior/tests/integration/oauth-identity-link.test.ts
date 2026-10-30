@@ -1,8 +1,18 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeDb, getSqlExecutor } from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+  webActorFromEmail,
+} from "@/chat/conversations/web-input";
+import { closeDb, getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorIdentities } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 import { GET as handleOAuthCallback } from "@/handlers/oauth-callback";
 import { createEvalOAuthAccountApp } from "../fixtures/eval-oauth-account";
 import { testWaitUntil } from "../fixtures/oauth-callback-after-harness";
@@ -73,6 +83,84 @@ describe("oauth identity link", () => {
         { email: null, provider: "slack", userId: null },
       ]),
     );
+  });
+
+  it("links a web connection to the identity that the viewer and message events use", async () => {
+    await createEvalOAuthAccountApp({ id: "eval-account-web" });
+    const actor = webActorFromEmail("Web.Person@Example.com", {
+      fullName: "Web Person",
+    });
+    await getStateAdapter().set("oauth-state:eval-oauth-web-link", {
+      actor,
+      provider: "eval-oauth",
+      userId: actor.userId,
+    });
+
+    const response = await handleOAuthCallback(
+      new Request(
+        "https://junior.example.com/api/oauth/callback/eval-oauth?state=eval-oauth-web-link&code=eval-oauth-code",
+      ),
+      "eval-oauth",
+      testWaitUntil,
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    const viewer = await readActorIdentity(actor);
+    expect(viewer).toMatchObject({
+      identity: {
+        provider: "junior",
+        providerSubjectId: "web.person@example.com",
+      },
+      user: { email: "web.person@example.com" },
+    });
+    const [linked] = await getSqlExecutor()
+      .db()
+      .select({ userId: juniorIdentities.userId })
+      .from(juniorIdentities)
+      .where(eq(juniorIdentities.provider, "eval-oauth"));
+    expect(linked?.userId).toBe(viewer?.user?.id);
+
+    const conversationId = createConversationId({
+      actorEmail: actor.email!,
+      idempotencyKey: "web-identity-link",
+    });
+    await recordWebConversationActivity({
+      actor,
+      conversationId,
+      nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: Date.parse("2026-08-21T12:00:01.000Z"),
+        data: {
+          messageId: "web-identity-link-message",
+          meta: {
+            author: {
+              email: actor.email,
+              isBot: false,
+              userId: actor.userId,
+            },
+          },
+          role: "user",
+          text: "hello from the dashboard",
+          type: "message",
+        },
+        idempotencyKey: "message:web-identity-link-message",
+      },
+    ]);
+    const [conversation] = await getSqlExecutor()
+      .db()
+      .select({ actorIdentityId: juniorConversations.actorIdentityId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, conversationId));
+    const [event] = await getSqlExecutor()
+      .db()
+      .select({ actorIdentityId: juniorConversationEvents.actorIdentityId })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    expect(conversation?.actorIdentityId).toBe(viewer?.identity.id);
+    expect(event?.actorIdentityId).toBe(viewer?.identity.id);
   });
 
   it("does not link a plugin OAuth account as a native Google identity", async () => {

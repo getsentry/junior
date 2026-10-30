@@ -92,7 +92,8 @@ function isSyntheticActorUserId(value: string): boolean {
   return value.toLowerCase() === "unknown";
 }
 
-function isSlackUserId(value: string): boolean {
+/** Return whether a value has the shape of a Slack user id. */
+export function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_DISPLAY_PATTERN.test(value);
 }
 
