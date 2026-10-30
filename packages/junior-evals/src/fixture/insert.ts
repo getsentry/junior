@@ -40,7 +40,10 @@ export interface SlackChannel {
  */
 const FIXTURE_START_DATE = "2026-05-04";
 
-/** The Slack timestamp of the message that stored a setup memory. */
+/**
+ * The Slack timestamp of the setup message that stored a memory or created an
+ * automation.
+ */
 const FIXTURE_MESSAGE_TS = "1780000000.000100";
 
 /**
@@ -105,11 +108,10 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
  * runs do not record channel visibility, so without it their Conversations in
  * the channel are private.
  */
-async function insertCreationThread(destination: SlackChannel, nowMs: number) {
+async function insertCreationThread(destination: SlackChannel) {
   await getConversationStore().recordActivity({
     conversationId: `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`,
     destination,
-    nowMs,
     sessionSource: createSlackSource({
       channelId: destination.channelId,
       teamId: destination.teamId,
@@ -184,7 +186,7 @@ export async function insertScheduledAutomation(args: {
     task: { text: args.task },
     updatedAtMs: nowMs - 60_000,
   };
-  await insertCreationThread(args.destination, nowMs);
+  await insertCreationThread(args.destination);
   await saveScheduledAutomation(getDb(), automation);
   return { id };
 }
@@ -203,7 +205,7 @@ export async function insertEventAutomation(args: {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const id = `evt_${fixtureId("event-automation", 20)}`;
-  await insertCreationThread(args.destination, Date.now());
+  await insertCreationThread(args.destination);
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
