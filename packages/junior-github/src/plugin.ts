@@ -65,6 +65,8 @@ import {
   additionalActorCoauthorTrailers,
   configureGit,
   prepareCommitMsgHook,
+  REPOSITORY_HOOK_NAMES,
+  repositoryHook,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
@@ -384,6 +386,13 @@ export function githubPlugin(
           mode: 0o755,
           content: prepareCommitMsgHook(),
         });
+        for (const name of REPOSITORY_HOOK_NAMES) {
+          await ctx.sandbox.writeFile({
+            path: `${hooksPath}/${name}`,
+            mode: 0o755,
+            content: repositoryHook(name),
+          });
+        }
         await configureGit(ctx, "core.hooksPath", hooksPath);
         await configureGit(ctx, "commit.gpgsign", "false");
         await configureGit(ctx, "credential.helper", "");

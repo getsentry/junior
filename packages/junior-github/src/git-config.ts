@@ -144,6 +144,51 @@ export function additionalActorCoauthorTrailers(args: {
   return trailers;
 }
 
+/**
+ * Client hooks that Junior's hooks directory passes to the repository.
+ *
+ * The global `core.hooksPath` hides `.git/hooks`. Tools such as
+ * simple-git-hooks and Git LFS install their hooks there, so Git would skip
+ * them without these pass-through hooks. `prepare-commit-msg` is not in the
+ * list because Junior's own hook runs the repository hook first.
+ */
+export const REPOSITORY_HOOK_NAMES = [
+  "applypatch-msg",
+  "pre-applypatch",
+  "post-applypatch",
+  "pre-commit",
+  "pre-merge-commit",
+  "commit-msg",
+  "post-commit",
+  "pre-rebase",
+  "post-checkout",
+  "post-merge",
+  "pre-push",
+  "post-rewrite",
+  "pre-auto-gc",
+] as const;
+
+/** Bash that sets `repository_hook` to the repository's own hook, if any. */
+function findRepositoryHook(name: string): string {
+  return `repository_hook=""
+git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || git_common_dir=""
+if [ -n "$git_common_dir" ] && [ -x "$git_common_dir/hooks/${name}" ] && ! [ "$git_common_dir/hooks/${name}" -ef "$0" ]; then
+  repository_hook="$git_common_dir/hooks/${name}"
+fi`;
+}
+
+/** Build a hook that runs the repository's own hook with the same name. */
+export function repositoryHook(name: string): string {
+  return `#!/usr/bin/env bash
+set -eu
+
+${findRepositoryHook(name)}
+if [ -n "$repository_hook" ]; then
+  exec "$repository_hook" "$@"
+fi
+`;
+}
+
 /** Build the hook that replaces model-supplied commit attribution. */
 export function prepareCommitMsgHook(): string {
   return `#!/usr/bin/env bash
@@ -152,6 +197,12 @@ set -eu
 message_file="\${1:-}"
 if [ -z "$message_file" ]; then
   exit 1
+fi
+
+# Run the repository hook first so Junior's trailers stay final.
+${findRepositoryHook("prepare-commit-msg")}
+if [ -n "$repository_hook" ]; then
+  "$repository_hook" "$@"
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
