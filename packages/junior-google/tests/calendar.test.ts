@@ -41,7 +41,7 @@ describe("findFreeSlots", () => {
             },
           ],
           email: REQUESTER,
-          role: "required",
+          required: true,
           timeZone: LA,
         },
       ],
@@ -69,17 +69,17 @@ describe("findFreeSlots", () => {
     // London (UTC+1) share only 08:00-09:00 in Los Angeles.
     const slots = findFreeSlots({
       attendees: [
-        { busy: [], email: REQUESTER, role: "required", timeZone: LA },
+        { busy: [], email: REQUESTER, required: true, timeZone: LA },
         {
           busy: [],
           email: "bob@example.com",
-          role: "required",
+          required: true,
           timeZone: "Europe/London",
         },
         {
           busy: [],
           email: "dana@example.com",
-          role: "optional",
+          required: false,
           timeZone: "Asia/Tokyo",
         },
       ],
@@ -97,7 +97,6 @@ describe("findFreeSlots", () => {
         // 08:00 LA, 16:00 London, 00:00 Tuesday Tokyo.
         startMs: Date.parse("2026-10-12T15:00:00Z"),
         endMs: Date.parse("2026-10-12T16:00:00Z"),
-        holdConflicts: [],
         optionalConflicts: ["dana@example.com"],
       },
     ]);
@@ -130,15 +129,16 @@ describe("Google Calendar tools", () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
-          // The requester says this all-day Monday block is only a hold.
+          // The requester blocks all of Tuesday, but says they are free
+          // 10:30-12:00.
           [REQUESTER]: {
             busy: [
-              { start: "2026-10-12T16:00:00Z", end: "2026-10-13T00:00:00Z" },
+              { start: "2026-10-13T16:00:00Z", end: "2026-10-14T00:00:00Z" },
             ],
           },
           "bob@example.com": {
             busy: [
-              { start: "2026-10-12T16:00:00Z", end: "2026-10-12T17:00:00Z" },
+              { start: "2026-10-13T16:00:00Z", end: "2026-10-13T17:00:00Z" },
             ],
           },
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
@@ -152,13 +152,15 @@ describe("Google Calendar tools", () => {
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
-        holds: [REQUESTER],
         maxResults: 1,
+        statedAvailability: [
+          { email: REQUESTER, start: "10:30", end: "12:00" },
+        ],
         // Monday 09:00 through Tuesday 17:00 in Los Angeles.
         timeMax: "2026-10-14T00:00:00Z",
         timeMin: "2026-10-12T16:00:00Z",
         timeZone: LA,
-        weekdays: ["Mon"],
+        weekdays: ["Tue"],
       }),
       { toolCallId: "call-1" },
     );
@@ -183,14 +185,13 @@ describe("Google Calendar tools", () => {
         { email: REQUESTER, timeZone: LA },
         { email: "bob@example.com", timeZone: "America/New_York" },
       ],
-      // Monday 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York. The
-      // requester's hold does not block it. Tuesday is free for everyone, but
-      // only Monday was asked for.
+      // Tuesday 10:30 in Los Angeles: the start of the requester's stated
+      // hours, which replace their calendar, and after Bob's 12:00-13:00 in
+      // New York. Monday 10:30 is free too, but only Tuesday was asked for.
       slots: [
         {
-          holdConflicts: [REQUESTER],
-          otherTimeZoneLabels: ["Mon, Oct 12, 13:00 – 13:30 EDT"],
-          start: "2026-10-12T17:00:00.000Z",
+          otherTimeZoneLabels: ["Tue, Oct 13, 13:30 – 14:00 EDT"],
+          start: "2026-10-13T17:30:00.000Z",
         },
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],
