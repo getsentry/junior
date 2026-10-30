@@ -9,6 +9,20 @@ export const githubApiHandlers = [
   http.get(`${GITHUB_API_ORIGIN}/repos/:owner/:repo/deployments`, () =>
     HttpResponse.json([]),
   ),
+  // The GitHub plugin lists the App's installations, then uses the one on
+  // the request's owner, or the App owner's for reads, before it mints a
+  // token. Tests and evals write to repositories of these owners.
+  http.get(`${GITHUB_API_ORIGIN}/app`, () =>
+    HttpResponse.json({
+      owner: { login: "getsentry", type: "Organization" },
+    }),
+  ),
+  http.get(`${GITHUB_API_ORIGIN}/app/installations`, () =>
+    HttpResponse.json([
+      { id: 456, account: { login: "getsentry" } },
+      { id: 457, account: { login: "acme" } },
+    ]),
+  ),
   // The GitHub plugin reads the installation's permissions before it mints a
   // token, unless the host declares `appPermissions`.
   http.get(`${GITHUB_API_ORIGIN}/app/installations/:installationId`, () =>

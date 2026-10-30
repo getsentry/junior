@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
+  juniorGitHubInstallations,
   juniorGitHubIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
@@ -296,8 +297,6 @@ function webhookRoute(
       async record() {},
     },
     db: fixture.db(),
-    installationId: () => "456",
-    installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
@@ -1910,6 +1909,8 @@ describe("GitHub-owned pull request outcomes", () => {
         signedRequest(
           {
             action: "created",
+            // A delivery from any installation of the App uses that installation.
+            installation: { id: 999 },
             repository: { full_name: "getsentry/junior" },
             issue: {
               number: 946,
@@ -1929,6 +1930,7 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(markFeedbackReviewing).toHaveBeenCalledWith({
         commentId: 101,
         commentKind: "conversation",
+        installationId: 999,
         repo: "getsentry/junior",
       });
       expect(published).toHaveLength(2);
@@ -2057,7 +2059,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("ignores signed deliveries from another installation", async () => {
+  it("ignores signed deliveries without an installation", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
     try {
@@ -2065,7 +2067,7 @@ describe("GitHub-owned pull request outcomes", () => {
       const response = await route.handler(
         signedRequest({
           ...pullRequestPayload(),
-          installation: { id: 999 },
+          installation: undefined,
         }),
       );
 
@@ -2073,6 +2075,54 @@ describe("GitHub-owned pull request outcomes", () => {
       await expect(
         fixture.db().select().from(juniorGitHubPullRequests),
       ).resolves.toEqual([]);
+      expect(published).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps stored installations current from installation deliveries", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const installations = async () =>
+      await fixture
+        .db()
+        .select({
+          accountLogin: juniorGitHubInstallations.accountLogin,
+          installationId: juniorGitHubInstallations.installationId,
+        })
+        .from(juniorGitHubInstallations);
+    try {
+      const route = webhookRoute(fixture, published);
+      const deliver = async (eventName: string, body: unknown) =>
+        expect(
+          (await route.handler(signedRequest(body, eventName))).status,
+        ).toBe(202);
+
+      await deliver("installation", {
+        action: "created",
+        installation: { id: 789, account: { login: "FairSource" } },
+      });
+      await expect(installations()).resolves.toEqual([
+        { accountLogin: "fairsource", installationId: 789 },
+      ]);
+
+      await deliver("installation_target", {
+        action: "renamed",
+        account: { login: "fair-source" },
+        installation: { id: 789 },
+      });
+      await expect(installations()).resolves.toEqual([
+        { accountLogin: "fair-source", installationId: 789 },
+      ]);
+
+      await deliver("installation", {
+        action: "suspend",
+        installation: { id: 789, account: { login: "fair-source" } },
+      });
+      await expect(installations()).resolves.toEqual([
+        { accountLogin: null, installationId: 789 },
+      ]);
       expect(published).toEqual([]);
     } finally {
       await fixture.close();
@@ -2132,7 +2182,6 @@ describe("GitHub-owned pull request outcomes", () => {
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
     );
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const plugin = githubPlugin({
@@ -2192,7 +2241,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2296,7 +2344,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2421,7 +2468,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2560,7 +2606,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",

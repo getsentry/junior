@@ -79,15 +79,13 @@ import {
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
-  GITHUB_INSTALLATION_ID_ENV,
-  createPermissionCache,
-  issueGitHubCredential,
   listVerifiedUserEmails,
   normalizeScopeList,
   readEnv,
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { issueGitHubCredential } from "./issue-credential.js";
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -126,8 +124,6 @@ export interface GitHubPluginOptions {
   /** Environment variable containing the GitHub App OAuth client secret. */
   clientSecretEnv?: string;
 
-  /** Environment variable containing the GitHub App installation id. */
-  installationIdEnv?: string;
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
   /** App-configured pull request event behavior. */
@@ -144,13 +140,10 @@ export function githubPlugin(
   const clientSecretEnv = options.clientSecretEnv ?? "GITHUB_APP_CLIENT_SECRET";
   const appIdEnv = options.appIdEnv ?? GITHUB_APP_ID_ENV;
   const privateKeyEnv = options.privateKeyEnv ?? GITHUB_APP_PRIVATE_KEY_ENV;
-  const installationIdEnv =
-    options.installationIdEnv ?? GITHUB_INSTALLATION_ID_ENV;
   const declaredAppPermissions = normalizePermissions(options.appPermissions);
   const declaredReadPermissions = declaredAppPermissions
     ? readGrantPermissions(declaredAppPermissions)
     : undefined;
-  const loadReadPermissions = createPermissionCache();
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
 
@@ -214,7 +207,6 @@ export function githubPlugin(
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},
-        [installationIdEnv]: {},
         [clientIdEnv]: {},
         [clientSecretEnv]: {},
         [botNameEnv]: { exposeToCommandEnv: true },
@@ -330,11 +322,7 @@ export function githubPlugin(
         };
       },
       routes(ctx) {
-        const installationEnv = {
-          appIdEnv,
-          installationIdEnv,
-          privateKeyEnv,
-        };
+        const app = { appIdEnv, privateKeyEnv };
         return [
           createGitHubWebhookRoute({
             annotations: ctx.annotations,
@@ -343,26 +331,21 @@ export function githubPlugin(
             classifyPullRequestCommits: async (pullRequest) =>
               await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),
-                loadPage: await loadPullRequestCommitPages(
-                  installationEnv,
-                  pullRequest,
-                ),
+                loadPage: await loadPullRequestCommitPages(app, pullRequest),
               }),
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
-            installationId: () => readEnv(installationIdEnv),
-            installationIdEnv,
             loadRepositoryRole: async (target) =>
-              await loadRepositoryRole(installationEnv, ctx.cache, target),
+              await loadRepositoryRole(app, ctx.cache, target),
             loadGitHubLogin: async (identityId) =>
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
             loadPullRequestCommitPages: async (pullRequest) =>
-              await loadPullRequestCommitPages(installationEnv, pullRequest),
+              await loadPullRequestCommitPages(app, pullRequest),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
-              await markPullRequestFeedbackReviewing(installationEnv, target),
+              await markPullRequestFeedbackReviewing(app, target),
             privateKeyEnv,
             events: ctx.events,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
@@ -467,11 +450,8 @@ export function githubPlugin(
           appIdEnv,
           clientIdEnv,
           clientSecretEnv,
-          installationIdEnv,
           privateKeyEnv,
-          readPermissions: declaredReadPermissions
-            ? { permissions: declaredReadPermissions }
-            : { loadPermissions: loadReadPermissions },
+          readPermissions: declaredReadPermissions,
           userScope,
         });
       },

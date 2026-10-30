@@ -941,7 +941,8 @@ function automationRequest(input: AutomationInput): Request {
   }
   const body = JSON.stringify({
     ...input.payload,
-    installation: { id: Number(requiredEnv("GITHUB_INSTALLATION_ID")) },
+    // Any id works: Junior uses the installation that sent the delivery.
+    installation: { id: 67890 },
   });
   const signature = createHmac("sha256", requiredEnv("GITHUB_WEBHOOK_SECRET"))
     .update(body)

@@ -583,7 +583,7 @@ export function needsCheckSuitePullRequestFacts(
 export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
-  installationIdEnv: string;
+  installationId: number;
   loadPullRequestFacts?: boolean;
   log?: { error(message: string, metadata?: Record<string, unknown>): void };
   privateKeyEnv: string;
@@ -599,7 +599,7 @@ export async function loadCheckSuiteFacts(args: {
     try {
       const token = await issueInstallationToken({
         appIdEnv: args.appIdEnv,
-        installationIdEnv: args.installationIdEnv,
+        installationId: args.installationId,
         permissions: { checks: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
@@ -627,7 +627,7 @@ export async function loadCheckSuiteFacts(args: {
     try {
       const token = await issueInstallationToken({
         appIdEnv: args.appIdEnv,
-        installationIdEnv: args.installationIdEnv,
+        installationId: args.installationId,
         permissions: { pull_requests: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],

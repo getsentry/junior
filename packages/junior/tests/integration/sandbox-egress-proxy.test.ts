@@ -249,7 +249,6 @@ async function registerGitHubPlugin(
 
 function configureGitHubAppEnv() {
   process.env.GITHUB_APP_ID = "123";
-  process.env.GITHUB_INSTALLATION_ID = "456";
   process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
     modulusLength: 2048,
   })
@@ -1721,7 +1720,6 @@ describe("sandbox egress proxy integration", () => {
   it("returns a controlled egress auth response when GitHub App setup is unavailable", async () => {
     delete process.env.GITHUB_APP_ID;
     delete process.env.GITHUB_APP_PRIVATE_KEY;
-    delete process.env.GITHUB_INSTALLATION_ID;
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },

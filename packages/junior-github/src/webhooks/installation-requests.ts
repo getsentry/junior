@@ -9,18 +9,12 @@ import { z } from "zod";
 import {
   githubRequest,
   issueInstallationToken,
+  type GitHubAppEnv,
 } from "../credential-support.js";
 import {
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
 } from "../tools/update-pull-request-feedback.js";
-
-/** Environment variable names for the GitHub App installation. */
-export interface GitHubInstallationEnv {
-  appIdEnv: string;
-  installationIdEnv: string;
-  privateKeyEnv: string;
-}
 
 function splitRepository(fullName: string, label: string) {
   const [owner, name, ...extra] = fullName.split("/");
@@ -32,15 +26,20 @@ function splitRepository(fullName: string, label: string) {
 
 /** Return a reader for pages of a pull request's commits, with a read-only token. */
 export async function loadPullRequestCommitPages(
-  env: GitHubInstallationEnv,
-  pullRequest: { number: number; repositoryFullName: string },
+  app: GitHubAppEnv,
+  pullRequest: {
+    installationId: number;
+    number: number;
+    repositoryFullName: string;
+  },
 ): Promise<(page: number, perPage: number) => Promise<unknown>> {
   const { owner, name } = splitRepository(
     pullRequest.repositoryFullName,
     "pull request commits",
   );
   const token = await issueInstallationToken({
-    ...env,
+    ...app,
+    installationId: pullRequest.installationId,
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
@@ -54,16 +53,18 @@ export async function loadPullRequestCommitPages(
 
 /** Add the "reviewing" reaction to one pull request feedback comment. */
 export async function markPullRequestFeedbackReviewing(
-  env: GitHubInstallationEnv,
+  app: GitHubAppEnv,
   target: {
     commentId: number;
     commentKind: "conversation" | "review";
+    installationId: number;
     repo: string;
   },
 ): Promise<void> {
   const { owner, name } = splitRepository(target.repo, "pull request feedback");
   const token = await issueInstallationToken({
-    ...env,
+    ...app,
+    installationId: target.installationId,
     repositories: [name],
   });
   await githubRequest(
@@ -96,9 +97,9 @@ const REPOSITORY_ROLE_TTL_MS = 10 * 60 * 1000;
  * cached for ten minutes.
  */
 export async function loadRepositoryRole(
-  env: GitHubInstallationEnv,
+  app: GitHubAppEnv,
   cache: PluginCache,
-  target: { login: string; repositoryFullName: string },
+  target: { installationId: number; login: string; repositoryFullName: string },
 ): Promise<string> {
   const { owner, name } = splitRepository(
     target.repositoryFullName,
@@ -108,7 +109,8 @@ export async function loadRepositoryRole(
     `repository-role:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
       const token = await issueInstallationToken({
-        ...env,
+        ...app,
+        installationId: target.installationId,
         permissions: { metadata: "read" },
         repositories: [name],
       });

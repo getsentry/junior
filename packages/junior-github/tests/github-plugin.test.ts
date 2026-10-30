@@ -11,6 +11,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -23,6 +24,11 @@ import { gitHubPullRequestResource } from "../src/events/pull-request";
 import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
+import { juniorGitHubInstallations } from "../src/db/schema";
+import {
+  removeGitHubInstallation,
+  saveGitHubInstallation,
+} from "../src/installations/store";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -34,6 +40,11 @@ let db: GitHubDb;
 beforeAll(async () => {
   dbFixture = await createGitHubFixture();
   db = dbFixture.db();
+});
+
+beforeEach(async () => {
+  // Each test starts before Junior has stored any App installation.
+  await db.delete(juniorGitHubInstallations);
 });
 
 afterAll(async () => {
@@ -146,6 +157,23 @@ const pluginLog = {
   warn() {},
 };
 
+/** In-memory plugin cache with the same load and TTL rules as Junior's. */
+function pluginCache() {
+  const entries = new Map<string, unknown>();
+  return {
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ ttlMs?: number; value: T }>,
+      options?: { refresh?: boolean },
+    ): Promise<T> {
+      if (!options?.refresh && entries.has(key)) return entries.get(key) as T;
+      const entry = await load();
+      if (entry.ttlMs) entries.set(key, entry.value);
+      return entry.value;
+    },
+  };
+}
+
 /**
  * Recover the exact prepare-commit-msg script sandboxPrepare writes and stage
  * it with a seeded commit message file, so tests execute the real generated
@@ -234,9 +262,29 @@ function cloneStateValue<T>(value: T): T {
   return value === undefined ? value : structuredClone(value);
 }
 
+/**
+ * Mock the App owner `getsentry` (installation 456) and `FairSource`
+ * (installation 789). The App is not installed on any other account.
+ */
 function mockGitHubInstallationApi(): CapturedRequest[] {
   const requests: CapturedRequest[] = [];
   mswServer.use(
+    http.get("https://api.github.com/app", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json({
+        owner: { login: "getsentry", type: "Organization" },
+      });
+    }),
+    http.get(
+      "https://api.github.com/app/installations",
+      async ({ request }) => {
+        requests.push(await captureRequest(request));
+        return HttpResponse.json([
+          { id: 456, account: { login: "getsentry" } },
+          { id: 789, account: { login: "FairSource" } },
+        ]);
+      },
+    ),
     http.get(
       "https://api.github.com/app/installations/:installationId",
       async ({ request }) => {
@@ -757,7 +805,17 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-read",
       access: "read",
+      leaseScope: "owner:getsentry",
       reason: "github.api-read",
+    });
+    expect(
+      await grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/orgs/FairSource/teams",
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      leaseScope: "owner:fairsource",
     });
     expect(
       await grantForEgress({
@@ -2260,6 +2318,21 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/graphql",
         bodyText: JSON.stringify({
+          query:
+            "query PullRequest($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { pullRequest(number: 1) { title } } }",
+          variables: { owner: "FairSource", repo: "fair.io" },
+        }),
+      }),
+    ).toMatchObject({
+      name: "installation-read",
+      leaseScope: "owner:fairsource",
+      reason: "github.graphql-read",
+    });
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
           query: `query IssueList {
             repository(owner: "getsentry", name: "junior-prod") {
               issues(first: 20) { nodes { number title } }
@@ -2326,14 +2399,32 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       grantForEgress({
         method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        operation: "github.pull.review-thread.resolve:FairSource/fair.io",
         url: "https://api.github.com/graphql",
         bodyText,
       }),
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
+      leaseScope: "owner:fairsource",
       reason: "github.installation-write",
+    });
+    // The lookup names only a node id, so the host tool's operation names
+    // the owner whose installation can read the thread.
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.get:fairsource/fair.io",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            "query ReviewThread($threadId: ID!) { node(id: $threadId) { id } }",
+          variables: { threadId: "PRRT_kwDOthread" },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-read",
+      leaseScope: "owner:fairsource",
     });
     await expect(
       grantForEgress({
@@ -2683,12 +2774,11 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("issues installation-write credentials without repository filter", async () => {
+  it("issues installation-write credentials from the target owner's installation", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
     const requests = mockGitHubInstallationApi();
     const plugin = githubPlugin({
@@ -2696,12 +2786,97 @@ Conversation: \`local:test:old-conversation\`
         contents: "write",
       },
     });
+    const grant = await grantForEgress({
+      method: "GET",
+      url: "https://github.com/fairsource/fair.io.git/info/refs?service=git-receive-pack",
+    });
+    const cache = pluginCache();
+    const issue = async (leaseScope = grant?.leaseScope) =>
+      await plugin.hooks?.issueCredential?.({
+        actor: { platform: "system", name: "event" },
+        cache,
+        grant: { ...grant!, leaseScope },
+        db,
+        log: pluginLog,
+        plugin: { name: "github" },
+        tokens: {},
+      });
 
-    const result = await plugin.hooks?.issueCredential?.({
+    const result = await issue();
+
+    // No installation is stored yet, so Junior syncs them from GitHub.
+    expect(result?.type).toBe("lease");
+    expect(grant?.leaseScope).toBe("owner:fairsource");
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+      "POST https://api.github.com/app/installations/789/access_tokens",
+    ]);
+    // Write tokens keep the full installed App permissions and repos.
+    expect(requests[1]?.body).toEqual({});
+
+    // Later tokens use the stored installation.
+    requests.length = 0;
+    await expect(issue()).resolves.toMatchObject({ type: "lease" });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST https://api.github.com/app/installations/789/access_tokens",
+    ]);
+
+    // A write never falls back to another installation. The sync just ran,
+    // so a miss does not call GitHub again.
+    requests.length = 0;
+    await expect(issue("owner:uninstalled")).resolves.toEqual({
+      type: "unavailable",
+      message: "The GitHub App is not installed on uninstalled.",
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it("repairs stale installations without losing concurrent webhook writes", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    mswServer.use(
+      http.get(
+        "https://api.github.com/app/installations",
+        async ({ request }) => {
+          requests.push(await captureRequest(request));
+          // While Junior lists installations, FairSource uninstalls the
+          // App and Acme installs it. The list does not show either change.
+          await removeGitHubInstallation(db, 789);
+          await saveGitHubInstallation(db, {
+            accountLogin: "Acme",
+            installationId: 800,
+          });
+          return HttpResponse.json([
+            { id: 456, account: { login: "getsentry" } },
+            { id: 789, account: { login: "FairSource" } },
+          ]);
+        },
+      ),
+      http.post(
+        "https://api.github.com/app/installations/999/access_tokens",
+        async ({ request }) => {
+          requests.push(await captureRequest(request));
+          return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+        },
+      ),
+    );
+    // Junior missed the webhook that removed this installation.
+    await db.insert(juniorGitHubInstallations).values({
+      accountLogin: "uninstalled",
+      installationId: 999,
+      updatedAt: new Date(Date.now() - 60_000),
+    });
+    const result = await githubPlugin().hooks?.issueCredential?.({
       actor: { platform: "system", name: "event" },
+      cache: pluginCache(),
       grant: {
         name: "installation-write",
         access: "write",
+        leaseScope: "owner:uninstalled",
         reason: "github.installation-write",
       },
       db,
@@ -2710,14 +2885,30 @@ Conversation: \`local:test:old-conversation\`
       tokens: {},
     });
 
-    expect(result?.type).toBe("lease");
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toEqual({
-      url: "https://api.github.com/app/installations/456/access_tokens",
-      method: "POST",
-      body: {},
-      headers: expect.any(Object),
+    expect(result).toEqual({
+      type: "unavailable",
+      message: "The GitHub App is not installed on uninstalled.",
     });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST https://api.github.com/app/installations/999/access_tokens",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+    ]);
+    // The stale installation is removed. The webhook rows are newer than
+    // the list, so the sync keeps them and does not add 789 again.
+    await expect(
+      db
+        .select({
+          accountLogin: juniorGitHubInstallations.accountLogin,
+          installationId: juniorGitHubInstallations.installationId,
+        })
+        .from(juniorGitHubInstallations)
+        .orderBy(juniorGitHubInstallations.installationId),
+    ).resolves.toEqual([
+      { accountLogin: "getsentry", installationId: 456 },
+      { accountLogin: null, installationId: 789 },
+      { accountLogin: "acme", installationId: 800 },
+      { accountLogin: null, installationId: 999 },
+    ]);
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {
@@ -2725,7 +2916,6 @@ Conversation: \`local:test:old-conversation\`
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
 
     const requests = mockGitHubInstallationApi();
@@ -2736,18 +2926,23 @@ Conversation: \`local:test:old-conversation\`
         issues: "write",
       },
     });
-    const result = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "scheduler" },
-      grant: {
-        name: "installation-read",
-        access: "read",
-        reason: "github.api-read",
-      },
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {},
-    });
+    const issue = async (leaseScope?: string) =>
+      await plugin.hooks?.issueCredential?.({
+        actor: { platform: "system", name: "scheduler" },
+        cache: pluginCache(),
+        grant: {
+          name: "installation-read",
+          access: "read",
+          reason: "github.api-read",
+          ...(leaseScope ? { leaseScope } : undefined),
+        },
+        db,
+        log: pluginLog,
+        plugin: { name: "github" },
+        tokens: {},
+      });
+
+    const result = await issue();
 
     expect(result).toMatchObject({
       type: "lease",
@@ -2763,10 +2958,13 @@ Conversation: \`local:test:old-conversation\`
         ],
       },
     });
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({
-      method: "POST",
-      url: "https://api.github.com/app/installations/456/access_tokens",
+    // A read without an owner uses the App owner's installation.
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "GET https://api.github.com/app",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+      "POST https://api.github.com/app/installations/456/access_tokens",
+    ]);
+    expect(requests[2]).toMatchObject({
       body: {
         permissions: {
           contents: "read",
@@ -2775,6 +2973,17 @@ Conversation: \`local:test:old-conversation\`
         },
       },
     });
+
+    // Public repositories stay readable where the App is not installed.
+    requests.length = 0;
+    await expect(issue("owner:uninstalled")).resolves.toMatchObject({
+      type: "lease",
+    });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+      "GET https://api.github.com/app",
+      "POST https://api.github.com/app/installations/456/access_tokens",
+    ]);
   });
 
   it("caches implicit GitHub App installation permissions", async () => {
@@ -2782,7 +2991,6 @@ Conversation: \`local:test:old-conversation\`
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
 
     const requests = mockGitHubInstallationApi();
@@ -2790,9 +2998,11 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin();
     const ctx = {
       actor: { platform: "system" as const, name: "scheduler" },
+      cache: pluginCache(),
       grant: {
         name: "installation-read",
         access: "read" as const,
+        leaseScope: "owner:getsentry",
         reason: "github.api-read",
       },
       db,
@@ -2804,15 +3014,16 @@ Conversation: \`local:test:old-conversation\`
     await plugin.hooks?.issueCredential?.(ctx);
     await plugin.hooks?.issueCredential?.(ctx);
 
-    const permissionReads = requests.filter(
+    const lookups = requests.filter(
       (request) =>
         request.method === "GET" &&
-        request.url === "https://api.github.com/app/installations/456",
+        request.url.startsWith("https://api.github.com/app"),
     );
     const tokenRequests = requests.filter((request) =>
       request.url.endsWith("/app/installations/456/access_tokens"),
     );
-    expect(permissionReads).toHaveLength(1);
+    // One installation sync and permission read serve both tokens.
+    expect(lookups).toHaveLength(2);
     expect(tokenRequests).toHaveLength(2);
     expect(tokenRequests.map((request) => request.body)).toEqual([
       {

@@ -25,7 +25,6 @@ const githubPrivateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
 export function evalGitHubEnv(): Record<string, string> {
   return {
     GITHUB_APP_ID: "12345",
-    GITHUB_INSTALLATION_ID: "67890",
     GITHUB_APP_PRIVATE_KEY: githubPrivateKey,
     GITHUB_APP_BOT_NAME: "junior-eval",
     GITHUB_APP_BOT_EMAIL: "12345+junior-eval[bot]@users.noreply.github.com",

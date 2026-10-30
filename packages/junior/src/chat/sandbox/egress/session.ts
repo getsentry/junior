@@ -52,13 +52,14 @@ function isSharedInstallationGrant(
  * Build the host key for a shared installation grant.
  *
  * Only installation grants are remembered. User and other grants issue live
- * headers each time, so they never write a host key.
+ * headers each time, so they never write a host key. Grants with different
+ * lease scopes never share remembered headers.
  */
 function leaseKey(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:shared`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${grant.leaseScope ?? "shared"}`;
 }
 
 /**

@@ -42,13 +42,16 @@ Set on the harness host (never in skill files):
 - `GITHUB_APP_CLIENT_ID`
 - `GITHUB_APP_CLIENT_SECRET`
 - `GITHUB_APP_PRIVATE_KEY`
-- `GITHUB_INSTALLATION_ID`
 - `GITHUB_APP_BOT_NAME` (Git author and committer display name)
 - `GITHUB_APP_BOT_EMAIL`
 
-Current limitation: one Junior deployment uses one GitHub App installation ID.
-That works for repositories covered by the same installation, but not for repositories that live
-under different app installations across orgs/accounts.
+One Junior deployment works with every installation of the App. Junior uses the
+installation on the account that owns the target repository or organization.
+It stores the App's installations in the database. `installation` and
+`installation_target` webhooks keep them current. A lookup that finds no row
+syncs them from `GET /app/installations`, at most once a minute. Reads that
+name no owner, or an account without the App, use the installation on the
+account that owns the App. Writes to an account without the App fail.
 
 ### Vercel env setup (multiline-safe)
 
@@ -61,7 +64,6 @@ For Vercel, prefer CLI file input so newlines are preserved exactly:
 vercel env add GITHUB_APP_ID production
 vercel env add GITHUB_APP_CLIENT_ID production
 vercel env add GITHUB_APP_CLIENT_SECRET production
-vercel env add GITHUB_INSTALLATION_ID production
 vercel env add GITHUB_APP_BOT_NAME production
 vercel env add GITHUB_APP_BOT_EMAIL production
 vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
@@ -162,7 +164,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 - `user-read` and explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, review, inline review comment, and branch operations do not fall back to user OAuth.
 - Headless event turns use the `event` system actor and may receive the same installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
 - Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers. When the current actor has a linked GitHub identity, Junior prefers a GitHub noreply address so external automation can resolve a login for assignment.
-- Installation credential leases are cached on the host by grant name and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
+- Installation credential leases are cached on the host by grant name and target account, and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API and upload calls.
 
 ## 4) CLI usage
@@ -246,7 +248,6 @@ jr-rpc config set github.repo getsentry/junior
    - `GITHUB_APP_CLIENT_ID`
    - `GITHUB_APP_CLIENT_SECRET`
    - `GITHUB_APP_PRIVATE_KEY`
-   - `GITHUB_INSTALLATION_ID`
    - `GITHUB_APP_BOT_NAME`
    - `GITHUB_APP_BOT_EMAIL`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
