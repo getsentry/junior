@@ -2,6 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { gitHubCommentMatchFields } from "./comment.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -97,6 +98,15 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
+/** Pull request events that a comment or review starts. */
+const GITHUB_PULL_REQUEST_COMMENT_EVENTS = [
+  "pull_request.comment.created",
+  "pull_request.review.approved",
+  "pull_request.review.changes_requested",
+  "pull_request.review.commented",
+  "pull_request.review_comment.created",
+] as const satisfies readonly GitHubPullRequestEvent[];
+
 /**
  * Exact values GitHub may set on pull request event data. Missing keys do not
  * match. The opener and author values load in
@@ -104,6 +114,7 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
  * pull request comment webhook has no head branch.
  */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...gitHubCommentMatchFields(GITHUB_PULL_REQUEST_COMMENT_EVENTS),
   authors: {
     kind: "string",
     list: true,
