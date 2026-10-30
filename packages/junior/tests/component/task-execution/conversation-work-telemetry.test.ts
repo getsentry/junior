@@ -11,7 +11,9 @@ import {
 import * as Sentry from "@/chat/sentry";
 import { closeDb } from "@/chat/db";
 import { withLogContext } from "@/chat/logging";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import { consumeConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -19,7 +21,13 @@ import {
   CONVERSATION_ID,
   conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
+  createNoopSlackWebhookRuntime,
+  createSlackAdapterFixture,
+  handleSlackWebhookAndFlush,
   inboundMessage,
+  SLACK_BOT_USER_ID,
+  slackEnvelope,
+  slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 
 describe("conversation work telemetry", () => {
@@ -39,7 +47,12 @@ describe("conversation work telemetry", () => {
     client?.on("spanEnd", (span) => {
       const json = Sentry.spanToJSON(span);
       const op = json.attributes?.["sentry.op"];
-      if (op === "queue.publish" || op === "queue.process") {
+      if (
+        op === "queue.publish" ||
+        op === "queue.process" ||
+        op === "slack.message.ingress" ||
+        op === "chat.turn"
+      ) {
         spans.push(json);
       }
     });
@@ -110,6 +123,75 @@ describe("conversation work telemetry", () => {
           "app.worker.outcome": "completed",
           "app.worker.pending_count": 1,
         }),
+      }),
+    ]);
+  });
+
+  it("puts a Slack turn in the ingress trace of its oldest input", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const queue = createConversationWorkQueueTestAdapter();
+    const adapter = createSlackAdapterFixture();
+    // Each Slack webhook request starts its own trace.
+    for (const ts of ["1712345.0001", "1712345.0002"]) {
+      await Sentry.startNewTrace(() =>
+        handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              text: `<@${SLACK_BOT_USER_ID}> check`,
+              threadTs: "1712345.0001",
+              ts,
+            }),
+          ),
+          services: {
+            getSlackAdapter: () => adapter,
+            queue,
+            runtime: createNoopSlackWebhookRuntime(),
+            state,
+          },
+        }),
+      );
+    }
+    await consumeConversationQueueMessage(queue.takeMessage(), {
+      messageId: "msg_1",
+      queue,
+      run: createSlackConversationWorker({
+        getSlackAdapter: () => adapter,
+        runNextPausedTurn: async () => false,
+        runtime: {
+          handleNewMention: async (_thread, _message, hooks) =>
+            await withTurnSpan({}, hooks.telemetry, async () => {
+              await hooks.ack?.();
+            }),
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
+      }),
+      state,
+    });
+
+    const byOp = (op: string) =>
+      spans.filter((span) => span.attributes?.["sentry.op"] === op);
+    const [oldest, newest] = byOp("slack.message.ingress");
+    const [worker] = byOp("queue.process");
+    expect(oldest?.trace_id).not.toBe(newest?.trace_id);
+    expect(worker?.trace_id).not.toBe(oldest?.trace_id);
+    expect(byOp("chat.turn")).toEqual([
+      expect.objectContaining({
+        trace_id: oldest?.trace_id,
+        parent_span_id: oldest?.span_id,
+        links: [
+          expect.objectContaining({
+            trace_id: newest?.trace_id,
+            span_id: newest?.span_id,
+          }),
+          expect.objectContaining({
+            trace_id: worker?.trace_id,
+            span_id: worker?.span_id,
+          }),
+        ],
       }),
     ]);
   });

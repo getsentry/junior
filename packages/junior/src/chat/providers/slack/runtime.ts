@@ -23,12 +23,7 @@ import {
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import {
-  logException,
-  logWarn,
-  withSpan,
-  withLogContext,
-} from "@/chat/logging";
+import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
@@ -46,6 +41,7 @@ import {
 } from "@/chat/providers/slack/processing-reaction";
 import {
   getTurnInputSpanAttributes,
+  withTurnSpan,
   type SlackTurnInputTelemetry,
 } from "@/chat/providers/slack/turn-input-telemetry";
 import {
@@ -736,7 +732,7 @@ export function createSlackTurnRuntime<
           hooks,
         );
 
-        await withSpan("chat.turn", "chat.turn", context, async (set) => {
+        await withTurnSpan(context, hooks.telemetry, async (set) => {
           const turnStartedAtMs = deps.now();
           if (hooks.telemetry) {
             set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
@@ -920,7 +916,7 @@ export function createSlackTurnRuntime<
           channelId,
           runId,
         });
-        await withSpan("chat.turn", "chat.turn", turnContext, async (set) => {
+        await withTurnSpan(turnContext, hooks.telemetry, async (set) => {
           const turnStartedAtMs = deps.now();
           if (hooks.telemetry) {
             set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));

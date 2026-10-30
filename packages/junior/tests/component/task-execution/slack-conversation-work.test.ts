@@ -516,6 +516,7 @@ describe("Slack conversation work execution", () => {
       count: 2,
       oldestCreatedAtMs: oldestInput?.createdAtMs,
       oldestReceivedAtMs: oldestInput?.receivedAtMs,
+      traceContexts: [],
     });
     expect(calls[0]?.destination).toEqual(SLACK_DESTINATION);
     expect(calls[0]?.thread.id).toBe(CONVERSATION_ID);
