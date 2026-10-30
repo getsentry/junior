@@ -1,8 +1,4 @@
-import {
-  eventMatches,
-  type EventInput,
-  type EventMatch,
-} from "@sentry/junior-plugin-api";
+import { eventMatches, type EventInput } from "@sentry/junior-plugin-api";
 import {
   filterEventMismatches,
   identifierMatchMismatches,
@@ -252,54 +248,18 @@ async function publish(
         expect(event.data).toMatchObject(data);
       }
     }
+    // When every copy is for one pull request, core gets its number, so a
+    // trigger for another pull request skips the lookups.
+    const numbers = [
+      ...new Set(published.map((event) => event.data?.pullRequest)),
+    ];
+    const onePullRequest = numbers.length === 1 ? numbers[0] : undefined;
+    expect(known.map((data) => data.pullRequest)).toEqual(
+      known.map(() => onePullRequest),
+    );
     events.push(...published);
   }
   return events;
-}
-
-/**
- * Turn a saved GitHub identifier into filters, the way a saved trigger is
- * converted. Saved identifiers are lowercase. The environment and tag parts are
- * URI-encoded, so conversion decodes them. `owner/repo#n` names an issue on
- * issue events and a pull request on the others.
- */
-function gitHubIdentifierMatch(event: {
-  eventType: string;
-  identifier: string;
-}): EventMatch | undefined {
-  const { eventType } = event;
-  // Saved identifiers went through the plugin's `normalizeIdentifier`.
-  const identifier = event.identifier.toLowerCase();
-  const deployment =
-    /^deployment-source:([^:]+\/[^:]+)(?::([^:]+))?:([0-9a-f]{40})$/.exec(
-      identifier,
-    );
-  if (deployment) {
-    const [, repo, environment, commitSha] = deployment;
-    return {
-      repo: repo!,
-      commitSha: commitSha!,
-      ...(environment
-        ? { environment: decodeURIComponent(environment) }
-        : undefined),
-    };
-  }
-  const release = /^release-source:([^:]+\/[^:]+)(?::(.+))?$/.exec(identifier);
-  if (release) {
-    const [, repo, tag] = release;
-    return {
-      repo: repo!,
-      ...(tag ? { tag: decodeURIComponent(tag) } : undefined),
-    };
-  }
-  const numbered = /^([^#]+\/[^#]+)#(\d+)$/.exec(identifier);
-  if (numbered) {
-    const key = eventType.startsWith("issue.") ? "issue" : "pullRequest";
-    return { repo: numbered[1]!, [key]: Number(numbered[2]) };
-  }
-  return /^[^/:#]+\/[^/:#]+$/.test(identifier)
-    ? { repo: identifier }
-    : undefined;
 }
 
 describe("GitHub event data", () => {
@@ -373,9 +333,33 @@ describe("GitHub event data", () => {
         resourceTypes: githubPlugin().events?.resourceTypes ?? [],
         events,
         matches: eventMatches,
-        toMatch: gitHubIdentifierMatch,
+        // Saved identifiers went through the plugin's `normalizeIdentifier`.
+        toMatch: ({ eventType, identifier }) =>
+          githubPlugin().events?.identifierMatch?.({
+            eventType,
+            identifier: identifier.toLowerCase(),
+          }),
       }),
     ).toEqual([]);
+    // An identifier that the webhooks never build gets no filters, so a
+    // trigger that never ran does not start to run.
+    const sha = "a".repeat(40);
+    expect(
+      [
+        ["release-source:getsentry/junior:release/1.0", "release.published"],
+        [
+          `deployment-source:getsentry/junior:prod/eu:${sha}`,
+          "deployment.failed",
+        ],
+        ["getsentry/junior#007", "pull_request.opened"],
+        ["getsentry/junior#007", "issue.opened"],
+      ].map(([identifier, eventType]) =>
+        githubPlugin().events?.identifierMatch?.({
+          identifier: identifier!,
+          eventType: eventType!,
+        }),
+      ),
+    ).toEqual([undefined, undefined, undefined, undefined]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.
     expect(new Set(events.flatMap((event) => event.data?.tag ?? []))).toEqual(
       new Set(["v1.2.0", "release/Ü1", "release/ü1"]),

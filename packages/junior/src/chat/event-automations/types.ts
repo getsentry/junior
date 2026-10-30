@@ -38,6 +38,12 @@ export const eventAutomationTriggerSchema = z
       .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
       .optional(),
     resourceType: z.string().min(1).optional(),
+    /**
+     * Why the trigger keeps its identifier instead of filters, in plain
+     * words. Junior sets it when it cannot turn the identifier into filters
+     * that select the same events. A trigger with no identifier has none.
+     */
+    identifierReason: z.string().min(1).max(500).optional(),
   })
   .strict()
   .refine(
@@ -48,6 +54,15 @@ export const eventAutomationTriggerSchema = z
       message:
         "Set both a resource type and an identifier, or leave out both to run for every resource.",
       path: ["identifier"],
+    },
+  )
+  .refine(
+    (trigger) =>
+      trigger.identifierReason === undefined ||
+      trigger.identifier !== undefined,
+    {
+      message: "Only a trigger with an identifier can keep a reason for it.",
+      path: ["identifierReason"],
     },
   );
 

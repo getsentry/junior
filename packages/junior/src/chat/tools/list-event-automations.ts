@@ -26,7 +26,7 @@ export function createListEventAutomationsTool(
       readOnlyHint: true,
     },
     description:
-      "List event automations for the current destination, not one thread. Each result says whether the requester is the creator (isCreator); only the creator can change its credential use. Warn when trigger.available is false and explain trigger.problems: the automation stays stored, but a plugin no longer supports its resource type, an event, or a filter. Update the trigger to fix it. Public automations can also be updated or deleted by id from another destination in the same workspace.",
+      "List event automations for the current destination, not one thread. Each result says whether the requester is the creator (isCreator); only the creator can change its credential use. Warn when trigger.available is false and explain trigger.problems: the automation stays stored, but a plugin no longer supports its resource type, an event, or a filter. Update the trigger to fix it. trigger.notes are facts about a trigger that still works, such as why it kept its exact identifier; mention them only when relevant. Public automations can also be updated or deleted by id from another destination in the same workspace.",
     inputSchema: z.object({}).strict(),
     outputSchema: eventAutomationListToolResultSchema,
     async execute() {

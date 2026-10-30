@@ -725,8 +725,15 @@ describe("event automations", () => {
     expect(listed.automations.map((task) => task.id)).toEqual([
       created.automation.id,
     ]);
+    // This source cannot turn identifiers into filters. The trigger still
+    // works, so the reason is a note and not a problem.
     expect(listed.automations[0]).toMatchObject({
-      trigger: { available: true },
+      trigger: {
+        available: true,
+        notes: [
+          "Kept its exact pull request because its plugin cannot turn the identifier into filters.",
+        ],
+      },
     });
     const otherChannel = (await execute(
       createListEventAutomationsTool(context("U999", "COTHER"), EVENT_CATALOG),

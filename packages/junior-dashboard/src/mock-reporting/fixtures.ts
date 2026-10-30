@@ -3021,6 +3021,9 @@ function mockTasks(): AutomationSummary[] {
         events: ["issue closed"],
         filters: ["labels includes bug", "repository is api or web"],
         problems: [],
+        notes: [
+          "Kept its exact issue because no filters select the same events.",
+        ],
       },
       status: "active",
     },

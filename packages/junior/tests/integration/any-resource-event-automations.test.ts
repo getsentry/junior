@@ -201,17 +201,77 @@ describe("event automations with no identifier", () => {
         "About: New pull requests in getsentry/junior",
       );
 
-      // An update that leaves out identifier and resourceType keeps them,
-      // so it cannot make a trigger broad by omission.
-      const one = await create(
-        {
-          ...trigger,
-          identifier: "getsentry/junior#7",
-          resourceType: "pull_request",
-          label: "getsentry/junior#7",
-        },
-        "one-pull-request",
+      // A new trigger with an identifier is saved as the filters that select
+      // the same events, so the tools stop writing identifiers.
+      const onePullRequestTrigger = {
+        ...trigger,
+        identifier: "getsentry/junior#7",
+        resourceType: "pull_request",
+        label: "getsentry/junior#7",
+      };
+      const one = await create(onePullRequestTrigger, "one-pull-request");
+      const onePullRequest = {
+        identifier: null,
+        resourceType: null,
+        match: { repo: "getsentry/junior", pullRequest: 7 },
+      };
+      expect(one.automation.trigger).toMatchObject(onePullRequest);
+      // A saved list that has the identifier's value becomes that value. A
+      // filter that never matches the identifier would never run, so the
+      // write fails and names the filter.
+      await expect(
+        create(
+          { ...onePullRequestTrigger, match: { pullRequest: [7, 8] } },
+          "list-filter",
+        ),
+      ).resolves.toMatchObject({ automation: { trigger: onePullRequest } });
+      await expect(
+        create(
+          { ...onePullRequestTrigger, match: { pullRequest: 5 } },
+          "conflicting-filter",
+        ),
+      ).rejects.toThrow(
+        'The "pullRequest" filter never matches the events of identifier "getsentry/junior#7"',
       );
+
+      // The converted trigger runs for its pull request and not for another
+      // one in the same repository.
+      const dispatchedFor = async (pullRequest: number) => {
+        const before = queue.sentRecords().length;
+        for (const identifier of [
+          `getsentry/junior#${pullRequest}`,
+          "getsentry/junior",
+        ]) {
+          await ingestEventAutomations(
+            {
+              eventKey: `github:one-pull-request-${pullRequest}`,
+              eventType: "pull_request.opened",
+              occurredAtMs: Date.now(),
+              namespace: "github",
+              identifier,
+              trustedSummary: "A pull request was opened.",
+              data: { pullRequest, repo: "getsentry/junior" },
+            },
+            { queue, teamId },
+          );
+        }
+        let count = 0;
+        for (const sentRecord of queue.sentRecords().slice(before)) {
+          const dispatched = await getDispatchRecord(
+            sentRecord.conversationId.replace(/^agent-dispatch:/, ""),
+          );
+          if (dispatched?.metadata?.eventAutomationId === one.automation.id) {
+            count++;
+          }
+        }
+        return count;
+      };
+      expect(await dispatchedFor(7)).toBe(1);
+      expect(await dispatchedFor(8)).toBe(0);
+
+      // An update changes only the filters that it names. A filter that it
+      // leaves out keeps its saved value, so the scope stays. Only null
+      // removes a filter.
       const update = (next: Record<string, unknown>, toolCallId: string) =>
         execute(
           createUpdateEventAutomationTool(context(), catalog),
@@ -221,29 +281,32 @@ describe("event automations with no identifier", () => {
           automation: { trigger: Record<string, unknown> };
         }>;
       const edited = { ...trigger, label: "Opened getsentry/junior#7" };
-      await expect(update(edited, "keep-identifier")).resolves.toMatchObject({
-        automation: {
-          trigger: {
-            identifier: "getsentry/junior#7",
-            resourceType: "pull_request",
-          },
-        },
+      await expect(update(edited, "keep-filters")).resolves.toMatchObject({
+        automation: { trigger: onePullRequest },
       });
-      // Only explicit nulls drop them, and then the trigger needs a repo.
-      const broad = { ...edited, identifier: null, resourceType: null };
-      await expect(update(broad, "drop-identifier")).rejects.toThrow(
-        'This trigger needs a "repo" filter (match.repo)',
-      );
+      const notDraft = { ...onePullRequest.match, isDraft: false };
       await expect(
-        update(
-          { ...broad, match: { repo: "getsentry/junior" } },
-          "drop-identifier-with-repo",
-        ),
+        update({ ...edited, match: { isDraft: false } }, "add-filter"),
       ).resolves.toMatchObject({
-        automation: { trigger: { identifier: null, resourceType: null } },
+        automation: { trigger: { match: notDraft } },
+      });
+      await expect(
+        update({ ...edited, match: {} }, "no-filter-change"),
+      ).resolves.toMatchObject({
+        automation: { trigger: { match: notDraft } },
+      });
+      await expect(
+        update({ ...edited, match: { repo: null } }, "drop-repo"),
+      ).rejects.toThrow('This trigger needs a "repo" filter (match.repo)');
+      const repoOnly = await update(
+        { ...edited, match: { pullRequest: null, isDraft: null } },
+        "drop-filters",
+      );
+      expect(repoOnly.automation.trigger.match).toEqual({
+        repo: "getsentry/junior",
       });
     } finally {
       vi.unstubAllEnvs();
     }
-  });
+  }, 20_000);
 });
