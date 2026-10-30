@@ -196,7 +196,9 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="line">
         <TranscriptMarkdown
-          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+          text={
+            "line one\nline two\n\n[docs](https://docs.sentry.io) [bad](javascript:alert(1)) [local](/api/me) `[code](https://literal.example)`"
+          }
         />
       </TranscriptSearchProvider>,
     );
@@ -205,6 +207,11 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('href="https://docs.sentry.io"');
     expect(html).toContain('target="_blank"');
     expect(html).toContain("<mark");
+    expect(html.match(/<a /g)).toHaveLength(1);
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("bad");
+    expect(html).toContain("local");
+    expect(html).toContain("[code](https://literal.example)");
   });
 
   it("highlights a markdown link label when search matches its URL", () => {
@@ -297,7 +304,7 @@ describe("dashboard canonical-event components", () => {
     const slackHtml = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
         <TranscriptMarkdown
-          text={"Checking:\n• first item\n• second item\n2) next step"}
+          text={"Checking:\n• first item\n• second item\n\n2) next step"}
         />
       </TranscriptSearchProvider>,
     );
@@ -306,6 +313,21 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain("•");
     expect(slackHtml).toContain('<ol class="');
     expect(slackHtml).toContain('start="2"');
+
+    const nestedHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(nestedHtml).toMatch(
+      /<blockquote[^>]*>\s*<p[^>]*>you&#x27;re right<br\/>/,
+    );
+    expect(nestedHtml).not.toContain("&gt;you");
+    expect(nestedHtml).toMatch(/<li[^>]*>parent\s*<ul/);
+    expect(nestedHtml).toContain(">old</del>");
   });
 
   it("keeps a running tool name searchable and accessible", () => {

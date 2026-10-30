@@ -45,8 +45,11 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",
+    "react-markdown": "^10.1.0",
     "react-router": "^7.18.2",
     "recharts": "3.8.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "shiki": "4.1.0",
     "zod": "catalog:"
   },
