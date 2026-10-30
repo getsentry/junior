@@ -1,4 +1,32 @@
 # Changelog
+## 0.266.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Move avatars, search, pagination, spinners, and empty state onto shadcn by @MathurAditya724 with @sentry-junior in [#2392](https://github.com/getsentry/junior/pull/2392)
+- Move disclosures, tables, lightbox, and notices onto shadcn by @MathurAditya724 with @sentry-junior in [#2391](https://github.com/getsentry/junior/pull/2391)
+- Collapse watches to one line and fix details row hover by @sentry-junior in [#2397](https://github.com/getsentry/junior/pull/2397)
+
+#### Events
+
+- Put scope values in event data and filters by @dcramer with @sentry-junior in [#2399](https://github.com/getsentry/junior/pull/2399)
+- Put Vercel and Sentry event values in trusted data by @sentry-junior in [#2383](https://github.com/getsentry/junior/pull/2383)
+
+### Bug Fixes 🐛
+
+- (agents) Record blocked child Turns as blocked, not failed by @sentry-junior in [#2398](https://github.com/getsentry/junior/pull/2398)
+- (auth) Resume the newest waiting request after authorization by @sentry-junior in [#2396](https://github.com/getsentry/junior/pull/2396)
+- (dashboard) Keep hidden tooltip size to avoid ResizeObserver loop by @sentry-junior in [#2365](https://github.com/getsentry/junior/pull/2365)
+- (github) Set the same data on GitHub events of one kind by @sentry-junior in [#2393](https://github.com/getsentry/junior/pull/2393)
+- (guardian) Treat a title refresh for pushed changes as upkeep by @dcramer with @sentry-junior in [#2395](https://github.com/getsentry/junior/pull/2395)
+- (sign-in) Turn off direct Google ID-token sign-in by @dcramer with @sentry-junior in [#2400](https://github.com/getsentry/junior/pull/2400)
+
+### Internal Changes 🔧
+
+- (dashboard) Use ui/button for plain dashboard actions by @MathurAditya724 with @sentry-junior in [#2388](https://github.com/getsentry/junior/pull/2388)
+
 ## 0.265.0
 
 ### New Features ✨
