@@ -28,7 +28,7 @@ import {
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
-  GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+  GITHUB_ISSUE_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -43,6 +43,7 @@ import {
 } from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_MATCH_FIELDS,
   GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
@@ -168,7 +169,7 @@ export function githubPlugin(
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
-          matchFields: GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+          matchFields: GITHUB_ISSUE_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -185,6 +186,7 @@ export function githubPlugin(
           identifier: GITHUB_RELEASE_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_RELEASE_EVENTS],
           suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_RELEASE_MATCH_FIELDS,
         },
         {
           type: "repository",
@@ -193,7 +195,7 @@ export function githubPlugin(
           suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
           matchFields: mergeEventMatchFields(
             GITHUB_DEPLOYMENT_MATCH_FIELDS,
-            GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+            GITHUB_ISSUE_MATCH_FIELDS,
             GITHUB_PULL_REQUEST_MATCH_FIELDS,
           ),
           guidance: gitHubPullRequestEventGuidance(

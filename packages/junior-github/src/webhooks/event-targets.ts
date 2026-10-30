@@ -1,8 +1,21 @@
 /**
- * Event key and target helpers shared by the GitHub webhook normalizers.
+ * Event data, event key, and target helpers shared by the GitHub webhook
+ * normalizers.
  */
 import type { EventInput } from "@sentry/junior-plugin-api";
 import { gitHubRepositoryResource } from "../events/repository.js";
+
+/**
+ * Drop missing values from event data. A filter on a value that GitHub did not
+ * send then does not match.
+ */
+export function definedValues(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
+}
 
 /** Build the event key for one event type from one webhook delivery. */
 export function gitHubEventKey(deliveryId: string, eventType: string): string {

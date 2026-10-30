@@ -3,6 +3,7 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { gitHubCommentMatchFields } from "./comment.js";
+import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -107,14 +108,28 @@ const GITHUB_PULL_REQUEST_COMMENT_EVENTS = [
   "pull_request.review_comment.created",
 ] as const satisfies readonly GitHubPullRequestEvent[];
 
+/** Pull request events that a check suite result starts. */
+const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
+  "pull_request.checks.failed",
+  "pull_request.checks.recovered",
+] as const satisfies readonly GitHubPullRequestEvent[];
+
 /**
  * Exact values GitHub may set on pull request event data. Missing keys do not
  * match. The opener and author values load in
  * `webhooks/pull-request-match-data.ts` for every pull request event. The
- * pull request comment webhook has no head branch.
+ * pull request comment webhook has no head branch. A check suite result that
+ * GitHub links to no pull request has no `pullRequest`.
  */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   ...gitHubCommentMatchFields(GITHUB_PULL_REQUEST_COMMENT_EVENTS),
+  ...gitHubRepoMatchFields(GITHUB_PULL_REQUEST_EVENTS),
+  ...gitHubCommitMatchFields(GITHUB_PULL_REQUEST_CHECK_EVENTS),
+  pullRequest: {
+    kind: "number",
+    description: "pull request number, such as 946",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
+  },
   authors: {
     kind: "string",
     list: true,
