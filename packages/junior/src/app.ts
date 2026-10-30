@@ -1,5 +1,6 @@
-// Core owns host-level route ordering for Junior. ACP mounts before plugin
-// routes, and plugin routes mount before the dashboard (see dashboard-routes).
+// Core owns host-level route ordering for Junior. ACP and MCP mount before
+// plugin routes, and plugin routes mount before the dashboard (see
+// dashboard-routes).
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -121,6 +122,7 @@ import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createAcpHttpHandler } from "@/api/acp/route";
+import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -243,8 +245,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   waitUntil?: WaitUntilFn;
 }
 
-/** Resolve the public deployment URL used by ACP browser authorization. */
-function resolveAcpBaseURL(
+/** Resolve the public deployment URL used by ACP and MCP browser authorization. */
+function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
@@ -634,7 +636,7 @@ export async function createApp(
     acpRuntime = {
       handleRequest: createAcpHttpHandler({
         ...(dashboard && !dashboard.disabled
-          ? { browserAuth: { baseURL: resolveAcpBaseURL(dashboard) } }
+          ? { browserAuth: { baseURL: resolvePublicBaseURL(dashboard) } }
           : undefined),
         conversations: createAcpConversations({
           conversationStore: work.conversationStore,
@@ -708,6 +710,15 @@ export async function createApp(
   app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
     getAcpRuntime().handleRequest(c.req.raw),
   );
+  // MCP OAuth consent needs the dashboard Google sign-in, like ACP sign-in.
+  if (signInAuth) {
+    const handleMcpRequest = createMcpHttpHandler({
+      baseURL: resolvePublicBaseURL(dashboard),
+    });
+    app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) =>
+      handleMcpRequest(c.req.raw),
+    );
+  }
   mountRoutes(app, pluginRoutes);
   mountRoutes(
     app,
