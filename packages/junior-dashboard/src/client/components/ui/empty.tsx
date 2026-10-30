@@ -15,6 +15,35 @@ function Empty({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
+/** Hold the icon that names the kind of empty state. */
+function EmptyMedia({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      aria-hidden="true"
+      data-slot="empty-media"
+      className={cn(
+        "grid size-8 shrink-0 place-items-center rounded-md bg-dashboard-fill-strong text-dashboard-text-subtle [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Name the empty state in a few words. */
+function EmptyTitle({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty-title"
+      className={cn(
+        "font-display text-base font-medium leading-tight text-dashboard-text",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 /** Explain why the region is empty and what the user can do next. */
 function EmptyDescription({ className, ...props }: ComponentProps<"div">) {
   return (
@@ -29,4 +58,4 @@ function EmptyDescription({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-export { Empty, EmptyDescription };
+export { Empty, EmptyDescription, EmptyMedia, EmptyTitle };

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, ExternalLink } from "lucide-react";
+import { Bot, CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
@@ -12,7 +12,7 @@ import {
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { Alert } from "../components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
@@ -179,7 +179,19 @@ function SubagentTranscriptDrawerContent(props: {
       {query.isPending ? (
         <TranscriptLoading />
       ) : query.error && !detail ? (
-        <Alert variant="destructive">Conversation failed to load.</Alert>
+        <Alert
+          className="gap-1 px-4 py-3 has-[>svg]:gap-x-3"
+          variant="destructive"
+        >
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle className="font-display text-base font-semibold leading-tight">
+            Conversation failed to load.
+          </AlertTitle>
+          <AlertDescription className="leading-relaxed">
+            Junior could not get this child conversation. Use Open conversation
+            to view it on its own page.
+          </AlertDescription>
+        </Alert>
       ) : detail ? (
         <Transcript
           hasPreviousPage={query.hasPreviousPage}

@@ -1,8 +1,15 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
+import { History } from "lucide-react";
 
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
-import { unavailableTranscriptLabel } from "../format";
+import { formatTime, unavailableTranscriptLabel } from "../format";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -110,7 +117,10 @@ function SegmentEvents(props: {
   return (
     <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
-        <ExpiredTranscriptView conversation={props.conversation} />
+        <ExpiredTranscriptView
+          brief={props.conversation.brief}
+          expiredAt={props.conversation.eventHistory.expiredAt}
+        />
       ) : props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
@@ -145,21 +155,37 @@ function SegmentEvents(props: {
 }
 
 function ExpiredTranscriptView(props: {
-  conversation: ConversationTranscript;
+  brief: ConversationTranscript["brief"];
+  expiredAt: string;
 }) {
   return (
     <>
-      {props.conversation.brief ? (
+      {props.brief ? (
         <Card as="section" padding="md" variant="section">
           <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
             Brief
           </h3>
-          <ConversationBrief brief={props.conversation.brief} />
+          <ConversationBrief brief={props.brief} />
         </Card>
       ) : null}
-      <EmptyTelemetry>
-        {unavailableTranscriptLabel(props.conversation)}
-      </EmptyTelemetry>
+      <Empty className="flex items-start gap-3 border-dashed border-dashboard-border-emphasis bg-dashboard-fill-soft">
+        <EmptyMedia>
+          <History />
+        </EmptyMedia>
+        <div className="min-w-0">
+          <EmptyTitle>Transcript expired</EmptyTitle>
+          <EmptyDescription className="mt-1 text-sm">
+            The retention policy removed these events on{" "}
+            <time dateTime={props.expiredAt}>
+              {formatTime(props.expiredAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </time>
+            .{props.brief ? " The brief above is still available." : null}
+          </EmptyDescription>
+        </div>
+      </Empty>
     </>
   );
 }
