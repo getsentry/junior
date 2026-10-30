@@ -8,6 +8,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { identityFromRuntimeActor } from "@/chat/conversations/sql/actor-identity";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -182,8 +183,8 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  if (actor.platform === "system") return undefined;
-  const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
+  const key = identityFromRuntimeActor(actor);
+  if (!key) return undefined;
   const rows = await db
     .select({
       identity: juniorIdentities,
@@ -194,9 +195,9 @@ export async function readActorIdentityFromSql(
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, actor.platform),
-        eq(juniorIdentities.providerTenantId, providerTenantId),
-        eq(juniorIdentities.providerSubjectId, actor.userId),
+        eq(juniorIdentities.provider, key.provider),
+        eq(juniorIdentities.providerTenantId, key.providerTenantId ?? ""),
+        eq(juniorIdentities.providerSubjectId, key.providerSubjectId),
       ),
     )
     .limit(1);
