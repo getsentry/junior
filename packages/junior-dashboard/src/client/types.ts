@@ -1,6 +1,7 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  InputImage,
   MessageAttachment,
   MessageCard,
   PluginOperationalReportFeed,
@@ -151,6 +152,8 @@ export type TranscriptViewMessage = {
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
+  /** Local images of a pending send that the server has not stored yet. */
+  images?: InputImage[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

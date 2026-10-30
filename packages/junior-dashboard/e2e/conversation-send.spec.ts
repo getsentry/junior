@@ -412,10 +412,28 @@ test("hands web and external messages from queue to history without gaps", async
     .getByRole("status")
     .filter({ hasText: "Junior is thinking" });
   await composer.fill(web.text);
+  await composer.evaluate((element, data) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File(
+        [Uint8Array.from(atob(data), (c) => c.charCodeAt(0))],
+        "handoff.png",
+        { type: "image/png" },
+      ),
+    );
+    element.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
+    );
+  }, mockChartPng.toString("base64"));
+  await expect(page.getByRole("img", { name: "handoff.png" })).toBeVisible();
   await page.getByRole("button", { name: "Send", exact: true }).click();
   // Junior is idle and the queue is empty, so the send goes straight to the
-  // transcript and stays in place until history has it.
+  // transcript and stays in place until history has it. Its local image shows
+  // before the server stores it.
   await expect(transcript.getByText(web.text)).toBeVisible();
+  await expect(
+    transcript.getByRole("img", { name: "handoff.png" }),
+  ).toBeVisible();
   await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
 

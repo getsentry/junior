@@ -1,5 +1,8 @@
 import { ForkConversationButton } from "./ForkConversationButton";
-import { TranscriptAttachments } from "./TranscriptAttachment";
+import {
+  TranscriptAttachments,
+  TranscriptLocalImages,
+} from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
@@ -68,6 +71,9 @@ export const TranscriptMessageView = memo(
             attachments={props.message.attachments}
             conversationId={props.conversation.conversationId}
           />
+        ) : null}
+        {props.message.images?.length ? (
+          <TranscriptLocalImages images={props.message.images} />
         ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {

@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 
 import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
@@ -76,7 +76,7 @@ export const ConversationTranscriptView = memo(
     }) => void;
     conversation: ConversationTranscript;
     /** Sends that history does not have yet. History wins on message id. */
-    pendingMessages?: readonly ConversationPendingMessage[];
+    pendingMessages?: readonly ConversationMailboxMessage[];
     responding?: boolean;
   }) {
     // Cards can change while their Message events stay unchanged.

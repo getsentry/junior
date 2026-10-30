@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
@@ -39,7 +39,7 @@ export function Transcript(props: {
   onLoadPreviousPage?: () => void;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
-  pendingMessages?: readonly ConversationPendingMessage[];
+  pendingMessages?: readonly ConversationMailboxMessage[];
   responding?: boolean;
   search?: string;
   onSearchChange?(value: string): void;
