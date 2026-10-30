@@ -4,9 +4,12 @@ Junior exposes a remote MCP server at `/api/mcp`. The server uses MCP
 Streamable HTTP. It has one tool, `listConversations`. The tool lists the
 Conversations of the signed-in user.
 
-The app mounts the MCP routes only when it mounts the dashboard with Google
-sign-in. Consent needs a signed-in Junior user. Without sign-in, the routes do
-not exist.
+The app mounts the MCP routes only when the dashboard requires Google sign-in.
+Consent needs a signed-in Junior user. When `dashboard.authRequired` or
+`JUNIOR_DASHBOARD_AUTH_REQUIRED` is `false`, the dashboard serves a local viewer
+without sign-in. Then the MCP routes and the consent page do not exist.
+`dashboardRequiresSignIn` in `src/dashboard-routes.ts` owns this rule. Core
+passes its result to the dashboard app, so both use the same value.
 
 ## Ownership
 

@@ -143,6 +143,7 @@ import {
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
+  dashboardRequiresSignIn,
   validateDashboardRouteOwnership,
   type AuthenticatedRoute,
   type CreateDashboardApp,
@@ -656,10 +657,25 @@ export async function createApp(
     };
     return acpRuntime;
   };
+  // MCP consent needs a Google-signed-in user. A dashboard without required
+  // sign-in serves a local viewer, so MCP routes are not mounted then.
+  const mcpEnabled = dashboardRequiresSignIn(dashboard);
   let mcpState: McpState | undefined;
   /** Open MCP OAuth state on first use. It is the state that ACP uses. */
   const getMcpState = () =>
     (mcpState ??= options?.conversationWork?.state ?? getStateAdapter());
+  const mcpConsentRoute: AuthenticatedRoute = {
+    handler: (request, user) =>
+      handleMcpConsentPage({
+        agentName: botConfig.userName,
+        baseURL: resolvePublicBaseURL(dashboard),
+        request,
+        state: getMcpState(),
+        user,
+      }),
+    method: ["GET", "POST"],
+    path: MCP_CONSENT_PATH,
+  };
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -674,18 +690,7 @@ export async function createApp(
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
           },
-          {
-            handler: (request, user) =>
-              handleMcpConsentPage({
-                agentName: botConfig.userName,
-                baseURL: resolvePublicBaseURL(dashboard),
-                request,
-                state: getMcpState(),
-                user,
-              }),
-            method: ["GET", "POST"],
-            path: MCP_CONSENT_PATH,
-          },
+          ...(mcpEnabled ? [mcpConsentRoute] : []),
         ]
       : [];
   try {
@@ -729,8 +734,7 @@ export async function createApp(
   app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
     getAcpRuntime().handleRequest(c.req.raw),
   );
-  // MCP OAuth consent needs the dashboard Google sign-in, like ACP sign-in.
-  if (signInAuth) {
+  if (mcpEnabled) {
     let handleMcpRequest: ((request: Request) => Promise<Response>) | undefined;
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({

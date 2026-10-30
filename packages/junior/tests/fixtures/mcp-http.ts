@@ -35,7 +35,7 @@ export function mockMcpDashboardConfig(): void {
       }
       return app;
     },
-    dashboard: { authRequired: false, baseURL: MCP_TEST_ORIGIN },
+    dashboard: { baseURL: MCP_TEST_ORIGIN },
     functionMaxDurationSeconds: undefined,
     pluginSet: undefined,
     plugins: undefined,

@@ -63,6 +63,19 @@ export interface AuthenticatedRoute {
 
 const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
+/**
+ * Return true when the dashboard requires Google sign-in. Core passes this
+ * value to the dashboard app, so features that need a signed-in user use the
+ * same rule as the dashboard.
+ */
+export function dashboardRequiresSignIn(
+  dashboard: JuniorDashboardOptions | undefined,
+): boolean {
+  if (!dashboard || dashboard.disabled) return false;
+  if (dashboard.authRequired !== undefined) return dashboard.authRequired;
+  return process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED?.trim() !== "false";
+}
+
 /** Mount the dashboard app on the dashboard-owned host paths. */
 export async function createDashboardRouteRegistrations(args: {
   allowedDomains: string[];
@@ -321,6 +334,7 @@ function dashboardRouteRegistrations(args: {
       ...args.dashboard,
       agentName: botConfig.userName,
       allowedDomains: args.allowedDomains,
+      authRequired: dashboardRequiresSignIn(args.dashboard),
       ...(args.auth ? { auth: args.auth } : undefined),
       authenticatedRoutes: args.authenticatedRoutes,
       conversationWorkQueue: args.conversationWorkQueue,

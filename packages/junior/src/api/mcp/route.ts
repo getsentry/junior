@@ -2,8 +2,9 @@
  * Own the remote MCP HTTP edge: discovery metadata, OAuth endpoints, and the
  * Streamable HTTP route at `/api/mcp`.
  *
- * The app mounts this handler only when the dashboard and its Google sign-in
- * are configured, because consent needs a signed-in Junior user.
+ * The app mounts this handler only when the dashboard requires Google
+ * sign-in (`dashboardRequiresSignIn`), because consent needs a signed-in
+ * Junior user. A dashboard without required sign-in serves a local viewer.
  */
 import { Hono } from "hono";
 import { handleMcpAuthorize } from "./authorization";

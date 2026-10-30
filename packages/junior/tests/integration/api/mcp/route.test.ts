@@ -341,15 +341,24 @@ describe("remote MCP HTTP", () => {
     },
   );
 
-  it("does not mount without dashboard sign-in", async () => {
-    const app = await createApp({ dashboard: { disabled: true } });
+  it.each([
+    ["the dashboard is disabled", { disabled: true }],
+    ["dashboard sign-in is not required", { authRequired: false }],
+  ])("does not mount when %s", async (_, dashboard) => {
+    const app = await createApp({
+      dashboard: { baseURL: MCP_TEST_ORIGIN, ...dashboard },
+    });
 
     const response = await app.request(MCP_TEST_URL, { method: "POST" });
     const metadata = await app.request(
       `${MCP_TEST_ORIGIN}/.well-known/oauth-authorization-server`,
     );
+    const consent = await app.request(
+      `${MCP_TEST_ORIGIN}/_junior/mcp/authorize/${"a".repeat(43)}`,
+    );
 
     expect(response.status).toBe(404);
     expect(metadata.status).toBe(404);
+    expect(consent.status).toBe(404);
   });
 });
