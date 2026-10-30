@@ -648,12 +648,16 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const editCancel = useCancelConversationPendingMessages(props.conversationId);
   const editCancelRef = useRef(editCancel);
   editCancelRef.current = editCancel;
+  const editingRef = useRef(false);
   const composerRef = useRef<ConversationComposerHandle>(null);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
-      if (!receivedBefore || editCancelRef.current.isPending) return;
+      // The image read runs before the cancel starts, so isPending alone does
+      // not stop a second click.
+      if (!receivedBefore || editingRef.current) return;
+      editingRef.current = true;
       const inboundMessageId = message.inboundMessageId;
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
@@ -665,6 +669,11 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         );
         // The reader left during the read. Keep the message in the queue.
         if (!composerRef.current) return;
+        // Check before the cancel. After it, images that do not fit are lost.
+        if (!composerRef.current.canRestoreImages(images)) {
+          setQueueActionError("Remove some draft images to edit that message.");
+          return;
+        }
         const result = await editCancelRef.current.mutateAsync({
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
@@ -686,6 +695,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
+        editingRef.current = false;
         setEditTargetInboundMessageId(undefined);
       }
     },
