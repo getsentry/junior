@@ -18,7 +18,7 @@ export function AutomationOutcomeList(props: {
   if (!props.outcomes.length)
     return <p className="m-0 text-sm">No success message</p>;
   return (
-    <ol className="m-0 grid gap-2 pl-5 text-sm">
+    <ol className="m-0 grid list-decimal gap-2 pl-5 text-sm">
       {props.outcomes.map((outcome, index) => (
         <li key={index}>
           {automationOutcomeLabel(outcome, props.destination)}

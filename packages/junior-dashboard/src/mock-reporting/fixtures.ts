@@ -2979,6 +2979,7 @@ function mockTasks(): AutomationSummary[] {
       nextRunAt: "2026-08-10T16:00:00.000Z",
       credentialMode: "creator",
       ownedByViewer: true,
+      costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
@@ -3010,6 +3011,7 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
+      costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
@@ -3041,6 +3043,7 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
+      costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [

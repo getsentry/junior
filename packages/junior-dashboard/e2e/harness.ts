@@ -331,6 +331,10 @@ export async function mockDashboardApis(
       kind,
       credentialMode: "creator",
       ownedByViewer: true,
+      costUsd:
+        kind === "scheduled"
+          ? { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 }
+          : { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
       runs:
         kind === "scheduled"
           ? { 1: 1, 7: 3, 30: 12, 90: 48 }

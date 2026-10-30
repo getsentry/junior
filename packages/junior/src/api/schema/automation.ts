@@ -38,7 +38,18 @@ export const automationRunWindowsSchema = z
   })
   .strict();
 
+/** Linked Conversation cost in USD for each dashboard range. */
+export const automationCostWindowsSchema = z
+  .object({
+    1: z.number().finite().nonnegative(),
+    7: z.number().finite().nonnegative(),
+    30: z.number().finite().nonnegative(),
+    90: z.number().finite().nonnegative(),
+  })
+  .strict();
+
 const automationSummaryBaseSchema = z.object({
+  costUsd: automationCostWindowsSchema,
   credentialMode: z.enum(["creator", "system"]),
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
