@@ -107,33 +107,35 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
   return entries;
 }
 
+function messageEntries(message: PiMessage): EvidenceEntry[] {
+  if (message.role === "user") {
+    const text = getUserMessageInstructionText(message);
+    return text ? [{ role: "user", text }] : [];
+  }
+  if (isAssistantMessage(message)) {
+    return assistantEntries(message);
+  }
+  if (isToolResultMessage(message)) {
+    const toolName = normalizeToolNameFromResult(message) ?? "unknown";
+    const text = contentText((message as { content?: unknown }).content).trim();
+    return text ? [{ role: `tool ${toolName} result`, text }] : [];
+  }
+  return [];
+}
+
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
 ): EvidenceEntry[] {
-  const entries: EvidenceEntry[] = [];
-  for (const message of messages) {
-    if (message.role === "user") {
-      const text = getUserMessageInstructionText(message);
-      if (text) {
-        entries.push({ role: "user", text });
-      }
-      continue;
-    }
-    if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message));
-      continue;
-    }
-    if (isToolResultMessage(message)) {
-      const toolName = normalizeToolNameFromResult(message) ?? "unknown";
-      const text = contentText(
-        (message as { content?: unknown }).content,
-      ).trim();
-      if (text) {
-        entries.push({ role: `tool ${toolName} result`, text });
-      }
-    }
-  }
-  return entries;
+  return messages.flatMap((message) => {
+    const timestamp = (message as { timestamp?: unknown }).timestamp;
+    const at =
+      typeof timestamp === "number" && Number.isFinite(timestamp)
+        ? new Date(timestamp).toISOString()
+        : undefined;
+    return messageEntries(message).map((entry) =>
+      at ? { at, ...entry } : entry,
+    );
+  });
 }
 
 /**

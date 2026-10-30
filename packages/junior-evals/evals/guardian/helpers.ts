@@ -171,10 +171,7 @@ export async function proposal(input: {
 
 /** Chronological visible-conversation evidence without author identity. */
 export function evidence(
-  entries: Array<{
-    role: ToolActionEvidence["entries"][number]["role"];
-    text: string;
-  }>,
+  entries: ToolActionEvidence["entries"],
   omittedEntries = 0,
 ): ToolActionEvidence {
   return { entries, omittedEntries };
