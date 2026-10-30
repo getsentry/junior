@@ -9,8 +9,14 @@ import {
 import { createPortal } from "react-dom";
 
 import { DetailsPanel } from "../components/DetailsPanel";
+import { Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Drawer } from "../components/Drawer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
@@ -67,24 +73,30 @@ export function TranscriptTurnContextView(props: {
 
   return (
     <>
-      <button
-        aria-haspopup={panel ? undefined : "dialog"}
-        aria-expanded={expanded}
-        aria-label="View turn context"
-        className={cn(
-          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-          expanded && "bg-dashboard-fill-hover text-dashboard-text",
-        )}
-        data-turn-context-id={id}
-        onClick={() => {
-          if (!panel) return setOpen(true);
-          panel.onToggle({ contexts: props.contexts, id });
-        }}
-        title="View context"
-        type="button"
-      >
-        <Layers aria-hidden="true" size={14} strokeWidth={1.8} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-haspopup={panel ? undefined : "dialog"}
+              aria-expanded={expanded}
+              aria-label="View turn context"
+              className={cn(
+                "size-6 shrink-0",
+                expanded && "bg-dashboard-fill-strong text-dashboard-text",
+              )}
+              data-turn-context-id={id}
+              onClick={() => {
+                if (!panel) return setOpen(true);
+                panel.onToggle({ contexts: props.contexts, id });
+              }}
+              size="icon"
+            >
+              <Layers aria-hidden="true" size={14} strokeWidth={1.8} />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact">View turn context</TooltipContent>
+      </Tooltip>
 
       {!panel && open
         ? createPortal(
