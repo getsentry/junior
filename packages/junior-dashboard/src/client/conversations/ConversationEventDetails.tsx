@@ -30,14 +30,19 @@ export function ConversationEventDetails(props: {
 }) {
   const { conversation, event, onSelect } = props;
   const time = useEventTime();
+  // The sequence number matches the `event` link parameter and the row label.
   const timestamp = event ? (
-    <time
-      className="block break-words font-mono text-xs text-dashboard-text-muted"
-      dateTime={event.createdAt}
-      title={event.createdAt}
-    >
-      {time.formatTimestamp(event.createdAt)}
-    </time>
+    <p className="m-0 flex flex-wrap gap-x-1.5 font-mono text-xs text-dashboard-text-muted">
+      <span className="tabular-nums">#{event.seq}</span>
+      <span aria-hidden="true">·</span>
+      <time
+        className="tabular-nums"
+        dateTime={event.createdAt}
+        title={event.createdAt}
+      >
+        {time.formatTimestamp(event.createdAt)}
+      </time>
+    </p>
   ) : null;
   const title = event ? (
     <>

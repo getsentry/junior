@@ -54,7 +54,7 @@ export function useEventTime() {
       return formatters.clock.format(new Date(value));
     },
     formatTimestamp(value: string) {
-      return local ? formatters.timestamp.format(new Date(value)) : value;
+      return formatters.timestamp.format(new Date(value));
     },
   };
 }

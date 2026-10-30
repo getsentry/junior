@@ -166,7 +166,12 @@ test("inspects all reporting events and searches full event data", async ({
   await secondToggle.click();
   await expect(localTime).toHaveAttribute("aria-pressed", "false");
   await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
+  // UTC mode reads like local mode. The original ISO value stays available.
   await expect(panel.locator("header time")).toHaveText(
+    "Aug 7, 2026, 11:54:09.000 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "datetime",
     report.events.find((event: { seq: number }) => event.seq === 3).createdAt,
   );
   await secondTab.close();

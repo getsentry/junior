@@ -149,7 +149,8 @@ Shared class strings live in `src/client/styles.ts`.
   child. Use `ui/accordion` for a set of sections with headings.
 - **Details.** `DetailsPanel` docks an aside at 1280px and above, and uses a
   `BottomSheet` below that width. It owns Escape and the scroll frame for
-  docked panels.
+  docked panels. Docked actions sit beside the close control, so their
+  position does not change with the title width.
 - **Identity.** `ObjectIcon` owns the native Ticket, Code change, Automation,
   Deployment, and Item icons. Do not replace it with a provider logo or a
   status-only icon.
