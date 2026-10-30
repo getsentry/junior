@@ -17,6 +17,7 @@ import {
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
+import { gitHubIdentifierMatch } from "./events/identifier-match.js";
 import {
   loadPullRequestCommitPages,
   loadRepositoryRole,
@@ -203,6 +204,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      identifierMatch: gitHubIdentifierMatch,
     },
     manifest: {
       name: "github",

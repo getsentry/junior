@@ -1,9 +1,5 @@
 import { createHmac } from "node:crypto";
-import {
-  eventMatches,
-  type EventInput,
-  type EventMatch,
-} from "@sentry/junior-plugin-api";
+import { eventMatches, type EventInput } from "@sentry/junior-plugin-api";
 import {
   filterEventMismatches,
   identifierMatchMismatches,
@@ -166,22 +162,29 @@ describe("Sentry webhook events", () => {
       normalizeSentryEvents(delivery),
     );
 
-    // The org part is dropped: the install already fixes the org.
-    const toMatch = (event: { identifier: string }): EventMatch | undefined => {
-      // Saved identifiers went through the plugin's `normalizeIdentifier`.
-      const identifier = event.identifier.toLowerCase();
-      const alert = /^metric-alert:[^/]+\/(\d+)$/.exec(identifier);
-      if (alert) return { alertRuleId: alert[1]! };
-      const scope = /^[^/]+\/([^/#]+)(?:#(\d+))?$/.exec(identifier);
-      if (!scope) return undefined;
-      const [, project, issueId] = scope;
-      return { projects: [project!], ...(issueId ? { issueId } : undefined) };
-    };
+    // The org part is dropped: the install already fixes the org. Saved
+    // identifiers went through the plugin's `normalizeIdentifier`.
+    const toMatch = (event: { eventType: string; identifier: string }) =>
+      sentryPlugin().events?.identifierMatch?.({
+        eventType: event.eventType,
+        identifier: event.identifier.toLowerCase(),
+      });
+    // A metric alert can leave out `projects`, so its project copies keep
+    // their identifier.
+    const projectAlerts = events.filter(
+      (event) =>
+        event.eventType.startsWith("metric_alert.") &&
+        !event.identifier.startsWith("metric-alert:"),
+    );
+    expect(projectAlerts.length).toBeGreaterThan(0);
+    expect(projectAlerts.map(toMatch)).toEqual(
+      projectAlerts.map(() => undefined),
+    );
 
     expect(
       identifierMatchMismatches({
         resourceTypes: sentryPlugin().events?.resourceTypes ?? [],
-        events,
+        events: events.filter((event) => !projectAlerts.includes(event)),
         matches: eventMatches,
         toMatch,
       }),

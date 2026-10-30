@@ -238,6 +238,12 @@ lowercase. Junior does not check that the creator can see the projects, so a
 broad automation can post private project names in its channel. See
 [Automations](/concepts/automations/).
 
+An event automation for one issue, one metric alert, or the issues of one
+project is saved as filters (`issueId`, `alertRuleId`, or `projects`). An
+automation for the metric alerts of one project keeps its project identifier.
+When an alert rule has too many projects to fit in event data, the event
+leaves out `projects`, so a `projects` filter would miss that alert.
+
 Create the watch or event automation before the webhook arrives. Junior does not replay earlier webhooks.
 
 ## Verify

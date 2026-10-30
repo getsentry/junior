@@ -28,6 +28,7 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
+import { triggerWithoutIdentifier } from "@/chat/event-automations/trigger-conversion";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -108,7 +109,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
         .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
         .nullable()
         .describe(
-          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier.',
+          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier. When the plugin can, the identifier is saved as filters that select the same events, so the result shows identifier null and those filters.',
         )
         .optional(),
       resourceType: registeredResourceTypeSchema(plugins)
@@ -127,8 +128,9 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
 /**
  * Check a new event-automation trigger with the enabled plugins and return
  * it as it is saved. It names a resource type and an identifier, or neither.
- * The identifier gets its plugin's convention. Events and list values lose
- * repeats.
+ * The identifier gets its plugin's convention. A trigger with an identifier is
+ * saved with no identifier when its plugin can turn the identifier into
+ * filters that select the same events. Events and list values lose repeats.
  */
 export function requireEventAutomationTrigger(
   catalog: EventCatalog,
@@ -154,7 +156,7 @@ export function requireEventAutomationTrigger(
     { namespace: input.namespace, resourceType, events, match: input.match },
     "event_automation",
   );
-  return {
+  const trigger: EventAutomation["trigger"] = {
     namespace: input.namespace,
     ...(identifier !== undefined && resourceType !== undefined
       ? {
@@ -170,6 +172,8 @@ export function requireEventAutomationTrigger(
     events,
     ...(match ? { match } : undefined),
   };
+  const converted = triggerWithoutIdentifier(catalog, trigger);
+  return "trigger" in converted ? converted.trigger : trigger;
 }
 
 /** Require the active Slack authority used for event-automation management. */

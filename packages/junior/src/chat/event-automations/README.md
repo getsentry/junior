@@ -11,7 +11,9 @@ route handles. Thread replies and Slackbot posts do not publish. Other bot posts
 publish with `postedByBot`, but they run only automations whose `match` names
 the bot in `userId`. Bots can post often and would use up the run limit of
 every other automation in the channel. A Watch cannot select these events. An automation can watch only the channel where it posts, so
-private channel text stays in that channel. Runs always use system credentials,
+private channel text stays in that channel. Its trigger has no identifier
+and a `channelId` filter for that channel. Ingest checks the channel of the
+Event against the destination again. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
 
@@ -34,8 +36,30 @@ identifier must have the same identifier in its row. A row with no identifier
 must have a trigger that the enabled catalog accepts, so a plugin change that
 narrows an event also stops old broad rows. Core logs and skips a row that does
 not parse or that the gate rejects, so one bad row cannot stop ingest for its
-namespace. The update tool keeps the saved identifier and resource type when
-they are left out. Only an explicit `null` removes them.
+namespace. The update tool keeps the saved identifier, resource type, and
+filters when they are left out. Only an explicit `null` removes the
+identifier, and only an empty `match` removes the filters.
+
+## Triggers with an identifier
+
+Tools and the dashboard save a trigger with an identifier as a trigger with no
+identifier when its plugin can turn the identifier into filters
+(`identifierMatch`). For example, `getsentry/junior#7` on pull request events
+becomes `repo` and `pullRequest` filters. `trigger-conversion.ts` owns the
+rule. A trigger converts only when the plugin gives the same filters for every
+selected event, those filters agree with the saved filters, and the result
+passes the check for a new trigger. Otherwise it keeps its identifier and
+keeps running. A conversion never makes a trigger broader.
+
+Each heartbeat converts saved rows that still have an identifier. It saves
+each row with the revision that it read, under the row lock, and records a
+version with no editor. A row that changed after the read is left for the next
+heartbeat. Rows that cannot convert keep their identifier. Examples are a
+Sentry project trigger for metric alerts, because a metric alert can leave
+out `projects`, and a row whose plugin is not enabled. Slice D of #2362
+decides what happens to these rows before the identifier column goes away.
+Saved versions keep their old triggers, and the version schema still reads
+`identifier` and `resourceType`.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only

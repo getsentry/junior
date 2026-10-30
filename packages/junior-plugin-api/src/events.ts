@@ -430,6 +430,20 @@ export const pluginEventsSchema = z
     normalizeIdentifier: z
       .function({ input: [z.string()], output: z.string() })
       .optional(),
+    /**
+     * Turn a normalized identifier into the filters that select the same
+     * events of one type: every event of that type that goes to the
+     * identifier, and no other. Return nothing when no filters can do that,
+     * for example when the event can leave out a scope value or does not go
+     * to this kind of identifier. Core then keeps the identifier, so a
+     * trigger never gets broader.
+     */
+    identifierMatch: z
+      .function({
+        input: [z.object({ identifier: z.string(), eventType: z.string() })],
+        output: eventMatchSchema.optional(),
+      })
+      .optional(),
   })
   .strict()
   .superRefine((registration, context) => {

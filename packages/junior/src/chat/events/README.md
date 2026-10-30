@@ -121,6 +121,11 @@ Watches route events back into an existing conversation.
   automation trigger with no identifier can select only events with reach
   `"all"` or `{ anyOf }`, and must set one of the `anyOf` filters. Core merges
   the filters of every resource type once, when it builds the catalog.
+- A source may declare `identifierMatch`. It turns one identifier and one
+  event type into the filters that select every event of that type that goes
+  to the identifier, and no other. It returns nothing when no filters can do
+  that. Core uses it to save event automation triggers with no identifier
+  (`event-automations/trigger-conversion.ts`). Watches keep their identifier.
 - A match field may declare `case: "lower"` or `case: "upper"`. Core changes a
   filter value to that case when it saves a trigger or a Watch, so a value such
   as `getsentry/Junior` still matches lowercase event data. The plugin decides
@@ -182,10 +187,16 @@ Watches route events back into an existing conversation.
    filters that keep a trigger narrow when the event carries private text or
    makes Junior act. Use `"resource"` when a trigger must name one resource.
    Add `guidance` there when the agent needs a rule for this event.
-7. When `data` needs a lookup, call `neededMatchKeys` with the values that the
+7. Make `identifierMatch` return the filters for each identifier that gets
+   the event, and nothing for identifiers that do not get it. Build the
+   identifier again from the filters with the shared builder, and return
+   nothing when it differs. Use `identifierMatchMismatches` from
+   `@sentry/junior-testing` in the webhook test to prove that the filters
+   match the same events.
+8. When `data` needs a lookup, call `neededMatchKeys` with the values that the
    plugin already has, such as `repo`. Core then skips triggers with no
    identifier whose filters on those values fail.
-8. Extend the plugin's webhook test with a delivery for the new event.
+9. Extend the plugin's webhook test with a delivery for the new event.
 
 ## Timer Watches
 

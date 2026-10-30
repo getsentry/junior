@@ -42,7 +42,7 @@ export function createUpdateEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, credential use, or status of an event automation.",
+      "Update the instruction, registered trigger, credential use, or status of an event automation. In trigger, an omitted identifier, resourceType, or match keeps the saved value. A match replaces every saved filter, so include saved filters such as repo, projects, or channelId that limit the trigger.",
     inputSchema: z
       .object({
         automationId: z.string().min(1),
@@ -139,11 +139,13 @@ export function createUpdateEventAutomationTool(
           {
             title: input.title,
             instruction: input.instruction ?? undefined,
-            // An omitted identifier or resource type keeps the saved one.
-            // Only an explicit null makes the trigger run for every resource.
+            // An omitted identifier, resource type, or match keeps the saved
+            // one, so a trigger cannot get broader by omission. Only an
+            // explicit null drops the identifier, and only `{}` drops filters.
             trigger: input.trigger
               ? {
                   ...input.trigger,
+                  match: input.trigger.match ?? current.trigger.match,
                   identifier:
                     input.trigger.identifier === undefined
                       ? current.trigger.identifier

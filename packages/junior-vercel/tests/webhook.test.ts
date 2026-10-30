@@ -1,9 +1,5 @@
 import { createHmac } from "node:crypto";
-import {
-  eventMatches,
-  type EventInput,
-  type EventMatch,
-} from "@sentry/junior-plugin-api";
+import { eventMatches, type EventInput } from "@sentry/junior-plugin-api";
 import {
   filterEventMismatches,
   identifierMatchMismatches,
@@ -115,14 +111,8 @@ describe("Vercel webhook events", () => {
         return normalizeVercelEvents({ body });
       }),
     );
-    const toMatch = ({ identifier }: { identifier: string }): EventMatch => {
-      const [projectId, target, commitSha] = identifier.split(":");
-      return {
-        projectId: projectId!,
-        ...(target ? { target } : undefined),
-        ...(commitSha ? { commitSha } : undefined),
-      };
-    };
+    const toMatch = vercelPlugin().events?.identifierMatch;
+    if (!toMatch) throw new Error("Vercel identifiers must convert to filters");
 
     expect(
       identifierMatchMismatches({

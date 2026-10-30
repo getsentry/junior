@@ -1,8 +1,4 @@
-import {
-  eventMatches,
-  type EventInput,
-  type EventMatch,
-} from "@sentry/junior-plugin-api";
+import { eventMatches, type EventInput } from "@sentry/junior-plugin-api";
 import {
   filterEventMismatches,
   identifierMatchMismatches,
@@ -257,51 +253,6 @@ async function publish(
   return events;
 }
 
-/**
- * Turn a saved GitHub identifier into filters, the way a saved trigger is
- * converted. Saved identifiers are lowercase. The environment and tag parts are
- * URI-encoded, so conversion decodes them. `owner/repo#n` names an issue on
- * issue events and a pull request on the others.
- */
-function gitHubIdentifierMatch(event: {
-  eventType: string;
-  identifier: string;
-}): EventMatch | undefined {
-  const { eventType } = event;
-  // Saved identifiers went through the plugin's `normalizeIdentifier`.
-  const identifier = event.identifier.toLowerCase();
-  const deployment =
-    /^deployment-source:([^:]+\/[^:]+)(?::([^:]+))?:([0-9a-f]{40})$/.exec(
-      identifier,
-    );
-  if (deployment) {
-    const [, repo, environment, commitSha] = deployment;
-    return {
-      repo: repo!,
-      commitSha: commitSha!,
-      ...(environment
-        ? { environment: decodeURIComponent(environment) }
-        : undefined),
-    };
-  }
-  const release = /^release-source:([^:]+\/[^:]+)(?::(.+))?$/.exec(identifier);
-  if (release) {
-    const [, repo, tag] = release;
-    return {
-      repo: repo!,
-      ...(tag ? { tag: decodeURIComponent(tag) } : undefined),
-    };
-  }
-  const numbered = /^([^#]+\/[^#]+)#(\d+)$/.exec(identifier);
-  if (numbered) {
-    const key = eventType.startsWith("issue.") ? "issue" : "pullRequest";
-    return { repo: numbered[1]!, [key]: Number(numbered[2]) };
-  }
-  return /^[^/:#]+\/[^/:#]+$/.test(identifier)
-    ? { repo: identifier }
-    : undefined;
-}
-
 describe("GitHub event data", () => {
   it("declares filter events that match the data the webhooks set", async () => {
     const events = await publish(fixtureDeliveries(BASE_SCOPE), "delivery");
@@ -373,7 +324,12 @@ describe("GitHub event data", () => {
         resourceTypes: githubPlugin().events?.resourceTypes ?? [],
         events,
         matches: eventMatches,
-        toMatch: gitHubIdentifierMatch,
+        // Saved identifiers went through the plugin's `normalizeIdentifier`.
+        toMatch: ({ eventType, identifier }) =>
+          githubPlugin().events?.identifierMatch?.({
+            eventType,
+            identifier: identifier.toLowerCase(),
+          }),
       }),
     ).toEqual([]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.
