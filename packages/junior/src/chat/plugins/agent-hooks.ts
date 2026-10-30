@@ -51,6 +51,7 @@ import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   getDashboardConversationLink,
+  getDashboardConnectionsLink,
   getDashboardTaskLink,
 } from "@/chat/dashboard-link";
 import { createWatch } from "@/chat/events/store";
@@ -713,11 +714,15 @@ export function getPluginTools(
       context.source.automationId
         ? getDashboardTaskLink(context.source.automationId)
         : undefined;
+    const connectionsUrl = getDashboardConnectionsLink();
     const common = {
       ...basePluginContext(plugin),
       annotations,
       ...(automationUrl
         ? { automationLink: { url: automationUrl } }
+        : undefined),
+      ...(connectionsUrl
+        ? { connectionsLink: { url: connectionsUrl } }
         : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
