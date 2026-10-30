@@ -38,9 +38,24 @@ correct. Step 4b repairs a root only when all of these are true:
   Identity. Junior does not look past a first Message with no author;
 - that author is kind `user`, links a User, and fits the Source: provider
   `slack` for a `slack` root, `google` or `junior` for a `web` root;
-- it has one author User: every `message` event with role `user` has an
-  author Identity, and each one links the same User as the first author. A
-  root with more than one human author keeps its current Identity.
+- it has one author User: every human user Message has an author Identity,
+  and each one links the same User as the first author. A root with more
+  than one human author keeps its current Identity.
+
+A human user Message is a `message` event with role `user` that is not an
+event Message and not a bot Message:
+
+- An event Message has `meta.eventType`, or `meta.author.userId` is
+  `EVENT_AUTHOR_ID` (`UJRNEVENT`). This is the test in
+  `isEventConversationMessage` (`chat/events/actor.ts`).
+- A bot Message has `meta.author.isBot` set to `true`.
+
+Today neither kind has an author Identity, because
+`resolveEventActorIdentityId` skips bot authors, and event Messages use the
+bot stand-in `EVENT_MESSAGE_AUTHOR`. An event Turn is how a root got the
+`event` system Identity before #2436. So every damaged root with an event
+has an event Message. If the rule counted it, the repair would skip the rows
+that it must fix.
 
 The repair then sets the Owner to that author Identity.
 
@@ -49,7 +64,8 @@ The dry run counts, by Source:
 - the rows that pass every condition;
 - the rows skipped, by the first condition that fails;
 - the agreement check: for `slack` and `web` roots that are not forks, have
-  a `user` Identity today, and have one author User (as above), the rows
+  a `user` Identity today, and have one author User across their human user
+  Messages (as above), the rows
   where that author is a different User from today's Identity;
 - the roots with a `user` Identity today and more than one author User. The
   agreement check does not use them.

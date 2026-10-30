@@ -238,7 +238,8 @@ Backfill:
    - `junior/<email>` rows that are still referenced. Step 4b does not change
      them.
    - the Owner repair counts, the agreement check, and the roots with more
-     than one author User (`design.md`, Owner Repair).
+     than one author User (`design.md`, Owner Repair). Count authors only
+     on human user Messages. Event Messages and bot Messages do not count.
 2. Roots with no Owner and a `slack` or `web` Source: copy
    `actor_identity_id`. When the agreement check found zero disagreements,
    repair each row that passes every Owner Repair condition. Otherwise drop

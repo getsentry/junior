@@ -125,13 +125,16 @@ correct.
 - **Owner repair (7).** Step 4b repairs a root only when all conditions in
   `design.md`, Owner Repair, are true, and only when the dry-run agreement
   check finds zero disagreements. The repair and the check use only roots
-  with one author User. Every other row keeps its current Identity.
+  with one author User across their human user Messages. Event Messages and
+  bot Messages do not count, because they have no author Identity today.
+  Every other row keeps its current Identity.
   _Why:_ a `slack` or `web` root starts from a human Message, so its first
   user Message author is its starter. Before #2436, a later human Turn could
   also replace an earlier human Identity. So the check cannot test the rule on a
   root with more than one human author, and the repair skips those roots.
   On roots with one author User, the check proves the rule before the repair
-  runs on any damaged row.
+  runs on any damaged row. The event Messages that an event Turn added to a
+  damaged root do not block its repair.
 - **System Identity key (10).** Kind `system`, provider `junior`, tenant
   `""`, subject `system`. Step 3 adds `junior` and `mock` to the providers
   that only core may write (`isNativeIdentityProvider`).
