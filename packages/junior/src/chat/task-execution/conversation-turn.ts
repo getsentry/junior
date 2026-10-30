@@ -83,6 +83,7 @@ import {
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   eventBatchMessageEvents,
@@ -594,6 +595,17 @@ export function createConversationTurnWorker(
               },
               delivery: deliverAssistantMessage,
               durability: {
+                ...(webActor
+                  ? {
+                      drainSteeringMessages: createWebSteeringDrain({
+                        actor: webActor,
+                        author,
+                        context,
+                        conversation,
+                        turnId,
+                      }),
+                    }
+                  : undefined),
                 onInputCommitted: acknowledge,
                 shouldYield: context.shouldYield,
                 onSandboxRefChanged: async (nextSandboxRef) => {

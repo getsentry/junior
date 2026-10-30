@@ -6,6 +6,12 @@ import {
   type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import {
   conversationAttachmentUrl,
   inputImageSrc,
@@ -23,13 +29,6 @@ export function composerImagesFit(images: readonly InputImage[]): boolean {
     inputImageBytes(images) <= MAX_INPUT_IMAGE_BYTES
   );
 }
-
-import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 
 /** Read a bounded image selection for the message request and local previews. */
 export async function readComposerImages(

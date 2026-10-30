@@ -26,6 +26,7 @@ import {
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
+  steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
@@ -392,6 +393,52 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           queryKey: conversationDetailQueryKey(conversationId),
         }),
       ]);
+    },
+  });
+}
+
+/** Ask Junior to read the viewer's own queued web messages now. */
+export function useSteerConversationPendingMessages(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { inboundMessageIds: string[] }) =>
+      post(
+        steerConversationPendingMessagesResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages/steer`,
+        args,
+      ),
+    onSuccess: async (result) => {
+      const steered = new Set(result.steeredInboundMessageIds);
+      if (steered.size === 0) return;
+      // A live poll that read the mailbox before the steer would restore
+      // `defer`. Cancel it; onSettled refetches after the write.
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+      queryClient.setQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+        (current) =>
+          current?.mailbox
+            ? {
+                ...current,
+                mailbox: {
+                  ...current.mailbox,
+                  messages: current.mailbox.messages.map((message) =>
+                    steered.has(message.inboundMessageId)
+                      ? { ...message, delivery: "interrupt" as const }
+                      : message,
+                  ),
+                },
+              }
+            : current,
+      );
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }

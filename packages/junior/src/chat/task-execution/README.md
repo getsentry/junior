@@ -77,8 +77,8 @@ old Redis state. Old mailbox, lease, and turn-cursor state can be lost.
 Committed SQL history remains. The code has no old-state reader, dual write, or
 rollback support.
 
-`checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`, and
-`worker.ts` define the execution surface.
+`checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`,
+`attempt-selection.ts`, and `worker.ts` define the execution surface.
 
 ## Execution
 
@@ -110,6 +110,12 @@ and waits for the next turn.
 
 Slack `@` mentions use `interrupt` delivery; all other inbound messages use
 `defer`.
+
+A dashboard steer changes the reader's own queued web messages from `defer` to
+`interrupt`. A web Turn drains them only when they come from the Turn Actor.
+A Slack Turn does not drain web input. While a yielded Turn waits to resume, a
+steered web message does not start its own attempt. That Turn drains it, or it
+starts the next Turn.
 
 An active turn drains only messages with `interrupt` mailbox delivery. When a
 new turn starts, `interrupt` delivery is handled before queued `defer` delivery.

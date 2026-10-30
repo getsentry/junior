@@ -453,7 +453,7 @@ test("hands web and external messages from queue to history without gaps", async
   historyHeld = undefined;
   queued = [web];
   await expect(
-    pending.getByRole("button", { name: "Remove queued message" }),
+    pending.getByRole("button", { name: "Delete queued message" }),
   ).toBeVisible();
   await expect(thinking).toBeHidden();
 
@@ -518,7 +518,7 @@ test("hands web and external messages from queue to history without gaps", async
   await composer.fill(second.text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(
-    pending.getByRole("button", { name: "Remove queued message" }),
+    pending.getByRole("button", { name: "Delete queued message" }),
   ).toBeVisible();
   await expect(page.getByText(second.text, { exact: true })).toHaveCount(1);
   committed = [web, second];
@@ -554,11 +554,11 @@ test("hands web and external messages from queue to history without gaps", async
     timeout: 15_000,
   });
   await expect(thinking).toBeHidden();
-  await pending.getByRole("button", { name: "Remove queued message" }).click();
-  await expect(pending.getByText("Could not remove. Try again.")).toBeVisible();
+  await pending.getByRole("button", { name: "Delete queued message" }).click();
+  await expect(pending.getByText("Could not delete. Try again.")).toBeVisible();
   failCancel = false;
   await pending
-    .getByRole("button", { name: "Could not remove. Try again." })
+    .getByRole("button", { name: "Could not delete. Try again." })
     .click();
   await expect(pending).toBeHidden();
 });
@@ -698,8 +698,9 @@ test("edits a queued message back into the composer", async ({
     source: "web",
     text: "Queued follow-up",
   };
-  // Junior reads this one before the edit lands, so the cancel finds nothing.
-  const readMessage = {
+  // The reader steers this one. Junior reads it before the edit lands, so the
+  // cancel finds nothing.
+  const readMessage: ConversationPendingMessage & { text: string } = {
     ...queuedMessage,
     attachments: undefined,
     inboundMessageId: "queued-read",
@@ -707,6 +708,19 @@ test("edits a queued message back into the composer", async ({
     text: "Already read",
   };
   let queued: ConversationPendingMessage[] = [queuedMessage, readMessage];
+  const steerRequests: string[][] = [];
+  await page.route(`${path}/pending-messages/steer`, async (route) => {
+    const ids = route.request().postDataJSON().inboundMessageIds as string[];
+    steerRequests.push(ids);
+    queued = queued.map((message) =>
+      ids.includes(message.inboundMessageId)
+        ? { ...message, delivery: "interrupt" }
+        : message,
+    );
+    await route.fulfill({
+      json: { conversationId, steeredInboundMessageIds: ids },
+    });
+  });
   await page.route(`${path}/pending-messages`, async (route) => {
     if (route.request().method() !== "DELETE") {
       await route.fulfill({
@@ -746,6 +760,18 @@ test("edits a queued message back into the composer", async ({
     pending.getByRole("img", { name: "queued-chart.png" }),
   ).toBeVisible();
   await screenshot(page, "conversation-queue-compact");
+
+  const readRow = pending.getByRole("article").filter({
+    hasText: readMessage.text,
+  });
+  await readRow.getByRole("button", { name: "Steer queued message" }).click();
+  await expect(readRow.getByLabel("Steered", { exact: true })).toBeVisible();
+  await expect(
+    readRow.getByRole("button", { name: "Steer queued message" }),
+  ).toBeHidden();
+  expect(steerRequests).toEqual([[readMessage.inboundMessageId]]);
+  // Close the delivery tooltip that opened under the pointer.
+  await page.mouse.move(0, 0);
 
   // A draft with no room for the queued image keeps the message queued.
   await composer.evaluate((element, data) => {

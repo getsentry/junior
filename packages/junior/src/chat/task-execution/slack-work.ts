@@ -743,8 +743,9 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit interruptions enter the active turn. Deferred work
-        // stays pending for a normal turn.
+        // Only explicit Slack interruptions enter the active turn. Deferred
+        // work and steered messages from other sources, such as the
+        // dashboard, stay pending for their own turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -752,6 +753,7 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
+              .filter((record) => record.source === "slack")
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({

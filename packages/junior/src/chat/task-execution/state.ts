@@ -1942,6 +1942,57 @@ export async function cancelHumanFacingPendingMessages(args: {
   });
 }
 
+/**
+ * Mark one author's queued web messages as interrupts without a worker lease.
+ *
+ * The active Turn drains them at its next model boundary when it belongs to the
+ * same author. Otherwise they start the next Turn ahead of deferred input.
+ */
+export async function steerWebPendingMessages(args: {
+  authorId: string;
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{ steeredInboundMessageIds: string[] }> {
+  const nowMs = args.nowMs ?? now();
+  const requestedIds = new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return { steeredInboundMessageIds: [] };
+    }
+
+    const steeredInboundMessageIds: string[] = [];
+    const pendingMessages = current.execution.pendingMessages.map((message) => {
+      if (
+        message.source !== "web" ||
+        message.delivery !== "defer" ||
+        message.input.authorId !== args.authorId ||
+        !requestedIds.has(message.inboundMessageId)
+      ) {
+        return message;
+      }
+      steeredInboundMessageIds.push(message.inboundMessageId);
+      return { ...message, delivery: "interrupt" as const };
+    });
+    if (steeredInboundMessageIds.length === 0) {
+      return { steeredInboundMessageIds };
+    }
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        { ...current.execution, pendingMessages },
+        nowMs,
+      ),
+    );
+    return { steeredInboundMessageIds };
+  });
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;

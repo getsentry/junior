@@ -1,6 +1,8 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { MessageAttachment } from "@/chat/attachments/input";
 import {
   isAgentRunFeatureDisabled,
+  type AgentAttachment,
   type AgentRun,
   type MessageAgent,
   type SpawnAgent,
@@ -64,19 +66,49 @@ export function createAgentRunner(
             }
           : undefined),
       };
-      if (run.instruction.storedAttachments?.length) {
-        // Image storage loads runtime config. Keep it behind execution so the
-        // local CLI can set its defaults before config is first read.
+      // Image storage loads runtime config. Keep it behind execution so the
+      // local CLI can set its defaults before config is first read.
+      const loadStoredImages = async (
+        attachments: readonly MessageAttachment[],
+      ): Promise<AgentAttachment[]> => {
         const { loadInputImages } = await import("@/chat/attachments/images");
         const storage = nextRun.environment?.attachmentStorage;
         if (!storage) throw new Error("Attachment storage is unavailable.");
+        return await loadInputImages({
+          attachments,
+          conversationId: run.conversationId,
+          storage,
+        });
+      };
+      if (run.instruction.storedAttachments?.length) {
         nextRun.instruction = {
           ...run.instruction,
-          attachments: await loadInputImages({
-            attachments: run.instruction.storedAttachments,
-            conversationId: run.conversationId,
-            storage,
-          }),
+          attachments: await loadStoredImages(
+            run.instruction.storedAttachments,
+          ),
+        };
+      }
+      const drainSteeringMessages = nextRun.durability?.drainSteeringMessages;
+      if (drainSteeringMessages) {
+        // Steered web messages carry stored images like the instruction does.
+        nextRun.durability = {
+          ...nextRun.durability,
+          drainSteeringMessages: (accept) =>
+            drainSteeringMessages(async (messages) =>
+              accept(
+                await Promise.all(
+                  messages.map(async ({ storedAttachments, ...message }) =>
+                    storedAttachments?.length
+                      ? {
+                          ...message,
+                          attachments:
+                            await loadStoredImages(storedAttachments),
+                        }
+                      : message,
+                  ),
+                ),
+              ),
+            ),
         };
       }
       return await execute(nextRun, streamFn);
