@@ -312,6 +312,17 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
+// The report has no `cancelled` state. A cancelled Turn has no reply.
+const TURN_COMPLETED_STATES = {
+  success: "succeeded",
+  no_reply: "no_reply",
+  cancelled: "no_reply",
+  blocked: "blocked",
+} as const satisfies Record<
+  Extract<ConversationEvent["data"], { type: "turn_completed" }>["outcome"],
+  string
+>;
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -437,7 +448,7 @@ function reportEventData(args: {
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
-        state: data.outcome === "success" ? "succeeded" : "no_reply",
+        state: TURN_COMPLETED_STATES[data.outcome],
       };
     case "turn_failed": {
       const eventId = data.eventId;

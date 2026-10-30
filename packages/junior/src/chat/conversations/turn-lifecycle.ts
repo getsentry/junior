@@ -18,7 +18,8 @@ export interface StartConversationTurnInput {
 export interface CompleteConversationTurnInput {
   conversationId: string;
   createdAtMs: number;
-  outcome: "success" | "no_reply" | "cancelled";
+  /** `blocked` means a child agent stopped and reported what it needs. */
+  outcome: "success" | "no_reply" | "cancelled" | "blocked";
   turnId: string;
 }
 
@@ -63,7 +64,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     ]);
   }
 
-  /** Record successful or intentional-silence completion once. */
+  /** Record a completion that is not a failure once. */
   async complete(input: CompleteConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
       {
