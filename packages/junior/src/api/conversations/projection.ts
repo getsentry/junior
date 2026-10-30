@@ -6,6 +6,7 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -251,6 +252,9 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
       : undefined),
   });
+  const dashboardUrl = getDashboardConversationLink(
+    conversation.conversationId,
+  );
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,
@@ -289,6 +293,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { childAgentTotals: args.childAgentTotals }
       : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
+    ...(dashboardUrl ? { dashboardUrl } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
       args.archivedAtMs === undefined

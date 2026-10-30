@@ -69,7 +69,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -77,6 +77,7 @@ export function createConversationRoutes(
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+          ...(cursor ? { cursor } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),

@@ -1,5 +1,16 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  isNull,
+  lt,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -18,6 +29,11 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
+import {
+  decodeConversationFeedCursor,
+  encodeConversationFeedCursor,
+} from "./cursor";
+import { throwApiError } from "../http";
 import {
   conversationArchivedForEmail,
   conversationArchivedForUser,
@@ -107,6 +123,25 @@ function conversationCodeRepositoryFilter(
   );
 }
 
+/**
+ * Keep rows after one feed position in `lastActivityAt DESC, conversationId
+ * ASC` order. Writers store `lastActivityAt` from millisecond timestamps, so
+ * the cursor keeps the exact value.
+ */
+function conversationFeedAfter(after: {
+  conversationId: string;
+  lastActivityAtMs: number;
+}): SQL | undefined {
+  const lastActivityAt = new Date(after.lastActivityAtMs);
+  return or(
+    lt(juniorConversations.lastActivityAt, lastActivityAt),
+    and(
+      eq(juniorConversations.lastActivityAt, lastActivityAt),
+      gt(juniorConversations.conversationId, after.conversationId),
+    ),
+  );
+}
+
 async function conversationRows(
   db: JuniorDatabase,
   limit: number,
@@ -115,6 +150,7 @@ async function conversationRows(
   query?: string,
   includePrivateBriefs = false,
   codeRepository?: { id: string; viewerUserId?: string },
+  after?: { conversationId: string; lastActivityAtMs: number },
 ) {
   return db
     .select({
@@ -142,6 +178,7 @@ async function conversationRows(
       and(
         isNull(juniorConversations.parentConversationId),
         conversationFeedMembershipFilter(status, filter),
+        after ? conversationFeedAfter(after) : undefined,
         codeRepository
           ? conversationCodeRepositoryFilter(
               codeRepository.id,
@@ -318,11 +355,17 @@ function conversationFeedFilter(options: {
  * `codeRepositoryId` replaces membership with every root linked to that
  * repository's code changes. Private roots appear only for their members, and
  * per-person archive state does not hide rows.
+ *
+ * `cursor` resumes after the last row of a prior page. `nextCursor` is set only
+ * when more rows remain. `lastActivityAt` only moves forward, so a conversation
+ * with new activity during paging moves above the cursor and later pages skip
+ * it.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    cursor?: string;
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -335,9 +378,17 @@ export async function readConversationFeedFromSql(
     ? undefined
     : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
-  const rows = await conversationRows(
+  const after = options.cursor
+    ? decodeConversationFeedCursor(options.cursor)
+    : undefined;
+  if (options.cursor && !after) {
+    throwApiError(400, "Invalid conversation cursor.");
+  }
+  const limit = options.limit ?? CONVERSATION_FEED_LIMIT;
+  // Read one extra row to learn whether another page exists.
+  const pageRows = await conversationRows(
     db,
-    options.limit ?? CONVERSATION_FEED_LIMIT,
+    limit + 1,
     query || options.codeRepositoryId ? "all" : (options.status ?? "active"),
     filter,
     query,
@@ -348,7 +399,10 @@ export async function readConversationFeedFromSql(
           ...(options.viewer ? { viewerUserId: options.viewer.id } : undefined),
         }
       : undefined,
+    after,
   );
+  const rows = pageRows.slice(0, limit);
+  const lastRow = pageRows.length > limit ? rows.at(-1) : undefined;
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
@@ -498,6 +552,14 @@ export async function readConversationFeedFromSql(
         ),
       };
     }),
+    ...(lastRow
+      ? {
+          nextCursor: encodeConversationFeedCursor({
+            conversationId: lastRow.conversation.conversationId,
+            lastActivityAtMs: lastRow.conversation.lastActivityAt.getTime(),
+          }),
+        }
+      : undefined),
     generatedAt: new Date(nowMs).toISOString(),
     source: "conversation_index",
   };
@@ -511,6 +573,7 @@ export async function readConversationFeed(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    cursor?: string;
     q?: string;
     status?: "active" | "archived";
     viewer?: User;

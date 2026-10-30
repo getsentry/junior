@@ -14,6 +14,7 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
@@ -34,6 +35,10 @@ function dashboardAuthorIdFromEmail(email: string): string {
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
+    const previousDashboardLinkOptions = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+      basePath: "/dashboard",
+    });
     try {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
@@ -143,6 +148,8 @@ describe("conversation list API", () => {
         expect.objectContaining({
           archivedAt: new Date(2_000).toISOString(),
           conversationId: archivedId,
+          dashboardUrl:
+            "https://junior.example.com/dashboard/conversations/slack%3AC123%3Aarchived",
         }),
       ]);
 
@@ -153,7 +160,15 @@ describe("conversation list API", () => {
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
       });
+      const invalidCursor = await app.request(
+        "http://localhost/api/conversations?cursor=not-a-cursor",
+      );
+      expect(invalidCursor.status).toBe(400);
+      expect(apiErrorSchema.parse(await invalidCursor.json())).toEqual({
+        error: "Invalid conversation cursor.",
+      });
     } finally {
+      setDashboardConversationLinkOptions(previousDashboardLinkOptions);
       await fixture.close();
     }
   });
@@ -541,7 +556,8 @@ describe("conversation list API", () => {
           teamId: "T1",
           channelId: "D1",
         },
-        nowMs: 2_000,
+        // Ties morgan-newest so paging must order by conversation id.
+        nowMs: 3_000,
         source: "slack",
         title: "Launch plan follow-up",
         visibility: "private",
@@ -621,6 +637,28 @@ describe("conversation list API", () => {
           }),
         ],
       });
+
+      const pagedIds: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await readConversationFeedFromSql({
+          ...(cursor ? { cursor } : undefined),
+          limit: 1,
+          viewer,
+        });
+        pagedIds.push(
+          ...page.conversations.map(
+            (conversation) => conversation.conversationId,
+          ),
+        );
+        cursor = page.nextCursor;
+      } while (cursor && pagedIds.length < 4);
+      expect(pagedIds).toEqual([
+        "slack:C1:morgan-newest",
+        "slack:D1:morgan-linked",
+        "slack:C1:morgan-older",
+      ]);
+      expect(cursor).toBeUndefined();
     } finally {
       await fixture.close();
     }
