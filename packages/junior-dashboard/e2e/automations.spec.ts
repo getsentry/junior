@@ -722,6 +722,16 @@ test("opens one automation's runs, filters by result, and redirects old history 
       exact: true,
     }),
   ).toBeVisible();
+  // A filter that hides the open run keeps its details.
+  await result.getByRole("tab", { name: /^Completed/ }).click();
+  await failedRun.waitFor({ state: "detached" });
+  await page.goto(`${page.url()}&run=scheduled-1-run-2`);
+  await expect(
+    details.getByText("Ship notes for the release train").first(),
+  ).toBeVisible();
+  await expect(details.getByText(/not in the loaded runs/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Close run details" }).click();
+  await result.getByRole("tab", { name: /^Failed/ }).click();
   await result.getByRole("tab", { name: /^All/ }).click();
   await expect(page).not.toHaveURL(/[?&]result=/);
   await expect(firstRun).toBeVisible();

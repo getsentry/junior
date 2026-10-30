@@ -68,9 +68,10 @@ export function AutomationRunsTab(props: {
       ),
     [query.data, result],
   );
+  // Details look up every loaded run, so a filter never hides the open run.
   const runs = useMemo(
     () =>
-      executions.map(
+      (query.data?.executions ?? []).map(
         (execution): AutomationRun => ({
           ...execution,
           automationId: automation.id,
@@ -78,10 +79,10 @@ export function AutomationRunsTab(props: {
           kind: automation.kind,
         }),
       ),
-    [automation, executions],
+    [automation, query.data],
   );
   const selection = useAutomationRunSelection(
-    runs.map((run) => run.executionId),
+    executions.map((execution) => execution.executionId),
   );
   return (
     <AutomationRunsFrame
