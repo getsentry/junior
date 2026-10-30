@@ -108,6 +108,10 @@ function runRequiredChild(command, args, options = {}) {
     ...options,
   });
 
+  if (result.error) {
+    console.error(`Failed to run ${command}: ${result.error.message}`);
+    process.exit(1);
+  }
   if (result.signal) {
     process.kill(process.pid, result.signal);
     return;
@@ -411,6 +415,11 @@ function watchForRestarts() {
   });
 }
 
+// Start Postgres, Redis and S3 from `compose.yaml`, and wait until they are
+// healthy. Services that already run are left as they are.
+runRequiredChild("docker", ["compose", "up", "-d", "--wait"], {
+  cwd: workspaceRoot,
+});
 runRequiredChild("pnpm", ["build"], {
   cwd: juniorPackageDir,
 });
