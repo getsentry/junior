@@ -35,6 +35,11 @@ file when every caller needs the same style or variant. App components compose
 | `Drawer`, `BottomSheet`        | `ui/sheet`        |
 | `layout/DashboardHeader` (nav) | `ui/sheet`        |
 | `ProfileMenu` (desktop)        | `ui/popover`      |
+| `ActorAvatar`                  | `ui/avatar`       |
+| `ParticipantAvatarStack`       | `ui/avatar`       |
+| `SearchInput`                  | `ui/input-group`  |
+| `PagePagination`               | `ui/pagination`   |
+| `EmptyTelemetry`               | `ui/empty`        |
 | `TimeRangeSelector`            | `ui/toggle-group` |
 | `ThemeSwitcher`                | `ui/toggle-group` |
 | `TranscriptViewToggle`         | `ui/toggle-group` |
@@ -151,7 +156,8 @@ Shared class strings live in `src/client/styles.ts`.
 - **Loading.** Use `ui/skeleton` for placeholder leaves and `PageContentSkeleton`
   variants for page bodies. Use `PageRouteLoading` when a page keeps its real
   header above a body skeleton. Use a feature-owned loading component for
-  distinct geometry, such as conversations.
+  distinct geometry, such as conversations. Use `ui/spinner` for an inline
+  pending icon.
 
 ## Navigation
 

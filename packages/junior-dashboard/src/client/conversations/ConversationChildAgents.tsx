@@ -7,7 +7,6 @@ import {
   CircleDot,
   CirclePause,
   CircleX,
-  LoaderCircle,
   LockKeyhole,
   type LucideIcon,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import type { StatusChipTone } from "../components/StatusChip";
+import { Spinner } from "../components/ui/spinner";
 import {
   formatConversationCostTotal,
   formatRuntime,
@@ -115,7 +115,6 @@ const statusIcons: Partial<Record<string, LucideIcon>> = {
   error: CircleX,
   failed: CircleX,
   paused: CirclePause,
-  running: LoaderCircle,
 };
 
 const statusIconToneClass: Record<StatusChipTone, string> = {
@@ -129,7 +128,10 @@ const statusIconToneClass: Record<StatusChipTone, string> = {
 
 /** Mark a child agent status with one icon and an audible label. */
 function ChildAgentStatusIcon(props: { status: string }) {
-  const Icon = statusIcons[props.status] ?? Circle;
+  const Icon =
+    props.status === "running"
+      ? Spinner
+      : (statusIcons[props.status] ?? Circle);
   return (
     <span className="mt-px grid size-4 shrink-0 place-items-center">
       <Icon
@@ -137,8 +139,6 @@ function ChildAgentStatusIcon(props: { status: string }) {
         className={cn(
           "size-3.5",
           statusIconToneClass[subagentStatusTone(props.status)],
-          props.status === "running" &&
-            "animate-spin motion-reduce:animate-none",
         )}
       />
       <span className="sr-only">{props.status}</span>
