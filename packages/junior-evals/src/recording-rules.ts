@@ -77,11 +77,6 @@ const ALLOWED_ORIGINS = [
   "https://oidc.vercel.com",
   // Pages that `webFetch` evals read.
   "https://docs.slack.dev",
-  // Database docs that the child agents of the delegation eval read.
-  "https://dev.mysql.com",
-  "https://sqlite.org",
-  "https://www.postgresql.org",
-  "https://www.sqlite.org",
 ];
 
 /**

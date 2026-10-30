@@ -324,6 +324,10 @@ cache keeps the file for the later runs of a pull request.
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
   the results for one test.
+- `mockWebPages()` from the same file gives fixed pages to `webFetch` for
+  some origins in one test. Use it when a case does not check the content
+  of a page, so a live page does not make the run slow. Other pages go to
+  Roach. The `bash` tool in the Vercel Sandbox does not use these mocks.
 
 ## Recordings
 
