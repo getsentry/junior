@@ -106,7 +106,7 @@ export function renderTaskInput(args: {
     // Say what to write, or the model drops the mention.
     ...(creator
       ? [
-          `Created by: ${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person; write this mention for them. If the instructions do not refer to this person, do not mention them.`,
+          `Created by: ${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.`,
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),

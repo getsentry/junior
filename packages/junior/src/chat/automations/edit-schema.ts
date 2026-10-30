@@ -17,7 +17,7 @@ export const automationInstructionSchema = z.string().trim().min(1).max(4000);
  */
 export const automationInstructionToolSchema =
   automationInstructionSchema.describe(
-    'Work to perform when the Automation runs. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Write the exact target instead, such as a channel mention or a link. Call the person who created the Automation "the Automation creator", not "me". Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
+    'Work to perform when the Automation runs. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Write the exact target instead, such as a channel mention or a link. Call the person who created the Automation "the Automation creator", not "me"; each run knows who that is. Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
   );
 
 export const automationEditFieldsSchema = z.object({
