@@ -15,7 +15,7 @@ Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code
 
 ## Before you start
 
-- The app must mount the [dashboard](/operate/dashboard/) with Google sign-in. Without it, Junior does not mount `/api/mcp`.
+- The app must mount the [dashboard](/operate/dashboard/) with Google sign-in required. When the dashboard is disabled, or `dashboard.authRequired` or `JUNIOR_DASHBOARD_AUTH_REQUIRED` is `false`, Junior does not mount `/api/mcp`.
 - The app must know its public URL. Set `dashboard.baseURL` or `JUNIOR_BASE_URL`. On Vercel, Junior uses the production URL of the project when you do not set one. Preview deployments also use the production URL. To connect a client to a preview deployment, set `JUNIOR_BASE_URL` for that deployment.
 - Your MCP client must support OAuth with Client ID Metadata Documents (CIMD). Junior does not support Dynamic Client Registration.
 
@@ -76,7 +76,7 @@ The tool is read-only. It has no pagination.
 
 | Symptom                              | Cause and fix                                                                                                                                  |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `404` on `/api/mcp`                  | The dashboard or its Google sign-in is not configured. Configure the [dashboard](/operate/dashboard/).                                         |
+| `404` on `/api/mcp`                  | The dashboard is disabled, or it does not require sign-in. Configure the [dashboard](/operate/dashboard/) with sign-in required.               |
 | "This app cannot connect"            | The client did not send a valid CIMD client ID, or its redirect URI is not in its metadata document. Update the client, or use another client. |
 | "This sign-in request expired"       | The request is older than 10 minutes or was already used. Start the connection again from the client.                                          |
 | The client asks you to connect again | The connection reached its 30-day limit, or Junior revoked it. Authenticate again.                                                             |

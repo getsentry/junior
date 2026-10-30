@@ -39,7 +39,7 @@ Production Redis state supports requests from different app instances. Live
 SSE requests still end at the deployment request limit. Clients must reconnect
 and call `session/load` after that limit.
 
-When the app mounts the dashboard with Google sign-in, Junior also exposes a
+When the dashboard requires Google sign-in, Junior also exposes a
 remote MCP server. `POST /api/mcp` serves stateless MCP Streamable HTTP.
 `GET` and `DELETE /api/mcp` return `405` after authentication. Clients
 authenticate with OAuth 2.1 and Client ID Metadata Documents through these
