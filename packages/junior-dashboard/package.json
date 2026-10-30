@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.264.0",
+  "version": "0.266.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
-    "@sentry/junior": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
     "@uidotdev/usehooks": "2.4.1",
@@ -43,7 +42,6 @@
     "cn": "^0.5.0",
     "hono": "^4.13.11",
     "lucide-react": "^1.17.0",
-    "nitro": "3.0.260522-beta",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",
@@ -52,8 +50,12 @@
     "shiki": "4.1.0",
     "zod": "catalog:"
   },
+  "peerDependencies": {
+    "@sentry/junior": "workspace:*"
+  },
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
+    "@sentry/junior": "workspace:*",
     "@tailwindcss/cli": "^4.3.0",
     "@tanstack/eslint-plugin-query": "^5.101.4",
     "@types/node": "^25.9.1",
@@ -61,6 +63,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "4.1.12",
     "eslint": "^10.8.0",
+    "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",
     "shadcn": "4.23.0",
     "tailwindcss": "^4.3.0",

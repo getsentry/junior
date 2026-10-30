@@ -112,7 +112,12 @@ export function toolOutput(call: ToolCall): unknown {
 }
 
 /** Turn states of the reporting API. A turn that waits for authorization stays `started`. */
-export type TurnStatus = "failed" | "no_reply" | "started" | "succeeded";
+export type TurnStatus =
+  | "blocked"
+  | "failed"
+  | "no_reply"
+  | "started"
+  | "succeeded";
 
 export interface Turn {
   replies: Reply[];

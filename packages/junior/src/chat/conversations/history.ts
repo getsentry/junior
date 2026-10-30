@@ -350,7 +350,7 @@ const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
     turnId: z.string().min(1),
-    outcome: z.enum(["success", "no_reply", "cancelled"]),
+    outcome: z.enum(["success", "no_reply", "cancelled", "blocked"]),
   })
   .strict();
 

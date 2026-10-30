@@ -6,16 +6,15 @@ import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
 import { formatRelativeTime, peoplePath } from "../../format";
+import { eventTriggerText } from "@sentry/junior-plugin-api";
 import {
-  automationEventConditions,
-  automationEventNames,
   automationScheduleLabel,
   formatAutomationRunTime,
 } from "./automationFormat";
 
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
- * it, and when it runs. Instructions, timezones, and event conditions stay in
+ * it, and when it runs. Instructions, timezones, and event filters stay in
  * the details panel.
  */
 export function AutomationRow(props: {
@@ -108,7 +107,9 @@ function automationStatus(automation: AutomationSummary): string | undefined {
     return automation.status === "active" ? undefined : automation.status;
   }
   if (automation.status !== "active") return automation.status;
-  return automation.triggerAvailable ? undefined : "Trigger unavailable";
+  return automation.trigger.problems.length === 0
+    ? undefined
+    : "Trigger unavailable";
 }
 
 /** Combine the trigger and Destination into one muted line under the title. */
@@ -122,15 +123,11 @@ function AutomationSummaryLine({
   const trigger =
     automation.kind === "scheduled"
       ? automation.schedule
-      : `${automation.resource} · ${automationEventNames(automation)}`;
-  const conditions =
-    automation.kind === "event" ? automationEventConditions(automation) : "";
+      : eventTriggerText(automation.resource, automation.trigger);
   const triggerDetail =
     automation.kind === "scheduled"
       ? automationScheduleLabel(automation)
-      : conditions
-        ? `${trigger} · ${conditions}`
-        : trigger;
+      : trigger;
   return (
     <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
       <Icon

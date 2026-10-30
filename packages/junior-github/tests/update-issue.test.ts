@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
-const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 function toolContext(response?: Response) {
   const fetch = vi.fn(
@@ -39,16 +38,7 @@ function toolContext(response?: Response) {
 }
 
 describe("updateIssue", () => {
-  afterEach(() => {
-    if (ORIGINAL_WEBHOOK_SECRET === undefined) {
-      delete process.env.GITHUB_WEBHOOK_SECRET;
-    } else {
-      process.env.GITHUB_WEBHOOK_SECRET = ORIGINAL_WEBHOOK_SECRET;
-    }
-  });
-
   it("updates issue metadata and preserves runtime-owned body metadata", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 
     await expect(
@@ -85,9 +75,7 @@ describe("updateIssue", () => {
     );
     const body = (await call?.request.clone().json()) as { body: string };
     expect(body.body).toContain("via **David Cramer**.");
-    expect(body.body).toContain(
-      "[View Junior Session](https://example.com/session)",
-    );
+    expect(body.body).toContain("[View Session](https://example.com/session)");
   });
 
   it.each([

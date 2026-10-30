@@ -9,10 +9,19 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 
-/** Identify list and detail routes that share the Automation list scroll frame. */
-export function isAutomationListPath(pathname: string): boolean {
+/** Identify the Automation list and its selected Automation routes. */
+function isAutomationListPath(pathname: string): boolean {
   const match = matchPath("/automations/:automationId", pathname);
   return Boolean(match && match.params.automationId?.toLowerCase() !== "runs");
+}
+
+/** Identify Automation routes whose list scrolls on its own beside details. */
+export function hasAutomationDetailsFrame(pathname: string): boolean {
+  return (
+    isAutomationListPath(pathname) ||
+    Boolean(matchPath("/automations/runs", pathname)) ||
+    Boolean(matchPath("/automations/:automationId/executions", pathname))
+  );
 }
 
 function isAutomationListTabPath(pathname: string): boolean {
@@ -50,7 +59,7 @@ export function AutomationsNavigation(props: {
 
 /** Place the shared secondary navigation above one Automations page. */
 export function AutomationsPageLayout(props: { children: ReactNode }) {
-  const list = isAutomationListPath(useLocation().pathname);
+  const list = hasAutomationDetailsFrame(useLocation().pathname);
   return (
     <AutomationsNavigation
       className={
@@ -75,7 +84,7 @@ export function AutomationsRouteLoading(props: {
   title: string;
   variant: Extract<PageContentSkeletonVariant, "list" | "stats">;
 }) {
-  const list = isAutomationListPath(useLocation().pathname);
+  const list = hasAutomationDetailsFrame(useLocation().pathname);
   const content = (
     <>
       <PageHeader description={props.description} title={props.title} />

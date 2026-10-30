@@ -164,7 +164,7 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
     `Status: ${status}`,
     ...(command ? [`Command: ${command}`] : []),
     "",
-    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block.",
+    "The runtime had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local runtime block.",
     "Read the provider's error in the command output before you choose a cause. A provider can reject a request because of permissions, installation scope, SSO, or account access. It can also reject a valid credential because of the target's state, a rate limit, or another provider rule.",
     ...(stderr ? ["", `stderr:\n${stderr}`] : []),
     ...(stdout ? ["", `stdout:\n${stdout}`] : []),

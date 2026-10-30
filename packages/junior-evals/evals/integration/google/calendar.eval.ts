@@ -182,7 +182,7 @@ describe("Google Calendar", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The reply says that Junior's Google account is not connected and that a Junior admin must connect it.",
+          "The reply says that the Google account is not connected and that an admin must connect it.",
         ],
         fail: [
           "Do not offer meeting times as if calendars were checked.",

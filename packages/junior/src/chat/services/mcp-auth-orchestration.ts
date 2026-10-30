@@ -236,8 +236,7 @@ export function createMcpAuthOrchestration(
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
         label: `Connect your ${providerLabel} account`,
-        completionText:
-          "Once you've authorized, Junior will continue automatically.",
+        completionText: "Once you've authorized, I'll continue automatically.",
       };
       const delivery = await deliverOAuthAuthorization(authorizationRequest, {
         authorization: input.authorization,

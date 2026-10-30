@@ -1,9 +1,5 @@
-import type {
-  PluginEvents,
-  Event,
-  SubscribableResource,
-} from "@sentry/junior-plugin-api";
-import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
+import type { Event, SubscribableResource } from "@sentry/junior-plugin-api";
+import { CORE_EVENT_NAMESPACE, type EventCatalog } from "@/chat/events/catalog";
 
 export const WORKSPACE_SNAPSHOT_NAMESPACE = CORE_EVENT_NAMESPACE;
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
@@ -14,9 +10,10 @@ export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
  * Core catalog entry for Workspace snapshot ready and failed events.
  *
  * Uses the same registration shape as plugins so search, guidance, and tool
- * schemas treat these events like any other resource type.
+ * schemas treat these events like any other resource type. Snapshot finish
+ * does not run event-automation ingest, so only watches can use these events.
  */
-export function workspaceSnapshotEvents(): PluginEvents {
+export function workspaceSnapshotEvents(): EventCatalog[string] {
   return {
     resourceTypes: [
       {
@@ -35,6 +32,7 @@ export function workspaceSnapshotEvents(): PluginEvents {
         },
       },
     ],
+    limits: { [WORKSPACE_SNAPSHOT_RESOURCE_TYPE]: { automation: false } },
   };
 }
 

@@ -25,6 +25,7 @@ import {
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
+import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
@@ -46,6 +47,7 @@ import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-mes
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
+import { requireConversationWatches } from "./watches";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -241,6 +243,23 @@ export function createConversationRoutes(
       return jsonResponse(
         conversationChildAgentsReportSchema,
         await requireConversationChildAgents(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.get(
+    "/:conversationId/watches",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationWatchesReportSchema,
+        await requireConversationWatches(conversationId, { viewer }),
       );
     },
   );

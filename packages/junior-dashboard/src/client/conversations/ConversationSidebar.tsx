@@ -19,6 +19,7 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
+import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -112,14 +113,14 @@ export function ConversationSidebar(props: {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    <Button
                       aria-label="New conversation"
-                      className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                      className="size-7"
                       onClick={props.onNewConversation}
-                      type="button"
+                      size="icon"
                     >
                       <SquarePen aria-hidden="true" size={15} />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipContent size="compact">New conversation</TooltipContent>

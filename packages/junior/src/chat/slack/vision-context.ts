@@ -177,7 +177,7 @@ function buildAttachmentResolutionFailurePromptText(args: {
     `filename: ${args.filename ?? "unnamed"}`,
     `media_type: ${args.mediaType}`,
     "<resolution-error>",
-    "The user attached this file, but Junior could not download its content " +
+    "The user attached this file, but you could not download its content " +
       "from Slack. Tell the user the attachment could not be read; do not " +
       "say no attachment was sent.",
     "</resolution-error>",

@@ -312,7 +312,7 @@ function unreadableBodyResponse(eventId: string | undefined): Response {
     {
       source: "junior-egress",
       error:
-        "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+        "The sandbox egress proxy could not read the request body, so it did not send the request upstream.",
       ...(eventId ? { sentryEventId: eventId } : undefined),
     },
     { status: 500, headers: { "cache-control": "no-store" } },
@@ -349,8 +349,8 @@ function grantSelectionBodyTooLargeMessage(
   inspection: GitHubBodyInspection,
 ): string {
   return inspection === "graphql"
-    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
-    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
+    ? "GitHub GraphQL request body is too large to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {

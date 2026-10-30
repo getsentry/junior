@@ -9,9 +9,9 @@ import {
   eventMatchFieldsSchema,
   type Event,
   type EventInput,
-  type PluginEvents,
 } from "@sentry/junior-plugin-api";
 import type { EventAutomation } from "@/chat/event-automations/types";
+import type { EventCatalog } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
@@ -32,11 +32,11 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/** Event registration for new top-level Slack channel messages. */
-export function slackChannelMessageEvents(): Pick<
-  PluginEvents,
-  "resourceTypes"
-> {
+/**
+ * Event registration for new top-level Slack channel messages. Only event
+ * automations can use it, so watchEvents rejects it.
+ */
+export function slackChannelMessageEvents(): EventCatalog[string] {
   return {
     resourceTypes: [
       {
@@ -54,6 +54,13 @@ export function slackChannelMessageEvents(): Pick<
         },
       },
     ],
+    limits: {
+      [CHANNEL_RESOURCE_TYPE]: {
+        watch: false,
+        watchUnavailableMessage:
+          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
+      },
+    },
   };
 }
 

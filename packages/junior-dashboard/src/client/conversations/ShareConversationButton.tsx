@@ -80,6 +80,7 @@ export function ShareConversationButton(props: {
         <TooltipTrigger
           render={
             <Button
+              focusableWhenDisabled
               aria-label={label}
               className="text-dashboard-text-muted"
               disabled={status === "sharing"}
@@ -95,15 +96,14 @@ export function ShareConversationButton(props: {
         </TooltipContent>
       </Tooltip>
     ) : props.layout === "menu" ? (
-      <button
+      <Button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={status === "sharing"}
         onClick={() => void shareLink()}
-        type="button"
+        size="menu"
       >
         {content}
-      </button>
+      </Button>
     ) : (
       <Button
         aria-label={label}

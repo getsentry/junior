@@ -131,7 +131,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set Junior's outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only Junior's prior status reaction on that comment.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only your prior status reaction on that comment.",
     exposure: "direct",
     inputSchema,
     outputSchema,

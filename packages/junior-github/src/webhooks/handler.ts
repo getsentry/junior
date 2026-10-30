@@ -7,9 +7,9 @@ import type {
   PluginLogger,
   PluginRoute,
   EventInput,
-  EventPerson,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
@@ -38,12 +38,16 @@ import {
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
-  withGitHubPullRequestRoles,
+  withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
-} from "./pull-request-roles.js";
+} from "./pull-request-match-data.js";
 import {
+  loadGitHubPullRequestAuthors,
+  loadGitHubPullRequestPeople,
+  shareCommitPages,
   withGitHubPullRequestPeople,
-  type GitHubPullRequestPeopleTarget,
+  type GitHubCommitPageLoader,
+  type GitHubPullRequestTarget,
 } from "./pull-request-people.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
@@ -96,11 +100,13 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
-interface FeedbackTarget {
-  commentId: number;
-  commentKind: "conversation" | "review";
-  repo: string;
-}
+/** The pull request comment data that the feedback reaction needs. */
+const feedbackTargetSchema = z.object({
+  commentId: z.number(),
+  commentKind: z.enum(["conversation", "review"]),
+  repo: z.string().min(1),
+});
+type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
@@ -111,20 +117,8 @@ function pullRequestFeedbackTarget(
       candidate.eventType === "pull_request.comment.created" ||
       candidate.eventType === "pull_request.review_comment.created",
   );
-  const data = event?.data;
-  if (
-    !data ||
-    typeof data.repo !== "string" ||
-    typeof data.commentId !== "number" ||
-    (data.commentKind !== "conversation" && data.commentKind !== "review")
-  ) {
-    return undefined;
-  }
-  return {
-    commentId: data.commentId,
-    commentKind: data.commentKind,
-    repo: data.repo,
-  };
+  const parsed = feedbackTargetSchema.safeParse(event?.data);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function githubCodeChange(
@@ -163,14 +157,17 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
-  /** Load a repository role for `authorRole` and `requesterRole` filters. */
+  /**
+   * Read a pull request's commits for the `authors` field and the people
+   * involved.
+   */
+  loadPullRequestCommitPages?(
+    target: GitHubPullRequestTarget,
+  ): Promise<GitHubCommitPageLoader>;
+  /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  /** Load the people involved in a pull request for approvals and merges. */
-  loadPullRequestPeople?(
-    target: GitHubPullRequestPeopleTarget,
-  ): Promise<EventPerson[]>;
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -345,10 +342,13 @@ export function createGitHubWebhookRoute(args: {
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
+      const commitPages = args.loadPullRequestCommitPages
+        ? shareCommitPages(args.loadPullRequestCommitPages)
+        : undefined;
       const events = await withGitHubPullRequestPeople({
         body,
         deliveryId,
-        events: await withGitHubPullRequestRoles({
+        events: await withGitHubPullRequestMatchData({
           body,
           botEmail,
           db: args.db,
@@ -360,13 +360,30 @@ export function createGitHubWebhookRoute(args: {
             deliveryId,
             eventName,
           }),
-          load: args.loadRepositoryRole,
+          hasMatch,
+          ...(commitPages
+            ? {
+                loadAuthors: async (target: GitHubPullRequestTarget) =>
+                  await loadGitHubPullRequestAuthors({
+                    loadPage: commitPages(target),
+                  }),
+              }
+            : undefined),
           loadGitHubLogin: args.loadGitHubLogin,
+          loadRole: args.loadRepositoryRole,
           log: args.log,
           neededMatchKeys: args.events.neededMatchKeys,
         }),
         hasMatch,
-        load: args.loadPullRequestPeople,
+        ...(commitPages
+          ? {
+              load: async (target) =>
+                await loadGitHubPullRequestPeople({
+                  logins: target.logins,
+                  loadPage: commitPages(target),
+                }),
+            }
+          : undefined),
         log: args.log,
       });
       const feedbackTarget = pullRequestFeedbackTarget(events);

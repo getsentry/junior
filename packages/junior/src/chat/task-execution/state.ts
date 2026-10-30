@@ -103,8 +103,8 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
-/** Sentry trace propagation headers captured when an inbound message arrives. */
-const inboundMessageTraceContextSchema = z
+/** Sentry trace propagation headers. A malformed value is dropped, not rejected. */
+export const traceContextSchema = z
   .object({
     baggage: z.string().optional(),
     sentryTrace: z.string().min(1),
@@ -125,11 +125,13 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
-    traceContext: inboundMessageTraceContextSchema,
+    traceContext: traceContextSchema,
   })
   .strict();
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
+
+export type TraceContext = NonNullable<z.output<typeof traceContextSchema>>;
 
 /** Redis mailbox shape kept for deployed workers that still require this field. */
 const storedInboundMessageSchema = inboundMessageSchema.extend({

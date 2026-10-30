@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
@@ -11,12 +11,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
 }
 
 describe("getRepository", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns repository metadata and a subscription hint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([
       {
         body: {
@@ -89,29 +84,6 @@ describe("getRepository", () => {
         provider: "github",
       }),
     ]);
-  });
-
-  it("omits the hint when GitHub webhooks are not configured", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
-    const { tool } = toolContext([
-      {
-        body: {
-          default_branch: "main",
-          description: null,
-          full_name: "getsentry/junior",
-          html_url: "https://github.com/getsentry/junior",
-          private: false,
-        },
-      },
-    ]);
-
-    const result = await tool.execute?.(
-      { repo: "getsentry/junior" },
-      { toolCallId: "get-repository" },
-    );
-
-    expect(result).not.toHaveProperty("subscribable");
-    expect(result).not.toHaveProperty("data.subscribable");
   });
 
   it("reports a missing repository as a repairable tool error", async () => {

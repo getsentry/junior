@@ -40,7 +40,7 @@ const inputSchema = z
     number: z.number().int().positive().describe("Pull request number."),
     event: z
       .enum(["COMMENT", "REQUEST_CHANGES"])
-      .describe("Review result. Junior cannot approve pull requests."),
+      .describe("Review result. You cannot approve pull requests."),
     body: z.string().trim().min(1).describe("Review summary."),
     comments: z
       .array(reviewCommentSchema)
@@ -111,7 +111,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
       readOnlyHint: false,
     },
     description:
-      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. Junior cannot approve pull requests.",
+      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
     exposure: "direct",
     inputSchema,
     outputSchema,

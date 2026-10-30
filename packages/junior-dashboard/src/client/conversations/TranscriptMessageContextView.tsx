@@ -1,16 +1,19 @@
 import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../styles";
 import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { HighlightText } from "./transcriptSearch";
+import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { messageRawText } from "./transcriptRenderModel";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 /** Render ambient conversation context that is not a primary chat bubble. */
 export function TranscriptMessageContextView(props: {
@@ -18,6 +21,8 @@ export function TranscriptMessageContextView(props: {
   message: TranscriptViewMessage;
   redacted?: boolean;
 }) {
+  const { active: searchActive } = useTranscriptSearch();
+  const [open, setOpen] = useState(false);
   const actor = transcriptMessageActorLabel(props.conversation, props.message);
   const timestamp = formatMessageTimestamp(props.message.timestamp);
   const text = messageRawText(props.message);
@@ -30,33 +35,39 @@ export function TranscriptMessageContextView(props: {
 
   return (
     <>
-      <details
-        className="group/message-context min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:hidden"
+      <Collapsible
+        className="min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:hidden"
         data-transcript-message-context
+        // Search holds the text open, so the heading button is off until
+        // search ends.
+        disabled={searchActive}
+        onOpenChange={setOpen}
+        open={searchActive || open}
       >
-        <TranscriptSummary
+        <TranscriptSummaryTrigger
           flush
-          className="flex items-center justify-between gap-2 font-sans text-xs font-medium text-dashboard-text-muted"
+          className="group flex items-center justify-between gap-2 font-sans text-xs font-medium text-dashboard-text-muted"
         >
           <span className="min-w-0 truncate">Context from {actor}</span>
           <ChevronRight
             aria-hidden="true"
-            className="shrink-0 transition-transform group-open/message-context:rotate-90"
-            size={14}
+            className={dashboardDisclosureChevronClass}
           />
-        </TranscriptSummary>
-        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text-subtle">
-          {content}
-        </div>
-        {!props.redacted && props.message.contexts?.length ? (
-          <div className="mt-2">
-            <TranscriptTurnContextView
-              contexts={props.message.contexts}
-              messageId={props.message.messageId}
-            />
+        </TranscriptSummaryTrigger>
+        <CollapsibleContent hiddenUntilFound>
+          <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text-subtle">
+            {content}
           </div>
-        ) : null}
-      </details>
+          {!props.redacted && props.message.contexts?.length ? (
+            <div className="mt-2">
+              <TranscriptTurnContextView
+                contexts={props.message.contexts}
+                messageId={props.message.messageId}
+              />
+            </div>
+          ) : null}
+        </CollapsibleContent>
+      </Collapsible>
       <article
         className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
         data-transcript-message-context

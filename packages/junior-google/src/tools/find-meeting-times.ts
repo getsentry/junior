@@ -28,12 +28,12 @@ const inputSchema = z
     attendees: emailListSchema(20)
       .min(1)
       .describe(
-        "Work emails of the people who must attend. Resolve names with userLookup. Junior adds the requester automatically when it knows their email.",
+        "Work emails of the people who must attend. Resolve names with userLookup. The runtime adds the requester as required when it knows their email. To make the requester optional, put their email in optionalAttendees.",
       ),
     optionalAttendees: emailListSchema(20)
       .default([])
       .describe(
-        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first.',
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
       ),
     durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
@@ -49,7 +49,7 @@ const inputSchema = z
         "End of the search window, RFC 3339 with offset. Defaults to 7 days after timeMin. At most 14 days after timeMin.",
       ),
     timeZone: timeZoneSchema.describe(
-      "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone Junior cannot read.",
+      "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone you cannot read.",
     ),
     workdayStart: clockTimeSchema
       .default("09:00")
@@ -90,7 +90,7 @@ const outputSchema = pluginToolOutputSchema.extend({
         .string()
         .optional()
         .describe(
-          "Time zone of the person's calendar. Missing when Junior cannot read it; their hours then use the requester's time zone.",
+          "Time zone of the person's calendar. Missing when you cannot read it; their hours then use the requester's time zone.",
         ),
     }),
   ),
@@ -353,7 +353,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -378,9 +378,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "workdayEnd must be after workdayStart.",
         );
       }
-      const attendees = await withRequester(ctx, input.attendees);
+      // An explicit optional entry for the requester wins over the automatic add.
+      const optionalEmails = new Set(input.optionalAttendees);
+      const attendees = (await withRequester(ctx, input.attendees)).filter(
+        (email) =>
+          input.attendees.includes(email) || !optionalEmails.has(email),
+      );
       const required = new Set(attendees);
-      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
+      const optionalAttendees = [...optionalEmails].filter(
         (email) => !required.has(email),
       );
       const everyone = [...attendees, ...optionalAttendees];

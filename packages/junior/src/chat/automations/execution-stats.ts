@@ -23,6 +23,7 @@ import {
   juniorAutomationRuns,
   type AutomationRunStatus,
 } from "@/db/schema/automation-runs";
+import { juniorAutomationVersions } from "@/db/schema/automation-versions";
 
 export const AUTOMATION_EXECUTION_TYPES = ["scheduled", "event"] as const;
 export const AUTOMATION_EXECUTION_STATUSES = [
@@ -80,11 +81,16 @@ export function emptyAutomationRunWindows(): AutomationRunWindows {
 }
 
 export type AutomationExecutionRecord = {
+  automationVersion?: number;
   conversationId?: string;
   costUsd?: number;
+  credentialMode?: "creator" | "system";
   durationMs?: number;
+  error?: string;
   executedAt: string;
   executionId: string;
+  scheduledFor?: string;
+  startedAt?: string;
   status: AutomationExecutionStatus;
   title?: string;
   totalTokens?: number;
@@ -424,23 +430,10 @@ export async function readAutomationExecutions(args: {
   limit: number;
 }): Promise<AutomationExecutionRecord[]> {
   const rows = await getDb()
-    .select({
-      conversationId: juniorAutomationRuns.conversationId,
-      durationMs: juniorConversations.durationMs,
-      executedAtMs: juniorAutomationRuns.completedAtMs,
-      executionId: juniorAutomationRuns.id,
-      status: juniorAutomationRuns.status,
-      title: juniorConversations.title,
-      usage: juniorConversations.usage,
-    })
+    .select(executionColumns)
     .from(juniorAutomationRuns)
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorAutomationRuns.conversationId,
-      ),
-    )
+    .leftJoin(juniorConversations, executionConversation())
+    .leftJoin(juniorAutomationVersions, executionVersion())
     .where(
       and(
         isExecution(),
@@ -463,28 +456,17 @@ export async function readAutomationRuns(args: {
   if (args.automationIds.length === 0) return [];
   const rows = await getDb()
     .select({
-      conversationId: juniorAutomationRuns.conversationId,
-      durationMs: juniorConversations.durationMs,
-      executedAtMs: juniorAutomationRuns.completedAtMs,
-      executionId: juniorAutomationRuns.id,
+      ...executionColumns,
       kind: juniorAutomations.kind,
-      status: juniorAutomationRuns.status,
       automationId: juniorAutomationRuns.automationId,
-      title: juniorConversations.title,
-      usage: juniorConversations.usage,
     })
     .from(juniorAutomationRuns)
     .innerJoin(
       juniorAutomations,
       eq(juniorAutomations.id, juniorAutomationRuns.automationId),
     )
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorAutomationRuns.conversationId,
-      ),
-    )
+    .leftJoin(juniorConversations, executionConversation())
+    .leftJoin(juniorAutomationVersions, executionVersion())
     .where(
       and(
         isExecution(),
@@ -503,11 +485,58 @@ export async function readAutomationRuns(args: {
   }));
 }
 
+/** Columns that describe one execution, its Conversation, and its version. */
+const executionColumns = {
+  automationVersion: juniorAutomationRuns.automationVersion,
+  conversationId: juniorAutomationRuns.conversationId,
+  credentialMode: sql<
+    string | null
+  >`${juniorAutomationVersions.definition}->>'credentialMode'`,
+  durationMs: juniorConversations.durationMs,
+  errorMessage: juniorAutomationRuns.errorMessage,
+  executedAtMs: juniorAutomationRuns.completedAtMs,
+  executionId: juniorAutomationRuns.id,
+  scheduledForMs: juniorAutomationRuns.scheduledForMs,
+  startedAtMs: juniorAutomationRuns.startedAtMs,
+  status: juniorAutomationRuns.status,
+  title: juniorConversations.title,
+  usage: juniorConversations.usage,
+};
+
+function executionConversation(): SQL {
+  return eq(
+    juniorConversations.conversationId,
+    juniorAutomationRuns.conversationId,
+  );
+}
+
+function executionVersion(): SQL {
+  return and(
+    eq(
+      juniorAutomationVersions.automationId,
+      juniorAutomationRuns.automationId,
+    ),
+    eq(
+      juniorAutomationVersions.version,
+      juniorAutomationRuns.automationVersion,
+    ),
+  )!;
+}
+
+function isoTime(ms: number | null): string | undefined {
+  return ms === null ? undefined : new Date(ms).toISOString();
+}
+
 function mapAutomationExecutionRecord(row: {
+  automationVersion: number | null;
   conversationId: string | null;
+  credentialMode: string | null;
   durationMs: number | null;
+  errorMessage: string | null;
   executedAtMs: number | null;
   executionId: string;
+  scheduledForMs: number | null;
+  startedAtMs: number | null;
   status: AutomationRunStatus;
   title: string | null;
   usage: Parameters<typeof agentTurnCostUsd>[0] | null;
@@ -521,15 +550,27 @@ function mapAutomationExecutionRecord(row: {
     row.durationMs > 0
       ? row.durationMs
       : undefined;
+  const error = row.errorMessage?.trim();
+  const scheduledFor = isoTime(row.scheduledForMs);
+  const startedAt = isoTime(row.startedAtMs);
   return {
+    ...(row.automationVersion !== null
+      ? { automationVersion: row.automationVersion }
+      : undefined),
     ...(row.conversationId
       ? { conversationId: row.conversationId }
       : undefined),
     ...(costUsd !== undefined ? { costUsd } : undefined),
+    ...(row.credentialMode === "creator" || row.credentialMode === "system"
+      ? { credentialMode: row.credentialMode }
+      : undefined),
     ...(durationMs !== undefined ? { durationMs } : undefined),
+    ...(error ? { error } : undefined),
     // isExecution() selects only runs with an outcome and a completion time.
     executedAt: new Date(row.executedAtMs!).toISOString(),
     executionId: row.executionId,
+    ...(scheduledFor ? { scheduledFor } : undefined),
+    ...(startedAt ? { startedAt } : undefined),
     status: row.status as AutomationExecutionStatus,
     ...(title ? { title } : undefined),
     ...(totalTokens !== undefined ? { totalTokens } : undefined),

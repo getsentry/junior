@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { AutomationsNavigation } from "./AutomationsPageLayout";
+import { TriggerFilters } from "./TriggerFilters";
 import { AutomationEditor } from "./AutomationEditor";
 import { AutomationEditorLoading } from "./AutomationEditorLoading";
 import { AutomationFormSection } from "./AutomationFormSection";
@@ -49,7 +50,7 @@ export function AutomationEditPage(props: { enabled: boolean }) {
     value?.kind === "event"
       ? value.status !== "active"
         ? value.status
-        : value.triggerAvailable
+        : value.trigger.problems.length === 0
           ? "active"
           : "unavailable"
       : value?.status;
@@ -144,12 +145,10 @@ function AutomationReadOnly({ automation }: { automation: AutomationSummary }) {
         ) : (
           <div className="grid gap-3 text-sm">
             <p className="m-0 break-words">{automation.resource}</p>
-            <p className="m-0 break-words">{automation.events.join(", ")}</p>
-            {automation.match ? (
-              <pre className="whitespace-pre-wrap break-words text-xs">
-                {JSON.stringify(automation.match, null, 2)}
-              </pre>
-            ) : null}
+            <p className="m-0 break-words">
+              {automation.trigger.events.join(", ")}
+            </p>
+            <TriggerFilters filters={automation.trigger.filters} />
           </div>
         )}
       </AutomationFormSection>

@@ -623,7 +623,7 @@ describe("oauth callback handler", () => {
 
     expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain("did not grant the access Junior requires");
+    expect(body).toContain("did not grant the required access");
     expect(await getStoredTokens("U456", "sentry")).toBeUndefined();
     expect(waitUntilCallbacks).toHaveLength(0);
   });

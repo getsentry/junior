@@ -12,6 +12,7 @@ import {
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
+import { eventTriggerFiltersText } from "@sentry/junior-plugin-api";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
@@ -47,7 +48,7 @@ function renderAutomationDetails(
   const status =
     automation.kind === "scheduled"
       ? automation.status
-      : automation.triggerAvailable
+      : automation.trigger.problems.length === 0
         ? "ready"
         : "unavailable";
   // Item entities use custom_fields only. Do not add task-specific fields.
@@ -65,20 +66,31 @@ function renderAutomationDetails(
       dateField("next_run", "Next run", automation.nextRunAt, "None"),
     );
   } else {
+    const { trigger } = automation;
     fields.push(
       textField("source", "Source", automation.source),
       { ...textField("resource", "Resource", automation.resource), long: true },
       {
-        ...textField("events", "Events", automation.events.join(", ")),
+        ...textField("events", "Events", trigger.events.join(", ")),
+        long: true,
+      },
+      {
+        ...textField(
+          "filters",
+          "Filters",
+          trigger.filters.length > 0
+            ? eventTriggerFiltersText(trigger.filters)
+            : "No filters. Runs on every selected event.",
+        ),
         long: true,
       },
     );
-    if (!automation.triggerAvailable) {
+    if (trigger.problems.length > 0) {
       fields.push({
         ...textField(
           "warning",
           "Needs attention",
-          "Trigger unavailable. This automation cannot receive events.",
+          ["Trigger unavailable.", ...trigger.problems].join(" "),
         ),
         long: true,
       });

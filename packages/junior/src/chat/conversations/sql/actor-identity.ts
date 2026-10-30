@@ -48,7 +48,7 @@ export function systemIdentityFromSource(
       kind: "system",
       provider: "junior",
       providerSubjectId: "scheduler",
-      displayName: "Junior Scheduler",
+      displayName: "Scheduler",
     };
   }
   if (source === "local") {

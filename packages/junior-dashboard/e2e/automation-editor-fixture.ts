@@ -52,7 +52,6 @@ export async function mockAutomationEditor(
       : {
           ...common,
           kind,
-          triggerAvailable: true,
           status: "active",
           trigger: {
             namespace: "github",
@@ -94,6 +93,11 @@ export async function mockAutomationEditor(
               kind: "string",
               description: "Issue state",
               enum: ["open", "closed"],
+            },
+            closedBy: {
+              kind: "string",
+              description: "Login of who closed the issue",
+              events: ["issue.closed"],
             },
           },
         },

@@ -10,6 +10,7 @@ import {
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
+import { loadableSkills } from "@/chat/agent/skills";
 
 async function writeSkillFile(
   rootDir: string,
@@ -178,6 +179,14 @@ describe("skills", () => {
 
   it("returns null when no skills are available", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
+  });
+
+  it("lets the model load a user-callable skill only when the user invoked it", () => {
+    const names = (invoked: string | undefined) =>
+      loadableSkills(stubSkills, invoked).map((skill) => skill.name);
+
+    expect(names(undefined)).toEqual(["brief", "sum"]);
+    expect(names("weather-lookup")).toEqual(["brief", "sum", "weather-lookup"]);
   });
 
   it("skips skills with unsupported capability metadata", async () => {

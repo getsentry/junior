@@ -41,6 +41,7 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
   turnCursorKey,
@@ -152,7 +153,8 @@ export interface TurnRecord {
   startedAtMs: number;
   state: TurnStatus;
   surface?: AgentTurnSurface;
-  traceId?: string;
+  /** Trace of the first saved slice. Resumed slices continue it. */
+  traceContext?: TraceContext;
   turnStartMessageIndex?: number;
   updatedAtMs: number;
 }
@@ -270,7 +272,7 @@ const storedTurnRecordSchema = z
     startedAtMs: nonNegativeNumberSchema,
     state: turnStatusSchema,
     surface: turnSurfaceSchema.optional(),
-    traceId: z.string().optional(),
+    traceContext: traceContextSchema,
     updatedAtMs: nonNegativeNumberSchema,
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
@@ -474,7 +476,7 @@ function materializeTurnRecord(
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
-      traceId: stored.traceId,
+      traceContext: stored.traceContext,
       turnStartMessageIndex,
     }),
   };
@@ -579,7 +581,7 @@ function buildStoredRecord(args: {
   source?: Source;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   cumulativeToolCallCount?: number;
   turnLimitWrappedUp?: boolean;
   lostWorkerResumeCount?: number;
@@ -613,7 +615,7 @@ function buildStoredRecord(args: {
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
       surface: args.surface,
-      traceId: args.traceId,
+      traceContext: args.traceContext,
       turnStartSeq: args.turnStartSeq,
     }),
   };
@@ -744,7 +746,7 @@ async function updateTurnState(args: {
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
-        traceId: args.existing.traceId,
+        traceContext: args.existing.traceContext,
         turnStartSeq: parsed.turnStartSeq,
       }),
     }),
@@ -781,7 +783,7 @@ export async function upsertTurnRecord(args: {
   resumeReason?: TurnPauseReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
@@ -928,7 +930,7 @@ async function upsertTurnRecordLocked(
         resumedFromSliceId: args.resumedFromSliceId,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
-        traceId: args.traceId ?? existingRecord?.traceId,
+        traceContext: args.traceContext ?? existingRecord?.traceContext,
         turnStartSeq,
       }),
     }),

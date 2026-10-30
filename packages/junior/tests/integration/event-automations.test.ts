@@ -166,7 +166,7 @@ describe("event automations", () => {
           key: created.automation.id,
           label: "Review fixes.",
           title: "Review fixes.",
-          trigger: "Review feedback · pull_request.review.commented",
+          trigger: "Review feedback · pull request review commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
@@ -182,7 +182,7 @@ describe("event automations", () => {
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
       expect(posted?.text).toContain(
-        "Review feedback · pull_request.review.commented",
+        "Review feedback · pull request review commented",
       );
       expect(posted?.attachments).toBeUndefined();
       expect(posted?.metadata).toMatchObject({
@@ -201,7 +201,7 @@ describe("event automations", () => {
                   key: "trigger",
                   label: "When",
                   type: "string",
-                  value: "Review feedback · pull_request.review.commented",
+                  value: "Review feedback · pull request review commented",
                   long: true,
                 },
               ],
@@ -530,7 +530,9 @@ describe("event automations", () => {
         },
         "unsupported-event",
       ),
-    ).rejects.toThrow(/github:issue.*does not support event.*issue\.closed/);
+    ).rejects.toThrow(
+      'This github issue trigger cannot be saved. "issue" is not an enabled resource type. Use one of: "pull_request", "review_target".',
+    );
 
     const listed = (await execute(
       createListEventAutomationsTool(context(), EVENT_CATALOG),
@@ -717,7 +719,6 @@ describe("event automations", () => {
       automations: Array<{
         createdBy: { slackUserId: string };
         id: string;
-        triggerAvailable: boolean;
       }>;
     };
     expect(listed).not.toHaveProperty("data");
@@ -786,7 +787,10 @@ describe("event automations", () => {
     expect(listed.automations).toEqual([
       expect.objectContaining({
         id: created.automation.id,
-        trigger: expect.objectContaining({ available: false }),
+        trigger: expect.objectContaining({
+          available: false,
+          problems: ["The plugin for this source is not enabled."],
+        }),
       }),
     ]);
   });

@@ -92,7 +92,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     manifest: {
       name: "memory",
       displayName: "Memory",
-      description: "Long-term Junior memory storage and recall",
+      description: "Long-term memory storage and recall",
     },
     model: modelId
       ? { structuredModelId: modelId }

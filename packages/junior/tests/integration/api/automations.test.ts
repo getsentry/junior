@@ -21,6 +21,7 @@ import {
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorIdentities } from "@/db/schema/identities";
 import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
@@ -321,10 +322,20 @@ describe("Automations API", () => {
       });
       await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
+        errorMessage: "Dispatch failed.",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,
         status: "failed",
       });
+      await fixture.sql
+        .db()
+        .update(juniorAutomationRuns)
+        .set({
+          automationVersion: 1,
+          scheduledForMs: scheduledRun2AtMs - 60_000,
+          startedAtMs: scheduledRun2AtMs - 42_000,
+        })
+        .where(eq(juniorAutomationRuns.id, "sched-run-2"));
       await recordAutomationExecution("event_automations_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
@@ -384,7 +395,6 @@ describe("Automations API", () => {
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
             id: "event_automations_api",
-            match: { action: ["closed", "resolved"] },
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
@@ -392,7 +402,12 @@ describe("Automations API", () => {
             runs: runWindows(eventRunAtMs),
             source: "linear",
             totalRuns: 1,
-            triggerAvailable: false,
+            // Linear is not enabled here, so the saved trigger has a problem.
+            trigger: {
+              events: ["issue closed"],
+              filters: ["action is closed or resolved"],
+              problems: ["The plugin for this source is not enabled."],
+            },
           }),
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
@@ -500,11 +515,16 @@ describe("Automations API", () => {
         executionSixHours: expect.any(Array),
         executions: [
           {
+            automationVersion: 1,
             conversationId: "agent-dispatch:sched-run-2",
             costUsd: 0.42,
+            credentialMode: "creator",
             durationMs: 42_000,
+            error: "Dispatch failed.",
             executedAt: new Date(scheduledRun2AtMs).toISOString(),
             executionId: "sched-run-2",
+            scheduledFor: new Date(scheduledRun2AtMs - 60_000).toISOString(),
+            startedAt: new Date(scheduledRun2AtMs - 42_000).toISOString(),
             status: "failed",
             title: "Automation execution fixture",
             totalTokens: 1_200,

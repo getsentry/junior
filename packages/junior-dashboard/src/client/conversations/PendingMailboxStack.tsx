@@ -9,7 +9,6 @@ import {
 import {
   AlertCircle,
   Clock3,
-  LoaderCircle,
   SkipForward,
   X,
   type LucideIcon,
@@ -20,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { Spinner } from "../components/ui/spinner";
 import { actorLabel } from "../format";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
@@ -33,12 +33,12 @@ const COLLAPSED_PENDING_ROW_COUNT = 2;
 
 function pendingDeliveryMeta(
   message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
-): { icon: LucideIcon; label: string; spin?: boolean } {
+): { icon: LucideIcon | typeof Spinner; label: string } {
   if (message.clientStatus === "failed") {
     return { icon: AlertCircle, label: "Failed to send" };
   }
   if (message.clientStatus === "sending") {
-    return { icon: LoaderCircle, label: "Sending", spin: true };
+    return { icon: Spinner, label: "Sending" };
   }
   if (message.delivery === "interrupt") {
     return { icon: SkipForward, label: "Interrupt" };
@@ -92,8 +92,7 @@ function PendingMetaIcons(props: {
       <PendingMetaIcon label={delivery.label}>
         <DeliveryIcon
           aria-hidden="true"
-          className={delivery.spin ? "animate-spin" : undefined}
-          size={13}
+          className="size-3.25"
           strokeWidth={2.2}
         />
       </PendingMetaIcon>
@@ -113,11 +112,7 @@ function PendingMetaIcons(props: {
                 type="button"
               >
                 {props.cancelPending ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="animate-spin"
-                    size={13}
-                  />
+                  <Spinner aria-hidden="true" className="size-3.25" />
                 ) : (
                   <X aria-hidden="true" size={14} strokeWidth={2.2} />
                 )}

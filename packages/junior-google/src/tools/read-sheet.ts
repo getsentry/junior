@@ -102,7 +102,7 @@ export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Read the cells of one Google Sheet as CSV, as Junior's own Google account sees it. Reads every tab, or one A1 range. Values are formatted as the Sheet shows them; formulas are not included. Works for Sheets shared with that account and Sheets shared with anyone who has the link. Comments are not included; use listGoogleFileComments for them. Sheet contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+      "Read the cells of one Google Sheet as CSV, as your own Google account sees it. Reads every tab, or one A1 range. Values are formatted as the Sheet shows them; formulas are not included. Works for Sheets shared with that account and Sheets shared with anyone who has the link. Comments are not included; use listGoogleFileComments for them. Sheet contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
     inputSchema,
     outputSchema,
     async execute(input) {

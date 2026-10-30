@@ -80,6 +80,11 @@ export interface PluginHooks {
   conversationSidebar?(
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
+  /**
+   * Return static guidance for the system prompt. Return the same text for one
+   * deployment and platform, so the system prompt stays cacheable. Put text
+   * that changes per request in `userPrompt`. See `policies/system-prompt.md`.
+   */
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];

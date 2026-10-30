@@ -2,6 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_DEPLOYMENT_EVENTS = [
   "deployment.created",
@@ -19,21 +20,35 @@ export const GITHUB_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.error",
 ];
 
-/** Trusted deployment values that watches and event automations can match. */
+/**
+ * Trusted deployment values that watches and event automations can match.
+ * Every deployment event sets them; the repository resource type also has
+ * events that do not.
+ */
 export const GITHUB_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...gitHubRepoMatchFields(GITHUB_DEPLOYMENT_EVENTS),
+  ...gitHubCommitMatchFields(GITHUB_DEPLOYMENT_EVENTS),
+  deploymentId: {
+    kind: "number",
+    description: "numeric GitHub deployment id, such as 3001",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
+  },
   environment: {
     kind: "string",
     description: "lowercase deployment environment name, such as production",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
   workflowId: {
     kind: "number",
     description:
       "numeric GitHub Actions workflow id when a workflow created the deployment",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
   workflowPath: {
     kind: "string",
     description:
       "GitHub Actions workflow file, such as .github/workflows/deploy.yml, when a workflow created the deployment",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
 });
 
@@ -61,13 +76,18 @@ export function gitHubDeploymentSourceResource(input: {
   };
 }
 
-/** Describe a deployment source when GitHub webhooks are enabled. */
+/**
+ * Describe a deployment source that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubDeploymentSourceSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   commitSha: string;
   environment?: string;
   repo: string;
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubDeploymentSourceResource(input),
     suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,

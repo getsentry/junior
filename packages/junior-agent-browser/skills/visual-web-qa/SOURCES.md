@@ -15,5 +15,5 @@
 - Preserved the source skill's toolbox approach and its distinction between static screenshot evidence and temporal video evidence
 - Converted the legacy `SPEC.md` maintenance document into a Skillet-compatible `spec.md` behavior contract
 - Aligned the behavior contract with the runtime guidance, where a purely temporal request may use video without a redundant screenshot
-- Clarified the routing boundary between evidence-driven `/visual-web-qa` and general-purpose `/agent-browser`
+- Clarified the routing boundary between evidence-driven `$visual-web-qa` and general-purpose `$agent-browser`
 - Kept the skill inline because the runtime decisions and examples are short enough to remain coherent in one file

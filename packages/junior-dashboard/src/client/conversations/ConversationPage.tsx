@@ -52,6 +52,7 @@ import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
+import { conversationLinks } from "./ConversationLinkedWork";
 import {
   ConversationAnnotations,
   ConversationPrivacyChip,
@@ -350,7 +351,7 @@ export function ConversationPage(props: {
             }
             linkedWork={
               hasConversationAnnotations(detail.data?.annotations) ? (
-                <ConversationAnnotations detail={detail.data} layout="strip" />
+                <ConversationAnnotations detail={detail.data} />
               ) : null
             }
             archive={{
@@ -477,11 +478,7 @@ export function ConversationPage(props: {
           sentryConversationUrl={detail.data?.sentryConversationUrl}
           onClose={() => setDetailsChoice(false)}
           onOpenSubagent={setSubagentTarget}
-          annotations={
-            hasConversationAnnotations(detail.data?.annotations) ? (
-              <ConversationAnnotations detail={detail.data} />
-            ) : null
-          }
+          links={conversationLinks(detail.data)}
           brief={
             detail.data?.brief ? (
               <ConversationBrief brief={detail.data.brief} variant="summary" />

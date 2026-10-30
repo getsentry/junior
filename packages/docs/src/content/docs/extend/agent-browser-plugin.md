@@ -39,36 +39,36 @@ No plugin config is required.
 
 This plugin adds three skills and installs a browser runtime into the sandbox snapshot:
 
-- `/agent-browser` for general browser interaction
-- `/visual-web-qa` for evidence-driven visual checks
-- `/demo-video` for edited demo, walkthrough, and explainer videos with Remotion
+- `$agent-browser` for general browser interaction
+- `$visual-web-qa` for evidence-driven visual checks
+- `$demo-video` for edited demo, walkthrough, and explainer videos with Remotion
 
 Rebuild the sandbox snapshot after you enable the plugin so browser commands work in new sandboxes.
 
-Use `/agent-browser` for general browser interaction:
+Use `$agent-browser` for general browser interaction:
 
 ```text
-/agent-browser Open https://example.com, capture a screenshot, and summarize what is on the page.
+$agent-browser Open https://example.com, capture a screenshot, and summarize what is on the page.
 ```
 
-Use `/visual-web-qa` when a frontend or docs change needs scoped browser evidence:
+Use `$visual-web-qa` when a frontend or docs change needs scoped browser evidence:
 
 ```text
-/visual-web-qa Verify the updated docs navigation in light and dark themes, then share the evidence.
+$visual-web-qa Verify the updated docs navigation in light and dark themes, then share the evidence.
 ```
 
-Use `/demo-video` for a product presentation rather than a raw browser recording:
+Use `$demo-video` for a product presentation rather than a raw browser recording:
 
 ```text
-/demo-video Make a 90-second walkthrough of this app with UI captures and narration. Keep the story about what users can do.
+$demo-video Make a 90-second walkthrough of this app with UI captures and narration. Keep the story about what users can do.
 ```
 
 The demo workflow reuses captures and unchanged narration during revisions. It times camera moves, highlights, and captions to the spoken words, and it checks the rendered export before delivery. Music is optional and must come from a track you supply or have a license for. It does not install Remotion or FFmpeg. Use compatible dependencies in a separate artifact project and check the applicable Remotion license. Generated narration needs an enabled [TTS plugin](/extend/tts-plugin/) or another available speech workflow; supplied audio also works. No production changes are needed to make a video.
 
 ## Verify
 
-1. Run `/agent-browser` with a simple open-and-snapshot request.
-2. Run `/visual-web-qa` against a reachable local or preview page.
+1. Run `$agent-browser` with a simple open-and-snapshot request.
+2. Run `$visual-web-qa` against a reachable local or preview page.
 3. Confirm both turns can execute `agent-browser` commands successfully.
 4. Confirm visual QA reports the exact target, scoped result, and successfully shared screenshot or video evidence.
 
