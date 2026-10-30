@@ -19,6 +19,7 @@ import {
   useAppendConversationMessage,
   useArchiveConversation,
   useCancelConversationPendingMessages,
+  useSteerConversationPendingMessages,
   useConversationData,
   useStopConversationTurn,
   type PendingArchiveConversationUpdate,
@@ -32,7 +33,13 @@ import {
   CONVERSATION_EVENT_PARAM,
   parseConversationEventSeq,
 } from "./conversationRoutes";
-import { ConversationComposer } from "./ConversationComposer";
+import {
+  ConversationComposer,
+  restoreStoredDraftText,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
+import { readStoredComposerImages } from "./ComposerImages";
+import { useDashboardCoreData } from "../api";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationEventDetails } from "./ConversationEventDetails";
@@ -434,6 +441,7 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     onSelectedEventSeqChange={setSelectedEventSeq}
+                    pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
                     responding={
                       !detail.error && conversationIsResponding(transcript)
@@ -466,6 +474,15 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              // Without live history, an inline send would never leave the
+              // transcript tail. A started Turn reads a new send only later.
+              // Keep those sends in the queue. An earlier inline send that
+              // history does not have yet can start that Turn first.
+              sendsInline={
+                detail.data.eventHistory.status === "available" &&
+                !conversationIsResponding(detail.data) &&
+                detail.inlineMessages.length === 0
+              }
               stoppable={live}
             />
           ) : undefined
@@ -548,6 +565,11 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /**
+   * True when history is live and no Turn has started, so the next Turn will
+   * read a new send at once.
+   */
+  sendsInline: boolean;
   /** True while the conversation has a Turn that a stop can end. */
   stoppable: boolean;
 }) {
@@ -558,6 +580,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
+    useState<string>();
+  const [queueActionError, setQueueActionError] = useState<string>();
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -583,10 +608,21 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
+  // No Turn runs and nothing waits in the queue, so the next send would
+  // leave the queue almost at once. Show it in the transcript instead. A
+  // conversation can be active before its Turn starts; that still counts.
+  const committedIds = new Set(props.committedMessageIds);
+  const sendInlineRef = useRef(false);
+  sendInlineRef.current =
+    props.sendsInline &&
+    !props.pendingMessages.some(
+      (message) => !committedIds.has(message.messageId),
+    );
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
+        inline: sendInlineRef.current,
         message,
         images,
       });
@@ -608,6 +644,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancelPendingMessagesRef.current.reset();
     }
     if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
+    setQueueActionError(undefined);
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -632,6 +669,86 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancellableMessageIds.includes(id),
     ),
   );
+
+  // Edit uses its own cancel mutation so remove errors stay on remove.
+  const editCancel = useCancelConversationPendingMessages(props.conversationId);
+  const editCancelRef = useRef(editCancel);
+  editCancelRef.current = editCancel;
+  const editingRef = useRef(false);
+  const composerRef = useRef<ConversationComposerHandle>(null);
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
+  const onEditMessage = useCallback(
+    async (message: ConversationMailboxMessage) => {
+      const receivedBefore = props.pendingGeneratedAtRef.current;
+      // The image read runs before the cancel starts, so isPending alone does
+      // not stop a second click.
+      if (!receivedBefore || editingRef.current) return;
+      editingRef.current = true;
+      const inboundMessageId = message.inboundMessageId;
+      setEditTargetInboundMessageId(inboundMessageId);
+      setQueueActionError(undefined);
+      try {
+        // Read images first. A failed read must leave the message queued.
+        const images = await readStoredComposerImages(
+          props.conversationId,
+          message.attachments,
+        );
+        // The reader left during the read. Keep the message in the queue.
+        if (!composerRef.current) return;
+        // Check before the cancel. After it, images that do not fit are lost.
+        if (!composerRef.current.canRestoreImages(images)) {
+          setQueueActionError("Remove some draft images to edit that message.");
+          return;
+        }
+        const result = await editCancelRef.current.mutateAsync({
+          inboundMessageIds: [inboundMessageId],
+          receivedBefore,
+        });
+        // Junior can read the message before the cancel lands. Then it is
+        // already in the Conversation and there is nothing to edit.
+        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+          setQueueActionError("Junior already read that message.");
+          return;
+        }
+        const restored = { images, text: message.text ?? "" };
+        if (composerRef.current) {
+          composerRef.current.restoreMessage(restored);
+        } else {
+          // The reader left during the cancel. Keep the text in the saved
+          // draft so it is there when they come back.
+          restoreStoredDraftText(props.conversationId, restored.text);
+        }
+      } catch {
+        setQueueActionError("Could not edit the queued message. Try again.");
+      } finally {
+        editingRef.current = false;
+        setEditTargetInboundMessageId(undefined);
+      }
+    },
+    [props.conversationId, props.pendingGeneratedAtRef],
+  );
+
+  const steerPendingMessages = useSteerConversationPendingMessages(
+    props.conversationId,
+  );
+  const steerPendingMessagesRef = useRef(steerPendingMessages);
+  steerPendingMessagesRef.current = steerPendingMessages;
+  const onSteerMessage = useCallback((message: ConversationMailboxMessage) => {
+    if (steerPendingMessagesRef.current.isPending) return;
+    setQueueActionError(undefined);
+    steerPendingMessagesRef.current.mutate(
+      { inboundMessageIds: [message.inboundMessageId] },
+      {
+        onError: () =>
+          setQueueActionError(
+            "Could not send the queued message now. Try again.",
+          ),
+      },
+    );
+  }, []);
+  const steerTargetInboundMessageId = steerPendingMessages.isPending
+    ? steerPendingMessages.variables?.inboundMessageIds[0]
+    : undefined;
 
   const onStop = useCallback(async () => {
     const result = await stopTurnRef.current.mutateAsync();
@@ -662,17 +779,27 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             cancelPending={cancelPendingMessages.isPending}
             cancelTargetInboundMessageId={cancelTargetInboundMessageId}
             committedMessageIds={props.committedMessageIds}
+            conversationId={props.conversationId}
+            editTargetInboundMessageId={editTargetInboundMessageId}
             messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
+            onEditMessage={onEditMessage}
             onLayoutChange={onMailboxLayoutChange}
             onRetry={onRetry}
+            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+            steerTargetInboundMessageId={steerTargetInboundMessageId}
+            viewerEmail={viewerEmail}
           />
         </>
       }
     >
       <ConversationComposer
         draftId={props.conversationId}
-        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
+        error={
+          queueActionError ??
+          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+        }
+        ref={composerRef}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}

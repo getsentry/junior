@@ -28,6 +28,7 @@ import {
   ConversationWatches,
   useConversationWatches,
 } from "./ConversationWatches";
+import { DetailsCard } from "./DetailsList";
 import { ShareConversationButton } from "./ShareConversationButton";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
@@ -158,13 +159,13 @@ export function ConversationDetails(props: {
                 </div>
               ) : null}
               {sections.map((section) => (
-                <DetailsSection
+                <DetailsCard
                   count={section.count}
                   key={section.key}
                   title={section.title}
                 >
                   {section.content}
-                </DetailsSection>
+                </DetailsCard>
               ))}
             </div>
           ) : (
@@ -198,31 +199,6 @@ function TabCount(props: { count: number | undefined }) {
     <span className="min-w-5 shrink-0 rounded-full bg-dashboard-fill-strong px-1.5 text-center text-xs font-semibold leading-5 tabular-nums">
       {props.count.toLocaleString("en-US")}
     </span>
-  );
-}
-
-/** Group one kind of conversation detail in a compact card. */
-function DetailsSection(props: {
-  children: ReactNode;
-  count?: number;
-  title?: string;
-}) {
-  return (
-    <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
-      {props.title ? (
-        <h3 className="m-0 flex items-center gap-1.5 font-sans text-xs font-medium text-dashboard-text-muted">
-          {props.title}
-          {props.count ? (
-            <span className="tabular-nums text-dashboard-text-faint">
-              {props.count.toLocaleString("en-US")}
-            </span>
-          ) : null}
-        </h3>
-      ) : null}
-      <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
-        {props.children}
-      </div>
-    </section>
   );
 }
 

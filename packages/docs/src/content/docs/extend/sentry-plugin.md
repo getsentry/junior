@@ -230,6 +230,14 @@ The alert resolved.
 
 Junior publishes each state once for each alert incident.
 
+An event automation can also run for every project in the Sentry org, with no
+identifier. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
+and `metric_alert.resolved` can run that way with no filter. Use the
+`projects` filter to limit one to some projects. Junior saves project slugs in
+lowercase. Junior does not check that the creator can see the projects, so a
+broad automation can post private project names in its channel. See
+[Automations](/concepts/automations/).
+
 Create the watch or event automation before the webhook arrives. Junior does not replay earlier webhooks.
 
 ## Verify

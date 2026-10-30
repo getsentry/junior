@@ -55,6 +55,10 @@ export function initSentry(): void {
       process.env.NODE_ENV,
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
+    ignoreSpans: [
+      // Vercel health checks
+      { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
+    ],
     dataCollection: {
       // Outgoing calls carry model prompts and provider responses that the
       // payload filter cannot see. Keep only incoming request bodies.

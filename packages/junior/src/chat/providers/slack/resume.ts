@@ -34,9 +34,10 @@ import {
   logException,
   setSpanAttributes,
   setTags,
-  withLogContext,
   type LogContext,
 } from "@/chat/logging";
+import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
@@ -153,6 +154,8 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
   turnId: string;
+  /** Trace of the first slice of the Turn. */
+  traceContext?: TraceContext;
   /** Active durable execution slice being resumed. */
   sliceId?: number;
   channelId: string;
@@ -373,8 +376,10 @@ function buildResumedRun(
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  return withLogContext(getResumeLogContext(args), () =>
-    resumeSlackTurnInContext(args),
+  return await withTurnSpan(
+    getResumeLogContext(args),
+    args.traceContext && { traceContexts: [args.traceContext] },
+    () => resumeSlackTurnInContext(args),
   );
 }
 

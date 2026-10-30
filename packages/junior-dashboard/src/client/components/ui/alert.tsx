@@ -10,7 +10,7 @@ const alertVariants = cva(
         default:
           "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text",
         destructive:
-          "border-rose-300/25 bg-dashboard-surface-raised text-rose-50 *:data-[slot=alert-description]:text-rose-100/70 *:[svg]:text-current",
+          "border-rose-300/20 bg-rose-300/[0.08] text-rose-100 *:data-[slot=alert-description]:text-rose-100/70 *:[svg]:text-rose-300",
       },
     },
     defaultVariants: {

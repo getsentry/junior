@@ -19,6 +19,7 @@ import {
   loadTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { TraceContext } from "@/chat/task-execution/state";
 import {
   ensureConversationWake,
   requestConversationWork,
@@ -29,6 +30,7 @@ export interface PausedTurnRequest {
   conversationId: string;
   destination: Destination;
   expectedVersion: number;
+  traceContext?: TraceContext;
   turnId: string;
 }
 
@@ -90,6 +92,7 @@ export async function getPausedTurnRequest(args: {
     destination: routing.destination,
     turnId: args.turnId,
     expectedVersion: turn.version,
+    traceContext: turn.traceContext,
   };
 }
 

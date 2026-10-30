@@ -1,9 +1,21 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
-import { eventMatches, type Event, type User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import {
+  eventMatches,
+  type Event,
+  type EventData,
+  type EventMatch,
+  type User,
+} from "@sentry/junior-plugin-api";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
+import {
+  automationEventCatalog,
+  registeredEventTriggerProblems,
+  type EventCatalog,
+} from "@/chat/events/catalog";
+import { logWarn } from "@/chat/logging";
 import { clearEventAutomationRuns } from "./run-limit";
 import {
   eventAutomationSchema,
@@ -41,7 +53,7 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
     channelId: record.destination.channelId,
     creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
-    identifier: record.trigger.identifier,
+    identifier: record.trigger.identifier ?? null,
     instruction: record.task.text,
     namespace: record.trigger.namespace,
     record,
@@ -50,16 +62,46 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
   };
 }
 
-/** Decode an event Automation row with its SQL-backed fields. */
-export function parseEventAutomationRow(
-  row: AutomationRow,
-): StoredEventAutomation {
-  const task = eventAutomationSchema.parse({
+function eventAutomationRowInput(row: AutomationRow) {
+  return {
     ...row.record,
     createdAtMs: row.createdAtMs,
     creatorIdentityId: row.creatorIdentityId,
     id: row.id,
+  };
+}
+
+/** Decode an event Automation row with its SQL-backed fields. */
+export function parseEventAutomationRow(
+  row: AutomationRow,
+): StoredEventAutomation {
+  return withRowFields(
+    row,
+    eventAutomationSchema.parse(eventAutomationRowInput(row)),
+  );
+}
+
+/**
+ * Decode a row for Event matching. Log and skip a row that does not parse,
+ * so one bad row cannot stop matching for its whole namespace.
+ */
+function readMatchableEventAutomationRow(
+  row: AutomationRow,
+): StoredEventAutomation | undefined {
+  const parsed = eventAutomationSchema.safeParse(eventAutomationRowInput(row));
+  if (parsed.success) return withRowFields(row, parsed.data);
+  logWarn("event_automation.row.invalid", {
+    "app.task.id": row.id,
+    "app.task.type": "event",
+    "error.message": parsed.error.message,
   });
+  return undefined;
+}
+
+function withRowFields(
+  row: AutomationRow,
+  task: EventAutomation,
+): StoredEventAutomation {
   const title = row.title?.trim();
   return {
     ...task,
@@ -243,25 +285,75 @@ export async function listDeletedEventAutomationsCreatedBy(
 }
 
 /**
- * Collect match keys from live event automations for these identifiers and event types.
- * Does not evaluate match values — only reports keys that filters use.
+ * Select live rows whose identifier is one of these, and rows with no
+ * identifier. A row with no identifier runs for every resource of its
+ * namespace, so it gets every copy of an Event.
  */
-export async function collectEventAutomationMatchKeys(
+function eventIdentifierWhere(identifiers: readonly string[]) {
+  return or(
+    isNull(juniorAutomations.identifier),
+    ...(identifiers.length > 0
+      ? [inArray(juniorAutomations.identifier, [...identifiers])]
+      : []),
+  );
+}
+
+/** SQL for rows whose trigger selects any of these event types. */
+function eventTypesWhere(eventTypes: readonly string[]) {
+  return or(
+    ...eventTypes.map(
+      (eventType) =>
+        sql`${juniorAutomations.record}->'trigger'->'events' @> ${JSON.stringify([eventType])}::jsonb`,
+    ),
+  );
+}
+
+/**
+ * Return why a row must not run for an Event with one of these identifiers,
+ * or nothing when it may.
+ *
+ * The identifier column and the saved trigger must agree. A row with no
+ * identifier must also have a trigger that the enabled `catalog` accepts. A
+ * plugin can later require a filter or stop letting an event run for every
+ * resource, and the row must not stay broad.
+ */
+function eventAutomationGateProblem(
+  row: AutomationRow,
+  task: StoredEventAutomation,
+  identifiers: readonly string[],
+  catalog: EventCatalog,
+): string | undefined {
+  const identifier = task.trigger.identifier;
+  if (identifier !== undefined) {
+    return identifier === row.identifier && identifiers.includes(identifier)
+      ? undefined
+      : "The saved trigger has a different identifier from its row.";
+  }
+  if (row.identifier !== null) {
+    return "The saved trigger has no identifier, but its row has one.";
+  }
+  const problems = registeredEventTriggerProblems(catalog, task.trigger);
+  return problems.length > 0
+    ? problems.map((problem) => problem.message).join(" ")
+    : undefined;
+}
+
+/**
+ * Read the rows that can match an Event: live rows of one team and
+ * namespace whose identifier is one of these, or that have no identifier,
+ * and that select one of these event types. Skip and log a row that does
+ * not parse or that the gate rejects.
+ */
+async function readGatedEventAutomations(
   db: JuniorDatabase,
   input: {
-    eventTypes: string[];
-    identifiers: string[];
+    catalog: EventCatalog;
+    eventTypes: readonly string[];
+    identifiers: readonly string[];
     namespace: string;
     teamId: string;
   },
-): Promise<string[]> {
-  const eventTypes = new Set(
-    input.eventTypes.map((eventType) => eventType.trim()).filter(Boolean),
-  );
-  const identifiers = [
-    ...new Set(input.identifiers.map((value) => value.trim()).filter(Boolean)),
-  ];
-  if (eventTypes.size === 0 || identifiers.length === 0) return [];
+): Promise<StoredEventAutomation[]> {
   const rows = await db
     .select()
     .from(juniorAutomations)
@@ -270,15 +362,84 @@ export async function collectEventAutomationMatchKeys(
         eq(juniorAutomations.kind, "event"),
         eq(juniorAutomations.teamId, input.teamId),
         eq(juniorAutomations.namespace, input.namespace),
-        inArray(juniorAutomations.identifier, identifiers),
+        eventIdentifierWhere(input.identifiers),
+        eventTypesWhere(input.eventTypes),
         eq(juniorAutomations.status, "active"),
       ),
     )
     .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
+  const plugins = automationEventCatalog(input.catalog);
+  return rows.flatMap((row) => {
+    const task = readMatchableEventAutomationRow(row);
+    if (!task) return [];
+    const problem = eventAutomationGateProblem(
+      row,
+      task,
+      input.identifiers,
+      plugins,
+    );
+    if (problem === undefined) return [task];
+    logWarn("event_automation.gate.rejected", {
+      "app.task.id": task.id,
+      "app.task.type": "event",
+      "app.event_automation.skip_reason": problem,
+    });
+    return [];
+  });
+}
+
+/** The filters of a match whose keys are in this data. */
+function knownMatch(
+  match: EventMatch | undefined,
+  data: EventData,
+): EventMatch | undefined {
+  if (!match) return undefined;
+  return Object.fromEntries(
+    Object.entries(match).filter(([key]) => data[key] !== undefined),
+  ) as EventMatch;
+}
+
+/**
+ * Collect match keys from live event automations for these identifiers and
+ * event types, and from automations with no identifier. Does not evaluate
+ * match values, except for automations with no identifier: one whose
+ * filters on the keys in `data` fail adds no keys. So a broad trigger for
+ * one repository does not make every repository load its lazy data.
+ */
+export async function collectEventAutomationMatchKeys(
+  db: JuniorDatabase,
+  input: {
+    catalog: EventCatalog;
+    data?: EventData;
+    eventTypes: string[];
+    identifiers: string[];
+    namespace: string;
+    teamId: string;
+  },
+): Promise<string[]> {
+  const eventTypes = [
+    ...new Set(
+      input.eventTypes.map((eventType) => eventType.trim()).filter(Boolean),
+    ),
+  ];
+  const identifiers = [
+    ...new Set(input.identifiers.map((value) => value.trim()).filter(Boolean)),
+  ];
+  if (eventTypes.length === 0) return [];
+  const tasks = await readGatedEventAutomations(db, {
+    catalog: input.catalog,
+    eventTypes,
+    identifiers,
+    namespace: input.namespace,
+    teamId: input.teamId,
+  });
   const keys = new Set<string>();
-  for (const row of rows) {
-    const task = parseEventAutomationRow(row);
-    if (!task.trigger.events.some((eventType) => eventTypes.has(eventType))) {
+  for (const task of tasks) {
+    if (
+      task.trigger.identifier === undefined &&
+      input.data &&
+      !eventMatches(knownMatch(task.trigger.match, input.data), input.data)
+    ) {
       continue;
     }
     for (const key of Object.keys(task.trigger.match ?? {})) {
@@ -288,32 +449,30 @@ export async function collectEventAutomationMatchKeys(
   return [...keys].sort();
 }
 
-/** Find every live task matching one normalized event. */
+/**
+ * Find every live task matching one normalized event: tasks for its exact
+ * identifier, and tasks with no identifier whose filters match. The gate
+ * skips a row whose trigger and identifier column disagree, and a row with
+ * no identifier whose trigger the enabled `catalog` rejects.
+ */
 export async function findMatchingEventAutomations(
   db: JuniorDatabase,
   event: Event,
   teamId: string,
+  catalog: EventCatalog,
 ): Promise<StoredEventAutomation[]> {
-  const rows = await db
-    .select()
-    .from(juniorAutomations)
-    .where(
-      and(
-        eq(juniorAutomations.kind, "event"),
-        eq(juniorAutomations.teamId, teamId),
-        eq(juniorAutomations.namespace, event.namespace),
-        eq(juniorAutomations.identifier, event.identifier),
-        eq(juniorAutomations.status, "active"),
-      ),
-    )
-    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
-  return rows
-    .map(parseEventAutomationRow)
-    .filter(
-      (task) =>
-        task.trigger.events.includes(event.eventType) &&
-        eventMatches(task.trigger.match, event.data),
-    );
+  const tasks = await readGatedEventAutomations(db, {
+    catalog,
+    eventTypes: [event.eventType],
+    identifiers: [event.identifier],
+    namespace: event.namespace,
+    teamId,
+  });
+  return tasks.filter(
+    (task) =>
+      task.trigger.events.includes(event.eventType) &&
+      eventMatches(task.trigger.match, event.data),
+  );
 }
 
 /**

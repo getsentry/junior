@@ -1,6 +1,10 @@
 import { botConfig } from "@/chat/config";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { CORE_EVENT_NAMESPACE, type EventCatalog } from "@/chat/events/catalog";
+import {
+  CORE_EVENT_NAMESPACE,
+  eventCatalogEntry,
+  type EventCatalog,
+} from "@/chat/events/catalog";
 import { workspaceSnapshotEvents } from "@/chat/sandbox/snapshot/events";
 import {
   SLACK_EVENT_NAMESPACE,
@@ -17,7 +21,7 @@ import {
 export function getEventCatalog(): EventCatalog {
   const snapshot = workspaceSnapshotEvents();
   const catalog: Record<string, EventCatalog[string]> = {
-    [CORE_EVENT_NAMESPACE]: {
+    [CORE_EVENT_NAMESPACE]: eventCatalogEntry({
       displayName: botConfig.userName,
       resourceTypes: [
         ...snapshot.resourceTypes,
@@ -27,6 +31,10 @@ export function getEventCatalog(): EventCatalog {
           suggestedEvents: [],
         },
       ],
+      events: {
+        ...snapshot.events,
+        "timer.fired": { reach: "resource" },
+      },
       limits: {
         ...snapshot.limits,
         timer: {
@@ -35,11 +43,11 @@ export function getEventCatalog(): EventCatalog {
           watchUnavailableMessage: "Use watchTimer to create a timer Watch.",
         },
       },
-    },
-    [SLACK_EVENT_NAMESPACE]: {
+    }),
+    [SLACK_EVENT_NAMESPACE]: eventCatalogEntry({
       ...slackChannelMessageEvents(),
       displayName: "Slack",
-    },
+    }),
   };
   for (const plugin of getPlugins()) {
     const registration = plugin.events;
@@ -54,10 +62,10 @@ export function getEventCatalog(): EventCatalog {
         `Plugin "${plugin.manifest.name}" cannot register events; that namespace is reserved for core events`,
       );
     }
-    catalog[plugin.manifest.name] = {
+    catalog[plugin.manifest.name] = eventCatalogEntry({
       ...registration,
       displayName: plugin.manifest.displayName,
-    };
+    });
   }
   return catalog;
 }

@@ -12,8 +12,14 @@
  * entry with its own key. The append is atomic, so the list order decides
  * which runs fit, even when Events arrive at the same moment. The first runs up to the cap
  * pass, and the rest are refused. A provider retry has the same run key, so it
- * gets the same answer and does not count again. No lock and no
- * read-modify-write are needed.
+ * gets the same answer and does not count again. No lock is needed.
+ *
+ * A run does not append its key when the list already has it. A trigger with
+ * no identifier gets one copy of an Event for each scope, such as each
+ * project of a metric alert, and all copies have one run key. Repeated
+ * entries would fill the list and block the automation, so the limit stays
+ * the same however broad the trigger is. Two copies at the same moment can
+ * still both append, and they count as one run.
  */
 import type { StateAdapter } from "chat";
 import { z } from "zod";
@@ -79,6 +85,16 @@ export function eventAutomationRunLimitReason(): string {
   );
 }
 
+// True when the key has an entry after the last reset entry.
+function hasRunKey(entries: readonly RunEntry[], runKey: string): boolean {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if ("reset" in entry) return false;
+    if (entry.id === runKey) return true;
+  }
+  return false;
+}
+
 /**
  * Count one run of an Event automation, or refuse when its window is full.
  *
@@ -92,16 +108,23 @@ export async function admitEventAutomationRun(args: {
   state?: StateAdapter;
 }): Promise<"allowed" | "limited"> {
   const state = args.state ?? getStateAdapter();
-  await appendRunEntry(state, args.automationId, {
-    atMs: args.nowMs,
-    id: args.runKey,
-  });
+  await state.connect();
+  const readEntries = async () => {
+    const values = await state.getList(runListKey(args.automationId));
+    const entries = values.flatMap((value) => {
+      const entry = runEntrySchema.safeParse(value);
+      return entry.success ? [entry.data] : [];
+    });
+    return { entries, length: values.length };
+  };
+  if (!hasRunKey((await readEntries()).entries, args.runKey)) {
+    await appendRunEntry(state, args.automationId, {
+      atMs: args.nowMs,
+      id: args.runKey,
+    });
+  }
   const windowStartMs = args.nowMs - botConfig.eventAutomationRunWindowMs;
-  const values = await state.getList(runListKey(args.automationId));
-  const entries = values.flatMap((value) => {
-    const entry = runEntrySchema.safeParse(value);
-    return entry.success ? [entry.data] : [];
-  });
+  const { entries, length } = await readEntries();
   // Only runs after the last reset count. A retry finds its entry there too,
   // so a resume or revive also clears the answer for an earlier delivery.
   let lastReset = -1;
@@ -113,7 +136,7 @@ export async function admitEventAutomationRun(args: {
   const oldest = entries[0];
   const full =
     lastReset === -1 &&
-    values.length >= runListMaxLength() &&
+    length >= runListMaxLength() &&
     oldest !== undefined &&
     "atMs" in oldest &&
     oldest.atMs > windowStartMs;

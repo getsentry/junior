@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -250,6 +250,43 @@ describe("Slack channel-message automations", () => {
         trigger: trigger("C999"),
       }),
     ).rejects.toThrow("can watch only the channel where it posts");
+
+    // A trigger with no identifier would read every channel.
+    const {
+      identifier: _identifier,
+      resourceType: _type,
+      ...anyChannel
+    } = trigger();
+    await expect(
+      execute(createEventAutomationTool(channelContext, catalog), {
+        instruction: "Summarize new messages.",
+        title: "Summarize every channel",
+        outcomes: [],
+        trigger: anyChannel,
+      }),
+    ).rejects.toThrow("This source cannot run for every resource.");
+
+    // A message runs only automations that post in its own channel, even
+    // when a saved row names that channel and posts somewhere else.
+    const { automation } = (await execute(
+      createEventAutomationTool(channelContext, catalog),
+      {
+        instruction: "Summarize new messages.",
+        title: "Summarize messages",
+        outcomes: [],
+        trigger: trigger(),
+      },
+    )) as { automation: { id: string } };
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        channelId: "C999",
+        record: sql`jsonb_set(${juniorAutomations.record}, '{destination,channelId}', '"C999"')`,
+      })
+      .where(eq(juniorAutomations.id, automation.id));
+    expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
+    expect(queue.sentRecords()).toEqual([]);
 
     // A DM is not a channel, so the automation could never run there.
     await expect(

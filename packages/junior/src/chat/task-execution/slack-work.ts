@@ -9,7 +9,7 @@ import {
 } from "chat";
 import { z } from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { logException } from "@/chat/logging";
+import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -678,6 +678,7 @@ export function createSlackConversationWorker(
       count: records.length,
       oldestCreatedAtMs: oldestRecord.createdAtMs,
       oldestReceivedAtMs: oldestRecord.receivedAtMs,
+      traceContexts: records.flatMap((record) => record.traceContext ?? []),
     };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
@@ -742,8 +743,9 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit interruptions enter the active turn. Deferred work
-        // stays pending for a normal turn.
+        // Only explicit Slack interruptions enter the active turn. Deferred
+        // work and steered messages from other sources, such as the
+        // dashboard, stay pending for their own turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -751,6 +753,7 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
+              .filter((record) => record.source === "slack")
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({
@@ -830,7 +833,7 @@ export function createSlackConversationWorker(
   };
 }
 
-/** Serialize a Slack message into the generic durable conversation mailbox. */
+/** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
   installation?: SlackInstallationContext;
@@ -874,5 +877,6 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
+    traceContext: getActiveTraceContext(),
   };
 }

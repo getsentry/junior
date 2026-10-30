@@ -26,6 +26,7 @@ import {
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
+  steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
@@ -42,8 +43,11 @@ import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
+  isInlineOutboxMessage,
   mergeConversationMailboxMessages,
   acceptConversationOutboxMessage,
+  reuseConversationMailboxMessages,
+  splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
@@ -130,6 +134,11 @@ export function usePendingArchiveConversationUpdates() {
   });
 }
 
+// Right after a send, Junior usually reads the message within a few seconds.
+// Poll fast for that window only, then fall back to the normal live interval.
+const FAST_POLL_INTERVAL_MS = 500;
+const FAST_POLL_WINDOW_MS = 6_000;
+
 type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
@@ -149,7 +158,11 @@ async function readConversationSnapshot(
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
-  options?: { awaitingMessage?: boolean },
+  options?: {
+    awaitingMessage?: boolean;
+    /** Poll fast until this time so a new send reaches history quickly. */
+    fastPollUntilMs?: number;
+  },
 ) {
   return queryOptions({
     enabled: Boolean(conversationId),
@@ -171,12 +184,14 @@ export function conversationDetailQueryOptions(
       );
     },
     refetchInterval: (query) =>
-      options?.awaitingMessage ||
-      query.state.data?.status === "active" ||
-      Boolean(query.state.data?.mailbox?.messages.length) ||
-      Boolean(query.state.data?.mailbox?.authorization)
-        ? 2_000
-        : 10_000,
+      options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
+        ? FAST_POLL_INTERVAL_MS
+        : options?.awaitingMessage ||
+            query.state.data?.status === "active" ||
+            Boolean(query.state.data?.mailbox?.messages.length) ||
+            Boolean(query.state.data?.mailbox?.authorization)
+          ? 2_000
+          : 10_000,
     retry: false,
   });
 }
@@ -213,6 +228,8 @@ export function useCreateConversation() {
             ...conversationOutboxMessageForSubmit({
               ...args,
               actorIdentity: outboxActorIdentity(queryClient),
+              // A new Conversation has no Turn or queue yet.
+              inline: true,
               messageId: accepted.messageId,
             }),
             status: "accepted",
@@ -261,6 +278,8 @@ export function useForkConversation(sourceConversationId: string) {
               idempotencyKey: args.idempotencyKey,
               message: args.message,
               actorIdentity: outboxActorIdentity(queryClient),
+              // A new fork has no Turn or queue yet.
+              inline: true,
               messageId: accepted.messageId,
             }),
             status: "accepted",
@@ -278,15 +297,20 @@ export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
   const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
-    mutationFn: (args: {
+    mutationFn: ({
+      inline: _inline,
+      ...body
+    }: {
       idempotencyKey: string;
+      /** Show the send in the transcript instead of the queue. */
+      inline?: boolean;
       message: string;
       images?: InputImage[];
     }) =>
       post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-        args,
+        body,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -392,6 +416,52 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           queryKey: conversationDetailQueryKey(conversationId),
         }),
       ]);
+    },
+  });
+}
+
+/** Ask Junior to read the viewer's own queued web messages now. */
+export function useSteerConversationPendingMessages(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { inboundMessageIds: string[] }) =>
+      post(
+        steerConversationPendingMessagesResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages/steer`,
+        args,
+      ),
+    onSuccess: async (result) => {
+      const steered = new Set(result.steeredInboundMessageIds);
+      if (steered.size === 0) return;
+      // A live poll that read the mailbox before the steer would restore
+      // `defer`. Cancel it; onSettled refetches after the write.
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+      queryClient.setQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+        (current) =>
+          current?.mailbox
+            ? {
+                ...current,
+                mailbox: {
+                  ...current.mailbox,
+                  messages: current.mailbox.messages.map((message) =>
+                    steered.has(message.inboundMessageId)
+                      ? { ...message, delivery: "interrupt" as const }
+                      : message,
+                  ),
+                },
+              }
+            : current,
+      );
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }
@@ -627,11 +697,20 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const awaitingMessage = outbox.data.some(
+  const awaitingRows = outbox.data.filter(
     (message) => message.status !== "failed",
   );
+  const latestSendAtMs = Math.max(
+    0,
+    ...awaitingRows.map((message) => Date.parse(message.createdAt)),
+  );
   const detail = useQuery(
-    conversationDetailQueryOptions(conversationId, { awaitingMessage }),
+    conversationDetailQueryOptions(conversationId, {
+      awaitingMessage: awaitingRows.length > 0,
+      fastPollUntilMs: latestSendAtMs
+        ? latestSendAtMs + FAST_POLL_WINDOW_MS
+        : undefined,
+    }),
   );
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
@@ -647,17 +726,23 @@ export function useConversationData(conversationId: string | undefined) {
   // contains its real Message id. History and mailbox arrive in one render.
   useEffect(() => {
     if (!mailbox || !detailData) return;
-    const observedIds = new Set(
+    const queuedIds = new Set(
       mailbox.messages.map((message) => message.messageId),
     );
+    const historyIds = new Set<string>();
     for (const event of detailData.events) {
-      if (event.data.type === "message") observedIds.add(event.data.messageId);
+      if (event.data.type === "message") historyIds.add(event.data.messageId);
     }
     queryClient.setQueryData<ConversationOutboxMessage[]>(
       conversationOutboxQueryKey(conversationId),
       (current) => {
+        // An inline row stays until history has it. The mailbox copy alone
+        // would put it back in the queue.
         const next = current?.filter(
-          (message) => !observedIds.has(message.messageId),
+          (message) =>
+            !historyIds.has(message.messageId) &&
+            (isInlineOutboxMessage(message) ||
+              !queuedIds.has(message.messageId)),
         );
         return next?.length === current?.length ? current : next;
       },
@@ -727,23 +812,37 @@ export function useConversationData(conversationId: string | undefined) {
   const pendingMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
     undefined,
   );
-  const pendingMessages = useMemo(() => {
+  const inlineMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
+    undefined,
+  );
+  const { inlineMessages, pendingMessages } = useMemo(() => {
     // Hide stopped rows from both sources, or the outbox copy of a stopped
     // send would look unseen and come back.
     const stopped = stoppedMessageIds.data;
-    const next = mergeConversationMailboxMessages(
-      stopped.length
-        ? mailbox?.messages.filter(
-            (message) => !stopped.includes(message.inboundMessageId),
-          )
-        : mailbox?.messages,
-      stopped.length
-        ? outbox.data.filter((message) => !stopped.includes(message.messageId))
-        : outbox.data,
-      pendingMessagesRef.current,
+    const server = stopped.length
+      ? mailbox?.messages.filter(
+          (message) => !stopped.includes(message.inboundMessageId),
+        )
+      : mailbox?.messages;
+    const local = stopped.length
+      ? outbox.data.filter((message) => !stopped.includes(message.messageId))
+      : outbox.data;
+    const split = splitInlineMailboxMessages(
+      mergeConversationMailboxMessages(server, local),
+      server,
+      local,
     );
-    pendingMessagesRef.current = next;
-    return next;
+    const queued = reuseConversationMailboxMessages(
+      pendingMessagesRef.current,
+      split.queued,
+    );
+    const inline = reuseConversationMailboxMessages(
+      inlineMessagesRef.current,
+      split.inline,
+    );
+    pendingMessagesRef.current = queued;
+    inlineMessagesRef.current = inline;
+    return { inlineMessages: inline, pendingMessages: queued };
   }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
@@ -797,6 +896,8 @@ export function useConversationData(conversationId: string | undefined) {
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,
+    /** The reader's own sends that the transcript shows before history has them. */
+    inlineMessages,
     pendingMessages,
     loadCompleteTranscript: () => {
       if (!conversationId || !detailData) {

@@ -6,6 +6,7 @@ import {
   pluginEventsSchema,
   promptContextSchema,
   promptMessageSchema,
+  eventDataSchema,
   eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
@@ -22,6 +23,7 @@ import type {
   PluginRouteApp,
   Platform,
   Event,
+  EventData,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -912,6 +914,7 @@ export function getPluginRoutes(options: {
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
+      data?: EventData;
       eventTypes: string[];
       identifiers: string[];
       namespace: string;
@@ -970,6 +973,9 @@ export function getPluginRoutes(options: {
             return [];
           }
           return await options.events.neededMatchKeys({
+            ...(input.data
+              ? { data: eventDataSchema.parse(input.data) }
+              : undefined),
             eventTypes: input.eventTypes,
             identifiers,
             namespace: pluginName,

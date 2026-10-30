@@ -451,6 +451,7 @@ export function normalizeCheckSuiteEvents(
 /** Identifiers and event types one completed check suite may publish. */
 export function parseCheckSuitePublishTargets(body: unknown):
   | {
+      data: { repo: string };
       eventTypes: string[];
       identifiers: string[];
     }
@@ -473,6 +474,9 @@ export function parseCheckSuitePublishTargets(body: unknown):
     );
   }
   return {
+    // Every copy sets this repo, so a broad trigger for another repo adds
+    // no lazy keys.
+    data: { repo: gitHubRepoDataSchema.parse(repo) },
     eventTypes: [eventType],
     identifiers: [...identifiers],
   };

@@ -64,6 +64,8 @@ export type AgentSteeringMessage = {
   text: string;
   timestampMs?: number;
   attachments?: AgentAttachment[];
+  /** Stored images that the agent runner loads into `attachments`. */
+  storedAttachments?: readonly MessageAttachment[];
 };
 
 /** Model-safe input for one asynchronously delegated child-agent task. */

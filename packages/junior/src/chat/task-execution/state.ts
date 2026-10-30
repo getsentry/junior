@@ -103,8 +103,8 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
-/** Sentry trace propagation headers captured when an inbound message arrives. */
-const inboundMessageTraceContextSchema = z
+/** Sentry trace propagation headers. A malformed value is dropped, not rejected. */
+export const traceContextSchema = z
   .object({
     baggage: z.string().optional(),
     sentryTrace: z.string().min(1),
@@ -125,11 +125,13 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
-    traceContext: inboundMessageTraceContextSchema,
+    traceContext: traceContextSchema,
   })
   .strict();
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
+
+export type TraceContext = NonNullable<z.output<typeof traceContextSchema>>;
 
 /** Redis mailbox shape kept for deployed workers that still require this field. */
 const storedInboundMessageSchema = inboundMessageSchema.extend({
@@ -1937,6 +1939,57 @@ export async function cancelHumanFacingPendingMessages(args: {
     );
 
     return { cancelledInboundMessageIds, cancelledMessages };
+  });
+}
+
+/**
+ * Mark one author's queued web messages as interrupts without a worker lease.
+ *
+ * The active Turn drains them at its next model boundary when it belongs to the
+ * same author. Otherwise they start the next Turn ahead of deferred input.
+ */
+export async function steerWebPendingMessages(args: {
+  authorId: string;
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{ steeredInboundMessageIds: string[] }> {
+  const nowMs = args.nowMs ?? now();
+  const requestedIds = new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return { steeredInboundMessageIds: [] };
+    }
+
+    const steeredInboundMessageIds: string[] = [];
+    const pendingMessages = current.execution.pendingMessages.map((message) => {
+      if (
+        message.source !== "web" ||
+        message.delivery !== "defer" ||
+        message.input.authorId !== args.authorId ||
+        !requestedIds.has(message.inboundMessageId)
+      ) {
+        return message;
+      }
+      steeredInboundMessageIds.push(message.inboundMessageId);
+      return { ...message, delivery: "interrupt" as const };
+    });
+    if (steeredInboundMessageIds.length === 0) {
+      return { steeredInboundMessageIds };
+    }
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        { ...current.execution, pendingMessages },
+        nowMs,
+      ),
+    );
+    return { steeredInboundMessageIds };
   });
 }
 

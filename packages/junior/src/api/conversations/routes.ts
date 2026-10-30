@@ -10,6 +10,8 @@ import {
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -44,6 +46,7 @@ import { forkConversationForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
+import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
@@ -279,6 +282,34 @@ export function createConversationRoutes(
         await requireConversationPendingMessages(conversationId, {
           viewer,
         }),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/pending-messages/steer",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      steerConversationPendingMessagesBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        steerConversationPendingMessagesResponseSchema,
+        await steerConversationPendingMessagesForViewer(
+          viewer,
+          conversationId,
+          body,
+        ),
       );
     },
   );

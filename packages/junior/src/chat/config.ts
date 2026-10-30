@@ -3,6 +3,7 @@ import {
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { logWarn } from "@/chat/logging";
@@ -131,6 +132,7 @@ export type SqlDriver = "neon" | "postgres";
 export interface ChatConfig {
   attachmentStorage: AttachmentStorageConfig;
   bot: BotConfig;
+  queue: QueueConfig;
   functionMaxDurationSeconds: number;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
@@ -612,6 +614,7 @@ export function readChatConfig(
   return {
     attachmentStorage: readAttachmentStorageConfig(env),
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
+    queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
     conversationWorkEnabled: parseConversationWorkEnabled(
       env.JUNIOR_CONVERSATION_WORK_ENABLED,

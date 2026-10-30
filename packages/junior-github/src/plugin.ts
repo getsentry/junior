@@ -16,6 +16,7 @@ import {
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { gitHubEventDeclarations } from "./events/declarations.js";
 import {
   loadPullRequestCommitPages,
   loadRepositoryRole,
@@ -171,9 +172,6 @@ export function githubPlugin(
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
-          ),
         },
         {
           type: "release_source",
@@ -192,11 +190,11 @@ export function githubPlugin(
             GITHUB_ISSUE_MATCH_FIELDS,
             GITHUB_PULL_REQUEST_MATCH_FIELDS,
           ),
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
-          ),
         },
       ],
+      events: gitHubEventDeclarations(
+        gitHubPullRequestEventGuidance(options.pullRequestEvents?.guidance),
+      ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },

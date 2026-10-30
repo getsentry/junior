@@ -112,9 +112,19 @@ Watches route events back into an existing conversation.
   and the dashboard editor both use it. Resource types that share match fields,
   such as a repository, merge them with `mergeEventMatchFields`.
 - An unchanged saved trigger is kept. When a plugin change gives it a problem,
-  core reports the trigger as unavailable and lists the problems. The SQL rule
-  in `automations/collection.ts` must give the same result as
-  `eventTriggerProblems`.
+  core reports the trigger as unavailable and lists the problems. The
+  dashboard list, the runtime gate, and the tools all use
+  `eventTriggerProblems`, so no other copy of the rules exists.
+- Each source declares the Event reach and optional guidance of every event
+  type once, in `events`. Registration fails when an event type has no
+  declaration, or when an `{ anyOf }` filter is not set on that event. An event
+  automation trigger with no identifier can select only events with reach
+  `"all"` or `{ anyOf }`, and must set one of the `anyOf` filters. Core merges
+  the filters of every resource type once, when it builds the catalog.
+- A match field may declare `case: "lower"` or `case: "upper"`. Core changes a
+  filter value to that case when it saves a trigger or a Watch, so a value such
+  as `getsentry/Junior` still matches lowercase event data. The plugin decides
+  the case; core only applies it.
 - A resource type may declare the shape of its identifiers. Resource types can
   share event types, so the identifier shows which one a selector names. Core
   rejects a watch or event automation whose identifier does not fit its
@@ -144,9 +154,10 @@ Watches route events back into an existing conversation.
   one Slack user. If the lookup fails, core logs it and delivers the Event
   without people. People are only for mentions. They never grant authority.
   Guidance says when to address them.
-- Resource types may declare optional app guidance per event type. Core inserts
-  that text only for the matching resource type. The prompt applies it within
-  the subscription intent or stored event automation instruction. Keep it separate
+- A source may declare optional app guidance per event type, in `events`. Core
+  inserts that text for every Watch and event automation that gets the event,
+  with or without a resource type. The prompt applies it within the
+  subscription intent or stored event automation instruction. Keep it separate
   from trusted data and untrusted provider content.
 
 ## Add an Event Type
@@ -159,13 +170,22 @@ Watches route events back into an existing conversation.
 3. In the normalizer, parse the webhook with Zod. Return one `EventInput` for
    each identifier that should receive the event, such as the exact resource
    and its broader scopes.
-4. Set the same `eventKey` on every copy, and a provider `occurredAtMs`. Set
-   `terminal` only on the copy for the exact resource, and only when the change
-   ends it.
+4. Set the same `eventKey` and the same `data` on every copy, and a provider
+   `occurredAtMs`. A trigger with no identifier gets every copy, and core
+   matches its filters on each one. Set `terminal` only on the copy for the
+   exact resource, and only when the change ends it.
 5. Put the values that filters use in `data`, and list them in `matchFields`.
-   Use the same keys as other events of the same kind from that service.
-6. Add `guidance` when the agent needs a rule for this event.
-7. Extend the plugin's webhook test with a delivery for the new event.
+   Use the same keys as other events of the same kind from that service. Set
+   `case` on a text field whose values have one case.
+6. Declare the event in the source `events` with its reach. Use `"all"` only
+   for status facts that cause no side effects. Use `{ anyOf }` with the
+   filters that keep a trigger narrow when the event carries private text or
+   makes Junior act. Use `"resource"` when a trigger must name one resource.
+   Add `guidance` there when the agent needs a rule for this event.
+7. When `data` needs a lookup, call `neededMatchKeys` with the values that the
+   plugin already has, such as `repo`. Core then skips triggers with no
+   identifier whose filters on those values fail.
+8. Extend the plugin's webhook test with a delivery for the new event.
 
 ## Timer Watches
 
