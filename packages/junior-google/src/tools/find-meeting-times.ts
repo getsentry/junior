@@ -22,6 +22,7 @@ const DEFAULT_WINDOW_MS = 7 * DAY_MS;
 const clockTimeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
 const inputSchema = z
   .object({
@@ -30,10 +31,15 @@ const inputSchema = z
       .describe(
         "Work emails of the people who must attend. Resolve names with userLookup. The runtime adds the requester as required when it knows their email. To make the requester optional, put their email in optionalAttendees.",
       ),
+    holds: emailListSchema(20)
+      .default([])
+      .describe(
+        'Work emails of attendees who say the busy times on their calendar are holds they can move, such as "do not schedule" or focus blocks. They still attend, and their working hours still apply. Their busy times do not block a slot; slots that avoid them come first. Use the requester\'s own email when the requester says this about their calendar.',
+      ),
     optionalAttendees: emailListSchema(20)
       .default([])
       .describe(
-        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first.',
       ),
     durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
@@ -61,12 +67,23 @@ const inputSchema = z
       .describe(
         "Latest local end, 24-hour HH:MM, in each attendee's own calendar time zone.",
       ),
+    weekdays: z
+      .array(z.enum(WEEKDAYS))
+      .min(1)
+      .optional()
+      .describe(
+        "Only return slots on these days, in the timeZone of the slot labels. Omit to search every weekday.",
+      ),
     maxResults: z.number().int().min(1).max(20).default(3),
   })
   .strict();
 
 const slotSchema = z.object({
   end: z.string(),
+  holdConflicts: z
+    .array(z.string())
+    .optional()
+    .describe("People in holds who have a hold at this time."),
   label: z.string().describe("The slot in the requester's time zone."),
   otherTimeZoneLabels: z
     .array(z.string())
@@ -157,14 +174,23 @@ interface Interval {
 export interface SlotAttendee {
   busy: Interval[];
   email: string;
-  required: boolean;
+  /**
+   * How this person limits a slot. `required`: free and inside working hours.
+   * `holds`: inside working hours; busy times are holds that do not block.
+   * `optional`: never blocks.
+   */
+  role: "required" | "holds" | "optional";
   /** IANA time zone used for this person's working hours. */
   timeZone: string;
 }
 
-interface Candidate extends Interval {
-  date: string;
+interface Conflicts {
+  holdConflicts: string[];
   optionalConflicts: string[];
+}
+
+interface Candidate extends Interval, Conflicts {
+  date: string;
 }
 
 function overlaps(busy: Interval, startMs: number, endMs: number): boolean {
@@ -224,9 +250,11 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
  * Find slots inside every required attendee's working hours, in their own
  * time zone, when they are all free.
  *
- * Optional attendees who are busy or outside their hours do not block a slot.
- * Slots without such conflicts come first. Options are spread across the days
- * of `timeZone` and across each day.
+ * Attendees with holds must be inside their working hours, but their busy
+ * times do not block a slot. Optional attendees who are busy or outside their
+ * hours do not block a slot. Slots without such conflicts come first. Options
+ * are spread across the days of `timeZone` and across each day. With
+ * `weekdays`, only those days of `timeZone` are searched.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
@@ -238,9 +266,10 @@ export function findFreeSlots(input: {
   timeMaxMs: number;
   timeMinMs: number;
   timeZone: string;
+  weekdays?: readonly string[];
   workdayEnd: string;
   workdayStart: string;
-}): Array<Interval & { optionalConflicts: string[] }> {
+}): Array<Interval & Conflicts> {
   const durationMs = input.durationMinutes * 60_000;
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
   const dayStart = clockMinutes(input.workdayStart);
@@ -254,11 +283,7 @@ export function findFreeSlots(input: {
     }
     return localParts(ms, format);
   };
-  const available = (
-    attendee: SlotAttendee,
-    startMs: number,
-    endMs: number,
-  ) => {
+  const inHours = (attendee: SlotAttendee, startMs: number, endMs: number) => {
     const start = partsIn(startMs, attendee.timeZone);
     const end = partsIn(endMs, attendee.timeZone);
     return (
@@ -266,23 +291,40 @@ export function findFreeSlots(input: {
       start.weekday !== "Sun" &&
       start.date === end.date &&
       start.minutes >= dayStart &&
-      end.minutes <= dayEnd &&
-      attendee.busy.every((busy) => !overlaps(busy, startMs, endMs))
+      end.minutes <= dayEnd
     );
   };
-  const required = input.attendees.filter((attendee) => attendee.required);
-  const optional = input.attendees.filter((attendee) => !attendee.required);
+  const free = (attendee: SlotAttendee, startMs: number, endMs: number) =>
+    attendee.busy.every((busy) => !overlaps(busy, startMs, endMs));
+  const fits = (attendee: SlotAttendee, startMs: number, endMs: number) => {
+    if (attendee.role === "optional") return true;
+    if (!inHours(attendee, startMs, endMs)) return false;
+    return attendee.role === "holds" || free(attendee, startMs, endMs);
+  };
+  const holds = input.attendees.filter(({ role }) => role === "holds");
+  const optional = input.attendees.filter(({ role }) => role === "optional");
   const candidates: Candidate[] = [];
 
   let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
   while (startMs + durationMs <= input.timeMaxMs) {
     const endMs = startMs + durationMs;
-    if (required.every((attendee) => available(attendee, startMs, endMs))) {
+    const local = partsIn(startMs, input.timeZone);
+    if (
+      (!input.weekdays || input.weekdays.includes(local.weekday)) &&
+      input.attendees.every((attendee) => fits(attendee, startMs, endMs))
+    ) {
       candidates.push({
-        date: partsIn(startMs, input.timeZone).date,
+        date: local.date,
         endMs,
+        holdConflicts: holds
+          .filter((attendee) => !free(attendee, startMs, endMs))
+          .map((attendee) => attendee.email),
         optionalConflicts: optional
-          .filter((attendee) => !available(attendee, startMs, endMs))
+          .filter(
+            (attendee) =>
+              !inHours(attendee, startMs, endMs) ||
+              !free(attendee, startMs, endMs),
+          )
           .map((attendee) => attendee.email),
         startMs,
       });
@@ -293,20 +335,23 @@ export function findFreeSlots(input: {
     }
   }
 
+  const hasConflicts = (slot: Candidate) =>
+    slot.holdConflicts.length > 0 || slot.optionalConflicts.length > 0;
   const picked = spreadAcrossDays(
-    candidates.filter((slot) => slot.optionalConflicts.length === 0),
+    candidates.filter((slot) => !hasConflicts(slot)),
     input.maxResults,
   );
   picked.push(
     ...spreadAcrossDays(
-      candidates.filter((slot) => slot.optionalConflicts.length > 0),
+      candidates.filter(hasConflicts),
       input.maxResults - picked.length,
     ),
   );
   return picked
     .sort((a, b) => a.startMs - b.startMs)
-    .map(({ endMs, optionalConflicts, startMs }) => ({
+    .map(({ endMs, holdConflicts, optionalConflicts, startMs }) => ({
       endMs,
+      holdConflicts,
       optionalConflicts,
       startMs,
     }));
@@ -378,17 +423,22 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "workdayEnd must be after workdayStart.",
         );
       }
-      // An explicit optional entry for the requester wins over the automatic add.
+      // People with holds still attend. An explicit optional entry for the
+      // requester wins over the automatic add.
+      const named = [...input.attendees, ...input.holds];
       const optionalEmails = new Set(input.optionalAttendees);
-      const attendees = (await withRequester(ctx, input.attendees)).filter(
-        (email) =>
-          input.attendees.includes(email) || !optionalEmails.has(email),
+      const attendees = (await withRequester(ctx, named)).filter(
+        (email) => named.includes(email) || !optionalEmails.has(email),
       );
-      const required = new Set(attendees);
+      const attending = new Set(attendees);
       const optionalAttendees = [...optionalEmails].filter(
-        (email) => !required.has(email),
+        (email) => !attending.has(email),
       );
       const everyone = [...attendees, ...optionalAttendees];
+      const role = (email: string): SlotAttendee["role"] => {
+        if (!attending.has(email)) return "optional";
+        return input.holds.includes(email) ? "holds" : "required";
+      };
       requireAllowedEmails(everyone, ctx.allowedDomains);
 
       const [response, ...timeZones] = await Promise.all([
@@ -429,12 +479,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             startMs: Date.parse(interval.start),
           })),
           email,
-          required: required.has(email),
+          role: role(email),
           timeZone: calendarZone ?? timeZone,
         });
       });
 
-      const slots = !slotAttendees.some((attendee) => attendee.required)
+      const slots = slotAttendees.every(
+        (attendee) => attendee.role === "optional",
+      )
         ? []
         : findFreeSlots({
             attendees: slotAttendees,
@@ -443,6 +495,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             timeMaxMs,
             timeMinMs,
             timeZone,
+            weekdays: input.weekdays,
             workdayEnd: input.workdayEnd,
             workdayStart: input.workdayStart,
           });
@@ -461,6 +514,9 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
                   formatInterval(slot.startMs, slot.endMs, zone),
                 ),
               }
+            : undefined),
+          ...(slot.holdConflicts.length
+            ? { holdConflicts: slot.holdConflicts }
             : undefined),
           ...(slot.optionalConflicts.length
             ? { optionalConflicts: slot.optionalConflicts }

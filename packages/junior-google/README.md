@@ -15,8 +15,14 @@ Gmail and Drive writes are out of scope.
   own calendar. It reads free/busy data and calendar time zones only. It never
   reads event titles or details. Optional attendees do not block a slot.
   Slots where they are free come first, and each slot names the optional
-  attendees who are busy or off hours. Slots are spread across days and
-  across each day, so the requester gets a real choice.
+  attendees who are busy or off hours. Free/busy cannot tell a meeting from a
+  hold, so a person can say their busy times are holds, such as "do not
+  schedule" blocks. They still attend and keep their working hours, but their
+  busy times do not block a slot. Slots that avoid the holds come first, and
+  each slot names the people whose holds it overlaps. A search can be limited
+  to some weekdays, such as Wednesdays and Fridays for a weekly meeting.
+  Slots are spread across days and across each day, so the requester gets a
+  real choice.
 - Every Calendar tool takes an optional `timeZone` for the times it reads and
   shows. Without it, the tool uses the requester's timezone from
   `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.

@@ -41,7 +41,7 @@ describe("findFreeSlots", () => {
             },
           ],
           email: REQUESTER,
-          required: true,
+          role: "required",
           timeZone: LA,
         },
       ],
@@ -69,17 +69,17 @@ describe("findFreeSlots", () => {
     // London (UTC+1) share only 08:00-09:00 in Los Angeles.
     const slots = findFreeSlots({
       attendees: [
-        { busy: [], email: REQUESTER, required: true, timeZone: LA },
+        { busy: [], email: REQUESTER, role: "required", timeZone: LA },
         {
           busy: [],
           email: "bob@example.com",
-          required: true,
+          role: "required",
           timeZone: "Europe/London",
         },
         {
           busy: [],
           email: "dana@example.com",
-          required: false,
+          role: "optional",
           timeZone: "Asia/Tokyo",
         },
       ],
@@ -97,6 +97,7 @@ describe("findFreeSlots", () => {
         // 08:00 LA, 16:00 London, 00:00 Tuesday Tokyo.
         startMs: Date.parse("2026-10-12T15:00:00Z"),
         endMs: Date.parse("2026-10-12T16:00:00Z"),
+        holdConflicts: [],
         optionalConflicts: ["dana@example.com"],
       },
     ]);
@@ -125,11 +126,11 @@ describe("Google Calendar tools", () => {
     vi.unstubAllEnvs();
   });
 
-  it("checks the requester and attendees in their own time zones, and reports people it could not check", async () => {
+  it("checks the requester and attendees in their own time zones on the requested days, and reports people it could not check", async () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
-          // The requester says this all-day block is only a hold.
+          // The requester says this all-day Monday block is only a hold.
           [REQUESTER]: {
             busy: [
               { start: "2026-10-12T16:00:00Z", end: "2026-10-13T00:00:00Z" },
@@ -143,19 +144,21 @@ describe("Google Calendar tools", () => {
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
         },
       }),
+      Response.json({ timeZone: LA }),
       Response.json({ timeZone: "America/New_York" }),
       Response.json({}, { status: 404 }),
-      Response.json({ timeZone: LA }),
     );
 
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
+        holds: [REQUESTER],
         maxResults: 1,
-        optionalAttendees: [REQUESTER],
-        timeMax: "2026-10-13T00:00:00Z",
+        // Monday 09:00 through Tuesday 17:00 in Los Angeles.
+        timeMax: "2026-10-14T00:00:00Z",
         timeMin: "2026-10-12T16:00:00Z",
         timeZone: LA,
+        weekdays: ["Mon"],
       }),
       { toolCallId: "call-1" },
     );
@@ -164,12 +167,12 @@ describe("Google Calendar tools", () => {
     expect(freeBusy.operation).toBe("google.calendar.freebusy.query");
     expect(freeBusy.provider).toBe("google");
     expect((await freeBusy.request.json()).items).toEqual([
+      { id: REQUESTER },
       { id: "bob@example.com" },
       { id: "carol@example.com" },
-      { id: REQUESTER },
     ]);
-    const bobZone = new URL(timeZones[0].request.url);
-    expect(timeZones[0].operation).toBe("google.calendar.events.list");
+    const bobZone = new URL(timeZones[1].request.url);
+    expect(timeZones[1].operation).toBe("google.calendar.events.list");
     expect(bobZone.pathname).toBe(
       "/calendar/v3/calendars/bob%40example.com/events",
     );
@@ -177,14 +180,15 @@ describe("Google Calendar tools", () => {
     expect(bobZone.searchParams.has("timeZone")).toBe(false);
     expect(result).toMatchObject({
       checked: [
-        { email: "bob@example.com", timeZone: "America/New_York" },
         { email: REQUESTER, timeZone: LA },
+        { email: "bob@example.com", timeZone: "America/New_York" },
       ],
-      // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York. The
-      // requester listed themselves as optional, so the hold does not block it.
+      // Monday 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York. The
+      // requester's hold does not block it. Tuesday is free for everyone, but
+      // only Monday was asked for.
       slots: [
         {
-          optionalConflicts: [REQUESTER],
+          holdConflicts: [REQUESTER],
           otherTimeZoneLabels: ["Mon, Oct 12, 13:00 – 13:30 EDT"],
           start: "2026-10-12T17:00:00.000Z",
         },
