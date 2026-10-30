@@ -135,6 +135,21 @@ describe("Automations API", () => {
           90: countSince(90 * dayMs),
         };
       };
+      const costWindows = (...runs: Array<[atMs: number, costUsd: number]>) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const costSince = (agoMs: number) =>
+          Math.round(
+            runs
+              .filter(([atMs]) => atMs >= nowMs - agoMs)
+              .reduce((total, [, costUsd]) => total + costUsd, 0) * 1e12,
+          ) / 1e12;
+        return {
+          1: costSince(1 * dayMs),
+          7: costSince(7 * dayMs),
+          30: costSince(30 * dayMs),
+          90: costSince(90 * dayMs),
+        };
+      };
       const startDate = todayUtc.toISOString().slice(0, 10);
       const scheduledAutomation: ScheduledAutomation = {
         id: "sched_tasks_api",
@@ -420,6 +435,11 @@ describe("Automations API", () => {
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
+            // Spend sums the linked Conversation cost of each run.
+            costUsd: costWindows(
+              [scheduledRun1AtMs, 0.18],
+              [scheduledRun2AtMs, 0.42],
+            ),
             runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             timezone: "UTC",
