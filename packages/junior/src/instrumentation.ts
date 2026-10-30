@@ -56,7 +56,7 @@ export function initSentry(): void {
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
     ignoreSpans: [
-      // Vercel health checks. Match the path: the span name is only `GET` here.
+      // Vercel health checks
       { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
     ],
     dataCollection: {
