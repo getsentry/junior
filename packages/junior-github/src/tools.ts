@@ -10,6 +10,7 @@ import type { GitHubPullRequestSubscriptionConfig } from "./events/pull-request.
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
+import { createGitHubMergePullRequestTool } from "./tools/merge-pull-request.js";
 import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
 import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
@@ -21,6 +22,7 @@ export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
   botEmail?: string,
   pullRequestSubscription?: GitHubPullRequestSubscriptionConfig,
+  mergeRepositories?: ReadonlySet<string>,
 ): Record<string, PluginToolDefinition> {
   return {
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
@@ -33,6 +35,15 @@ export function createGitHubTools(
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     getRelease: createGitHubGetReleaseTool(ctx),
     getRepository: createGitHubGetRepositoryTool(ctx),
+    // Merging stays unregistered unless the app lists merge repositories.
+    ...(mergeRepositories?.size
+      ? {
+          mergePullRequest: createGitHubMergePullRequestTool(ctx, {
+            botEmail,
+            repositories: mergeRepositories,
+          }),
+        }
+      : undefined),
     resolvePullRequestReviewThread:
       createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
     submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(
