@@ -18,7 +18,11 @@ import {
   requestConversationWork,
   startConversationWork,
 } from "@/chat/task-execution/store";
-import { processConversationWork } from "@/chat/task-execution/worker";
+import {
+  processConversationWork,
+  type ConversationWorkerContext,
+  type ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import {
@@ -52,6 +56,7 @@ import {
   SLACK_BOT_USER_ID,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
+  inboundMessage,
   type ConversationWorkQueueTestAdapter,
   handleSlackWebhookAndFlush,
   slackEnvelope,
@@ -66,23 +71,34 @@ interface ProcessQueuedSlackWorkArgs {
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
   runNextPausedTurn?: SlackWorkerOptions["runNextPausedTurn"];
+  /** Run a non-Slack attempt, as the app gives it to another worker. */
+  runOtherSource?: (
+    context: ConversationWorkerContext,
+  ) => Promise<ConversationWorkerResult>;
   softYieldAfterMs?: number;
   runtime: SlackWorkerOptions["runtime"];
   state: StateAdapter;
 }
 
 function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
+  const slackWorker = createSlackConversationWorker({
+    getSlackAdapter: args.getSlackAdapter,
+    lookupSlackUser: args.lookupSlackUser,
+    runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
+    runtime: args.runtime,
+    state: args.state,
+  });
+  const runOtherSource = args.runOtherSource;
   return processConversationQueueMessage(args.queue.takeMessage(), {
     nowMs: args.nowMs,
     queue: args.queue,
     softYieldAfterMs: args.softYieldAfterMs,
-    run: createSlackConversationWorker({
-      getSlackAdapter: args.getSlackAdapter,
-      lookupSlackUser: args.lookupSlackUser,
-      runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
-      runtime: args.runtime,
-      state: args.state,
-    }),
+    run: runOtherSource
+      ? async (context) =>
+          context.attempt.messages[0]?.source === "slack"
+            ? await slackWorker(context)
+            : await runOtherSource(context)
+      : slackWorker,
     state: args.state,
   });
 }
@@ -893,6 +909,69 @@ describe("Slack conversation work execution", () => {
       runtime,
       state,
     });
+  });
+
+  it("leaves a steered web message pending during a Slack turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+          ts: "1712345.0001",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    const injected: string[][] = [];
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (_thread, _message, hooks) => {
+        await hooks.ack?.();
+        // A dashboard reader steers their queued message during the Slack turn.
+        await appendInboundMessage({
+          message: inboundMessage("web-steered", {
+            input: { authorId: "dashboard:reader", text: "steer from web" },
+            source: "web",
+          }),
+          state,
+        });
+        await hooks.drainSteeringMessages?.(async (steering) => {
+          injected.push(steering.map((candidate) => candidate.message.id));
+          return steering.map((candidate) => candidate.inboundMessageId);
+        });
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("unexpected subscribed route");
+      },
+    };
+    // The app gives web input to its own worker after the Slack turn.
+    const webAttempts: string[][] = [];
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runOtherSource: async (context) => {
+          webAttempts.push(
+            context.attempt.messages.map((message) => message.inboundMessageId),
+          );
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+        runtime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(injected).toEqual([]);
+    expect(webAttempts).toEqual([["web-steered"]]);
   });
 
   it("leaves events deferred during an active turn", async () => {
