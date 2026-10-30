@@ -4,6 +4,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../styles";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { Button } from "../components/ui/button";
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "../components/ui/button-group";
 import { Skeleton } from "../components/ui/skeleton";
 import type { ConversationTranscript } from "../types";
 import { useEventTime } from "./eventTime";
@@ -11,8 +15,9 @@ import { EventDetails } from "./EventDetails";
 import { ForkConversationButton } from "./ForkConversationButton";
 
 // Step buttons keep focus at the ends of the log, so style the ARIA state.
+// They sit in one bordered group, so they are a little smaller than `size-9`.
 const stepButtonClass =
-  "data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted";
+  "size-8 data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted";
 
 /**
  * Show the selected event without blocking the main conversation's event log.
@@ -59,7 +64,10 @@ export function ConversationEventDetails(props: {
   );
   const actions =
     onSelect && event ? (
-      <>
+      <ButtonGroup
+        aria-label="Event navigation"
+        className="rounded-md border border-dashboard-border"
+      >
         <Button
           aria-label="Previous event"
           className={stepButtonClass}
@@ -73,6 +81,7 @@ export function ConversationEventDetails(props: {
         >
           <ChevronUp aria-hidden="true" size={15} />
         </Button>
+        <ButtonGroupSeparator />
         <Button
           aria-label="Next event"
           className={stepButtonClass}
@@ -86,7 +95,7 @@ export function ConversationEventDetails(props: {
         >
           <ChevronDown aria-hidden="true" size={15} />
         </Button>
-      </>
+      </ButtonGroup>
     ) : undefined;
 
   return (

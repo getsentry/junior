@@ -126,7 +126,8 @@ places `ConversationEventDetails` beside the log in the page panel. Selecting
 another row changes the event and resets its scroll position and disclosures.
 Closing returns focus to that row. Switching Conversations removes the panel.
 
-The previous and next controls select the adjacent visible row. They follow
+The previous and next controls select the adjacent visible row. They form one
+`ui/button-group` named "Event navigation". They follow
 the event search, like Up and Down. They are necessary below 1280px, where the
 sheet covers the log. At the ends of the list, the control is disabled but
 keeps focus. The sheet title is the event type. The header shows the event
