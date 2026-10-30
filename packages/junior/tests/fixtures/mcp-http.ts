@@ -105,3 +105,15 @@ export async function submitConsent(args: {
     body: new URLSearchParams({ action: args.action, csrf: args.csrf }),
   });
 }
+
+/** POST one form-encoded request to the MCP token endpoint. */
+export async function requestTokens(
+  app: Hono,
+  params: Record<string, string>,
+): Promise<Response> {
+  return await app.request(`${MCP_TEST_ORIGIN}/api/mcp/oauth/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params),
+  });
+}

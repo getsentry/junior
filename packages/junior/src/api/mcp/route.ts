@@ -11,6 +11,7 @@ import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
   MCP_PATH,
+  MCP_TOKEN_PATH,
   MCP_RESOURCE_METADATA_PATH,
   authorizationServerMetadata,
   protectedResourceMetadata,
@@ -18,6 +19,7 @@ import {
   type McpUrls,
 } from "./metadata";
 import type { McpState } from "./state";
+import { handleMcpToken } from "./token";
 
 /** Host paths that the app forwards to the MCP handler. */
 export const MCP_ROUTE_PATHS = [
@@ -25,6 +27,7 @@ export const MCP_ROUTE_PATHS = [
   MCP_RESOURCE_METADATA_PATH,
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
+  MCP_TOKEN_PATH,
 ];
 
 /** Settings for the MCP HTTP handler. */
@@ -67,6 +70,9 @@ export function createMcpHttpHandler(
       state: options.state,
       urls: urls(c.req.raw),
     }),
+  );
+  app.post(MCP_TOKEN_PATH, (c) =>
+    handleMcpToken({ request: c.req.raw, state: options.state }),
   );
   app.on(["GET", "POST", "DELETE"], MCP_PATH, (c) =>
     unauthorized(urls(c.req.raw)),
