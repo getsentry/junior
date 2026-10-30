@@ -27,7 +27,10 @@ import { ImageAttachment } from "../components/ImageAttachment";
 import { ParticipantAvatar } from "../components/ParticipantAvatarStack";
 import { Spinner } from "../components/ui/spinner";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
-import { conversationAttachmentUrl } from "./TranscriptAttachment";
+import {
+  conversationAttachmentUrl,
+  inputImageSrc,
+} from "./TranscriptAttachment";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -207,7 +210,7 @@ function PendingAttachmentThumbnails(props: {
           filename={image.filename}
           imageClassName={thumbnailClassName}
           key={`local:${index}`}
-          src={`data:${image.contentType};base64,${image.data}`}
+          src={inputImageSrc(image)}
           triggerClassName={triggerClassName}
         />
       ))}
