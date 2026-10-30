@@ -87,6 +87,11 @@ export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }
 
+/** Build the dashboard URL where a viewer connects plugin accounts. */
+export function getDashboardConnectionsLink(): string | undefined {
+  return resolveDashboardPath("/settings/connections");
+}
+
 /** Public icon asset URL. Headless and local installs keep text-only identity. */
 export function getDashboardObjectIconLink(
   icon: ObjectIconName,

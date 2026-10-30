@@ -593,6 +593,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Host-owned dashboard link to the Automation that started this run. */
   automationLink?: { url: string };
+  /**
+   * Host-owned dashboard link where the current Actor connects plugin
+   * accounts. Missing when the dashboard is disabled.
+   */
+  connectionsLink?: { url: string };
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

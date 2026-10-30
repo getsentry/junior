@@ -270,6 +270,25 @@ function isDefinitiveGitHubPullRequestCreateRejection(
   return [400, 401, 404, 410, 422].includes(error.status);
 }
 
+/**
+ * Tell readers why a person's pull request has no assignee, and link to the
+ * host page where they connect GitHub. A failed requester lookup adds nothing
+ * because the link state is unknown.
+ */
+function appendUnassignedNotice(
+  body: string,
+  requester: GitHubRequester | undefined,
+  connectionsUrl: string | undefined,
+): string {
+  if (!requester || linkedGitHubLogin(requester.user)) return body;
+  const connect = connectionsUrl
+    ? ` [Connect your GitHub account](${connectionsUrl}) to be assigned to future pull requests.`
+    : "";
+  const notice = `> [!NOTE]\n> This pull request has no assignee because the requester has not connected a GitHub account.${connect}`;
+  const normalizedBody = body.trimEnd();
+  return normalizedBody ? `${normalizedBody}\n\n${notice}` : notice;
+}
+
 /** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
 function createGitHubPullRequestRequest(
   conversationId: string,
@@ -284,7 +303,11 @@ function createGitHubPullRequestRequest(
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
+      appendUnassignedNotice(
+        appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
+        requester,
+        ctx.connectionsLink?.url,
+      ),
       conversationId,
       dashboardUrl,
     ),

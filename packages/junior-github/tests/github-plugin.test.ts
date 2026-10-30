@@ -359,6 +359,7 @@ async function grantForEgress(input: {
 
 function githubToolsContext(input?: {
   actor?: TestActor;
+  connectionsLink?: string;
   conversationId?: string;
   conversationLink?: string;
   egressFetch?: (request: {
@@ -391,6 +392,9 @@ function githubToolsContext(input?: {
       conversationId,
     },
     embedder: {},
+    ...(input?.connectionsLink
+      ? { connectionsLink: { url: input.connectionsLink } }
+      : undefined),
     ...(input?.conversationLink
       ? { slack: { conversationLink: { url: input.conversationLink } } }
       : undefined),
@@ -1768,8 +1772,54 @@ Conversation: \`local:test:old-conversation\`
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body",
+      body: "PR body\n\n> [!NOTE]\n> This pull request has no assignee because the requester has not connected a GitHub account.",
     });
+  });
+
+  it("links unlinked requesters to the connections page instead of assigning", async () => {
+    const ctx = githubToolsContext({
+      actor: {
+        platform: "slack",
+        teamId: "T1",
+        userId: "U039RR91S",
+      },
+      connectionsLink: "https://junior.example.com/settings/connections",
+      resolveActor: async () => ({
+        identity: {
+          id: "identity-1",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+          providerTenantId: "T1",
+        },
+        user: {
+          displayName: "David Cramer",
+          email: "david@example.com",
+          id: "user-1",
+          identities: [],
+        },
+      }),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+      },
+      { toolCallId: "call-create-unlinked-pull-request" },
+    );
+
+    expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
+      "github.pull.create",
+    ]);
+    await expect(ctx.egressRequests()[0].request.json()).resolves.toMatchObject(
+      {
+        body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->\n\n> [!NOTE]\n> This pull request has no assignee because the requester has not connected a GitHub account. [Connect your GitHub account](https://junior.example.com/settings/connections) to be assigned to future pull requests.",
+      },
+    );
   });
 
   it("returns the created pull request when requester lookup fails", async () => {
