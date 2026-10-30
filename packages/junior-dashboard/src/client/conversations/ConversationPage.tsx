@@ -35,6 +35,7 @@ import {
 } from "./conversationRoutes";
 import {
   ConversationComposer,
+  restoreStoredDraftText,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
 import { readStoredComposerImages } from "./ComposerImages";
@@ -662,6 +663,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           props.conversationId,
           message.attachments,
         );
+        // The reader left during the read. Keep the message in the queue.
+        if (!composerRef.current) return;
         const result = await editCancelRef.current.mutateAsync({
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
@@ -672,10 +675,14 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           setQueueActionError("Junior already read that message.");
           return;
         }
-        composerRef.current?.restoreMessage({
-          images,
-          text: message.text ?? "",
-        });
+        const restored = { images, text: message.text ?? "" };
+        if (composerRef.current) {
+          composerRef.current.restoreMessage(restored);
+        } else {
+          // The reader left during the cancel. Keep the text in the saved
+          // draft so it is there when they come back.
+          restoreStoredDraftText(props.conversationId, restored.text);
+        }
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {

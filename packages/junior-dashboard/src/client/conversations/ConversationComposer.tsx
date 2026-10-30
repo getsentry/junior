@@ -112,7 +112,7 @@ type ConversationComposerProps = {
 export const ConversationComposer = memo(function ConversationComposer(
   props: ConversationComposerProps,
 ) {
-  const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
+  const storageKey = draftStorageKey(props.draftId);
   const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
@@ -326,11 +326,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
-    const current = draftRef.current.text;
-    const next: ConversationDraft = {
-      ...draftRef.current,
-      text: current.trim() ? `${text}\n${current}` : text,
-    };
+    const next = withPrependedText(draftRef.current, text);
     replaceMessage(next);
     storeDraft(storageKey, next);
   };
@@ -354,7 +350,8 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   useImperativeHandle(props.ref, () => ({
     restoreMessage: (message) => {
-      prependDraftText(message.text);
+      // An image-only message has no text to put ahead of the draft.
+      if (message.text.trim()) prependDraftText(message.text);
       const restoredImages = message.images ?? [];
       if (restoredImages.length) {
         const merged = [...restoredImages, ...imagesRef.current];
@@ -613,6 +610,30 @@ function readStoredDraft(storageKey: string): ConversationDraft {
     // Storage can be unavailable in private browsing or contain stale data.
   }
   return emptyDraft();
+}
+
+function draftStorageKey(draftId: string): string {
+  return `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(draftId)}`;
+}
+
+function withPrependedText(
+  draft: ConversationDraft,
+  text: string,
+): ConversationDraft {
+  return {
+    ...draft,
+    text: draft.text.trim() ? `${text}\n${draft.text}` : text,
+  };
+}
+
+/**
+ * Put queued text ahead of the saved draft when the composer is not mounted.
+ * The composer reads the saved draft the next time it opens.
+ */
+export function restoreStoredDraftText(draftId: string, text: string): void {
+  if (!text.trim()) return;
+  const storageKey = draftStorageKey(draftId);
+  storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {
