@@ -323,7 +323,14 @@ cache keeps the file for the later runs of a pull request.
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
-  the results for one test.
+  the results for one test. Give it a list for the same results on every
+  query, or a function that gets the query, so that each search can find the
+  page that it asks for.
+- `mockWebSites()` from the same file gives `webFetch` one page for each host
+  in one test. Every path on the host, with or without `www.`, gets that page.
+  Use a real page of the site, so the agent reads what a real user's agent
+  would read. Other hosts go to Roach. The `bash` tool in the Vercel Sandbox
+  does not use these mocks.
 
 ## Recordings
 

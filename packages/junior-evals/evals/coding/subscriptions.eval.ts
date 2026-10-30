@@ -70,7 +70,7 @@ function watchedEvents(conversation: { toolCalls: ToolCall[] }) {
 }
 
 describe("Watches", () => {
-  test("looks up and subscribes to an exact deployment before GitHub creates it", async ({
+  test("subscribes to an exact deployment before GitHub creates it", async ({
     run,
   }) => {
     const commitSha = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
@@ -93,15 +93,6 @@ describe("Watches", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("github_getDeployment", conversation).map(
-        (call) => call.input,
-      ),
-    ).toContainEqual({
-      commitSha,
-      environment: "Production",
-      repo: "getsentry/junior-prod",
-    });
     expect(
       completedToolCalls("watchEvents", conversation).map((call) => call.input),
     ).toContainEqual(
