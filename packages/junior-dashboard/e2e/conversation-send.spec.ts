@@ -220,9 +220,8 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
-  await expect(
-    pending.getByText("dev@example.com", { exact: true }),
-  ).toBeVisible();
+  // The author avatar carries the name and email for hover and screen readers.
+  await expect(pending.getByLabel(/dev@example\.com/)).toBeVisible();
   await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
   await expect(details).toBeVisible();
@@ -671,4 +670,129 @@ test("stops the active Turn and returns queued text to the composer", async ({
   queued = [];
   active = false;
   await expect(stop).toBeHidden({ timeout: 15_000 });
+});
+
+test("edits a queued message back into the composer", async ({
+  page,
+  dashboard,
+}) => {
+  const conversationId = "slack:CQA123:1770000000.000100";
+  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
+  const createdAt = "2026-06-12T00:00:00.000Z";
+  const queuedMessage: ConversationPendingMessage & { text: string } = {
+    actorIdentity: { email: "dev@example.com" },
+    attachments: [
+      {
+        bytes: 18211,
+        contentType: "image/png",
+        filename: "queued-chart.png",
+        id: "qa-chart-png",
+      },
+    ],
+    createdAt,
+    receivedAt: createdAt,
+    delivery: "defer",
+    inboundMessageId: "queued-edit",
+    messageId: "queued-edit",
+    role: "user",
+    source: "web",
+    text: "Queued follow-up",
+  };
+  // Junior reads this one before the edit lands, so the cancel finds nothing.
+  const readMessage = {
+    ...queuedMessage,
+    attachments: undefined,
+    inboundMessageId: "queued-read",
+    messageId: "queued-read",
+    text: "Already read",
+  };
+  let queued: ConversationPendingMessage[] = [queuedMessage, readMessage];
+  await page.route(`${path}/pending-messages`, async (route) => {
+    if (route.request().method() !== "DELETE") {
+      await route.fulfill({
+        json: { conversationId, generatedAt: createdAt, messages: queued },
+      });
+      return;
+    }
+    const [id] = route.request().postDataJSON().inboundMessageIds as string[];
+    const cancelled = id === queuedMessage.inboundMessageId ? [id] : [];
+    queued = queued.filter((message) => message.inboundMessageId !== id);
+    await route.fulfill({
+      json: {
+        cancelledCount: cancelled.length,
+        cancelledInboundMessageIds: cancelled,
+        conversationId,
+      },
+    });
+  });
+  await page.route(path, async (route) => {
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), "if-none-match": "" },
+    });
+    const detail = await response.json();
+    await route.fulfill({
+      response,
+      json: { ...detail, isParticipant: true, status: "active" },
+    });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const composer = page.getByLabel("Continue this conversation");
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
+  await expect(
+    pending.getByRole("img", { name: "queued-chart.png" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-queue-compact");
+
+  // A draft with no room for the queued image keeps the message queued.
+  await composer.evaluate((element, data) => {
+    const dataTransfer = new DataTransfer();
+    for (const name of ["one.png", "two.png", "three.png"]) {
+      dataTransfer.items.add(
+        new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, {
+          type: "image/png",
+        }),
+      );
+    }
+    element.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
+    );
+  }, mockChartPng.toString("base64"));
+  await expect(page.getByRole("img", { name: "three.png" })).toBeVisible();
+  await pending
+    .getByRole("button", { name: "Edit queued message" })
+    .first()
+    .click();
+  await expect(
+    page.getByText("Remove some draft images to edit that message."),
+  ).toBeVisible();
+  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
+  for (const name of ["one.png", "two.png", "three.png"]) {
+    await page.getByRole("button", { name: `Remove ${name}` }).click();
+  }
+
+  // Text goes ahead of the draft and the image comes back with it.
+  await composer.fill("Draft in progress");
+  await pending
+    .getByRole("button", { name: "Edit queued message" })
+    .first()
+    .click();
+  await expect(composer).toHaveValue(
+    `${queuedMessage.text}\nDraft in progress`,
+  );
+  await expect(page.getByRole("img", { name: "queued-chart.png" })).toHaveCount(
+    1,
+  );
+  await expect(pending.getByText(queuedMessage.text)).toBeHidden();
+
+  await pending.getByRole("button", { name: "Edit queued message" }).click();
+  await expect(
+    page.getByText("Junior already read that message."),
+  ).toBeVisible();
+  await expect(composer).toHaveValue(
+    `${queuedMessage.text}\nDraft in progress`,
+  );
 });

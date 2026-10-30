@@ -1,14 +1,20 @@
 import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
-import { ComposerImages, readComposerImages } from "./ComposerImages";
+import {
+  ComposerImages,
+  composerImagesFit,
+  readComposerImages,
+} from "./ComposerImages";
 import {
   memo,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { ImagePlus, Send, Square } from "lucide-react";
 
@@ -56,6 +62,14 @@ export function conversationAttemptForSubmit(
   };
 }
 
+/** Imperative composer actions for the reply footer. */
+export type ConversationComposerHandle = {
+  /** True when the draft has room for these images right now. */
+  canRestoreImages(images: readonly InputImage[]): boolean;
+  /** Put queued text and images ahead of the draft. Queued images win. */
+  restoreMessage(message: { images?: InputImage[]; text: string }): void;
+};
+
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
@@ -73,6 +87,8 @@ type ConversationComposerProps = {
    * the pending queue instead.
    */
   restoreDraftOnError?: boolean;
+  /** Lets the parent put a message taken out of the queue back in the draft. */
+  ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   onFocus?: () => void;
   onSubmit(
@@ -93,7 +109,7 @@ type ConversationComposerProps = {
 export const ConversationComposer = memo(function ConversationComposer(
   props: ConversationComposerProps,
 ) {
-  const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
+  const storageKey = draftStorageKey(props.draftId);
   const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
@@ -184,7 +200,18 @@ export const ConversationComposer = memo(function ConversationComposer(
     setReadingImages(true);
     setImageError(undefined);
     try {
-      replaceImages(await readComposerImages(files, imagesRef.current));
+      const before = imagesRef.current;
+      const added = (await readComposerImages(files, before)).slice(
+        before.length,
+      );
+      // An edit can restore images during the read. Add to those images
+      // instead of replacing them.
+      const next = [...imagesRef.current, ...added];
+      if (!composerImagesFit(next)) {
+        setImageError("Attach up to 3 images that total 3 MB or less.");
+      } else {
+        replaceImages(next);
+      }
       textareaRef.current?.focus({ preventScroll: true });
     } catch (error) {
       setImageError(
@@ -306,6 +333,12 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   // Put queued text back ahead of anything the reader already typed.
+  const prependDraftText = (text: string) => {
+    const next = withPrependedText(draftRef.current, text);
+    replaceMessage(next);
+    storeDraft(storageKey, next);
+  };
+
   const stopTurn = async () => {
     if (!props.onStop || stoppingRef.current) return;
     stoppingRef.current = true;
@@ -319,15 +352,32 @@ export const ConversationComposer = memo(function ConversationComposer(
       stoppingRef.current = false;
     }
     if (!restored) return;
-    const current = draftRef.current.text;
-    const next: ConversationDraft = {
-      ...draftRef.current,
-      text: current.trim() ? `${restored}\n${current}` : restored,
-    };
-    replaceMessage(next);
-    storeDraft(storageKey, next);
+    prependDraftText(restored);
     textareaRef.current?.focus({ preventScroll: true });
   };
+
+  useImperativeHandle(props.ref, () => ({
+    canRestoreImages: (images) =>
+      !images.length || composerImagesFit([...images, ...imagesRef.current]),
+    restoreMessage: (message) => {
+      // An image-only message has no text to put ahead of the draft.
+      if (message.text.trim()) prependDraftText(message.text);
+      const restoredImages = message.images ?? [];
+      if (restoredImages.length) {
+        // The queued images already left the queue, so they win. A draft
+        // image added during the cancel stays only while it still fits.
+        const merged = [...restoredImages];
+        for (const image of imagesRef.current) {
+          if (composerImagesFit([...merged, image])) merged.push(image);
+        }
+        if (merged.length < restoredImages.length + imagesRef.current.length) {
+          setImageError("Some draft images did not fit. Add them again.");
+        }
+        replaceImages(merged);
+      }
+      textareaRef.current?.focus({ preventScroll: true });
+    },
+  }));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -567,6 +617,30 @@ function readStoredDraft(storageKey: string): ConversationDraft {
     // Storage can be unavailable in private browsing or contain stale data.
   }
   return emptyDraft();
+}
+
+function draftStorageKey(draftId: string): string {
+  return `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(draftId)}`;
+}
+
+function withPrependedText(
+  draft: ConversationDraft,
+  text: string,
+): ConversationDraft {
+  return {
+    ...draft,
+    text: draft.text.trim() ? `${text}\n${draft.text}` : text,
+  };
+}
+
+/**
+ * Put queued text ahead of the saved draft when the composer is not mounted.
+ * The composer reads the saved draft the next time it opens.
+ */
+export function restoreStoredDraftText(draftId: string, text: string): void {
+  if (!text.trim()) return;
+  const storageKey = draftStorageKey(draftId);
+  storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {
