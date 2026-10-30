@@ -52,6 +52,11 @@ Canonical words used across Junior's code and documentation.
   fields that the agent or tools need. Those fields do not select the runtime.
   A Turn stores the Actor selected from the input that started it. Steering
   inputs keep their own Actors.
+- **Owner**: the Identity that started a root Conversation. It is a human for
+  Slack, web, and fork Conversations. It is the system Identity for
+  Automation runs, plugin dispatch, and the local CLI. A child Conversation
+  uses the Owner of its root. The owner of an Automation is its creator. That
+  is a different thing.
 - **Automation**: a saved instruction that Junior runs later. It has an owner,
   a trigger, an instruction, and an ordered list of outcomes.
 - **Schedule**: a time-based trigger for an Automation.

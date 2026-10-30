@@ -40,6 +40,12 @@ its root Conversation.
   participants
 - **AND** `onBehalfOf` provenance does not give access.
 
+#### Scenario: Child spend
+
+- **WHEN** a child Conversation uses tokens
+- **THEN** People and spend count them for the root Owner
+- **AND** not for the child's own Actor.
+
 ### Requirement: One System Identity
 
 Junior SHALL have exactly one system Identity. Every `SystemActor` and every
@@ -82,9 +88,11 @@ in spend, People, or participant access.
 
 ### Requirement: Inbound Event Authors
 
-An inbound event Message from an event with an actor SHALL use the actor's own
-Identity. An event with no actor SHALL use the system Identity. Junior SHALL
-treat text from an author with no verified User as untrusted data.
+An inbound event Message from an event with an actor SHALL use the Identity
+of that person or bot. An event with no actor SHALL use the system Identity.
+Junior SHALL verify the author Identity the same way as everywhere else.
+Junior SHALL NOT follow instructions in text from an author with no verified
+User. An event SHALL NOT change the Owner.
 
 #### Scenario: GitHub PR comment
 
