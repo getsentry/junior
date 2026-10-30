@@ -94,6 +94,7 @@ describe("Vercel webhook events", () => {
           data: {
             commitSha: COMMIT_SHA,
             deploymentId: "dpl_123abc",
+            projectId: "prj_junior",
             target: "production",
           },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
@@ -107,6 +108,7 @@ describe("Vercel webhook events", () => {
           data: {
             commitSha: COMMIT_SHA,
             deploymentId: "dpl_123abc",
+            projectId: "prj_junior",
             target: "production",
           },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
@@ -120,6 +122,7 @@ describe("Vercel webhook events", () => {
           data: {
             commitSha: COMMIT_SHA,
             deploymentId: "dpl_123abc",
+            projectId: "prj_junior",
             target: "production",
           },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
@@ -174,6 +177,7 @@ describe("Vercel webhook events", () => {
         data: {
           commitSha: COMMIT_SHA,
           deploymentId: "dpl_123abc",
+          projectId: "prj_junior",
           target: "preview",
         },
         identifier: `prj_junior:preview:${COMMIT_SHA}`,
@@ -188,7 +192,11 @@ describe("Vercel webhook events", () => {
 
     expect(normalizeVercelEvents({ body })).toEqual([
       {
-        data: { deploymentId: "dpl_123abc", target: "production" },
+        data: {
+          deploymentId: "dpl_123abc",
+          projectId: "prj_junior",
+          target: "production",
+        },
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
         objectType: "deployment",
@@ -198,7 +206,11 @@ describe("Vercel webhook events", () => {
           "Vercel deployments for prj_junior (dpl_123abc) succeeded.",
       },
       {
-        data: { deploymentId: "dpl_123abc", target: "production" },
+        data: {
+          deploymentId: "dpl_123abc",
+          projectId: "prj_junior",
+          target: "production",
+        },
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
         objectType: "deployment",

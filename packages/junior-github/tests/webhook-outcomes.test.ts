@@ -791,9 +791,7 @@ describe("GitHub webhook events", () => {
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
-              scope: "check_suite",
               suiteConclusion: "failure",
-              headSha: "abcdef1234567890",
               checkSuiteId: 99,
               checkSuiteUrl:
                 "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
@@ -811,9 +809,7 @@ describe("GitHub webhook events", () => {
             data: {
               repo: "getsentry/junior",
               pullRequest: 947,
-              scope: "check_suite",
               suiteConclusion: "failure",
-              headSha: "abcdef1234567890",
               checkSuiteId: 99,
               checkSuiteUrl:
                 "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
@@ -873,10 +869,8 @@ describe("GitHub webhook events", () => {
           "GitHub repository getsentry/junior checks failed for abcdef123456 on main.",
         data: {
           repo: "getsentry/junior",
-          scope: "check_suite",
           suiteConclusion: "failure",
           headBranch: "main",
-          headSha: "abcdef1234567890",
           checkSuiteId: 55,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=55",
@@ -924,10 +918,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 946,
-          scope: "check_suite",
           suiteConclusion: "failure",
           headBranch: "feature/checks",
-          headSha: "abcdef1234567890",
           checkSuiteId: 66,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
@@ -944,10 +936,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 946,
-          scope: "check_suite",
           suiteConclusion: "failure",
           headBranch: "feature/checks",
-          headSha: "abcdef1234567890",
           checkSuiteId: 66,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
@@ -988,9 +978,7 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 10,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
@@ -1007,9 +995,7 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 10,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
@@ -1026,9 +1012,7 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 11,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
@@ -1045,9 +1029,7 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 11,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
@@ -1101,9 +1083,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 691,
-          scope: "check_suite",
           suiteConclusion: "failure",
-          headSha: "abcdef1234567890abcdef1234567890abcdef12",
+          commitSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
@@ -1137,9 +1118,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 691,
-          scope: "check_suite",
           suiteConclusion: "failure",
-          headSha: "abcdef1234567890abcdef1234567890abcdef12",
+          commitSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
@@ -1229,9 +1209,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/sentry",
           pullRequest: 999001,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          commitSha: "8105236768dd1da43379152ee11900be8983ae03",
           checkSuiteId: 89021857045,
           checkSuiteUrl:
             "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
@@ -1249,9 +1228,8 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/sentry",
           pullRequest: 999001,
-          scope: "check_suite",
           suiteConclusion: "success",
-          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          commitSha: "8105236768dd1da43379152ee11900be8983ae03",
           checkSuiteId: 89021857045,
           checkSuiteUrl:
             "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
@@ -1404,11 +1382,9 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 10,
-          scope: "check_suite",
           suiteConclusion: "success",
           isDraft: false,
           openerUsername: "octocat",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
@@ -1426,11 +1402,9 @@ describe("GitHub webhook events", () => {
         data: {
           repo: "getsentry/junior",
           pullRequest: 10,
-          scope: "check_suite",
           suiteConclusion: "success",
           isDraft: false,
           openerUsername: "octocat",
-          headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
             "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",

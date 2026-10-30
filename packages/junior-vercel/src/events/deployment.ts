@@ -27,8 +27,18 @@ export type VercelDeploymentTarget = (typeof VERCEL_DEPLOYMENT_TARGETS)[number];
 /**
  * Trusted values that every Vercel deployment event sets. `commitSha` is left
  * out when the deployment has no Git commit, so a filter on it does not match.
+ * Vercel ids keep the case that Vercel sends, the same as identifiers,
+ * because they are case-sensitive.
  */
 export const VERCEL_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  projectId: {
+    kind: "string",
+    description: "Vercel project id, such as prj_abc123",
+  },
+  deploymentId: {
+    kind: "string",
+    description: "Vercel deployment id, such as dpl_abc123",
+  },
   target: {
     kind: "string",
     description: "where Vercel deployed: preview, production, or staging",

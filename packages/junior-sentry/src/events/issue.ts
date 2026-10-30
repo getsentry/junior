@@ -2,6 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { sentryScopeMatchFields } from "./scope.js";
 
 export const SENTRY_ISSUE_EVENTS = ["issue.created"] as const;
 
@@ -19,6 +20,7 @@ export const SENTRY_ISSUE_PRIORITIES = ["high", "medium", "low"] as const;
 
 /** Trusted values that Sentry issue events set, when the webhook has them. */
 export const SENTRY_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...sentryScopeMatchFields(SENTRY_ISSUE_EVENTS),
   level: {
     kind: "string",
     description: "issue level: fatal, error, warning, info, or debug",

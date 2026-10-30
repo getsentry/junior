@@ -319,9 +319,9 @@ every item of that kind in a repository with `owner/repo`. Deployment events can
 target one commit with `deployment_source`, or every deployment in a repository
 with `owner/repo`.
 
-Deployment events carry `environment` and, when GitHub Actions made the
-deployment for a job with `environment:`, `workflowId`, `workflowPath`, and
-`workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+Deployment events carry `repo`, `commitSha`, `deploymentId`, `environment`,
+and, when GitHub Actions made the deployment for a job with `environment:`,
+`workflowId`, `workflowPath`, and `workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
 repository automation to one environment or one workflow. For example, an
 automation on `getsentry/toolkit` for `deployment.failed` can match
 `environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.

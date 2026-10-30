@@ -41,7 +41,7 @@ function metricAlertBody(action = "critical") {
         "1000 events in the last 10 minutes\nFilter: level:error",
       description_title: "Critical: Too many errors",
       metric_alert: {
-        alert_rule: { id: "7", name: "Too many errors", projects: ["junior"] },
+        alert_rule: { id: "7", name: "Too many errors", projects: ["Junior"] },
         id: "4",
       },
       web_url:
@@ -150,6 +150,8 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
+          org: "sentry",
+          projects: ["junior"],
           issueCategory: "error",
           issueId: "7513266773",
           issueType: "error",
@@ -191,6 +193,8 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
+          org: "sentry",
+          projects: ["junior"],
           alertRuleId: "7",
           incidentId: "4",
           url: "https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
@@ -218,6 +222,23 @@ describe("Sentry webhook events", () => {
         untrustedText: expect.any(String),
       },
     ]);
+  });
+
+  it("leaves out alert rule projects that do not fit in event data", () => {
+    const body = metricAlertBody();
+    body.data.metric_alert.alert_rule.projects = Array.from(
+      { length: 200 },
+      (_, index) => `project-with-a-long-slug-${index}`,
+    );
+
+    const events = normalizeSentryEvents({
+      body,
+      hookResource: "metric_alert",
+    });
+
+    expect(events).toHaveLength(201);
+    expect(events[0]?.data).not.toHaveProperty("projects");
+    expect(events[0]?.data).toMatchObject({ org: "sentry", alertRuleId: "7" });
   });
 
   it("ignores a metric alert without an organization or with an unsupported state", () => {

@@ -45,8 +45,10 @@ interface LookupContext {
 }
 
 /**
- * Map each Event key to its pull request number. Every pull request Event
- * sets `pullRequest`, and the repository copy has the same key.
+ * Map each Event key to its pull request number. A pull request Event sets
+ * `pullRequest`, and the repository copy has the same key. A check suite
+ * result that GitHub links to no pull request, such as on the main branch,
+ * has none, so it gets no opener or author values.
  */
 function pullRequestNumbers(events: EventInput[]): Map<string, number> {
   const numbers = new Map<string, number>();

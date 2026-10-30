@@ -2,6 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_DEPLOYMENT_EVENTS = [
   "deployment.created",
@@ -25,6 +26,13 @@ export const GITHUB_DEPLOYMENT_SUGGESTED_EVENTS = [
  * events that do not.
  */
 export const GITHUB_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...gitHubRepoMatchFields(GITHUB_DEPLOYMENT_EVENTS),
+  ...gitHubCommitMatchFields(GITHUB_DEPLOYMENT_EVENTS),
+  deploymentId: {
+    kind: "number",
+    description: "numeric GitHub deployment id, such as 3001",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
+  },
   environment: {
     kind: "string",
     description: "lowercase deployment environment name, such as production",

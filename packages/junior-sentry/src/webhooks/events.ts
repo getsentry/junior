@@ -1,4 +1,8 @@
-import type { EventData, EventInput } from "@sentry/junior-plugin-api";
+import {
+  eventDataSchema,
+  type EventData,
+  type EventInput,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   SENTRY_ISSUE_LEVELS,
@@ -10,6 +14,7 @@ import {
   SENTRY_METRIC_ALERT_ACTIONS,
   sentryMetricAlertResource,
 } from "../events/metric-alert.js";
+import { sentrySlugDataSchema } from "../events/scope.js";
 
 // A level or priority that this plugin does not know counts as missing, so a
 // new Sentry value does not reject the webhook or match a filter by mistake.
@@ -107,20 +112,58 @@ function issueText(issue: {
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
-/** Sentry's own values for the issue. Sentry sets them, so they are trusted. */
+/**
+ * Sentry's own values for an issue. Sentry sets them, so they are trusted.
+ * `projects` has the one project of the issue.
+ */
+const issueEventDataSchema = z
+  .object({
+    org: sentrySlugDataSchema,
+    projects: z.array(sentrySlugDataSchema).length(1),
+    issueId: z.string().min(1),
+    level: z.enum(SENTRY_ISSUE_LEVELS).optional(),
+    priority: z.enum(SENTRY_ISSUE_PRIORITIES).optional(),
+    issueCategory: z.string().min(1).optional(),
+    issueType: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
+/** Build the trusted data of one issue event. */
 function issueData(
   issue: z.output<typeof issueWebhookSchema>["data"]["issue"],
+  org: string,
 ): EventData {
-  return {
-    issueId: issue.id,
-    ...(issue.level ? { level: issue.level } : undefined),
-    ...(issue.priority ? { priority: issue.priority } : undefined),
-    ...(issue.issueCategory
-      ? { issueCategory: issue.issueCategory }
-      : undefined),
-    ...(issue.issueType ? { issueType: issue.issueType } : undefined),
-    ...(issue.web_url ? { url: issue.web_url } : undefined),
-  };
+  return definedValues(
+    issueEventDataSchema.parse({
+      org,
+      projects: [issue.project.slug],
+      issueId: issue.id,
+      level: issue.level,
+      priority: issue.priority,
+      issueCategory: issue.issueCategory || undefined,
+      issueType: issue.issueType || undefined,
+      url: issue.web_url,
+    }),
+  );
+}
+
+/** Trusted data on every metric alert event. See `metricAlertData`. */
+const metricAlertEventDataSchema = z
+  .object({
+    org: sentrySlugDataSchema,
+    projects: z.array(sentrySlugDataSchema).min(1).optional(),
+    alertRuleId: z.string().min(1),
+    incidentId: z.string().min(1),
+    url: z.string().url(),
+  })
+  .strict();
+
+/** Drop missing values. A filter on a value Sentry did not send then does not match. */
+function definedValues(data: Record<string, unknown>): EventData {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
 }
 
 /**
@@ -132,6 +175,28 @@ function webOrganizationSlug(webUrl: string): string | undefined {
   if (fromPath) return fromPath;
   const labels = new URL(webUrl).hostname.split(".");
   return labels.length >= 3 ? labels[0] : undefined;
+}
+
+/**
+ * Build the trusted data of one metric alert event. `projects` is missing
+ * when the rule lists none. A rule on very many projects can pass the event
+ * data size limit. Then `projects` is left out too,
+ * so a `projects` filter does not match, but each project copy still goes
+ * out.
+ */
+function metricAlertData(
+  input: Omit<z.input<typeof metricAlertEventDataSchema>, "projects">,
+  projects: string[],
+): EventData {
+  const data = definedValues(
+    metricAlertEventDataSchema.parse({
+      ...input,
+      projects: projects.length > 0 ? projects : undefined,
+    }),
+  );
+  if (eventDataSchema.safeParse(data).success) return data;
+  const { projects: _projects, ...rest } = data;
+  return rest;
 }
 
 interface WebhookInput {
@@ -170,7 +235,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     objectType: "task",
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
-    data: issueData(issue),
+    data: issueData(issue, org),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
@@ -196,6 +261,15 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     .filter((part): part is string => Boolean(part))
     .join("\n");
 
+  // Also publish to each project of the alert rule, so one project
+  // subscription receives its new issues and its metric alerts.
+  const projects = [
+    ...new Set(
+      (data.metric_alert.alert_rule.projects ?? []).map((project) =>
+        project.toLowerCase(),
+      ),
+    ),
+  ];
   const event = {
     // One event per incident state. Sentry retries get new Request-IDs.
     eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
@@ -203,12 +277,12 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     objectType: "item",
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
-    data: { alertRuleId, incidentId, url: data.web_url },
+    data: metricAlertData(
+      { org, alertRuleId, incidentId, url: data.web_url },
+      projects,
+    ),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
-  // Also publish to each project of the alert rule, so one project
-  // subscription receives its new issues and its metric alerts.
-  const projects = [...new Set(data.metric_alert.alert_rule.projects ?? [])];
 
   return [
     { ...event, identifier: resource.identifier },

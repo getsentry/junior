@@ -1,5 +1,9 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 import { gitHubCommentMatchFields } from "./comment.js";
+import { gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -14,13 +18,19 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
 ];
 
 /**
- * Exact values GitHub sets on issue comment event data. Only
- * `issue.comment.created` sets them, so a trigger with these filters cannot
- * select other events.
+ * Exact values GitHub sets on issue event data. Every issue event sets the
+ * repository and issue number. Only `issue.comment.created` sets the comment
+ * filters, so a trigger with them cannot select other events.
  */
-export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = gitHubCommentMatchFields([
-  "issue.comment.created",
-]);
+export const GITHUB_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...gitHubCommentMatchFields(["issue.comment.created"]),
+  ...gitHubRepoMatchFields(GITHUB_ISSUE_EVENTS),
+  issue: {
+    kind: "number",
+    description: "issue number, such as 12",
+    events: GITHUB_ISSUE_EVENTS,
+  },
+});
 
 /** The identifier shape that `gitHubIssueResource` builds. */
 export const GITHUB_ISSUE_IDENTIFIER = {

@@ -3,13 +3,24 @@ import { z } from "zod";
 import { gitHubDeploymentSourceResource } from "../events/deployment.js";
 import { gitHubIssueResource } from "../events/issue.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
-import { gitHubReleaseSourceResource } from "../events/release.js";
+import {
+  gitHubReleaseSourceResource,
+  gitHubReleaseTagDataSchema,
+} from "../events/release.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
+import {
+  gitHubCommitShaDataSchema,
+  gitHubRepoDataSchema,
+} from "../events/scope.js";
 import {
   normalizeCheckSuiteEvents,
   type GitHubCheckSuiteFacts,
 } from "./check-suite.js";
-import { gitHubEventKey, pullRequestTargets } from "./event-targets.js";
+import {
+  definedValues,
+  gitHubEventKey,
+  pullRequestTargets,
+} from "./event-targets.js";
 import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
@@ -33,16 +44,6 @@ function gitHubDoneBy(
 ): Pick<EventInput, "doneBy"> | undefined {
   const handle = login?.trim();
   return handle ? { doneBy: { provider: "github", handle } } : undefined;
-}
-
-/**
- * Drop missing values from event data. A filter on a value that GitHub did not
- * send then does not match.
- */
-function definedValues(data: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(data).filter(([, value]) => value !== undefined),
-  );
 }
 
 /** The text of a webhook value, or undefined when it is missing or blank. */
@@ -228,23 +229,34 @@ function normalizeDeploymentStatusEvent(
   );
 }
 
-/** Trusted deployment facts for match filters and the woken agent. */
-function deploymentEventData(input: {
-  environment: string;
-  workflowId?: number;
-  workflowPath?: string;
-  workflowRunId?: number;
-}) {
-  return {
-    environment: input.environment.toLowerCase(),
-    ...(input.workflowId === undefined
-      ? undefined
-      : { workflowId: input.workflowId }),
-    ...(input.workflowPath ? { workflowPath: input.workflowPath } : undefined),
-    ...(input.workflowRunId === undefined
-      ? undefined
-      : { workflowRunId: input.workflowRunId }),
-  };
+/** Trusted data on every deployment event. */
+const deploymentEventDataSchema = z
+  .object({
+    repo: gitHubRepoDataSchema,
+    commitSha: gitHubCommitShaDataSchema,
+    deploymentId: z.number(),
+    environment: z.string().min(1).toLowerCase(),
+    workflowId: z.number().optional(),
+    workflowPath: z.string().min(1).optional(),
+    workflowRunId: z.number().optional(),
+  })
+  .strict();
+
+/** Build the trusted data of one deployment event. */
+function deploymentEventData(
+  input: z.output<typeof canonicalDeploymentEventSchema>,
+): Record<string, unknown> {
+  return deploymentEventDataSchema.parse(
+    definedValues({
+      repo: input.repo,
+      commitSha: input.commitSha,
+      deploymentId: input.deploymentId,
+      environment: input.environment,
+      workflowId: input.workflowId,
+      workflowPath: input.workflowPath,
+      workflowRunId: input.workflowRunId,
+    }),
+  );
 }
 
 /**
@@ -334,7 +346,7 @@ const pullRequestSchema = z.object({
  */
 const pullRequestEventDataSchema = commentAuthorDataSchema
   .extend({
-    repo: z.string().min(1),
+    repo: gitHubRepoDataSchema,
     pullRequest: z.number(),
     headBranch: z.string().min(1).optional(),
     isDraft: z.boolean().optional(),
@@ -371,7 +383,7 @@ function pullRequestEventData(input: {
 /** Trusted data on every issue event. */
 const issueEventDataSchema = commentAuthorDataSchema
   .extend({
-    repo: z.string().min(1),
+    repo: gitHubRepoDataSchema,
     issue: z.number(),
     commentId: z.number().optional(),
   })
@@ -779,6 +791,14 @@ const releaseWebhookSchema = z
   })
   .passthrough();
 
+/** Trusted data on every release event. */
+const releaseEventDataSchema = z
+  .object({
+    repo: gitHubRepoDataSchema,
+    tag: gitHubReleaseTagDataSchema,
+  })
+  .strict();
+
 /** Address one release through both its exact tag and its repository. */
 function releaseSourceTargets(input: { repo: string; tag: string }) {
   return [
@@ -813,6 +833,7 @@ function normalizeReleaseEvent(
   ].filter((part): part is string => part !== undefined);
   const untrustedText =
     untrustedParts.length > 0 ? untrustedParts.join("\n\n") : undefined;
+  const data = releaseEventDataSchema.parse({ repo, tag });
   return releaseSourceTargets({ repo, tag }).map(
     ({ completeOnTerminalEvent, resource }) => ({
       eventKey: gitHubEventKey(deliveryId, eventType),
@@ -822,6 +843,7 @@ function normalizeReleaseEvent(
       identifier: resource.identifier,
       ...(completeOnTerminalEvent ? { terminal: true } : undefined),
       trustedSummary: `${resource.label} was published (release ${parsed.data.release.id}).`,
+      data,
       ...(untrustedText ? { untrustedText } : undefined),
     }),
   );

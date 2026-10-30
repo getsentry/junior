@@ -10,7 +10,15 @@ import {
 } from "../credential-support.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
-import { gitHubEventKey, pullRequestTargets } from "./event-targets.js";
+import {
+  gitHubCommitShaDataSchema,
+  gitHubRepoDataSchema,
+} from "../events/scope.js";
+import {
+  definedValues,
+  gitHubEventKey,
+  pullRequestTargets,
+} from "./event-targets.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -179,6 +187,43 @@ function checkSuiteHeadBranch(
   return branch ? branch : undefined;
 }
 
+/**
+ * Trusted data on every check suite event. `pullRequest` is missing when
+ * GitHub links the suite to no pull request, such as on the main branch.
+ * `commitSha` is missing when GitHub sends no full SHA. `suiteConclusion`
+ * stays as a detail, not a filter: the event type already tells failed from
+ * recovered.
+ */
+const checkSuiteEventDataSchema = z
+  .object({
+    repo: gitHubRepoDataSchema,
+    pullRequest: z.number().optional(),
+    commitSha: gitHubCommitShaDataSchema.optional(),
+    suiteConclusion: z.string().min(1),
+    isDraft: z.boolean().optional(),
+    openerUsername: z.string().min(1).optional(),
+    openerEmail: z.string().min(1).optional(),
+    headBranch: z.string().min(1).optional(),
+    checkSuiteId: z.number().optional(),
+    checkSuiteUrl: z.string().min(1).optional(),
+    appName: z.string().min(1).optional(),
+    latestCheckRunsCount: z.number().optional(),
+    // Only system-set handles. Check names come from workflow YAML, so they
+    // go in the untrusted text.
+    failingChecks: z
+      .array(
+        z
+          .object({
+            conclusion: z.string(),
+            htmlUrl: z.string().optional(),
+            checkRunId: z.number(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
 /** Build the trusted data and summary for one check-suite event. */
 export function buildCheckSuiteEvent(args: {
   appName?: string;
@@ -214,38 +259,38 @@ export function buildCheckSuiteEvent(args: {
       ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`
       : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`;
 
-  const data: Record<string, unknown> = {
-    repo: args.repo,
-    scope: "check_suite",
-    suiteConclusion: args.suiteConclusion,
-  };
-  if (pullRequestNumber !== undefined) data.pullRequest = pullRequestNumber;
-  if (typeof args.isDraft === "boolean") data.isDraft = args.isDraft;
-  if (args.openerUsername) data.openerUsername = args.openerUsername;
-  if (args.openerEmail) data.openerEmail = args.openerEmail;
-  if (args.headBranch) data.headBranch = args.headBranch;
-  if (args.headSha) data.headSha = args.headSha;
-  if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
-  if (args.checkSuiteId !== undefined && args.headSha) {
-    data.checkSuiteUrl = buildCheckSuiteUrl({
-      checkSuiteId: args.checkSuiteId,
-      headSha: args.headSha,
+  const data = checkSuiteEventDataSchema.parse(
+    definedValues({
       repo: args.repo,
-    });
-  }
-  if (args.appName) data.appName = oneLineLabel(args.appName, 120);
-  if (args.latestCheckRunsCount !== undefined) {
-    data.latestCheckRunsCount = args.latestCheckRunsCount;
-  }
-  // Keep only system-controlled handles in trusted data. Check names come from
-  // workflow YAML and belong in untrustedText.
-  if (args.eventType === "pull_request.checks.failed" && failingCount > 0) {
-    data.failingChecks = failingChecks.map((check) => ({
-      conclusion: check.conclusion,
-      ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : undefined),
-      checkRunId: check.checkRunId,
-    }));
-  }
+      pullRequest: pullRequestNumber,
+      // A short SHA counts as missing, so a commitSha filter does not match.
+      commitSha: gitHubCommitShaDataSchema.safeParse(args.headSha).data,
+      suiteConclusion: args.suiteConclusion,
+      isDraft: args.isDraft,
+      openerUsername: args.openerUsername,
+      openerEmail: args.openerEmail,
+      headBranch: args.headBranch,
+      checkSuiteId: args.checkSuiteId,
+      checkSuiteUrl:
+        args.checkSuiteId !== undefined && args.headSha
+          ? buildCheckSuiteUrl({
+              checkSuiteId: args.checkSuiteId,
+              headSha: args.headSha,
+              repo: args.repo,
+            })
+          : undefined,
+      appName: args.appName ? oneLineLabel(args.appName, 120) : undefined,
+      latestCheckRunsCount: args.latestCheckRunsCount,
+      failingChecks:
+        args.eventType === "pull_request.checks.failed" && failingCount > 0
+          ? failingChecks.map((check) => ({
+              conclusion: check.conclusion,
+              ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : undefined),
+              checkRunId: check.checkRunId,
+            }))
+          : undefined,
+    }),
+  );
 
   const untrustedParts =
     args.eventType === "pull_request.checks.failed"

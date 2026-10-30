@@ -39,6 +39,7 @@ export function sentryPlugin(): PluginRegistration {
           type: "issue",
           supportedEvents: [...SENTRY_ISSUE_EVENTS],
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
+          matchFields: SENTRY_ISSUE_MATCH_FIELDS,
         },
         {
           type: "project",
@@ -60,6 +61,7 @@ export function sentryPlugin(): PluginRegistration {
           identifier: SENTRY_METRIC_ALERT_IDENTIFIER,
           supportedEvents: [...SENTRY_METRIC_ALERT_EVENTS],
           suggestedEvents: SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+          matchFields: SENTRY_METRIC_ALERT_MATCH_FIELDS,
         },
       ],
       isEnabled: () => Boolean(sentryWebhookSecret()),

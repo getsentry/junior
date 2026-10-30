@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { EventInput } from "@sentry/junior-plugin-api";
+import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linearPlugin } from "../src";
 import { createLinearWebhookRoute } from "../src/webhooks/handler";
@@ -84,31 +85,16 @@ afterEach(() => {
 });
 
 describe("Linear webhook events", () => {
-  it("registers teamKey match fields on issue and team resources", () => {
-    const resourceTypes = linearPlugin().events?.resourceTypes ?? [];
-
-    expect(resourceTypes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "issue",
-          matchFields: {
-            teamKey: {
-              kind: "string",
-              description: "Linear team key for the issue, such as SRE",
-            },
-          },
+  it("declares filter events that match the data the webhooks set", () => {
+    expect(
+      filterEventMismatches({
+        resourceTypes: linearPlugin().events?.resourceTypes ?? [],
+        events: normalizeLinearEvents({
+          body: issueBody(),
+          linearEvent: "Issue",
         }),
-        expect.objectContaining({
-          type: "team",
-          matchFields: {
-            teamKey: {
-              kind: "string",
-              description: "Linear team key for the issue, such as SRE",
-            },
-          },
-        }),
-      ]),
-    );
+      }),
+    ).toEqual([]);
   });
 
   it("normalizes a created issue for the issue and team", () => {

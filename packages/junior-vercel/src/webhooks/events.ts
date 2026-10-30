@@ -76,6 +76,16 @@ const deploymentPayloadSchema = z
     target: payload.target,
   }));
 
+/** Trusted data on every deployment event. */
+const deploymentEventDataSchema = z
+  .object({
+    projectId: vercelProjectIdSchema,
+    deploymentId: deploymentIdSchema,
+    target: z.enum(VERCEL_DEPLOYMENT_TARGETS),
+    commitSha: commitShaSchema.optional(),
+  })
+  .strict();
+
 const DEPLOYMENT_OUTCOMES = {
   "deployment.succeeded": "succeeded",
   "deployment.error": "failed",
@@ -128,11 +138,12 @@ export function normalizeVercelEvents(args: { body: unknown }): EventInput[] {
 
   const eventType = envelope.data.type;
   const { commitSha, deploymentId, projectId, target } = payload.data;
-  const data = {
+  const data = deploymentEventDataSchema.parse({
+    projectId,
     deploymentId,
     target,
     ...(commitSha ? { commitSha } : undefined),
-  };
+  });
 
   return deploymentTargets({ commitSha, projectId, target }).map(
     ({ completeOnTerminalEvent, resource }): EventInput => ({

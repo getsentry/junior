@@ -662,7 +662,8 @@ describe("github plugin", () => {
   });
 
   it("declares filter events that match the data the webhooks set", async () => {
-    const repository = { full_name: "getsentry/junior", id: 2001 };
+    // Mixed case, to show that scope values are lowercase like identifiers.
+    const repository = { full_name: "GetSentry/Junior", id: 2001 };
     const opener = { email: "dcramer@example.com", login: "dcramer" };
     const pullRequest = {
       draft: false,
@@ -674,7 +675,7 @@ describe("github plugin", () => {
       created_at: "2026-07-01T12:00:00.000Z",
       environment: "Production",
       id: 3001,
-      sha: "a".repeat(40),
+      sha: "A".repeat(40),
     };
     const workflow = {
       workflow: { id: 7, path: ".github/workflows/deploy.yml" },
@@ -691,7 +692,7 @@ describe("github plugin", () => {
       check_suite: {
         conclusion,
         head_branch: "feat/filters",
-        head_sha: "abcdef1234567890",
+        head_sha: "B".repeat(40),
         id: 5001,
         pull_requests: [
           {
@@ -793,11 +794,23 @@ describe("github plugin", () => {
       },
       { eventName: "check_suite", body: checkSuite("failure") },
       { eventName: "check_suite", body: checkSuite("success") },
+      // A main-branch suite that GitHub links to no pull request.
+      {
+        eventName: "check_suite",
+        body: {
+          ...checkSuite("failure"),
+          check_suite: {
+            ...checkSuite("failure").check_suite,
+            head_branch: "main",
+            pull_requests: [],
+          },
+        },
+      },
       {
         eventName: "release",
         body: {
           action: "published",
-          release: { draft: false, id: 6001, tag_name: "v1.2.0" },
+          release: { draft: false, id: 6001, tag_name: "V1.2.0" },
           repository,
         },
       },
@@ -843,21 +856,34 @@ describe("github plugin", () => {
 
     expect(filterEventMismatches({ resourceTypes, events })).toEqual([]);
 
-    // Events of the same kind set the same data, so one filter fits them all.
-    const missing: string[] = [];
-    for (const event of events) {
-      const required = event.eventType.startsWith("pull_request.")
-        ? ["repo", "pullRequest"]
-        : event.eventType.startsWith("issue.")
-          ? ["repo", "issue"]
-          : [];
-      for (const key of required) {
-        if (!(key in (event.data ?? {}))) {
-          missing.push(`${event.eventType} does not set ${key}`);
-        }
-      }
-    }
+    // Events of one kind set the same scope values, so one filter fits them
+    // all. Check results on a branch with no pull request have no
+    // `pullRequest`; the fixture above proves that the filter allows it.
+    const requiredKeys = (eventType: string) =>
+      eventType.startsWith("pull_request.checks.")
+        ? ["repo", "commitSha"]
+        : eventType.startsWith("pull_request.")
+          ? ["repo", "pullRequest"]
+          : eventType.startsWith("issue.")
+            ? ["repo", "issue"]
+            : eventType.startsWith("deployment.")
+              ? ["repo", "commitSha", "deploymentId", "environment"]
+              : ["repo", "tag"];
+    const missing = events.flatMap((event) =>
+      requiredKeys(event.eventType)
+        .filter((key) => event.data?.[key] === undefined)
+        .map((key) => `${event.eventType} does not set ${key}`),
+    );
     expect(missing).toEqual([]);
+
+    // Scope values are lowercase, the same form as identifiers.
+    const scopeValues = (key: string) =>
+      new Set(events.flatMap((event) => event.data?.[key] ?? []));
+    expect(scopeValues("repo")).toEqual(new Set(["getsentry/junior"]));
+    expect(scopeValues("commitSha")).toEqual(
+      new Set(["a".repeat(40), "b".repeat(40)]),
+    );
+    expect(scopeValues("tag")).toEqual(new Set(["v1.2.0"]));
   });
 
   it("registers release source watches", () => {

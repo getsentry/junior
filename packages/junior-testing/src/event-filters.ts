@@ -2,7 +2,15 @@
 interface FilterResourceType {
   type: string;
   supportedEvents: readonly string[];
-  matchFields?: Record<string, { events?: readonly string[] }>;
+  matchFields?: Record<string, FilterField>;
+}
+
+/** The parts of one filter declaration that its values must fit. */
+interface FilterField {
+  enum?: readonly string[];
+  events?: readonly string[];
+  kind: string;
+  list?: true;
 }
 
 /** The parts of a published event that filters read. */
@@ -14,9 +22,12 @@ interface FilterEvent {
 /**
  * Compare each filter's `events` list with the data that real webhook events
  * set. A filter with no `events` list applies to every supported event. The
- * check goes both ways: a listed event must set the key, and an event that
- * sets the key must be listed. Every supported event needs at least one
- * published event, so give the fullest delivery of each webhook.
+ * check goes both ways: some published event of a listed type must set the
+ * key, and an event that sets the key must be listed. Some values are
+ * optional, so one event of a listed type may leave a key out. Each value
+ * that an event sets must have the field's kind, be one of its `enum` values,
+ * and be a list only when the field is a list. Every supported event needs at
+ * least one published event, so give the fullest delivery of each webhook.
  *
  * Returns one plain sentence per mismatch, so a test can expect `[]`.
  */
@@ -24,32 +35,52 @@ export function filterEventMismatches(args: {
   resourceTypes: readonly FilterResourceType[];
   events: readonly FilterEvent[];
 }): string[] {
-  const keysByEvent = new Map<string, Set<string>>();
-  for (const event of args.events) {
-    const keys = keysByEvent.get(event.eventType) ?? new Set<string>();
-    for (const key of Object.keys(event.data ?? {})) keys.add(key);
-    keysByEvent.set(event.eventType, keys);
-  }
-
-  const mismatches: string[] = [];
+  const mismatches = new Set<string>();
   for (const resourceType of args.resourceTypes) {
     for (const eventType of resourceType.supportedEvents) {
-      const keys = keysByEvent.get(eventType);
-      if (!keys) {
-        mismatches.push(`no fixture publishes ${eventType}`);
+      const published = args.events.filter(
+        (event) => event.eventType === eventType,
+      );
+      if (published.length === 0) {
+        mismatches.add(`no fixture publishes ${eventType}`);
         continue;
       }
       for (const [key, field] of Object.entries(
         resourceType.matchFields ?? {},
       )) {
+        const name = `${resourceType.type} filter ${key}`;
         const listed = field.events?.includes(eventType) ?? true;
-        if (listed !== keys.has(key)) {
-          mismatches.push(
-            `${resourceType.type} filter ${key} ${listed ? "lists" : "omits"} ${eventType}, which ${keys.has(key) ? "sets" : "never sets"} it`,
+        const values = published
+          .map((event) => event.data?.[key])
+          .filter((value) => value !== undefined);
+        if (listed && values.length === 0) {
+          mismatches.add(`${name} lists ${eventType}, which never sets it`);
+        }
+        if (!listed && values.length > 0) {
+          mismatches.add(`${name} omits ${eventType}, which sets it`);
+        }
+        for (const value of values) {
+          if (fitsField(value, field)) continue;
+          mismatches.add(
+            `${name} on ${eventType} has ${JSON.stringify(value)}, which does not fit`,
           );
         }
       }
     }
   }
-  return mismatches;
+  return [...mismatches];
+}
+
+/** Whether one event value fits its filter's kind, enum, and list. */
+function fitsField(value: unknown, field: FilterField): boolean {
+  if (Array.isArray(value) !== Boolean(field.list)) return false;
+  const entries: unknown[] = Array.isArray(value) ? value : [value];
+  return (
+    entries.length > 0 &&
+    entries.every(
+      (entry) =>
+        typeof entry === field.kind &&
+        (!field.enum || field.enum.includes(entry as string)),
+    )
+  );
 }
