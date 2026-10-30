@@ -176,6 +176,8 @@ export function createGitHubWebhookRoute(args: {
   ): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
+  /** Reload the App's installations after one is added, removed, or renamed. */
+  refreshInstallations(): Promise<void>;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -199,6 +201,11 @@ export function createGitHubWebhookRoute(args: {
       const installationId = webhookInstallationId(body);
       if (!installationId) {
         return new Response("Ignored", { status: 202 });
+      }
+      // Installs, uninstalls, and account renames change the installation map.
+      if (eventName === "installation" || eventName === "installation_target") {
+        await args.refreshInstallations();
+        return new Response("Accepted", { status: 202 });
       }
       const botEmail = args.botEmail();
       const pullRequestOutcome =

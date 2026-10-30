@@ -125,7 +125,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       }`;
       const lookupResponse = await ctx.egress.fetch({
         provider: "github",
-        operation: "github.pull.review-thread.get",
+        operation: `github.pull.review-thread.get:${repo.ref.toLowerCase()}`,
         request: new Request("https://api.github.com/graphql", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

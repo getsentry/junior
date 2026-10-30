@@ -153,8 +153,9 @@ function pluginCache() {
     async getOrLoad<T>(
       key: string,
       load: () => Promise<{ ttlMs?: number; value: T }>,
+      options?: { refresh?: boolean },
     ): Promise<T> {
-      if (entries.has(key)) return entries.get(key) as T;
+      if (!options?.refresh && entries.has(key)) return entries.get(key) as T;
       const entry = await load();
       if (entry.ttlMs) entries.set(key, entry.value);
       return entry.value;
@@ -251,15 +252,11 @@ function cloneStateValue<T>(value: T): T {
 }
 
 /**
- * Mock the App owner `getsentry` (installation 456), `fairsource` repos
- * (installation 789), and repositories under `uninstalled` without the App.
+ * Mock the App owner `getsentry` (installation 456) and `FairSource`
+ * (installation 789). The App is not installed on any other account.
  */
 function mockGitHubInstallationApi(): CapturedRequest[] {
   const requests: CapturedRequest[] = [];
-  const installationFor = (owner: unknown) =>
-    owner === "uninstalled"
-      ? HttpResponse.json({ message: "Not Found" }, { status: 404 })
-      : HttpResponse.json({ id: owner === "fairsource" ? 789 : 456 });
   mswServer.use(
     http.get("https://api.github.com/app", async ({ request }) => {
       requests.push(await captureRequest(request));
@@ -268,17 +265,13 @@ function mockGitHubInstallationApi(): CapturedRequest[] {
       });
     }),
     http.get(
-      "https://api.github.com/repos/:owner/:repo/installation",
-      async ({ params, request }) => {
+      "https://api.github.com/app/installations",
+      async ({ request }) => {
         requests.push(await captureRequest(request));
-        return installationFor(params.owner);
-      },
-    ),
-    http.get(
-      "https://api.github.com/orgs/:org/installation",
-      async ({ params, request }) => {
-        requests.push(await captureRequest(request));
-        return installationFor(params.org);
+        return HttpResponse.json([
+          { id: 456, account: { login: "getsentry" } },
+          { id: 789, account: { login: "FairSource" } },
+        ]);
       },
     ),
     http.get(
@@ -791,7 +784,7 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-read",
       access: "read",
-      leaseScope: "repository:getsentry/junior",
+      leaseScope: "owner:getsentry",
       reason: "github.api-read",
     });
     expect(
@@ -801,7 +794,7 @@ describe("github plugin", () => {
       }),
     ).toMatchObject({
       name: "installation-read",
-      leaseScope: "organization:fairsource",
+      leaseScope: "owner:fairsource",
     });
     expect(
       await grantForEgress({
@@ -2311,7 +2304,7 @@ Conversation: \`local:test:old-conversation\`
       }),
     ).toMatchObject({
       name: "installation-read",
-      leaseScope: "repository:fairsource/fair.io",
+      leaseScope: "owner:fairsource",
       reason: "github.graphql-read",
     });
     expect(
@@ -2385,14 +2378,32 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       grantForEgress({
         method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        operation: "github.pull.review-thread.resolve:FairSource/fair.io",
         url: "https://api.github.com/graphql",
         bodyText,
       }),
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
+      leaseScope: "owner:fairsource",
       reason: "github.installation-write",
+    });
+    // The lookup names only a node id, so the host tool's operation names
+    // the owner whose installation can read the thread.
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.get:fairsource/fair.io",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            "query ReviewThread($threadId: ID!) { node(id: $threadId) { id } }",
+          variables: { threadId: "PRRT_kwDOthread" },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-read",
+      leaseScope: "owner:fairsource",
     });
     await expect(
       grantForEgress({
@@ -2742,7 +2753,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("issues installation-write credentials from the target repository's installation", async () => {
+  it("issues installation-write credentials from the target owner's installation", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -2758,10 +2769,11 @@ Conversation: \`local:test:old-conversation\`
       method: "GET",
       url: "https://github.com/fairsource/fair.io.git/info/refs?service=git-receive-pack",
     });
+    const cache = pluginCache();
     const issue = async (leaseScope = grant?.leaseScope) =>
       await plugin.hooks?.issueCredential?.({
         actor: { platform: "system", name: "event" },
-        cache: pluginCache(),
+        cache,
         grant: { ...grant!, leaseScope },
         db,
         log: pluginLog,
@@ -2772,16 +2784,26 @@ Conversation: \`local:test:old-conversation\`
     const result = await issue();
 
     expect(result?.type).toBe("lease");
+    expect(grant?.leaseScope).toBe("owner:fairsource");
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
-      "GET https://api.github.com/repos/fairsource/fair.io/installation",
+      "GET https://api.github.com/app",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
       "POST https://api.github.com/app/installations/789/access_tokens",
     ]);
     // Write tokens keep the full installed App permissions and repos.
-    expect(requests[1]?.body).toEqual({});
-    await expect(issue("repository:uninstalled/repo")).resolves.toEqual({
+    expect(requests[2]?.body).toEqual({});
+
+    // A write never falls back to another installation. It reloads the
+    // cached installations once, in case the App was just installed.
+    requests.length = 0;
+    await expect(issue("owner:uninstalled")).resolves.toEqual({
       type: "unavailable",
-      message: "The GitHub App is not installed on uninstalled/repo.",
+      message: "The GitHub App is not installed on uninstalled.",
     });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "GET https://api.github.com/app",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+    ]);
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {
@@ -2831,10 +2853,10 @@ Conversation: \`local:test:old-conversation\`
         ],
       },
     });
-    // A read without a target uses the App owner's installation.
+    // A read without an owner uses the App owner's installation.
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
       "GET https://api.github.com/app",
-      "GET https://api.github.com/orgs/getsentry/installation",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
       "POST https://api.github.com/app/installations/456/access_tokens",
     ]);
     expect(requests[2]).toMatchObject({
@@ -2849,13 +2871,12 @@ Conversation: \`local:test:old-conversation\`
 
     // Public repositories stay readable where the App is not installed.
     requests.length = 0;
-    await expect(issue("repository:uninstalled/repo")).resolves.toMatchObject({
+    await expect(issue("owner:uninstalled")).resolves.toMatchObject({
       type: "lease",
     });
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
-      "GET https://api.github.com/repos/uninstalled/repo/installation",
       "GET https://api.github.com/app",
-      "GET https://api.github.com/orgs/getsentry/installation",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
       "POST https://api.github.com/app/installations/456/access_tokens",
     ]);
   });
@@ -2876,7 +2897,7 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "installation-read",
         access: "read" as const,
-        leaseScope: "repository:getsentry/junior",
+        leaseScope: "owner:getsentry",
         reason: "github.api-read",
       },
       db,
@@ -2891,13 +2912,13 @@ Conversation: \`local:test:old-conversation\`
     const lookups = requests.filter(
       (request) =>
         request.method === "GET" &&
-        (request.url === "https://api.github.com/app/installations/456" ||
-          request.url.endsWith("/installation")),
+        request.url.startsWith("https://api.github.com/app"),
     );
     const tokenRequests = requests.filter((request) =>
       request.url.endsWith("/app/installations/456/access_tokens"),
     );
-    expect(lookups).toHaveLength(2);
+    // One App, installation list, and permission read serve both tokens.
+    expect(lookups).toHaveLength(3);
     expect(tokenRequests).toHaveLength(2);
     expect(tokenRequests.map((request) => request.body)).toEqual([
       {

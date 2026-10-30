@@ -273,6 +273,7 @@ function webhookRoute(
     typeof createGitHubWebhookRoute
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
+  refreshInstallations: () => Promise<void> = async () => {},
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -299,6 +300,7 @@ function webhookRoute(
     log: { error },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+    refreshInstallations,
     events: {
       hasMatch,
       async publish(event) {
@@ -2077,6 +2079,40 @@ describe("GitHub-owned pull request outcomes", () => {
       await fixture.close();
     }
   });
+
+  it.each(["installation", "installation_target"])(
+    "reloads the App's installations on %s deliveries",
+    async (eventName) => {
+      const fixture = await createGitHubFixture();
+      const published: EventInput[] = [];
+      const refreshInstallations = vi.fn(async () => {});
+      try {
+        const route = webhookRoute(
+          fixture,
+          published,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          refreshInstallations,
+        );
+        const response = await route.handler(
+          signedRequest(
+            { action: "created", installation: { id: 789 } },
+            eventName,
+          ),
+        );
+
+        expect(response.status).toBe(202);
+        expect(refreshInstallations).toHaveBeenCalledOnce();
+        expect(published).toEqual([]);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   it.each([
     "sentry-junior@example.com",

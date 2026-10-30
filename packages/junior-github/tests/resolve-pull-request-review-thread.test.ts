@@ -81,7 +81,7 @@ describe("resolvePullRequestReviewThread", () => {
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[0]?.[0]).toMatchObject({
-      operation: "github.pull.review-thread.get",
+      operation: "github.pull.review-thread.get:getsentry/junior",
       provider: "github",
     });
     const lookupRequest = fetch.mock.calls[0]?.[0]?.request as Request;

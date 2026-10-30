@@ -14,7 +14,7 @@ import type {
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
-import { installationLookupForLeaseScope } from "./installation-targets.js";
+import { ownerFromLeaseScope } from "./installation-targets.js";
 import {
   type GitHubAppPermissions,
   readGrantPermissions,
@@ -91,8 +91,9 @@ export const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
 export const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 export const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
-// Installs change rarely. A reinstalled App can keep a stale id this long.
-const INSTALLATION_ID_TTL_MS = 10 * 60 * 1000;
+// Installs change rarely, and `installation` webhooks refresh the map sooner.
+const INSTALLATIONS_TTL_MS = 10 * 60 * 1000;
+const INSTALLATIONS_PAGE_SIZE = 100;
 const GITHUB_API = "https://api.github.com";
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const USER_REFRESH_TIMEOUT_MS = 20_000;
@@ -804,88 +805,102 @@ export async function issueInstallationToken(
   );
 }
 
-/** Read one App installation id, or undefined when the App is not installed. */
-async function findInstallationId(
-  cache: PluginCache,
-  appJwt: string,
-  path: string,
-): Promise<number | undefined> {
-  const id = await cache.getOrLoad<number | null>(
-    `installation-id:${path}`,
-    async () => {
-      let installation: unknown;
-      try {
-        installation = await githubRequest(GITHUB_API, path, { token: appJwt });
-      } catch (error) {
-        if (error instanceof GitHubRequestError && error.status === 404) {
-          // Do not cache: the App can be installed at any time.
-          return { value: null };
-        }
-        throw error;
-      }
-      const value = isRecord(installation) ? installation.id : undefined;
-      if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-        throw new Error("GitHub installation response missing id");
-      }
-      return { value, ttlMs: INSTALLATION_ID_TTL_MS };
-    },
-  );
-  return id ?? undefined;
+/** Every installation of the App, by lowercase account login. */
+export interface GitHubInstallations {
+  /** Lowercase login of the account that owns the App. */
+  appOwner: string;
+  byOwner: Record<string, number>;
 }
 
-/** Read the installation on the account that owns the App. */
-async function appOwnerInstallationId(
-  cache: PluginCache,
-  appJwt: string,
-): Promise<number> {
-  const owner = await cache.getOrLoad("app-owner", async () => {
-    const app = await githubRequest(GITHUB_API, "/app", { token: appJwt });
-    const value = isRecord(app) && isRecord(app.owner) ? app.owner : undefined;
-    if (typeof value?.login !== "string" || !value.login) {
-      throw new Error("GitHub App response missing owner");
-    }
-    return {
-      value: {
-        login: value.login,
-        organization: value.type === "Organization",
-      },
-      ttlMs: INSTALLATION_ID_TTL_MS,
-    };
-  });
-  const id = await findInstallationId(
-    cache,
-    appJwt,
-    `/${owner.organization ? "orgs" : "users"}/${encodeURIComponent(owner.login)}/installation`,
-  );
-  if (!id) {
-    throw new GitHubPluginSetupError(
-      `The GitHub App is not installed on ${owner.login}.`,
-    );
-  }
-  return id;
+function readLogin(value: unknown): string | undefined {
+  const login = isRecord(value) ? value.login : undefined;
+  return typeof login === "string" && login ? login.toLowerCase() : undefined;
 }
 
 /**
- * Resolve the App installation for an installation grant from its lease
- * scope. Writes need the target's own installation. Reads without one, or
- * without a target, use the App owner's installation, which can still read
- * public repositories.
+ * Load every installation of the App. An App can be installed at most once
+ * per account, so the account login identifies the installation. Set
+ * `refresh` to reload the cached map now.
+ */
+export async function loadInstallations(
+  app: GitHubAppEnv,
+  cache: PluginCache,
+  options?: { refresh?: boolean },
+): Promise<GitHubInstallations> {
+  return await cache.getOrLoad(
+    "installations",
+    async () => {
+      const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
+      const appResponse = await githubRequest(GITHUB_API, "/app", {
+        token: appJwt,
+      });
+      const appOwner = readLogin(
+        isRecord(appResponse) ? appResponse.owner : undefined,
+      );
+      if (!appOwner) {
+        throw new Error("GitHub App response missing owner");
+      }
+      const byOwner: Record<string, number> = {};
+      for (let page = 1; ; page += 1) {
+        const installations = await githubRequest(
+          GITHUB_API,
+          `/app/installations?per_page=${INSTALLATIONS_PAGE_SIZE}&page=${page}`,
+          { token: appJwt },
+        );
+        if (!Array.isArray(installations)) {
+          throw new Error("GitHub installations response is not a list");
+        }
+        for (const installation of installations) {
+          const login = readLogin(
+            isRecord(installation) ? installation.account : undefined,
+          );
+          const id = isRecord(installation) ? installation.id : undefined;
+          if (login && typeof id === "number" && Number.isSafeInteger(id)) {
+            byOwner[login] = id;
+          }
+        }
+        if (installations.length < INSTALLATIONS_PAGE_SIZE) break;
+      }
+      return { value: { appOwner, byOwner }, ttlMs: INSTALLATIONS_TTL_MS };
+    },
+    options,
+  );
+}
+
+/**
+ * Resolve the App installation for an installation grant from the owner in
+ * its lease scope. Writes need the owner's own installation. Reads without
+ * one, or without an owner, use the App owner's installation, which can still
+ * read public repositories.
  */
 async function resolveInstallationId(
   ctx: IssueCredentialHookContext,
-  appJwt: string,
+  app: GitHubAppEnv,
 ): Promise<number> {
-  const lookup = installationLookupForLeaseScope(ctx.grant.leaseScope);
-  if (lookup) {
-    const id = await findInstallationId(ctx.cache, appJwt, lookup.path);
+  const owner = ownerFromLeaseScope(ctx.grant.leaseScope);
+  let installations = await loadInstallations(app, ctx.cache);
+  if (owner) {
+    const id = installations.byOwner[owner];
     if (id) return id;
     if (ctx.grant.access === "write") {
+      // The App can be installed before its `installation` webhook arrives.
+      installations = await loadInstallations(app, ctx.cache, {
+        refresh: true,
+      });
+      const refreshedId = installations.byOwner[owner];
+      if (refreshedId) return refreshedId;
       throw new GitHubPluginSetupError(
-        `The GitHub App is not installed on ${lookup.label}.`,
+        `The GitHub App is not installed on ${owner}.`,
       );
     }
   }
-  return await appOwnerInstallationId(ctx.cache, appJwt);
+  const defaultId = installations.byOwner[installations.appOwner];
+  if (!defaultId) {
+    throw new GitHubPluginSetupError(
+      `The GitHub App is not installed on ${installations.appOwner}, the account that owns it.`,
+    );
+  }
+  return defaultId;
 }
 
 /** Read an installation's permissions as read grants, cached per lease period. */
@@ -930,11 +945,11 @@ export async function issueGitHubCredential(
       ctx.grant.name === "installation-read" ||
       ctx.grant.name === "installation-write"
     ) {
+      const installationId = await resolveInstallationId(ctx, options);
       const appJwt = createAppJwt(
         requireEnv(options.appIdEnv),
         options.privateKeyEnv,
       );
-      const installationId = await resolveInstallationId(ctx, appJwt);
       // Write tokens use the full installed App permissions and repos. Repo
       // allowlisting stays in egress policy, not in per-request token minting.
       const permissions =

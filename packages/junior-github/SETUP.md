@@ -45,9 +45,12 @@ Set on the harness host (never in skill files):
 - `GITHUB_APP_BOT_NAME` (Git author and committer display name)
 - `GITHUB_APP_BOT_EMAIL`
 
-One Junior deployment works with every installation of the App. Junior finds
-the installation for each target repository or organization. Reads that name no
-repository use the installation on the account that owns the App.
+One Junior deployment works with every installation of the App. Junior uses the
+installation on the account that owns the target repository or organization.
+It keeps a list of the App's installations for 10 minutes, and `installation`
+and `installation_target` webhooks reload it. Reads that name no owner, or an
+account without the App, use the installation on the account that owns the App.
+Writes to an account without the App fail.
 
 ### Vercel env setup (multiline-safe)
 
@@ -160,7 +163,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 - `user-read` and explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, review, inline review comment, and branch operations do not fall back to user OAuth.
 - Headless event turns use the `event` system actor and may receive the same installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
 - Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers. When the current actor has a linked GitHub identity, Junior prefers a GitHub noreply address so external automation can resolve a login for assignment.
-- Installation credential leases are cached on the host by grant name and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
+- Installation credential leases are cached on the host by grant name and target account, and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API and upload calls.
 
 ## 4) CLI usage

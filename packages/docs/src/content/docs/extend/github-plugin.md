@@ -86,11 +86,18 @@ Install the App only on repositories where Junior may push. Protect important
 branches in GitHub. Across many repositories, users should include `owner/repo`
 when the target is not obvious.
 
-One deployment works with every installation of the App. Junior finds the
-installation for each target repository or organization. A webhook delivery
-uses the installation that sent it. Reads that name no repository, such as
-search or GraphQL without `owner` and `repo` variables, use the installation on
-the account that owns the App. Install the App on its owner account too.
+One deployment works with every installation of the App. An App has at most
+one installation per account, so Junior uses the installation on the account
+that owns the target repository or organization. Junior keeps a list of the
+App's installations for 10 minutes. `installation` and `installation_target`
+webhooks reload the list. A webhook delivery uses the installation that sent
+it.
+
+Reads that name no owner, such as search or GraphQL without an `owner`
+variable, use the installation on the account that owns the App. Reads of
+accounts without the App use that installation too, so public repositories stay
+readable. Writes never use another account's installation. Install the App on
+its owner account too.
 
 ## Config
 
@@ -547,8 +554,8 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
 - Webhook delivery returns `202 Ignored`: the payload has no App installation,
   or the event mapping is unsupported. Confirm the event type.
-- `The GitHub App is not installed on owner/repo`: install the App on that
-  repository or its organization, and retry.
+- `The GitHub App is not installed on owner`: install the App on that account,
+  and retry.
 - Delivery succeeds but nothing appears in Slack: create a watch
   or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default

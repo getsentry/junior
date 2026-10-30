@@ -23,9 +23,8 @@ import {
   type GitHubGrantReason,
 } from "./credential-support.js";
 import {
-  githubInstallationLeaseScope,
+  githubOwnerLeaseScope,
   githubRepositoryFromUrl,
-  type GitHubInstallationTarget,
 } from "./installation-targets.js";
 
 function githubSmartHttpAccess(
@@ -592,63 +591,64 @@ function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
   name: GitHubGrantName,
-  target?: GitHubInstallationTarget,
+  owner?: string,
 ): GitHubGrant {
   return {
     name,
     access,
     reason,
-    ...(target
-      ? { leaseScope: githubInstallationLeaseScope(target) }
-      : undefined),
+    ...(owner ? { leaseScope: githubOwnerLeaseScope(owner) } : undefined),
     ...(name === "user-write"
       ? { requirements: USER_WRITE_REQUIREMENTS }
       : undefined),
   };
 }
 
-const GITHUB_NAME_PATTERN = /^[\w.-]+$/;
+const GITHUB_LOGIN_PATTERN = /^[\w.-]+$/;
+// Host tools name their repository at the end of the operation, such as
+// `github.pull.review-thread.get:owner/repo`.
+const HOST_OPERATION_REPOSITORY_PATTERN =
+  /^github\.[\w.-]+:([\w.-]+)\/[\w.-]+$/;
 
-/** Read the repository from GraphQL `owner` and `repo` or `name` variables, as `gh` sends them. */
-function graphqlVariablesRepository(
+/** Read the GraphQL `owner` variable, as `gh` sends it for repository reads. */
+function graphqlOwnerVariable(
   bodyText: string | undefined,
-): GitHubInstallationTarget | undefined {
+): string | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(bodyText ?? "");
   } catch {
     return undefined;
   }
-  const variables = isRecord(parsed) ? parsed.variables : undefined;
-  if (!isRecord(variables)) return undefined;
-  const owner = variables.owner;
-  const name = variables.repo ?? variables.name;
-  return typeof owner === "string" &&
-    typeof name === "string" &&
-    GITHUB_NAME_PATTERN.test(owner) &&
-    GITHUB_NAME_PATTERN.test(name)
-    ? { owner, name }
+  const owner =
+    isRecord(parsed) && isRecord(parsed.variables)
+      ? parsed.variables.owner
+      : undefined;
+  return typeof owner === "string" && GITHUB_LOGIN_PATTERN.test(owner)
+    ? owner
     : undefined;
 }
 
 /**
- * Find the repository or organization whose App installation a request
- * needs. Return undefined when the request names neither.
+ * Find the account whose App installation a request needs: the repository
+ * or organization in the URL, the `owner/repo` that a host tool puts at the
+ * end of its operation, or the GraphQL `owner` variable. Return undefined
+ * when the request names no owner.
  */
-function installationTarget(
+function installationOwner(
   upstreamUrl: URL,
-  bodyText: string | undefined,
-): GitHubInstallationTarget | undefined {
-  const repository =
-    githubRepositoryFromUrl(upstreamUrl) ??
+  request: EgressHookContext["request"],
+): string | undefined {
+  return (
+    githubRepositoryFromUrl(upstreamUrl)?.owner ??
+    (isGitHubApiUrl(upstreamUrl)
+      ? /^\/orgs\/([\w.-]+)(?:\/|$)/i.exec(upstreamUrl.pathname)?.[1]
+      : undefined) ??
+    HOST_OPERATION_REPOSITORY_PATTERN.exec(request.operation ?? "")?.[1] ??
     (isGitHubGraphqlUrl(upstreamUrl)
-      ? graphqlVariablesRepository(bodyText)
-      : undefined);
-  if (repository) return repository;
-  const org = isGitHubApiUrl(upstreamUrl)
-    ? /^\/orgs\/([\w.-]+)(?:\/|$)/i.exec(upstreamUrl.pathname)?.[1]
-    : undefined;
-  return org ? { org } : undefined;
+      ? graphqlOwnerVariable(request.bodyText)
+      : undefined)
+  );
 }
 
 function requireRepositoryTarget(upstreamUrl: URL): void {
@@ -678,7 +678,7 @@ export async function githubGrantForEgress(
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
     return grantForAccess("write", "github.asset-upload", "user-write");
   }
-  const target = installationTarget(upstreamUrl, ctx.request.bodyText);
+  const owner = installationOwner(upstreamUrl, ctx.request);
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
@@ -688,14 +688,14 @@ export async function githubGrantForEgress(
         "write",
         "github.installation-write",
         "installation-write",
-        target,
+        owner,
       );
     }
     return grantForAccess(
       smartHttpAccess,
       "github.git-read",
       "installation-read",
-      target,
+      owner,
     );
   }
 
@@ -715,7 +715,7 @@ export async function githubGrantForEgress(
         ? "github.user-write"
         : "github.installation-write",
       writeGrantName,
-      writeGrantName === "installation-write" ? target : undefined,
+      writeGrantName === "installation-write" ? owner : undefined,
     );
   }
 
@@ -726,12 +726,11 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (hostMutationRepository) {
-    const [owner = "", name = ""] = hostMutationRepository.split("/");
     return grantForAccess(
       "write",
       "github.installation-write",
       "installation-write",
-      { owner, name },
+      hostMutationRepository.split("/")[0],
     );
   }
 
@@ -750,7 +749,7 @@ export async function githubGrantForEgress(
       graphqlAccess,
       "github.graphql-read",
       "installation-read",
-      target,
+      owner,
     );
   }
 
@@ -760,5 +759,5 @@ export async function githubGrantForEgress(
       "This GitHub write request is not supported. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
-  return grantForAccess(access, "github.api-read", "installation-read", target);
+  return grantForAccess(access, "github.api-read", "installation-read", owner);
 }

@@ -1,15 +1,12 @@
 /**
  * GitHub App installation targets.
  *
- * Owns how a GitHub request names the repository or organization whose App
- * installation it needs, and how a grant lease scope carries that target to
- * credential issuance.
+ * An App can be installed at most once per account, so the account that owns
+ * a repository identifies the installation a request needs. This module owns
+ * how a grant lease scope carries that owner to credential issuance.
  */
 
-/** Repository or organization whose App installation a grant uses. */
-export type GitHubInstallationTarget =
-  | { name: string; owner: string }
-  | { org: string };
+const OWNER_LEASE_SCOPE_PREFIX = "owner:";
 
 function decodeGitHubPathSegment(value: string): string | undefined {
   try {
@@ -42,33 +39,16 @@ export function githubRepositoryFromUrl(
   return owner && name ? { owner, name } : undefined;
 }
 
-/** Build the grant lease scope that keeps each target's installation lease apart. */
-export function githubInstallationLeaseScope(
-  target: GitHubInstallationTarget,
-): string {
-  return (
-    "org" in target
-      ? `organization:${target.org}`
-      : `repository:${target.owner}/${target.name}`
-  ).toLowerCase();
+/** Build the grant lease scope that keeps each owner's installation lease apart. */
+export function githubOwnerLeaseScope(owner: string): string {
+  return `${OWNER_LEASE_SCOPE_PREFIX}${owner.toLowerCase()}`;
 }
 
-/**
- * Return the GitHub API path that finds the App installation for a lease
- * scope, and the target name for errors. Return undefined for no target.
- */
-export function installationLookupForLeaseScope(
+/** Read the lowercase owner from a grant lease scope, if it names one. */
+export function ownerFromLeaseScope(
   leaseScope: string | undefined,
-): { label: string; path: string } | undefined {
-  const repository = /^repository:([^/]+)\/([^/]+)$/.exec(leaseScope ?? "");
-  if (repository?.[1] && repository[2]) {
-    return {
-      label: `${repository[1]}/${repository[2]}`,
-      path: `/repos/${encodeURIComponent(repository[1])}/${encodeURIComponent(repository[2])}/installation`,
-    };
-  }
-  const org = /^organization:([^/]+)$/.exec(leaseScope ?? "")?.[1];
-  return org
-    ? { label: org, path: `/orgs/${encodeURIComponent(org)}/installation` }
+): string | undefined {
+  return leaseScope?.startsWith(OWNER_LEASE_SCOPE_PREFIX)
+    ? leaseScope.slice(OWNER_LEASE_SCOPE_PREFIX.length) || undefined
     : undefined;
 }
