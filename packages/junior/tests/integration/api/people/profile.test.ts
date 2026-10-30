@@ -385,6 +385,11 @@ describe("people profile API", () => {
         email: "web@example.com",
         fullName: "Web Example",
       });
+      expect(report.surfaces.map((item) => item.label)).toEqual(["API"]);
+      expect(report.recentConversations[0]?.actorIdentity).toEqual({
+        email: "web@example.com",
+        fullName: "Web Example",
+      });
       const directory = await readPeopleListFromSql();
       expect(directory.people.map((person) => person.actor)).toEqual([
         { email: "web@example.com", fullName: "Web Example" },

@@ -227,9 +227,14 @@ export async function recentActorRows(email: string) {
       executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
-      handle: juniorIdentities.handle,
+      // Web identities use the email as the subject. Only Slack fills these.
+      handle: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END`,
       lastActivityAt: juniorConversations.lastActivityAt,
-      providerSubjectId: juniorIdentities.providerSubjectId,
+      providerSubjectId: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`,
       source: juniorConversations.source,
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,

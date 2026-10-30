@@ -94,6 +94,8 @@ function surfaceExpression() {
   return sql<string>`CASE
     WHEN ${juniorConversations.source} IN ('api', 'scheduler', 'slack')
       THEN ${juniorConversations.source}
+    -- Dashboard web conversations share the product api surface label.
+    WHEN ${juniorConversations.source} = 'web' THEN 'api'
     WHEN ${juniorConversations.conversationId} LIKE 'slack:%' THEN 'slack'
     WHEN ${juniorConversations.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
     WHEN ${juniorConversations.conversationId} LIKE 'api:%' THEN 'api'
