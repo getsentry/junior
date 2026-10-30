@@ -47,10 +47,15 @@ the readers, and the known gaps. `tasks.md` has the steps.
 
 These are David Cramer's answers in the Slack thread for #2439.
 
+- The Owner is the person who started the Conversation, or the system for an
+  automation. Owners never transfer.
+- There should be no unknown actors on any Message from now on.
+- The local CLI user can be the system Identity.
+- A web user is the User they sign in with, through the normal User and
+  Identity tables.
+- The schema should be normalized.
 - Assistant output is just an event. It needs no author Identity.
-- Web users always have an Identity. The mock viewer mocks one. He asked if
-  older sessions must be invalidated. The code shows that they need no
-  invalidation (`design.md`, Web Users).
+- Web users always have an Identity. The mock viewer mocks one.
 - Child spend rolls up to the root Owner.
 - Slack bots have an Identity but no User. A bot is still an Actor.
 - For an inbound event, Junior finds the correct Identity. It verifies that
@@ -64,14 +69,18 @@ These are David Cramer's answers in the Slack thread for #2439.
 
 ### Plan Decisions
 
-These are the #2439 end state.
+These are the #2439 end state. They follow from the answers above.
 
-- The Owner is the Identity that started the Conversation. It is the human for
-  Slack, web, and fork. It is the system Identity for scheduled automations,
-  event automations, plugin dispatch, and the local CLI.
+- Slack, web, and fork Conversations have a human Owner. Scheduled
+  automations, event automations, plugin dispatch, and the local CLI have the
+  system Identity as Owner. David was not sure about plugin dispatch. The code
+  runs each dispatch in its own Conversation (`agent-dispatch/README.md`), so
+  it is system work.
 - Junior sets the Owner one time, at insert. A reply never changes it.
 - A child Conversation stores no Owner. It reads the Owner of its root.
-- Junior has one system Identity. `SystemActor.name` stays as provenance.
+- Junior has one system Identity. David asked if Junior needs more than one.
+  The code needs only one, because "which system" is provenance
+  (`design.md`, System Identity). `SystemActor.name` stays as provenance.
 - A web Actor uses the `google` Identity that dashboard sign-in saves. The
   synthetic `junior/<email>` Identity goes away.
 - The Identity id goes next to the Actor, not inside it.
@@ -80,7 +89,15 @@ These are the #2439 end state.
 - `owner_identity_id` replaces `actor_identity_id`. Junior drops
   `actor_identity_id`, `creator_identity_id`,
   `credential_subject_identity_id`, and `actor_json` from
-  `junior_conversations`.
+  `junior_conversations`. This follows the normalized-schema answer. The
+  code shows that the two dropped Identity columns are always `null` and have
+  no reader.
+
+### Code Facts
+
+- Old dashboard sessions need no invalidation. David asked about this. The
+  code shows that each live session already has a `google` Identity
+  (`design.md`, Web Users).
 
 ## Proposals
 
