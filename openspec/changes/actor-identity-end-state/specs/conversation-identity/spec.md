@@ -1,5 +1,8 @@
 # Conversation Identity
 
+These requirements give the end state. Each step in `tasks.md` decides how to
+build them.
+
 ## ADDED Requirements
 
 ### Requirement: One Owner Per Conversation
@@ -50,48 +53,51 @@ its root Conversation.
 
 Junior SHALL have exactly one system Identity. Every `SystemActor` and every
 `LocalActor` SHALL map to it. `SystemActor.name` SHALL stay runtime
-provenance.
+provenance. No plugin and no OAuth link SHALL write the system Identity.
 
 #### Scenario: Different system Actors
 
-- **WHEN** a status event Turn and a scheduled automation Turn each write a Message
+- **WHEN** a status event Turn and a scheduled automation Turn each write a
+  Message
 - **THEN** both Messages have the same system author Identity
 - **AND** each Turn keeps its own `SystemActor.name`.
 
-### Requirement: Web Actors Use The Signed-In Identity
+#### Scenario: System root labels
 
-A web Actor SHALL map to the `google` Identity that dashboard sign-in saves.
-Junior SHALL NOT create a synthetic web Identity.
+- **WHEN** the dashboard shows a root that the system Identity owns
+- **THEN** its label comes from the Source or the Automation or dispatch
+  record
+- **AND** the label does not change to "System".
+
+### Requirement: Web Actors Use The Sign-In Identity
+
+A web Actor SHALL map to the Identity that dashboard sign-in saves for the
+viewer User. Junior SHALL NOT create a synthetic web Identity. The mock viewer
+SHALL have a mock Identity.
 
 #### Scenario: Signed-in web user sends a Message
 
 - **WHEN** a signed-in dashboard user sends a Message
-- **THEN** the Message author is the user's `google` Identity
-- **AND** that Identity links to the viewer's `junior_users` row.
+- **THEN** the Message author is the user's sign-in Identity
+- **AND** that Identity links to the viewer's User.
 
 #### Scenario: Mock viewer sends a Message
 
 - **WHEN** the mock viewer sends a Message
-- **THEN** the Message author is a `mock` Identity, not the system Identity
+- **THEN** the Message author is a mock Identity, not the system Identity
 - **AND** Junior writes no Identity row for it.
 
 #### Scenario: Local auth bypass sends a Message
 
-- **WHEN** the dashboard runs with `authRequired: false` and real data
-- **THEN** the Message author is the bypass User's `mock` Identity
-- **AND** that Identity has the same key as the mock viewer.
-
-#### Scenario: Auth bypass on a production deploy
-
-- **WHEN** the dashboard starts with `authRequired: false` on a Vercel
-  production deploy
-- **THEN** the dashboard fails to start.
+- **WHEN** the dashboard runs with the local auth bypass
+- **THEN** the Message author is an Identity of the bypass User
+- **AND** that Identity can never match a production User.
 
 ### Requirement: Users Have Many Identities
 
-A User SHALL be able to link many Identities, such as `slack`, `google`, and
-`github`. Spend, People, participants, and Locations SHALL group by User. They
-SHALL use the Identity only for an Identity with no User.
+A User SHALL be able to link many Identities. Spend, People, participants,
+and Locations SHALL group by User. They SHALL use the Identity only for an
+Identity with no User.
 
 #### Scenario: One person on Slack and the web
 
@@ -99,22 +105,12 @@ SHALL use the Identity only for an Identity with no User.
 - **THEN** People shows one person with both Conversations
 - **AND** Locations shows that person one time.
 
-### Requirement: Reserved Identity Providers
+### Requirement: Bots Have Their Own Identity
 
-Only core SHALL write Identities with provider `junior` or `mock`. An OAuth
-account link SHALL NOT write either provider.
-
-#### Scenario: Plugin OAuth link
-
-- **WHEN** a plugin OAuth account links an Identity
-- **THEN** its provider is not `slack`, `google`, `junior`, or `mock`.
-
-### Requirement: Slack Bots Have Their Own Identity
-
-A Slack bot SHALL have its own Identity of kind `bot` with no linked User.
-Its subject SHALL be the bot user id. That Identity SHALL be the author of
-the bot's Messages. A bot SHALL NOT count as a person
-in spend, People, or participant access.
+A bot SHALL have its own Identity of kind `bot` with no User. A Slack bot
+Identity SHALL use the bot user id. That Identity SHALL be the author of the
+bot's Messages. A bot SHALL NOT count as a person in spend, People, or
+participant access.
 
 #### Scenario: Slack bot posts in a Conversation
 
@@ -125,40 +121,19 @@ in spend, People, or participant access.
 ### Requirement: Inbound Event Authors
 
 An inbound event SHALL be a user Message. Its author SHALL be the Identity of
-the person or bot that the event names by provider account id. An event that
-names no account SHALL use the system Identity. The author Identity SHALL use
-the same key as the OAuth account link, and kind `bot` for a bot. Writing the
-author Identity SHALL NOT change the `kind` or `user_id` of an existing row.
-Junior SHALL verify the author the same way as everywhere else. An event
-SHALL NOT change the Owner or the Turn Actor. An event Message author SHALL
-NOT become a participant.
+the person or bot who wrote the content. A system event SHALL use the system
+Identity. The author Identity SHALL be the same Identity that the OAuth link
+writes for that account. An event write SHALL NOT change the `kind` or the
+User of an existing Identity. An event SHALL name an author only on its own
+provider. An event SHALL NOT change the Owner or the Turn Actor. An event
+Message author SHALL NOT become a participant.
 
 #### Scenario: GitHub PR comment
 
 - **WHEN** a person comments on a watched PR
 - **THEN** the event is a user Message
-- **AND** its author is that person's `github` Identity
-- **AND** the author is trusted only when `findLinkedSlackMember()` returns
-  `linked` for the account, or the login is on `trustedAuthors`
+- **AND** its author is that person's GitHub Identity
 - **AND** the person gets no participant row.
-
-#### Scenario: Event batch with two authors
-
-- **WHEN** one Turn takes a batch of two events from two different authors
-- **THEN** the batch Message author is the system Identity
-- **AND** Junior decides trust for each event from its own author Identity.
-
-#### Scenario: Event batch with one author
-
-- **WHEN** one Turn takes a batch of events that all have the same author
-- **THEN** the batch Message author is that author Identity.
-
-#### Scenario: Event names another provider
-
-- **WHEN** an event's `doneBy.provider` differs from its `namespace`, or the
-  namespace is `slack`, `google`, `junior`, or `mock`
-- **THEN** the event Message author is the system Identity
-- **AND** its text stays data only.
 
 #### Scenario: Status event
 
@@ -167,42 +142,46 @@ NOT become a participant.
 - **AND** its author is the system Identity
 - **AND** the event starts a run as today.
 
+#### Scenario: Event names another provider
+
+- **WHEN** an event names an author on a provider that is not its own
+- **THEN** the event Message author is the system Identity
+- **AND** its text is not trusted text.
+
 #### Scenario: Event author already linked
 
-- **WHEN** a person whose `github` Identity links a User comments on a
-  watched PR
-- **THEN** the `github` Identity keeps its `kind` and `user_id`.
+- **WHEN** a person whose GitHub Identity links a User comments on a watched
+  PR
+- **THEN** the GitHub Identity keeps its `kind` and its User.
 
 ### Requirement: Trusted Event Authors
 
-Junior SHALL treat text from a trusted event author exactly like a chat message
-from that author. It SHALL authorize what a chat message from that author would
-authorize, no more and no less. An author SHALL be trusted when the plugin marks
-the author as trusted from its config, or when `findLinkedSlackMember()` returns
-`linked` for the author's account. That check SHALL be the same check that
-Identity dispatch and Watch requester instructions use: the exact linked account
-id, one linked Slack user, a current human member, and a Slack email on
-`allowedDomains`. Every other author SHALL be untrusted. An event from an
-untrusted or unknown author SHALL NOT start a run. The GitHub plugin SHALL own
-its trusted authors list of GitHub logins, `githubPlugin({ trustedAuthors })`.
-Core SHALL NOT read GitHub logins to decide trust.
+An event author SHALL be trusted when Junior verifies their linked account on
+an allowed domain, with the same check that Identity dispatch and Watch
+requester instructions use. An event author SHALL also be trusted when the
+plugin's `trustedAuthors` list has their login. Every other author SHALL be
+untrusted. An unknown sender SHALL NOT be trusted.
 
-Only `doneByText` SHALL be trusted text, with the lines that the author only
-quotes removed. Junior SHALL render it in the `Requester instruction`
-section of the task input. Junior SHALL NOT render it as a `user:` line.
+Junior SHALL treat text from a trusted author exactly like a chat message from
+that author, no more and no less. Only the author's own text SHALL count.
+Lines that the author only quotes SHALL NOT count.
 
-In an event batch, Junior SHALL leave out each entry from an untrusted author
-before the Turn starts. When no entry is left, Junior SHALL NOT start a Turn.
-A system event, with no author and the system Identity, SHALL run as today.
+An event from an untrusted or unknown author SHALL NOT start a run. A system
+event SHALL run as today. Core SHALL get only a provider-neutral trusted
+result. Core SHALL NOT read provider logins to decide trust.
+
+In an event batch, Junior SHALL decide trust for each entry. An untrusted
+entry SHALL NOT start a Turn and SHALL NOT count as instructions. When no
+trusted or system entry is left, Junior SHALL NOT start a Turn. Whether
+Junior drops untrusted entries or keeps them as context is open
+(`proposal.md`, Open Questions, 1).
 
 #### Scenario: Linked member on an allowed domain
 
 - **WHEN** a person whose GitHub account links to one current Slack member on
   an allowed domain comments on a watched PR
 - **THEN** Junior treats the comment text like a chat message from that
-  person
-- **AND** renders it in the `Requester instruction` section, not as a
-  `user:` line.
+  person.
 
 #### Scenario: Linked member on another domain
 
@@ -218,52 +197,45 @@ A system event, with no author and the system Identity, SHALL run as today.
 
 #### Scenario: Author with no linked account
 
-- **WHEN** a person whose `github` Identity has no linked Slack user comments
-  on a watched PR
+- **WHEN** a person whose GitHub Identity has no linked Slack user, and who
+  is not on `trustedAuthors`, comments on a watched PR
 - **THEN** the event does not start a run.
 
 #### Scenario: Quoted text from a trusted author
 
 - **WHEN** a trusted author quotes another person's text in a comment
-- **THEN** Junior treats only the author's own lines as trusted text
-- **AND** the quoted lines stay data only.
+- **THEN** Junior treats only the author's own lines as trusted text.
 
 #### Scenario: Bot on the trusted authors list
 
-- **WHEN** a bot whose GitHub login is on the GitHub plugin trusted authors
-  list comments on a watched PR
-- **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text like a chat message from that bot
+- **WHEN** a bot whose GitHub login is on `trustedAuthors` comments on a
+  watched PR
+- **THEN** Junior treats the comment text like a chat message from that bot
 - **AND** the bot has no User and gets no participant row.
 
 #### Scenario: Person on the trusted authors list
 
-- **WHEN** a person whose GitHub login is on the GitHub plugin trusted
-  authors list, and who has no allowed-domain email, comments on a watched PR
-- **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text like a chat message from that
+- **WHEN** a person whose GitHub login is on `trustedAuthors`, and who has no
+  allowed-domain email, comments on a watched PR
+- **THEN** Junior treats the comment text like a chat message from that
   person.
 
 #### Scenario: Unknown sender
 
-- **WHEN** a sender with no known Identity link and no entry on the trusted
-  authors list comments on a watched PR
+- **WHEN** a sender with no known Identity link and no entry on
+  `trustedAuthors` comments on a watched PR
 - **THEN** the event does not start a run.
 
 #### Scenario: Bot not on the trusted authors list
 
-- **WHEN** a bot whose GitHub login is not on the GitHub plugin trusted
-  authors list comments on a watched PR
+- **WHEN** a bot whose GitHub login is not on `trustedAuthors` comments on a
+  watched PR
 - **THEN** the event does not start a run.
 
-#### Scenario: Untrusted author in an event batch
+#### Scenario: Batch with only untrusted entries
 
-- **WHEN** one Turn takes a batch with an event from a trusted author and an
-  event from an untrusted author
-- **THEN** Junior leaves the untrusted author's event out of the run
-- **AND** the batch Message author is the trusted author's Identity
-- **AND** when every event in a batch has an untrusted author, no Turn
-  starts.
+- **WHEN** one Turn takes a batch where every entry has an untrusted author
+- **THEN** no Turn starts.
 
 ### Requirement: Guardian Labels Use The Actor
 
@@ -275,7 +247,7 @@ provenance. Junior SHALL NOT give a label from the Identity id alone.
 - **WHEN** a Turn runs as one `SystemActor` and a root Message has a system
   author with a different `SystemActor.name`
 - **THEN** both authors have the one system Identity
-- **AND** Guardian labels the Message `event`, not `automation`.
+- **AND** Guardian does not label the Message as the Turn Actor's own.
 
 ### Requirement: Participants Are Users
 
@@ -289,7 +261,7 @@ User. The dashboard participant list SHALL use the same rule.
 
 ### Requirement: Identity Id Next To The Actor
 
-Junior SHALL store the Identity id next to the Actor on the Turn and on each
+Junior SHALL carry the Identity id next to the Actor on the Turn and on each
 Message. Junior SHALL NOT add the Identity id inside `Actor`.
 
 #### Scenario: Old worker reads a Turn
@@ -300,9 +272,9 @@ Message. Junior SHALL NOT add the Identity id inside `Actor`.
 
 ### Requirement: No Unknown Message Authors
 
-Every new user Message row SHALL have an author Identity. A user Message has
-role `user`. Junior SHALL resolve the author at ingress and SHALL NOT infer it
-later. Assistant output is an event and SHALL NOT need an author Identity.
+Every new user Message SHALL have an author Identity. Junior SHALL resolve
+the author at ingress and SHALL NOT infer it later. Assistant output is an
+event and SHALL NOT need an author Identity.
 
 #### Scenario: Ingress without an author
 
@@ -311,18 +283,30 @@ later. Assistant output is an event and SHALL NOT need an author Identity.
 
 #### Scenario: System input as a user Message
 
-- **WHEN** a system event with no author, a scheduled automation, a plugin
-  dispatch, or the local CLI writes a user Message
+- **WHEN** a system event, a scheduled automation, a plugin dispatch, or the
+  local CLI writes a user Message
 - **THEN** the author is the system Identity.
 
 #### Scenario: Assistant output
 
 - **WHEN** Junior writes an assistant Message
-- **THEN** the row has no author Identity
+- **THEN** it has no author Identity
 - **AND** the write succeeds.
 
 #### Scenario: Legacy Message without an author
 
-- **WHEN** Junior reads a legacy user Message row with no author Identity
+- **WHEN** Junior reads a legacy user Message with no author Identity
 - **THEN** Junior uses the legacy fallback
 - **AND** logs that the fallback ran.
+
+### Requirement: Legacy Rows Stay
+
+Junior SHALL leave legacy Identity and Owner rows as they are, unless a
+migration is clearly correct. Each repair or merge SHALL run a dry run first.
+A production backfill SHALL NOT run without explicit approval.
+
+#### Scenario: Legacy web Identity with no matching sign-in row
+
+- **WHEN** a legacy `junior/<email>` Identity has no sign-in Identity that
+  links the same User
+- **THEN** its references stay as they are.

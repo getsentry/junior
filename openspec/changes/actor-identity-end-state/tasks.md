@@ -1,332 +1,204 @@
 # Tasks
 
-Each step ships on its own and leaves `main` correct. Test paths are under
-`packages/junior/tests/`. Extend the owning scenario in each listed file. Do
-not add tests for migration SQL.
+## How To Use This Plan
+
+- This plan fixes the target and the rules. It does not fix the
+  implementation.
+- At the start of each step, re-check this plan against current `main`.
+  Code can change between steps.
+- Settle the implementation details of the step in its PR. The "Decide in
+  this step" bullets list the open details.
+- When the target or a rule must change, update this plan in the same PR.
+  A change to a decided rule (`proposal.md`, From David Cramer and Plan
+  Decisions) needs David's OK.
+- Follow `policies/testing.md`. Extend the owning scenario. Do not add tests
+  for migration SQL.
 
 ## Release Rules
 
-- A new field in a `.strict()` schema ships in a reader release before any
-  writer sets it. This covers the mailbox entry (`agentInputSchema`),
-  `eventDoerSchema` (`junior-plugin-api/src/events.ts`, #2260), and
-  `requesterInstructionSchema` (`chat/events/requester.ts`, #2260, with
-  `actor: slackActorSchema`).
-- A `NOT VALID` check ships one release after every writer sets the value.
-  `junior upgrade` runs migrations while old workers still run.
-- A dropped column takes two releases (`design.md`, Schema). Release N stops
-  all writes and reads and leaves it out of `conversationReadColumns()`.
-  Release N+1 removes it from the Drizzle schema and generates the drop.
+- Each step ships alone and leaves `main` correct.
+- Each step is safe under a rolling deploy. Old and new workers run at the
+  same time, and `junior upgrade` runs migrations while old workers run.
+- Readers ship before writers. A new field ships in a release that accepts it
+  before any release writes it.
+- Enforcement ships only after every writer sets the value. It does not apply
+  to legacy rows.
+- A column drop ships one release after the code stops using the column.
+- No production backfill runs without explicit approval.
+- A dry run comes before each repair or merge. Post its counts on #2439.
 
 ## Dependencies
 
-- #2441 before step 2. Both change `SqlStore.recordExecution` and
-  `task-execution/turn-cursor.ts`.
-- #2260 (stacked on #2217) before step 3. Step 3 builds event authors on its
-  `doneBy.subjectId`, and widens which event authors it trusts. Its Watch
-  requester is provenance, not an Owner.
-- #2382 before step 4a. Both add a `junior_conversations` column and change
-  the write rule in `SqlStore.upsertConversation`.
-- #2181 before step 5. Both change `agent-invocations/root-conversation.ts` and
+- #2441 before step 2. Both change the execution record write and the Turn
+  cursor.
+- #2260 (stacked on #2217) before step 3. Step 3 builds event authors and
+  the trust rule on #2260's event author. #2260's Watch requester is
+  provenance, not an Owner.
+- #2382 before step 4a. Both change the Conversation row and its write rule.
+- #2181 before step 5. Both change root Conversation Message authors and
   Guardian.
 - #2211 owns the record of which Automation or dispatch did the work.
+- Step order: 1, 2, 3, 4a, 4b, 5, 6, 7. Step 4b needs 4a on every worker.
+  Step 6 needs 4b and 5. Step 7 needs 6 on every worker.
 
-## 1. One Actor To Identity Mapping (#2443)
+## 1. One Actor To Identity Mapping
 
-- [ ] `chat/identities/actor.ts` owns the mapping from Actor to Identity.
-      It exports `resolveActorIdentityId(executor, actor, nowMs?)`, which
-      writes the Identity, and `findActorIdentityId(db, actor)`, which only
-      reads. The key for each Actor and the web lookup stay inside the
-      module.
-- [ ] Every `SystemActor` and every `LocalActor` maps to the one system key,
-      `system/junior/""/system` (`design.md`, Identity Keys). No current
-      caller passes one yet, so step 2 creates the row first.
-- [ ] Remove the copies in `sql/event-actor.ts`, `handlers/oauth-callback.ts`,
-      and `plugins/viewer.ts`. The viewer uses `findActorIdentityId`, so a
-      read never creates a row.
-- [ ] A Conversation with no Actor keeps the legacy per-name row
-      (`scheduler`, `local-cli`, `event`) through a private fallback in
-      `sql/actor-identity.ts`. This keeps the dashboard labels "Scheduler",
-      "Local CLI", and "Event".
-- [ ] OAuth and message events write `metadata.platform` on an Identity
-      that has no metadata yet.
+Built in #2443 (in review).
 
-Backfill: none. No schema change.
-
-Risk: low. It moves code. New system writes from an Actor use the one system
-key. The fallback still writes per-name rows until step 2, so step 3 merges
-only legacy rows.
-
-Verify: the actor mapping unit test that #2443 adds, and
-`integration/oauth-identity-link.test.ts`.
+- **Goal:** one place maps an Actor to its Identity.
+- **Done when:** every caller uses that place, and every system and local
+  Actor maps to the one system Identity. Legacy per-name system rows stay
+  only for Conversations with no Actor, so the dashboard labels do not
+  change.
+- **Constraints:** no schema change and no backfill.
 
 ## 2. Carry The Identity Id
 
-- [ ] Release A: readers accept the new optional fields:
-      `input.authorIdentityId` in the mailbox entry (`agentInputSchema`,
-      `.strict()`), and `actorIdentityId` next to `actor` in the Turn cursor
-      (`.strip()`).
-- [ ] Release B: each ingress calls `resolveActorIdentityId` one time and
-      sets both fields. The local CLI author creates the one system row
-      first. Ingress paths: Slack, web, fork, event, scheduled automation,
-      event automation, plugin dispatch, local CLI, and Agent invocation.
-- [ ] Each ingress sets `authorIdentityId` on each new user Message.
-      Assistant output sets no author.
-- [ ] Add `ownerIdentityId` to `Conversation`. Until step 4b it reads
-      `actor_identity_id`. `conversationFromRow` returns it for every
-      Identity kind, also system.
-- [ ] `SqlStore.upsertConversation` writes the stored id. Remove
-      `systemIdentityFromSource` and `mergeActor` from the write path.
-- [ ] Release N for `creator_identity_id` and
-      `credential_subject_identity_id`: stop writing them (the `null` insert
-      values and the `coalesce` updates) and leave them out of
-      `conversationReadColumns()`.
-- [ ] Keep the legacy fallbacks for rows with no id. Log each time one runs.
-
-Backfill: none. No schema change.
-
-Risk: medium. An old worker rejects a mailbox entry with the new field.
-Release A must deploy before release B.
-
-Verify: `component/conversation-sql-store.test.ts`: a system root keeps its
-Identity after a human Turn writes. `integration/conversation-turn-work.test.ts`:
-a web Turn stores its author Identity.
+- **Goal:** each ingress resolves the author Identity one time and carries
+  its id with the work.
+- **Done when:**
+  - every ingress path sets the author Identity id on the Turn, the mailbox
+    entry, and each new user Message. Assistant output sets none.
+  - the Conversation write uses the stored id and no longer guesses an
+    Identity from the Source. A human reply cannot replace the Identity of a
+    system root.
+  - the Conversation exposes its Owner. Until step 4b, the Owner reads the
+    old Conversation Identity column.
+  - nothing writes or reads the two unused Conversation Identity columns.
+  - legacy fallbacks stay for rows with no id, and each fallback logs.
+- **Constraints:**
+  - the Identity id travels next to the Actor, never inside it.
+  - the reader release ships before the writer release. Old workers reject
+    unknown fields in closed schemas.
+  - ingress paths: Slack, web, fork, event, scheduled automation, event
+    automation, plugin dispatch, local CLI, and Agent invocation.
+- **Decide in this step:** field names, how many releases the step takes,
+  and which fallbacks log.
 
 ## 3. One System Identity And Real Identities
 
-- [ ] Change the web lookup inside `resolveActorIdentityId`: a web Actor
-      uses the viewer User's newest `google` row (`design.md`, Identity
-      Keys), not `junior/<email>`. Keep `SystemActor.name` as provenance.
-- [ ] A web Actor never falls back to the system Identity.
-- [ ] Add `junior` and `mock` to `isNativeIdentityProvider`, so an OAuth
-      link never writes either provider.
-- [ ] Reserve the plugin name `mock` in
-      `junior-plugin-api/src/registration.ts`, next to `junior`.
-- [ ] Give the mock viewer an in-memory `mock` Identity in
-      `viewer.identities`. Write no row for it.
-- [ ] The local auth bypass writes one `mock` Identity for its User, with the
-      same key as the mock viewer. Move the Vercel guard of
-      `apps/example/dashboard.ts` into the dashboard package, so
-      `authRequired: false` fails to start on a Vercel production deploy.
-- [ ] Add `bot` to `IdentityKind`. Map a Slack bot author to its own `bot`
-      Identity with no User. The subject is the bot user id (`U…`), else the
-      `bot_id`.
-- [ ] Event Messages: the plugin sets `doneBy.subjectId`, `isBot`, and
-      `trustedAuthor`. Core upserts the author Identity with the OAuth link key,
-      kind `bot` when `isBot` is true, and no email. An event with no
-      `doneBy` or no `subjectId` uses the system Identity.
-- [ ] The author Identity provider is the event `namespace`. Require
-      `doneBy.provider === namespace`. Refuse the core providers `slack`,
-      `google`, `junior`, and `mock`, and use the system Identity.
-- [ ] An event batch is one Message. Its author is the shared author
-      Identity when every event has the same one, else the system Identity.
-      Decide trust per event, from each entry's `authorIdentityId`.
-- [ ] An event upsert never changes the `kind` or `user_id` of an existing
-      row. Change the conflict update in `upsertIdentityRecord`
-      (`chat/identities/sql.ts`), which sets `kind = excluded.kind` today.
-- [ ] Event Message authors do not become participants. `sql/history.ts`
-      skips `recordConversationParticipant` for event Messages.
-- [ ] Event author trust (`proposal.md`, Plan Decisions). The GitHub plugin
-      gets `githubPlugin({ trustedAuthors })`, a trusted authors list of
-      GitHub logins. It compares logins without case. It sets
-      `doneBy.trustedAuthor` when the event login is on the list. Core treats
-      `doneByText` as trusted text only when `doneBy.trustedAuthor` is
-      `true`, or when `findLinkedSlackMember()` returns `linked` for the
-      author's account. Core reads no GitHub login for this.
-- [ ] Render trusted text in #2260's `Requester instruction` section, never as
-      a `user:` line. #2260's instruction record keeps the author Identity
-      id, because a trusted bot has no Slack Actor.
-- [ ] Trusted text is a chat message (`proposal.md`, Plan Decisions):
-  - Rewrite `REQUESTER_INSTRUCTION_RULES` (`guardian/reviewer.ts`, #2260).
-    It says that a trusted author's lines authorize what a chat message from
-    that author would authorize, with the same rules as any chat author. It
-    drops the claim that the writer created the Watch.
-  - Let a Watch with no requester receive trusted author text. Today
-    `events/ingest.ts` resolves the doer only when a subscription has a
-    requester.
-  - Make `requesterInstruction.mention` in `eventTaskFactsSchema`
-    (`chat/events/notification.ts`) optional, and give a bot an Identity
-    label instead.
-  - Give a bot author its own Guardian label, from its `bot` Identity and
-    the Message provenance.
-- [ ] Drop untrusted authored events before the Turn starts. An event whose
-      author is untrusted or unknown starts no run. In a batch, leave the
-      untrusted authored entries out, and build the batch Message from the
-      rest. When no entry is left, start no Turn. A system event runs as
-      today.
-- [ ] Document `trustedAuthors` in `junior-github/SETUP.md`. It can list
-      bots and people. Warn that GitHub can give a renamed or deleted
-      account's login to a new account. Say to list stable logins and to
-      review the list.
-- [ ] The participant list shows only Identities of kind `user` with a User,
-      the same rule as participant rows.
-- [ ] Stop writing new `junior/<email>` rows. New per-name system rows
-      already stopped: #2443 for Actors, and step 2 for the fallback.
-- [ ] Before the backfill deletes the per-name rows, move the system root
-      labels off `juniorIdentities.displayName` ("Scheduler", "Local CLI",
-      "Event"). `api/conversations/list.ts` and `stats.query.ts` take the
-      label from the Conversation Source, or from the Automation or dispatch
-      record (#2211). No visible label changes to "System".
-
-Backfill: run it in the release after step 3, when no worker writes the old
-keys. Workers from before step 2 keep writing the legacy system rows until
-cutover.
-
-1. Dry-run count: every legacy row of kind `system`, by subject, such as
-   `scheduler`, `local-cli`, and `event`. For each row, count the references
-   in every foreign key that points at `junior_identities`. Read the list
-   from `pg_constraint`, not from this plan. Today it is
-   `junior_conversations` (`actor_identity_id`, `creator_identity_id`,
-   `credential_subject_identity_id`), `junior_conversation_events`
-   (`actor_identity_id`), and `junior_automations` (`creator_identity_id`,
-   `NOT NULL`).
-2. Move every counted reference to the one system Identity. Then delete the
-   old rows. Delete no row that still has a reference.
-3. Move references from a `junior/<email>` row to a `google` row only when
-   both rows link the same `user_id`. Leave every other `junior/<email>` row
-   and reference as it is.
-
-Risk: medium. Wrong merges move Conversations between People. The trust rule
-changes which event text Junior follows, and which events start a run. Only
-logins on the trusted authors list and linked members on an allowed domain
-start a run with authored text. An untrusted author's event no longer runs,
-so list each review bot that Junior must follow.
-
-Verify: `component/identity-read.test.ts`,
-`integration/api/conversations/detail.test.ts` (participants),
-`integration/local-agent-runner.test.ts`, and the review and comment scenario in
-`packages/junior-github/tests/webhook-outcomes.test.ts`: a bot on the trusted
-authors list is trusted, a bot that is not on the list starts no run, a
-deactivated linked member starts no run, and the commenter gets no
-participant row.
+- **Goal:** every author gets its real Identity, and the trust rule decides
+  which event authors can start a run.
+- **Done when:**
+  - web Actors use their sign-in Identity. Junior writes no new
+    `junior/<email>` rows. A web Actor never falls back to the system
+    Identity.
+  - the mock viewer has an in-memory mock Identity. The local auth bypass
+    has an Identity that cannot match a production User.
+  - a bot has its own Identity of kind `bot` and no User.
+  - an event Message author is the Identity of the person or bot who wrote
+    it, or the system Identity for a system event. An event write never
+    changes the `kind` or the User of an existing Identity. An event can
+    name an author only on its own provider.
+  - event authors do not become participants. The participant list shows
+    only `user` Identities with a User.
+  - the trust rule is live (`design.md`, Trust). Trusted text counts like a
+    chat message from that author. An event from an untrusted or unknown
+    author does not start a run. A system event runs as today.
+  - `trustedAuthors` is documented for the GitHub plugin, with the warning
+    about reused logins.
+  - the dashboard takes system root labels from the Source or the
+    Automation or dispatch record. No visible label changes to "System".
+  - after the dry run and approval, legacy system rows merge into the one
+    system Identity. `junior/<email>` references move only where the merge
+    is clearly correct (`proposal.md`, Plan Decisions).
+- **Constraints:**
+  - needs #2260.
+  - core gets only a provider-neutral trusted result. Core reads no GitHub
+    logins (`policies/provider-boundaries.md`).
+  - Guardian labels come from the Actor and provenance, never from the
+    Identity id alone.
+  - the merge runs in a later release than the code change, when no worker
+    writes the old keys. It reads the foreign keys from the database, not
+    from this plan. It deletes no row that still has a reference.
+- **Decide in this step:**
+  - the identity keys for the mock viewer and the local auth bypass, and
+    where the production guard for the bypass lives.
+  - the Slack bot fallback when Slack sends no bot user id.
+  - how a plugin reports the author account, the bot flag, and the trusted
+    result to core.
+  - how trusted text reaches the model and Guardian, and the Guardian label
+    for a bot author.
+  - the batch Message author. Current proposal: the shared author when every
+    entry has the same one, else the system Identity.
+  - mixed batches: drop untrusted entries or keep them as context
+    (`proposal.md`, Open Questions, 1).
+  - the default `trustedAuthors` entries, such as Cursor Bugbot
+    (`proposal.md`, Open Questions, 2).
 
 ## 4a. Write The Owner
 
-- [ ] Add the nullable `junior_conversations.owner_identity_id` and its
-      index. Add no check yet.
-- [ ] `SqlStore.upsertConversation` sets the Owner at insert. The conflict
-      update never changes it. Child rows store `null`.
-- [ ] Keep writing `actor_identity_id`. No reader moves yet.
+- **Goal:** each new root stores its Owner at insert.
+- **Done when:** a new root has its Owner, a reply never changes it, and a
+  child stores none. The old column is still written. No reader moves yet.
+- **Constraints:** needs #2382. No enforcement and no backfill yet. Old
+  workers can still insert roots with no Owner.
+- **Decide in this step:** the column, the index, and the write rule.
 
-Backfill: none.
-
-Risk: low. Old workers insert roots with no Owner. Step 4b fills them.
-
-Verify: `component/conversation-sql-store.test.ts`: a new root has its Owner,
-and a reply does not change it.
-
-## 4b. Backfill, Check, And Read The Owner
+## 4b. Backfill, Enforce, And Read The Owner
 
 This is the riskiest step. It changes access, the feed, People, and spend.
-Ship it after every worker runs step 4a.
 
-- [ ] Run the backfill below.
-- [ ] Add the `NOT VALID` check for new root rows (`design.md`, Schema).
-- [ ] Move every reader in `design.md`, Readers, to the Owner.
-- [ ] `api/locations/query.ts` groups actors by User, with the Identity as
-      fallback.
-- [ ] State the behavior changes in the PR (`proposal.md`).
-
-Backfill:
-
-1. Run a dry-run count and post it on #2439:
-   - root rows by Source and Identity kind;
-   - roots with a `slack` or `web` Source and a system Identity;
-   - roots with a human Identity and a system Source (`scheduler`, `event`,
-     `plugin`, `local`);
-   - roots with no Identity;
-   - child rows whose Identity differs from their root;
-   - `junior/<email>` rows that are still referenced. Step 4b does not change
-     them.
-   - the Owner repair counts, the agreement check, and the roots with more
-     than one author User (`design.md`, Owner Repair). Count authors only
-     on human user Messages. Event Messages and bot Messages do not count.
-2. Roots with no Owner and a `slack` or `web` Source: copy
-   `actor_identity_id`. When the agreement check found zero disagreements,
-   repair each row that passes every Owner Repair condition. Otherwise drop
-   the repair. Every skipped row keeps its current Identity. This includes
-   each root with more than one author User.
-3. Roots with no Owner and a system Source: the system Identity.
-4. Roots with any other Source: hold until the dry run is reviewed.
-5. Child rows: `null`.
-6. Add a participant row for each human whose Identity was the root Identity
-   and is not the Owner.
-
-Risk: high. A wrong Owner hides or exposes a Conversation. The dry run and the
-participant rows limit this.
-
-Verify: `integration/agent-dispatch-work.test.ts`: a scheduled automation keeps
-the system Owner after a human replies, and the human gets participant access.
-`integration/api/conversations/child-agents.test.ts`: a child reads the root
-Owner. `integration/api/people/spend.test.ts`: child spend goes to the root
-Owner. `integration/api/locations/detail.test.ts`: one row per User.
+- **Goal:** every root has an Owner, and every reader uses it.
+- **Done when:**
+  - every root has an Owner, from the rules in `design.md`, Owner and Owner
+    Repair. Child rows store none.
+  - enforcement for new root rows is live.
+  - every reader of the old Conversation Identity column uses the Owner.
+  - child spend rolls up to the root Owner.
+  - Locations group by User, with the Identity as fallback.
+  - each human who loses the root keeps access as a participant.
+  - the PR states the behavior changes (`proposal.md`).
+- **Constraints:**
+  - ships after step 4a runs on every worker.
+  - dry run first, posted on #2439. The backfill needs explicit approval.
+  - roots with a Source that the rules do not cover wait until the dry run
+    is reviewed.
+  - one disagreement in the Owner repair check drops the repair.
+- **Decide in this step:** the dry-run queries, the backfill SQL, the
+  enforcement, and the reader list. Confirm or drop the Owner repair
+  proposal.
 
 ## 5. Require Authors And Retire Stored Actors
 
-- [ ] Add the `NOT VALID` check for new user Message rows (`design.md`,
-      Schema). Every worker sets the author since step 2 release B.
-- [ ] `resolveEventActorIdentityId` keeps author inference only for legacy
-      reads.
-- [ ] Retire `StoredSlackActor` in `Conversation` and in Redis work state
-      (`task-execution/state.ts`). Store the Identity id.
-- [ ] Guardian `actionActor` and `messageAuthor` use the stored author
-      Identity for human and bot authors. Labels still come from the Actor
-      and Message provenance, through `sameActorIdentity`. They never compare
-      Identity ids alone (`design.md`, Guardian Labels).
-- [ ] Remove `sessionLogActor` and the Source guess in
-      `recordConversationActivityMetadata`.
-- [ ] Add the Identity `kind` and `provider` to the dashboard
-      `actorIdentitySchema`, and the `userId` when the Identity links a User.
-      The client groups authors by User.
-
-Backfill: none. The check is `NOT VALID`, so legacy rows stay.
-
-Risk: medium. A missed ingress path now fails its write. Check the step 2
-fallback logs before this step ships.
-
-Verify: `component/conversation-sql-store.test.ts`: a user Message with no
-author fails, and an assistant Message with no author succeeds.
-`unit/guardian/gate.test.ts`: a web Actor reaches Guardian as web.
-`agent-invocations` coverage: a system author that is not the Turn Actor is
-labeled `event`, not `automation`.
+- **Goal:** no new user Message is written without an author, and no code
+  stores or guesses a Slack-only Actor.
+- **Done when:**
+  - enforcement for new user Message rows is live. Assistant Messages need
+    no author.
+  - author inference stays only for legacy reads.
+  - Conversations and Redis work state store the Identity id, not a stored
+    Actor.
+  - Guardian sees web Actors as web and uses the stored author for human and
+    bot authors. Labels still come from the Actor and provenance.
+  - session logs and activity metadata stop guessing the Actor and Source.
+  - the dashboard author shape shows the Identity kind and provider, and the
+    User when there is one. The client groups authors by User.
+- **Constraints:** needs #2181. Check the step 2 fallback logs before this
+  step ships. A missed ingress path now fails its write.
+- **Decide in this step:** the enforcement, the Guardian changes, and the
+  dashboard schema.
 
 ## 6. Stop Using The Old Columns
 
-This is release N for `actor_identity_id` and `actor_json`. Ship it after
-step 4b and step 5.
-
-- [ ] Stop writing `actor_identity_id`: the insert value, the `coalesce`
-      update, and the `returning` read in `upsertConversation`.
-- [ ] Stop writing `actor_json`: remove `actor: null` from the insert in
-      `upsertConversation`.
-- [ ] Remove the `actor_json` guard in `conversationFromRow` and the
-      `actor_json` predicate in `sql/purge.ts`. First count rows where
-      `actor_json is not null`.
-- [ ] Leave both columns out of `conversationReadColumns()`.
-- [ ] Remove every reader of `junior_conversations_actor_activity_idx`.
-
-Backfill: none.
-
-Risk: low, if no worker from before step 4b still runs.
-
-Verify: the existing scenarios of steps 4b and 5 still pass.
+- **Goal:** no code reads or writes the old Conversation Identity column or
+  the stored Actor JSON.
+- **Done when:** no write, read, purge rule, or index use refers to them.
+- **Constraints:** ships after steps 4b and 5. Count rows with stored Actor
+  JSON before its readers go.
+- **Decide in this step:** the list of uses, from current `main`.
 
 ## 7. Drop Old Columns And Fallbacks
 
-This is release N+1 for all four columns.
-
-- [ ] Remove `actor_identity_id`, `creator_identity_id`,
-      `credential_subject_identity_id`, `actor_json`, and
-      `junior_conversations_actor_activity_idx` from the Drizzle schema.
-      Generate the drop migration.
-- [ ] Remove the legacy fallbacks after the Turn cursor and mailbox retention
-      window.
-- [ ] Move the durable rules out of this plan: the Owner and child rules to
-      `chat/conversations/README.md`, and the one system Identity and the
-      author rule to `chat/identities/README.md`.
-- [ ] Delete this plan.
-
-Backfill: none.
-
-Risk: low, if no worker from before step 6 still runs.
-
-Verify: schema generation and migration metadata checks.
+- **Goal:** the schema is normalized.
+- **Done when:**
+  - the old Conversation Identity column, the two unused Identity columns,
+    the stored Actor JSON, and their index are gone.
+  - the legacy fallbacks are gone, after the Turn cursor and mailbox
+    retention window.
+  - the durable rules live beside the owning code: the Owner and child rules
+    in the Conversations README, and the system Identity and author rule in
+    the Identities README.
+  - this plan is deleted.
+- **Constraints:** ships after step 6 runs on every worker.
+- **Decide in this step:** when the retention window has passed.
