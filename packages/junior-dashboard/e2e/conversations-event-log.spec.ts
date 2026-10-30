@@ -151,7 +151,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(localTime).toHaveText("ET");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await page.reload();
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
@@ -166,8 +166,13 @@ test("inspects all reporting events and searches full event data", async ({
   await secondToggle.click();
   await expect(localTime).toHaveAttribute("aria-pressed", "false");
   await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
-  // UTC mode reads like local mode. The original ISO value stays available.
+  // UTC mode reads like local mode. The header leaves out milliseconds, so
+  // it fits beside the actions. The tooltip and ISO value keep them.
   await expect(panel.locator("header time")).toHaveText(
+    "Aug 7, 2026, 11:54:09 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "title",
     "Aug 7, 2026, 11:54:09.000 UTC",
   );
   await expect(panel.locator("header time")).toHaveAttribute(
@@ -177,7 +182,7 @@ test("inspects all reporting events and searches full event data", async ({
   await secondTab.close();
   await page.bringToFront();
   await localTime.click();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await panel.getByText("Raw JSON", { exact: true }).click();
   const rawJson = JSON.stringify(
     report.events.find((event: { seq: number }) => event.seq === 3),

@@ -36,16 +36,18 @@ export function ConversationEventDetails(props: {
   const { conversation, event, onSelect } = props;
   const time = useEventTime();
   // The sequence number matches the `event` link parameter and the row label.
+  // The line stays on one row beside the actions. The tooltip keeps the
+  // milliseconds that the short timestamp leaves out.
   const timestamp = event ? (
-    <p className="m-0 flex flex-wrap gap-x-1.5 font-mono text-xs text-dashboard-text-muted">
-      <span className="tabular-nums">#{event.seq}</span>
+    <p className="m-0 flex min-w-0 gap-x-1.5 whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <span className="shrink-0">#{event.seq}</span>
       <span aria-hidden="true">·</span>
       <time
-        className="tabular-nums"
+        className="min-w-0 truncate"
         dateTime={event.createdAt}
-        title={event.createdAt}
+        title={time.formatTimestamp(event.createdAt)}
       >
-        {time.formatTimestamp(event.createdAt)}
+        {time.formatShortTimestamp(event.createdAt)}
       </time>
     </p>
   ) : null;

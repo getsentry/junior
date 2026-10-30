@@ -114,10 +114,12 @@ The timezone toggle uses `useEventTime` to share a UTC/local preference through
 `@uidotdev/usehooks` and browser local storage. It applies to event row clocks
 and detail timestamps. Local mode follows the browser timezone. The button uses
 a generic zone name because a log can span standard and daylight-saving time.
-Detail timestamps use a readable date and the zone name for each event date,
-in both modes. Their tooltip shows the original ISO value. The mode, not
-the timezone identifier, persists across visits and tabs. This hook belongs to
-the client-rendered event viewer. Raw JSON retains the original ISO values.
+Detail timestamps use a readable date to the second and the zone name for each
+event date, in both modes. The header keeps them on one line beside the
+actions. Their tooltip adds milliseconds, and the `time` element keeps the
+original ISO value. The mode, not the timezone identifier, persists across
+visits and tabs. This hook belongs to the client-rendered event viewer. Raw
+JSON retains the original ISO values.
 
 ## Event details
 
@@ -131,7 +133,9 @@ The previous and next controls select the adjacent visible row. They form one
 the event search, like Up and Down. They are necessary below 1280px, where the
 sheet covers the log. At the ends of the list, the control is disabled but
 keeps focus. The sheet title is the event type. The header shows the event
-type, then the sequence number and timestamp.
+type, then the sequence number and timestamp. The body groups fields in the
+same `DetailsCard` that Conversation details use. Groups inside a card, such
+as tool input and output, use a divider, not another card.
 
 A linked event can be older than the loaded pages. While the event loads, the
 panel stays open. Only its header shows placeholders, so it does not compete
