@@ -16,7 +16,12 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
+import {
+  AgentRunError,
+  executeTurn,
+  finishTurn,
+  type SavedTurnResult,
+} from "@/chat/runtime/turn-execution";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -355,43 +360,53 @@ function createAgentMessageSteeringDrain(
   };
 }
 
+/**
+ * How a terminal agent invocation ends its child Turn. The live save and the
+ * recovery paths both use this, so a status cannot end the Turn two ways.
+ */
+function agentInvocationTurnEnd(
+  terminal: TerminalAgentInvocation,
+): SavedTurnResult {
+  const finishedAtMs = terminal.terminalAtMs;
+  switch (terminal.status) {
+    case "completed":
+      return {
+        finishedAtMs,
+        outcome: terminal.result.trim() ? "success" : "no_reply",
+      };
+    case "stopped":
+      return { finishedAtMs, outcome: "cancelled" };
+    // A blocked child reported what it needs. That is a result, not a failure.
+    case "blocked":
+      return { finishedAtMs, outcome: "blocked" };
+    case "failed":
+      return {
+        failureCode: "model_execution_failed",
+        finishedAtMs,
+        outcome: "failed",
+      };
+  }
+}
+
 /** Project the terminal invocation into the idempotent turn lifecycle. */
 async function persistTerminalLifecycle(
-  invocation: AgentInvocation,
+  terminal: TerminalAgentInvocation,
 ): Promise<void> {
-  const lifecycle = new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  );
-  const common = {
-    conversationId: invocation.childConversationId,
-    createdAtMs:
-      "terminalAtMs" in invocation
-        ? invocation.terminalAtMs
-        : invocation.updatedAtMs,
-    turnId: getAgentInvocationTurnId(invocation.invocationId),
-  };
-  if (invocation.status === "completed") {
-    await lifecycle.complete({
-      ...common,
-      outcome: invocation.result?.trim() ? "success" : "no_reply",
-    });
-  } else if (invocation.status === "stopped") {
+  const turnId = getAgentInvocationTurnId(terminal.invocationId);
+  if (terminal.status === "stopped") {
     // A child stopped between slices has a paused Turn record. Nothing may
     // resume it.
     await abandonTurnRecord({
-      conversationId: common.conversationId,
+      conversationId: terminal.childConversationId,
       errorMessage: "Turn cancelled",
-      turnId: common.turnId,
-    });
-    await lifecycle.complete({ ...common, outcome: "cancelled" });
-  } else if (invocation.status === "blocked") {
-    await lifecycle.complete({ ...common, outcome: "blocked" });
-  } else if (invocation.status === "failed") {
-    await lifecycle.fail({
-      ...common,
-      failureCode: "model_execution_failed",
+      turnId,
     });
   }
+  await finishTurn(
+    terminal.childConversationId,
+    turnId,
+    agentInvocationTurnEnd(terminal),
+  );
 }
 
 /** Stop an invocation whose worker died, or project its terminal turn result. */
@@ -538,32 +553,7 @@ async function saveAgentInvocationResult(args: {
       `Agent invocation did not finish for ${args.invocation.invocationId}`,
     );
   }
-  if (terminal.status === "completed") {
-    return {
-      finishedAtMs: terminal.terminalAtMs,
-      outcome: terminal.result.trim()
-        ? ("success" as const)
-        : ("no_reply" as const),
-    };
-  }
-  // The child was stopped while it saved its result.
-  if (terminal.status === "stopped") {
-    return {
-      finishedAtMs: terminal.terminalAtMs,
-      outcome: "cancelled" as const,
-    };
-  }
-  if (terminal.status === "blocked") {
-    return {
-      finishedAtMs: terminal.terminalAtMs,
-      outcome: "blocked" as const,
-    };
-  }
-  return {
-    finishedAtMs: terminal.terminalAtMs,
-    failureCode: "model_execution_failed" as const,
-    outcome: "failed" as const,
-  };
+  return agentInvocationTurnEnd(terminal);
 }
 
 /**
