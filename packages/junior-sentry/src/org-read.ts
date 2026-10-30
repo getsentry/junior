@@ -10,7 +10,6 @@ import { createHash } from "node:crypto";
 import type {
   EgressHookContext,
   IssueCredentialHookContext,
-  PluginCache,
   PluginCredentialResult,
   PluginGrant,
 } from "@sentry/junior-plugin-api";
@@ -24,6 +23,7 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Path resources whose next segment is an organization slug.
 const ORG_PATH_RESOURCES = new Set(["organizations", "projects", "teams"]);
 const TOKEN_ORG_TTL_MS = 60 * 60 * 1000;
+const TOKEN_ORG_TIMEOUT_MS = 5_000;
 
 const tokenOrgsSchema = z.array(z.object({ id: z.string(), slug: z.string() }));
 
@@ -50,29 +50,36 @@ function requestOrg(url: string): string | undefined {
 }
 
 // The token can read only the organization that installed its integration.
-// Sentry paths accept the organization ID or slug, so return both.
-async function loadTokenOrg(
-  cache: PluginCache,
+// Sentry paths accept the organization ID or slug, so return both. Return
+// undefined when the lookup fails, so reads keep the org read token.
+async function loadTokenOrgs(
+  ctx: EgressHookContext,
   token: string,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   const tokenId = createHash("sha256").update(token).digest("hex").slice(0, 16);
-  return await cache.getOrLoad(`org-read-org:${tokenId}`, async () => {
-    const response = await fetch("https://sentry.io/api/0/organizations/", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Sentry org read token organization lookup failed with HTTP ${response.status}.`,
-      );
+  return await ctx.cache.getOrLoad(`org-read-orgs:${tokenId}`, async () => {
+    try {
+      const response = await fetch("https://sentry.io/api/0/organizations/", {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TOKEN_ORG_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const orgs = tokenOrgsSchema.parse(await response.json());
+      if (orgs.length === 0) {
+        throw new Error("no organizations");
+      }
+      return {
+        value: orgs.flatMap((org) => [org.id, org.slug.toLowerCase()]),
+        ttlMs: TOKEN_ORG_TTL_MS,
+      };
+    } catch (error) {
+      ctx.log.warn("sentry.org_read.token_org_lookup_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { value: undefined };
     }
-    const orgs = tokenOrgsSchema.parse(await response.json());
-    const [org] = orgs;
-    if (!org || orgs.length > 1) {
-      throw new Error(
-        `Sentry org read token must see exactly one organization, but it sees ${orgs.length}.`,
-      );
-    }
-    return { value: [org.id, org.slug], ttlMs: TOKEN_ORG_TTL_MS };
   });
 }
 
@@ -88,8 +95,9 @@ export async function sentryGrantForEgress(
   if (!token || !isOrgReadRequest(ctx.request)) {
     return undefined;
   }
-  const org = requestOrg(ctx.request.url);
-  if (org && !(await loadTokenOrg(ctx.cache, token)).includes(org)) {
+  const org = requestOrg(ctx.request.url)?.toLowerCase();
+  const tokenOrgs = org ? await loadTokenOrgs(ctx, token) : undefined;
+  if (org && tokenOrgs && !tokenOrgs.includes(org)) {
     return undefined;
   }
   return {

@@ -26,6 +26,7 @@ function hooks(): PluginHooks {
 async function grantFor(method: string, url: string) {
   return await hooks().grantForEgress?.({
     cache,
+    log: { error() {}, info() {}, warn() {} },
     request: { method, url },
   } as EgressHookContext);
 }
@@ -100,8 +101,24 @@ describe("sentry org read access", () => {
     ).toBeUndefined();
     expect(fetch).toHaveBeenCalledWith(
       "https://sentry.io/api/0/organizations/",
-      { headers: { Authorization: "Bearer org-read-token" } },
+      expect.objectContaining({
+        headers: { Authorization: "Bearer org-read-token" },
+      }),
     );
+  });
+
+  it("keeps the org read token when the org lookup fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 503 })),
+    );
+
+    expect(
+      await grantFor(
+        "GET",
+        "https://sentry.io/api/0/organizations/sentry/issues/",
+      ),
+    ).toMatchObject({ name: "org-read" });
   });
 
   it("issues the configured token for the org read grant", async () => {
