@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { vi } from "vitest";
 import type { AuthenticatedRoute } from "@/dashboard-routes";
@@ -38,4 +39,69 @@ export function mockMcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+}
+
+/** Build the cookie header that signs one viewer in to the fake dashboard. */
+export function viewerCookie(email: string): string {
+  return `${TEST_VIEWER_COOKIE}=${encodeURIComponent(email)}`;
+}
+
+/** Create one RFC 7636 PKCE verifier and its S256 challenge. */
+export function createPkce(): { challenge: string; verifier: string } {
+  const verifier = randomBytes(32).toString("base64url");
+  return {
+    challenge: createHash("sha256").update(verifier).digest("base64url"),
+    verifier,
+  };
+}
+
+/** Build an authorization request URL with valid defaults. */
+export function authorizeUrl(params: Record<string, string>): string {
+  const url = new URL(`${MCP_TEST_ORIGIN}/api/mcp/oauth/authorize`);
+  for (const [name, value] of Object.entries({
+    response_type: "code",
+    code_challenge_method: "S256",
+    scope: "conversations:read",
+    resource: MCP_TEST_URL,
+    ...params,
+  })) {
+    url.searchParams.set(name, value);
+  }
+  return url.toString();
+}
+
+/** Open the consent page as one viewer and return its form token. */
+export async function openConsentPage(
+  app: Hono,
+  consentUrl: string,
+  email: string,
+): Promise<{ csrf?: string; html: string; status: number }> {
+  const response = await app.request(consentUrl, {
+    headers: { cookie: viewerCookie(email) },
+  });
+  const html = await response.text();
+  return {
+    csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
+    html,
+    status: response.status,
+  };
+}
+
+/** Submit one consent decision as the viewer who opened the page. */
+export async function submitConsent(args: {
+  action: "approve" | "deny";
+  app: Hono;
+  consentUrl: string;
+  csrf: string;
+  email: string;
+}): Promise<Response> {
+  return await args.app.request(args.consentUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: viewerCookie(args.email),
+      origin: MCP_TEST_ORIGIN,
+    },
+    body: new URLSearchParams({ action: args.action, csrf: args.csrf }),
+  });
 }

@@ -122,7 +122,10 @@ import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createAcpHttpHandler } from "@/api/acp/route";
+import { handleMcpConsentPage } from "@/api/mcp/consent-page";
+import { MCP_CONSENT_PATH } from "@/api/mcp/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
+import type { McpState } from "@/api/mcp/state";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -653,6 +656,10 @@ export async function createApp(
     };
     return acpRuntime;
   };
+  let mcpState: McpState | undefined;
+  /** Open MCP OAuth state on first use. It is the state that ACP uses. */
+  const getMcpState = () =>
+    (mcpState ??= options?.conversationWork?.state ?? getStateAdapter());
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -666,6 +673,18 @@ export async function createApp(
               }),
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
+          },
+          {
+            handler: (request, user) =>
+              handleMcpConsentPage({
+                agentName: botConfig.userName,
+                baseURL: resolvePublicBaseURL(dashboard),
+                request,
+                state: getMcpState(),
+                user,
+              }),
+            method: ["GET", "POST"],
+            path: MCP_CONSENT_PATH,
           },
         ]
       : [];
@@ -712,12 +731,14 @@ export async function createApp(
   );
   // MCP OAuth consent needs the dashboard Google sign-in, like ACP sign-in.
   if (signInAuth) {
-    const handleMcpRequest = createMcpHttpHandler({
-      baseURL: resolvePublicBaseURL(dashboard),
+    let handleMcpRequest: ((request: Request) => Promise<Response>) | undefined;
+    app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
+      handleMcpRequest ??= createMcpHttpHandler({
+        baseURL: resolvePublicBaseURL(dashboard),
+        state: getMcpState(),
+      });
+      return handleMcpRequest(c.req.raw);
     });
-    app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) =>
-      handleMcpRequest(c.req.raw),
-    );
   }
   mountRoutes(app, pluginRoutes);
   mountRoutes(

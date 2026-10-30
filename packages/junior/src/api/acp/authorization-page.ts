@@ -1,5 +1,6 @@
 /** Own the dashboard-authenticated ACP confirmation page. */
 import type { User } from "@sentry/junior-plugin-api";
+import { escapeHtml } from "@/api/html";
 import { completeAcpAuthorization } from "./auth";
 import type { AcpState } from "./state";
 
@@ -7,15 +8,6 @@ export const ACP_AUTHORIZATION_PATH = "/_junior/acp/auth/:transactionId";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
 
 function renderResult(
   agentName: string,

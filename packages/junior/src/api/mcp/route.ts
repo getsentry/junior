@@ -6,38 +6,33 @@
  * are configured, because consent needs a signed-in Junior user.
  */
 import { Hono } from "hono";
-import { resolvePublicOrigin } from "@/api/public-origin";
+import { handleMcpAuthorize } from "./authorization";
 import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
+  MCP_AUTHORIZE_PATH,
   MCP_PATH,
   MCP_RESOURCE_METADATA_PATH,
   authorizationServerMetadata,
-  mcpUrls,
   protectedResourceMetadata,
+  resolveMcpUrls,
   type McpUrls,
 } from "./metadata";
+import type { McpState } from "./state";
 
 /** Host paths that the app forwards to the MCP handler. */
 export const MCP_ROUTE_PATHS = [
   MCP_PATH,
   MCP_RESOURCE_METADATA_PATH,
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
+  MCP_AUTHORIZE_PATH,
 ];
 
 /** Settings for the MCP HTTP handler. */
 type McpHttpHandlerOptions = {
   /** Configured public origin. Unset allows only loopback request origins. */
   baseURL?: string;
+  state: McpState;
 };
-
-/** Resolve the MCP URLs for this request from the trusted public origin. */
-function resolveMcpUrls(request: Request, baseURL?: string): McpUrls {
-  const origin = resolvePublicOrigin(request, baseURL);
-  if (!origin) {
-    throw new Error("Junior MCP requires a configured public base URL");
-  }
-  return mcpUrls(origin);
-}
 
 /** Return the RFC 6750 challenge that points clients to resource metadata. */
 function unauthorized(urls: McpUrls): Response {
@@ -65,6 +60,13 @@ export function createMcpHttpHandler(
   );
   app.get(MCP_AUTHORIZATION_SERVER_METADATA_PATH, (c) =>
     Response.json(authorizationServerMetadata(urls(c.req.raw))),
+  );
+  app.get(MCP_AUTHORIZE_PATH, (c) =>
+    handleMcpAuthorize({
+      request: c.req.raw,
+      state: options.state,
+      urls: urls(c.req.raw),
+    }),
   );
   app.on(["GET", "POST", "DELETE"], MCP_PATH, (c) =>
     unauthorized(urls(c.req.raw)),

@@ -6,6 +6,7 @@ import {
 } from "./handlers/eval-mcp-auth";
 import { allowsLiveTestHttpHost } from "../../../junior-testing/src/http";
 import { githubApiHandlers } from "./handlers/github-api";
+import { mcpClientMetadataHandlers } from "./handlers/mcp-client-metadata";
 import { setupServer } from "msw/node";
 import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
@@ -44,4 +45,5 @@ export const mswServer = setupServer(
   ...evalMcpAuthHandlers,
   ...evalOAuthHandlers,
   ...githubApiHandlers,
+  ...mcpClientMetadataHandlers,
 );
