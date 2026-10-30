@@ -42,6 +42,15 @@ export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   return item.assignees.some((assignee) => assignee.userId === userId);
 }
 
+/** Return whether a User is already the only assignee, so take does nothing. */
+export function isOnlyAssignee(item: ReviewItem, userId: string): boolean {
+  return (
+    !item.assignedToEveryone &&
+    item.assignees.length === 1 &&
+    item.assignees[0]?.userId === userId
+  );
+}
+
 /** Read one Review item that a User can see, or fail as not found. */
 export async function readReviewItemForUser(
   user: User,
@@ -130,11 +139,7 @@ export async function actOnReviewItem(args: {
         "Only an assignee can take this item.",
       );
     }
-    const onlyAssignee =
-      !item.assignedToEveryone &&
-      item.assignees.length === 1 &&
-      item.assignees[0]?.userId === user.id;
-    if (onlyAssignee) return item;
+    if (isOnlyAssignee(item, user.id)) return item;
     if (!(await takeReviewItem(db, { id: item.id, nowMs, userId: user.id }))) {
       throw new ReviewItemActionError("conflict", "Review item is closed.");
     }

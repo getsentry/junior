@@ -28,6 +28,8 @@ export const reviewItemSchema = z
     body: z.string(),
     /** True when the viewer can take, submit, complete, or dismiss it. */
     canAct: z.boolean(),
+    /** True when the viewer can act and is not already the only assignee. */
+    canTake: z.boolean(),
     closeReason: z.string().min(1).optional(),
     closedAt: z.string().datetime().optional(),
     /** Unset for an open item, or when an agent closed it. */

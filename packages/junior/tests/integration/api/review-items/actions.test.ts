@@ -166,12 +166,13 @@ describe("review item actions API", () => {
     const everyone = await (
       await api(fixture, cal).get("?view=everyone")
     ).json();
-    expect(everyone.items).toMatchObject([{ id, canAct: true }]);
+    expect(everyone.items).toMatchObject([{ id, canAct: true, canTake: true }]);
 
     const taken = await api(fixture, cal).act(id, { action: "take" });
     expect(await taken.json()).toMatchObject({
       assignedToEveryone: false,
       assignees: [{ email: "cal@example.com" }],
+      canTake: false,
       status: "open",
     });
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({

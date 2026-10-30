@@ -18,6 +18,7 @@ import { getDb } from "@/chat/db";
 import {
   actOnReviewItem,
   canActOnReviewItem,
+  isOnlyAssignee,
   readReviewItemForUser,
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
@@ -49,6 +50,8 @@ export function reviewItemPayload(
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnReviewItem(item, viewer.id),
+    canTake:
+      canActOnReviewItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
     conversationIds: item.conversationIds,
     createdAt: item.createdAt.toISOString(),
     id: item.id,
