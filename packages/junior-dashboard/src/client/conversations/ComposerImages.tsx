@@ -6,7 +6,23 @@ import {
   type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
-import { conversationAttachmentUrl } from "./TranscriptAttachment";
+import {
+  conversationAttachmentUrl,
+  inputImageSrc,
+} from "./TranscriptAttachment";
+
+/** Decoded size of base64 image data, as the server limit counts it. */
+function inputImageBytes(images: readonly InputImage[]): number {
+  return images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0);
+}
+
+/** True when these images fit the message image count and size limits. */
+export function composerImagesFit(images: readonly InputImage[]): boolean {
+  return (
+    images.length <= MAX_INPUT_IMAGES &&
+    inputImageBytes(images) <= MAX_INPUT_IMAGE_BYTES
+  );
+}
 
 /** Read a bounded image selection for the message request and local previews. */
 export async function readComposerImages(
@@ -15,10 +31,7 @@ export async function readComposerImages(
 ): Promise<InputImage[]> {
   if (current.length + files.length > MAX_INPUT_IMAGES)
     throw new Error("Attach up to 3 images.");
-  const currentBytes = current.reduce(
-    (sum, image) => sum + (image.data.length * 3) / 4,
-    0,
-  );
+  const currentBytes = inputImageBytes(current);
   if (
     currentBytes + files.reduce((sum, file) => sum + file.size, 0) >
     MAX_INPUT_IMAGE_BYTES
@@ -91,7 +104,7 @@ export function ComposerImages(props: {
           <img
             alt={image.filename}
             className="h-20 w-24 rounded-md object-contain"
-            src={`data:${image.contentType};base64,${image.data}`}
+            src={inputImageSrc(image)}
           />
           <button
             aria-label={`Remove ${image.filename}`}

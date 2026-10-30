@@ -7,6 +7,11 @@ import { FileText } from "lucide-react";
 import { ImageAttachment } from "../components/ImageAttachment";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
+/** Build a data URL that previews an image before the server stores it. */
+export function inputImageSrc(image: InputImage): string {
+  return `data:${image.contentType};base64,${image.data}`;
+}
+
 /** Build the private read route for one stored conversation attachment. */
 export function conversationAttachmentUrl(
   conversationId: string,

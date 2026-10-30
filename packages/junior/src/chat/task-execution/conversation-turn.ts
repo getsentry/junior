@@ -599,6 +599,7 @@ export function createConversationTurnWorker(
                   ? {
                       drainSteeringMessages: createWebSteeringDrain({
                         actor: webActor,
+                        author,
                         context,
                         conversation,
                         turnId,
