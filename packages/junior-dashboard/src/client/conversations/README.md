@@ -139,6 +139,8 @@ the log toolbar, columns, and row skeletons in the event log view.
 
 Standalone transcripts, such as a subagent drawer, keep selection in
 `ConversationEventLog`. Their event details use a nested drawer on desktop and
-`BottomSheet` on smaller screens. This keeps the main log free of modal behavior
+`BottomSheet` on smaller screens. The nested drawer stacks in front of the
+subagent drawer. The subagent drawer shows its event log without a body inset,
+so rows meet the drawer edges and the toolbar sticks to the top. This keeps the main log free of modal behavior
 while a nested transcript retains its parent drawer's focus rules. These event
 details have the same previous and next controls.
