@@ -66,6 +66,15 @@ These are David Cramer's answers in the Slack thread for #2439.
 - Most events are system events, with the system Identity as the author.
   Sentry events mostly are. Some GitHub events are too. PR feedback and
   comments are not. The person or bot who wrote them is the author.
+- Legacy `junior/<email>` rows: leave them as they are, unless a migration
+  path is clearly correct.
+- Who shows in the participant list: "same as today: users."
+- Do verified event authors become participants: "not right now maybe we will
+  change our mind later."
+- A verified event author who is not the requester can give instructions if
+  they pass the `allowedDomains` check and Junior knows their GitHub Identity.
+- "also we'd allow list usernames in juniors config for github events (so we
+  could allow list some bots)"
 
 ### Plan Decisions
 
@@ -82,7 +91,7 @@ These are the #2439 end state. They follow from the answers above.
   The code needs only one, because "which system" is provenance
   (`design.md`, System Identity). `SystemActor.name` stays as provenance.
 - A web Actor uses the `google` Identity that dashboard sign-in saves. The
-  synthetic `junior/<email>` Identity goes away.
+  synthetic `junior/<email>` Identity goes away for new writes.
 - The Identity id goes next to the Actor, not inside it.
 - Every new user Message row has an author Identity. A check constraint
   enforces this.
@@ -92,6 +101,40 @@ These are the #2439 end state. They follow from the answers above.
   `junior_conversations`. This follows the normalized-schema answer. The
   code shows that the two dropped Identity columns are always `null` and have
   no reader.
+- **Legacy `junior/<email>` rows.** One migration path is clearly correct: a
+  `junior/<email>` row and a `google` row that link the same `user_id`
+  belong to the same User. Step 3 moves references from the first to the
+  second only in that case. Every other `junior/<email>` row and reference
+  stays as it is. Junior stops writing new `junior/<email>` rows.
+- **Participants are users.** Participant rows stay as today: only Identities
+  of kind `user` with a User (`recordConversationParticipant` in
+  `chat/conversations/sql/participants.ts`). The participant list that the
+  dashboard shows uses the same rule. Today that list has no `kind` filter,
+  so system Identities show (`design.md`, gap 7).
+- **Event authors are not participants.** Today
+  `chat/conversations/sql/history.ts` records a participant for each Message
+  author with an Identity. Step 3 skips this for event Messages. A verified
+  GitHub commenter gets no access to a private Conversation. This can change
+  later.
+- **Event author trust.** The text of an event author counts as
+  instructions when one of these is true:
+  - the author's `github` Identity links to a User, and the domain of that
+    User's primary email passes `allowedDomains`;
+  - the author's GitHub login is on the GitHub plugin allow list.
+
+  All other event text is data only. This includes a bot that is not on the
+  list and a person with no linked User. #2260 lets only the Watch requester's
+  text count. This rule is wider.
+
+- **The allow list lives in the GitHub plugin.** No such list exists today.
+  `GitHubPluginOptions` (`junior-github/src/plugin.ts`) has no author list.
+  `slack.allowedBotUserIds` (`app.ts`, `chat/ingress/slack-allowed-domain.ts`)
+  covers only Slack ingress. The new list follows the same pattern, but in
+  the plugin config. The plugin compares the event login to the list and
+  gives core one provider-neutral result: this author is trusted. Core does
+  not read GitHub logins (`policies/provider-boundaries.md`). The domain
+  check reuses `allowedDomains` as it is (`chat/sign-in/allowlist.ts`). An
+  empty `allowedDomains` allows every domain, the same as for Slack.
 
 ### Code Facts
 
@@ -112,39 +155,28 @@ These are not agreed yet.
    types whose payload has text that a person or bot wrote. Examples are PR
    and issue bodies on `opened`, comments, reviews, and review comments. Other
    types use the system Identity.
-4. **Event author field.** `doneBy` gets `subjectId` (from #2260) and
-   `isBot`. The plugin sets both. When the type has `hasActor`, core rejects
-   an event with no `subjectId`.
+4. **Event author field.** `doneBy` gets `subjectId` (from #2260), `isBot`,
+   and `trusted`. The plugin sets all three. `trusted` is `true` only when the
+   plugin allow list has the author. When the type has `hasActor`, core
+   rejects an event with no `subjectId`.
 5. **Event author Identity.** Core upserts the Identity from `doneBy` with no
    email. So the event never links a User. The Identity is verified only when
    it already links to a User through OAuth or a verified email.
 6. **Event Owner and Turn Actor.** An event changes only the Message author.
    The Owner stays. The Event Turn keeps `EVENT_SYSTEM_ACTOR`.
-7. **Owner repair.** The Owner backfill gives a root with a human Source and a
-   system Identity the author of its first user Message. These are rows that
-   got a system Identity before #2436.
-8. **Locations group by User.** The location actor list groups by User, with
+7. **Allow list option.** `githubPlugin({ allowedEventAuthors: [...] })` takes
+   GitHub logins, such as `some-app[bot]`. The plugin compares logins without
+   case.
+8. **Owner repair.** The Owner backfill can repair a root with a `slack` or
+   `web` Source and a system Identity. These rows got the system Identity
+   before #2436. The repair is clearly correct only when the first user
+   Message of the root has an author Identity of kind `user` with a User. The
+   backfill then uses that Identity. Otherwise it copies the current Identity
+   and leaves the row as it is.
+9. **Locations group by User.** The location actor list groups by User, with
    the Identity as fallback.
-9. **Dashboard author shape.** The dashboard `actorIdentitySchema` gets the
-   Identity `kind` and `provider`.
-
-## Open Questions
-
-1. **Legacy `junior/<email>` rows with no `google` row.** A user who used the
-   dashboard only before #2220 has only the synthetic row. Recommendation: keep
-   these rows for legacy reads, count them in the dry run, and never write
-   them again.
-2. **Who shows in the participant list?** `readConversationParticipants` has
-   no `kind` filter. Recommendation: list only Identities with a linked User.
-3. **Do verified event authors become participants?**
-   `recordConversationParticipant` adds every linked human author. So a
-   verified GitHub commenter would get access to a private Conversation.
-   Recommendation: event authors do not become participants.
-4. **Can a verified event author give instructions?** #2260 treats event text
-   as an instruction only from the linked user who created the Watch.
-   Recommendation: text from other verified authors stays information until
-   #2260 or a follow-up decides. Text from an author with no User is always
-   information.
+10. **Dashboard author shape.** The dashboard `actorIdentitySchema` gets the
+    Identity `kind` and `provider`.
 
 ## Behavior Changes
 
@@ -156,6 +188,9 @@ These are not agreed yet.
   when it differs from the root.
 - A web user's Messages and Conversations use their `google` Identity. People
   still groups them with the same User.
+- Text from a trusted event author counts as instructions. With #2260, only
+  the Watch requester's text does.
+- The dashboard participant list stops showing system Identities.
 
 ## Risks
 
@@ -165,6 +200,9 @@ These are not agreed yet.
 - Old workers keep running during a deploy. They can reject new fields in
   `.strict()` schemas and can write old columns. Each step ships readers
   before writers and drops a column one release after its last writer.
+- A human GitHub login can change owners after a rename. A GitHub App login
+  ends in `[bot]`, and GitHub keeps that suffix for Apps. The allow list docs
+  should say to list bot logins.
 - A write with no author Identity fails after step 5. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before the constraint ships.

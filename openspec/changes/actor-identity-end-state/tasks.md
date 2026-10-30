@@ -9,7 +9,8 @@ not add tests for migration SQL.
 - #2441 before step 2. Both change `SqlStore.recordExecution` and
   `task-execution/turn-cursor.ts`.
 - #2260 (stacked on #2217) before step 3. Step 3 builds event authors on its
-  `doneBy.subjectId`. Its Watch requester is provenance, not an Owner.
+  `doneBy.subjectId`, and widens its rule for which event text counts as
+  instructions. Its Watch requester is provenance, not an Owner.
 - #2382 before step 4. Both add a `junior_conversations` column and change the
   write rule in `SqlStore.upsertConversation`.
 - #2181 before step 5. Both change `agent-invocations/root-conversation.ts` and
@@ -69,23 +70,39 @@ a web Turn stores its author Identity.
 - [ ] Event authors, per Proposals 3 to 6: plugins set `hasActor` and
       `doneBy.subjectId` and `isBot`. Core upserts the author Identity with
       no email. Other events use the system Identity.
-- [ ] Open Question 2: the participant list shows only Identities with a User.
+- [ ] Event authors do not become participants. `sql/history.ts` skips
+      `recordConversationParticipant` for event Messages.
+- [ ] Event author trust (`proposal.md`, Plan Decisions). The GitHub plugin
+      gets an allow list of GitHub logins (Proposal 7). It sets
+      `doneBy.trusted` when the event login is on the list (Proposal 4).
+      Core treats the text as instructions only when `doneBy.trusted` is
+      `true`, or when the author's `github` Identity links to a User whose
+      primary email passes `allowedDomains`. All other event text stays in
+      `untrustedText`. Core reads no GitHub login for this.
+- [ ] Document the allow list in `junior-github/SETUP.md` and say to list
+      bot logins.
+- [ ] The participant list shows only Identities of kind `user` with a User,
+      the same rule as participant rows.
 - [ ] Stop writing the `scheduler`, `local-cli`, `event`, and `junior/<email>`
       rows.
 
 Backfill: move references in `junior_conversations` and
 `junior_conversation_events` from the three system rows to the one system
-Identity, then delete the three rows. Move references from each
-`junior/<email>` row to the `google` Identity of the same User. Keep and count
-rows with no `google` match (Open Question 1).
+Identity, then delete the three rows. Move references from a `junior/<email>`
+row to a `google` row only when both rows link the same `user_id`. Leave
+every other `junior/<email>` row and reference as it is.
 
 Risk: medium. Wrong merges move Conversations between People. Run each
-migration as a dry-run count first.
+migration as a dry-run count first. The trust rule changes which event text
+Junior follows. Only allow-listed logins and linked Users on an allowed
+domain gain this.
 
 Verify: `component/identity-read.test.ts`,
 `integration/api/conversations/detail.test.ts` (participants),
 `integration/local-agent-runner.test.ts`, and the review and comment scenario in
-`packages/junior-github/tests/webhook-outcomes.test.ts`.
+`packages/junior-github/tests/webhook-outcomes.test.ts`: an allow-listed bot's
+comment is trusted, a bot that is not on the list is data only, and the
+commenter gets no participant row.
 
 ## 4. Add The Owner
 
@@ -97,7 +114,7 @@ This is the riskiest step. It changes access, the feed, People, and spend.
       update never changes it. Child rows store `null`.
 - [ ] Keep writing `actor_identity_id` until every reader moves.
 - [ ] Move every reader in `design.md`, Readers, to the Owner.
-- [ ] Proposal 8: `api/locations/query.ts` groups actors by User.
+- [ ] Proposal 9: `api/locations/query.ts` groups actors by User.
 - [ ] Drop `creator_identity_id` and `credential_subject_identity_id`. Step 2
       stopped all writes one release earlier.
 - [ ] State the behavior changes in the PR (`proposal.md`).
@@ -111,9 +128,11 @@ Backfill:
      `plugin`, `local`);
    - roots with no Identity;
    - child rows whose Identity differs from their root;
-   - `junior/<email>` rows that are still referenced.
-2. Roots with a `slack` or `web` Source: copy `actor_identity_id`. Proposal 7:
-   when it is a system Identity, use the author of the first user Message.
+   - `junior/<email>` rows that are still referenced. Step 4 does not change
+     them.
+2. Roots with a `slack` or `web` Source: copy `actor_identity_id`. Proposal 8:
+   when it is a system Identity and the first user Message author is kind
+   `user` with a User, use that author. Otherwise copy the current Identity.
 3. Roots with a system Source: the system Identity.
 4. Roots with any other Source: hold until the dry run is reviewed.
 5. Child rows: `null`.
@@ -137,11 +156,11 @@ Owner. `integration/api/locations/detail.test.ts`: one row per User.
       reads.
 - [ ] Retire `StoredSlackActor` in `Conversation` and in Redis work state
       (`task-execution/state.ts`). Store the Identity id.
-- [ ] Guardian `actionActor` and `messageAuthor` read Identity ids.
-      Open Question 4: text from an author with no User never authorizes.
+- [ ] Guardian `actionActor` and `messageAuthor` read Identity ids. The
+      event author trust rule from step 3 does not change.
 - [ ] Remove `sessionLogActor` and the Source guess in
       `recordConversationActivityMetadata`.
-- [ ] Proposal 9: add the Identity `kind` and `provider` to the dashboard
+- [ ] Proposal 10: add the Identity `kind` and `provider` to the dashboard
       `actorIdentitySchema`.
 
 Backfill: none. The check is `NOT VALID`, so legacy rows stay.

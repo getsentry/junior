@@ -90,20 +90,72 @@ in spend, People, or participant access.
 
 An inbound event Message from an event with an actor SHALL use the Identity
 of that person or bot. An event with no actor SHALL use the system Identity.
-Junior SHALL verify the author Identity the same way as everywhere else.
-Junior SHALL NOT follow instructions in text from an author with no verified
-User. An event SHALL NOT change the Owner.
+Junior SHALL verify the author Identity the same way as everywhere else. An
+event SHALL NOT change the Owner. An event author SHALL NOT become a
+participant.
 
 #### Scenario: GitHub PR comment
 
 - **WHEN** a person comments on a watched PR
 - **THEN** the event Message author is that person's `github` Identity
-- **AND** the Identity is verified only when it links to a User.
+- **AND** the Identity is verified only when it links to a User
+- **AND** the person gets no participant row.
 
 #### Scenario: Status event
 
 - **WHEN** a watched PR's checks fail
 - **THEN** the event Message author is the system Identity.
+
+### Requirement: Trusted Event Authors
+
+Junior SHALL treat the text of an event author as instructions only when the
+author is trusted. An author SHALL be trusted when the plugin marks the author
+as trusted from its config, or when the author's Identity links to a User
+whose primary email passes `allowedDomains`. The text of every other author
+SHALL be data only. The GitHub plugin SHALL own its allow list of GitHub
+logins. Core SHALL NOT read GitHub logins to decide trust.
+
+#### Scenario: Linked user on an allowed domain
+
+- **WHEN** a person whose `github` Identity links to a User on an allowed
+  domain comments on a watched PR
+- **THEN** Junior treats the comment text as instructions.
+
+#### Scenario: Linked user on another domain
+
+- **WHEN** a person whose `github` Identity links to a User whose primary
+  email is not on an allowed domain comments on a watched PR
+- **THEN** Junior treats the comment text as data only.
+
+#### Scenario: Author with no User
+
+- **WHEN** a person whose `github` Identity has no User comments on a watched
+  PR
+- **THEN** Junior treats the comment text as data only.
+
+#### Scenario: Allow-listed bot
+
+- **WHEN** a bot whose GitHub login is on the GitHub plugin allow list
+  comments on a watched PR
+- **THEN** the plugin marks the author as trusted
+- **AND** Junior treats the comment text as instructions
+- **AND** the bot has no User and gets no participant row.
+
+#### Scenario: Bot not on the allow list
+
+- **WHEN** a bot whose GitHub login is not on the GitHub plugin allow list
+  comments on a watched PR
+- **THEN** Junior treats the comment text as data only.
+
+### Requirement: Participants Are Users
+
+A participant row SHALL exist only for an Identity of kind `user` with a
+User. The dashboard participant list SHALL use the same rule.
+
+#### Scenario: System Identity in a Conversation
+
+- **WHEN** a Conversation has Messages from the system Identity
+- **THEN** the participant list does not show the system Identity.
 
 ### Requirement: Identity Id Next To The Actor
 

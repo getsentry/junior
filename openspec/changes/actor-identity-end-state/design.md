@@ -81,10 +81,21 @@ gives the model, the schema, the readers, and the known gaps.
     (`chat/events/people.ts`).
 - End state: an event with an actor uses the Identity of that person or bot.
   Other events use the system Identity. Provider parsing stays in the plugin.
-  `proposal.md` items 3 to 6 give the contract.
-- Event text stays untrusted. Plugins put it in `untrustedText`.
+  `proposal.md` items 3 to 7 give the contract.
+- Event text is untrusted by default. Plugins put it in `untrustedText`.
   `task-input.ts` shows it as "External text". Guardian denies actions that
   follow it (`untrusted_instruction` in `guardian/policy.ts`).
+- End state for trust: event text counts as instructions only from a trusted
+  author. An author is trusted when the plugin says so, or when the author's
+  Identity links to a User whose primary email passes `allowedDomains`
+  (`chat/sign-in/allowlist.ts`, `junior_users.primary_email_normalized`).
+- The GitHub plugin owns its allow list of logins. It sets
+  `doneBy.trusted`. Core sees only that boolean. This is the same split as
+  `slack.allowedBotUserIds`, which lets a listed Slack bot pass the domain
+  check (`chat/ingress/slack-allowed-domain.ts`). Today no GitHub author list
+  exists.
+- An event author never becomes a participant. Today `sql/history.ts`
+  records a participant for each Message author with an Identity.
 - Event automations write no event Message. They start an Automation run
   (`chat/event-automations/ingest.ts`).
 
@@ -204,16 +215,16 @@ of gap 17. #2440 fixed part of gap 19. #2443 is open.
 | 4   | `sessionLogActor` drops every Actor that is not Slack, so web, local, and system Turns record no Actor.                                                                                                | `task-execution/turn-cursor.ts`                                       | 2, 5                              | Confirmed |
 | 5   | `recordConversationActivityMetadata` guesses the Source. A web Turn with no saved Source gets `local`.                                                                                                 | `task-execution/turn-cursor.ts`                                       | 5                                 | Traced    |
 | 6   | `resolveEventActorIdentityId` picks Slack by an id regex, takes the workspace from the Location, and writes the synthetic web Identity. #2443 moves the mapping but keeps the guesses.                 | `chat/conversations/sql/event-actor.ts`                               | 1, 3, 5                           | Confirmed |
-| 7   | The participant list has no `kind` filter, so system Identities show.                                                                                                                                  | `api/conversations/participants.ts`                                   | 3 (Open Question 2)               | Confirmed |
-| 8   | Locations group actors by Identity, so a person with two Identities shows two times.                                                                                                                   | `api/locations/query.ts`                                              | 4 (Proposal 8)                    | Confirmed |
+| 7   | The participant list has no `kind` filter, so system Identities show.                                                                                                                                  | `api/conversations/participants.ts`                                   | 3                                 | Confirmed |
+| 8   | Locations group actors by Identity, so a person with two Identities shows two times.                                                                                                                   | `api/locations/query.ts`                                              | 4 (Proposal 9)                    | Confirmed |
 | 9   | Connections are keyed per platform. A Slack connection does not show on the web.                                                                                                                       | `api/connections/routes.ts`                                           | Non-Goal                          | Confirmed |
 | 10  | A system root reads back with no Actor. The next human Turn then writes its own Identity with `coalesce(excluded, existing)`. #2436 fixed only the Source case. Writes are locked, so this is no race. | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2, 4                              | Traced    |
 | 11  | System Identity subjects (`scheduler`, `local-cli`, `event`) do not match `SystemActor.name` values.                                                                                                   | `sql/actor-identity.ts`                                               | 3                                 | Confirmed |
 | 12  | The local CLI uses one user id, `local-cli`, for every person and for its tokens.                                                                                                                      | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 3; naming the human: Non-Goal     | Confirmed |
 | 13  | `actorSchema` is closed. A TODO says system Actors should not use `platform: "system"`.                                                                                                                | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                          | Confirmed |
-| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                                                                                                              | `api/schema/conversation.ts`                                          | 5 (Proposal 9)                    | Confirmed |
+| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                                                                                                              | `api/schema/conversation.ts`                                          | 5 (Proposal 10)                   | Confirmed |
 | 15  | `Conversation.actor` and Redis work state are `StoredSlackActor`.                                                                                                                                      | `chat/conversations/store.ts`, `task-execution/state.ts`              | 5                                 | Confirmed |
 | 16  | `creator_identity_id` and `credential_subject_identity_id` are always `null`.                                                                                                                          | `chat/conversations/sql/store.ts`                                     | 2, 4                              | Confirmed |
 | 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none. #2437 fixed only the read side.                                                                      | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 3                                 | Confirmed |
-| 18  | No rule checks if an author Identity has a User before Junior follows its text. Authority comes from the Turn Actor and the text channel.                                                              | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 5 (Open Question 4)               | Traced    |
-| 19  | Bad rows: web roots with a system Identity from before #2436, and wrong Location visibility from before #2440. No fix repaired them.                                                                   | `junior_conversations`, `junior_destinations`                         | 4 (Proposal 7); visibility: #2382 | Traced    |
+| 18  | No rule checks if an author Identity has a User before Junior follows its text. Authority comes from the Turn Actor and the text channel.                                                              | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 3                                 | Traced    |
+| 19  | Bad rows: web roots with a system Identity from before #2436, and wrong Location visibility from before #2440. No fix repaired them.                                                                   | `junior_conversations`, `junior_destinations`                         | 4 (Proposal 8); visibility: #2382 | Traced    |
