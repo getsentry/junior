@@ -15,7 +15,7 @@ export const MCP_AUTHORIZATION_SERVER_METADATA_PATH =
 export const MCP_AUTHORIZE_PATH = "/api/mcp/oauth/authorize";
 export const MCP_TOKEN_PATH = "/api/mcp/oauth/token";
 /** Dashboard-authenticated consent page for one pending authorization. */
-export const MCP_CONSENT_PATH = "/_junior/mcp/authorize/:requestId";
+export const MCP_CONSENT_PATH = "/_junior/mcp/authorize/:authorizationId";
 
 /** Absolute MCP and OAuth URLs for one public origin. */
 export interface McpUrls {
@@ -26,23 +26,7 @@ export interface McpUrls {
   resource: string;
   resourceMetadata: string;
   token: string;
-  consent(requestId: string): string;
-}
-
-/** Build the MCP and OAuth URLs from the trusted public origin. */
-function mcpUrls(origin: URL): McpUrls {
-  const url = (path: string) => new URL(path, origin).toString();
-  return {
-    authorize: url(MCP_AUTHORIZE_PATH),
-    issuer: origin.origin,
-    resource: url(MCP_PATH),
-    resourceMetadata: url(MCP_RESOURCE_METADATA_PATH),
-    token: url(MCP_TOKEN_PATH),
-    consent: (requestId) =>
-      url(
-        MCP_CONSENT_PATH.replace(":requestId", encodeURIComponent(requestId)),
-      ),
-  };
+  consent(authorizationId: string): string;
 }
 
 /** Resolve the MCP URLs for this request from the trusted public origin. */
@@ -51,7 +35,21 @@ export function resolveMcpUrls(request: Request, baseURL?: string): McpUrls {
   if (!origin) {
     throw new Error("Junior MCP requires a configured public base URL");
   }
-  return mcpUrls(origin);
+  const url = (path: string) => new URL(path, origin).toString();
+  return {
+    authorize: url(MCP_AUTHORIZE_PATH),
+    issuer: origin.origin,
+    resource: url(MCP_PATH),
+    resourceMetadata: url(MCP_RESOURCE_METADATA_PATH),
+    token: url(MCP_TOKEN_PATH),
+    consent: (authorizationId) =>
+      url(
+        MCP_CONSENT_PATH.replace(
+          ":authorizationId",
+          encodeURIComponent(authorizationId),
+        ),
+      ),
+  };
 }
 
 /** RFC 9728 protected resource metadata for `/api/mcp`. */

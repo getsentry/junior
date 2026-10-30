@@ -11,7 +11,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
 import { MCP_SCOPE } from "./metadata";
-import { mcpStateKey, stateKeyHash, type McpState } from "./state";
+import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const CODE_TTL_MS = 60 * 1000;
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -51,15 +51,10 @@ const grantSchema = z
   })
   .strict();
 
-const accessTokenSchema = z
-  .object({
-    expiresAtMs: z.number().int().positive(),
-    grantId: z.string().uuid(),
-  })
-  .strict();
+// An access or refresh token record. Its state TTL ends the token.
+const tokenSchema = z.object({ grantId: z.string().uuid() }).strict();
 
-const refreshTokenSchema = z.object({ grantId: z.string().uuid() }).strict();
-
+type AuthorizationCode = z.output<typeof authorizationCodeSchema>;
 type Grant = z.output<typeof grantSchema>;
 
 type McpTokens = {
@@ -80,7 +75,7 @@ export type McpTokenResult =
     };
 
 function codeKey(code: string): string {
-  return mcpStateKey("code", stateKeyHash(code));
+  return mcpStateKey("code", sha256Hex(code));
 }
 
 function grantKey(grantId: string): string {
@@ -92,26 +87,15 @@ function revokedGrantKey(grantId: string): string {
 }
 
 function accessTokenKey(token: string): string {
-  return mcpStateKey("access", stateKeyHash(token));
+  return mcpStateKey("access", sha256Hex(token));
 }
 
 function refreshTokenKey(token: string): string {
-  return mcpStateKey("refresh", stateKeyHash(token));
+  return mcpStateKey("refresh", sha256Hex(token));
 }
 
 function invalidGrant(description: string): McpTokenResult {
   return { description, error: "invalid_grant", ok: false };
-}
-
-async function readRecord<T>(
-  state: McpState,
-  key: string,
-  schema: z.ZodType<T>,
-): Promise<T | undefined> {
-  const value = await state.get(key);
-  return value === null || value === undefined
-    ? undefined
-    : schema.parse(value);
 }
 
 /** Issue a single-use authorization code for one approved consent. */
@@ -124,19 +108,16 @@ export async function issueAuthorizationCode(args: {
   state: McpState;
 }): Promise<string> {
   const code = randomBytes(32).toString("base64url");
-  await args.state.set(
-    codeKey(code),
-    authorizationCodeSchema.parse({
-      clientId: args.clientId,
-      codeChallenge: args.codeChallenge,
-      email: args.email,
-      grantId: randomUUID(),
-      redirectUri: args.redirectUri,
-      resource: args.resource,
-      scope: MCP_SCOPE,
-    }),
-    CODE_TTL_MS,
-  );
+  const record: AuthorizationCode = {
+    clientId: args.clientId,
+    codeChallenge: args.codeChallenge,
+    email: args.email,
+    grantId: randomUUID(),
+    redirectUri: args.redirectUri,
+    resource: args.resource,
+    scope: MCP_SCOPE,
+  };
+  await args.state.set(codeKey(code), record, CODE_TTL_MS);
   return code;
 }
 
@@ -164,8 +145,7 @@ async function readGrant(
   state: McpState,
   grantId: string,
 ): Promise<Grant | undefined> {
-  const revoked = await state.get(revokedGrantKey(grantId));
-  if (revoked !== null && revoked !== undefined) return undefined;
+  if ((await state.get(revokedGrantKey(grantId))) !== null) return undefined;
   const grant = await readRecord(state, grantKey(grantId), grantSchema);
   return grant && grant.expiresAtMs > Date.now() ? grant : undefined;
 }
@@ -187,23 +167,14 @@ async function issueTokens(
   grantId: string,
   grant: Grant,
 ): Promise<McpTokenResult> {
-  const nowMs = Date.now();
-  const grantTtlMs = grant.expiresAtMs - nowMs;
+  const grantTtlMs = grant.expiresAtMs - Date.now();
   if (grantTtlMs <= 0) return invalidGrant("The grant has expired.");
   const accessTtlMs = Math.min(ACCESS_TOKEN_TTL_MS, grantTtlMs);
   const accessToken = `${ACCESS_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
   const refreshToken = `${REFRESH_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
-  await state.set(grantKey(grantId), grantSchema.parse(grant), grantTtlMs);
-  await state.set(
-    accessTokenKey(accessToken),
-    accessTokenSchema.parse({ expiresAtMs: nowMs + accessTtlMs, grantId }),
-    accessTtlMs,
-  );
-  await state.set(
-    refreshTokenKey(refreshToken),
-    refreshTokenSchema.parse({ grantId }),
-    grantTtlMs,
-  );
+  await state.set(grantKey(grantId), grant, grantTtlMs);
+  await state.set(accessTokenKey(accessToken), { grantId }, accessTtlMs);
+  await state.set(refreshTokenKey(refreshToken), { grantId }, grantTtlMs);
   return {
     ok: true,
     tokens: {
@@ -275,7 +246,7 @@ export async function refreshGrant(args: {
     return invalidGrant("The refresh token is not valid.");
   }
   const key = refreshTokenKey(args.refreshToken);
-  const token = await readRecord(args.state, key, refreshTokenSchema);
+  const token = await readRecord(args.state, key, tokenSchema);
   const grant = token ? await readGrant(args.state, token.grantId) : undefined;
   if (
     !token ||
@@ -333,9 +304,9 @@ export async function authenticateMcpAccessToken(args: {
   const token = await readRecord(
     args.state,
     accessTokenKey(args.token),
-    accessTokenSchema,
+    tokenSchema,
   );
-  if (!token || token.expiresAtMs <= Date.now()) return undefined;
+  if (!token) return undefined;
   const grant = await readGrant(args.state, token.grantId);
   if (!grant || grant.resource !== args.resource) return undefined;
   return grant.email;

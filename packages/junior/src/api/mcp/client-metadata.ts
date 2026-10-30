@@ -6,8 +6,9 @@
 import https from "node:https";
 import net from "node:net";
 import { z } from "zod";
-import { isPublicAddress, publicAddressLookup } from "./public-address";
-import { mcpStateKey, stateKeyHash, type McpState } from "./state";
+import { LOOPBACK_HOSTNAMES } from "@/api/public-origin";
+import { isPublicAddress, publicAddressLookup } from "@/net/public-address";
+import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const CLIENT_ID_MAX_LENGTH = 2_000;
 const CLIENT_METADATA_MAX_BYTES = 5 * 1024;
@@ -41,10 +42,6 @@ const cachedClientSchema = z.union([mcpClientSchema, invalidClientSchema]);
 
 type McpClient = z.output<typeof mcpClientSchema>;
 
-function stripBrackets(hostname: string): string {
-  return hostname.replace(/^\[|\]$/g, "");
-}
-
 /**
  * Parse a CIMD client ID. It must be a canonical `https:` URL with a path,
  * no fragment, no credentials, and no loopback or private IP host.
@@ -53,13 +50,10 @@ function parseClientId(value: string): URL | undefined {
   if (value.length > CLIENT_ID_MAX_LENGTH || value.includes("#")) {
     return undefined;
   }
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return undefined;
-  }
-  const hostname = stripBrackets(url.hostname);
+  const url = URL.parse(value);
+  if (!url) return undefined;
+  // `URL.hostname` keeps the brackets of an IPv6 address.
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (
     url.href !== value ||
     url.protocol !== "https:" ||
@@ -136,12 +130,9 @@ export async function resolveMcpClient(
 ): Promise<McpClient | undefined> {
   const url = parseClientId(clientId);
   if (!url) return undefined;
-  const key = mcpStateKey("client", stateKeyHash(clientId));
-  const cached = await state.get(key);
-  if (cached !== null && cached !== undefined) {
-    const entry = cachedClientSchema.parse(cached);
-    return "invalid" in entry ? undefined : entry;
-  }
+  const key = mcpStateKey("client", sha256Hex(clientId));
+  const cached = await readRecord(state, key, cachedClientSchema);
+  if (cached) return "invalid" in cached ? undefined : cached;
 
   const parsed = clientMetadataDocumentSchema.safeParse(
     await fetchClientMetadataDocument(url),
@@ -150,22 +141,17 @@ export async function resolveMcpClient(
     await state.set(key, { invalid: true }, INVALID_CLIENT_CACHE_TTL_MS);
     return undefined;
   }
-  const client = mcpClientSchema.parse({
+  const client: McpClient = {
     clientId,
-    ...(parsed.data.client_name
-      ? { name: parsed.data.client_name }
-      : undefined),
+    name: parsed.data.client_name,
     redirectUris: parsed.data.redirect_uris,
-  });
+  };
   await state.set(key, client, CLIENT_METADATA_CACHE_TTL_MS);
   return client;
 }
 
 function isLoopbackHttp(url: URL): boolean {
-  return (
-    url.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-  );
+  return url.protocol === "http:" && LOOPBACK_HOSTNAMES.includes(url.hostname);
 }
 
 /**
@@ -178,13 +164,9 @@ export function redirectUriMatches(
   registered: readonly string[],
   requested: string,
 ): boolean {
-  let url: URL;
-  try {
-    url = new URL(requested);
-  } catch {
-    return false;
-  }
+  const url = URL.parse(requested);
   if (
+    !url ||
     requested.includes("#") ||
     (url.protocol !== "https:" && !isLoopbackHttp(url))
   ) {
@@ -193,13 +175,9 @@ export function redirectUriMatches(
   return registered.some((entry) => {
     if (entry === requested) return true;
     if (!isLoopbackHttp(url)) return false;
-    let candidate: URL;
-    try {
-      candidate = new URL(entry);
-    } catch {
-      return false;
-    }
+    const candidate = URL.parse(entry);
     return (
+      candidate !== null &&
       isLoopbackHttp(candidate) &&
       candidate.hostname === url.hostname &&
       candidate.pathname === url.pathname &&

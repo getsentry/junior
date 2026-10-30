@@ -36,7 +36,6 @@ export const MCP_ROUTE_PATHS = [
   MCP_TOKEN_PATH,
 ];
 
-/** Settings for the MCP HTTP handler. */
 type McpHttpHandlerOptions = {
   /** The app's `allowedDomains`. Each MCP request checks them again. */
   allowedDomains: readonly string[];
@@ -70,7 +69,7 @@ function bearerToken(request: Request): string | undefined {
 /** Create the fetch handler for every path in `MCP_ROUTE_PATHS`. */
 export function createMcpHttpHandler(
   options: McpHttpHandlerOptions,
-): (request: Request) => Promise<Response> {
+): (request: Request) => Response | Promise<Response> {
   const app = new Hono();
   const urls = (request: Request) => resolveMcpUrls(request, options.baseURL);
 
@@ -116,5 +115,5 @@ export function createMcpHttpHandler(
     return await handleMcpServerRequest(c.req.raw, user);
   });
 
-  return async (request) => await app.fetch(request);
+  return app.fetch;
 }

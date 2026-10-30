@@ -11,11 +11,11 @@ import { z } from "zod";
 import { redirectUriMatches, resolveMcpClient } from "./client-metadata";
 import { MCP_SCOPE, type McpUrls } from "./metadata";
 import { renderMcpPage } from "./page";
-import { mcpStateKey, stateKeyHash, type McpState } from "./state";
+import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 const STATE_MAX_LENGTH = 1_000;
-const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const AUTHORIZATION_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const CODE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const mcpAuthorizationSchema = z
@@ -45,16 +45,16 @@ const mcpConsentSchema = z
 
 type McpConsent = z.output<typeof mcpConsentSchema>;
 
-function authorizationKey(requestId: string): string {
-  return mcpStateKey("authorization", requestId);
+function authorizationKey(authorizationId: string): string {
+  return mcpStateKey("authorization", authorizationId);
 }
 
-function consentKey(requestId: string): string {
-  return `${authorizationKey(requestId)}:consent`;
+function consentKey(authorizationId: string): string {
+  return `${authorizationKey(authorizationId)}:consent`;
 }
 
-function claimedKey(requestId: string): string {
-  return `${authorizationKey(requestId)}:claimed`;
+function claimedKey(authorizationId: string): string {
+  return `${authorizationKey(authorizationId)}:claimed`;
 }
 
 /**
@@ -63,21 +63,26 @@ function claimedKey(requestId: string): string {
  */
 export async function readMcpAuthorization(
   state: McpState,
-  requestId: string,
+  authorizationId: string,
 ): Promise<
   { authorization: McpAuthorization; consent?: McpConsent } | undefined
 > {
-  if (!REQUEST_ID_PATTERN.test(requestId)) return undefined;
-  const value = await state.get(authorizationKey(requestId));
-  if (value === null || value === undefined) return undefined;
-  const authorization = mcpAuthorizationSchema.parse(value);
-  if (authorization.expiresAtMs <= Date.now()) return undefined;
-  const claimed = await state.get(claimedKey(requestId));
-  if (claimed !== null && claimed !== undefined) return undefined;
-  const consent = await state.get(consentKey(requestId));
-  return consent === null || consent === undefined
-    ? { authorization }
-    : { authorization, consent: mcpConsentSchema.parse(consent) };
+  if (!AUTHORIZATION_ID_PATTERN.test(authorizationId)) return undefined;
+  const authorization = await readRecord(
+    state,
+    authorizationKey(authorizationId),
+    mcpAuthorizationSchema,
+  );
+  if (!authorization || authorization.expiresAtMs <= Date.now()) {
+    return undefined;
+  }
+  if ((await state.get(claimedKey(authorizationId))) !== null) return undefined;
+  const consent = await readRecord(
+    state,
+    consentKey(authorizationId),
+    mcpConsentSchema,
+  );
+  return { authorization, consent };
 }
 
 /**
@@ -89,23 +94,22 @@ export async function readMcpAuthorization(
  */
 export async function bindMcpConsent(args: {
   authorization: McpAuthorization;
-  requestId: string;
+  authorizationId: string;
   state: McpState;
   userId: string;
 }): Promise<string | undefined> {
   const ttlMs = args.authorization.expiresAtMs - Date.now();
   if (ttlMs <= 0) return undefined;
   const csrfToken = randomBytes(32).toString("base64url");
-  const consent = mcpConsentSchema.parse({
-    csrfHash: stateKeyHash(csrfToken),
+  const consent: McpConsent = {
+    csrfHash: sha256Hex(csrfToken),
     userId: args.userId,
-  });
-  const key = consentKey(args.requestId);
+  };
+  const key = consentKey(args.authorizationId);
   if (await args.state.setIfNotExists(key, consent, ttlMs)) return csrfToken;
-  const stored = await args.state.get(key);
-  // A racing claim deleted the binding, so the request has ended.
-  if (stored === null || stored === undefined) return undefined;
-  if (mcpConsentSchema.parse(stored).userId !== args.userId) return undefined;
+  const owner = await readRecord(args.state, key, mcpConsentSchema);
+  // A missing owner means that a racing claim ended the request.
+  if (owner?.userId !== args.userId) return undefined;
   // The owner opened the page again. Only the newest form token works.
   await args.state.set(key, consent, ttlMs);
   return csrfToken;
@@ -117,16 +121,16 @@ export async function bindMcpConsent(args: {
  */
 export async function claimMcpAuthorization(
   state: McpState,
-  requestId: string,
+  authorizationId: string,
 ): Promise<boolean> {
   const claimed = await state.setIfNotExists(
-    claimedKey(requestId),
+    claimedKey(authorizationId),
     true,
     AUTHORIZATION_TTL_MS,
   );
   if (claimed) {
-    await state.delete(authorizationKey(requestId));
-    await state.delete(consentKey(requestId));
+    await state.delete(authorizationKey(authorizationId));
+    await state.delete(consentKey(authorizationId));
   }
   return claimed;
 }
@@ -212,26 +216,27 @@ export async function handleMcpAuthorize(args: {
     );
   }
 
-  const requestId = randomBytes(32).toString("base64url");
+  const authorizationId = randomBytes(32).toString("base64url");
+  const authorization: McpAuthorization = {
+    clientId: client.clientId,
+    clientName: client.name,
+    codeChallenge,
+    expiresAtMs: Date.now() + AUTHORIZATION_TTL_MS,
+    redirectUri,
+    resource: args.urls.resource,
+    scope: MCP_SCOPE,
+    state: oauthState,
+  };
   await args.state.set(
-    authorizationKey(requestId),
-    mcpAuthorizationSchema.parse({
-      clientId: client.clientId,
-      ...(client.name ? { clientName: client.name } : undefined),
-      codeChallenge,
-      expiresAtMs: Date.now() + AUTHORIZATION_TTL_MS,
-      redirectUri,
-      resource: args.urls.resource,
-      scope: MCP_SCOPE,
-      ...(oauthState === undefined ? undefined : { state: oauthState }),
-    }),
+    authorizationKey(authorizationId),
+    authorization,
     AUTHORIZATION_TTL_MS,
   );
   return new Response(null, {
     status: 302,
     headers: {
       "cache-control": "no-store",
-      location: args.urls.consent(requestId),
+      location: args.urls.consent(authorizationId),
     },
   });
 }

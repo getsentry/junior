@@ -1,3 +1,10 @@
+/** Loopback hostnames, in the bracketed form that `URL.hostname` uses. */
+export const LOOPBACK_HOSTNAMES: readonly string[] = [
+  "localhost",
+  "127.0.0.1",
+  "[::1]",
+];
+
 /**
  * Resolve the public origin of this Junior app for browser sign-in and
  * protocol metadata. A configured origin always wins. The request origin is
@@ -13,10 +20,7 @@ export function resolvePublicOrigin(
     origin = /^https?:\/\//.test(value) ? value : `https://${value}`;
   } else {
     const requestURL = new URL(request.url);
-    const hostname = requestURL.hostname.replace(/^\[|\]$/g, "");
-    if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
-      return undefined;
-    }
+    if (!LOOPBACK_HOSTNAMES.includes(requestURL.hostname)) return undefined;
     origin = requestURL.origin;
   }
   const url = new URL(origin);

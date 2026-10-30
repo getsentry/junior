@@ -1,10 +1,10 @@
 /**
- * Own the public-address rule for MCP client metadata fetches.
+ * Own the public-address rule for fetches of URLs that any person can submit.
  *
- * A client ID is a URL that any person can submit. Junior must not fetch it
- * from loopback, private, link-local, cloud metadata, or other special
- * addresses. The lookup checks every resolved address at connect time, so a
- * second DNS answer cannot move the request to a blocked address.
+ * Such a fetch must not reach loopback, private, link-local, cloud metadata,
+ * or other special addresses. The lookup checks every resolved address at
+ * connect time, so a second DNS answer cannot move the request to a blocked
+ * address.
  */
 import dns from "node:dns";
 import net from "node:net";

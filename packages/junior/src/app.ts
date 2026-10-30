@@ -125,7 +125,6 @@ import { createAcpHttpHandler } from "@/api/acp/route";
 import { handleMcpConsentPage } from "@/api/mcp/consent-page";
 import { MCP_CONSENT_PATH } from "@/api/mcp/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
-import type { McpState } from "@/api/mcp/state";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -660,10 +659,8 @@ export async function createApp(
   // MCP consent needs a Google-signed-in user. A dashboard without required
   // sign-in serves a local viewer, so MCP routes are not mounted then.
   const mcpEnabled = dashboardRequiresSignIn(dashboard);
-  let mcpState: McpState | undefined;
-  /** Open MCP OAuth state on first use. It is the state that ACP uses. */
   const getMcpState = () =>
-    (mcpState ??= options?.conversationWork?.state ?? getStateAdapter());
+    options?.conversationWork?.state ?? getStateAdapter();
   const mcpConsentRoute: AuthenticatedRoute = {
     handler: (request, user) =>
       handleMcpConsentPage({
@@ -736,7 +733,7 @@ export async function createApp(
     getAcpRuntime().handleRequest(c.req.raw),
   );
   if (mcpEnabled) {
-    let handleMcpRequest: ((request: Request) => Promise<Response>) | undefined;
+    let handleMcpRequest: ReturnType<typeof createMcpHttpHandler> | undefined;
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,

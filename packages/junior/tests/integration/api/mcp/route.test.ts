@@ -229,7 +229,7 @@ describe("remote MCP HTTP", () => {
       content: [
         {
           type: "text",
-          text: expect.stringContaining("- Viewer launch plan (completed)"),
+          text: JSON.stringify(listed.structuredContent),
         },
       ],
       structuredContent: {

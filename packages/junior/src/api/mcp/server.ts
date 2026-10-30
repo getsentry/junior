@@ -11,6 +11,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { readConversationFeed } from "@/api/conversations/list";
 import {
+  conversationFeedQuerySchema,
   conversationReportStatusSchema,
   conversationSurfaceSchema,
   type ConversationSummaryReport,
@@ -37,36 +38,25 @@ const mcpConversationSchema = z
 type McpConversation = z.output<typeof mcpConversationSchema>;
 
 function mcpConversation(summary: ConversationSummaryReport): McpConversation {
-  const url = getDashboardConversationLink(summary.conversationId);
-  return mcpConversationSchema.parse({
+  return {
     conversationId: summary.conversationId,
     title: summary.displayTitle,
     status: summary.status,
     surface: summary.surface,
-    ...(summary.channelName && !summary.channelNameRedacted
-      ? { channelName: summary.channelName }
-      : undefined),
-    ...(summary.locationUrl ? { locationUrl: summary.locationUrl } : undefined),
+    channelName: summary.channelNameRedacted ? undefined : summary.channelName,
+    locationUrl: summary.locationUrl,
     startedAt: summary.startedAt,
     lastSeenAt: summary.lastSeenAt,
-    ...(summary.archivedAt ? { archivedAt: summary.archivedAt } : undefined),
-    ...(url ? { url } : undefined),
-  });
-}
-
-function conversationSummaryText(conversations: McpConversation[]): string {
-  if (conversations.length === 0) return "No conversations found.";
-  return conversations
-    .map(
-      (conversation) =>
-        `- ${conversation.title} (${conversation.status}) ${conversation.url ?? conversation.conversationId}`,
-    )
-    .join("\n");
+    archivedAt: summary.archivedAt ?? undefined,
+    url: getDashboardConversationLink(summary.conversationId),
+  };
 }
 
 /** Build the MCP server for one authenticated user. */
 function createMcpServer(user: User): McpServer {
   const server = new McpServer({ name: "junior", version: JUNIOR_VERSION });
+  // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is the Zod object API.
+  const feedQuery = conversationFeedQuerySchema.shape;
   server.registerTool(
     "listConversations",
     {
@@ -74,35 +64,21 @@ function createMcpServer(user: User): McpServer {
       description:
         "List up to 50 of your conversations, newest activity first. Only conversations that you started or take part in are listed.",
       inputSchema: {
-        q: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .optional()
-          .describe("Text to search for in titles and Briefs."),
-        status: z
-          .enum(["active", "archived"])
-          .optional()
-          .describe(
-            "List conversations that you have not archived (default) or that you archived. A search ignores this filter.",
-          ),
+        q: feedQuery.q.describe("Text to search for in titles and Briefs."),
+        status: feedQuery.status.describe(
+          "List conversations that you have not archived (default) or that you archived. A search ignores this filter.",
+        ),
       },
+      // The SDK checks `structuredContent` against this schema.
       outputSchema: { conversations: z.array(mcpConversationSchema) },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ q, status }) => {
-      const feed = await readConversationFeed({
-        viewer: user,
-        ...(q ? { q } : undefined),
-        ...(status ? { status } : undefined),
-      });
-      const conversations = feed.conversations.map(mcpConversation);
+      const feed = await readConversationFeed({ q, status, viewer: user });
+      const result = { conversations: feed.conversations.map(mcpConversation) };
       return {
-        content: [
-          { type: "text", text: conversationSummaryText(conversations) },
-        ],
-        structuredContent: { conversations },
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result,
       };
     },
   );

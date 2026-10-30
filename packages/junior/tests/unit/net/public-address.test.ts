@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPublicAddress, publicAddressLookup } from "@/api/mcp/public-address";
+import { isPublicAddress, publicAddressLookup } from "@/net/public-address";
 
 describe("MCP public address rule", () => {
   it.each([

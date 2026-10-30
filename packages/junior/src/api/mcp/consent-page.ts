@@ -7,7 +7,7 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { escapeHtml } from "@/api/html";
+import { escapeHtml, requestHasSameOrigin } from "@/api/html";
 import {
   authorizationRedirect,
   bindMcpConsent,
@@ -18,7 +18,7 @@ import {
 import { issueAuthorizationCode } from "./grants";
 import { resolveMcpUrls } from "./metadata";
 import { renderMcpPage } from "./page";
-import { stateKeyHash, type McpState } from "./state";
+import { sha256Hex, type McpState } from "./state";
 
 function expiredPage(): Response {
   return renderMcpPage({
@@ -46,7 +46,7 @@ function consentPage(args: {
   const button = (action: string, label: string, primary: boolean) =>
     `<button type="submit" name="action" value="${action}" style="border:0;border-radius:.375rem;cursor:pointer;font:inherit;font-weight:700;padding:.625rem 1rem;margin-right:.5rem;${primary ? "background:#a78bfa;color:#000" : "background:#333;color:#fff"}">${label}</button>`;
   return renderMcpPage({
-    bodyHtml: `<p style="margin:0 0 1rem;color:#b8b8b8;line-height:1.5">The app is published at <strong style="color:#fff">${escapeHtml(clientHost)}</strong>. It can list your ${escapeHtml(args.agentName)} conversations.</p>
+    bodyHtml: `      <p style="margin:0 0 1rem;color:#b8b8b8;line-height:1.5">The app is published at <strong style="color:#fff">${escapeHtml(clientHost)}</strong>. It can list your ${escapeHtml(args.agentName)} conversations.</p>
       <form method="post">
         <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}">
         ${button("approve", "Allow", true)}${button("deny", "Deny", false)}
@@ -58,18 +58,8 @@ function consentPage(args: {
   });
 }
 
-function requestHasSameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return false;
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
-}
-
 function csrfMatches(value: string, expectedHash: string): boolean {
-  const actual = Buffer.from(stateKeyHash(value), "hex");
+  const actual = Buffer.from(sha256Hex(value), "hex");
   const expected = Buffer.from(expectedHash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
@@ -82,8 +72,8 @@ async function readForm(
     const action = form.get("action");
     const csrf = form.get("csrf");
     return {
-      ...(typeof action === "string" ? { action } : undefined),
-      ...(typeof csrf === "string" ? { csrf } : undefined),
+      action: typeof action === "string" ? action : undefined,
+      csrf: typeof csrf === "string" ? csrf : undefined,
     };
   } catch {
     // Invalid form input is handled as a blocked request.
@@ -99,15 +89,16 @@ export async function handleMcpConsentPage(args: {
   state: McpState;
   user: User;
 }): Promise<Response> {
-  const requestId = new URL(args.request.url).pathname.split("/").at(-1) ?? "";
-  const pending = await readMcpAuthorization(args.state, requestId);
+  const authorizationId =
+    new URL(args.request.url).pathname.split("/").at(-1) ?? "";
+  const pending = await readMcpAuthorization(args.state, authorizationId);
   if (!pending) return expiredPage();
   const { authorization, consent } = pending;
 
   if (args.request.method === "GET") {
     const csrfToken = await bindMcpConsent({
       authorization,
-      requestId,
+      authorizationId,
       state: args.state,
       userId: args.user.id,
     });
@@ -125,7 +116,7 @@ export async function handleMcpConsentPage(args: {
   ) {
     return blockedPage();
   }
-  if (!(await claimMcpAuthorization(args.state, requestId))) {
+  if (!(await claimMcpAuthorization(args.state, authorizationId))) {
     return expiredPage();
   }
 
