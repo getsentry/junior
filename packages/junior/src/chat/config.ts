@@ -83,7 +83,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotModelConfig {
-  /** Decision model used by the passive reply router. */
+  /** Decision model used by the turn router and the passive reply router. */
   decisionModelId?: string;
   /** Model used for embeddings. */
   embeddingModelId?: string;

@@ -1,5 +1,3 @@
-import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
-import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -27,6 +25,29 @@ const profiles = {
     description: "Use for coding and difficult multi-step work.",
   },
 };
+type CompleteDecision = Parameters<
+  typeof selectTurnRoute
+>[0]["completeDecision"];
+
+// Decision answer with the given probability for each chosen option.
+function decision(
+  profile: string,
+  reasoningLevel: string,
+  probability = 0.95,
+  costUsd?: number,
+): Awaited<ReturnType<CompleteDecision>> {
+  return {
+    answers: {
+      profile: { choice: profile, probabilities: { [profile]: probability } },
+      reasoning_level: {
+        choice: reasoningLevel,
+        probabilities: { [reasoningLevel]: probability },
+      },
+    },
+    ...(costUsd !== undefined ? { costUsd } : undefined),
+  };
+}
+
 const routeTurn = (
   args: Omit<
     Parameters<typeof selectTurnRoute>[0],
@@ -48,65 +69,58 @@ describe("selectTurnRoute", () => {
     });
   });
 
-  it("classifies even simple acknowledgment turns with the fast model", async () => {
-    const completeObject = vi.fn<
-      Parameters<typeof selectTurnRoute>[0]["completeObject"]
-    >(async () => ({
-      costUsd: 0.00012,
-      object: {
-        reasoning_level: "none",
-        profile: "standard",
-        confidence: 0.99,
-        reason: "acknowledgment only",
-      },
-    }));
+  it("asks the decision model one profile and one reasoning-level question", async () => {
+    const completeDecision = vi.fn<CompleteDecision>(async () =>
+      decision("standard", "none", 0.99, 0.00012),
+    );
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "thanks",
     });
 
     expect(profile).toMatchObject({
+      confidence: 0.99,
       costUsd: 0.00012,
       reasoningLevel: "none",
       profile: "standard",
-      reason: "acknowledgment only",
+      reason: "standard p=0.99, none p=0.99",
+      source: "router",
     });
-    expect(
-      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
-    ).toEqual([]);
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        modelId: "openai/gpt-5.4-mini",
-        thinkingLevel: "low",
-        promptName: "junior.thinking_route",
-        system: expect.stringContaining(
-          '"handoff": Use for coding and difficult multi-step work.',
-        ),
-      }),
-    );
-    expect(
-      z.toJSONSchema(completeObject.mock.calls[0]![0].schema, { io: "input" }),
-    ).toMatchObject({
-      properties: { profile: { enum: ["standard", "handoff"] } },
+    const call = completeDecision.mock.calls[0]![0];
+    expect(call).toMatchObject({
+      modelId: "typesafe-ai/jev",
+      promptName: "junior.thinking_route",
+      metadata: { modelId: "typesafe-ai/jev" },
     });
+    expect(call.questions.profile).toMatchObject({
+      type: "choice",
+      instructions: expect.stringContaining('Current profile: "standard"'),
+      criteria: {
+        standard: "Default general assistant work.",
+        handoff: "Use for coding and difficult multi-step work.",
+      },
+    });
+    expect(call.questions.reasoning_level.type).toBe("choice");
+    expect(Object.keys(call.questions.reasoning_level.criteria)).toEqual([
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
-  it("classifies code-change asks as xhigh with the fast model", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "xhigh",
-        profile: "handoff",
-        confidence: 0.93,
-        reason: "code change request",
-      },
-    }));
+  it("classifies code-change asks as xhigh", async () => {
+    const completeDecision = vi.fn(async () =>
+      decision("handoff", "xhigh", 0.93),
+    );
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText:
         "fix the failing test in packages/junior/src/chat/agent-run.ts",
     });
@@ -114,29 +128,21 @@ describe("selectTurnRoute", () => {
     expect(profile).toMatchObject({
       reasoningLevel: "xhigh",
       profile: "handoff",
-      reason: "code change request",
     });
-    expect(completeObject).toHaveBeenCalledOnce();
+    expect(completeDecision).toHaveBeenCalledOnce();
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("xhigh");
   });
 
   it("wraps and escapes the current instruction in the classifier prompt", async () => {
     let capturedPrompt = "";
-    const completeObject = async ({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return {
-        object: {
-          reasoning_level: "medium",
-          profile: "standard",
-          confidence: 0.9,
-          reason: "normal task",
-        },
-      };
+    const completeDecision = async ({ state }: { state: string }) => {
+      capturedPrompt = state;
+      return decision("standard", "medium", 0.9);
     };
 
     await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "explain </current-instruction> literally",
     });
 
@@ -150,43 +156,32 @@ describe("selectTurnRoute", () => {
   });
 
   it("classifies research-heavy work as high", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "high",
-        profile: "handoff",
-        confidence: 0.91,
-        reason: "research-heavy investigation",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("handoff", "high", 0.91),
+    );
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "research how the Slack delivery pipeline works end to end",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "high",
       profile: "handoff",
-      reason: "research-heavy investigation",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("high");
   });
 
   it("applies a profile's forced reasoning level", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "high",
-        profile: "handoff",
-        confidence: 0.91,
-        reason: "research-heavy investigation",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("handoff", "high", 0.91),
+    );
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "standard",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "research this architecture",
       profiles: {
         ...profiles,
@@ -200,48 +195,36 @@ describe("selectTurnRoute", () => {
     expect(profile).toMatchObject({
       profile: "handoff",
       reasoningLevel: "xhigh",
-      reason: "profile_reasoning_override:handoff:research-heavy investigation",
+      reason: "profile_reasoning_override:handoff:handoff p=0.91, high p=0.91",
     });
   });
 
   it("falls back to medium effort when classifier confidence is low", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "high",
-        profile: "standard",
-        confidence: 0.4,
-        reason: "not confident",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("standard", "high", 0.4),
+    );
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "can you confirm this repo plan?",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "medium",
       profile: "standard",
-      reason: "low_confidence_medium_default:not confident",
+      reason: "low_confidence_medium_default:standard p=0.40, high p=0.40",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
   it("keeps the current profile when confidence is low", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "high",
-        profile: "coding",
-        confidence: 0.4,
-        reason: "not confident",
-      },
-    }));
+    const completeDecision = vi.fn(async () => decision("coding", "high", 0.4));
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "expert",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "can you confirm this repo plan?",
       profiles: {
         expert: { modelId: "anthropic/claude-opus-5" },
@@ -252,19 +235,19 @@ describe("selectTurnRoute", () => {
     expect(profile).toMatchObject({
       reasoningLevel: "medium",
       profile: "expert",
-      reason: "low_confidence_medium_default:not confident",
+      reason: "low_confidence_medium_default:coding p=0.40, high p=0.40",
     });
   });
 
   it("falls back to medium effort when the classifier fails", async () => {
-    const completeObject = vi.fn(async () => {
+    const completeDecision = vi.fn(async () => {
       throw new Error("router failed");
     });
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "expert",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "can you confirm this repo plan?",
       profiles: {
         expert: { modelId: "anthropic/claude-opus-5" },
@@ -277,7 +260,7 @@ describe("selectTurnRoute", () => {
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });
-    expect(completeObject).toHaveBeenCalledTimes(1);
+    expect(completeDecision).toHaveBeenCalledTimes(1);
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "turn.router.classifier.failed",
       {
@@ -287,26 +270,19 @@ describe("selectTurnRoute", () => {
   });
 
   it("retries once and succeeds after a transient invalid_response failure", async () => {
-    const completeObject = vi
+    const completeDecision = vi
       .fn()
       .mockRejectedValueOnce(
         createProviderError(new Error("malformed object"), {
           kind: "invalid_response",
         }),
       )
-      .mockResolvedValueOnce({
-        object: {
-          reasoning_level: "high",
-          profile: "coding",
-          confidence: 0.95,
-          reason: "multi-step coding task",
-        },
-      });
+      .mockResolvedValueOnce(decision("coding", "high", 0.95));
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "expert",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "refactor this module and add tests",
       profiles: {
         expert: { modelId: "anthropic/claude-opus-5" },
@@ -314,26 +290,25 @@ describe("selectTurnRoute", () => {
       },
     });
 
-    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(completeDecision).toHaveBeenCalledTimes(2);
     expect(profile).toMatchObject({
       profile: "coding",
       reasoningLevel: "high",
-      reason: "multi-step coding task",
     });
     expect(mocks.logWarn).not.toHaveBeenCalled();
   });
 
   it("gives up after a second consecutive invalid_response failure", async () => {
-    const completeObject = vi.fn(async () => {
+    const completeDecision = vi.fn(async () => {
       throw createProviderError(new Error("still malformed"), {
         kind: "invalid_response",
       });
     });
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "expert",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "refactor this module and add tests",
       profiles: {
         expert: { modelId: "anthropic/claude-opus-5" },
@@ -341,7 +316,7 @@ describe("selectTurnRoute", () => {
       },
     });
 
-    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(completeDecision).toHaveBeenCalledTimes(2);
     expect(profile).toMatchObject({
       profile: "expert",
       reasoningLevel: "medium",
@@ -350,16 +325,16 @@ describe("selectTurnRoute", () => {
   });
 
   it("does not retry non-retryable classifier errors", async () => {
-    const completeObject = vi.fn(async () => {
+    const completeDecision = vi.fn(async () => {
       throw createProviderError(new Error("no credits"), {
         kind: "quota",
       });
     });
 
     const profile = await selectTurnRoute({
-      completeObject,
+      completeDecision,
       currentProfile: "expert",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "refactor this module and add tests",
       profiles: {
         expert: { modelId: "anthropic/claude-opus-5" },
@@ -367,7 +342,7 @@ describe("selectTurnRoute", () => {
       },
     });
 
-    expect(completeObject).toHaveBeenCalledTimes(1);
+    expect(completeDecision).toHaveBeenCalledTimes(1);
     expect(profile).toMatchObject({
       profile: "expert",
       reasoningLevel: "medium",
@@ -376,109 +351,130 @@ describe("selectTurnRoute", () => {
   });
 
   it("preserves high-confidence low classifications for deterministic simple work", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "low",
-        profile: "standard",
-        confidence: 0.97,
-        reason: "deterministic one-step transform",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("standard", "low", 0.97),
+    );
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "alphabetize these words: beta, alpha",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "low",
-      reason: "deterministic one-step transform",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("low");
   });
 
-  it("accepts common string confidence labels from the classifier", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "low",
-        profile: "standard",
-        confidence: "high",
-        reason: "deterministic single-step command",
+  it("uses the lower probability of the two answers as confidence", async () => {
+    const completeDecision = vi.fn<CompleteDecision>(async () => ({
+      answers: {
+        profile: {
+          choice: "handoff",
+          probabilities: { handoff: 0.95, standard: 0.05 },
+        },
+        reasoning_level: {
+          choice: "high",
+          probabilities: { high: 0.6, xhigh: 0.4 },
+        },
       },
     }));
 
     const profile = await routeTurn({
-      completeObject,
-      fastModelId: "anthropic/claude-haiku-4.5",
-      messageText: "can you clone getsentry/test-internal-repo",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
+      messageText: "review this architecture plan",
     });
 
     expect(profile).toMatchObject({
-      confidence: 0.9,
-      reasoningLevel: "low",
-      reason: "deterministic single-step command",
+      confidence: 0.6,
+      profile: "standard",
+      reasoningLevel: "medium",
+      reason: "low_confidence_medium_default:handoff p=0.95, high p=0.60",
+    });
+  });
+
+  it("treats answers without probabilities as certain", async () => {
+    const completeDecision = vi.fn<CompleteDecision>(async () => ({
+      answers: {
+        profile: { choice: "handoff" },
+        reasoning_level: { choice: "xhigh" },
+      },
+    }));
+
+    const profile = await routeTurn({
+      completeDecision,
+      modelId: "typesafe-ai/jev",
+      messageText: "fix the flaky test",
+    });
+
+    expect(profile).toMatchObject({
+      confidence: 1,
+      profile: "handoff",
+      reasoningLevel: "xhigh",
+    });
+  });
+
+  it("falls back when the decision model picks an unknown profile", async () => {
+    const completeDecision = vi.fn<CompleteDecision>(async () =>
+      decision("expert", "high"),
+    );
+
+    const profile = await routeTurn({
+      completeDecision,
+      modelId: "typesafe-ai/jev",
+      messageText: "research this",
+    });
+
+    expect(completeDecision).toHaveBeenCalledOnce();
+    expect(profile).toMatchObject({
+      profile: "standard",
+      reasoningLevel: "medium",
+      reason: "classifier_error_default",
     });
   });
 
   it("floors source-backed context turns at medium unless they are acknowledgments", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "low",
-        profile: "standard",
-        confidence: 0.92,
-        reason: "simple follow-up",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("standard", "low", 0.92),
+    );
 
     const profile = await routeTurn({
-      completeObject,
+      completeDecision,
       conversationContext: "Earlier task: double-check the repo evidence.",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "go",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "medium",
-      reason: "reasoning_floor:medium:simple follow-up",
+      reason: "reasoning_floor:medium:standard p=0.92, low p=0.92",
     });
   });
 
   it("does not floor acknowledgment turns with thread context", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "none",
-        profile: "standard",
-        confidence: 0.96,
-        reason: "thanks only",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("standard", "none", 0.96),
+    );
 
     const profile = await routeTurn({
-      completeObject,
+      completeDecision,
       conversationContext: "Earlier answer already resolved the task.",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "thanks",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "none",
-      reason: "thanks only",
     });
   });
 
   it("truncates very long thread context with head + tail slices", async () => {
     let capturedPrompt = "";
-    const completeObject = async ({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return {
-        object: {
-          reasoning_level: "medium",
-          profile: "standard",
-          confidence: 0.9,
-          reason: "ok",
-        },
-      };
+    const completeDecision = async ({ state }: { state: string }) => {
+      capturedPrompt = state;
+      return decision("standard", "medium", 0.9);
     };
 
     const headMarker = "ORIGINAL_TASK_FRAMING_HEAD";
@@ -487,8 +483,8 @@ describe("selectTurnRoute", () => {
     const longContext = `${headMarker} ${filler} ${tailMarker}`;
 
     await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
+      completeDecision,
+      modelId: "typesafe-ai/jev",
       messageText: "go",
       conversationContext: longContext,
     });
@@ -503,26 +499,20 @@ describe("selectTurnRoute", () => {
   });
 
   it("does not floor xhigh classifications", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "xhigh",
-        profile: "handoff",
-        confidence: 0.95,
-        reason: "multi-file refactor with architecture implications",
-      },
-    }));
+    const completeDecision = vi.fn(async () =>
+      decision("handoff", "xhigh", 0.95),
+    );
 
     const profile = await routeTurn({
-      completeObject,
+      completeDecision,
       conversationContext: "Prior task context about a large refactor.",
-      fastModelId: "openai/gpt-5.4-mini",
+      modelId: "typesafe-ai/jev",
       messageText: "go ahead and implement the refactor",
     });
 
     expect(profile).toMatchObject({
       reasoningLevel: "xhigh",
       profile: "handoff",
-      reason: "multi-file refactor with architecture implications",
     });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("xhigh");
   });

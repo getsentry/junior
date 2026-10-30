@@ -21,14 +21,20 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
   return {
     ...actual,
-    completeObject: async () => {
+    completeDecision: async () => {
       observations.routerCalls += 1;
       return {
-        object: {
-          reasoning_level: observations.routedReasoningLevel,
-          profile: observations.routedModelProfile,
-          confidence: 0.99,
-          reason: "complex implementation",
+        answers: {
+          profile: {
+            type: "choice",
+            choice: observations.routedModelProfile,
+            probabilities: { [observations.routedModelProfile]: 0.99 },
+          },
+          reasoning_level: {
+            type: "choice",
+            choice: observations.routedReasoningLevel,
+            probabilities: { [observations.routedReasoningLevel]: 0.99 },
+          },
         },
       };
     },

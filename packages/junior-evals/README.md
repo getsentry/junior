@@ -14,7 +14,7 @@ There are four independently runnable suites:
 - Integration and behavioral cases run the real agent through the agent test fixture.
 - Guardian and router cases use `describeEval()` with their own harness. They call one model boundary and do not run the agent.
 - Behavioral and integration evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. Neither suite pins models or adds profiles.
-- Router evals use the shared core profiles and configured fast model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
+- Router evals use the shared core profiles and configured decision model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
 
 ## Agent Test Fixture
 
