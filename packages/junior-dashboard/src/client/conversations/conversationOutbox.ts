@@ -15,8 +15,8 @@ export type ConversationOutboxMessage = {
    * the row in place, so it does not pass through the queue first.
    */
   inline?: boolean;
-  /** A server snapshot listed this inline row in the mailbox. */
-  inlineSeenQueued?: boolean;
+  /** Client time when the accept response arrived. */
+  acceptedAtMs?: number;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -190,14 +190,17 @@ function historyMessageIds(events: readonly ConversationReportEvent[]): {
  * Drop local sends that one server snapshot already shows.
  *
  * A queued row leaves when the mailbox or history has it. An inline row stays
- * until history has it. The snapshot reads the mailbox before history, so an
- * inline row that the mailbox listed and then lost is in history or was
- * removed, for example by another participant.
+ * until history has it. The server writes the mailbox before it accepts a
+ * send, and the snapshot reads the mailbox before history. So when a mailbox
+ * read that started after the accept has neither copy, the send was removed,
+ * for example by another participant.
  */
 export function settleConversationOutboxMessages(
   current: ConversationOutboxMessage[],
   snapshot: {
     events: readonly ConversationReportEvent[];
+    /** Client time when the snapshot started its mailbox read. */
+    mailboxReadAtMs?: number;
     queued: readonly ConversationPendingMessage[];
   },
 ): ConversationOutboxMessage[] {
@@ -218,12 +221,12 @@ export function settleConversationOutboxMessages(
       (!queued && turnInputIds.has(message.messageId));
     if (read) return undefined;
     if (!isInlineOutboxMessage(message)) return queued ? undefined : message;
-    if (queued) {
-      return message.inlineSeenQueued
-        ? message
-        : { ...message, inlineSeenQueued: true };
-    }
-    return message.inlineSeenQueued ? undefined : message;
+    const removed =
+      !queued &&
+      message.acceptedAtMs !== undefined &&
+      snapshot.mailboxReadAtMs !== undefined &&
+      snapshot.mailboxReadAtMs > message.acceptedAtMs;
+    return removed ? undefined : message;
   };
   const next = current.flatMap((message) => settle(message) ?? []);
   const unchanged =
@@ -286,7 +289,7 @@ export function acceptConversationOutboxMessage(
 ): ConversationOutboxMessage[] {
   return (current ?? []).map((message) =>
     message.idempotencyKey === idempotencyKey
-      ? { ...message, messageId, status: "accepted" }
+      ? { ...message, acceptedAtMs: Date.now(), messageId, status: "accepted" }
       : message,
   );
 }

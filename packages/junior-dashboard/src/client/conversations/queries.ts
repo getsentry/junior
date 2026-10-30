@@ -141,6 +141,8 @@ const FAST_POLL_WINDOW_MS = 6_000;
 
 type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
+  /** Client time when this snapshot started its mailbox read. */
+  mailboxReadAtMs?: number;
   detailEtag?: string;
 };
 
@@ -150,9 +152,10 @@ async function readConversationSnapshot(
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
 ): Promise<ConversationSnapshot> {
+  const mailboxReadAtMs = Date.now();
   const mailbox = await readConversationPendingMessages(conversationId, signal);
   const detail = await readConversationData(conversationId, signal, previous);
-  return { ...detail, mailbox };
+  return { ...detail, mailbox, mailboxReadAtMs };
 }
 
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
@@ -232,6 +235,7 @@ export function useCreateConversation() {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -282,6 +286,7 @@ export function useForkConversation(sourceConversationId: string) {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -732,6 +737,7 @@ export function useConversationData(conversationId: string | undefined) {
         current &&
         settleConversationOutboxMessages(current, {
           events: detailData.events,
+          mailboxReadAtMs: detailData.mailboxReadAtMs,
           queued: mailbox.messages,
         }),
     );

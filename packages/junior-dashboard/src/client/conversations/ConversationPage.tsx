@@ -704,10 +704,10 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
-        // Junior can read the message before the cancel lands. Then it is
-        // already in the Conversation and there is nothing to edit.
+        // Junior can read the message before the cancel lands, or someone
+        // else can remove it. Then there is nothing to edit.
         if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
-          setQueueActionError(ALREADY_READ_ERROR);
+          setQueueActionError("That message was already read or removed.");
           return;
         }
         const restored = { images, text: message.text ?? "" };
@@ -744,10 +744,14 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           setQueueActionError(
             "Could not send the queued message now. Try again.",
           ),
-        // Like edit, a steer can land after Junior read the message.
+        // No id comes back when the message is not a queued `defer` message
+        // anymore. Junior read it, someone removed it, or another tab
+        // steered it. The message names all three.
         onSuccess: (result) => {
           if (!result.steeredInboundMessageIds.includes(inboundMessageId)) {
-            setQueueActionError(ALREADY_READ_ERROR);
+            setQueueActionError(
+              "That message was already read, steered, or removed.",
+            );
           }
         },
       },
@@ -857,6 +861,3 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
-
-// A queue action can land after Junior read the message.
-const ALREADY_READ_ERROR = "Junior already read that message.";

@@ -193,42 +193,40 @@ describe("conversation outbox", () => {
   });
 
   it("keeps inline sends until history reads them or the queue drops them", () => {
-    const inline = conversationOutboxMessageForSubmit({
-      idempotencyKey: "attempt-1",
-      inline: true,
-      messageId: "accepted-1",
-      message: "Continue in Junior",
-      now: "2026-01-01T00:00:00.000Z",
+    const accepted = (messageId: string, message: string) => ({
+      ...conversationOutboxMessageForSubmit({
+        idempotencyKey: messageId,
+        inline: true,
+        messageId,
+        message,
+        now: "2026-01-01T00:00:00.000Z",
+      }),
+      acceptedAtMs: 1_000,
+      status: "accepted" as const,
     });
-    const joined = conversationOutboxMessageForSubmit({
-      idempotencyKey: "attempt-2",
-      inline: true,
-      messageId: "accepted-2",
-      message: "And the rollback owner",
-      now: "2026-01-01T00:00:01.000Z",
-    });
-    const queuedCopy = {
-      ...mailboxMessageFromOutbox(inline),
+    const serverCopy = (message: ReturnType<typeof accepted>) => ({
+      ...mailboxMessageFromOutbox(message),
       clientStatus: undefined,
       idempotencyKey: undefined,
-    };
-    const outbox = [inline, joined];
-
-    // Nothing on the server yet: the rows stay as they are.
-    expect(
-      settleConversationOutboxMessages(outbox, { events: [], queued: [] }),
-    ).toBe(outbox);
-
-    // The mailbox lists the first send. It stays inline and is marked seen.
-    const seen = settleConversationOutboxMessages(outbox, {
-      events: [],
-      queued: [queuedCopy],
     });
-    expect(seen).toEqual([{ ...inline, inlineSeenQueued: true }, joined]);
+    const inline = accepted("accepted-1", "Continue in Junior");
+    const joined = accepted("accepted-2", "And the rollback owner");
+    const queuedRow = { ...accepted("queued-1", "Queued"), inline: undefined };
+    const outbox = [inline, joined, queuedRow];
+
+    // A mailbox read from before the accept proves nothing. The queued row
+    // leaves once the mailbox lists it.
+    expect(
+      settleConversationOutboxMessages(outbox, {
+        events: [],
+        mailboxReadAtMs: 900,
+        queued: [serverCopy(queuedRow)],
+      }),
+    ).toEqual([inline, joined]);
 
     // A Turn joined the second send into the first Message, so only its
     // started event has the second id. The Turn starts before the mailbox
-    // drops the send, so the row stays inline until then.
+    // drops the send, so the row stays inline and out of the queue.
     const turnStarted = [
       {
         seq: 1,
@@ -240,31 +238,61 @@ describe("conversation outbox", () => {
           inputMessageIds: ["accepted-1", "accepted-2"],
         },
       },
+      {
+        seq: 2,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        data: {
+          type: "message" as const,
+          messageId: "accepted-1",
+          role: "user" as const,
+          text: "Continue in Junior\nAnd the rollback owner",
+        },
+      },
     ];
-    const joinedCopy = {
-      ...mailboxMessageFromOutbox(joined),
-      clientStatus: undefined,
-      idempotencyKey: undefined,
-    };
-    expect(
-      settleConversationOutboxMessages(outbox, {
-        events: turnStarted,
-        queued: [queuedCopy, joinedCopy],
-      }),
-    ).toEqual([
-      { ...inline, inlineSeenQueued: true },
-      { ...joined, inlineSeenQueued: true },
+    const server = [serverCopy(inline), serverCopy(joined)];
+    const whileQueued = settleConversationOutboxMessages([inline, joined], {
+      events: turnStarted,
+      mailboxReadAtMs: 2_000,
+      queued: server,
+    });
+    expect(whileQueued).toEqual([joined]);
+    const split = splitInlineMailboxMessages(
+      mergeConversationMailboxMessages(server, whileQueued),
+      server,
+      whileQueued,
+    );
+    expect(split.inline.map((message) => message.messageId)).toEqual([
+      "accepted-2",
     ]);
+    expect(split.queued.map((message) => message.messageId)).toEqual([
+      "accepted-1",
+    ]);
+    // History has a Message for the first send, so the queue hides it.
+
+    // After the ack, the Turn input id settles the joined send.
     expect(
-      settleConversationOutboxMessages(outbox, {
+      settleConversationOutboxMessages([joined], {
         events: turnStarted,
+        mailboxReadAtMs: 3_000,
         queued: [],
       }),
     ).toEqual([]);
 
-    // Another participant removed the seen send from the queue.
+    // A mailbox read after the accept has neither copy: someone removed it.
+    const unchanged = [inline];
     expect(
-      settleConversationOutboxMessages(seen, { events: [], queued: [] }),
-    ).toEqual([joined]);
+      settleConversationOutboxMessages(unchanged, {
+        events: [],
+        mailboxReadAtMs: 1_000,
+        queued: [],
+      }),
+    ).toBe(unchanged);
+    expect(
+      settleConversationOutboxMessages(unchanged, {
+        events: [],
+        mailboxReadAtMs: 1_001,
+        queued: [],
+      }),
+    ).toEqual([]);
   });
 });
