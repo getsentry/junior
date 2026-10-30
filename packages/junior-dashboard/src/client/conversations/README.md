@@ -12,13 +12,12 @@ shared controls and overlays.
   `TranscriptMessageHeading` aligns authors, timestamps, and the context action.
   The action stays visible on touch devices and while open. Mouse users see it
   on message hover; keyboard users see it on focus.
-- `TranscriptSummary` owns disclosure padding, hover, and keyboard focus. Use
-  `flush` when the text already sits on the transcript edge. It extends the
-  padded control around that text. Do not repeat negative margins at call sites.
-  The caller owns the native `details` element and its content.
-  `TranscriptSummaryTrigger` gives a `ui/collapsible` trigger the same look.
-  Its caller owns the `Collapsible` and its content. Transcript search holds
-  event and context rows open.
+- `TranscriptSummaryTrigger` owns disclosure padding, hover, and keyboard
+  focus for a `ui/collapsible` trigger. Use `flush` when the text already sits
+  on the transcript edge. It extends the padded control around that text. Do
+  not repeat negative margins at call sites. The caller owns the `Collapsible`
+  and its content. Transcript search holds event and context rows open, and
+  shows activity group rows without the group.
 - Activity rows (tools, reasoning, and grouped rail events) share one
   layout: a 1rem icon column, an 8px gap, then the title and metadata.
   Tool and reasoning rows use `ui/trace`. Transcript search forces them open.

@@ -1,8 +1,13 @@
 import { ArrowRight, ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { buttonVariants } from "../components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
 import { Link } from "react-router";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { automationPath, formatRelativeTime } from "../format";
@@ -49,7 +54,6 @@ export function TranscriptAutomationTriggerView(props: {
     (part) => part.type === "text" && part.redacted,
   );
   const [open, setOpen] = useState(false);
-  const promptId = useId();
   const automationId = props.sourceTask.id?.trim();
   const name = props.sourceTask.title?.trim() || "Automation";
   const details = [
@@ -86,30 +90,21 @@ export function TranscriptAutomationTriggerView(props: {
         </p>
       ) : null}
       {text ? (
-        <div className="min-w-0">
-          <button
-            aria-controls={promptId}
-            aria-expanded={open}
-            className="-mx-1 inline-flex cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-            onClick={() => setOpen((value) => !value)}
-            type="button"
-          >
+        <Collapsible className="min-w-0" onOpenChange={setOpen} open={open}>
+          <CollapsibleTrigger className="group -mx-1 inline-flex cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
             <ChevronRight
               aria-hidden="true"
-              className={cn("size-3 transition-transform", open && "rotate-90")}
+              className="size-3 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none"
               strokeWidth={2.2}
             />
             {open ? "Hide prompt" : "Show prompt"}
-          </button>
-          {open ? (
-            <pre
-              className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border-subtle bg-dashboard-bg px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted"
-              id={promptId}
-            >
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border-subtle bg-dashboard-bg px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               <HighlightText text={text} />
             </pre>
-          ) : null}
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : redacted ? (
         <RedactedMarker />
       ) : null}
