@@ -165,6 +165,42 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   ]);
 });
 
+test("replaces an Event trigger with one for any resource", async ({
+  page,
+  dashboard,
+}) => {
+  const state = await mockAutomationEditor(page, "event");
+  await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
+  await page.getByLabel("Resource type").selectOption("github:*");
+  await page.getByRole("button", { name: "Replace trigger" }).click();
+  await expect(page.getByLabel("Resource identifier")).toHaveCount(0);
+  // A trigger with no identifier names no resource.
+  await page.getByLabel("Trigger name").fill("Closed issues");
+  await page.getByRole("checkbox", { name: /^issue closed/ }).check();
+  await screenshot(page, "automation-event-editor-any-resource");
+  // The shared check names the filter that this event needs.
+  await expect(
+    page.getByText('This trigger needs a "state" filter'),
+  ).toBeVisible();
+  await page.getByLabel("state", { exact: true }).selectOption("closed");
+  await expect(
+    page.getByText('This trigger needs a "state" filter'),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/list`);
+  expect(state.writes).toEqual([
+    expect.objectContaining({
+      kind: "event",
+      trigger: {
+        namespace: "github",
+        label: "Closed issues",
+        events: ["issue.closed"],
+        match: { state: "closed" },
+      },
+    }),
+  ]);
+});
+
 test("public non-creators edit settings without creator-only controls", async ({
   page,
   dashboard,

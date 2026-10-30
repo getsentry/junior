@@ -25,6 +25,7 @@ export function sentryProjectsMatchFields(
   return eventMatchFieldsSchema.parse({
     projects: {
       kind: "string",
+      case: "lower",
       list: true,
       description:
         "lowercase Sentry project slugs, such as junior; an issue has one, a metric alert has the projects of its rule",

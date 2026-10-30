@@ -1,7 +1,22 @@
-import { automationEventCatalog } from "@/chat/events/catalog";
+import {
+  automationEventCatalog,
+  registeredEventTriggerProblems,
+} from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import type { EventMatchFields, User } from "@sentry/junior-plugin-api";
-import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
+import type { User } from "@sentry/junior-plugin-api";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import {
@@ -37,41 +52,6 @@ export function viewerAutomationCollection(user: User) {
     publicDestination,
     ne(automation.status, "completed"),
   )!;
-  // Mirror `eventTriggerProblems`, which the direct reader uses: a trigger is
-  // available when no resource type, event, or filter problem applies.
-  const trigger = sql`${automation.record}->'trigger'`;
-  const match = sql`coalesce(${trigger}->'match', '{}'::jsonb)`;
-  const json = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`;
-  const fieldWorks = (key: string, field: EventMatchFields[string]) => {
-    const value = sql`${match}->(${key}::text)`;
-    const type = sql`jsonb_typeof(${value})`;
-    return sql`(${value} is null or (${and(
-      field.events
-        ? sql`${trigger}->'events' <@ ${json(field.events)}`
-        : undefined,
-      field.kind === "boolean"
-        ? sql`${type} = 'boolean'`
-        : sql`(${type} = ${field.kind} or (${type} = 'array' and not exists (select 1 from jsonb_array_elements(${value}) entry where jsonb_typeof(entry) <> ${field.kind})))`,
-      field.enum ? sql`${value} <@ ${json(field.enum)}` : undefined,
-    )}))`;
-  };
-  const available =
-    or(
-      isScheduled,
-      ...Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
-        ([namespace, registration]) =>
-          registration.resourceTypes.map((resourceType) => {
-            const fields = Object.entries(resourceType.matchFields ?? {});
-            return and(
-              eq(automation.namespace, namespace),
-              sql`${trigger}->>'resourceType' = ${resourceType.type}`,
-              sql`${trigger}->'events' <@ ${json(resourceType.supportedEvents)}`,
-              sql`not exists (select 1 from jsonb_object_keys(${match}) match_key where not (${json(fields.map(([key]) => key))} @> to_jsonb(match_key)))`,
-              ...fields.map(([key, field]) => fieldWorks(key, field)),
-            );
-          }),
-      ),
-    ) ?? sql`false`;
   const runs = juniorAutomationRuns;
   const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
       where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
@@ -83,11 +63,10 @@ export function viewerAutomationCollection(user: User) {
       title: automation.title,
       createdAtMs: automation.createdAtMs,
       state: sql<string>`${automation.status}`.as("state"),
-      unavailable: sql<boolean>`not (${available})`.as("unavailable"),
-      attention:
-        sql<boolean>`${automation.status} not in ('paused', 'completed') and (${automation.status} = 'blocked' or not (${available}) or ${lastRunNeedsAttention})`.as(
-          "attention",
-        ),
+      lastRunNeedsAttention: lastRunNeedsAttention.as(
+        "last_run_needs_attention",
+      ),
+      trigger: sql<unknown>`${automation.record}->'trigger'`.as("trigger"),
       owned: sql<boolean>`${owned}`.as("owned"),
       resource:
         sql<string>`case when ${isScheduled} then '' else concat_ws(' ', ${automation.identifier}, ${automation.record}->'trigger'->>'label', ${automation.namespace}) end`.as(
@@ -125,6 +104,28 @@ export function viewerAutomationCollection(user: User) {
     .as("accessible_automations");
 }
 
+/**
+ * List the accessible event automations whose trigger cannot work with the
+ * enabled plugins. `eventTriggerProblems` decides, the same check that the
+ * tools and the dashboard use, so SQL does not keep its own copy of the rules.
+ */
+async function unavailableEventAutomationIds(
+  collection: ReturnType<typeof viewerAutomationCollection>,
+): Promise<string[]> {
+  const catalog = automationEventCatalog(getEventCatalog());
+  const rows = await getDb()
+    .select({ id: collection.id, trigger: collection.trigger })
+    .from(collection)
+    .where(eq(collection.kind, "event"));
+  return rows.flatMap((row) => {
+    const trigger = eventAutomationTriggerSchema.safeParse(row.trigger);
+    const available =
+      trigger.success &&
+      registeredEventTriggerProblems(catalog, trigger.data).length === 0;
+    return available ? [] : [row.id];
+  });
+}
+
 /** Read an SQL page and complete, access-scoped counts and filter options. */
 export async function readAutomationCollection(
   user: User,
@@ -132,19 +133,32 @@ export async function readAutomationCollection(
 ) {
   const db = getDb();
   const collection = viewerAutomationCollection(user);
+  const unavailableIds = await unavailableEventAutomationIds(collection);
+  const unavailable =
+    unavailableIds.length > 0
+      ? inArray(collection.id, unavailableIds)
+      : sql`false`;
+  const attention = and(
+    notInArray(collection.state, ["paused", "completed"]),
+    or(
+      eq(collection.state, "blocked"),
+      unavailable,
+      eq(collection.lastRunNeedsAttention, true),
+    ),
+  );
   const where = and(
     input.scope === "mine"
       ? eq(collection.owned, true)
       : input.scope === "public"
         ? eq(collection.isPublic, true)
         : input.scope === "attention"
-          ? eq(collection.attention, true)
+          ? attention
           : undefined,
     input.type === "all" ? undefined : eq(collection.kind, input.type),
     input.state === "all"
       ? undefined
       : input.state === "unavailable"
-        ? eq(collection.unavailable, true)
+        ? unavailable
         : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
     input.destination

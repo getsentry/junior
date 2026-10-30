@@ -21,9 +21,21 @@ Watch delivers into the Conversation that created it, so this needs a decision
 about which credentials those Turns use. The consecutive automated-turn limit
 also stops a Watch on a busy channel.
 
-One selector has one Slack workspace, namespace, identifier, and one or more
-event types. Multiple automations can use the same selector.
-`resourceType` and `label` are presentation metadata, not match keys.
+One selector has one Slack workspace, namespace, and one or more event types.
+It has one identifier, or none. A selector with no identifier and no resource
+type runs for every resource of its namespace that its `match` filters accept.
+It can select only events whose Event reach allows it, and it must set the
+filters that the reach names. Its `identifier` column is null. Multiple
+automations can use the same selector. `resourceType` and `label` are
+presentation metadata, not match keys.
+
+The runtime gate checks each row before it runs. A saved trigger with an
+identifier must have the same identifier in its row. A row with no identifier
+must have a trigger that the enabled catalog accepts, so a plugin change that
+narrows an event also stops old broad rows. Core logs and skips a row that does
+not parse or that the gate rejects, so one bad row cannot stop ingest for its
+namespace. The update tool keeps the saved identifier and resource type when
+they are left out. Only an explicit `null` removes them.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only

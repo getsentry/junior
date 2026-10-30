@@ -185,6 +185,13 @@ Create the watch or event automation before the issue arrives. Junior does not r
 
 Identifiers are normalized to uppercase. Prefer team-scoped event automations for monitor workflows that create many new issues.
 
+An event automation can also run for every team, with no identifier.
+`issue.created` can run that way only with a `teamKey` or an
+`issueIdentifier` filter, because an issue carries its title and description
+and a team can be private. Junior saves both in uppercase. The filter does not
+check that the creator can see the team. See
+[Automations](/concepts/automations/).
+
 Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. Prefer a team identifier for “all new issues in SRE”. Use `match.teamKey` when an issue-scoped watch or event automation needs an extra team guard.
 
 ## Verify

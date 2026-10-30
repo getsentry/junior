@@ -316,7 +316,9 @@ function eventAutomationSummary(
     kind: "event",
     ...executionSummaryFields(stats),
     ownedByViewer,
-    resource: `${task.trigger.label} · ${task.trigger.identifier}`,
+    resource: task.trigger.identifier
+      ? `${task.trigger.label} · ${task.trigger.identifier}`
+      : task.trigger.label,
     source: task.trigger.namespace,
     credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),

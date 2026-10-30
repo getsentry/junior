@@ -35,6 +35,7 @@ export const GITHUB_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
   environment: {
     kind: "string",
+    case: "lower",
     description: "lowercase deployment environment name, such as production",
     events: [...GITHUB_DEPLOYMENT_EVENTS],
   },

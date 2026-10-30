@@ -76,15 +76,10 @@ export function eventTaskFacts(
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
 ): EventTaskFacts {
-  // Resource type guidance applies to every Watch. Watch guidance comes from
+  // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
   const guidance = [
-    eventGuidance(
-      getEventCatalog(),
-      event.namespace,
-      subscription.resourceType,
-      event.eventType,
-    ),
+    eventGuidance(getEventCatalog(), event.namespace, event.eventType),
     subscription.guidance?.[event.eventType],
   ]
     .filter((text): text is string => Boolean(text?.trim()))
