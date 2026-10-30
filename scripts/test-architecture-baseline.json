@@ -136,7 +136,6 @@
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 2,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 2,
     "packages/junior/tests/integration/slack/outbound-normalization-contract.test.ts": 3,
-    "packages/junior/tests/integration/slack/webhook-auth-boundary.test.ts": 1,
     "packages/junior/tests/integration/state-adapter.test.ts": 2,
     "packages/junior/tests/integration/tool-support/pi-tool-adapter.test.ts": 2,
     "packages/junior/tests/unit/api/conversation-events.test.ts": 5,

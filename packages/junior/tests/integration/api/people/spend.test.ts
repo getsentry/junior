@@ -4,8 +4,17 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { personalSpendReportSchema } from "@/api/schema";
+import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorConversations } from "@/db/schema";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+} from "@/chat/conversations/web-input";
+import {
+  juniorConversations,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { seedPeople } from "./fixture";
 
@@ -138,6 +147,81 @@ describe("personal spend API", () => {
         thirtyDaysUsd: 1.7,
       });
       expect(refreshed.generatedAt).not.toBe(first.generatedAt);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("counts dashboard conversations and skips system identities", async () => {
+    const nowMs = Date.parse("2026-06-15T12:00:00.000Z");
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+
+    try {
+      await seedPeople(fixture);
+      const webConversationId = createConversationId({
+        actorEmail: "alice@example.com",
+        idempotencyKey: "web-spend",
+      });
+      await recordWebConversationActivity({
+        actor: {
+          email: "Alice@Example.com",
+          fullName: "Alice Example",
+          platform: "web",
+          userId: "alice@example.com",
+        },
+        conversationId: webConversationId,
+        conversationStore: store,
+        nowMs: Date.parse("2026-06-14T09:00:00.000Z"),
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ usage: { cost: { total: 0.05 } } })
+        .where(eq(juniorConversations.conversationId, webConversationId));
+
+      // A system identity never counts as a person, even when linked.
+      const [alice] = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "alice@example.com"));
+      const now = new Date("2026-06-14T10:00:00.000Z");
+      await fixture.sql.db().insert(juniorIdentities).values({
+        createdAt: now,
+        email: "alice@example.com",
+        emailNormalized: "alice@example.com",
+        emailVerified: true,
+        id: "system-identity",
+        kind: "system",
+        provider: "junior",
+        providerSubjectId: "local-cli",
+        updatedAt: now,
+        userId: alice!.id,
+      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          actorIdentityId: "system-identity",
+          conversationId: "local:system-spend",
+          createdAt: now,
+          executionStatus: "idle",
+          lastActivityAt: now,
+          rootConversationId: "local:system-spend",
+          schemaVersion: 1,
+          source: "local",
+          updatedAt: now,
+          usage: { cost: { total: 5 } },
+        });
+
+      // Seeded Slack spend is 0.25 + 0.17; the web conversation adds 0.05.
+      expect(
+        await readPersonalSpendFromSql("alice@example.com", nowMs),
+      ).toMatchObject({
+        sevenDaysUsd: 0.47,
+        thirtyDaysUsd: 0.47,
+      });
     } finally {
       await fixture.close();
     }

@@ -276,8 +276,8 @@ Events: `agent.turn.started`, `agent.turn.completed`, `agent.turn.failed`,
 `slack.thread.post.failed`, `assistant.status.update.failed`,
 `slack.action.failed`, `slack.action.retrying`
 
-Spans: `chat.turn`, `chat.reply`, `chat.slash_command`,
-`chat.app_home_opened`, `chat.app_home_disconnect`
+Spans: `chat.turn`, `chat.reply`, `chat.app_home_opened`,
+`chat.app_home_disconnect`
 
 Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
 `messaging.message.conversation_id`, `messaging.destination.name`,

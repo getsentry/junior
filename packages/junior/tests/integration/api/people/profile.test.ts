@@ -8,6 +8,10 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { actorProfileReportSchema, apiErrorSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+} from "@/chat/conversations/web-input";
 import { juniorConversations, juniorIdentities } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
@@ -352,6 +356,50 @@ describe("people profile API", () => {
     }
   });
 
+  test("includes dashboard conversations without a Slack subject", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+
+    try {
+      await migrateSchema(fixture.sql);
+      await recordWebConversationActivity({
+        actor: {
+          email: "web@example.com",
+          fullName: "Web Example",
+          platform: "web",
+          userId: "web@example.com",
+        },
+        conversationId: createConversationId({
+          actorEmail: "web@example.com",
+          idempotencyKey: "web-profile",
+        }),
+        conversationStore: store,
+        nowMs: Date.parse("2026-06-15T11:00:00.000Z"),
+      });
+
+      const report = await readPeopleProfileFromSql("web@example.com");
+      expect(report.totals.conversations).toBe(1);
+      expect(report.actor).toEqual({
+        email: "web@example.com",
+        fullName: "Web Example",
+      });
+      expect(report.surfaces.map((item) => item.label)).toEqual(["API"]);
+      expect(report.recentConversations[0]?.actorIdentity).toEqual({
+        email: "web@example.com",
+        fullName: "Web Example",
+      });
+      const directory = await readPeopleListFromSql();
+      expect(directory.people.map((person) => person.actor)).toEqual([
+        { email: "web@example.com", fullName: "Web Example" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
   test("aggregates every actor conversation and bounds only recent rows", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
@@ -363,7 +411,11 @@ describe("people profile API", () => {
       const nowMs = Date.parse("2026-06-15T11:00:00.000Z");
       await store.recordActivity({
         conversationId: "slack:C1:seed",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         actor: {
           email: "aggregate@example.com",
           fullName: "Aggregate Example",

@@ -709,9 +709,7 @@ function formatConsoleValue(value: AttributeValue): string {
 }
 
 function shouldShowConsoleDestinationName(eventName: string): boolean {
-  return /^(app_home|oauth|queue|slash_command|slack|webhook)\./.test(
-    eventName,
-  );
+  return /^(app_home|oauth|queue|slack|webhook)\./.test(eventName);
 }
 
 function shouldShowConsoleModel(level: LogLevel, eventName: string): boolean {

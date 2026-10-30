@@ -65,7 +65,11 @@ import {
 import {
   additionalActorCoauthorTrailers,
   configureGit,
+  gitHooksPath,
   prepareCommitMsgHook,
+  REPOSITORY_HOOK_NAMES,
+  repositoryHook,
+  setGitHooksPathEnv,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
@@ -380,12 +384,19 @@ export function githubPlugin(
       },
       workspacePrepare: prepareWorkspace,
       async sandboxPrepare(ctx) {
-        const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
+        const hooksPath = gitHooksPath(ctx.sandbox.juniorRoot);
         await ctx.sandbox.writeFile({
           path: `${hooksPath}/prepare-commit-msg`,
           mode: 0o755,
           content: prepareCommitMsgHook(),
         });
+        for (const name of REPOSITORY_HOOK_NAMES) {
+          await ctx.sandbox.writeFile({
+            path: `${hooksPath}/${name}`,
+            mode: 0o755,
+            content: repositoryHook(name),
+          });
+        }
         await configureGit(ctx, "core.hooksPath", hooksPath);
         await configureGit(ctx, "commit.gpgsign", "false");
         await configureGit(ctx, "credential.helper", "");
@@ -411,6 +422,7 @@ export function githubPlugin(
         ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
+        setGitHooksPathEnv(ctx.env, gitHooksPath(ctx.juniorRoot));
         let currentUser;
         if (ctx.actor) {
           try {

@@ -85,7 +85,6 @@ import {
 } from "@/chat/services/conversation-memory";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
-import { getConversationStore } from "@/chat/db";
 
 async function postSlackMessageBestEffort(
   channelId: string,
@@ -464,8 +463,6 @@ async function resumeSlackTurnInContext(
     status.update(runArgs.initialStatus);
 
     const conversationId = runArgs.conversationId;
-    const visibility = (await getConversationStore().get({ conversationId }))
-      ?.visibility;
     const visibleConversationId = args.conversationId;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
@@ -602,7 +599,6 @@ async function resumeSlackTurnInContext(
             recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: savedRun.destination,
-              destinationVisibility: visibility,
               dispatchId,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
@@ -663,7 +659,6 @@ async function resumeSlackTurnInContext(
           durationMs: reply.diagnostics.durationMs,
           usage: reply.diagnostics.usage,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(dispatchErrorMessage
@@ -681,7 +676,6 @@ async function resumeSlackTurnInContext(
         await recordTurnSummary({
           conversationId: runArgs.conversationId,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(acceptedDeliveryId

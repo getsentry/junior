@@ -173,7 +173,6 @@ same way.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
-  Slash-command handlers receive validated workspace, channel, and user ids.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the
@@ -329,7 +328,7 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.             |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`                       |
 | 3   | `About:`            | no       | One-line resource label.                                             |
-| 4   | `Created by:`       | no       | Creator mention, and the rule to mention them only for "me" or "my". |
+| 4   | `Created by:`       | no       | Creator mention. "The Automation creator", "me", and "my" mean them. |
 | 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.           |
 | 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.        |
 | 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
