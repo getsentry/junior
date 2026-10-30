@@ -1,3 +1,7 @@
+# Use one project name in every checkout. Worktrees then share these services
+# and ports, instead of starting a second project on the same ports.
+name: junior
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
