@@ -99,6 +99,8 @@ describe("Thread Continuity", () => {
   Conversation again after 15 seconds. The fixture starts a delayed delivery
   at once when nothing else runs. The 60 seconds start when the last delivery
   is due.
+  A call that waits for child agents can set `idleTimeoutMs`; see the
+  exceptions in `policies/evals.md`.
 - A failed call keeps its partial transcript and original error in the eval
   report. This includes calls that exceed the idle limit.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event

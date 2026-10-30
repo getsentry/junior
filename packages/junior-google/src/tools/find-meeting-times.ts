@@ -95,6 +95,12 @@ const outputSchema = pluginToolOutputSchema.extend({
     }),
   ),
   slots: z.array(slotSchema),
+  blockedBy: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Set only when no slot fits: required attendees who are busy or outside their working hours for the whole window.",
+    ),
   timeZone: z.string(),
   unavailable: z.array(z.object({ email: z.string(), reason: z.string() })),
 });
@@ -228,6 +234,9 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
  * Slots without such conflicts come first. Options are spread across the days
  * of `timeZone` and across each day.
  *
+ * When no slot fits, `blockedBy` names the required attendees who are never
+ * available in the window, so the caller can say who blocks the search.
+ *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
  */
@@ -240,7 +249,10 @@ export function findFreeSlots(input: {
   timeZone: string;
   workdayEnd: string;
   workdayStart: string;
-}): Array<Interval & { optionalConflicts: string[] }> {
+}): {
+  blockedBy: string[];
+  slots: Array<Interval & { optionalConflicts: string[] }>;
+} {
   const durationMs = input.durationMinutes * 60_000;
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
   const dayStart = clockMinutes(input.workdayStart);
@@ -273,11 +285,16 @@ export function findFreeSlots(input: {
   const required = input.attendees.filter((attendee) => attendee.required);
   const optional = input.attendees.filter((attendee) => !attendee.required);
   const candidates: Candidate[] = [];
+  const freeOnce = new Set<string>();
 
   let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
   while (startMs + durationMs <= input.timeMaxMs) {
     const endMs = startMs + durationMs;
-    if (required.every((attendee) => available(attendee, startMs, endMs))) {
+    const free = required.filter((attendee) =>
+      available(attendee, startMs, endMs),
+    );
+    for (const attendee of free) freeOnce.add(attendee.email);
+    if (free.length === required.length) {
       candidates.push({
         date: partsIn(startMs, input.timeZone).date,
         endMs,
@@ -303,13 +320,21 @@ export function findFreeSlots(input: {
       input.maxResults - picked.length,
     ),
   );
-  return picked
-    .sort((a, b) => a.startMs - b.startMs)
-    .map(({ endMs, optionalConflicts, startMs }) => ({
-      endMs,
-      optionalConflicts,
-      startMs,
-    }));
+  return {
+    // A found slot means every required attendee was free at least once.
+    blockedBy: candidates.length
+      ? []
+      : required
+          .filter((attendee) => !freeOnce.has(attendee.email))
+          .map((attendee) => attendee.email),
+    slots: picked
+      .sort((a, b) => a.startMs - b.startMs)
+      .map(({ endMs, optionalConflicts, startMs }) => ({
+        endMs,
+        optionalConflicts,
+        startMs,
+      })),
+  };
 }
 
 /**
@@ -434,8 +459,10 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         });
       });
 
-      const slots = !slotAttendees.some((attendee) => attendee.required)
-        ? []
+      const { blockedBy, slots } = !slotAttendees.some(
+        (attendee) => attendee.required,
+      )
+        ? { blockedBy: [], slots: [] }
         : findFreeSlots({
             attendees: slotAttendees,
             durationMinutes: input.durationMinutes,
@@ -467,6 +494,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             : undefined),
           start: new Date(slot.startMs).toISOString(),
         })),
+        ...(blockedBy.length ? { blockedBy } : undefined),
         timeZone,
         unavailable,
       };

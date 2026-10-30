@@ -81,3 +81,7 @@ Suite policy:
   value of a Junior-owned module.
 - Global setup may give the product the Sandbox snapshot ids of an earlier
   run, so that a run does not build the snapshots again.
+- A case that measures delegation to child agents may give its call a longer
+  idle budget with `idleTimeoutMs`. The call waits for the research of the
+  child agents, and one child Turn can take more than 60 seconds. Name the
+  reason beside the value.
