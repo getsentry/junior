@@ -908,31 +908,30 @@ describe("createApp plugin config", () => {
   });
 
   it("rejects app-level plugin routes that conflict with core dashboard routes", async () => {
-    const localDashboard = { authRequired: false };
-    // MCP routes mount only when dashboard sign-in is required.
-    const signInDashboard = { authRequired: true };
-    for (const [path, dashboard] of [
-      ["/api/plugins/*", localDashboard],
-      ["/api/conversations/*", localDashboard],
-      ["/api/locations/*", localDashboard],
-      ["/api/people/*", localDashboard],
-      ["/conversations/*", localDashboard],
-      ["/locations/*", localDashboard],
-      ["/people/*", localDashboard],
-      ["/plugins/*", localDashboard],
-      ["/system", localDashboard],
-      ["/system/*", localDashboard],
-      ["/api/user-pages/*", localDashboard],
-      ["/*", localDashboard],
-      ["/api/*", localDashboard],
-      ["/:slug", localDashboard],
-      ["/api/:section/*", localDashboard],
-      ["/api/mcp/*", signInDashboard],
-      ["/.well-known/*", signInDashboard],
-    ] as const) {
+    for (const path of [
+      "/api/plugins/*",
+      "/api/conversations/*",
+      "/api/locations/*",
+      "/api/people/*",
+      "/conversations/*",
+      "/locations/*",
+      "/people/*",
+      "/plugins/*",
+      "/system",
+      "/system/*",
+      "/api/user-pages/*",
+      "/*",
+      "/api/*",
+      "/:slug",
+      "/api/:section/*",
+      "/api/mcp/*",
+      "/.well-known/*",
+    ]) {
       await expect(
         createApp({
-          dashboard,
+          dashboard: {
+            authRequired: true,
+          },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({
               manifest: {

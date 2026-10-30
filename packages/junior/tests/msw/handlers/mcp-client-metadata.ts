@@ -7,7 +7,7 @@ export const MCP_CLIENT_ID = `${MCP_CLIENT_ORIGIN}/client.json`;
 export const MCP_MISMATCHED_CLIENT_ID = `${MCP_CLIENT_ORIGIN}/mismatched.json`;
 export const MCP_CLIENT_NAME = "Test MCP Client";
 /** Registered loopback callback. Any port matches it. */
-export const MCP_CLIENT_REDIRECT_URI = "http://127.0.0.1/callback";
+const MCP_CLIENT_REDIRECT_URI = "http://127.0.0.1/callback";
 
 export const mcpClientMetadataHandlers = [
   http.get(MCP_CLIENT_ID, () =>

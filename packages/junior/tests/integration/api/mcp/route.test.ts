@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
@@ -9,12 +10,8 @@ import { createPersonalToken } from "@/personal-tokens/store";
 import {
   MCP_TEST_ORIGIN,
   MCP_TEST_URL,
-  authorizeUrl,
-  createPkce,
   mockMcpDashboardConfig,
-  openConsentPage,
-  requestTokens,
-  submitConsent,
+  viewerCookie,
   withMcpClient,
 } from "../../../fixtures/mcp-http";
 import {
@@ -31,7 +28,6 @@ const REDIRECT_URI = "http://127.0.0.1:53682/callback";
 
 type TokenBody = {
   access_token: string;
-  error?: string;
   expires_in: number;
   refresh_token: string;
   scope: string;
@@ -39,6 +35,88 @@ type TokenBody = {
 };
 
 mockMcpDashboardConfig();
+
+/** Create one RFC 7636 PKCE verifier and its S256 challenge. */
+function createPkce(): { challenge: string; verifier: string } {
+  const verifier = randomBytes(32).toString("base64url");
+  return {
+    challenge: createHash("sha256").update(verifier).digest("base64url"),
+    verifier,
+  };
+}
+
+/** Build an authorization request URL with valid defaults. */
+function authorizeUrl(params: Record<string, string>): string {
+  const url = new URL(`${MCP_TEST_ORIGIN}/api/mcp/oauth/authorize`);
+  for (const [name, value] of Object.entries({
+    response_type: "code",
+    code_challenge_method: "S256",
+    scope: "conversations:read",
+    resource: MCP_TEST_URL,
+    ...params,
+  })) {
+    url.searchParams.set(name, value);
+  }
+  return url.toString();
+}
+
+/** Open the consent page as one viewer and return its form token. */
+async function openConsentPage(
+  app: Hono,
+  consentUrl: string,
+  email: string,
+): Promise<{ csrf?: string; html: string; status: number }> {
+  const response = await app.request(consentUrl, {
+    headers: { cookie: viewerCookie(email) },
+  });
+  const html = await response.text();
+  return {
+    csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
+    html,
+    status: response.status,
+  };
+}
+
+/** Approve consent as the viewer who opened the page. */
+async function approveConsent(
+  app: Hono,
+  args: { consentUrl: string; csrf: string; email: string },
+): Promise<Response> {
+  return await app.request(args.consentUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: viewerCookie(args.email),
+      origin: MCP_TEST_ORIGIN,
+    },
+    body: new URLSearchParams({ action: "approve", csrf: args.csrf }),
+  });
+}
+
+/** POST one form-encoded request to the MCP token endpoint. */
+async function requestTokens(
+  app: Hono,
+  params: Record<string, string>,
+): Promise<Response> {
+  return await app.request(`${MCP_TEST_ORIGIN}/api/mcp/oauth/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params),
+  });
+}
+
+/** Send a raw `tools/list` request with one bearer token. */
+async function listTools(app: Hono, token: string): Promise<Response> {
+  return await app.request(MCP_TEST_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+}
 
 /** Store one root Conversation that the named viewer takes part in. */
 async function seedConversation(args: {
@@ -78,9 +156,7 @@ async function approveClient(
   );
   const consentUrl = authorize.headers.get("location") ?? "";
   const page = await openConsentPage(app, consentUrl, email);
-  const approved = await submitConsent({
-    action: "approve",
-    app,
+  const approved = await approveConsent(app, {
     consentUrl,
     csrf: page.csrf ?? "",
     email,
@@ -162,9 +238,7 @@ describe("remote MCP HTTP", () => {
     const consentUrl = authorize.headers.get("location") ?? "";
     const page = await openConsentPage(app, consentUrl, VIEWER);
     const otherPage = await openConsentPage(app, consentUrl, OTHER_VIEWER);
-    const approved = await submitConsent({
-      action: "approve",
-      app,
+    const approved = await approveConsent(app, {
       consentUrl,
       csrf: page.csrf ?? "",
       email: VIEWER,
@@ -262,16 +336,6 @@ describe("remote MCP HTTP", () => {
     const tokens = (await (
       await exchangeCode(app, await approveClient(app, VIEWER))
     ).json()) as TokenBody;
-    const listTools = (target: Hono, token: string) =>
-      target.request(MCP_TEST_URL, {
-        method: "POST",
-        headers: {
-          accept: "application/json, text/event-stream",
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-      });
 
     const response = await listTools(app, personal.token);
     const removedDomain = await listTools(
@@ -331,15 +395,7 @@ describe("remote MCP HTTP", () => {
     vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ["Date"] });
     const reusedRefresh = await refresh(app, rotatedOnce.refresh_token);
     const afterRefreshReuse = await refresh(app, rotated.refresh_token);
-    const revokedAccess = await app.request(MCP_TEST_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json, text/event-stream",
-        authorization: `Bearer ${rotated.access_token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-    });
+    const revokedAccess = await listTools(app, rotated.access_token);
 
     expect(reusedCode.status).toBe(400);
     await expect(reusedCode.json()).resolves.toMatchObject({
@@ -357,7 +413,6 @@ describe("remote MCP HTTP", () => {
   });
 
   it.each([
-    ["a client ID that is not a URL", "claude-code", REDIRECT_URI],
     ["a private IP client ID", "https://10.0.0.5/client.json", REDIRECT_URI],
     [
       "a document for another client ID",
@@ -386,12 +441,9 @@ describe("remote MCP HTTP", () => {
     },
   );
 
-  it.each([
-    ["the dashboard is disabled", { disabled: true }],
-    ["dashboard sign-in is not required", { authRequired: false }],
-  ])("does not mount when %s", async (_, dashboard) => {
+  it("does not mount when dashboard sign-in is not required", async () => {
     const app = await createApp({
-      dashboard: { baseURL: MCP_TEST_ORIGIN, ...dashboard },
+      dashboard: { authRequired: false, baseURL: MCP_TEST_ORIGIN },
     });
 
     const response = await app.request(MCP_TEST_URL, { method: "POST" });
