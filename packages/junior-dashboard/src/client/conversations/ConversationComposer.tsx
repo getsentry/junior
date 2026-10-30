@@ -1,10 +1,9 @@
+import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
 import {
-  INPUT_IMAGE_TYPES,
-  MAX_INPUT_IMAGE_BYTES,
-  MAX_INPUT_IMAGES,
-  type InputImage,
-} from "@sentry/junior/api/schema";
-import { ComposerImages, readComposerImages } from "./ComposerImages";
+  ComposerImages,
+  composerImagesFit,
+  readComposerImages,
+} from "./ComposerImages";
 import {
   memo,
   useEffect,
@@ -70,14 +69,6 @@ export type ConversationComposerHandle = {
   /** Put queued text and images ahead of the draft. Queued images win. */
   restoreMessage(message: { images?: InputImage[]; text: string }): void;
 };
-
-function imagesFit(images: readonly InputImage[]): boolean {
-  return (
-    images.length <= MAX_INPUT_IMAGES &&
-    images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0) <=
-      MAX_INPUT_IMAGE_BYTES
-  );
-}
 
 type ConversationComposerProps = {
   disabled?: boolean;
@@ -216,7 +207,7 @@ export const ConversationComposer = memo(function ConversationComposer(
       // An edit can restore images during the read. Add to those images
       // instead of replacing them.
       const next = [...imagesRef.current, ...added];
-      if (!imagesFit(next)) {
+      if (!composerImagesFit(next)) {
         setImageError("Attach up to 3 images that total 3 MB or less.");
       } else {
         replaceImages(next);
@@ -367,7 +358,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   useImperativeHandle(props.ref, () => ({
     canRestoreImages: (images) =>
-      !images.length || imagesFit([...images, ...imagesRef.current]),
+      !images.length || composerImagesFit([...images, ...imagesRef.current]),
     restoreMessage: (message) => {
       // An image-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);
@@ -377,7 +368,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         // image added during the cancel stays only while it still fits.
         const merged = [...restoredImages];
         for (const image of imagesRef.current) {
-          if (imagesFit([...merged, image])) merged.push(image);
+          if (composerImagesFit([...merged, image])) merged.push(image);
         }
         if (merged.length < restoredImages.length + imagesRef.current.length) {
           setImageError("Some draft images did not fit. Add them again.");
