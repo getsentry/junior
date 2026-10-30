@@ -11,6 +11,7 @@ const bob = { id: 2, type: "User", login: "bob" };
 
 interface Scenario {
   author?: typeof bot;
+  commitCount?: number;
   commits?: unknown[];
   headSha?: string;
   mergeableState?: string;
@@ -52,6 +53,7 @@ function toolContext(
     }
     if (path.endsWith("/pulls/7")) {
       return json({
+        commits: scenario.commitCount ?? 1,
         draft: false,
         head: { sha: scenario.headSha ?? HEAD },
         mergeable_state: scenario.mergeableState ?? "clean",
@@ -145,6 +147,17 @@ describe("mergePullRequest", () => {
     });
 
     await expect(merge()).rejects.toThrow("You wrote commits");
+    expect(mergeCall(fetch)).toBeUndefined();
+  });
+
+  it("refuses a person's pull request with more commits than GitHub lists", async () => {
+    const { fetch, merge } = toolContext({
+      author: bob,
+      commitCount: 251,
+      reviews: [{ user: bot, state: "COMMENTED", commit_id: HEAD }],
+    });
+
+    await expect(merge()).rejects.toThrow("only 1 could be checked");
     expect(mergeCall(fetch)).toBeUndefined();
   });
 

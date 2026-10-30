@@ -64,6 +64,7 @@ const accountSchema = z
 
 const pullRequestSchema = z
   .object({
+    commits: z.number(),
     draft: z.boolean().optional().default(false),
     head: z.object({ sha: z.string() }).passthrough(),
     mergeable_state: z.string().optional(),
@@ -273,6 +274,7 @@ export function createGitHubMergePullRequestTool(
         expectedHeadSha: input.headSha,
         pullRequest: {
           author: pullRequest.user,
+          commitCount: pullRequest.commits,
           draft: pullRequest.draft,
           headSha: pullRequest.head.sha,
           merged: pullRequest.merged,

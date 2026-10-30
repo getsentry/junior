@@ -28,6 +28,8 @@ export interface GitHubMergeAccount {
 /** Pull request facts used by the merge policy. */
 export interface GitHubMergePullRequest {
   author: GitHubMergeAccount | null;
+  /** Total commit count that GitHub reports for the pull request. */
+  commitCount: number;
   draft: boolean;
   headSha: string;
   merged: boolean;
@@ -113,6 +115,10 @@ export function gitHubPullRequestMergeDenial(input: {
 
   if (!isHuman(pullRequest.author)) {
     return "You only merge pull requests that you or a person authored.";
+  }
+  // GitHub lists at most 250 commits. An unchecked commit could be yours.
+  if (input.commits.length < pullRequest.commitCount) {
+    return `The pull request has ${pullRequest.commitCount} commits, but only ${input.commits.length} could be checked.`;
   }
   const botEmail = input.botEmail.toLowerCase();
   const botWroteCommit = input.commits.some(
