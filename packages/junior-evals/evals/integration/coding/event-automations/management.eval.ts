@@ -272,13 +272,18 @@ describe("Event automation management", () => {
       removal,
     );
     expect(updates).toHaveLength(1);
-    expect(updates[0]!.input).toMatchObject({
-      automationId: id,
-      trigger: {
-        events: ["issue.reopened"],
-        identifier: "getsentry/junior#208",
-        namespace: "github",
-        resourceType: "issue",
+    expect(updates[0]!.input).toMatchObject({ automationId: id });
+    // Check the saved trigger, not the call input. The update may omit the
+    // identifier to keep it, and the issue identifier is saved as filters.
+    expect(toolOutput(updates[0]!)).toMatchObject({
+      automation: {
+        id,
+        trigger: {
+          events: ["issue.reopened"],
+          identifier: null,
+          match: { repo: "getsentry/junior", issue: 208 },
+          namespace: "github",
+        },
       },
     });
     expect(
