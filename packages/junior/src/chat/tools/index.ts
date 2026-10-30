@@ -352,6 +352,8 @@ export function createTools(
   // person must be there to answer: the dashboard renders the question from
   // the transcript in a web Turn, and Slack posts buttons in a Slack message
   // Turn. A click comes back as Slack input in the thread of the question.
+  // A child agent never asks: nobody sees its transcript, and an answer would
+  // go to the parent's thread. It reports the need to its parent instead.
   const slackQuestionContext =
     slackContext && isSlackMessageTurn(context) ? slackContext : undefined;
   Object.assign(
@@ -364,9 +366,11 @@ export function createTools(
             : undefined,
         ),
       },
-      context.source.kind === "web" || slackQuestionContext
-        ? undefined
-        : "It needs a Turn that a person started in Slack or the web dashboard.",
+      context.parentConversationId
+        ? `A child agent cannot ask the person. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what you need.`
+        : context.source.kind === "web" || slackQuestionContext
+          ? undefined
+          : "It needs a Turn that a person started in Slack or the web dashboard.",
     ),
   );
 

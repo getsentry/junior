@@ -340,6 +340,16 @@ describe("Slack tool registration", () => {
     expect(
       createTools([], {}, ctx()).requestUserInput?.disabledReason,
     ).toBeDefined();
+
+    // A child agent reports the need to its parent, even in a Slack message
+    // Turn of its own.
+    const childTools = createTools([], {}, {
+      ...ctx("C12345"),
+      parentConversationId: "slack:C12345:1700000000.000",
+    } as ToolRuntimeContext);
+    expect(childTools.requestUserInput?.disabledReason).toContain(
+      "reportBlocked",
+    );
   });
 
   it("does not register Slack tools for local destinations", () => {
