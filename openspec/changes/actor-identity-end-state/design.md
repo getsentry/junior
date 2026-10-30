@@ -112,7 +112,12 @@ Current proposal, to confirm in step 4b:
 - An event is a Message with role `user`. Its author is the Identity of the
   person or bot who wrote the content. An event with no author uses the
   system Identity. It is a system event, and it runs as today.
-- An event never changes the Owner or the Turn Actor.
+- An event never changes the Owner or the Turn Actor. Event Turns run as the
+  system Actor, as on `main` today (`EVENT_SYSTEM_ACTOR` in
+  `chat/events/actor.ts`).
+- Junior still resolves the author to its Identity and, when there is one,
+  its linked User. The author labels the Message and feeds the trust check.
+  It gives no credentials, access, or spend.
 - The author Identity is the same row that the OAuth link writes for that
   account. An event write never changes the `kind` or the User of an existing
   row. Today the Identity write changes `kind` on conflict, so step 3 must
@@ -122,6 +127,43 @@ Current proposal, to confirm in step 4b:
   provider.
 - An event author never becomes a participant.
 - Event automations write no event Message. They start an Automation run.
+
+### Why The Event Author Is Not The Turn Actor
+
+The Turn Actor decides whose credentials a Turn uses and whose work it is.
+So the event author must never be the Turn Actor. The reason is the confused
+deputy risk: Junior holds grants, and outside text must not make Junior use
+those grants for someone who does not own them.
+
+- An event carries text from outside Junior. If its author were the Turn
+  Actor, that text could steer a run that holds a person's grants.
+- The run could also pick up the grants of the User that the author maps to.
+  A GitHub comment could then act with that person's Slack or GitHub
+  credentials, without that person asking Junior for anything.
+- It widens who can act through Junior. Today a person acts through Junior
+  when they ask in chat, or when they create a Watch or an Automation. With
+  the author as Turn Actor, each author who writes on a watched resource could
+  act with their own grants, without asking Junior.
+- A Turn's credentials come only from the grant of the Watch or the
+  Automation, never from the event author.
+
+This matches the current rules on `main`:
+
+- Another Actor's message does not join an active Actor's credentialed work.
+  The worker puts messages in one Turn only when their author and Source
+  match (`selectContiguousTurnBatch` in
+  `task-execution/attempt-selection.ts`). By default, another Actor's
+  mid-run Slack ask waits for its own Turn (`JUNIOR_CROSS_ACTOR_MID_RUN_MODE`,
+  `follow_up`).
+- A system-acted event Turn uses the grants of a Watch creator only through
+  `timerWatchCredentialSubject` (`chat/events/notification.ts`). It gives a
+  credential subject only when every event in the batch has a valid subject
+  for its own Watch, and all of them are the same User. Otherwise the Turn
+  gets no user grant.
+
+The trust rule does not change this. A trusted author's text counts like a
+chat message from that author, but the Turn still runs as the system Actor
+with the Watch or Automation grant.
 
 ### Trust
 
@@ -141,13 +183,19 @@ Current proposal, to confirm in step 4b:
   not.
 - Core gets only a provider-neutral trusted result. Core does not read
   provider logins.
-- Event batches: one Turn can take many events as one Message. Junior decides
-  trust for each event, before the Turn starts. An untrusted entry never
-  starts a Turn and never counts as instructions. When no trusted or system
-  entry is left, no Turn starts. Whether untrusted entries are dropped or kept
-  as context is open (`proposal.md`, Open Questions, 1). The current proposal
-  for the batch Message author is: the shared author when every entry has the
-  same one, else the system Identity. Confirm in step 3.
+- The agent never sees an untrusted authored event. Junior decides trust for
+  each event and drops an untrusted one before it joins a batch or a Turn.
+- Only trusted and system entries are batched. When none is left, no Turn
+  starts.
+- Batch Message author: current proposal, to confirm in step 3. The shared
+  author when every entry has the same one, else the system Identity.
+- A system event can carry untrusted external text, such as check output.
+  The current handling covers it, and this plan adds no rule. The event's
+  `untrustedText` becomes external text in the task input, which says to use
+  it as information, not instructions (`chat/events/notification.ts`; the
+  task input sections in `chat/README.md`; `chat/events/README.md`). The
+  instructions come from the Watch intent or the Automation instruction. The
+  trusted summary and verified details are plugin facts, not instructions.
 
 ### Guardian Labels
 

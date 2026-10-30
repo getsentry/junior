@@ -86,6 +86,14 @@ These are David Cramer's answers in the Slack thread for #2439.
   trusted"
 - On what trusted text may do: "trusted authors are the same as normal
   authors... its just that untrusted authors we dont run"
+- On the proposal that the event author is never the Turn Actor: "I agree,
+  lets not have it be the turn actor as it expands the security concerns. you
+  need to document that (confused deputy concerns for example). knowing who it
+  is that maps to our internal users is valuable tho so keep that"
+- On the proposals to split batches by trust and to save untrusted entries as
+  hidden Messages: "untrusted events wont actually ever be seen so i think
+  (2/3) is not relevant? system events might have untrusted text but we
+  already handle that"
 
 His answers to the 14 earlier proposals:
 
@@ -161,6 +169,13 @@ These follow from the answers above. They are the target. Where a bullet says
 - **An event is a user Message.** Its author is the Identity of the person or
   bot who wrote the content, or the system Identity for a system event
   (answer 5). An event never changes the Owner or the Turn Actor.
+- **The event author is never the Turn Actor.** David agreed. Event Turns
+  stay system-acted, as on `main` today. A Turn's credentials come only from
+  the Watch or the Automation's own grant, never from the event author.
+  `design.md`, Why The Event Author Is Not The Turn Actor, gives the reason.
+- **Junior still resolves the event author.** David asked to keep this. The
+  author resolves to its Identity and, when there is one, its linked User. The
+  author labels the Message and feeds the trust check. It does nothing else.
 - **Event authors are not participants.** A verified GitHub commenter gets no
   access to a private Conversation. This can change later.
 - **Event author Identity.** It is the same row that the OAuth link writes
@@ -177,9 +192,13 @@ These follow from the answers above. They are the target. Where a bullet says
 - **Trusted text is a chat message.** Plan reading: Junior treats text from a
   trusted author exactly like a chat message from that author. The same rules
   apply as for any chat author, no more and no less.
-- **Untrusted authors do not run.** Plan reading: an event from an untrusted
-  or unknown author does not start a run. A system event runs as today. For a
-  mixed batch, see Open Questions.
+- **Untrusted authors are never seen.** An event from an untrusted or
+  unknown author does not start a run. Plan reading of David's words: Junior
+  drops it before it joins a batch or a Turn, so the agent never sees it.
+  Only trusted and system entries are batched.
+- **System events run as today.** A system event can carry untrusted external
+  text. The current event handling already covers this (`design.md`, Trust).
+  This plan adds no rule for it.
 - **The list can name bots and people.** Plan reading: the list is an
   explicit exception to the domain rule. A listed login needs no linked
   account and no allowed-domain email.
@@ -192,25 +211,27 @@ These follow from the answers above. They are the target. Where a bullet says
   from the Identity id alone. With one system Identity, an id compare would
   make every system author match the Turn Actor.
 - **The trusted authors list lives in the GitHub plugin config**, as
-  `trustedAuthors`. Core gets only a provider-neutral "trusted" result. Core does not read GitHub logins
-  (`policies/provider-boundaries.md`).
+  `trustedAuthors`. Core gets only a provider-neutral "trusted" result. Core
+  does not read GitHub logins (`policies/provider-boundaries.md`).
 - **Locations group by User** (answer 8).
 - **Automation creator.** An Automation has a creator, not an owner
   (answer 13). "Owner" means only the Owner of a Conversation.
 
 ## Open Questions
 
-These wait for David. Each has the current plan reading.
+This waits for David, with the current plan reading.
 
-1. **Mixed event batch.** One Turn can take a batch of events. When some
-   entries have a trusted author and some do not, does Junior drop the
-   untrusted entries, or keep them as context that does not start a run?
-   _Plan reading:_ drop them. In both choices, an untrusted entry never
-   starts a run and never counts as instructions.
-2. **Cursor Bugbot.** Does Cursor Bugbot go on `trustedAuthors`? Under the
+1. **Cursor Bugbot.** Does Cursor Bugbot go on `trustedAuthors`? Under the
    trust rule, its review events stop starting runs unless it is listed.
    _Plan reading:_ not listed yet. Unless David says to list it, Bugbot
    reviews stop starting runs when step 3 ships (Risks).
+
+Resolved:
+
+- **Mixed event batch.** Drop untrusted entries, or keep them as context?
+  David: "untrusted events wont actually ever be seen so i think (2/3) is not
+  relevant?" Junior drops them before batching (Plan Decisions). The plan
+  adds no separate path to deliver or hide them.
 
 ## Behavior Changes
 
@@ -222,8 +243,9 @@ These wait for David. Each has the current plan reading.
 - A web user's Messages and Conversations use their sign-in Identity. People
   still groups them with the same User.
 - Text from a trusted author counts the same as a chat message from that
-  author. Events from an untrusted or unknown author do not run. Today an
-  untrusted author's event runs, with its text as data.
+  author. Events from an untrusted or unknown author do not run, and the
+  agent never sees them. Today an untrusted author's event runs, with its
+  text as data.
 - The dashboard participant list stops showing system Identities.
 - Locations show one row per User.
 
@@ -240,7 +262,7 @@ These wait for David. Each has the current plan reading.
   authors docs must say to list stable logins and to review the list.
 - An untrusted author's event stops starting a run. A review bot that is not
   on the trusted authors list no longer starts PR maintenance work (Open
-  Questions, 2).
+  Questions, 1).
 - After step 5, a write with no author Identity fails. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before enforcement ships.

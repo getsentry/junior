@@ -128,6 +128,21 @@ User of an existing Identity. An event SHALL name an author only on its own
 provider. An event SHALL NOT change the Owner or the Turn Actor. An event
 Message author SHALL NOT become a participant.
 
+The event author SHALL NOT be the Turn Actor. Event Turns SHALL run as the
+system Actor. A Turn's credentials SHALL come only from the grant of the
+Watch or the Automation, never from the event author. Junior SHALL still
+resolve the author to its Identity and linked User. The author SHALL only
+label the Message and feed the trust check.
+
+#### Scenario: Linked author does not lend credentials
+
+- **WHEN** a trusted person whose GitHub account links to a User comments on
+  a watched PR
+- **THEN** the Turn runs as the system Actor
+- **AND** the Turn does not use that person's grants
+- **AND** the Message author is that person's GitHub Identity, linked to
+  their User.
+
 #### Scenario: GitHub PR comment
 
 - **WHEN** a person comments on a watched PR
@@ -170,11 +185,10 @@ An event from an untrusted or unknown author SHALL NOT start a run. A system
 event SHALL run as today. Core SHALL get only a provider-neutral trusted
 result. Core SHALL NOT read provider logins to decide trust.
 
-In an event batch, Junior SHALL decide trust for each entry. An untrusted
-entry SHALL NOT start a Turn and SHALL NOT count as instructions. When no
-trusted or system entry is left, Junior SHALL NOT start a Turn. Whether
-Junior drops untrusted entries or keeps them as context is open
-(`proposal.md`, Open Questions, 1).
+Junior SHALL decide trust for each event. Junior SHALL drop an untrusted
+authored event before it joins a batch or a Turn, so the agent never sees it.
+Only trusted and system entries SHALL be batched. When none is left, Junior
+SHALL NOT start a Turn.
 
 #### Scenario: Linked member on an allowed domain
 
@@ -232,9 +246,16 @@ Junior drops untrusted entries or keeps them as context is open
   watched PR
 - **THEN** the event does not start a run.
 
-#### Scenario: Batch with only untrusted entries
+#### Scenario: Untrusted event in a busy wait window
 
-- **WHEN** one Turn takes a batch where every entry has an untrusted author
+- **WHEN** a trusted comment and an untrusted comment arrive in the same wait
+  window
+- **THEN** Junior drops the untrusted comment before batching
+- **AND** the Turn input has only the trusted comment.
+
+#### Scenario: Only untrusted events
+
+- **WHEN** every event in a wait window has an untrusted author
 - **THEN** no Turn starts.
 
 ### Requirement: Guardian Labels Use The Actor

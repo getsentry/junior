@@ -94,7 +94,11 @@ Built in #2443 (in review).
     only `user` Identities with a User.
   - the trust rule is live (`design.md`, Trust). Trusted text counts like a
     chat message from that author. An event from an untrusted or unknown
-    author does not start a run. A system event runs as today.
+    author does not start a run. Junior drops it before it joins a batch or
+    a Turn, so the agent never sees it. A system event runs as today.
+  - event Turns still run as the system Actor. The event author labels the
+    Message and feeds the trust check, and gives no credentials
+    (`design.md`, Why The Event Author Is Not The Turn Actor).
   - `trustedAuthors` is documented for the GitHub plugin, with the warning
     about reused logins.
   - the dashboard takes system root labels from the Source or the
@@ -108,6 +112,8 @@ Built in #2443 (in review).
     logins (`policies/provider-boundaries.md`).
   - Guardian labels come from the Actor and provenance, never from the
     Identity id alone.
+  - the event author is never the Turn Actor. Turn credentials come only from
+    the Watch or the Automation grant.
   - the merge runs in a later release than the code change, when no worker
     writes the old keys. It reads the foreign keys from the database, not
     from this plan. It deletes no row that still has a reference.
@@ -121,10 +127,10 @@ Built in #2443 (in review).
     for a bot author.
   - the batch Message author. Current proposal: the shared author when every
     entry has the same one, else the system Identity.
-  - mixed batches: drop untrusted entries or keep them as context
-    (`proposal.md`, Open Questions, 1).
+  - where Junior drops untrusted authored events, so that none joins a batch
+    or a Turn.
   - the default `trustedAuthors` entries, such as Cursor Bugbot
-    (`proposal.md`, Open Questions, 2).
+    (`proposal.md`, Open Questions, 1).
 
 ## 4a. Write The Owner
 
