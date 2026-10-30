@@ -4,7 +4,6 @@
  * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
  */
-import { slackMention } from "@/chat/slack/mrkdwn";
 import { createHash } from "node:crypto";
 import {
   EVENT_SUMMARY_MAX_LENGTH,
@@ -14,6 +13,7 @@ import {
   type TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
+import { automationCreatorMention } from "@/chat/automations/creator";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
@@ -55,6 +55,7 @@ function eventAutomationDispatchKey(
 /** Render plain agent input for one matching event automation. */
 function eventInput(
   task: EventAutomation,
+  creator: string,
   event: Event,
   outcomes: TaskOutcome[],
   catalog: EventCatalog,
@@ -62,7 +63,7 @@ function eventInput(
   const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
     about: task.trigger.label,
-    creator: slackMention(task.createdBy.slackUserId),
+    creator,
     instructions: task.task.text,
     outcomes,
     guidance,
@@ -168,7 +169,13 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes, catalog),
+          input: eventInput(
+            task,
+            await automationCreatorMention(db, task),
+            event,
+            outcomes,
+            catalog,
+          ),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,

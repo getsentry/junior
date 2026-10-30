@@ -86,7 +86,11 @@ instruction or event selector switches creator credential use to system
 credentials. The edit read returns `ownedByViewer` so the editor can show
 these rules before a save.
 
-An Automation runs later without the request that created it. The agent tools
+An Automation runs later without the request that created it. The instruction
+keeps "me" and "my" for the creator. Each run reads the creator identity and
+renders its mention for the Destination in the `Created by:` task input line.
+The `createdBy` copy does not decide this. Other people need an exact mention
+in the instruction, because the request is gone at run time. The agent tools
 that create or update an Automation reject an instruction that names the
 requester by display name without their Slack mention. A name does not notify
 the person.

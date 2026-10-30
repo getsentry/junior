@@ -329,7 +329,7 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.             |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`                       |
 | 3   | `About:`            | no       | One-line resource label.                                             |
-| 4   | `Created by:`       | no       | Creator mention, and the rule to mention them only for "me" or "my". |
+| 4   | `Created by:`       | no       | Creator mention made from the creator identity. Binds "me" and "my". |
 | 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.           |
 | 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.        |
 | 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |

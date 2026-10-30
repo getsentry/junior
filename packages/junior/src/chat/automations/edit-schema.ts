@@ -12,11 +12,12 @@ export const automationInstructionSchema = z.string().trim().min(1).max(4000);
 
 /**
  * Instruction input for agent tools. An Automation runs later without the
- * request around it, so the instruction must name each person exactly.
+ * request around it. "Me" and "my" stay as written, because each run binds
+ * them to the creator identity. Other people need an exact mention.
  */
 export const automationInstructionToolSchema =
   automationInstructionSchema.describe(
-    "Work to perform when the Automation runs. It runs later without this conversation, so write it to stand alone: name each person with their Slack mention, such as <@U123>, instead of me, my, or you. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
+    'Work to perform when the Automation runs. It runs later without this conversation, so write it to stand alone. Keep "me" and "my" where they mean the Automation creator; each run binds them to the creator. Name every other person with their Slack mention, such as <@U123>, including a requester who is not the creator. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
   );
 
 export const automationEditFieldsSchema = z.object({

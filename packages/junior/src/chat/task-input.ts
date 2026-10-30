@@ -70,7 +70,10 @@ export function renderTaskInput(args: {
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
-  /** Mention of the person who created the task, so "me" in it is exact. */
+  /**
+   * Creator mention for the Destination, rendered from the creator identity
+   * at run time. Stored instructions keep "me" and "my"; this binds them.
+   */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: readonly string[];
@@ -103,11 +106,11 @@ export function renderTaskInput(args: {
     "This is a task, not a message from a person.",
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
-    // Tell the model what to write, not what "me" means. With only the
+    // Bind "me" to the creator, then say what to write. With only the
     // meaning, the model often writes "your" and drops the mention.
     ...(creator
       ? [
-          `Created by: ${oneLine(creator)}. Where the instructions say "me" or "my", write this mention. If they do not say "me" or "my", do not mention this person.`,
+          `Created by: ${oneLine(creator)}. "Me" and "my" in the instructions mean this person. Where the message addresses them, write this mention. If the instructions do not say "me" or "my", do not mention this person.`,
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),

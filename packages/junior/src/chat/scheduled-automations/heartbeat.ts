@@ -1,4 +1,3 @@
-import { slackMention } from "@/chat/slack/mrkdwn";
 import { type Dispatch } from "@sentry/junior-plugin-api";
 import {
   dispatchScheduledAutomation,
@@ -10,6 +9,7 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { automationCreatorMention } from "@/chat/automations/creator";
 import { settleEventAutomationRuns } from "@/chat/event-automations/runs";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import type { JuniorDatabase } from "@/db/db";
@@ -40,9 +40,12 @@ function singleLineMetadataValue(value: string): string {
 }
 
 /** Render the due scheduled automation as plain agent input. */
-function buildDispatchInput(task: ScheduledAutomation): string {
+async function buildDispatchInput(
+  db: JuniorDatabase,
+  task: ScheduledAutomation,
+): Promise<string> {
   return renderTaskInput({
-    creator: slackMention(task.createdBy.slackUserId),
+    creator: await automationCreatorMention(db, task),
     instructions: task.task.text,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
@@ -381,7 +384,7 @@ export async function runScheduledAutomationHeartbeat(args: {
             : undefined),
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
-          input: buildDispatchInput(task),
+          input: await buildDispatchInput(db, task),
           metadata,
           replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
