@@ -22,7 +22,7 @@ test("inspects all reporting events and searches full event data", async ({
   });
   const toolRow = transcript.getByRole("button", { name: /^webSearch/ });
   const activity = transcript
-    .locator("details")
+    .locator('[data-slot="collapsible"]')
     .filter({
       has: page.getByRole("button", {
         includeHidden: true,
@@ -30,7 +30,7 @@ test("inspects all reporting events and searches full event data", async ({
       }),
     })
     .first();
-  await activity.locator(":scope > summary").click();
+  await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
   const toolResult = transcript
