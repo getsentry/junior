@@ -181,8 +181,9 @@ const DATABASE_DOCS_PAGES: Record<string, string> = Object.fromEntries(
   DATABASE_DOCS.flatMap((doc) => doc.urls.map((url) => [url, docsPage(doc)])),
 );
 
+// A `site:` value often has no scheme. Drop the scheme and `www.` separately.
 function withoutScheme(url: string): string {
-  return url.replace(/^https:\/\/(www\.)?/, "");
+  return url.replace(/^(?:https?:\/\/)?(?:www\.)?/, "");
 }
 
 /**
