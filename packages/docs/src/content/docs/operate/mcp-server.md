@@ -66,8 +66,10 @@ The tool is read-only. It has no pagination.
 ## Access and tokens
 
 - The only scope is `conversations:read`.
-- Access tokens last 1 hour. Refresh tokens last 30 days, and each one works once. Your client refreshes them for you.
-- If someone uses an old refresh token again, Junior revokes the whole connection. Connect the client again.
+- Access tokens last 1 hour. Your client refreshes them for you. Each refresh token works once.
+- A connection ends 30 days after you allow it, even when the client refreshes its tokens. Then connect the client again.
+- Each request checks the [allowed domains](/reference/config-and-env/#allowed-domains) again. If your domain is removed, the connection stops working.
+- If someone uses an old refresh token again more than one minute after it was replaced, Junior revokes the whole connection. Connect the client again.
 - Personal tokens do not work on `/api/mcp`. Only tokens from this OAuth flow work.
 
 ## Troubleshooting
@@ -77,7 +79,7 @@ The tool is read-only. It has no pagination.
 | `404` on `/api/mcp`                  | The dashboard or its Google sign-in is not configured. Configure the [dashboard](/operate/dashboard/).                                         |
 | "This app cannot connect"            | The client did not send a valid CIMD client ID, or its redirect URI is not in its metadata document. Update the client, or use another client. |
 | "This sign-in request expired"       | The request is older than 10 minutes or was already used. Start the connection again from the client.                                          |
-| The client asks you to connect again | The refresh token expired or Junior revoked the connection. Authenticate again.                                                                |
+| The client asks you to connect again | The connection reached its 30-day limit, or Junior revoked it. Authenticate again.                                                             |
 
 ## Next step
 

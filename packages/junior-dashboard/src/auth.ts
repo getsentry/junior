@@ -1,3 +1,4 @@
+import { isAllowedSignInEmail } from "@sentry/junior/api";
 import { dashboardSessionSchema } from "./api/schema";
 import type { DashboardSession } from "./api/schema";
 
@@ -34,13 +35,9 @@ export function dashboardSessionIsAuthorized(
   session: DashboardSession,
   allowedDomains: string[],
 ): boolean {
-  const email = session.user.email.toLowerCase();
-  const separator = email.lastIndexOf("@");
-  const domain = separator > 0 ? email.slice(separator + 1) : undefined;
-  return Boolean(
-    session.user.emailVerified &&
-    domain !== undefined &&
-    allowedDomains.includes(domain),
+  return (
+    session.user.emailVerified === true &&
+    isAllowedSignInEmail(session.user.email, allowedDomains)
   );
 }
 

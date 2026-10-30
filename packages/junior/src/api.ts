@@ -35,6 +35,7 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
+export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
   resolveViewerUser,
   updateViewerDisplayName,

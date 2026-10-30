@@ -738,6 +738,7 @@ export async function createApp(
     let handleMcpRequest: ((request: Request) => Promise<Response>) | undefined;
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({
+        allowedDomains,
         baseURL: resolvePublicBaseURL(dashboard),
         state: getMcpState(),
       });

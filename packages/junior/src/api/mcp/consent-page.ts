@@ -143,10 +143,10 @@ export async function handleMcpConsentPage(args: {
   const code = await issueAuthorizationCode({
     clientId: authorization.clientId,
     codeChallenge: authorization.codeChallenge,
+    email: args.user.email,
     redirectUri: authorization.redirectUri,
     resource: authorization.resource,
     state: args.state,
-    user: args.user,
   });
   return authorizationRedirect({
     issuer,

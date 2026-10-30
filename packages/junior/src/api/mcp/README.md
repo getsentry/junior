@@ -61,13 +61,24 @@ All OAuth records are in the Junior `StateAdapter`. Production uses Redis. Each
 record has a TTL. Any app instance can handle any request. There is no
 database table.
 
-| Record                | TTL        |
-| --------------------- | ---------- |
-| Client document cache | 5 minutes  |
-| Pending authorization | 10 minutes |
-| Authorization code    | 60 seconds |
-| Access token          | 1 hour     |
-| Refresh token, grant  | 30 days    |
+| Record                | TTL               |
+| --------------------- | ----------------- |
+| Client document cache | 5 minutes         |
+| Pending authorization | 10 minutes        |
+| Authorization code    | 60 seconds        |
+| Access token          | 1 hour            |
+| Grant                 | 30 days           |
+| Refresh token         | Rest of the grant |
+
+A grant ends 30 days after consent. Refresh does not extend it, and no token
+lives longer than its grant. Then the user must connect the client again.
+Personal tokens last 90 days. A grant is shorter, because a third-party client
+holds its tokens and no page can revoke a grant yet.
+
+A grant stores the user email, not a copy of the user. Each MCP request checks
+the email against the allowed domains with `isAllowedSignInEmail`, the check
+that the dashboard uses. Then it resolves the user with `resolveViewerUser`.
+Thus a removed domain stops a grant at the next request.
 
 The MCP route is stateless. Each `POST` creates a new MCP server and a new
 transport that answers with JSON. No MCP session or SSE stream stays open
@@ -95,8 +106,13 @@ stream or delete.
   need a same-origin `POST` with the form token of that user.
 - One consent gives one code. A code works once. A second use of a code
   revokes the grant that the first use made.
-- A refresh token works once. Each refresh gives a new token pair. A second use
-  of an old refresh token revokes the grant and all of its tokens.
+- A refresh token works once. Each refresh gives a new token pair. A client
+  that runs in many processes can refresh one token at the same time. Thus a
+  second use within 60 seconds of the rotation gets `invalid_grant`, and the
+  grant stays. A later second use revokes the grant and all of its tokens.
+- A revoked grant gets a marker that lives for 30 days, the longest grant
+  lifetime. A request that saves the grant again in a race cannot restore it.
+  Junior logs `mcp.oauth.grant.revoked` with the client ID and the reason.
 - `/api/mcp` accepts only MCP access tokens for this exact resource. Personal
   tokens and dashboard sessions get `401`.
 - The tool output has its own schema. It does not expose dashboard-only fields.

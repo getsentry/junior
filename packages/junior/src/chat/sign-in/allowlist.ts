@@ -63,3 +63,22 @@ export function isAllowedDomain(
   if (allowedDomains.length === 0) return true;
   return Boolean(domain && allowedDomains.includes(domain.toLowerCase()));
 }
+
+/**
+ * Return whether a verified sign-in email is on an allowed domain. Sign-in
+ * needs a configured list, so an empty list allows no email. The dashboard
+ * and MCP apply this check on each request, so a changed list also applies
+ * to existing sessions and tokens.
+ */
+export function isAllowedSignInEmail(
+  email: string,
+  allowedDomains: readonly string[],
+): boolean {
+  const normalized = email.trim().toLowerCase();
+  const separator = normalized.lastIndexOf("@");
+  return (
+    allowedDomains.length > 0 &&
+    separator > 0 &&
+    isAllowedDomain(normalized.slice(separator + 1), allowedDomains)
+  );
+}

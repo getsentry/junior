@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { getSqlExecutor } from "@/chat/db";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -23,6 +23,7 @@ import {
   MCP_MISMATCHED_CLIENT_ID,
 } from "../../../msw/handlers/mcp-client-metadata";
 
+const ALLOWED_DOMAINS = ["example.com"];
 const VIEWER = "mcp-viewer@example.com";
 const OTHER_VIEWER = "mcp-other@example.com";
 // Claude Code listens on a random loopback port.
@@ -115,8 +116,12 @@ function refresh(app: Hono, refreshToken: string): Promise<Response> {
 }
 
 describe("remote MCP HTTP", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("connects a CIMD client and lists only the signed-in user's Conversations", async () => {
-    const app = await createApp();
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
     const pkce = createPkce();
     await seedConversation({
       conversationId: "slack:C123:1700000000.000100",
@@ -248,31 +253,63 @@ describe("remote MCP HTTP", () => {
     });
   });
 
-  it("rejects a valid personal token", async () => {
-    const app = await createApp();
+  it("rejects a personal token and a token for a domain that is no longer allowed", async () => {
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
     const personal = await createPersonalToken({
       email: VIEWER,
       name: "MCP rejected token",
     });
+    const tokens = (await (
+      await exchangeCode(app, await approveClient(app, VIEWER))
+    ).json()) as TokenBody;
+    const listTools = (target: Hono, token: string) =>
+      target.request(MCP_TEST_URL, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      });
 
-    const response = await app.request(MCP_TEST_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json, text/event-stream",
-        authorization: `Bearer ${personal.token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-    });
+    const response = await listTools(app, personal.token);
+    const removedDomain = await listTools(
+      await createApp({ allowedDomains: ["other.example"] }),
+      tokens.access_token,
+    );
 
+    expect(removedDomain.status).toBe(401);
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(
       `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp"`,
     );
   });
 
+  it("ends a grant 30 days after consent even when it is refreshed", async () => {
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    const day = 24 * 60 * 60 * 1000;
+    const startMs = Date.now();
+    const tokens = (await (
+      await exchangeCode(app, await approveClient(app, VIEWER))
+    ).json()) as TokenBody;
+
+    vi.useFakeTimers({ now: startMs + 29 * day, toFake: ["Date"] });
+    const refreshed = (await (
+      await refresh(app, tokens.refresh_token)
+    ).json()) as TokenBody;
+    vi.setSystemTime(startMs + 31 * day);
+    const afterEnd = await refresh(app, refreshed.refresh_token);
+
+    expect(refreshed.refresh_token).toMatch(/^jr_mcp_rt_/);
+    expect(afterEnd.status).toBe(400);
+    await expect(afterEnd.json()).resolves.toMatchObject({
+      error: "invalid_grant",
+    });
+  });
+
   it("revokes the grant when a code or a rotated refresh token is reused", async () => {
-    const app = await createApp();
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
     const approval = await approveClient(app, VIEWER);
     const first = (await (
       await exchangeCode(app, approval)
@@ -283,10 +320,16 @@ describe("remote MCP HTTP", () => {
     const second = (await (
       await exchangeCode(app, await approveClient(app, VIEWER))
     ).json()) as TokenBody;
-    const rotated = (await (
+    const rotatedOnce = (await (
       await refresh(app, second.refresh_token)
     ).json()) as TokenBody;
-    const reusedRefresh = await refresh(app, second.refresh_token);
+    // A concurrent refresh by another client process loses without logout.
+    const racedRefresh = await refresh(app, second.refresh_token);
+    const rotated = (await (
+      await refresh(app, rotatedOnce.refresh_token)
+    ).json()) as TokenBody;
+    vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ["Date"] });
+    const reusedRefresh = await refresh(app, rotatedOnce.refresh_token);
     const afterRefreshReuse = await refresh(app, rotated.refresh_token);
     const revokedAccess = await app.request(MCP_TEST_URL, {
       method: "POST",
@@ -303,6 +346,8 @@ describe("remote MCP HTTP", () => {
       error: "invalid_grant",
     });
     expect(afterCodeReuse.status).toBe(400);
+    expect(racedRefresh.status).toBe(400);
+    expect(rotated.access_token).toMatch(/^jr_mcp_at_/);
     expect(reusedRefresh.status).toBe(400);
     await expect(reusedRefresh.json()).resolves.toMatchObject({
       error: "invalid_grant",
@@ -323,7 +368,7 @@ describe("remote MCP HTTP", () => {
   ])(
     "shows an error without redirecting for %s",
     async (_, clientId, redirectUri) => {
-      const app = await createApp();
+      const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
 
       const response = await app.request(
         authorizeUrl({

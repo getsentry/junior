@@ -7,6 +7,8 @@
  * Junior user. A dashboard without required sign-in serves a local viewer.
  */
 import { Hono } from "hono";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
 import { handleMcpAuthorize } from "./authorization";
 import { authenticateMcpAccessToken } from "./grants";
 import {
@@ -35,6 +37,8 @@ export const MCP_ROUTE_PATHS = [
 
 /** Settings for the MCP HTTP handler. */
 type McpHttpHandlerOptions = {
+  /** The app's `allowedDomains`. Each MCP request checks them again. */
+  allowedDomains: readonly string[];
   /** Configured public origin. Unset allows only loopback request origins. */
   baseURL?: string;
   state: McpState;
@@ -87,16 +91,22 @@ export function createMcpHttpHandler(
   );
   // Only MCP access tokens for this exact resource pass. Personal tokens and
   // dashboard sessions do not, because MCP grants are a separate consent.
+  // Like the dashboard, each request checks the allowed domains and resolves
+  // the user again.
   app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
     const requestUrls = urls(c.req.raw);
     const token = bearerToken(c.req.raw);
-    const user = token
+    const email = token
       ? await authenticateMcpAccessToken({
           resource: requestUrls.resource,
           state: options.state,
           token,
         })
       : undefined;
+    const user =
+      email && isAllowedSignInEmail(email, options.allowedDomains)
+        ? await resolveViewerUser(email)
+        : undefined;
     if (!user) return unauthorized(requestUrls, token !== undefined);
     // The stateless transport has no session to stream or delete.
     if (c.req.method !== "POST") {
