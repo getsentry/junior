@@ -48,7 +48,11 @@ export function useSheet(
       open,
       modal: topmost ? "trap-focus" : false,
       disablePointerDismissal: !topmost,
-      onOpenChange(nextOpen, details) {
+      // Dialog and Drawer roots both use this handler, so read only `cancel`.
+      onOpenChange(
+        nextOpen: boolean,
+        details: Pick<Dialog.Root.ChangeEventDetails, "cancel">,
+      ) {
         if (!nextOpen && !topmost) {
           details.cancel();
           return;

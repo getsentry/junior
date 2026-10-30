@@ -6,6 +6,7 @@ import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
 import {
   Tooltip,
@@ -21,7 +22,6 @@ import {
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { transcriptEmptyClass } from "./transcriptStyles";
 import { TranscriptSearchProvider } from "./transcriptSearch";
 import {
   TurnContextPanelProvider,
@@ -89,9 +89,9 @@ export function Transcript(props: {
 
   if (!props.transcript) {
     return (
-      <div className={transcriptEmptyClass()}>
+      <EmptyTelemetry>
         No transcript is available for this conversation.
-      </div>
+      </EmptyTelemetry>
     );
   }
 

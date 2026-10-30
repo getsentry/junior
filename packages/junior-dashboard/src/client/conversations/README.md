@@ -12,13 +12,12 @@ shared controls and overlays.
   `TranscriptMessageHeading` aligns authors, timestamps, and the context action.
   The action stays visible on touch devices and while open. Mouse users see it
   on message hover; keyboard users see it on focus.
-- `TranscriptSummary` owns disclosure padding, hover, and keyboard focus. Use
-  `flush` when the text already sits on the transcript edge. It extends the
-  padded control around that text. Do not repeat negative margins at call sites.
-  The caller owns the native `details` element and its content.
-  `TranscriptSummaryTrigger` gives a `ui/collapsible` trigger the same look.
-  Its caller owns the `Collapsible` and its content. Transcript search holds
-  event and context rows open.
+- `TranscriptSummaryTrigger` owns disclosure padding, hover, and keyboard
+  focus for a `ui/collapsible` trigger. Use `flush` when the text already sits
+  on the transcript edge. It extends the padded control around that text. Do
+  not repeat negative margins at call sites. The caller owns the `Collapsible`
+  and its content. Transcript search holds event and context rows open, and
+  shows activity group rows without the group.
 - Activity rows (tools, reasoning, and grouped rail events) share one
   layout: a 1rem icon column, an 8px gap, then the title and metadata.
   Tool and reasoning rows use `ui/trace`. Transcript search forces them open.
@@ -114,9 +113,12 @@ The timezone toggle uses `useEventTime` to share a UTC/local preference through
 `@uidotdev/usehooks` and browser local storage. It applies to event row clocks
 and detail timestamps. Local mode follows the browser timezone. The button uses
 a generic zone name because a log can span standard and daylight-saving time.
-Detail timestamps use the zone name for each event date. The mode, not
-the timezone identifier, persists across visits and tabs. This hook belongs to
-the client-rendered event viewer. Raw JSON retains the original ISO values.
+Detail timestamps use a readable date to the second and the zone name for each
+event date, in both modes. The header keeps them on one line beside the
+actions. Their tooltip adds milliseconds, and the `time` element keeps the
+original ISO value. The mode, not the timezone identifier, persists across
+visits and tabs. This hook belongs to the client-rendered event viewer. Raw
+JSON retains the original ISO values.
 
 ## Event details
 
@@ -125,10 +127,14 @@ places `ConversationEventDetails` beside the log in the page panel. Selecting
 another row changes the event and resets its scroll position and disclosures.
 Closing returns focus to that row. Switching Conversations removes the panel.
 
-The previous and next controls select the adjacent visible row. They follow
+The previous and next controls select the adjacent visible row. They form one
+`ui/button-group` named "Event navigation". They follow
 the event search, like Up and Down. They are necessary below 1280px, where the
 sheet covers the log. At the ends of the list, the control is disabled but
-keeps focus. The sheet title is the event type.
+keeps focus. The sheet title is the event type. The header shows the event
+type, then the sequence number and timestamp. The body groups fields in the
+same `DetailsCard` that Conversation details use. Groups inside a card, such
+as tool input and output, use a divider, not another card.
 
 A linked event can be older than the loaded pages. While the event loads, the
 panel stays open. Only its header shows placeholders, so it does not compete
@@ -137,6 +143,17 @@ the log toolbar, columns, and row skeletons in the event log view.
 
 Standalone transcripts, such as a subagent drawer, keep selection in
 `ConversationEventLog`. Their event details use a nested drawer on desktop and
-`BottomSheet` on smaller screens. This keeps the main log free of modal behavior
+`BottomSheet` on smaller screens. The nested drawer stacks in front of the
+subagent drawer. The subagent drawer shows its event log without a body inset,
+so rows meet the drawer edges and the toolbar sticks to the top. This keeps the main log free of modal behavior
 while a nested transcript retains its parent drawer's focus rules. These event
 details have the same previous and next controls.
+
+`SubagentTranscriptDrawer` uses the wide `Drawer` at all widths. Below 768px
+the drawer fills the screen, so the long transcript gets the most room. Its
+header holds search, view, and copy actions. `BottomSheet` has no place for
+them.
+
+`ForkConversationButton` opens a `ui/dialog` form, not a drawer. The dialog
+stays above event details in a docked panel or a sheet. Cancel returns focus
+to the fork button. A pending fork blocks dismissal until the request ends.

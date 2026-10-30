@@ -12,11 +12,12 @@ import {
   Clock3,
   FileText,
   Pencil,
-  SkipForward,
   Trash2,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
+import { Button } from "../components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -41,22 +42,42 @@ import { SlackMark } from "./SlackMark";
 const MAX_EXPANDED_PENDING_ROWS = 5;
 const COLLAPSED_PENDING_ROW_COUNT = 4;
 
+// The steer button and the steered status share an icon, so a steered row
+// shows the icon of the action that the reader used.
+const STEER_ICON = Zap;
+
 function pendingDeliveryMeta(
   message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
-): { icon: LucideIcon | typeof Spinner; label: string } {
+): { icon: LucideIcon | typeof Spinner; label: string; tooltip: string } {
   if (message.clientStatus === "failed") {
-    return { icon: AlertCircle, label: "Failed to send" };
+    return {
+      icon: AlertCircle,
+      label: "Failed to send",
+      tooltip: "Failed to send",
+    };
   }
   if (message.clientStatus === "sending") {
-    return { icon: Spinner, label: "Sending" };
+    return { icon: Spinner, label: "Sending", tooltip: "Sending" };
   }
   if (message.delivery === "interrupt") {
-    return { icon: SkipForward, label: "Interrupt" };
+    return {
+      icon: STEER_ICON,
+      label: "Steered",
+      tooltip: "Steered: Junior reads it at its next step",
+    };
   }
-  return { icon: Clock3, label: "Queued" };
+  return {
+    icon: Clock3,
+    label: "Queued",
+    tooltip: "Queued: Junior reads it after the current reply",
+  };
 }
 
-function PendingMetaIcon(props: { children: ReactElement; label: string }) {
+function PendingMetaIcon(props: {
+  children: ReactElement;
+  label: string;
+  tooltip?: string;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -69,11 +90,14 @@ function PendingMetaIcon(props: { children: ReactElement; label: string }) {
           </span>
         }
       />
-      <TooltipContent>{props.label}</TooltipContent>
+      <TooltipContent size="compact">
+        {props.tooltip ?? props.label}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
+/** One icon-only row action. The tooltip says what the action does. */
 function PendingActionButton(props: {
   disabled: boolean;
   icon: LucideIcon;
@@ -81,28 +105,33 @@ function PendingActionButton(props: {
   onClick(): void;
   pending: boolean;
   tooltip: string;
+  variant?: "danger";
 }) {
   const Icon = props.icon;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={props.label}
-            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            className="size-6"
             disabled={props.disabled}
+            // A disabled action still shows its tooltip on hover and focus.
+            focusableWhenDisabled
             onClick={props.onClick}
+            size="icon"
             type="button"
+            variant={props.variant}
           >
             {props.pending ? (
               <Spinner aria-hidden="true" className="size-3.25" />
             ) : (
               <Icon aria-hidden="true" size={14} strokeWidth={2.2} />
             )}
-          </button>
+          </Button>
         }
       />
-      <TooltipContent>{props.tooltip}</TooltipContent>
+      <TooltipContent size="compact">{props.tooltip}</TooltipContent>
     </Tooltip>
   );
 }
@@ -123,7 +152,7 @@ function PendingMetaIcons(props: {
   const DeliveryIcon = delivery.icon;
 
   return (
-    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-1.5 text-xs leading-none text-dashboard-text-muted">
+    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-1 text-xs leading-none text-dashboard-text-muted">
       {props.showSlack ? (
         <Tooltip>
           <TooltipTrigger
@@ -133,10 +162,10 @@ function PendingMetaIcons(props: {
               </span>
             }
           />
-          <TooltipContent>Slack</TooltipContent>
+          <TooltipContent size="compact">From Slack</TooltipContent>
         </Tooltip>
       ) : null}
-      <PendingMetaIcon label={delivery.label}>
+      <PendingMetaIcon label={delivery.label} tooltip={delivery.tooltip}>
         <DeliveryIcon
           aria-hidden="true"
           className="size-3.25"
@@ -146,11 +175,11 @@ function PendingMetaIcons(props: {
       {props.onSteer ? (
         <PendingActionButton
           disabled={props.actionsDisabled}
-          icon={SkipForward}
+          icon={STEER_ICON}
           label="Steer queued message"
           onClick={props.onSteer}
           pending={props.steerPending}
-          tooltip="Steer: send it to Junior now"
+          tooltip="Steer: Junior reads it at its next step"
         />
       ) : null}
       {props.onEdit ? (
@@ -160,7 +189,7 @@ function PendingMetaIcons(props: {
           label="Edit queued message"
           onClick={props.onEdit}
           pending={props.editPending}
-          tooltip="Edit queued message"
+          tooltip="Edit: move it back to the composer"
         />
       ) : null}
       {props.onCancel ? (
@@ -174,7 +203,12 @@ function PendingMetaIcons(props: {
           }
           onClick={props.onCancel}
           pending={props.cancelPending}
-          tooltip="Delete queued message"
+          tooltip={
+            props.cancelError
+              ? "Could not delete. Try again."
+              : "Delete from the queue"
+          }
+          variant="danger"
         />
       ) : null}
     </TranscriptHeadingMeta>

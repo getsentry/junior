@@ -66,6 +66,15 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(contextPanel).toBeHidden();
   await expect(details).toBeVisible();
   await expect(contextAction).toBeFocused();
+  // A mouse open must not leave the tooltip open to take the first Escape.
+  await contextAction.hover();
+  await expect(
+    page.getByText("View turn context", { exact: true }),
+  ).toBeVisible();
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
   await contextAction.click();
   await expect(contextPanel).toBeVisible();
   await contextAction.click();

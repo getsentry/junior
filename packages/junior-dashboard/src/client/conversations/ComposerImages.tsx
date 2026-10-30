@@ -6,6 +6,12 @@ import {
   type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import {
   conversationAttachmentUrl,
   inputImageSrc,
@@ -106,15 +112,24 @@ export function ComposerImages(props: {
             className="h-20 w-24 rounded-md object-contain"
             src={inputImageSrc(image)}
           />
-          <button
-            aria-label={`Remove ${image.filename}`}
-            disabled={props.disabled}
-            className="absolute right-0 top-0 grid size-7 cursor-pointer place-items-center rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text hover:bg-dashboard-fill-hover disabled:cursor-default disabled:opacity-50"
-            onClick={() => props.onRemove(index)}
-            type="button"
-          >
-            <X aria-hidden="true" size={14} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label={`Remove ${image.filename}`}
+                  className="absolute right-0 top-0 size-7 rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text data-disabled:hover:!bg-dashboard-surface-raised data-disabled:hover:!text-dashboard-text"
+                  disabled={props.disabled}
+                  focusableWhenDisabled
+                  onClick={() => props.onRemove(index)}
+                  size="icon"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={14} />
+                </Button>
+              }
+            />
+            <TooltipContent size="compact">Remove image</TooltipContent>
+          </Tooltip>
         </div>
       ))}
     </div>
