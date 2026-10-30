@@ -124,11 +124,27 @@ function selectContiguousTurnBatch(
   );
 }
 
+/**
+ * True when an interrupt can start its own attempt.
+ *
+ * A steered web message must not start a second Turn while a yielded Turn
+ * waits to resume. It stays pending for that Turn's drain or the next attempt.
+ */
+function isAttemptInterrupt(
+  message: InboundMessage,
+  work: ConversationWorkState,
+): boolean {
+  return (
+    message.delivery === "interrupt" &&
+    !(work.execution.status === "paused" && message.source === "web")
+  );
+}
+
 /** Prioritize interrupts while keeping each attempt to one Actor and Source. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
-  const interrupts = messages.filter(
-    (message) => message.delivery === "interrupt",
+  const interrupts = messages.filter((message) =>
+    isAttemptInterrupt(message, work),
   );
   if (interrupts.length > 0) {
     return selectContiguousTurnBatch(interrupts);
@@ -603,7 +619,7 @@ async function processConversationWorkInContext(
       }
       attemptStartInterruptIds = new Set(
         leasedWork.messages
-          .filter((message) => message.delivery === "interrupt")
+          .filter((message) => isAttemptInterrupt(message, leasedWork))
           .map((message) => message.inboundMessageId),
       );
 
