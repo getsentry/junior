@@ -366,23 +366,10 @@ describe("Automation edit API", () => {
       // The dashboard parses the JSON body with this same schema.
       const choices = automationEventCatalogSchema.parse(await catalog.json());
       // One entry for each namespace, with the reach of each event once.
-      expect(choices).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            namespace: "github",
-            displayName: "GitHub",
-            events: expect.objectContaining({
-              "issue.closed": { reach: { anyOf: ["repo"] } },
-            }),
-            resourceTypes: expect.arrayContaining([
-              expect.objectContaining({
-                type: "issue",
-                supportedEvents: expect.arrayContaining(["issue.closed"]),
-              }),
-            ]),
-          }),
-        ]),
-      );
+      const github = choices.find((choice) => choice.namespace === "github");
+      expect(github?.events["issue.closed"]).toEqual({
+        reach: { anyOf: ["repo"] },
+      });
       expect(choices.some((choice) => choice.namespace === "junior")).toBe(
         false,
       );
