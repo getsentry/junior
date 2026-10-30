@@ -45,6 +45,28 @@ export function TranscriptAttachments(props: {
   );
 }
 
+/** Show the images of a send before the server stores them. */
+export function TranscriptLocalImages(props: { images: InputImage[] }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-start gap-2">
+      {props.images.map((image, index) => (
+        <ImageAttachment
+          filename={image.filename}
+          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+          key={`${image.filename}:${index}`}
+          src={inputImageSrc(image)}
+          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
+        />
+      ))}
+    </div>
+  );
+}
+
+const TRANSCRIPT_IMAGE_CLASS =
+  "max-h-48 w-auto max-w-full h-auto rounded-lg object-contain";
+const TRANSCRIPT_IMAGE_TRIGGER_CLASS =
+  "block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+
 /** Render one stored user or assistant attachment using the private read route. */
 function TranscriptAttachment(props: {
   attachment: MessageAttachment;
@@ -66,10 +88,10 @@ function TranscriptAttachment(props: {
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
-        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-lg object-contain"
+        imageClassName={TRANSCRIPT_IMAGE_CLASS}
         loading="lazy"
         src={href}
-        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
       />
     );
   }

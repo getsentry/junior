@@ -441,6 +441,7 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     onSelectedEventSeqChange={setSelectedEventSeq}
+                    pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
                     responding={
                       !detail.error && conversationIsResponding(transcript)
@@ -473,6 +474,15 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              // Without live history, an inline send would never leave the
+              // transcript tail. A started Turn reads a new send only later.
+              // Keep those sends in the queue. An earlier inline send that
+              // history does not have yet can start that Turn first.
+              sendsInline={
+                detail.data.eventHistory.status === "available" &&
+                !conversationIsResponding(detail.data) &&
+                detail.inlineMessages.length === 0
+              }
               stoppable={live}
             />
           ) : undefined
@@ -555,6 +565,11 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /**
+   * True when history is live and no Turn has started, so the next Turn will
+   * read a new send at once.
+   */
+  sendsInline: boolean;
   /** True while the conversation has a Turn that a stop can end. */
   stoppable: boolean;
 }) {
@@ -593,10 +608,21 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
+  // No Turn runs and nothing waits in the queue, so the next send would
+  // leave the queue almost at once. Show it in the transcript instead. A
+  // conversation can be active before its Turn starts; that still counts.
+  const committedIds = new Set(props.committedMessageIds);
+  const sendInlineRef = useRef(false);
+  sendInlineRef.current =
+    props.sendsInline &&
+    !props.pendingMessages.some(
+      (message) => !committedIds.has(message.messageId),
+    );
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
+        inline: sendInlineRef.current,
         message,
         images,
       });
