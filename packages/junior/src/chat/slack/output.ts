@@ -2,9 +2,14 @@ import type { PostableMessage } from "chat";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
+// Readability budget, measured on the text people see. Link URLs do not count.
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
+// Slack limit for the raw source of all markdown blocks in one message.
+const MAX_MARKDOWN_BLOCK_CHARS = 12000;
 const CONTINUED_MARKER = "\n\n[Continued below]";
+// Markdown links `[label](url)` and Slack links `<url|label>`. Slack shows only the label.
+const LABELED_LINK_RE = /\[([^\]\n]*)\]\([^)\s]+\)|<[^<>|\s]+\|([^<>\n]*)>/g;
 
 function countSlackLines(text: string): number {
   if (!text) {
@@ -13,20 +18,70 @@ function countSlackLines(text: string): number {
   return text.split("\n").length;
 }
 
+/** Count the characters Slack shows, with each labeled link counted as its label. */
+function countVisibleChars(text: string): number {
+  let hiddenChars = 0;
+  for (const match of text.matchAll(LABELED_LINK_RE)) {
+    hiddenChars += match[0].length - (match[1] ?? match[2] ?? "").length;
+  }
+  return text.length - hiddenChars;
+}
+
 function fitsInlineBudget(
   text: string,
   maxChars = MAX_INLINE_CHARS,
   maxLines = MAX_INLINE_LINES,
+  maxRawChars = MAX_MARKDOWN_BLOCK_CHARS,
 ): boolean {
-  return text.length <= maxChars && countSlackLines(text) <= maxLines;
+  return (
+    text.length <= maxRawChars &&
+    countVisibleChars(text) <= maxChars &&
+    countSlackLines(text) <= maxLines
+  );
 }
 
-function findSplitIndex(text: string, maxChars: number): number {
-  if (text.length <= maxChars) {
+/**
+ * Return the largest raw index whose prefix fits both budgets. A labeled link
+ * is kept whole, so a cut never lands inside its URL.
+ */
+function findBudgetLimitIndex(
+  text: string,
+  maxChars: number,
+  maxRawChars: number,
+): number {
+  let visible = 0;
+  let raw = 0;
+  for (const match of text.matchAll(LABELED_LINK_RE)) {
+    const gap = match.index - raw;
+    if (visible + gap > maxChars || match.index > maxRawChars) {
+      break;
+    }
+    visible += gap;
+    raw = match.index;
+    const labelLength = (match[1] ?? match[2] ?? "").length;
+    if (
+      visible + labelLength > maxChars ||
+      raw + match[0].length > maxRawChars
+    ) {
+      return raw;
+    }
+    visible += labelLength;
+    raw += match[0].length;
+  }
+  return Math.min(text.length, raw + (maxChars - visible), maxRawChars);
+}
+
+function findSplitIndex(
+  text: string,
+  maxChars: number,
+  maxRawChars: number,
+): number {
+  const limitIndex = findBudgetLimitIndex(text, maxChars, maxRawChars);
+  if (limitIndex >= text.length) {
     return text.length;
   }
 
-  const bounded = text.slice(0, maxChars);
+  const bounded = text.slice(0, limitIndex);
   const newlineIndex = bounded.lastIndexOf("\n");
   if (newlineIndex > 0) {
     return newlineIndex;
@@ -37,7 +92,7 @@ function findSplitIndex(text: string, maxChars: number): number {
     return spaceIndex;
   }
 
-  return maxChars;
+  return limitIndex;
 }
 
 function splitByLineBudget(text: string, maxLines: number): string {
@@ -52,21 +107,24 @@ function splitByLineBudget(text: string, maxLines: number): string {
   return lines.slice(0, maxLines).join("\n");
 }
 
+type InlineBudget = {
+  maxChars: number;
+  maxLines: number;
+  maxRawChars: number;
+};
+
 function reserveInlineBudgetForSuffix(
   suffix: string,
   maxChars = MAX_INLINE_CHARS,
   maxLines = MAX_INLINE_LINES,
-): { maxChars: number; maxLines: number } {
+  maxRawChars = MAX_MARKDOWN_BLOCK_CHARS,
+): InlineBudget {
   return {
     maxChars: Math.max(1, maxChars - suffix.length),
     maxLines: Math.max(1, maxLines - Math.max(0, countSlackLines(suffix) - 1)),
+    maxRawChars: Math.max(1, maxRawChars - suffix.length),
   };
 }
-
-type InlineBudget = {
-  maxChars: number;
-  maxLines: number;
-};
 
 type FenceContinuation = {
   closeSuffix: string;
@@ -75,15 +133,20 @@ type FenceContinuation = {
 
 function forceSplitBudget(text: string, budget: InlineBudget): InlineBudget {
   const lineCount = countSlackLines(text);
+  const visibleChars = countVisibleChars(text);
   return {
     maxChars:
-      text.length <= budget.maxChars
-        ? Math.max(1, text.length - 1)
+      visibleChars <= budget.maxChars
+        ? Math.max(1, visibleChars - 1)
         : budget.maxChars,
     maxLines:
       lineCount <= budget.maxLines
         ? Math.max(1, lineCount - 1)
         : budget.maxLines,
+    maxRawChars:
+      text.length <= budget.maxRawChars
+        ? Math.max(1, text.length - 1)
+        : budget.maxRawChars,
   };
 }
 
@@ -182,11 +245,14 @@ export function takeSlackContinuationPrefix(
     forceSplit?: boolean;
     maxChars?: number;
     maxLines?: number;
+    maxRawChars?: number;
   },
 ): { prefix: string; renderedPrefix: string; rest: string } {
+  const defaults = getSlackContinuationBudget();
   const budget = {
-    maxChars: options?.maxChars ?? getSlackContinuationBudget().maxChars,
-    maxLines: options?.maxLines ?? getSlackContinuationBudget().maxLines,
+    maxChars: options?.maxChars ?? defaults.maxChars,
+    maxLines: options?.maxLines ?? defaults.maxLines,
+    maxRawChars: options?.maxRawChars ?? defaults.maxRawChars,
   };
   const { prefix, rest } = (() => {
     if (options?.forceSplit) {
@@ -204,29 +270,33 @@ export function takeSlackContinuationPrefix(
 
 /**
  * Take the largest Slack-safe inline prefix from `text` under the configured
- * character and line budgets. Returns the consumed prefix plus remaining text.
+ * budgets. `maxChars` counts visible characters, so link URLs do not count.
+ * `maxRawChars` counts the raw markdown source. Returns the consumed prefix
+ * plus remaining text.
  */
 export function takeSlackInlinePrefix(
   text: string,
   options?: {
     maxChars?: number;
     maxLines?: number;
+    maxRawChars?: number;
   },
 ): { prefix: string; rest: string } {
   const maxChars = options?.maxChars ?? MAX_INLINE_CHARS;
   const maxLines = options?.maxLines ?? MAX_INLINE_LINES;
+  const maxRawChars = options?.maxRawChars ?? MAX_MARKDOWN_BLOCK_CHARS;
   const normalized = text.replace(/\r\n?/g, "\n");
 
   if (!normalized) {
     return { prefix: "", rest: "" };
   }
 
-  if (fitsInlineBudget(normalized, maxChars, maxLines)) {
+  if (fitsInlineBudget(normalized, maxChars, maxLines, maxRawChars)) {
     return { prefix: normalized, rest: "" };
   }
 
   const lineBounded = splitByLineBudget(normalized, maxLines);
-  const cutIndex = findSplitIndex(lineBounded, maxChars);
+  const cutIndex = findSplitIndex(lineBounded, maxChars, maxRawChars);
   const prefix = lineBounded.slice(0, cutIndex).trimEnd();
   if (prefix) {
     return {
@@ -314,10 +384,7 @@ export function fitsSlackInlineBudget(text: string): boolean {
 /**
  * Reserve enough inline budget for a continuation suffix on the current chunk.
  */
-export function getSlackContinuationBudget(): {
-  maxChars: number;
-  maxLines: number;
-} {
+export function getSlackContinuationBudget(): InlineBudget {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
 }
 
@@ -339,4 +406,5 @@ export function buildSlackOutputMessage(text: string): PostableMessage {
 export const slackOutputPolicy = {
   maxInlineChars: MAX_INLINE_CHARS,
   maxInlineLines: MAX_INLINE_LINES,
+  maxMarkdownBlockChars: MAX_MARKDOWN_BLOCK_CHARS,
 };
