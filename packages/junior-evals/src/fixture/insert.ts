@@ -11,7 +11,7 @@ import { onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
@@ -100,6 +100,28 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
 }
 
 /**
+ * Store the Slack thread where a person created an automation. Like the live
+ * Slack event of that thread, it records the channel as public. Automation
+ * runs do not record channel visibility, so without it their Conversations in
+ * the channel are private.
+ */
+async function insertCreationThread(destination: SlackChannel, nowMs: number) {
+  await getConversationStore().recordActivity({
+    conversationId: `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`,
+    destination,
+    nowMs,
+    sessionSource: createSlackSource({
+      channelId: destination.channelId,
+      teamId: destination.teamId,
+      threadTs: FIXTURE_MESSAGE_TS,
+      visibility: "public",
+    }),
+    source: "slack",
+    visibility: "public",
+  });
+}
+
+/**
  * Store a scheduled automation that a Slack person created. It is weekly and
  * next runs in a week unless `due` or `once` says otherwise.
  */
@@ -162,6 +184,7 @@ export async function insertScheduledAutomation(args: {
     task: { text: args.task },
     updatedAtMs: nowMs - 60_000,
   };
+  await insertCreationThread(args.destination, nowMs);
   await saveScheduledAutomation(getDb(), automation);
   return { id };
 }
@@ -180,6 +203,7 @@ export async function insertEventAutomation(args: {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const id = `evt_${fixtureId("event-automation", 20)}`;
+  await insertCreationThread(args.destination, Date.now());
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
