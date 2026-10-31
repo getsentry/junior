@@ -375,7 +375,7 @@ async function handleSlackThreadStop(args: {
   });
   await appendConversationMessages(getConversationEventStore(), {
     conversation,
-    conversationId: args.canonicalThreadId,
+    conversationId,
   });
 
   await thread.post(THREAD_OPTOUT_ACK);
@@ -544,10 +544,15 @@ async function routeParsedMessage(args: {
     return;
   }
 
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
-  // Write against the Slack thread id, not a bound mailbox Conversation id, so
-  // mention turns that hydrate from thread.id see the same history.
+  // Write to the Conversation that owns the thread, which mention Turns read.
   if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
     const content = parseContent(message);
     const conversation = coerceThreadConversationState(undefined);
@@ -559,16 +564,11 @@ async function routeParsedMessage(args: {
     });
     await appendConversationMessages(getConversationEventStore(), {
       conversation,
-      conversationId: canonicalThreadId,
+      conversationId,
     });
     return;
   }
 
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
   const persist = () =>
     persistSlackMessage({
       adapter: args.adapter,

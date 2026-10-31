@@ -32,6 +32,7 @@ import {
 import {
   getLocationConfigurationService,
   getPersistedSandboxState,
+  getPersistedThreadState,
 } from "@/chat/runtime/thread-state";
 import {
   hydrateConversationMessages,
@@ -173,10 +174,15 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
-    const existingState = await args.thread.state;
+    const conversationId =
+      args.context.conversationId ??
+      args.context.threadId ??
+      args.context.runId;
+    const existingState = conversationId
+      ? await getPersistedThreadState(conversationId)
+      : await args.thread.state;
     const sandboxRef = getPersistedSandboxState(existingState ?? {});
     const conversation = coerceThreadConversationState(existingState);
-    const conversationId = args.context.threadId ?? args.context.runId;
     if (conversationId && isVisionEnabled()) {
       conversation.vision = await loadConversationVisionCache(conversationId);
     }

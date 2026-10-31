@@ -274,7 +274,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("keeps passive-routing history on the Slack thread id when a bound Conversation exists", async () => {
+  it("keeps passive-routing history on the bound Conversation", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -323,7 +323,7 @@ describe("Slack webhook persistence contract", () => {
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
       await expect(
-        getConversationEventStore().loadMessageHistory(threadId),
+        getConversationEventStore().loadMessageHistory(conversationId),
       ).resolves.toEqual({
         events: [
           expect.objectContaining({
@@ -337,7 +337,7 @@ describe("Slack webhook persistence contract", () => {
         historyFromSeq: expect.any(Number),
       });
       await expect(
-        getConversationEventStore().loadMessageHistory(conversationId),
+        getConversationEventStore().loadMessageHistory(threadId),
       ).resolves.toEqual({
         events: [],
         compaction: undefined,
