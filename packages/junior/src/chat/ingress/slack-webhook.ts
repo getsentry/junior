@@ -798,6 +798,7 @@ async function persistSlackMentionWithLock(args: {
   state: StateAdapter;
 }): Promise<void> {
   const { message, threadId } = normalizeMessageThreadId(args.message);
+  await bindSlackAuthorIdentity(message, args.installation);
   try {
     const routed = await withLock(
       args.state,

@@ -256,6 +256,8 @@ describe("Slack webhook: user input clicks", () => {
       delivery: "interrupt",
       input: {
         authorId: "U123",
+        // Ingress sets the author Identity, so the worker does not guess it.
+        authorIdentityId: expect.any(String),
         text: `Answer to request ${REQUEST_ID}:\nDecision (decision): Ship it`,
       },
     });
