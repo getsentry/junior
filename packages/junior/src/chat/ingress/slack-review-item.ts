@@ -3,6 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { logException } from "@/chat/logging";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import {
   actOnReviewItem,
@@ -12,7 +13,10 @@ import {
   reviewItemChange,
   type ReviewItemAction,
 } from "@/chat/review-items/actions";
-import { renderReviewItemMessage } from "@/chat/review-items/messages";
+import {
+  renderReviewItemMessage,
+  sendReviewItemMessages,
+} from "@/chat/review-items/messages";
 import type { ReviewItem } from "@/chat/review-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import {
@@ -95,8 +99,9 @@ async function resolveActingUser(
   ) {
     return undefined;
   }
-  const user = (await readActorIdentity(createSlackActor(teamId, slackUserId, undefined)))
-    ?.user;
+  const user = (
+    await readActorIdentity(createSlackActor(teamId, slackUserId, undefined))
+  )?.user;
   if (!user) {
     await tellPerson(
       target,
@@ -114,9 +119,7 @@ async function refreshCards(
   user: User,
   itemId: string,
 ): Promise<void> {
-  const item = await readReviewItemForUser(user, itemId).catch(
-    () => undefined,
-  );
+  const item = await readReviewItemForUser(user, itemId).catch(() => undefined);
   if (!item) return;
   await syncReviewItemSlackCards({
     getSlackAdapter: () => services.adapter,
@@ -151,7 +154,11 @@ async function act(args: {
     if (current.status !== "open") {
       // A click on a stale card must not add a second Turn for the same
       // close, so it does not use the retry of `actOnReviewItem`.
-      await tellPerson(target, actor.slackUserId, "This item is already closed.");
+      await tellPerson(
+        target,
+        actor.slackUserId,
+        "This item is already closed.",
+      );
       await refreshCards(services, actor.user, current.id);
       return;
     }
@@ -171,22 +178,34 @@ async function act(args: {
     return;
   }
   if (!item.conversationIds.includes(conversationId)) return;
-  await services.persistMessage(
-    buildSlackInteractionInput({
-      adapter: services.adapter,
-      channelId: target.channelId,
-      inputTs: args.inputTs,
-      messageId: args.messageId,
-      messageTs: target.messageTs,
-      payload: args.payload,
-      text: renderReviewItemMessage(
-        item,
-        reviewItemChange(args.action, actor.user),
-      ),
-      threadTs: target.threadTs,
-      userId: actor.slackUserId,
-    }),
-  );
+  const change = reviewItemChange(args.action, actor.user);
+  try {
+    await services.persistMessage(
+      buildSlackInteractionInput({
+        adapter: services.adapter,
+        channelId: target.channelId,
+        inputTs: args.inputTs,
+        messageId: args.messageId,
+        messageTs: target.messageTs,
+        payload: args.payload,
+        text: renderReviewItemMessage(item, change),
+        threadTs: target.threadTs,
+        userId: actor.slackUserId,
+      }),
+    );
+  } catch (error) {
+    // The item is already closed, so the thread must still learn about it.
+    // Each message has an idempotency key, so only this thread gets one.
+    logException(error, "review_item.slack_input.persist.failed", {
+      "app.review_item.id": item.id,
+    });
+    await sendReviewItemMessages({
+      change,
+      item,
+      nowMs: Date.now(),
+      queue: services.queue,
+    });
+  }
 }
 
 function cardTarget(payload: SlackInteractivePayload): CardTarget {
