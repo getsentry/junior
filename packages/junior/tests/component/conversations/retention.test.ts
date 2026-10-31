@@ -923,7 +923,12 @@ describe("retention purge job", () => {
     await fixture.sql
       .db()
       .insert(juniorReviewItems)
-      .values([reviewItem("pub", "public"), reviewItem("priv", "private")]);
+      .values([
+        reviewItem("pub", "public"),
+        reviewItem("priv", "private"),
+        // Added while the destination of "priv" was still public.
+        { ...reviewItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
+      ]);
     await fixture.sql
       .db()
       .insert(juniorReviewItemConversations)
@@ -953,7 +958,15 @@ describe("retention purge job", () => {
     // with the Brief. Its links go with it.
     await expect(
       fixture.sql.db().select().from(juniorReviewItems),
-    ).resolves.toMatchObject([{ id: "pub-item" }]);
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "pub-item" }),
+        expect.objectContaining({ id: "flip-item" }),
+      ]),
+    );
+    expect(
+      await fixture.sql.db().select().from(juniorReviewItems),
+    ).toHaveLength(2);
     await expect(
       fixture.sql.db().select().from(juniorReviewItemConversations),
     ).resolves.toMatchObject([{ itemId: "pub-item" }]);
