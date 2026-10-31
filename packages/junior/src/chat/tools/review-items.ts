@@ -445,7 +445,7 @@ export function createUpdateReviewItemTool(
           .nullable()
           .optional()
           .describe(
-            "Replaces every linked Conversation. An action item needs at least one.",
+            "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
           ),
         status: z.enum(["done", "dismissed"]).nullable().optional(),
         reason: z
@@ -477,17 +477,19 @@ export function createUpdateReviewItemTool(
       const changesContent =
         input.title || input.body || input.assignees || input.conversation_ids;
       if (changesContent) {
-        const conversationIds = input.conversation_ids ?? item.conversationIds;
-        if (item.kind === "action" && conversationIds.length === 0) {
-          throw new ToolInputError(
-            "An action item needs at least one linked Conversation.",
-          );
-        }
+        // The Conversation that added the item always stays linked.
+        const conversationIds = [
+          ...new Set([
+            item.addedByConversationId,
+            ...(input.conversation_ids ?? item.conversationIds),
+          ]),
+        ];
         // This tool never changes visibility.
         const visibility = item.visibility;
         await requireLinks({
           allowedIds: new Set([
             context.conversationId,
+            item.addedByConversationId,
             ...item.conversationIds,
           ]),
           conversationIds,

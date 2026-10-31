@@ -17,7 +17,7 @@ behavior.
   needs at least one assignee.
 - An item can have a subject, such as a pull request, and links to one or
   more Conversations. The Conversation of the agent that adds the item is
-  always linked.
+  always linked. An update cannot remove that link.
 - An item from an Automation run stores the Automation id. A later run of the
   same Automation can see and change it.
 
