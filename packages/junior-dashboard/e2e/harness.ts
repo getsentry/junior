@@ -115,6 +115,9 @@ export async function startDashboardE2eServer(
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
+        // The page is still open and keeps reusing keep-alive connections.
+        // Without this, close waits on them until the test times out.
+        server.closeAllConnections();
       }),
   };
 }
