@@ -1,12 +1,19 @@
 import type {
   EgressHookContext,
   IssueCredentialHookContext,
+  PluginCache,
   PluginHooks,
 } from "@sentry/junior-plugin-api";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 
 const ORIGINAL_ENV = { ...process.env };
+
+const cache: PluginCache = {
+  async getOrLoad(_key, load) {
+    return (await load()).value;
+  },
+};
 
 function hooks(): PluginHooks {
   const plugin = sentryPlugin();
@@ -16,8 +23,10 @@ function hooks(): PluginHooks {
   return plugin.hooks;
 }
 
-function grantFor(method: string, url: string) {
-  return hooks().grantForEgress?.({
+async function grantFor(method: string, url: string) {
+  return await hooks().grantForEgress?.({
+    cache,
+    log: { error() {}, info() {}, warn() {} },
     request: { method, url },
   } as EgressHookContext);
 }
@@ -25,33 +34,51 @@ function grantFor(method: string, url: string) {
 describe("sentry org read access", () => {
   beforeEach(() => {
     process.env.SENTRY_READ_TOKEN = "org-read-token";
+    // Each region lists only its own orgs for an internal integration token.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        Response.json(
+          url.startsWith("https://us.sentry.io/")
+            ? [{ id: "1", slug: "sentry" }]
+            : [],
+        ),
+      ),
+    );
   });
 
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllGlobals();
   });
 
-  it("uses the org read token for reads and user OAuth for writes", () => {
+  it("uses the org read token for reads of its org and user OAuth otherwise", async () => {
     const orgRead = {
       name: "org-read",
       access: "read",
       reason: "sentry.org-read",
     };
     expect(
-      grantFor(
+      await grantFor(
         "GET",
         "https://us.sentry.io/api/0/organizations/sentry/issues/",
       ),
     ).toEqual(orgRead);
     expect(
-      grantFor("GET", "https://sentry.io/api/0/projects/sentry/junior/events/"),
+      await grantFor(
+        "GET",
+        "https://sentry.io/api/0/projects/sentry/junior/events/",
+      ),
     ).toEqual(orgRead);
-    expect(grantFor("GET", "https://sentry.io/api/0/issues/123/")).toEqual(
-      orgRead,
-    );
+    expect(
+      await grantFor("GET", "https://sentry.io/api/0/issues/123/"),
+    ).toEqual(orgRead);
+    expect(
+      await grantFor("GET", "https://sentry.io/api/0/organizations/1/"),
+    ).toEqual(orgRead);
     // Explore queries are GET requests.
     expect(
-      grantFor(
+      await grantFor(
         "GET",
         "https://us.sentry.io/api/0/organizations/sentry/events/?dataset=spans&field=span.op",
       ),
@@ -59,14 +86,51 @@ describe("sentry org read access", () => {
 
     // Writes and user endpoints keep user OAuth.
     expect(
-      grantFor(
+      await grantFor(
         "PUT",
         "https://sentry.io/api/0/organizations/sentry/issues/123/",
       ),
     ).toBeUndefined();
     expect(
-      grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
+      await grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
     ).toBeUndefined();
+
+    // Reads of other orgs keep user OAuth.
+    expect(
+      await grantFor(
+        "GET",
+        "https://us.sentry.io/api/0/organizations/sentry-developer-experience/issues/",
+      ),
+    ).toBeUndefined();
+    expect(
+      await grantFor("GET", "https://sentry.io/api/0/projects/other/app/"),
+    ).toBeUndefined();
+    expect(
+      await grantFor(
+        "GET",
+        "https://de.sentry.io/api/0/organizations/eu-org/issues/",
+      ),
+    ).toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(
+      "https://de.sentry.io/api/0/organizations/",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer org-read-token" },
+      }),
+    );
+  });
+
+  it("keeps the org read token when the org lookup fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 503 })),
+    );
+
+    expect(
+      await grantFor(
+        "GET",
+        "https://sentry.io/api/0/organizations/sentry/issues/",
+      ),
+    ).toMatchObject({ name: "org-read" });
   });
 
   it("issues the configured token for the org read grant", async () => {
@@ -95,11 +159,14 @@ describe("sentry org read access", () => {
     });
   });
 
-  it("keeps every request on user OAuth without a configured token", () => {
+  it("keeps every request on user OAuth without a configured token", async () => {
     delete process.env.SENTRY_READ_TOKEN;
 
     expect(
-      grantFor("GET", "https://sentry.io/api/0/organizations/sentry/issues/"),
+      await grantFor(
+        "GET",
+        "https://sentry.io/api/0/organizations/sentry/issues/",
+      ),
     ).toBeUndefined();
   });
 });
