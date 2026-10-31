@@ -5,9 +5,9 @@ import {
   appendAndEnqueueWebMessage,
   webActorFromEmail,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
-import { resolveSystemIdentityId } from "@/chat/identities/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
   type EventMailboxMetadata,
@@ -162,7 +162,7 @@ async function sendOne(args: {
       inboundMessageId: `${key}:${args.conversationId}`,
       input: {
         authorId: EVENT_AUTHOR_ID,
-        authorIdentityId: await resolveSystemIdentityId(getSqlExecutor()),
+        authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: eventMessageText(args.text, args.change),
       },

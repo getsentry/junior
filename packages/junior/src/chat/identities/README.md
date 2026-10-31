@@ -19,7 +19,7 @@ timezone to this column. The scheduler and plugin tools use it, through
 ## Actor Identities
 
 `actor.ts` resolves each runtime Actor to one Identity id.
-`resolveActorIdentityId` saves the Identity and returns its id.
+`resolveActorIdentityId` saves a Slack or web Identity and returns its id.
 `findActorIdentityId` only reads. The Conversation store, OAuth, the viewer,
 and message events use these functions, so they find the same Identity for
 the same person. The key for each Actor is private to `actor.ts`.
@@ -29,6 +29,9 @@ the same person. The key for each Actor is private to `actor.ts`.
 - Every system Actor and every local Actor is the one system Identity: kind
   `system`, provider `junior`, an empty tenant, and subject `system`. The
   system Actor name is provenance. It is not part of the key.
+- The system Identity has the fixed id `SYSTEM_IDENTITY_ID` (`system`).
+  Migration `0069_system_identity.sql` creates its row, so code uses the id
+  without a database read.
 
 A Conversation write without an Actor still uses a legacy system Identity
 from its Source, with the subject `scheduler`, `local-cli`, or `event`.

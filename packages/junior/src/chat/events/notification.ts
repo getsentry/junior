@@ -22,8 +22,7 @@ import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
-import { getSqlExecutor } from "@/chat/db";
-import { resolveSystemIdentityId } from "@/chat/identities/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -295,8 +294,6 @@ export function eventBatchMessageEvents(
 
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
-  /** The system Identity, resolved at ingress. */
-  authorIdentityId?: string;
   event: EventNotification;
   subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
@@ -330,9 +327,8 @@ export function createEventInboundMessage(input: {
     input: {
       text: input.text,
       authorId: EVENT_AUTHOR_ID,
-      ...(input.authorIdentityId
-        ? { authorIdentityId: input.authorIdentityId }
-        : undefined),
+      // TODO(dcramer): Use the event author Identity when plugins report it.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
     },
   };
@@ -391,8 +387,6 @@ export async function enqueueEventNotification(args: {
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
-      // TODO(dcramer): Use the event author Identity when plugins report it.
-      authorIdentityId: await resolveSystemIdentityId(getSqlExecutor()),
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,

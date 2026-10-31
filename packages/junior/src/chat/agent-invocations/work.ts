@@ -14,12 +14,8 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
-import { resolveSystemIdentityId } from "@/chat/identities/actor";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   AgentRunError,
@@ -131,8 +127,6 @@ export function agentInvocationRunPolicy(
 export function buildAgentInvocationInboundMessage(
   invocation: AgentInvocation,
   nowMs = Date.now(),
-  /** The system Identity. A parent agent wrote the task, not a person. */
-  authorIdentityId?: string,
 ): InboundMessage {
   return {
     conversationId: invocation.childConversationId,
@@ -141,7 +135,8 @@ export function buildAgentInvocationInboundMessage(
     inboundMessageId: getAgentInvocationMessageId(invocation.invocationId),
     input: {
       authorId: invocation.invocationId,
-      ...(authorIdentityId ? { authorIdentityId } : undefined),
+      // A parent agent wrote the task, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       text: "[agent invocation]",
       metadata: {
         agentInvocationId: invocation.invocationId,
@@ -168,11 +163,7 @@ export async function enqueueAgentInvocation(
   await recordSubagentStarted(invocation);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
-    message: buildAgentInvocationInboundMessage(
-      invocation,
-      nowMs,
-      await resolveSystemIdentityId(getSqlExecutor()),
-    ),
+    message: buildAgentInvocationInboundMessage(invocation, nowMs),
     conversationStore: options.conversationStore,
     nowMs,
     queue: options.queue,

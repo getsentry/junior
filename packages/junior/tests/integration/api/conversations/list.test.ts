@@ -14,6 +14,7 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
@@ -30,16 +31,6 @@ import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 function dashboardAuthorIdFromEmail(email: string): string {
   return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
 }
-
-const systemIdentityRow = {
-  id: "identity-system",
-  createdAt: new Date(1_000),
-  displayName: "System",
-  kind: "system",
-  provider: "junior",
-  providerSubjectId: "system",
-  updatedAt: new Date(1_000),
-} as const;
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -205,7 +196,6 @@ describe("conversation list API", () => {
         },
         nowMs: nowMs - 120_000,
       });
-      await fixture.sql.db().insert(juniorIdentities).values(systemIdentityRow);
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
@@ -248,7 +238,7 @@ describe("conversation list API", () => {
           },
           // An event Message has the system Identity as its author.
           {
-            actorIdentityId: systemIdentityRow.id,
+            actorIdentityId: SYSTEM_IDENTITY_ID,
             conversationId: finishedId,
             createdAt: new Date(nowMs - 30_000),
             historyVersion: 0,
@@ -720,14 +710,13 @@ describe("conversation list API", () => {
           updatedAt: new Date(1_000),
           userId: participantUserId!,
         });
-      await fixture.sql.db().insert(juniorIdentities).values(systemIdentityRow);
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
         .values([
           // An event Message author is not a participant.
           {
-            actorIdentityId: systemIdentityRow.id,
+            actorIdentityId: SYSTEM_IDENTITY_ID,
             conversationId: "slack:C1:shared-thread",
             createdAt: new Date(5_300),
             historyVersion: 0,
