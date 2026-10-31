@@ -59,6 +59,11 @@ exported types, tools, and tests are authoritative.
   signal today is `duplicate`: a capture resolved to an existing memory. Rows
   older than 90 days are dropped when the same memory gets the same signal
   again. Count recent rows, or distinct conversations, to weigh memories.
+- `junior_memory_file_refs` links a memory to the Sandbox files it was learned
+  from. Paths are relative to the Sandbox root, such as
+  `repos/junior/README.md`. Passive extraction adds a row for each file that a
+  cited, successful tool result read or changed. A duplicate capture adds its
+  files to the existing memory. Recall does not read these rows yet.
 - Writes are idempotent where a completed session or tool retry can repeat.
 - Removal and supersession preserve enough lifecycle information to prevent
   deleted facts from being recalled or silently recreated.

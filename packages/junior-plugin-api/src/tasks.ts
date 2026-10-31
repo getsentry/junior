@@ -39,6 +39,12 @@ export const pluginRunTranscriptEntrySchema = z.discriminatedUnion("type", [
       toolName: z.string().min(1),
       isError: z.boolean(),
       text: z.string().min(1).optional(),
+      /**
+       * Sandbox files that the tool call read or changed, relative to the
+       * Sandbox root, such as `repos/junior/README.md`. Absent when the tool
+       * does not name a file.
+       */
+      paths: z.array(z.string().min(1)).min(1).optional(),
     })
     .strict(),
 ]);
