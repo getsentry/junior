@@ -683,6 +683,7 @@ describe("conversation list API", () => {
         .insert(juniorIdentities)
         .values({
           id: "identity-participant-slack",
+          avatarUrl: "https://avatars.slack-edge.com/participant_512.jpg",
           createdAt: new Date(1_000),
           email: "participant@example.com",
           emailNormalized: "participant@example.com",
@@ -694,6 +695,31 @@ describe("conversation list API", () => {
           updatedAt: new Date(1_000),
           userId: participantUserId!,
         });
+      // Photos: the participant has Slack and Google photos, and the owner has
+      // only a Google photo. The Slack photo wins, and Google is the fallback.
+      const [owner] = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "owner@example.com"));
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values(
+          [
+            { subject: "google-participant", userId: participantUserId! },
+            { subject: "google-owner", userId: owner!.id },
+          ].map(({ subject, userId }) => ({
+            id: `identity-${subject}`,
+            avatarUrl: `https://lh3.googleusercontent.com/a/${subject}`,
+            createdAt: new Date(2_000),
+            kind: "user" as const,
+            provider: "google",
+            providerSubjectId: subject,
+            updatedAt: new Date(2_000),
+            userId,
+          })),
+        );
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
@@ -775,10 +801,12 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
+            avatarUrl: "https://lh3.googleusercontent.com/a/google-owner",
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
+            avatarUrl: "https://avatars.slack-edge.com/participant_512.jpg",
             email: "participant@example.com",
             fullName: "Participant",
             slackUserId: "UPARTICIPANT1",

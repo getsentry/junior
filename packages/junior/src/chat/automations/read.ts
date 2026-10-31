@@ -33,6 +33,7 @@ import {
 } from "@/chat/automations/execution-stats";
 import { isAutomationCreator } from "@/chat/automations/creator";
 import { getDb } from "@/chat/db";
+import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import {
   getDispatchIdForConversation,
   getDispatchInputMessageId,
@@ -120,6 +121,7 @@ async function creatorProfiles(
       emailVerified: juniorIdentities.emailVerified,
       slackUserId: juniorIdentities.providerSubjectId,
       teamId: juniorIdentities.providerTenantId,
+      userId: juniorIdentities.userId,
     })
     .from(juniorIdentities)
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
@@ -137,12 +139,18 @@ async function creatorProfiles(
         ),
       ),
     );
+  const userAvatarUrls = await readUserAvatarUrls(
+    getDb(),
+    rows.flatMap((row) => (row.userId ? [row.userId] : [])),
+  );
   return new Map(
     rows.map((row) => [
       creatorKey(row.teamId, row.slackUserId),
       {
         email: row.emailVerified ? (row.email ?? undefined) : undefined,
-        avatarUrl: row.avatarUrl ?? undefined,
+        avatarUrl: row.userId
+          ? userAvatarUrls.get(row.userId)
+          : (row.avatarUrl ?? undefined),
       },
     ]),
   );

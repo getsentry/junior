@@ -2,11 +2,20 @@ import { z } from "zod";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
+import { parseAvatarUrl } from "@/chat/identities/avatar";
+
+// Slack serves custom profile photos from this host.
+const SLACK_AVATAR_HOSTS = ["avatars.slack-edge.com"];
 
 interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
   email?: string;
+  /**
+   * The photo that the person set. Slack's default photo is not included.
+   * Do not copy it onto the Actor.
+   */
+  avatarUrl?: string;
   /** Slack profile timezone. Do not copy it onto the Actor. */
   timezone?: string;
 }
@@ -19,6 +28,8 @@ const slackUserInfoSchema = z.object({
     profile: z
       .object({
         email: z.string().nullish(),
+        image_512: z.string().nullish(),
+        is_custom_image: z.boolean().nullish(),
         real_name: z.string().nullish(),
       })
       .optional(),
@@ -104,11 +115,15 @@ export async function lookupSlackUser(
     const payload = parsed.data;
     const userName = payload.user.name?.trim() || undefined;
     const fullName = payload.user.profile?.real_name?.trim() || undefined;
+    const avatarUrl = payload.user.profile?.is_custom_image
+      ? parseAvatarUrl(payload.user.profile.image_512, SLACK_AVATAR_HOSTS)
+      : undefined;
 
     const result: SlackUserLookupResult = {
       userName,
       fullName,
       email: payload.user.profile?.email?.trim() || undefined,
+      ...(avatarUrl ? { avatarUrl } : undefined),
       timezone: payload.user.tz?.trim() || undefined,
     };
     writeToCache(teamId, userId, result);

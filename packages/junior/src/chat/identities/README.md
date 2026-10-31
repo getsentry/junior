@@ -16,6 +16,23 @@ timezone to this column. The scheduler and plugin tools use it, through
 `ctx.users.resolveTimezone()`. See the Timezones section in
 `chat/scheduled-automations/README.md`.
 
+## Profile Photos
+
+`junior_identities.avatar_url` is the profile photo URL from the provider.
+Only the native identities save it. `identities/avatar.ts` owns the rules.
+
+- A Slack Turn saves the Slack photo of its Actor (`chat/slack/avatar.ts`).
+  Junior saves only a photo that the person set. Slack's default photo is
+  not saved, so the Google photo can show instead.
+- Each Google sign-in saves the Google `picture` claim.
+- Each save replaces the old photo. No photo clears it. A failed Slack lookup
+  keeps the old photo.
+- Junior saves only HTTPS URLs on the photo hosts of the provider. The
+  dashboard loads the URL directly and sends no referrer.
+- `readUserAvatarUrls()` picks one photo for each user: the Slack photo, then
+  the Google photo. Conversation participants, automation creators, and
+  `/api/me` use it.
+
 ## Actor Identities
 
 `actor.ts` resolves each runtime Actor to one Identity id.

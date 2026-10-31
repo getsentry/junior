@@ -136,7 +136,7 @@ async function upsertIdentityRecord(
       email: email ?? null,
       emailNormalized: emailNormalized ?? null,
       emailVerified: Boolean(identity.emailVerified && emailNormalized),
-      avatarUrl: null,
+      avatarUrl: identity.avatarUrl ?? null,
       metadata: identity.metadata ?? null,
       createdAt: dateFromMs(nowMs),
       updatedAt: dateFromMs(nowMs),
@@ -159,7 +159,11 @@ async function upsertIdentityRecord(
         email: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.email}, excluded.email) when excluded.email_verified then excluded.email else coalesce(${juniorIdentities.email}, excluded.email) end`,
         emailNormalized: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) when excluded.email_verified then excluded.email_normalized else coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) end`,
         emailVerified: sql`${juniorIdentities.emailVerified} OR excluded.email_verified`,
-        avatarUrl: sql`coalesce(${juniorIdentities.avatarUrl}, excluded.avatar_url)`,
+        // The provider's latest photo wins. Without one, keep the saved photo.
+        avatarUrl:
+          identity.avatarUrl === undefined
+            ? sql`${juniorIdentities.avatarUrl}`
+            : sql`excluded.avatar_url`,
         metadata: sql`coalesce(${juniorIdentities.metadata}, excluded.metadata_json)`,
         updatedAt: sql`excluded.updated_at`,
       },
@@ -322,7 +326,12 @@ export async function deleteProviderIdentityForUser(
  */
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
-  account: { displayName?: string; email: string; subject: string },
+  account: {
+    avatarUrl?: string;
+    displayName?: string;
+    email: string;
+    subject: string;
+  },
   nowMs: number = Date.now(),
 ): Promise<StoredIdentity> {
   const stored = await upsertIdentity(
@@ -334,6 +343,8 @@ export async function recordGoogleSignIn(
       email: account.email,
       emailVerified: true,
       displayName: account.displayName,
+      // Each sign-in has the current photo, so a missing photo clears it.
+      avatarUrl: account.avatarUrl ?? null,
     },
     nowMs,
   );

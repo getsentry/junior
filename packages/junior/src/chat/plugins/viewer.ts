@@ -9,6 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { findActorIdentityId } from "@/chat/identities/actor";
+import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -132,6 +133,13 @@ export async function updateViewerDisplayNameFromSql(
     .returning();
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
+}
+
+/** Read the profile photo of one canonical user: Slack, then Google. */
+export async function readViewerAvatarUrl(
+  userId: string,
+): Promise<string | undefined> {
+  return (await readUserAvatarUrls(getDb(), [userId])).get(userId);
 }
 
 /** Update one canonical user's display name. */

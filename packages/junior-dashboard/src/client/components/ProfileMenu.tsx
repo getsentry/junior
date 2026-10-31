@@ -18,6 +18,7 @@ import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
@@ -74,12 +75,16 @@ export function ProfileMenu({
   );
 
   const avatar = (
-    <span
-      aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-    >
-      {initials(identity.user.name, email)}
-    </span>
+    <Avatar aria-hidden="true" className="size-8 border-0 shadow-black/40">
+      <AvatarImage
+        alt=""
+        referrerPolicy="no-referrer"
+        src={identity.user.avatarUrl}
+      />
+      <AvatarFallback className="font-bold tracking-wide">
+        {initials(identity.user.name, email)}
+      </AvatarFallback>
+    </Avatar>
   );
 
   const identityBlock = (

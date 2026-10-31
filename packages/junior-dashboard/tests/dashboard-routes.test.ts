@@ -5,21 +5,26 @@ import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import type { DashboardSession } from "../src/auth";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
-const { resolveViewerUser, updateViewerDisplayName } = vi.hoisted(() => ({
-  resolveViewerUser: vi.fn(async (email: string) => ({
-    email,
-    id: `user:${email}`,
-    identities: [] as [],
-  })),
-  updateViewerDisplayName: vi.fn(async (id: string, displayName: string) => ({
-    displayName,
-    email: id.slice("user:".length),
-    id,
-    identities: [] as [],
-  })),
-}));
+const { readViewerAvatarUrl, resolveViewerUser, updateViewerDisplayName } =
+  vi.hoisted(() => ({
+    readViewerAvatarUrl: vi.fn(
+      async (): Promise<string | undefined> => undefined,
+    ),
+    resolveViewerUser: vi.fn(async (email: string) => ({
+      email,
+      id: `user:${email}`,
+      identities: [] as [],
+    })),
+    updateViewerDisplayName: vi.fn(async (id: string, displayName: string) => ({
+      displayName,
+      email: id.slice("user:".length),
+      id,
+      identities: [] as [],
+    })),
+  }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
 }));
@@ -534,6 +539,9 @@ describe("dashboard routes", () => {
   });
 
   it("returns the signed-in identity", async () => {
+    readViewerAvatarUrl.mockResolvedValueOnce(
+      "https://avatars.slack-edge.com/person_512.jpg",
+    );
     const app = dashboard({
       session: {
         token: "secret-session-token",
@@ -549,12 +557,14 @@ describe("dashboard routes", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
+        avatarUrl: "https://avatars.slack-edge.com/person_512.jpg",
         email: "person@sentry.io",
         emailVerified: true,
         isAdmin: false,
         name: "Dashboard User",
       },
     });
+    expect(readViewerAvatarUrl).toHaveBeenCalledWith("user:person@sentry.io");
   });
 
   it("returns safe dashboard config signals", async () => {

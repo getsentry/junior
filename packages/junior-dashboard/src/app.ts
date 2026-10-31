@@ -4,6 +4,7 @@ import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
   type ConversationWorkQueue,
@@ -569,11 +570,18 @@ export function createDashboardApp(
       version: JUNIOR_VERSION,
     });
   });
-  app.get("/api/me", (c) => {
+  // Mock reporting has no SQL identities, so it has no profile photos.
+  const viewerAvatarUrl = async (userId: string | undefined) =>
+    userId && !options.mockConversations
+      ? await readViewerAvatarUrl(userId)
+      : undefined;
+  app.get("/api/me", async (c) => {
     const session = c.get("authSession");
     const viewer = c.get("viewer");
+    const avatarUrl = await viewerAvatarUrl(viewer?.id);
     return jsonResponse(dashboardIdentitySchema, {
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: viewer?.isAdmin === true,
@@ -632,8 +640,10 @@ export function createDashboardApp(
         { status: 404 },
       );
     }
+    const avatarUrl = await viewerAvatarUrl(updated.id);
     return jsonResponse(dashboardIdentitySchema, {
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: updated.isAdmin === true,

@@ -6,7 +6,7 @@
  * stays private here, so it can change without changing callers.
  */
 import { and, eq } from "drizzle-orm";
-import type { Actor } from "@/chat/actor";
+import type { Actor, SlackActor } from "@/chat/actor";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities } from "@/db/schema";
 import { normalizeIdentityEmail, type IdentityUpsert } from "./identity";
@@ -76,6 +76,17 @@ export async function resolveActorIdentityId(
 ): Promise<string | undefined> {
   const key = identityKey(actor);
   return key ? (await upsertIdentity(executor, key, nowMs)).id : undefined;
+}
+
+/** Save the profile photo on the Identity of one Slack Actor. Null clears it. */
+export async function saveActorAvatar(
+  executor: JuniorSqlDatabase,
+  actor: SlackActor,
+  avatarUrl: string | null,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const key = identityKey(actor);
+  if (key) await upsertIdentity(executor, { ...key, avatarUrl }, nowMs);
 }
 
 /** Find the stored Identity id for one Actor without writing. */

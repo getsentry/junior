@@ -12,6 +12,7 @@ import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
+import { parseAvatarUrl } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
@@ -19,6 +20,8 @@ import { isAllowedDomain, readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+// Google serves the `picture` claim from these hosts.
+const GOOGLE_AVATAR_HOSTS = ["googleusercontent.com"];
 
 // Claims Junior reads from the Google ID token. Google sets `hd` only for
 // Google Workspace accounts, so it proves the account belongs to the domain.
@@ -228,6 +231,7 @@ function createBetterAuth(config: SignInAuthConfig) {
           email,
           subject: google.accountId,
           displayName: created.user.name || undefined,
+          avatarUrl: parseAvatarUrl(created.user.image, GOOGLE_AVATAR_HOSTS),
         });
       }),
     },

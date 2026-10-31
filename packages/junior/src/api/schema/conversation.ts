@@ -122,6 +122,8 @@ export const acceptedConversationMessageSchema = z
 
 export const actorIdentitySchema = z
   .object({
+    /** Profile photo: the person's Slack photo, then their Google photo. */
+    avatarUrl: z.string().url().optional(),
     email: z.string().optional(),
     fullName: z.string().optional(),
     slackUserId: z.string().optional(),
