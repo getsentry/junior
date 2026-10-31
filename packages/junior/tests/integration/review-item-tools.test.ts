@@ -172,6 +172,20 @@ describe("review item tools", () => {
     await expect(
       execute(other.add, { ...notice, assignees: ["ben@example.com"] }),
     ).rejects.toThrow("Another open item uses this `dedupe_key`");
+    // A private Conversation cannot reuse the key of an item that other
+    // Conversations can read, because the update keeps their links.
+    await execute(other.add, {
+      ...notice,
+      dedupe_key: "shared-key",
+      assignees: ["everyone"],
+    });
+    await expect(
+      execute(owner.add, {
+        ...notice,
+        dedupe_key: "shared-key",
+        assignees: ["ana@example.com"],
+      }),
+    ).rejects.toThrow("Use a different key.");
     // Nor can he link a private Conversation that he cannot see.
     await expect(
       execute(other.add, {

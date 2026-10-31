@@ -127,6 +127,41 @@ async function linkedVisibility(
   return visibility;
 }
 
+/**
+ * Stop a dedupe key from moving private content to Conversations that the
+ * agent did not choose. An update keeps every link of the open item, so new
+ * content from a private Conversation would reach the readers of those
+ * links. Links from the same Automation are allowed: its earlier runs added
+ * them.
+ */
+async function requireNoPrivateReach(
+  scope: ActorScope,
+  context: ReviewItemToolContext,
+  existing: ReviewItem,
+  input: { conversation_ids?: readonly string[] | null },
+): Promise<void> {
+  if (
+    scope.reader.automationId &&
+    existing.automationId === scope.reader.automationId
+  ) {
+    return;
+  }
+  const chosen = new Set([
+    context.conversationId,
+    ...(input.conversation_ids ?? []),
+  ]);
+  if (existing.conversationIds.every((id) => chosen.has(id))) return;
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [context.conversationId],
+    scope.user,
+  );
+  if (access.get(context.conversationId)?.visibility === "public") return;
+  throw new ToolInputError(
+    "Another open item uses this `dedupe_key` in other Conversations. Use a different key.",
+  );
+}
+
 function requireEveryoneAllowed(
   visibility: ReviewItemVisibility,
   everyone: boolean,
@@ -255,6 +290,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           ...(input.conversation_ids ?? []),
         ]),
       ];
+      if (existing) {
+        await requireNoPrivateReach(scope, context, existing, input);
+      }
       const visibility = await linkedVisibility(
         scope,
         conversationIds,

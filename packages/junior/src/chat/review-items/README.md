@@ -28,6 +28,10 @@ behavior.
   item. The update replaces the content and the assignees. It keeps every
   linked Conversation and adds the new one.
 - After an item closes, the same key can start a new item.
+- An agent in a private Conversation cannot reuse the key of an item that
+  links other Conversations it did not name. The update would show the
+  private content to the readers of those links. A later run of the same
+  Automation can still reuse its key.
 
 ## Visibility
 
