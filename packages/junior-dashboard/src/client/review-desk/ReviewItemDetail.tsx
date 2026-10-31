@@ -7,6 +7,7 @@ import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
+import { useLinkedConversationTitles } from "./queries";
 import { assigneeLabel, reviewItemStatusLabel } from "./reviewItemFormat";
 
 function Fact(props: { children: ReactNode; label: string }) {
@@ -24,6 +25,7 @@ function Fact(props: { children: ReactNode; label: string }) {
 export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
   const { item } = props;
   const subject = item.subject;
+  const conversationTitles = useLinkedConversationTitles(item.conversationIds);
   return (
     <article className="grid min-w-0 content-start gap-5">
       <header className="grid gap-1.5">
@@ -86,13 +88,24 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
         {item.conversationIds.length > 0 ? (
           <Fact label="Linked Conversations">
             <ul className="m-0 grid list-none gap-0.5 p-0">
-              {item.conversationIds.map((conversationId) => (
-                <li className="truncate font-mono text-xs" key={conversationId}>
-                  <Link to={conversationPath(conversationId)}>
-                    {conversationId}
-                  </Link>
-                </li>
-              ))}
+              {item.conversationIds.map((conversationId, index) => {
+                const title = conversationTitles[index];
+                return (
+                  <li
+                    className={
+                      title ? "truncate" : "truncate font-mono text-xs"
+                    }
+                    key={conversationId}
+                  >
+                    <Link
+                      title={conversationId}
+                      to={conversationPath(conversationId)}
+                    >
+                      {title ?? conversationId}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </Fact>
         ) : null}

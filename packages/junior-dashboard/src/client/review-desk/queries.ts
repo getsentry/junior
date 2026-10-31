@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import {
   keepPreviousData,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
+  conversationDetailReportSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemSchema,
@@ -14,6 +16,7 @@ import {
   type ReviewItemActionBody,
 } from "@sentry/junior/api/schema";
 
+import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
 /** Review desk views. Each shows open items, or archived ones. */
@@ -63,6 +66,30 @@ export function useReviewItemData(id: string | undefined) {
       ),
     retry: false,
   });
+}
+
+/**
+ * Read the titles of the Conversations linked to an item. Each read asks for
+ * one event only. A Conversation that the viewer cannot read has no title.
+ */
+export function useLinkedConversationTitles(
+  conversationIds: readonly string[],
+): (string | undefined)[] {
+  return useQueries({
+    queries: conversationIds.map((conversationId) => ({
+      queryKey: ["dashboard", "conversation-title", conversationId],
+      queryFn: async ({ signal }: { signal: AbortSignal }) =>
+        conversationDetailTitle(
+          await fetchDashboardJson(
+            conversationDetailReportSchema,
+            `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
+            signal,
+          ),
+        ) ?? null,
+      retry: false,
+      staleTime: 5 * 60_000,
+    })),
+  }).map((query) => query.data ?? undefined);
 }
 
 /** Count the open Review items assigned to the viewer, for the nav. */
