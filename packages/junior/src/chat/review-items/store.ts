@@ -1,5 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import type { User } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -307,12 +318,15 @@ export async function updateReviewItemContent(
 }
 
 /**
- * Close one open Review item as an agent. Return false when the item was
+ * Close one open Review item. `closedByUserId` is the person who closed it,
+ * and it is unset when an agent closes it. Return false when the item was
  * already closed, so only the first close wins.
  */
 export async function closeReviewItem(
   db: JuniorDatabase,
   input: {
+    answer?: UserInputAnswer;
+    closedByUserId?: string;
     id: string;
     nowMs: number;
     reason?: string;
@@ -323,8 +337,10 @@ export async function closeReviewItem(
   const updated = await db
     .update(juniorReviewItems)
     .set({
+      answer: input.answer ?? null,
       closeReason: input.reason ?? null,
       closedAt: now,
+      closedByUserId: input.closedByUserId ?? null,
       status: input.status,
       updatedAt: now,
     })
@@ -336,6 +352,36 @@ export async function closeReviewItem(
     )
     .returning({ id: juniorReviewItems.id });
   return updated.length > 0;
+}
+
+/**
+ * Make one User the only assignee of an open Review item. Return false when
+ * the item is closed.
+ */
+export async function takeReviewItem(
+  db: JuniorDatabase,
+  input: { id: string; nowMs: number; userId: string },
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(juniorReviewItems)
+      .set({ assignedToEveryone: false, updatedAt: new Date(input.nowMs) })
+      .where(
+        and(
+          eq(juniorReviewItems.id, input.id),
+          eq(juniorReviewItems.status, "open"),
+        ),
+      )
+      .returning({ id: juniorReviewItems.id });
+    if (!updated[0]) return false;
+    await tx
+      .delete(juniorReviewItemAssignees)
+      .where(eq(juniorReviewItemAssignees.itemId, input.id));
+    await tx
+      .insert(juniorReviewItemAssignees)
+      .values({ itemId: input.id, userId: input.userId });
+    return true;
+  });
 }
 
 /**
@@ -358,6 +404,26 @@ function assignedTo(userId: string): SQL {
 
 function linkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorReviewItemConversations} where ${juniorReviewItemConversations.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemConversations.conversationId} = ${conversationId})`;
+}
+
+/**
+ * The reader for one person: items assigned to them, and public items in the
+ * provider tenants of their identities.
+ */
+export function reviewItemReaderForUser(user: User): ReviewItemReader {
+  return {
+    tenants: user.identities.flatMap((identity) =>
+      identity.providerTenantId
+        ? [
+            {
+              provider: identity.provider,
+              providerTenantId: identity.providerTenantId,
+            },
+          ]
+        : [],
+    ),
+    userId: user.id,
+  };
 }
 
 /** Return whether two tenants are the same. Two missing tenants match. */
@@ -421,16 +487,16 @@ export interface ReviewItemFilters {
   automationId?: string;
   conversationId?: string;
   limit: number;
+  /** Words to find in the title or body. */
+  query?: string;
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
 
-/** Find the Review items that a reader can see, newest change first. */
-export async function searchReviewItems(
-  db: JuniorDatabase,
+function searchConditions(
   reader: ReviewItemReader,
-  filters: ReviewItemFilters,
-): Promise<ReviewItem[]> {
+  filters: Omit<ReviewItemFilters, "limit">,
+): SQL[] {
   const conditions: SQL[] = [
     visibleTo(reader),
     inArray(juniorReviewItems.status, [...filters.statuses]),
@@ -451,10 +517,41 @@ export async function searchReviewItems(
         : assignedTo(filters.assignee.userId),
     );
   }
+  if (filters.query) {
+    const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
+    conditions.push(
+      or(
+        ilike(juniorReviewItems.title, pattern),
+        ilike(juniorReviewItems.body, pattern),
+      )!,
+    );
+  }
+  return conditions;
+}
+
+/** Count the Review items that a reader can see and that match filters. */
+export async function countReviewItems(
+  db: JuniorDatabase,
+  reader: ReviewItemReader,
+  filters: Omit<ReviewItemFilters, "limit">,
+): Promise<number> {
+  const rows = await db
+    .select({ count: count() })
+    .from(juniorReviewItems)
+    .where(and(...searchConditions(reader, filters)));
+  return rows[0]?.count ?? 0;
+}
+
+/** Find the Review items that a reader can see, newest change first. */
+export async function searchReviewItems(
+  db: JuniorDatabase,
+  reader: ReviewItemReader,
+  filters: ReviewItemFilters,
+): Promise<ReviewItem[]> {
   const rows = await db
     .select()
     .from(juniorReviewItems)
-    .where(and(...conditions))
+    .where(and(...searchConditions(reader, filters)))
     .orderBy(desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id))
     .limit(filters.limit);
   return await hydrate(db, rows);

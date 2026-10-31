@@ -59,3 +59,35 @@ behavior.
 tools in the `review-desk` source (`chat/tools/review-items.ts`). A child
 agent cannot use them. It reports to its parent with `reportBlocked`, and
 the parent adds the item.
+
+## Person actions
+
+`actions.ts` owns what a person can do. The review desk API
+(`api/review-items/routes.ts`) calls it.
+
+- An assigned User can act on an open item. Anyone who can see the item can
+  act when it is assigned to Everyone or when it has no assignees.
+- **Take** makes the person the only assignee. The item stays open.
+- **Submit** saves the answer to an action item and marks it `done`.
+- **Complete** marks a notice `done`. An action item needs an answer, so it
+  cannot be completed.
+- **Dismiss** marks any item `dismissed`.
+- The first submit, complete, or dismiss closes the item for every assignee.
+  The item records who closed it and when. A retry of the same close
+  succeeds and sends missing messages again.
+
+## Messages to linked Conversations
+
+`messages.ts` tells linked Conversations about a change. Each message starts
+a new Turn.
+
+- A person action goes to every open linked Conversation. It is a web
+  Message from that person, so it has the authority of that person, like a
+  reply in Slack. A Conversation that does not take web Messages gets an
+  Event instead.
+- An agent close goes to every other open linked Conversation as an Event.
+  It does not give user approval.
+- A Conversation is open until Junior purges its transcript. Archive is
+  only a list state of one viewer, so it does not stop messages.
+- Each message has an idempotency key, so a retry does not add a second
+  message.

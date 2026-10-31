@@ -282,3 +282,13 @@ export type {
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
+export {
+  reviewItemActionSchema,
+  reviewItemCountSchema,
+  reviewItemListSchema,
+  reviewItemSchema,
+} from "./schema/review-item";
+export type {
+  ReviewItemActionBody,
+  ReviewItemPayload,
+} from "./schema/review-item";
