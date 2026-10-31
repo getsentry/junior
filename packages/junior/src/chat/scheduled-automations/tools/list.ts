@@ -21,6 +21,8 @@ import {
 
 function taskMatchesQuery(task: ScheduledAutomation, query: string): boolean {
   const normalized = query.toLowerCase();
+  // Users paste the automation ID or its dashboard URL to name one task.
+  if (normalized.includes(task.id.toLowerCase())) return true;
   return [
     task.title,
     task.task.text,
@@ -56,7 +58,9 @@ export function createSlackScheduleListAutomationsTool(
           .min(1)
           .max(200)
           .nullable()
-          .describe("Text to match in the requester's scheduled automations.")
+          .describe(
+            "Text, automation ID, or dashboard URL to match in the requester's scheduled automations.",
+          )
           .optional(),
       })
       .strict(),
