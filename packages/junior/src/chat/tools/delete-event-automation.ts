@@ -38,7 +38,11 @@ export function createDeleteEventAutomationTool(
       const { actor, destination } =
         requireEventAutomationSlackContext(context);
       const current = await requireToolAutomation(
-        slackToolViewer(await context.resolveActorIdentity?.(), destination),
+        slackToolViewer(
+          await context.resolveActorIdentity?.(),
+          destination,
+          actor.userId,
+        ),
         "event",
         automationId,
       );

@@ -109,7 +109,11 @@ export function createUpdateEventAutomationTool(
       const { actor, destination } =
         requireEventAutomationSlackContext(context);
       const candidate = await requireToolAutomation(
-        slackToolViewer(await context.resolveActorIdentity?.(), destination),
+        slackToolViewer(
+          await context.resolveActorIdentity?.(),
+          destination,
+          actor.userId,
+        ),
         "event",
         input.automationId,
       );
@@ -172,7 +176,8 @@ export function createUpdateEventAutomationTool(
         }
         saved = edited;
       }
-      if (input.status != null) {
+      // Setting the current status again changes nothing.
+      if (input.status != null && input.status !== saved.status) {
         const changed = await changeAutomationLifecycle(
           { ...candidate, task: saved },
           {

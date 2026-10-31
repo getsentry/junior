@@ -229,7 +229,11 @@ export async function getWritableTask(
   taskId: string,
 ) {
   const channel = requireActiveChannel(context);
-  const viewer = slackToolViewer(await context.users.resolveActor(), channel);
+  const viewer = slackToolViewer(
+    await context.users.resolveActor(),
+    channel,
+    requireActor(context, channel).slackUserId,
+  );
   return await requireToolAutomation(viewer, "scheduled", taskId);
 }
 

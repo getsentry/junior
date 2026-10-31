@@ -87,6 +87,7 @@ export function createSlackScheduleSearchAutomationsTool(
       const viewer = slackToolViewer(
         await context.users.resolveActor(),
         channel,
+        actor.slackUserId,
       );
       const { rows, total } = await readAutomationCollection(
         viewer,

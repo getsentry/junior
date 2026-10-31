@@ -17,17 +17,20 @@ type ToolAutomation<K extends TaskCandidate["kind"]> = Extract<
 >;
 
 /**
- * Build the viewer for a tool call in one Slack channel. A Slack person with
- * no linked Junior user still has their stored Slack identity.
+ * Build the viewer for a tool call by one Slack user in one Slack channel. A
+ * Slack person with no linked Junior user still has their stored Slack
+ * identity.
  */
 export function slackToolViewer(
   resolved: { identity: Identity; user?: User } | undefined,
   channel: SlackDestination,
+  slackUserId: string,
 ): AutomationViewer {
   return {
     identities:
       resolved?.user?.identities ?? (resolved ? [resolved.identity] : []),
     channel,
+    slackUserId,
   };
 }
 

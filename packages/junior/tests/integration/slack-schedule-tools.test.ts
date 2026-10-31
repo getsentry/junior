@@ -454,6 +454,21 @@ describe("Slack schedule tools", () => {
     expect(stored).toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
     });
+
+    // The Slack creator stays the creator when the identity lookup is empty.
+    const noIdentity = createContext({
+      channelId: "C999",
+      users: { resolveActor: async () => undefined },
+    });
+    await expect(
+      executeTool(createSlackScheduleUpdateAutomationTool(noIdentity), {
+        automationId: created.automation.id,
+        instruction: "Creator edit without an identity lookup.",
+        outcomes: [],
+      }),
+    ).resolves.toMatchObject({
+      automation: { credentialMode: "creator", isCreator: true },
+    });
   });
 
   it("creates clear recurring tasks without a second confirmation", async () => {

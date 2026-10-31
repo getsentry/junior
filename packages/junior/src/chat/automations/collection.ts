@@ -42,11 +42,20 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
   const automation = juniorAutomations;
   const destination = juniorDestinations;
   const isScheduled = eq(automation.kind, "scheduled");
-  // Both kinds belong to the Junior identity that created them.
-  const owned = inArray(
-    automation.creatorIdentityId,
-    viewer.identities.map((identity) => identity.id),
-  );
+  // Both kinds belong to the Junior identity that created them. Keep this
+  // aligned with `isAutomationCreator`.
+  const owned = or(
+    inArray(
+      automation.creatorIdentityId,
+      viewer.identities.map((identity) => identity.id),
+    ),
+    viewer.channel && viewer.slackUserId
+      ? and(
+          eq(automation.teamId, viewer.channel.teamId),
+          eq(automation.creatorSlackUserId, viewer.slackUserId),
+        )
+      : undefined,
+  )!;
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
   const sharedToViewer = and(
     ne(automation.status, "completed"),

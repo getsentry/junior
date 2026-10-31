@@ -763,6 +763,10 @@ describe("event automations", () => {
       task: { text: "Change a public task from another channel." },
     });
     await update({ status: "active" });
+    // Setting the current status again changes nothing.
+    await expect(update({ status: "active" })).resolves.toMatchObject({
+      automation: { status: "active" },
+    });
     await execute(
       createDeleteEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
       { automationId: created.automation.id },
