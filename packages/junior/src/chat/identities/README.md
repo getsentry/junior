@@ -16,6 +16,23 @@ timezone to this column. The scheduler and plugin tools use it, through
 `ctx.users.resolveTimezone()`. See the Timezones section in
 `chat/scheduled-automations/README.md`.
 
+## Actor Identities
+
+`actor.ts` resolves each runtime Actor to one Identity id.
+`resolveActorIdentityId` saves the Identity and returns its id.
+`findActorIdentityId` only reads. The Conversation store, OAuth, the viewer,
+and message events use these functions, so they find the same Identity for
+the same person. The key for each Actor is private to `actor.ts`.
+
+- A Slack Actor is the Slack Identity in its workspace.
+- A web Actor is the `junior` Identity keyed by its verified email.
+- Every system Actor and every local Actor is the one system Identity: kind
+  `system`, provider `junior`, an empty tenant, and subject `system`. The
+  system Actor name is provenance. It is not part of the key.
+
+A Conversation write without an Actor still uses a legacy system Identity
+from its Source, with the subject `scheduler`, `local-cli`, or `event`.
+
 ## Native Identities
 
 Core owns two identity providers: `slack` and `google`. Other checks trust
