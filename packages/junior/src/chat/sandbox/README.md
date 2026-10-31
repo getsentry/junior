@@ -240,6 +240,11 @@ Vercel Sandbox, and some workloads do not behave the same. Set
 - When the Docker host itself is behind a TLS proxy, such as inside a Vercel
   Sandbox, set `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` to that proxy's CA file.
   Each sandbox then trusts it too.
+- Docker snapshots install only a small base: `spal-release`, `ripgrep`, `gh`
+  and `jq`, when a plugin or the runtime declares them. They run no
+  postinstall commands. Other plugin CLIs, browsers, and Docker inside the
+  sandbox are not installed. The agent installs other tools with `sudo` when
+  it needs them. Vercel snapshots still install every declared dependency.
 
 ### Limitations
 

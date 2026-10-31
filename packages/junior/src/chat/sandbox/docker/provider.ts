@@ -17,7 +17,7 @@ import {
   commitSnapshot,
   SNAPSHOT_REPOSITORY,
 } from "@/chat/sandbox/docker/session";
-import type { SandboxProvider } from "@/chat/sandbox/provider";
+import type { SandboxProvider, SnapshotRuntime } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
   WorkspaceSnapshotBuilder,
@@ -157,6 +157,33 @@ async function deleteWorkspaceSnapshotBuilders(
   if (failures.length > 0) throw failures[0];
 }
 
+// Docker sandboxes are for local development. They install only these tools,
+// so the snapshot stays small and builds fast. The agent installs other tools
+// when it needs them. `spal-release` adds the repository for `ripgrep`.
+const DOCKER_SNAPSHOT_PACKAGES = new Set([
+  "spal-release",
+  "ripgrep",
+  "gh",
+  "jq",
+]);
+
+/**
+ * Keep only the small Docker base from the declared runtime dependencies.
+ *
+ * Postinstall commands are skipped, because they often download large tools.
+ * A base package that no plugin declares is not installed.
+ */
+function selectSnapshotRuntime(runtime: SnapshotRuntime): SnapshotRuntime {
+  return {
+    dependencies: runtime.dependencies.filter(
+      (dependency) =>
+        "package" in dependency &&
+        DOCKER_SNAPSHOT_PACKAGES.has(dependency.package),
+    ),
+    postinstall: [],
+  };
+}
+
 /** Local Docker implementation of the sandbox provider contract. */
 export const dockerSandboxProvider: SandboxProvider = {
   errors: dockerSandboxErrors,
@@ -165,4 +192,5 @@ export const dockerSandboxProvider: SandboxProvider = {
   createWorkspaceSnapshotBuilder,
   getWorkspaceSnapshotBuilder,
   deleteWorkspaceSnapshotBuilders,
+  selectSnapshotRuntime,
 };
