@@ -25,10 +25,21 @@ const REQUEST = {
   ],
 };
 
+/** A person signed in to the dashboard, linked to Slack workspace T123. */
 async function user(email: string): Promise<User> {
   const resolved = await resolveViewerUserFromSql(getDb(), email);
   if (!resolved) throw new Error(`no user for ${email}`);
-  return resolved;
+  return {
+    ...resolved,
+    identities: [
+      {
+        id: `identity:slack:${email}`,
+        provider: "slack",
+        providerSubjectId: `U-${email}`,
+        providerTenantId: "T123",
+      },
+    ],
+  };
 }
 
 async function slackConversation(conversationId: string): Promise<void> {
@@ -103,6 +114,11 @@ describe("review item actions API", () => {
     expect(anaCount).toEqual({ mine: 1 });
     const calList = await (await api(fixture, cal).get("?view=all")).json();
     expect(calList.items).toMatchObject([{ id, canAct: false }]);
+    // A person outside the Slack workspace does not see the public item.
+    const outsider = { ...cal, identities: [] };
+    expect(
+      (await (await api(fixture, outsider).get("?view=all")).json()).items,
+    ).toEqual([]);
     expect(
       (await api(fixture, cal).act(id, { action: "complete" })).status,
     ).toBe(403);
