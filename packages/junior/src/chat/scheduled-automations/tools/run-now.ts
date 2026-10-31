@@ -25,19 +25,23 @@ export function createSlackScheduleRunAutomationNowTool(
       readOnlyHint: false,
     },
     description:
-      "Queue an existing active scheduled task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Use only task IDs returned for this conversation.",
+      "Queue an existing active scheduled task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Anyone in the Slack channel where it delivers can run it. From another channel in the same workspace, only its creator can run it.",
     executionMode: "sequential",
     inputSchema: z.object({
       automationId: z
         .string()
         .min(1)
         .describe(
-          "ID of the active task to run now. Must be from this active Slack conversation.",
+          "ID of the active scheduled automation to run now, from slackScheduleListAutomations or its dashboard URL.",
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async ({ automationId }) => {
-      const lookup = await getWritableTask({ context, taskId: automationId });
+      const lookup = await getWritableTask({
+        action: "lifecycle",
+        context,
+        taskId: automationId,
+      });
       if (lookup.status !== "active") {
         throwToolInputError(
           "Scheduled automation must be active before it can be run now.",

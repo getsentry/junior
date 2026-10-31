@@ -13,7 +13,7 @@ import {
   type SchedulerToolContext,
 } from "../tool-support";
 
-/** Create a tool that removes a scheduled automation from the active Slack conversation. */
+/** Create a tool that deletes a scheduled automation. */
 export function createSlackScheduleDeleteAutomationTool(
   context: SchedulerToolContext,
 ) {
@@ -26,21 +26,25 @@ export function createSlackScheduleDeleteAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Delete one scheduled task from the active Slack conversation. Use only task IDs returned for this conversation. Do not delete schedules from threads, other channels, or another user's DM.",
+      "Delete one scheduled automation. Anyone in the Slack channel where it delivers can delete it. From another channel in the same workspace, only its creator can delete it.",
     executionMode: "sequential",
     inputSchema: z.object({
       automationId: z
         .string()
         .min(1)
         .describe(
-          "ID of the task to delete. Must be from this active Slack conversation.",
+          "ID of the scheduled automation to delete, from slackScheduleListAutomations or its dashboard URL.",
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema.extend({
       removedCards: z.array(removedCardSchema),
     }),
     execute: async ({ automationId }) => {
-      const lookup = await getWritableTask({ context, taskId: automationId });
+      const lookup = await getWritableTask({
+        action: "lifecycle",
+        context,
+        taskId: automationId,
+      });
 
       const next: ScheduledAutomation = {
         ...lookup,

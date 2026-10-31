@@ -21,6 +21,7 @@ import {
   normalizeStatus,
   requireActiveChannel,
   requireActor,
+  requireScheduledAutomationAccess,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
@@ -41,7 +42,7 @@ export function createSlackScheduleUpdateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      'Update a scheduled automation. Set destination to "here" to move it to the active Slack channel.',
+      'Update a scheduled automation. Anyone in the Slack channel where it delivers can update it. From another channel in the same workspace, its creator, or anyone who can read its public channel, can update it, but only the creator can change status. Set destination to "here" to move it to the active Slack channel; only the creator can move it.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -114,10 +115,14 @@ export function createSlackScheduleUpdateAutomationTool(
       const alreadyHere = sameDestination(lookup, activeDestination);
       const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
 
-      if (!alreadyHere && !moveDestination) {
-        throwToolInputError(
-          'Scheduled automation can only be managed from the Slack destination where it currently delivers. Set destination to "here" to move it into this conversation.',
-        );
+      // A move is creator-only below, so it does not need dashboard access.
+      if (!moveDestination) {
+        await requireScheduledAutomationAccess({
+          action: input.status === undefined ? "edit" : "lifecycle",
+          context,
+          destination: activeDestination,
+          task: lookup,
+        });
       }
       if (moveDestination && !isCreator) {
         throwToolInputError(

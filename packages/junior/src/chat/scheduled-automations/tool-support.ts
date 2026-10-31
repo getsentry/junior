@@ -20,6 +20,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
 import { sanitizeScheduledAutomationPrincipal } from "./identity";
 import { readScheduledAutomation } from "./tasks";
+import { resolveViewerTaskCandidate } from "@/chat/automations/read";
 import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
@@ -208,7 +209,7 @@ export function getConversationAccess(
   };
 }
 
-/** Keep scheduler management operations bound to the task's current Slack channel. */
+/** Return whether the task delivers to the active Slack channel. */
 export function sameDestination(
   task: ScheduledAutomation,
   destination: SlackDestination,
@@ -221,8 +222,50 @@ export function sameDestination(
   );
 }
 
-/** Look up a mutable task only after enforcing active-conversation ownership. */
+/**
+ * Tool actions mapped to dashboard access. `edit` is a form save. `lifecycle`
+ * covers status changes, run-now, and delete, which stay creator-only on the web.
+ */
+type ScheduledAutomationToolAction = "edit" | "lifecycle";
+
+/**
+ * Allow management from the delivery channel, or with dashboard access.
+ * Anyone in the channel where the task delivers can manage it. Elsewhere in
+ * the same workspace, the dashboard rule applies: owners and readers of a
+ * public Destination can edit, and only the creator can take lifecycle actions.
+ */
+export async function requireScheduledAutomationAccess(args: {
+  action: ScheduledAutomationToolAction;
+  context: SchedulerToolContext;
+  destination: SlackDestination;
+  task: ScheduledAutomation;
+}): Promise<void> {
+  const { task, destination } = args;
+  if (task.destination.teamId !== destination.teamId) {
+    throwToolInputError(
+      "Scheduled automations can only be managed within the same Slack workspace.",
+    );
+  }
+  if (sameDestination(task, destination)) return;
+  const user = (await args.context.users.resolveActor())?.user;
+  const candidate = user
+    ? await resolveViewerTaskCandidate(user, task.id)
+    : undefined;
+  if (!candidate) {
+    throwToolInputError(
+      'Scheduled automation can only be managed from the Slack destination where it currently delivers, or by someone who can edit it in the Junior dashboard. Its creator can set destination to "here" to move it into this conversation.',
+    );
+  }
+  if (args.action === "lifecycle" && !candidate.ownedByViewer) {
+    throwToolInputError(
+      "Only the scheduled automation creator can change its status, run it now, or delete it outside the Slack destination where it delivers.",
+    );
+  }
+}
+
+/** Look up a mutable task only after enforcing tool management access. */
 export async function getWritableTask(args: {
+  action: ScheduledAutomationToolAction;
   context: SchedulerToolContext;
   taskId: string;
 }): Promise<ScheduledAutomation> {
@@ -230,16 +273,15 @@ export async function getWritableTask(args: {
 
   const task = await readScheduledAutomation(getDb(), args.taskId);
   if (!task || task.status === "deleted") {
-    throwToolInputError(
-      "Scheduled automation was not found in the active Slack conversation.",
-    );
+    throwToolInputError("Scheduled automation was not found.");
   }
 
-  if (!sameDestination(task, destination)) {
-    throwToolInputError(
-      "Scheduled automation can only be managed from the Slack destination where it currently delivers.",
-    );
-  }
+  await requireScheduledAutomationAccess({
+    action: args.action,
+    context: args.context,
+    destination,
+    task,
+  });
   return task;
 }
 

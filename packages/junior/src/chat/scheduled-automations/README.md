@@ -36,7 +36,8 @@ Do not put the timezone on the Actor. The Actor is stored with each message, and
 
 A scheduled Automation targets a Slack channel or direct message. It never targets a thread. A tool call from a thread uses the active channel as the Destination.
 
-Same-channel create/list/update/delete stay bound to the active Slack channel by default.
+Create always uses the active Slack channel. List shows the active channel by
+default.
 
 Cross-channel rehomes stay destination-first and reuse the existing tools:
 
@@ -45,6 +46,22 @@ Cross-channel rehomes stay destination-first and reuse the existing tools:
 3. `slackScheduleUpdateAutomation` with `destination: "here"` rehomes that existing task row into the active channel.
 
 Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
+
+## Management access
+
+`requireScheduledAutomationAccess` in `tool-support.ts` decides who can update,
+run, or delete a task from a tool:
+
+- Anyone in the channel where the task delivers can manage it.
+- From another channel in the same workspace, the dashboard rule applies.
+  `resolveViewerTaskCandidate` must find the task for the requester's linked
+  Junior user. That means the requester owns it, or can read its public
+  Destination.
+- Status changes, run-now, and delete are lifecycle actions. From another
+  channel, only the creator can take them, as on the dashboard.
+
+Creator-only field rules, such as credential mode and outcomes, apply
+everywhere.
 
 ## Pause and resume
 

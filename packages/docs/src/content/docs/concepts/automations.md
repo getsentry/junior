@@ -75,6 +75,7 @@ Each event automation can start at most 10 runs in a rolling minute. Set `limits
 - New automations start in the conversation where they were created; creators can later update their own automation so it delivers in another conversation they are currently talking in.
 - A automation may use its creator's connected account when access was delegated to that automation.
 - Only the creator can enable creator credential access or change a automation's destination.
+- Anyone in the destination conversation can manage a scheduled automation there. From another conversation, Junior uses the dashboard rules: the creator, and anyone who can read the automation's public channel, can edit it. Only the creator can pause, resume, run, or delete it from another conversation.
 - Event content is treated as data, not as a user instruction.
 - Action review still applies when required.
 

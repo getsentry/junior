@@ -972,25 +972,89 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("rejects edits from another active Slack conversation", async () => {
-    const context = createContext();
-    const created = (await createTask(context)) as {
+  it("allows dashboard access to manage tasks from another Slack channel", async () => {
+    const created = (await createTask(createContext())) as {
       automation: { id: string };
     };
+    const automationId = created.automation.id;
+    // The dashboard reads Destination visibility from the directory.
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C123:schedule-public",
+      destination: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        channelId: "C123",
+      },
+      nowMs: Date.now(),
+      visibility: "public",
+    });
+    const creatorElsewhere = createContext({ channelId: "C999" });
+    const readerElsewhere = createContext({
+      channelId: "C999",
+      actor: slackActor("U999"),
+    });
 
     await expect(
-      executeTool(
-        createSlackScheduleUpdateAutomationTool(
-          createContext({ channelId: "C999" }),
-        ),
-        {
-          automationId: created.automation.id,
-          instruction: "Wrong channel edit.",
+      executeTool(createSlackScheduleUpdateAutomationTool(creatorElsewhere), {
+        automationId,
+        schedule: {
+          kind: "recurring",
+          frequency: "daily",
+          time: "09:00",
+          timezone: "America/Los_Angeles",
         },
-      ),
-    ).rejects.toThrow(
-      'Scheduled automation can only be managed from the Slack destination where it currently delivers. Set destination to "here" to move it into this conversation.',
-    );
+      }),
+    ).resolves.toMatchObject({
+      automation: {
+        destination: { channel: "C123" },
+        schedule: "Every day at 09:00 (America/Los_Angeles)",
+      },
+    });
+    await expect(
+      executeTool(createSlackScheduleRunAutomationNowTool(creatorElsewhere), {
+        automationId,
+      }),
+    ).resolves.toMatchObject({
+      automation: { id: automationId, runNowAt: expect.any(String) },
+    });
+
+    // A public reader edits like the dashboard, but lifecycle stays creator-only.
+    await expect(
+      executeTool(createSlackScheduleUpdateAutomationTool(readerElsewhere), {
+        automationId,
+        instruction: "Team digest: Summarize open scheduler issues.",
+      }),
+    ).resolves.toMatchObject({
+      automation: {
+        instruction: "Team digest: Summarize open scheduler issues.",
+      },
+    });
+    const creatorOnly =
+      "Only the scheduled automation creator can change its status, run it now, or delete it outside the Slack destination where it delivers.";
+    await expect(
+      executeTool(createSlackScheduleUpdateAutomationTool(readerElsewhere), {
+        automationId,
+        status: "blocked",
+      }),
+    ).rejects.toThrow(creatorOnly);
+    await expect(
+      executeTool(createSlackScheduleRunAutomationNowTool(readerElsewhere), {
+        automationId,
+      }),
+    ).rejects.toThrow(creatorOnly);
+    await expect(
+      executeTool(createSlackScheduleDeleteAutomationTool(readerElsewhere), {
+        automationId,
+      }),
+    ).rejects.toThrow(creatorOnly);
+
+    await expect(
+      executeTool(createSlackScheduleDeleteAutomationTool(creatorElsewhere), {
+        automationId,
+      }),
+    ).resolves.toMatchObject({
+      automation: { id: automationId, status: "deleted" },
+    });
   });
 
   it("binds tasks to the raw conversation channel, not the assistant context channel", async () => {
@@ -1033,22 +1097,26 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("rejects management from a different conversation channel", async () => {
-    // A task created in Alice’s DM cannot be managed from Bob’s DM.
+  it("rejects management from another channel without dashboard access", async () => {
+    // A task created in Alice’s DM cannot be managed by Bob from Bob’s DM.
     const created = (await createTask(
       createContext({ channelId: "DALICE" }),
     )) as { automation: { id: string } };
+    const bob = createContext({ channelId: "DBOB", actor: slackActor("U999") });
+    const noAccess =
+      "Scheduled automation can only be managed from the Slack destination where it currently delivers, or by someone who can edit it in the Junior dashboard.";
 
     await expect(
-      executeTool(
-        createSlackScheduleDeleteAutomationTool(
-          createContext({ channelId: "DBOB" }),
-        ),
-        { automationId: created.automation.id },
-      ),
-    ).rejects.toThrow(
-      "Scheduled automation can only be managed from the Slack destination where it currently delivers.",
-    );
+      executeTool(createSlackScheduleUpdateAutomationTool(bob), {
+        automationId: created.automation.id,
+        instruction: "Wrong channel edit.",
+      }),
+    ).rejects.toThrow(noAccess);
+    await expect(
+      executeTool(createSlackScheduleDeleteAutomationTool(bob), {
+        automationId: created.automation.id,
+      }),
+    ).rejects.toThrow(noAccess);
   });
 
   it("allows another actor to manage tasks in the same Slack destination", async () => {
