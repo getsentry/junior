@@ -101,6 +101,15 @@ a new Turn.
   message. A retry of the same agent close, with the same status and
   reason, sends missing messages again.
 
+## Purge
+
+When Junior purges the transcript of a Conversation that is not public, it
+also deletes each Review item that the Conversation tree added. It deletes
+the Briefs of that tree in the same way (`chat/conversations/sql/purge.ts`).
+The assignees, links, and Slack card rows of the item go with it. Such an
+item is always private, because it holds private content. A public item
+stays after a purge, like a public Brief.
+
 ## Waiting on you
 
 A Conversation waits on a User when it has an open linked item that is
