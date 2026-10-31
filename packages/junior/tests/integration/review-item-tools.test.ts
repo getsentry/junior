@@ -2,6 +2,7 @@ import type { Identity, User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { closeReviewItem } from "@/chat/review-items/store";
 import {
   juniorAutomations,
   juniorConversationParticipants,
@@ -345,6 +346,23 @@ describe("review item tools", () => {
       dedupe_key: "digest",
     };
 
+    // A new run has no Actor and no people yet. It can still assign the
+    // creator of its Automation, but nobody else.
+    await conversation("slack:DRUN:1.000003", "DRUN", "private");
+    await user("ben@example.com");
+    const fresh = await execute(run("slack:DRUN:1.000003").add, {
+      ...notice,
+      dedupe_key: "digest-fresh",
+    });
+    expect(fresh.item.assignees).toEqual(["ana@example.com"]);
+    await expect(
+      execute(run("slack:DRUN:1.000003").add, {
+        ...notice,
+        assignees: ["ben@example.com"],
+        dedupe_key: "digest-other",
+      }),
+    ).rejects.toThrow("only to people in its Conversation");
+
     const added = await execute(run("slack:DRUN:1.000001").add, notice);
     // Ana took part only in the first run, which added the item.
     const again = await execute(run("slack:DRUN:1.000002").add, notice);
@@ -393,17 +411,28 @@ describe("review item tools", () => {
     await expect(
       execute(agent.update, { id: added.item.id, status: "done" }),
     ).rejects.toThrow("Give a `reason`");
-    const closed = await execute(agent.update, {
+    // The close committed, but its messages did not go out. A retry of the
+    // same close sends them.
+    await closeReviewItem(getDb(), {
       id: added.item.id,
-      status: "dismissed",
+      nowMs: Date.now(),
       reason: "no longer needed: pull request closed",
+      status: "dismissed",
     });
+    const retry = () =>
+      execute(agent.update, {
+        id: added.item.id,
+        status: "dismissed",
+        reason: "no longer needed: pull request closed",
+      });
+    await retry();
+    const closed = await retry();
     expect(closed.item).toMatchObject({
       status: "dismissed",
       closed_by: "agent",
       close_reason: "no longer needed: pull request closed",
     });
-    // Only the other linked Conversation hears about the close.
+    // Only the other linked Conversation hears about the close, once.
     const other = await getConversation({
       conversationId: "slack:CPUB:1.000002",
     });

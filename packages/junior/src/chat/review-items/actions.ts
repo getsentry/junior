@@ -152,8 +152,12 @@ export async function actOnReviewItem(args: {
         "Only an assignee can take this item.",
       );
     }
-    if (isOnlyAssignee(item, user.id)) return item;
-    if (!(await takeReviewItem(db, { id: item.id, nowMs, userId: user.id }))) {
+    // A retry after a failed send finds the User already the only assignee.
+    // It still sends: each take message has a key, so only missing ones go.
+    if (
+      !isOnlyAssignee(item, user.id) &&
+      !(await takeReviewItem(db, { id: item.id, nowMs, userId: user.id }))
+    ) {
       throw new ReviewItemActionError("conflict", "Review item is closed.");
     }
     const taken = await readReviewItemForUser(user, item.id);

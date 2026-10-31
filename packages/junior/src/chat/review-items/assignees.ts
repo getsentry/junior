@@ -4,7 +4,11 @@ import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import {
+  juniorAutomations,
+  juniorConversationParticipants,
+  juniorIdentities,
+} from "@/db/schema";
 
 /** Text that the agent writes to assign Everyone. */
 export const EVERYONE_ASSIGNEE = "everyone";
@@ -117,4 +121,21 @@ export async function conversationParticipantUserIds(
       ),
     );
   return new Set(rows.map((row) => row.userId));
+}
+
+/** Return the User who created an Automation, if Junior knows them. */
+export async function automationCreatorUserId(
+  db: JuniorDatabase,
+  automationId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorAutomations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorAutomations.creatorIdentityId),
+    )
+    .where(eq(juniorAutomations.id, automationId))
+    .limit(1);
+  return row?.userId ?? undefined;
 }

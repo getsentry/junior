@@ -8,6 +8,7 @@ import { getDb } from "@/chat/db";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
+  automationCreatorUserId,
   conversationParticipantUserIds,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
@@ -177,14 +178,17 @@ async function requireLinks(args: {
 
 /**
  * Check who a private item can go to. It cannot go to Everyone. Each User
- * must be the current Actor or a person in one of the given Conversations:
- * the current one and, for an existing item, the one that added it.
+ * must be the current Actor, a person in one of the given Conversations
+ * (the current one and, for an existing item, the one that added it), or
+ * the creator of the Automation that added the item. An Automation run
+ * often has no Actor and no people yet, and its creator wrote the work.
  */
 async function requireAssigneesAllowed(
   scope: ActorScope,
   conversationIds: readonly string[],
   visibility: ReviewItemVisibility,
   assignees: ResolvedAssignees,
+  automationId: string | undefined,
 ): Promise<void> {
   if (visibility === "public") return;
   if (assignees.everyone) {
@@ -192,7 +196,12 @@ async function requireAssigneesAllowed(
       "A private item cannot be assigned to Everyone. Assign Users instead.",
     );
   }
-  const others = assignees.userIds.filter((id) => id !== scope.user?.id);
+  const creatorId = automationId
+    ? await automationCreatorUserId(getDb(), automationId)
+    : undefined;
+  const others = assignees.userIds.filter(
+    (id) => id !== scope.user?.id && id !== creatorId,
+  );
   const inConversation = new Set<string>();
   for (const conversationId of new Set(conversationIds)) {
     for (const id of await conversationParticipantUserIds(
@@ -363,6 +372,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           : [context.conversationId],
         visibility,
         assignees,
+        existing ? existing.automationId : scope.reader.automationId,
       );
       const content: ReviewItemContent = {
         assignedToEveryone: assignees.everyone,
@@ -467,7 +477,17 @@ export function createUpdateReviewItemTool(
       const db = getDb();
       const scope = await actorScope(context);
       const item = await readableItem(input.id, scope);
-      if (item.status !== "open") {
+      const changesContent =
+        input.title || input.body || input.assignees || input.conversation_ids;
+      // A retry of the same agent close finds the item closed. It still sends
+      // the close: the message has a key, so only missing messages go.
+      const retriesClose =
+        item.status !== "open" &&
+        !changesContent &&
+        !item.closedBy &&
+        input.status === item.status &&
+        input.reason === item.closeReason;
+      if (item.status !== "open" && !retriesClose) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
       if (!canChange(item, scope)) {
@@ -478,8 +498,6 @@ export function createUpdateReviewItemTool(
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
       }
-      const changesContent =
-        input.title || input.body || input.assignees || input.conversation_ids;
       if (changesContent) {
         // The Conversation that added the item always stays linked.
         const conversationIds = [
@@ -513,6 +531,7 @@ export function createUpdateReviewItemTool(
             [context.conversationId, item.addedByConversationId],
             visibility,
             assignees,
+            item.automationId,
           );
         }
         const updated = await updateReviewItemContent(db, {
@@ -534,12 +553,14 @@ export function createUpdateReviewItemTool(
       }
       if (input.status && input.reason) {
         const nowMs = Date.now();
-        const closed = await closeReviewItem(db, {
-          id: item.id,
-          nowMs,
-          reason: input.reason,
-          status: input.status,
-        });
+        const closed =
+          retriesClose ||
+          (await closeReviewItem(db, {
+            id: item.id,
+            nowMs,
+            reason: input.reason,
+            status: input.status,
+          }));
         if (!closed) {
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }

@@ -38,8 +38,9 @@ behavior.
   public. It is `public` otherwise. No change makes a private item public.
 - A private item links only to the Conversation that added it, and to later
   runs of the same Automation. It cannot be assigned to Everyone. Each
-  assigned User must be the Actor, or a person in the current Conversation
-  or in the Conversation that added the item.
+  assigned User must be the Actor, a person in the current Conversation or
+  in the Conversation that added the item, or the creator of the Automation
+  that added the item. An Automation run often has no Actor and no people.
 - Each item stores the provider tenant, such as the Slack workspace, of the
   Conversation that added it. Every link must be in that tenant. A public
   item is visible only to readers in the same tenant. A Slack mention in
@@ -73,7 +74,8 @@ the parent adds the item.
 
 - An assigned User can act on an open item. Anyone who can see the item can
   act when it is assigned to Everyone or when it has no assignees.
-- **Take** makes the person the only assignee. The item stays open.
+- **Take** makes the person the only assignee. The item stays open. A
+  retry of a take sends missing messages again.
 - **Submit** saves the answer to an action item and marks it `done`.
 - **Complete** marks a notice `done`. An action item needs an answer, so it
   cannot be completed.
@@ -96,7 +98,8 @@ a new Turn.
 - A Conversation is open until Junior purges its transcript. Archive is
   only a list state of one viewer, so it does not stop messages.
 - Each message has an idempotency key, so a retry does not add a second
-  message.
+  message. A retry of the same agent close, with the same status and
+  reason, sends missing messages again.
 
 ## Waiting on you
 
@@ -130,8 +133,11 @@ opens a form. A notice shows Done. Each card also shows Dismiss.
 
 A click comes back through `chat/ingress/slack-review-item.ts`. It needs the
 same workspace and allowed domain checks as a Slack mention, and a Junior
-User linked to the Slack account. The thread of the card gets the action as
-Slack input from the person. The other linked Conversations get the usual
+User linked to the Slack account. The card row names the Conversation of
+the card, because an Automation run can own a thread under an id that is
+not a Slack thread id. That Conversation gets the action as Slack input
+from the person. A choice button carries its label. A click on a stale card
+whose label the item no longer offers changes nothing. The other linked Conversations get the usual
 messages. Only the click that closes the item adds input, so two fast
 clicks add one Turn. A click on a closed item tells the person and changes
 nothing.

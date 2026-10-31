@@ -1,5 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -94,6 +94,31 @@ async function postCard(
       throw error;
     }
   });
+}
+
+/**
+ * Return the Conversation that a card belongs to. A card posts into the
+ * thread of its Conversation routing, and an Automation run can own a
+ * thread with an id that is not a Slack thread id. So the card row, not the
+ * thread, names the Conversation.
+ */
+export async function readSlackReviewItemCardConversationId(card: {
+  channelId: string;
+  itemId: string;
+  messageTs: string;
+}): Promise<string | undefined> {
+  const [row] = await getDb()
+    .select({ conversationId: juniorReviewItemSlackCards.conversationId })
+    .from(juniorReviewItemSlackCards)
+    .where(
+      and(
+        eq(juniorReviewItemSlackCards.itemId, card.itemId),
+        eq(juniorReviewItemSlackCards.channelId, card.channelId),
+        eq(juniorReviewItemSlackCards.messageTs, card.messageTs),
+      ),
+    )
+    .limit(1);
+  return row?.conversationId;
 }
 
 // Long enough for the sync that holds the lock to post or change a few cards.

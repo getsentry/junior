@@ -28,7 +28,10 @@ import {
   parseSlackReviewItemFormTarget,
   type SlackReviewItemClick,
 } from "@/chat/slack/review-item-card";
-import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
+import {
+  readSlackReviewItemCardConversationId,
+  syncReviewItemSlackCards,
+} from "@/chat/slack/review-item-card-sync";
 import {
   parseSlackMessageTs,
   slackMessageTsFromMs,
@@ -56,10 +59,6 @@ interface CardTarget {
   channelId: string;
   messageTs: SlackMessageTs;
   threadTs: SlackMessageTs;
-}
-
-function conversationIdOf(target: CardTarget): string {
-  return `slack:${target.channelId}:${target.threadTs}`;
 }
 
 async function tellPerson(
@@ -147,7 +146,11 @@ async function act(args: {
   const { services, target } = args;
   const actor = await resolveActingUser(services, args.payload, target);
   if (!actor) return;
-  const conversationId = conversationIdOf(target);
+  const conversationId =
+    (await readSlackReviewItemCardConversationId({
+      ...target,
+      itemId: args.itemId,
+    })) ?? `slack:${target.channelId}:${target.threadTs}`;
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
@@ -286,14 +289,17 @@ export async function handleSlackReviewItemClick(args: {
   await act({
     ...common,
     action: "submit",
-    // The item, not the click, owns the option label.
+    // A card can be stale. Accept the clicked label only while the item
+    // still offers it.
     answer: (item) => {
       const field = item.request && buttonUserInputField(item.request);
-      const label = field?.options[click.index]?.label;
-      return {
-        requestId: item.id,
-        values: field && label ? { [field.id]: [label] } : {},
-      };
+      if (!field?.options.some((option) => option.label === click.label)) {
+        throw new ReviewItemActionError(
+          "conflict",
+          "This card changed. Use the updated card.",
+        );
+      }
+      return { requestId: item.id, values: { [field.id]: [click.label] } };
     },
   });
 }

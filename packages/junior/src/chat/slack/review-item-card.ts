@@ -22,6 +22,8 @@ const DONE_ACTION_ID = `${ACTION_ID_PREFIX}done`;
 const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
 // Slack allows 12,000 characters in all markdown blocks of one message.
 const MAX_BODY_CHARS = 3_000;
+// Slack allows 3,000 characters in one context element.
+const MAX_CONTEXT_CHARS = 3_000;
 
 function plainText(text: string) {
   return { type: "plain_text" as const, text, emoji: true };
@@ -93,7 +95,9 @@ function controls(item: ReviewItem): Button[] {
         // Slack requires a unique action_id for each element in one message.
         action_id: `${CHOICE_ACTION_ID_PREFIX}${index}`,
         text: plainText(option.label),
-        value: item.id,
+        // The label goes with the click, so a click on a stale card cannot
+        // pick another option after the request changes.
+        value: JSON.stringify({ itemId: item.id, label: option.label }),
       }),
     ),
     {
@@ -139,14 +143,19 @@ export function buildSlackReviewItemCard(item: ReviewItem): {
 } {
   const text = itemText(item);
   const link = getDashboardReviewItemLink(item.id);
+  // Each part is its own element, so a long answer note cannot push the
+  // element over the Slack limit and make the card update fail.
   const details = [
     item.status === "open" ? assigneeText(item) : closedNote(item),
     ...(link ? [`<${link}|Open in the review desk>`] : []),
-  ].join(" · ");
+  ].map((part) => ({
+    type: "mrkdwn" as const,
+    text: truncate(part, MAX_CONTEXT_CHARS),
+  }));
   return {
     blocks: [
       { type: "markdown", text },
-      { type: "context", elements: [{ type: "mrkdwn", text: details }] },
+      { type: "context", elements: details },
       ...(item.status === "open"
         ? [{ type: "actions" as const, elements: controls(item) }]
         : []),
@@ -172,31 +181,50 @@ export function buildHiddenSlackReviewItemCard(item: ReviewItem): {
 
 /** One click on a Review item card. */
 export type SlackReviewItemClick =
-  | { kind: "choice"; index: number; itemId: string }
+  | { kind: "choice"; itemId: string; label: string }
   | { kind: "answer"; itemId: string }
   | { kind: "done"; itemId: string }
   | { kind: "dismiss"; itemId: string };
+
+const choiceValueSchema = z.object({
+  itemId: z.string().min(1),
+  label: z.string().min(1),
+});
+
+function parseChoiceValue(
+  value: string,
+): z.output<typeof choiceValueSchema> | undefined {
+  try {
+    const parsed = choiceValueSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Read a click on a Review item card, if the action is ours. */
 export function parseSlackReviewItemClick(action: {
   action_id?: string;
   value?: string;
 }): SlackReviewItemClick | undefined {
-  const itemId = action.value?.trim();
-  if (!itemId || !action.action_id?.startsWith(ACTION_ID_PREFIX)) {
+  const value = action.value?.trim();
+  if (!value || !action.action_id?.startsWith(ACTION_ID_PREFIX)) {
     return undefined;
   }
-  if (action.action_id === ANSWER_ACTION_ID) return { kind: "answer", itemId };
-  if (action.action_id === DONE_ACTION_ID) return { kind: "done", itemId };
-  if (action.action_id === DISMISS_ACTION_ID) {
-    return { kind: "dismiss", itemId };
+  if (action.action_id.startsWith(CHOICE_ACTION_ID_PREFIX)) {
+    const choice = parseChoiceValue(value);
+    return choice ? { kind: "choice", ...choice } : undefined;
   }
-  const index = Number(action.action_id.slice(CHOICE_ACTION_ID_PREFIX.length));
-  return action.action_id.startsWith(CHOICE_ACTION_ID_PREFIX) &&
-    Number.isInteger(index) &&
-    index >= 0
-    ? { kind: "choice", index, itemId }
-    : undefined;
+  if (action.action_id === ANSWER_ACTION_ID) {
+    return { kind: "answer", itemId: value };
+  }
+  if (action.action_id === DONE_ACTION_ID) {
+    return { kind: "done", itemId: value };
+  }
+  if (action.action_id === DISMISS_ACTION_ID) {
+    return { kind: "dismiss", itemId: value };
+  }
+  return undefined;
 }
 
 const formTargetSchema = z.object({
