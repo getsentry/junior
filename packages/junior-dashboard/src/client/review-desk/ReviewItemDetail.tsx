@@ -7,11 +7,11 @@ import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
-import { assigneeLabel } from "./reviewItemFormat";
+import { assigneeLabel, reviewItemStatusLabel } from "./reviewItemFormat";
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (
-    <div className="grid gap-0.5">
+    <div className="grid content-start gap-0.5">
       <dt className="text-xs font-medium text-dashboard-text-muted">
         {props.label}
       </dt>
@@ -26,16 +26,32 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
   const subject = item.subject;
   return (
     <article className="grid min-w-0 content-start gap-5">
-      <header className="grid gap-1">
-        <h2 className="m-0 font-sans text-lg font-semibold">{item.title}</h2>
+      <header className="grid gap-1.5">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <h2 className="m-0 min-w-0 break-words font-display text-xl font-medium leading-snug">
+            {item.title}
+          </h2>
+          <StatusChip
+            className="mt-1 shrink-0"
+            size="compact"
+            tone={item.status === "open" ? "accent" : "neutral"}
+          >
+            {reviewItemStatusLabel(item)}
+          </StatusChip>
+        </div>
         <p className="m-0 text-xs text-dashboard-text-muted">
           Added {formatRelativeTime(item.createdAt)}
           {item.visibility === "private" ? " · Private" : null}
         </p>
       </header>
       <TranscriptMarkdown text={item.body} />
-      <ReviewItemActions item={item} />
-      <dl className="m-0 grid gap-3 border-t border-dashboard-border-subtle pt-4 sm:grid-cols-2">
+      <section
+        aria-label={item.status === "open" ? "Actions" : "Outcome"}
+        className="border-t border-dashboard-border-subtle pt-5"
+      >
+        <ReviewItemActions item={item} />
+      </section>
+      <dl className="m-0 grid gap-4 border-t border-dashboard-border-subtle pt-5 sm:grid-cols-2">
         <Fact label="Assignees">
           {item.assignees.length > 0 || item.assignedToEveryone ? (
             assigneeLabel(item)
@@ -71,7 +87,7 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
           <Fact label="Linked Conversations">
             <ul className="m-0 grid list-none gap-0.5 p-0">
               {item.conversationIds.map((conversationId) => (
-                <li className="truncate" key={conversationId}>
+                <li className="truncate font-mono text-xs" key={conversationId}>
                   <Link to={conversationPath(conversationId)}>
                     {conversationId}
                   </Link>

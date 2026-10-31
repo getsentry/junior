@@ -99,11 +99,35 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
+  // Take and Dismiss are quiet, so the answer or Done stays the main action.
+  const secondaryActions = (
+    <>
+      {item.canTake ? (
+        <Button
+          disabled={action.isPending}
+          onClick={() => void run({ action: "take" }).catch(() => {})}
+          variant="quiet"
+        >
+          Take
+        </Button>
+      ) : null}
+      <Button
+        disabled={action.isPending}
+        onClick={() => void run({ action: "dismiss" }).catch(() => {})}
+        variant="quiet"
+      >
+        Dismiss
+      </Button>
+    </>
+  );
+
   return (
     <div className="grid gap-3">
       {item.kind === "action" && item.request ? (
-        <div className="grid gap-2 text-sm">
-          <TranscriptMarkdown text={item.request.question} />
+        <div className="text-sm">
+          <div className="font-medium">
+            <TranscriptMarkdown text={item.request.question} />
+          </div>
           <UserInputForm
             onSubmit={(answer) =>
               run({
@@ -116,34 +140,25 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             }
             request={item.request}
             requestId={item.id}
+            secondaryActions={secondaryActions}
           />
         </div>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        {item.kind === "notice" ? (
-          <Button
-            disabled={action.isPending}
-            onClick={() => void run({ action: "complete" }).catch(() => {})}
-            variant="primary"
-          >
-            Done
-          </Button>
-        ) : null}
-        <Button
-          disabled={action.isPending}
-          onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        >
-          Dismiss
-        </Button>
-        {item.canTake ? (
-          <Button
-            disabled={action.isPending}
-            onClick={() => void run({ action: "take" }).catch(() => {})}
-          >
-            Take
-          </Button>
-        ) : null}
-      </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {item.kind === "notice" ? (
+            <Button
+              disabled={action.isPending}
+              onClick={() => void run({ action: "complete" }).catch(() => {})}
+              variant="primary"
+            >
+              Done
+            </Button>
+          ) : null}
+          <div className="flex flex-wrap gap-1 sm:ml-auto">
+            {secondaryActions}
+          </div>
+        </div>
+      )}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
   );

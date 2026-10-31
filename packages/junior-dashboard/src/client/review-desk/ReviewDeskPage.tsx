@@ -5,7 +5,6 @@ import type {
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { FilterTabList } from "../components/FilterBar";
 import { InlineError } from "../components/InlineError";
 import { SearchInput } from "../components/SearchInput";
@@ -45,6 +44,16 @@ const ITEM_STATES = ["open", "archived"] as const;
 
 const rowClass =
   "grid gap-0.5 rounded-md px-3 py-2 text-inherit no-underline transition-colors";
+
+// The list and the detail are already cards, so an empty state is plain
+// text, not a second box.
+function EmptyMessage(props: { children: ReactNode }) {
+  return (
+    <p className="m-0 px-4 py-8 text-center text-sm text-dashboard-text-muted">
+      {props.children}
+    </p>
+  );
+}
 
 function ListGroup(props: { children: ReactNode; title: string }) {
   return (
@@ -209,9 +218,9 @@ export function ReviewDeskPage() {
           ) : !items.data ? (
             <ReviewListLoading />
           ) : empty ? (
-            <EmptyTelemetry>
+            <EmptyMessage>
               {archived ? "No archived items." : "Nothing needs you right now."}
-            </EmptyTelemetry>
+            </EmptyMessage>
           ) : (
             <>
               {actions.length > 0 ? (
@@ -257,7 +266,7 @@ export function ReviewDeskPage() {
           ) : direct.error ? (
             <InlineError>Review item not found.</InlineError>
           ) : (
-            <EmptyTelemetry>Select an item to see it here.</EmptyTelemetry>
+            <EmptyMessage>Select an item to see it here.</EmptyMessage>
           )}
         </Card>
       </div>

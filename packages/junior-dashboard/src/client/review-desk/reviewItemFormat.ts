@@ -6,6 +6,14 @@ export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
 }
 
+/** Name the state of an item: what it needs while open, or how it closed. */
+export function reviewItemStatusLabel(item: ReviewItemPayload): string {
+  if (item.status === "open") {
+    return item.kind === "action" ? "Needs an answer" : "Notice";
+  }
+  return item.status === "done" ? "Done" : "Dismissed";
+}
+
 /** Name the assignees of an item in one short line. */
 export function assigneeLabel(item: ReviewItemPayload): string {
   const names = item.assignees.map(
