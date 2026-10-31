@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch } from "@/chat/events/store";
 import type { AgentRun } from "@/chat/agent/types";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { findActorIdentityId } from "@/chat/identities/actor";
 import {
   appendAndEnqueueWebMessage,
   createConversationId,
@@ -236,6 +238,15 @@ describe("event wake delay", () => {
       "Please check now",
     );
     expect(userMessages).toHaveLength(2);
+    // Ingress sets each Message author. The event Turn stays system-acted.
+    expect(userMessages.map((message) => message.authorIdentityId)).toEqual([
+      await findActorIdentityId(getDb(), actor),
+      await findActorIdentityId(getDb(), EVENT_SYSTEM_ACTOR),
+    ]);
+    expect(userMessages.every((message) => message.authorIdentityId)).toBe(
+      true,
+    );
+    expect(agentRuns[1]?.actor).toMatchObject({ platform: "system" });
     // The one message lists every Event, not only the first.
     expect(userMessages[1]!.meta?.events).toEqual([
       expect.objectContaining({

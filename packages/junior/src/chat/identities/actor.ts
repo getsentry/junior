@@ -78,6 +78,14 @@ export async function resolveActorIdentityId(
   return key ? (await upsertIdentity(executor, key, nowMs)).id : undefined;
 }
 
+/** Save the one system Identity and return its id. */
+export async function resolveSystemIdentityId(
+  executor: JuniorSqlDatabase,
+  nowMs: number = Date.now(),
+): Promise<string> {
+  return (await upsertIdentity(executor, SYSTEM_IDENTITY, nowMs)).id;
+}
+
 /** Find the stored Identity id for one Actor without writing. */
 export async function findActorIdentityId(
   db: JuniorDatabase,

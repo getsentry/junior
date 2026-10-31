@@ -2,6 +2,7 @@ import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { isSlackUserId, parseActorUserId } from "@/chat/actor";
 import { parseSessionSource } from "@/chat/source";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { logWarn } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -169,8 +170,8 @@ async function findJuniorIdentityIdByDashboardAuthorId(
 
 /**
  * Resolve the durable actor identity for one event payload.
- * Human user messages get an identity when author data is enough; other events
- * keep a null actor.
+ * Ingress sets `authorIdentityId` on new user Messages. Legacy writes without
+ * it still guess the author from its data, and a new Message logs the guess.
  */
 export async function resolveEventActorIdentityId(
   executor: JuniorSqlDatabase,
@@ -189,6 +190,12 @@ export async function resolveEventActorIdentityId(
   }
   if (data.role !== "user") {
     return undefined;
+  }
+  if (data.type === "message") {
+    // TODO(dcramer): Remove the guess after every ingress sets the author.
+    logWarn("conversation.message.author_identity.missing", {
+      "app.message.id": data.messageId,
+    });
   }
 
   const author = readAuthor(data.meta);

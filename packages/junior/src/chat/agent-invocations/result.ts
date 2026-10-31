@@ -1,6 +1,8 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
+import { getSqlExecutor } from "@/chat/db";
+import { resolveSystemIdentityId } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
@@ -164,6 +166,7 @@ function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
   nowMs: number,
   openSiblings: readonly ChildAgent[],
+  authorIdentityId: string,
 ): InboundMessage {
   const summary = trustedSummary(invocation, childAgentLabel(invocation));
   const metadata: EventMailboxMetadata = {
@@ -185,6 +188,7 @@ function buildResultInboundMessage(
     ),
     input: {
       authorId: resultAuthorId(invocation.actor),
+      authorIdentityId,
       metadata,
       text: renderResultInput(invocation, summary, openSiblings),
     },
@@ -219,7 +223,13 @@ export async function enqueueAgentInvocationResult(
     invocation.childConversationId,
   );
   await appendAndEnqueueInboundMessage({
-    message: buildResultInboundMessage(invocation, nowMs, openSiblings),
+    // An agent wrote the result, so the system Identity is its author.
+    message: buildResultInboundMessage(
+      invocation,
+      nowMs,
+      openSiblings,
+      await resolveSystemIdentityId(getSqlExecutor()),
+    ),
     queue: options.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: options.state,
@@ -293,6 +303,7 @@ export async function enqueueAgentMessageToParent(args: {
       inboundMessageId,
       input: {
         authorId: resultAuthorId(args.sender.actor),
+        authorIdentityId: await resolveSystemIdentityId(getSqlExecutor()),
         metadata,
         text: renderMessageInput(args.sender, summary, args.text),
       },

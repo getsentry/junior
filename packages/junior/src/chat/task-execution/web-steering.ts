@@ -77,6 +77,9 @@ export function createWebSteeringDrain(args: {
           text: normalizeConversationText(message.input.text),
           createdAtMs: message.createdAtMs,
           author,
+          ...(message.input.authorIdentityId
+            ? { authorIdentityId: message.input.authorIdentityId }
+            : undefined),
           meta: {
             ...(attachments.length ? { attachments } : undefined),
             explicitMention: true,

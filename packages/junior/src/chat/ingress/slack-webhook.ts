@@ -15,7 +15,11 @@ import {
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
 import { stopConversationSession } from "@/chat/agent-invocations/stop";
@@ -68,7 +72,9 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
 import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
-import { parseActorUserId } from "@/chat/actor";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
@@ -211,6 +217,29 @@ async function buildThread(args: {
 function shouldIgnoreMessage(message: Message): boolean {
   return (
     message.author.isMe === true || !parseActorUserId(message.author.userId)
+  );
+}
+
+/**
+ * Resolve the Slack author Identity at ingress and bind its id to the message.
+ * Ingress does no profile lookup. The worker adds the profile names later.
+ * Bot authors wait for their own bot Identity, so they get no id here.
+ */
+async function bindSlackAuthorIdentity(
+  message: Message,
+  installation: SlackInstallationContext,
+): Promise<void> {
+  const teamId = installation.teamId;
+  const userId = parseActorUserId(message.author.userId);
+  if (!teamId || !userId || message.author.isBot === true) {
+    return;
+  }
+  bindMessageAuthorIdentityId(
+    message,
+    await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor(teamId, userId, null),
+    ),
   );
 }
 
@@ -366,6 +395,7 @@ async function handleSlackThreadStop(args: {
   });
   await stopConversationSession({ conversationId, state: args.state });
 
+  await bindSlackAuthorIdentity(args.message, args.installation);
   const content = parseContent(args.message);
   const conversation = coerceThreadConversationState(undefined);
   recordSkippedConversationMessage({
@@ -545,6 +575,7 @@ async function routeParsedMessage(args: {
     return;
   }
 
+  await bindSlackAuthorIdentity(message, args.installation);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
     conversationStore: args.conversationStore,

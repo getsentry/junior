@@ -65,6 +65,9 @@ export function projectConversationMessages(
         role: data.role,
         text: data.text,
         createdAtMs: event.createdAtMs,
+        ...(data.authorIdentityId
+          ? { authorIdentityId: data.authorIdentityId }
+          : undefined),
         ...splitMeta(data.meta),
       };
       if (data.type === "message" && current)

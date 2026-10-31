@@ -94,6 +94,7 @@ import {
 } from "@/chat/events/notification";
 import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
@@ -192,6 +193,19 @@ async function completeCancelledConversationTurn(args: {
 }
 
 /**
+ * Return the author Identity id that every batched input shares.
+ * A batch with more than one author has no single author yet.
+ */
+function sharedAuthorIdentityId(
+  messages: readonly InboundMessage[],
+): string | undefined {
+  const ids = new Set(
+    messages.map((message) => message.input.authorIdentityId),
+  );
+  return ids.size === 1 ? [...ids][0] : undefined;
+}
+
+/**
  * Create the shared mailbox worker for web and event Turns.
  */
 export function createConversationTurnWorker(
@@ -225,6 +239,7 @@ export function createConversationTurnWorker(
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
     let batchEvents: ConversationMessageEvent[] = [];
+    let authorIdentityId: string | undefined;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -260,6 +275,7 @@ export function createConversationTurnWorker(
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
+      authorIdentityId = sharedAuthorIdentityId(messages);
       turnInputFacts = first;
     } else {
       turnId = resolved.turnId;
@@ -402,6 +418,7 @@ export function createConversationTurnWorker(
             text: normalizeConversationText(text),
             createdAtMs: startedAtMs,
             author,
+            ...(authorIdentityId ? { authorIdentityId } : undefined),
             meta: {
               ...(attachments.length ? { attachments } : undefined),
               explicitMention: true,

@@ -48,7 +48,12 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveSystemIdentityId } from "@/chat/identities/actor";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type {
   ConversationTurnFailureCode,
@@ -220,6 +225,8 @@ async function runLocalAgentTurnInContext(
       userId: "local-cli",
       userName: "local",
     },
+    // The local CLI has no per-person id, so it uses the system Identity.
+    authorIdentityId: await resolveSystemIdentityId(getSqlExecutor()),
     meta: {
       explicitMention: true,
       replied: false,

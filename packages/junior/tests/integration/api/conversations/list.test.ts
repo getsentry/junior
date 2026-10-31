@@ -31,6 +31,16 @@ function dashboardAuthorIdFromEmail(email: string): string {
   return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
 }
 
+const systemIdentityRow = {
+  id: "identity-system",
+  createdAt: new Date(1_000),
+  displayName: "System",
+  kind: "system",
+  provider: "junior",
+  providerSubjectId: "system",
+  updatedAt: new Date(1_000),
+} as const;
+
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
@@ -195,6 +205,7 @@ describe("conversation list API", () => {
         },
         nowMs: nowMs - 120_000,
       });
+      await fixture.sql.db().insert(juniorIdentities).values(systemIdentityRow);
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
@@ -234,6 +245,21 @@ describe("conversation list API", () => {
             schemaVersion: 1,
             seq: 0,
             type: "user_message",
+          },
+          // An event Message has the system Identity as its author.
+          {
+            actorIdentityId: systemIdentityRow.id,
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            schemaVersion: 1,
+            seq: 1,
+            type: "message",
           },
         ]);
       setPlugins([
@@ -694,10 +720,25 @@ describe("conversation list API", () => {
           updatedAt: new Date(1_000),
           userId: participantUserId!,
         });
+      await fixture.sql.db().insert(juniorIdentities).values(systemIdentityRow);
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
         .values([
+          // An event Message author is not a participant.
+          {
+            actorIdentityId: systemIdentityRow.id,
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_300),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            seq: 2,
+            type: "message",
+          },
           {
             actorIdentityId: "identity-participant-slack",
             conversationId: "slack:C1:shared-thread",
