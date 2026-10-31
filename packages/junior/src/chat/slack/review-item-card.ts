@@ -155,10 +155,7 @@ export function buildSlackReviewItemCard(item: ReviewItem): {
   };
 }
 
-/**
- * Render a card for a thread that can no longer show the item, such as after
- * the item became private or lost its link to the thread.
- */
+/** Render a card for a thread that the item is no longer linked to. */
 export function buildHiddenSlackReviewItemCard(item: ReviewItem): {
   blocks: KnownBlock[];
   text: string;

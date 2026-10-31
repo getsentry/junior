@@ -21,21 +21,8 @@ import { juniorReviewItemSlackCards } from "@/db/schema";
 
 type CardRow = typeof juniorReviewItemSlackCards.$inferSelect;
 
-/**
- * Return whether a linked Slack thread can show the card. A private item
- * shows only in the thread that added it, because other linked threads can
- * have people who cannot see its source.
- */
-function canShowCard(item: ReviewItem, conversationId: string): boolean {
-  return (
-    item.visibility === "public" ||
-    conversationId === item.addedByConversationId
-  );
-}
-
 function renderCard(item: ReviewItem, conversationId: string) {
-  return item.conversationIds.includes(conversationId) &&
-    canShowCard(item, conversationId)
+  return item.conversationIds.includes(conversationId)
     ? buildSlackReviewItemCard(item)
     : buildHiddenSlackReviewItemCard(item);
 }
@@ -136,9 +123,7 @@ export async function syncReviewItemSlackCards(args: {
           const carded = new Set(rows.map((row) => row.conversationId));
           const missing =
             item.status === "open"
-              ? item.conversationIds.filter(
-                  (id) => !carded.has(id) && canShowCard(item, id),
-                )
+              ? item.conversationIds.filter((id) => !carded.has(id))
               : [];
           const results = await Promise.allSettled([
             ...rows.map((row) => updateCard(item, row, getSlackAdapter)),

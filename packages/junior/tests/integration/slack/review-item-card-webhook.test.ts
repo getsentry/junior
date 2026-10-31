@@ -282,10 +282,9 @@ describe("Slack webhook: Review item cards", () => {
     );
   });
 
-  it("shows a private item only in the thread that added it", async () => {
+  it("lets only an assignee act on a private item card", async () => {
     const { click } = harness();
     await slackThread(THREAD, "private");
-    await slackThread(OTHER_THREAD, "private");
     const ana = await slackUser("ana@example.com", "U123");
     await slackUser("ben@example.com", "U456");
 
@@ -295,7 +294,6 @@ describe("Slack webhook: Review item cards", () => {
       body: "The deploy key expires on Friday.",
       assignees: ["ana@example.com"],
       dedupe_key: "deploy-key",
-      conversation_ids: [OTHER_THREAD],
     });
 
     expect(

@@ -111,9 +111,8 @@ each card, so Junior can change it in place.
   item posts no new cards.
 - After each change by an agent or a person, every card shows the new
   state. A closed card has no controls and shows who closed it.
-- A private item shows only in the thread that added it. Another linked
-  thread can have people who cannot see its source. A card in a thread that
-  can no longer show the item loses its content.
+- A card in a thread that the item is no longer linked to loses its
+  content.
 - Cards are optional UI. A Slack failure is logged and does not fail the
   change.
 - Syncs of one item run one at a time under a state lock (`withLock` in
