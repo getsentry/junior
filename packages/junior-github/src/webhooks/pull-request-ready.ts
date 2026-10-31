@@ -131,23 +131,23 @@ async function syncOne(
   const items = args.reviewItems.forConversation(opener.conversationId);
   const name = `${target.repositoryFullName}#${target.number}`;
   const dedupeKey = `pull-request-ready:${name.toLowerCase()}`;
-  if (!ready) {
-    await items.close({ dedupeKey, ...closeReason(state) });
-    return;
-  }
   try {
-    await items.upsert({
-      assigneeIdentityIds: [opener.identityId],
-      body: `**${state.title}** is approved and its checks pass. You can merge it: ${state.url}`,
-      dedupeKey,
-      subject: { id: state.url, title: name, url: state.url },
-      title: `Ready to merge: ${name}`,
-    });
+    if (ready) {
+      await items.upsert({
+        assigneeIdentityIds: [opener.identityId],
+        body: `**${state.title}** is approved and its checks pass. You can merge it: ${state.url}`,
+        dedupeKey,
+        subject: { id: state.url, title: name, url: state.url },
+        title: `Ready to merge: ${name}`,
+      });
+    } else {
+      await items.close({ dedupeKey, ...closeReason(state) });
+    }
   } catch (error) {
-    // Clear the saved state, so the next event tries again.
+    // Undo the saved state, so the next event tries again.
     await markGitHubPullRequestReadyToMerge(args.db, {
       ...target,
-      ready: false,
+      ready: !ready,
     });
     throw error;
   }

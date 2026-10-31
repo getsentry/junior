@@ -160,6 +160,7 @@ function route(
   fixture: GitHubFixture,
   calls: ReviewItemCall[],
   errors: string[] = [],
+  failures = { close: 0 },
 ): PluginRoute {
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
@@ -168,6 +169,10 @@ function route(
           calls.push({ conversationId, kind: "upsert", notice });
         },
         async close(input) {
+          if (failures.close > 0) {
+            failures.close -= 1;
+            throw new Error("review desk is down");
+          }
           calls.push({ conversationId, input, kind: "close" });
         },
       };
@@ -255,6 +260,7 @@ describe("ready to merge notice", () => {
     const fixture = await createGitHubFixture();
     const calls: ReviewItemCall[] = [];
     const errors: string[] = [];
+    const failures = { close: 0 };
     const requests: string[] = [];
     const github: GitHubState = {
       checks: [{ conclusion: "success", status: "completed" }],
@@ -266,7 +272,7 @@ describe("ready to merge notice", () => {
     mockGitHub(github, requests);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const webhook = route(fixture, calls, errors);
+      const webhook = route(fixture, calls, errors, failures);
 
       // Checks pass, but no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
@@ -320,6 +326,11 @@ describe("ready to merge notice", () => {
 
       github.merged = true;
       github.state = "closed";
+      // A failed close is tried again on the next event.
+      failures.close = 1;
+      await webhook.handler(pullRequestAction("closed", true));
+      expect(calls.at(-1)).toEqual(notice);
+      expect(errors).toEqual(["GitHub pull request ready notice failed"]);
       await webhook.handler(pullRequestAction("closed", true));
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
@@ -336,7 +347,7 @@ describe("ready to merge notice", () => {
         "upsert",
         "close",
       ]);
-      expect(errors).toEqual([]);
+      expect(errors).toHaveLength(1);
     } finally {
       await fixture.close();
     }
