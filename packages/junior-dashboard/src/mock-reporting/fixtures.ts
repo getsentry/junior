@@ -436,6 +436,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       reportEvent(2, iso(Date.parse(startedAt), 8_000), {
         type: "turn_context",
         turnId: "active-turn",
+        pluginName: "junior",
+        kind: "user_customization",
+        version: 1,
+        content: {
+          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
+        },
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 8_000), {
+        type: "turn_context",
+        turnId: "active-turn",
         pluginName: "memory",
         kind: "recall",
         version: 1,
@@ -450,16 +460,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
               kind: "procedure",
             },
           ],
-        },
-      }),
-      reportEvent(3, iso(Date.parse(startedAt), 8_000), {
-        type: "turn_context",
-        turnId: "active-turn",
-        pluginName: "junior",
-        kind: "user_customization",
-        version: 1,
-        content: {
-          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
         },
       }),
       reportEvent(4, iso(Date.parse(startedAt), 9_000), {

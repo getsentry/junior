@@ -733,12 +733,12 @@ export async function assemblePrompt(args: {
     promptHistoryMessages,
     shouldPromptAgent,
     turnContexts: [
-      ...pluginUserPromptContributions.flatMap((contribution) =>
-        contribution.context ? [contribution.context] : [],
-      ),
       ...(userCustomization
         ? [userCustomizationTurnContext(userCustomization)]
         : []),
+      ...pluginUserPromptContributions.flatMap((contribution) =>
+        contribution.context ? [contribution.context] : [],
+      ),
     ],
     userContentParts,
   };

@@ -203,10 +203,7 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
           memories={memory.memories}
         />
       ) : customization ? (
-        <UserCustomization
-          loadedAt={props.context.loadedAt}
-          text={customization.text}
-        />
+        <UserCustomization text={customization.text} />
       ) : (
         <GenericContext context={props.context} />
       )}
@@ -214,16 +211,10 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
   );
 }
 
-function UserCustomization(props: { loadedAt: string; text: string }) {
+function UserCustomization(props: { text: string }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
-      <div className="whitespace-pre-wrap px-3 py-3 text-sm leading-6 text-dashboard-text">
-        <HighlightText text={props.text} />
-      </div>
-      <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
-        Saved by the sender · Loaded{" "}
-        {formatMessageTimestamp(Date.parse(props.loadedAt))}
-      </p>
+    <div className="whitespace-pre-wrap rounded-lg border border-dashboard-border-strong px-3 py-3 text-sm leading-6 text-dashboard-text">
+      <HighlightText text={props.text} />
     </div>
   );
 }
