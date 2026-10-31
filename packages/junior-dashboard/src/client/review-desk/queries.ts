@@ -22,14 +22,15 @@ import { fetchDashboardJson, post } from "../http";
 const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
-/** List the open or archived Review items that the viewer can see. */
+/**
+ * List the open Review items that the viewer can see. A search also finds
+ * archived items.
+ */
 export function useReviewItemsData(filters: {
-  archived: boolean;
   conversationId?: string;
   q?: string;
 }) {
   const params = new URLSearchParams();
-  if (filters.archived) params.set("archived", "true");
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
   }

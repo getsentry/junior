@@ -462,7 +462,11 @@ export async function countReviewItems(
   return rows[0]?.count ?? 0;
 }
 
-/** Find the Review items that a reader can see, newest change first. */
+/**
+ * Find the Review items that a reader can see. Open items come first, so
+ * the limit never drops an open item for a closed one. Then the newest
+ * change comes first.
+ */
 export async function searchReviewItems(
   db: JuniorDatabase,
   reader: ReviewItemReader,
@@ -472,7 +476,11 @@ export async function searchReviewItems(
     .select()
     .from(juniorReviewItems)
     .where(and(...searchConditions(reader, filters)))
-    .orderBy(desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id))
+    .orderBy(
+      desc(eq(juniorReviewItems.status, "open")),
+      desc(juniorReviewItems.updatedAt),
+      desc(juniorReviewItems.id),
+    )
     .limit(filters.limit);
   return await hydrate(db, rows);
 }

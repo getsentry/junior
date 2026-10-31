@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { Archive } from "lucide-react";
+import { useId, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import type {
   AutomationSummary,
@@ -12,7 +13,6 @@ import { Card } from "../components/layout/Card";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
 import { Skeleton } from "../components/ui/skeleton";
-import { Toggle } from "../components/ui/toggle";
 import { automationPath, formatRelativeTime } from "../format";
 import { pathWithSearch, useDebouncedSearchParam } from "../searchParams";
 import { cn } from "../styles";
@@ -22,7 +22,11 @@ import {
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
-import { assigneeLabel, reviewItemPath } from "./reviewItemFormat";
+import {
+  assigneeLabel,
+  reviewItemPath,
+  reviewItemStatusLabel,
+} from "./reviewItemFormat";
 
 const rowClass =
   "grid gap-0.5 rounded-md px-3 py-2 text-inherit no-underline transition-colors";
@@ -37,10 +41,23 @@ function EmptyMessage(props: { children: ReactNode }) {
   );
 }
 
-function ListGroup(props: { children: ReactNode; title: string }) {
+function ListGroup(props: {
+  children: ReactNode;
+  className?: string;
+  icon?: ReactNode;
+  title: string;
+}) {
+  const headingId = useId();
   return (
-    <section className="grid gap-1">
-      <h2 className="m-0 px-3 font-sans text-xs font-medium text-dashboard-text-muted">
+    <section
+      aria-labelledby={headingId}
+      className={cn("grid gap-1", props.className)}
+    >
+      <h2
+        id={headingId}
+        className="m-0 flex items-center gap-1.5 px-3 font-sans text-xs font-medium text-dashboard-text-muted"
+      >
+        {props.icon}
         {props.title}
       </h2>
       <ul className="m-0 grid list-none gap-0.5 p-0">{props.children}</ul>
@@ -54,6 +71,7 @@ function ItemRow(props: {
   selected: boolean;
 }) {
   const { item } = props;
+  const closed = item.status !== "open";
   const unassigned = !item.assignedToEveryone && item.assignees.length === 0;
   return (
     <li>
@@ -68,9 +86,20 @@ function ItemRow(props: {
         replace
         to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
       >
-        <span className="truncate text-sm font-medium">{item.title}</span>
+        <span
+          className={cn(
+            "truncate text-sm font-medium",
+            closed && "text-dashboard-text-muted",
+          )}
+        >
+          {item.title}
+        </span>
         <span className="flex min-w-0 items-center gap-2 text-xs text-dashboard-text-muted">
-          {unassigned ? (
+          {closed ? (
+            <StatusChip className="shrink-0" size="compact">
+              {reviewItemStatusLabel(item)}
+            </StatusChip>
+          ) : unassigned ? (
             <StatusChip size="compact" tone="warning">
               Unassigned
             </StatusChip>
@@ -122,29 +151,15 @@ function ReviewListLoading() {
 }
 
 /**
- * Render the review desk: the open Review items that the viewer can see, or
- * the archived ones, with search and the selected item beside the list.
+ * Render the review desk: the open Review items that the viewer can see,
+ * with search and the selected item beside the list. A search also finds
+ * archived items, which show in their own group.
  */
 export function ReviewDeskPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const archived = searchParams.get("archived") === "true";
-  // The selected item can be missing from the new list, so the toggle drops
-  // it and the first item of the new list shows.
-  function setArchived(value: boolean) {
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("item");
-        if (value) next.set("archived", "true");
-        else next.delete("archived");
-        return next;
-      },
-      { replace: true },
-    );
-  }
+  const [searchParams] = useSearchParams();
   const [search, setSearch, q] = useDebouncedSearchParam();
-  const items = useReviewItemsData({ archived, q });
-  const showBlocked = !archived && !q;
+  const items = useReviewItemsData({ q });
+  const showBlocked = !q;
   const blocked = useBlockedAutomationsData(showBlocked);
   const list = items.data?.items ?? [];
   const selectedId = searchParams.get("item") ?? list[0]?.id;
@@ -152,8 +167,10 @@ export function ReviewDeskPage() {
   // A link can select an item that is not in the current view.
   const direct = useReviewItemData(listed ? undefined : selectedId);
   const selected = listed ?? direct.data;
-  const actions = list.filter((item) => item.kind === "action");
-  const notices = list.filter((item) => item.kind === "notice");
+  const open = list.filter((item) => item.status === "open");
+  const archived = list.filter((item) => item.status !== "open");
+  const actions = open.filter((item) => item.kind === "action");
+  const notices = open.filter((item) => item.kind === "notice");
   const blockedAutomations = showBlocked
     ? (blocked.data?.automations ?? [])
     : [];
@@ -166,20 +183,17 @@ export function ReviewDeskPage() {
         description="Items that need a person, and who can act on them."
         title="Review desk"
       />
-      <div className="flex min-w-0 items-center gap-3">
-        <SearchInput
-          className="min-w-0 flex-1"
-          label="Search review items"
-          onChange={setSearch}
-          placeholder="Search items"
-          value={search}
-        />
-        <Toggle onPressedChange={setArchived} pressed={archived} variant="pill">
-          Show archived
-        </Toggle>
-      </div>
+      <SearchInput
+        label="Search review items"
+        onChange={setSearch}
+        placeholder="Search open and archived items"
+        value={search}
+      />
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <Card className="grid content-start gap-4 py-3" padding="none">
+        <Card
+          className="grid content-start gap-4 py-3 lg:self-start"
+          padding="none"
+        >
           {items.error ? (
             <InlineError className="px-3">
               Could not load review items.
@@ -188,12 +202,12 @@ export function ReviewDeskPage() {
             <ReviewListLoading />
           ) : empty ? (
             <EmptyMessage>
-              {archived ? "No archived items." : "Nothing needs you right now."}
+              {q ? `No items match "${q}".` : "Nothing needs you right now."}
             </EmptyMessage>
           ) : (
             <>
               {actions.length > 0 ? (
-                <ListGroup title={archived ? "Questions" : "Needs an answer"}>
+                <ListGroup title="Needs an answer">
                   {actions.map((item) => (
                     <ItemRow
                       item={item}
@@ -207,6 +221,26 @@ export function ReviewDeskPage() {
               {notices.length > 0 ? (
                 <ListGroup title="Notices">
                   {notices.map((item) => (
+                    <ItemRow
+                      item={item}
+                      key={item.id}
+                      searchParams={searchParams}
+                      selected={item.id === selected?.id}
+                    />
+                  ))}
+                </ListGroup>
+              ) : null}
+              {archived.length > 0 ? (
+                <ListGroup
+                  className={
+                    open.length > 0
+                      ? "border-t border-dashboard-border-subtle pt-3"
+                      : undefined
+                  }
+                  icon={<Archive aria-hidden="true" size={13} />}
+                  title="Archived"
+                >
+                  {archived.map((item) => (
                     <ItemRow
                       item={item}
                       key={item.id}

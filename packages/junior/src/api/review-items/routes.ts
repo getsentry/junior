@@ -107,8 +107,7 @@ export function createReviewItemRoutes(services: {
         reviewItemReaderForUser(viewer),
         {
           limit: LIST_LIMIT,
-          statuses:
-            query.archived === "true" ? ["done", "dismissed"] : ["open"],
+          statuses: query.q ? ["open", "done", "dismissed"] : ["open"],
           ...(query.conversationId
             ? { conversationId: query.conversationId }
             : undefined),

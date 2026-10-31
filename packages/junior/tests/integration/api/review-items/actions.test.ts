@@ -174,10 +174,10 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
-    const archived = await (
-      await api(fixture, ben).get("?archived=true")
-    ).json();
-    expect(archived.items.map((item: any) => item.id)).toEqual([id]);
+    expect((await (await api(fixture, ben).get("")).json()).items).toEqual([]);
+    // A search still finds the closed item.
+    const found = await (await api(fixture, ben).get("?q=acme")).json();
+    expect(found.items).toMatchObject([{ id, status: "done" }]);
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {

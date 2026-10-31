@@ -56,11 +56,13 @@ export const reviewItemSchema = z
 
 export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 
-/** Review desk list filters. The list has every item the viewer can see. */
+/**
+ * Review desk list filters. The list has every item the viewer can see.
+ * Without `q`, it has only open items. A search also finds done and
+ * dismissed items, after the open ones.
+ */
 export const reviewItemListQuerySchema = z
   .object({
-    /** `true` lists done and dismissed items instead of open ones. */
-    archived: z.enum(["true", "false"]).optional(),
     conversationId: z.string().min(1).optional(),
     q: z.string().trim().max(200).optional(),
   })

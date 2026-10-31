@@ -16,10 +16,8 @@ function itemCountLabel(count: number): string {
 export function ConversationReviewBar(props: { conversationId: string }) {
   const [open, setOpen] = useState(false);
   const items =
-    useReviewItemsData({
-      archived: false,
-      conversationId: props.conversationId,
-    }).data?.items ?? [];
+    useReviewItemsData({ conversationId: props.conversationId }).data?.items ??
+    [];
   if (items.length === 0) return null;
   const label = itemCountLabel(items.length);
   return (

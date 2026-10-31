@@ -103,8 +103,8 @@ async function mockReviewItems(page: Page) {
     if (path === "/count") return route.fulfill({ json: { mine: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
-      const list =
-        url.searchParams.get("archived") === "true" ? archived : open;
+      // A search also finds archived items, after the open ones.
+      const list = q ? [...open, ...archived] : open;
       return route.fulfill({
         json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
       });
@@ -168,10 +168,7 @@ test("each review item gets a fresh answer form", async ({
   });
 });
 
-test("the review desk lists open items, search results, and archived items", async ({
-  dashboard,
-  page,
-}) => {
+test("a search finds open and archived items", async ({ dashboard, page }) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review`);
   const detail = page.getByRole("article");
@@ -181,24 +178,21 @@ test("the review desk lists open items, search results, and archived items", asy
   await expect(
     page.getByRole("link", { name: new RegExp(prReady.title) }),
   ).toBeVisible();
+  // Without a search, the list has only open items.
+  await expect(
+    page.getByRole("link", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
   await screenshot(page, "review-desk", { lightTheme: true });
 
-  await page.getByLabel("Search review items").fill("acme");
-  await expect(page).toHaveURL(/[?&]q=acme/);
-  await expect(
-    page.getByRole("link", { name: new RegExp(audit.title) }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: new RegExp(license.title) }),
-  ).toBeVisible();
-  await screenshot(page, "review-desk-search", { view: "desktop" });
-  await page.getByLabel("Search review items").fill("");
-  await expect(page).not.toHaveURL(/[?&]q=/);
-
-  await page.getByRole("button", { name: "Show archived" }).click();
-  await expect(page).toHaveURL(/[?&]archived=true/);
+  await page.getByLabel("Search review items").fill("license");
+  await expect(page).toHaveURL(/[?&]q=license/);
+  const archivedGroup = page.getByRole("region", { name: "Archived" });
+  await archivedGroup
+    .getByRole("link", { name: new RegExp(answered.title) })
+    .click();
   await expect(
     detail.getByRole("heading", { name: answered.title }),
   ).toBeVisible();
-  await screenshot(page, "review-desk-archived");
+  await expect(detail.getByText("Archived · Done")).toBeVisible();
+  await screenshot(page, "review-desk-search", { lightTheme: true });
 });
