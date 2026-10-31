@@ -1,32 +1,29 @@
-import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import {
-  readConversationAccessFromSql,
-  type ProviderTenant,
-} from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
-  automationCreatorUserId,
-  conversationParticipantUserIds,
+  canAgentChangeReviewItem,
+  canReadReviewItem,
+  readReviewItemAgentScope,
+  requireReviewItemAssignees,
+  requireReviewItemLinks,
+  type ReviewItemAgentScope,
+} from "@/chat/review-items/access";
+import {
   EVERYONE_ASSIGNEE,
   resolveAssignee,
   resolveAssignees,
-  type ResolvedAssignees,
 } from "@/chat/review-items/assignees";
 import {
-  canReadReviewItem,
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
   getReviewItem,
-  isSameTenant,
   insertReviewItem,
   searchReviewItems,
   updateReviewItemContent,
   type ReviewItem,
   type ReviewItemContent,
-  type ReviewItemReader,
   type ReviewItemStatus,
   type ReviewItemVisibility,
 } from "@/chat/review-items/store";
@@ -87,139 +84,6 @@ type ReviewItemToolContext = Pick<
   "conversationId" | "resolveActorIdentity" | "source"
 >;
 
-interface ActorScope {
-  /** Whether the current Conversation is not public. */
-  inPrivateConversation: boolean;
-  reader: ReviewItemReader;
-  /** Provider tenant of the current Conversation. */
-  tenant?: ProviderTenant;
-  user?: User;
-}
-
-async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
-  const user = (await context.resolveActorIdentity?.())?.user;
-  const automationId =
-    context.source.kind === "scheduled_automation" ||
-    context.source.kind === "event_automation"
-      ? context.source.automationId
-      : undefined;
-  const current = (
-    await readConversationAccessFromSql(getDb(), [context.conversationId], user)
-  ).get(context.conversationId);
-  const tenant = current?.tenant;
-  return {
-    inPrivateConversation: current?.visibility !== "public",
-    reader: {
-      conversationId: context.conversationId,
-      ...(automationId ? { automationId } : undefined),
-      // No `userId`: an assignment lets a person see the item on the review
-      // desk, not let an agent read it into another Conversation.
-      ...(tenant ? { tenants: [tenant] } : undefined),
-    },
-    ...(tenant ? { tenant } : undefined),
-    ...(user ? { user } : undefined),
-  };
-}
-
-/**
- * Whether the agent can change an item. Only an agent in the tenant of the
- * item can change it. A public item changes only from a public
- * Conversation, so private content never reaches its readers. A private
- * item changes only from the Conversation or Automation that added it.
- */
-function canChange(item: ReviewItem, scope: ActorScope): boolean {
-  if (!isSameTenant(item.tenant, scope.tenant)) return false;
-  if (item.visibility === "public") return !scope.inPrivateConversation;
-  return (
-    item.addedByConversationId === scope.reader.conversationId ||
-    (scope.reader.automationId !== undefined &&
-      item.automationId === scope.reader.automationId)
-  );
-}
-
-/**
- * Check the Conversations to link. Every link must be in the tenant of the
- * item. The current Conversation and the links that the item already has
- * are always allowed. A private item gets no other links. A public item can
- * get other links only to public Conversations.
- */
-async function requireLinks(args: {
-  allowedIds: ReadonlySet<string>;
-  conversationIds: readonly string[];
-  scope: ActorScope;
-  tenant: ProviderTenant | undefined;
-  visibility: ReviewItemVisibility;
-}): Promise<void> {
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    args.conversationIds,
-    args.scope.user,
-  );
-  for (const conversationId of args.conversationIds) {
-    const conversation = access.get(conversationId);
-    if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
-      throw new ToolInputError(`Conversation ${conversationId} is not found.`);
-    }
-    if (args.allowedIds.has(conversationId)) continue;
-    if (args.visibility === "private") {
-      throw new ToolInputError(
-        "A private item links only to the Conversation that added it.",
-      );
-    }
-    if (conversation.visibility !== "public") {
-      throw new ToolInputError(
-        conversation.canViewPrivateContent
-          ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found.`,
-      );
-    }
-  }
-}
-
-/**
- * Check who a private item can go to. It cannot go to Everyone. Each User
- * must be the current Actor, a person in one of the given Conversations
- * (the current one and, for an existing item, the one that added it), or
- * the creator of the Automation that added the item. An Automation run
- * often has no Actor and no people yet, and its creator wrote the work.
- */
-async function requireAssigneesAllowed(
-  scope: ActorScope,
-  conversationIds: readonly string[],
-  visibility: ReviewItemVisibility,
-  assignees: ResolvedAssignees,
-  automationId: string | undefined,
-): Promise<void> {
-  if (visibility === "public") return;
-  if (assignees.everyone) {
-    throw new ToolInputError(
-      "A private item cannot be assigned to Everyone. Assign Users instead.",
-    );
-  }
-  const creatorId = automationId
-    ? await automationCreatorUserId(getDb(), automationId)
-    : undefined;
-  const others = assignees.userIds.filter(
-    (id) => id !== scope.user?.id && id !== creatorId,
-  );
-  const inConversation = new Set<string>();
-  for (const conversationId of new Set(conversationIds)) {
-    for (const id of await conversationParticipantUserIds(
-      getDb(),
-      conversationId,
-      others,
-    )) {
-      inConversation.add(id);
-    }
-  }
-  const outside = others.filter((id) => !inConversation.has(id));
-  if (outside.length > 0) {
-    throw new ToolInputError(
-      "A private item can be assigned only to people in its Conversation.",
-    );
-  }
-}
-
 function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "action" && !hasRequest) {
     throw new ToolInputError("An action item needs a `request`.");
@@ -231,7 +95,7 @@ function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
 
 async function readableItem(
   id: string,
-  scope: ActorScope,
+  scope: ReviewItemAgentScope,
 ): Promise<ReviewItem> {
   const item = await getReviewItem(getDb(), id);
   if (!item || !canReadReviewItem(item, scope.reader)) {
@@ -323,7 +187,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
     execute: async (input) => {
       requireRequest(input.kind, Boolean(input.request));
       const db = getDb();
-      const scope = await actorScope(context);
+      const scope = await readReviewItemAgentScope(context);
       const existing = await getOpenReviewItemByDedupeKey(
         db,
         input.dedupe_key,
@@ -332,7 +196,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       if (
         existing &&
         (!canReadReviewItem(existing, scope.reader) ||
-          !canChange(existing, scope))
+          !canAgentChangeReviewItem(existing, scope))
       ) {
         throw new ToolInputError(
           "Another open item uses this `dedupe_key`. Use a different key.",
@@ -350,7 +214,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           ...(input.conversation_ids ?? []),
         ]),
       ];
-      await requireLinks({
+      await requireReviewItemLinks({
         allowedIds: new Set([
           context.conversationId,
           ...(existing?.conversationIds ?? []),
@@ -365,15 +229,17 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         input.assignees,
         existing ? existing.tenant : scope.tenant,
       );
-      await requireAssigneesAllowed(
-        scope,
-        existing
+      await requireReviewItemAssignees({
+        assignees,
+        automationId: existing
+          ? existing.automationId
+          : scope.reader.automationId,
+        conversationIds: existing
           ? [context.conversationId, existing.addedByConversationId]
           : [context.conversationId],
+        scope,
         visibility,
-        assignees,
-        existing ? existing.automationId : scope.reader.automationId,
-      );
+      });
       const content: ReviewItemContent = {
         assignedToEveryone: assignees.everyone,
         assigneeUserIds: assignees.userIds,
@@ -475,7 +341,7 @@ export function createUpdateReviewItemTool(
     outputSchema: juniorToolOutputSchema,
     execute: async (input) => {
       const db = getDb();
-      const scope = await actorScope(context);
+      const scope = await readReviewItemAgentScope(context);
       const item = await readableItem(input.id, scope);
       const changesContent =
         input.title || input.body || input.assignees || input.conversation_ids;
@@ -490,7 +356,7 @@ export function createUpdateReviewItemTool(
       if (item.status !== "open" && !retriesClose) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
-      if (!canChange(item, scope)) {
+      if (!canAgentChangeReviewItem(item, scope)) {
         throw new ToolInputError(
           "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
         );
@@ -508,7 +374,7 @@ export function createUpdateReviewItemTool(
         ];
         // This tool never changes visibility.
         const visibility = item.visibility;
-        await requireLinks({
+        await requireReviewItemLinks({
           allowedIds: new Set([
             context.conversationId,
             item.addedByConversationId,
@@ -526,13 +392,16 @@ export function createUpdateReviewItemTool(
               userIds: item.assignees.map((assignee) => assignee.userId),
             };
         if (input.assignees) {
-          await requireAssigneesAllowed(
-            scope,
-            [context.conversationId, item.addedByConversationId],
-            visibility,
+          await requireReviewItemAssignees({
             assignees,
-            item.automationId,
-          );
+            automationId: item.automationId,
+            conversationIds: [
+              context.conversationId,
+              item.addedByConversationId,
+            ],
+            scope,
+            visibility,
+          });
         }
         const updated = await updateReviewItemContent(db, {
           assignedToEveryone: assignees.everyone,
@@ -626,7 +495,7 @@ export function createSearchReviewItemsTool(context: ReviewItemToolContext) {
     outputSchema: juniorToolOutputSchema,
     execute: async (input) => {
       const db = getDb();
-      const scope = await actorScope(context);
+      const scope = await readReviewItemAgentScope(context);
       const status = input.status ?? "open";
       const statuses: ReviewItemStatus[] =
         status === "any" ? ["open", "done", "dismissed"] : [status];

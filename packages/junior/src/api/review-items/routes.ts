@@ -18,16 +18,18 @@ import { requireViewer } from "@/api/viewer";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getDb } from "@/chat/db";
 import {
-  actOnReviewItem,
   canActOnReviewItem,
   isOnlyAssignee,
+  reviewItemReaderForUser,
+} from "@/chat/review-items/access";
+import {
+  actOnReviewItem,
   readReviewItemForUser,
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
   countReviewItems,
   listWaitingConversationIds,
-  reviewItemReaderForUser,
   searchReviewItems,
   type ReviewItem,
 } from "@/chat/review-items/store";

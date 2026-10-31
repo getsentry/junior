@@ -34,29 +34,37 @@ behavior.
 
 ## Visibility
 
+`access.ts` owns every rule in this section. The function for each rule is in
+parentheses.
+
 - An item is `private` when a Conversation that added or updated it is not
   public. It is `public` otherwise. No change makes a private item public.
 - A private item links only to the Conversation that added it, and to later
   runs of the same Automation. It cannot be assigned to Everyone. Each
   assigned User must be the Actor, a person in the current Conversation or
   in the Conversation that added the item, or the creator of the Automation
-  that added the item. An Automation run often has no Actor and no people.
+  that added the item (`requireReviewItemAssignees`). An Automation run
+  often has no Actor and no people.
 - Each item stores the provider tenant, such as the Slack workspace, of the
   Conversation that added it. Every link must be in that tenant. A public
   item is visible only to readers in the same tenant. A Slack mention in
   the assignees resolves only to a User in that tenant.
 - A reader can see an item when it is public in the reader's tenant, when the
   reader is an assigned User, when it is linked to the reader's Conversation,
-  or when the reader's Automation added it. `canReadReviewItem` and the
-  search query in `store.ts` apply the same rule.
-- The agent tools read as the Conversation, not as the Actor. An assigned
+  or when the reader's Automation added it (`canReadReviewItem`, and
+  `reviewItemVisibleTo` for search). `review-item-access.test.ts` checks
+  that the two give the same readers.
+- The agent tools read as the Conversation, not as the Actor
+  (`readReviewItemAgentScope`). An assigned
   User sees the item on the review desk. An agent in another Conversation of
   that User does not, so it cannot copy private content there.
-- A public item can link other Conversations only when they are public.
+- A public item can link other Conversations only when they are public
+  (`requireReviewItemLinks`).
 - An agent can change an item only from a Conversation in its tenant. It
   can change a public item only from a public Conversation. It can change a
-  private item only from the Conversation or Automation that added it. This
-  keeps private content out of other Conversations.
+  private item only from the Conversation or Automation that added it
+  (`canAgentChangeReviewItem`). This keeps private content out of other
+  Conversations.
 - An agent can never submit the answer to an action item. Only an assignee
   can submit.
 
@@ -73,7 +81,8 @@ the parent adds the item.
 (`api/review-items/routes.ts`) calls it.
 
 - An assigned User can act on an open item. Anyone who can see the item can
-  act when it is assigned to Everyone or when it has no assignees.
+  act when it is assigned to Everyone or when it has no assignees
+  (`canActOnReviewItem` in `access.ts`).
 - **Take** makes the person the only assignee. The item stays open. A
   retry of a take sends missing messages again.
 - **Submit** saves the answer to an action item and marks it `done`.
