@@ -1,4 +1,42 @@
 # Changelog
+## 0.268.0
+
+### New Features ✨
+
+#### Review Desk
+
+- Show Review items as Slack cards by @dcramer with @sentry-junior in [#2468](https://github.com/getsentry/junior/pull/2468)
+- Show Review items in Conversations by @dcramer with @sentry-junior in [#2466](https://github.com/getsentry/junior/pull/2466)
+- Add the review desk page by @dcramer with @sentry-junior in [#2464](https://github.com/getsentry/junior/pull/2464)
+- Let people act on Review items by @dcramer with @sentry-junior in [#2462](https://github.com/getsentry/junior/pull/2462)
+- Add Review items and their agent tools by @dcramer with @sentry-junior in [#2460](https://github.com/getsentry/junior/pull/2460)
+
+#### Other
+
+- (customization) Add experimental per-user customization by @dcramer and @mchen-sentry with @sentry-junior in [#2465](https://github.com/getsentry/junior/pull/2465)
+- (dashboard) Polish user input controls and the review desk action pane by @sentry-junior in [#2475](https://github.com/getsentry/junior/pull/2475)
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Resolve one Slack target for every visible Turn post by @sentry-junior in [#2461](https://github.com/getsentry/junior/pull/2461)
+- Save thread replies to the Conversation that owns the thread by @sentry-junior in [#2458](https://github.com/getsentry/junior/pull/2458)
+
+#### Other
+
+- (dashboard) Serve empty Review item reads in mock reporting mode by @sentry-junior in [#2476](https://github.com/getsentry/junior/pull/2476)
+- (dashboard-e2e) Close open connections when a spec stops its own server by @sentry-junior in [#2474](https://github.com/getsentry/junior/pull/2474)
+- (metrics) Keep an older Turn's metrics and the newer Turn's status by @sentry-junior in [#2441](https://github.com/getsentry/junior/pull/2441)
+- (scheduler) Match automation IDs in schedule list query by @dcramer with @sentry-junior in [#2467](https://github.com/getsentry/junior/pull/2467)
+
+### Internal Changes 🔧
+
+#### Identity
+
+- Accept Identity ids on Inbound messages and Turns by @sentry-junior in [#2473](https://github.com/getsentry/junior/pull/2473)
+- Resolve Actors to Identity ids behind one entry point by @sentry-junior in [#2443](https://github.com/getsentry/junior/pull/2443)
+
 ## 0.267.0
 
 ### Breaking Changes 🛠
