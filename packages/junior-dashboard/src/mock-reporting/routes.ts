@@ -28,6 +28,9 @@ import {
   personalSpendReportSchema,
   personParamsSchema,
   pluginOperationalReportFeedSchema,
+  reviewItemCountSchema,
+  reviewItemListSchema,
+  reviewItemWaitingConversationsSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationParamsSchema,
@@ -294,6 +297,23 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
+  // Mock reporting has no Review items. Answer the reads here so the
+  // dashboard does not query a database that has no review item tables.
+  app.get("/review-items", () =>
+    jsonResponse(reviewItemListSchema, { items: [] }),
+  );
+  app.get("/review-items/count", () =>
+    jsonResponse(reviewItemCountSchema, { mine: 0 }),
+  );
+  app.get("/review-items/waiting-conversations", () =>
+    jsonResponse(reviewItemWaitingConversationsSchema, { conversationIds: [] }),
+  );
+  app.get("/review-items/:id", () =>
+    errorResponse("Review item not found.", 404),
+  );
+  app.post("/review-items/:id/actions", () =>
+    errorResponse("Review item not found.", 404),
+  );
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(
