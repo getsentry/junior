@@ -134,8 +134,8 @@ Rules:
 
 The first sandbox builds a dependency snapshot. This build takes about 1
 minute and makes an image of about 840 MB. Later sandboxes start from that
-snapshot in a few seconds. Build the
-snapshot before the first QA turn, so the turn does not wait for it.
+snapshot in a few seconds. Build the snapshot before the first QA turn, so the
+turn does not wait for it.
 
 After you pull new commits, build all packages before you start the dev
 server. `pnpm dev` rebuilds only core and the dashboard, so other plugin
