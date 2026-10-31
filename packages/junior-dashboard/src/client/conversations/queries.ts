@@ -43,10 +43,10 @@ import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
-  isInlineOutboxMessage,
   mergeConversationMailboxMessages,
   acceptConversationOutboxMessage,
   reuseConversationMailboxMessages,
+  settleConversationOutboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
   type ConversationMailboxMessage,
@@ -141,6 +141,8 @@ const FAST_POLL_WINDOW_MS = 6_000;
 
 type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
+  /** Client time when this snapshot started its mailbox read. */
+  mailboxReadAtMs?: number;
   detailEtag?: string;
 };
 
@@ -150,9 +152,10 @@ async function readConversationSnapshot(
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
 ): Promise<ConversationSnapshot> {
+  const mailboxReadAtMs = Date.now();
   const mailbox = await readConversationPendingMessages(conversationId, signal);
   const detail = await readConversationData(conversationId, signal, previous);
-  return { ...detail, mailbox };
+  return { ...detail, mailbox, mailboxReadAtMs };
 }
 
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
@@ -232,6 +235,7 @@ export function useCreateConversation() {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -282,6 +286,7 @@ export function useForkConversation(sourceConversationId: string) {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -722,30 +727,19 @@ export function useConversationData(conversationId: string | undefined) {
       ? deferredDetail
       : detail.data;
   const mailbox = detailData?.mailbox;
-  // Accept is not visibility. Keep a local row until either server resource
-  // contains its real Message id. History and mailbox arrive in one render.
+  // Accept is not visibility. Keep a local row until the server snapshot
+  // shows it. History and mailbox arrive in one render.
   useEffect(() => {
     if (!mailbox || !detailData) return;
-    const queuedIds = new Set(
-      mailbox.messages.map((message) => message.messageId),
-    );
-    const historyIds = new Set<string>();
-    for (const event of detailData.events) {
-      if (event.data.type === "message") historyIds.add(event.data.messageId);
-    }
     queryClient.setQueryData<ConversationOutboxMessage[]>(
       conversationOutboxQueryKey(conversationId),
-      (current) => {
-        // An inline row stays until history has it. The mailbox copy alone
-        // would put it back in the queue.
-        const next = current?.filter(
-          (message) =>
-            !historyIds.has(message.messageId) &&
-            (isInlineOutboxMessage(message) ||
-              !queuedIds.has(message.messageId)),
-        );
-        return next?.length === current?.length ? current : next;
-      },
+      (current) =>
+        current &&
+        settleConversationOutboxMessages(current, {
+          events: detailData.events,
+          mailboxReadAtMs: detailData.mailboxReadAtMs,
+          queued: mailbox.messages,
+        }),
     );
   }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
   // The title is generated after the first message, and only the open
