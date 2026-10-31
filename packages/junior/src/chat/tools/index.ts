@@ -39,6 +39,7 @@ import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/con
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -353,15 +354,21 @@ export function createTools(
   // Review items link to root Conversations, where a person can see them.
   // `addReviewItem` is how the agent asks a person anything, so it is loaded
   // in every root Turn. A child agent asks its parent instead.
+  const reviewItemServices = createSlackReviewItemToolServices(
+    getVercelConversationWorkQueue,
+  );
   Object.assign(
     tools,
     disableTools(
       {
-        addReviewItem: createAddReviewItemTool(context),
-        searchReviewItems: createSearchReviewItemsTool(context),
+        addReviewItem: createAddReviewItemTool(context, reviewItemServices),
+        searchReviewItems: createSearchReviewItemsTool(
+          context,
+          reviewItemServices,
+        ),
         updateReviewItem: createUpdateReviewItemTool(
           context,
-          getVercelConversationWorkQueue,
+          reviewItemServices,
         ),
       },
       context.parentConversationId
