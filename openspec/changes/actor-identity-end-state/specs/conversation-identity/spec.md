@@ -11,6 +11,10 @@ Each root Conversation SHALL have one Owner. The Owner SHALL be the Identity
 that started the Conversation. Junior SHALL set it one time, at create. Junior
 SHALL NOT change it later.
 
+The Owner SHALL be the existing `junior_conversations.actor_identity_id`
+column. Code and docs SHALL call it the Owner. Junior SHALL NOT add another
+Owner column.
+
 #### Scenario: Human starts a Conversation
 
 - **WHEN** a human starts a Conversation from Slack, the dashboard, or a fork
@@ -43,6 +47,11 @@ its root Conversation.
   participants
 - **AND** `onBehalfOf` provenance does not give access.
 
+#### Scenario: Child Conversation write
+
+- **WHEN** Junior writes a child Conversation
+- **THEN** the child row stores no Owner.
+
 #### Scenario: Child spend
 
 - **WHEN** a child Conversation uses tokens
@@ -61,6 +70,13 @@ provenance. No plugin and no OAuth link SHALL write the system Identity.
   Message
 - **THEN** both Messages have the same system author Identity
 - **AND** each Turn keeps its own `SystemActor.name`.
+
+#### Scenario: Legacy per-name system rows
+
+- **WHEN** the data migration runs
+- **THEN** the `scheduler`, `local-cli`, and `event` system rows merge into
+  the one `system` Identity
+- **AND** no dashboard label changes.
 
 #### Scenario: System root labels
 
@@ -168,6 +184,11 @@ label the Message and feed the trust check.
 - **WHEN** a person whose GitHub Identity links a User comments on a watched
   PR
 - **THEN** the GitHub Identity keeps its `kind` and its User.
+
+#### Scenario: Old event Message
+
+- **WHEN** an event Message from before this plan has no author Identity
+- **THEN** the data migration sets the system Identity as its author.
 
 ### Requirement: Trusted Event Authors
 
@@ -314,20 +335,55 @@ event and SHALL NOT need an author Identity.
 - **THEN** it has no author Identity
 - **AND** the write succeeds.
 
-#### Scenario: Legacy Message without an author
+#### Scenario: Legacy user Message without a provable author
 
-- **WHEN** Junior reads a legacy user Message with no author Identity
-- **THEN** Junior uses the legacy fallback
-- **AND** logs that the fallback ran.
+- **WHEN** the dry run cannot prove the author of a legacy user Message
+- **THEN** the Message stays with no author Identity
+- **AND** Junior does not guess an author
+- **AND** Junior does not use the system Identity for it.
 
-### Requirement: Legacy Rows Stay
+### Requirement: Legacy Data Migrates Only With A Proven Rule
 
-Junior SHALL leave legacy Identity and Owner rows as they are, unless a
-migration is clearly correct. Each repair or merge SHALL run a dry run first.
-A production backfill SHALL NOT run without explicit approval.
+Junior SHALL migrate an old data shape only when special code exists because
+of it. Junior SHALL migrate it only with a rule that a read-only dry run
+proves. After the migration, Junior SHALL delete that special code. Each
+migration and repair SHALL run a dry run first. A production backfill SHALL
+NOT run without explicit approval.
 
-#### Scenario: Legacy web Identity with no matching sign-in row
+#### Scenario: Legacy web Identity
 
-- **WHEN** a legacy `junior/<email>` Identity has no sign-in Identity that
-  links the same User
-- **THEN** its references stay as they are.
+- **WHEN** a legacy `junior/<email>` Identity links to a User
+- **THEN** Junior does not migrate it
+- **AND** readers group it with the other Identities of that User.
+
+#### Scenario: Expired Redis state
+
+- **WHEN** Redis work state or a Turn checkpoint has an old shape
+- **THEN** Junior does not migrate it
+- **AND** the fallback for it goes only after the plan's 14-day wait.
+
+#### Scenario: Rule that the dry run does not prove
+
+- **WHEN** the dry run shows that a rule disagrees with rows that were not
+  damaged
+- **THEN** Junior does not apply that rule
+- **AND** those rows stay as they are.
+
+### Requirement: Owner Repair Uses Proven Rules
+
+Junior SHALL repair old Owner damage only for the rules that the dry run
+proves. Owner repair SHALL be separate from the data migration. Each human
+who loses the root SHALL keep access as a participant.
+
+#### Scenario: System root that a human took over
+
+- **WHEN** a root has a `scheduler`, `event`, or `local` Source and a human
+  Owner
+- **THEN** the repair sets its Owner to the `system` Identity
+- **AND** the human keeps access as a participant.
+
+#### Scenario: Slack or web root with a system Owner
+
+- **WHEN** a `slack` or `web` root has a system Owner
+- **THEN** Junior repairs it only when the dry run proves the rule
+- **AND** otherwise the root keeps its current Owner.
