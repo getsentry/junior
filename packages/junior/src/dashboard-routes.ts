@@ -205,6 +205,7 @@ function dashboardHostRoutePaths(
     "/api/user-pages",
     "/api/user-pages/*",
     "/api/user-customization",
+    "/api/user-customization/*",
     "/api/automations",
     "/api/automations/*",
     "/api/skills",
