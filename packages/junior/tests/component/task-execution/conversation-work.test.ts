@@ -670,7 +670,7 @@ describe("conversation work execution", () => {
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
-  it("keeps stored trace context and strips unknown trace keys through rewrites", async () => {
+  it("keeps stored trace context and author Identity ids, and strips unknown trace keys through rewrites", async () => {
     const state = getStateAdapter();
     await state.connect();
     const traceContext = {
@@ -688,7 +688,14 @@ describe("conversation work execution", () => {
         pendingMessages: [
           { ...inboundMessage("m1"), publishExternally: true },
           {
-            ...inboundMessage("m2", { createdAtMs: 1_500 }),
+            ...inboundMessage("m2", {
+              createdAtMs: 1_500,
+              input: {
+                text: "message m2",
+                authorId: "U123",
+                authorIdentityId: "identity-1",
+              },
+            }),
             publishExternally: true,
             traceContext,
           },
@@ -722,11 +729,19 @@ describe("conversation work execution", () => {
       undefined,
     ]);
     const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
-      execution: { pendingMessages: Array<Record<string, unknown>> };
+      execution: { pendingMessages: InboundMessage[] };
     };
     expect(
       stored.execution.pendingMessages.map((message) => message.traceContext),
     ).toEqual([undefined, traceContext, traceContext, undefined]);
+    expect(
+      work?.messages.map((message) => message.input.authorIdentityId),
+    ).toEqual([undefined, "identity-1", undefined, undefined]);
+    expect(
+      stored.execution.pendingMessages.map(
+        (message) => message.input.authorIdentityId,
+      ),
+    ).toEqual([undefined, "identity-1", undefined, undefined]);
   });
 
   it("drops malformed trace context and still processes the message", async () => {

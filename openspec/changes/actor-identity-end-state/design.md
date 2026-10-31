@@ -223,7 +223,7 @@ with the Watch or Automation grant.
   schema is closed, so a new field would make old workers and external
   plugins reject it.
 - The Turn, the mailbox entry, and the Message each carry the author
-  Identity id. Step 2 decides the field names.
+  Identity id as `authorIdentityId` (`tasks.md`, step 2).
 - The Conversation carries the Owner.
 
 ## Storage Rules
