@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import { z } from "zod";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
@@ -30,10 +31,50 @@ import {
   reviewItemReaderForUser,
   searchReviewItems,
   type ReviewItem,
+  type ReviewItemPosition,
 } from "@/chat/review-items/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
-const LIST_LIMIT = 100;
+const cursorSchema = z
+  .object({
+    filters: z.string(),
+    id: z.string().min(1),
+    updatedAtMs: z.number().int(),
+    version: z.literal(1),
+  })
+  .strict();
+
+/**
+ * Encode the last item of a page as the cursor of the next page. The cursor
+ * names the list filters, so it cannot page through a different list.
+ */
+function encodeCursor(item: ReviewItem, filters: string): string {
+  return Buffer.from(
+    JSON.stringify({
+      filters,
+      id: item.id,
+      updatedAtMs: item.updatedAt.getTime(),
+      version: 1,
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+/** Decode a cursor for the same filters, or return undefined. */
+function decodeCursor(
+  cursor: string,
+  filters: string,
+): ReviewItemPosition | undefined {
+  try {
+    const parsed = cursorSchema.parse(
+      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+    );
+    if (parsed.filters !== filters) return undefined;
+    return { id: parsed.id, updatedAt: new Date(parsed.updatedAtMs) };
+  } catch {
+    return undefined;
+  }
+}
 
 const ERROR_STATUS = {
   conflict: 409,
@@ -99,15 +140,31 @@ export function createReviewItemRoutes(services: {
     ),
     async (context) => {
       const viewer = context.get("viewer");
-      const query = context.req.valid("query");
+      const { cursor, limit, ...query } = context.req.valid("query");
       const view = query.view ?? "all";
+      const filters = JSON.stringify([
+        query.archived === "true",
+        view,
+        query.conversationId ?? null,
+        query.q ?? null,
+      ]);
+      const after = cursor ? decodeCursor(cursor, filters) : undefined;
+      if (cursor && !after) {
+        return jsonResponse(
+          apiErrorSchema,
+          { error: "Invalid review item cursor." },
+          { status: 400 },
+        );
+      }
+      // Read one more item than a page to learn whether another page follows.
       const items = await searchReviewItems(
         getDb(),
         reviewItemReaderForUser(viewer),
         {
-          limit: LIST_LIMIT,
+          limit: limit + 1,
           statuses:
             query.archived === "true" ? ["done", "dismissed"] : ["open"],
+          ...(after ? { after } : undefined),
           ...(view === "mine"
             ? { assignee: { userId: viewer.id } }
             : view === "everyone"
@@ -119,8 +176,13 @@ export function createReviewItemRoutes(services: {
           ...(query.q ? { query: query.q } : undefined),
         },
       );
+      const page = items.slice(0, limit);
+      const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
-        items: items.map((item) => reviewItemPayload(item, viewer)),
+        items: page.map((item) => reviewItemPayload(item, viewer)),
+        ...(items.length > limit && last
+          ? { nextCursor: encodeCursor(last, filters) }
+          : undefined),
       });
     },
   );
