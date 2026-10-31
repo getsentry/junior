@@ -25,7 +25,9 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
+import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
+import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import {
@@ -88,7 +90,15 @@ export function createJuniorApi(
       queue,
     }),
   );
-  app.route("/api/review-items", createReviewItemRoutes({ queue }));
+  app.route(
+    "/api/review-items",
+    createReviewItemRoutes({
+      delivery: {
+        queue,
+        show: createSlackReviewItemShow(getProductionSlackAdapter),
+      },
+    }),
+  );
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());

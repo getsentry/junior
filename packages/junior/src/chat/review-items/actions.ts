@@ -1,14 +1,12 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
-import { sendReviewItemMessages, type ReviewItemChange } from "./messages";
+import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
+import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
   canReadReviewItem,
@@ -104,20 +102,20 @@ function submittedAnswer(
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
  * conflict. Use it when the caller adds its own input for the action, such
- * as a Slack card click, so one action adds one Turn. `exceptConversationId`
- * is the Conversation where the person acted. It gets the person's input
- * from its own surface, so it gets no message here. Slack cards of the item
- * change in place; see `syncReviewItemSlackCards` for `getSlackAdapter`.
+ * as a card click in a chat thread, so one action adds one Turn.
+ * `exceptConversationId` is the Conversation where the person acted. It gets
+ * the person's input from its own surface, so it gets no message here.
+ * `delivery` shows the change and sends the messages; see
+ * `deliverReviewItemChange`.
  */
 export async function actOnReviewItem(args: {
   action: ReviewItemAction;
   answer?: UserInputAnswer;
+  delivery: ReviewItemDelivery;
   exceptConversationId?: string;
   firstCloseOnly?: boolean;
-  getSlackAdapter?: () => SlackAdapter;
   id: string;
   nowMs?: number;
-  queue: ConversationWorkQueue;
   user: User;
 }): Promise<ReviewItem> {
   const { action, user } = args;
@@ -144,16 +142,12 @@ export async function actOnReviewItem(args: {
       throw new ReviewItemActionError("conflict", "Review item is closed.");
     }
     const taken = await readReviewItemForUser(user, item.id);
-    await syncReviewItemSlackCards({
-      getSlackAdapter: args.getSlackAdapter,
-      itemId: taken.id,
-    });
-    await sendReviewItemMessages({
+    await deliverReviewItemChange({
       change: reviewItemChange(action, user),
+      delivery: args.delivery,
       exceptConversationId: args.exceptConversationId,
       item: taken,
       nowMs,
-      queue: args.queue,
     });
     return taken;
   }
@@ -187,16 +181,12 @@ export async function actOnReviewItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
-  await syncReviewItemSlackCards({
-    getSlackAdapter: args.getSlackAdapter,
-    itemId: closed.id,
-  });
-  await sendReviewItemMessages({
+  await deliverReviewItemChange({
     change: reviewItemChange(action, user),
+    delivery: args.delivery,
     exceptConversationId: args.exceptConversationId,
     item: closed,
     nowMs,
-    queue: args.queue,
   });
   return closed;
 }

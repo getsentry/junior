@@ -474,6 +474,31 @@ Pivot from create confirmation or Tasks page with `app.task.id`. From a fire
 conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
 `gen_ai.conversation.id`.
 
+### Review items
+
+A Review item change did not reach a linked Conversation, or a Slack card did
+not change.
+
+Spans: `review_item.deliver` wraps the work after each change: the surfaces
+show the new state, then the linked Conversations get their messages. Parent
+spans are the agent tool call (`gen_ai.execute_tool` for `addReviewItem` or
+`updateReviewItem`), the review desk API request, or
+`chat.slack_review_item_click` / `chat.slack_review_item_submit`.
+
+Events: `review_item.message.failed` (one linked Conversation did not get the
+message; the change call fails and a retry sends only missing messages),
+`review_item.slack_card.sync.failed` (cards did not change; not retried),
+`review_item.slack_input.persist.failed` (the Slack thread of a card click
+got a message instead of Slack input)
+
+Attributes: `app.review_item.id`, `app.review_item.change` (`content` for an
+agent content change, else `taken`, `submitted`, `completed`, `dismissed`, or
+`closed`), `app.review_item.kind`, `app.review_item.status`,
+`app.review_item.visibility`, `app.review_item.conversation_count`,
+`gen_ai.conversation.id` (the Conversation that missed a message)
+
+Pivot from a review desk item with `app.review_item.id`.
+
 ### Auth And Resume
 
 A turn parked for auth, resumed late, or failed after callback.

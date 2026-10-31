@@ -7,6 +7,8 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { juniorIdentities } from "@/db/schema";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
@@ -100,14 +102,17 @@ async function addItem(
   input: Record<string, unknown>,
   conversationId = THREAD,
 ) {
-  const tool = createAddReviewItemTool({
-    conversationId,
-    resolveActorIdentity: async () => ({
-      identity: { id: `identity:${user.id}` } as Identity,
-      user,
-    }),
-    source: { kind: "slack" } as any,
-  });
+  const tool = createAddReviewItemTool(
+    {
+      conversationId,
+      resolveActorIdentity: async () => ({
+        identity: { id: `identity:${user.id}` } as Identity,
+        user,
+      }),
+      source: { kind: "slack" } as any,
+    },
+    createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+  );
   return (await (tool as any).execute(input, {})) as {
     item: { id: string };
   };
@@ -423,8 +428,8 @@ describe("Slack webhook: Review item cards", () => {
       await actOnReviewItem({
         action: "submit",
         answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
+        delivery: { queue, show: createSlackReviewItemShow() },
         id: item.id,
-        queue,
         user: ana,
       });
 
