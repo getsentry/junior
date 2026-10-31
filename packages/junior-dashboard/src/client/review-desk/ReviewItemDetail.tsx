@@ -1,3 +1,4 @@
+import { Archive } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -26,20 +27,27 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
   const { item } = props;
   const subject = item.subject;
   const conversationTitles = useLinkedConversationTitles(item.conversationIds);
+  const closed = item.status !== "open";
   return (
     <article className="grid min-w-0 content-start gap-5">
+      {closed ? (
+        // Search mixes open and archived items, so a closed item must be
+        // easy to tell apart at the top of the detail.
+        <p className="m-0 flex items-center gap-2 rounded-md bg-dashboard-fill-soft px-3 py-2 text-xs font-medium text-dashboard-text-muted">
+          <Archive aria-hidden="true" size={14} />
+          Archived · {reviewItemStatusLabel(item)}
+        </p>
+      ) : null}
       <header className="grid gap-1.5">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <h2 className="m-0 min-w-0 break-words font-display text-xl font-medium leading-snug">
             {item.title}
           </h2>
-          <StatusChip
-            className="mt-1 shrink-0"
-            size="compact"
-            tone={item.status === "open" ? "accent" : "neutral"}
-          >
-            {reviewItemStatusLabel(item)}
-          </StatusChip>
+          {closed ? null : (
+            <StatusChip className="mt-1 shrink-0" size="compact" tone="accent">
+              {reviewItemStatusLabel(item)}
+            </StatusChip>
+          )}
         </div>
         <p className="m-0 text-xs text-dashboard-text-muted">
           Added {formatRelativeTime(item.createdAt)}

@@ -122,13 +122,13 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
-    const calList = await (await api(fixture, cal).get("?view=all")).json();
+    const calList = await (await api(fixture, cal).get("")).json();
     expect(calList.items).toMatchObject([{ id, canAct: false }]);
     // A person outside the Slack workspace does not see the public item.
     const outsider = { ...cal, identities: [] };
-    expect(
-      (await (await api(fixture, outsider).get("?view=all")).json()).items,
-    ).toEqual([]);
+    expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
+      [],
+    );
     expect(
       (await api(fixture, cal).act(id, { action: "complete" })).status,
     ).toBe(403);
@@ -174,10 +174,10 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
-    const archived = await (
-      await api(fixture, ben).get("?view=mine&archived=true")
-    ).json();
-    expect(archived.items.map((item: any) => item.id)).toEqual([id]);
+    expect((await (await api(fixture, ben).get("")).json()).items).toEqual([]);
+    // A search still finds the closed item.
+    const found = await (await api(fixture, ben).get("?q=acme")).json();
+    expect(found.items).toMatchObject([{ id, status: "done" }]);
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {
@@ -192,10 +192,8 @@ describe("review item actions API", () => {
       dedupe_key: "pr:7",
     });
 
-    const everyone = await (
-      await api(fixture, cal).get("?view=everyone")
-    ).json();
-    expect(everyone.items).toMatchObject([{ id, canAct: true, canTake: true }]);
+    const list = await (await api(fixture, cal).get("")).json();
+    expect(list.items).toMatchObject([{ id, canAct: true, canTake: true }]);
 
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.

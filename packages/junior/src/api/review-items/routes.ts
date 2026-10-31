@@ -102,19 +102,12 @@ export function createReviewItemRoutes(services: {
     async (context) => {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
-      const view = query.view ?? "all";
       const items = await searchReviewItems(
         getDb(),
         reviewItemReaderForUser(viewer),
         {
           limit: LIST_LIMIT,
-          statuses:
-            query.archived === "true" ? ["done", "dismissed"] : ["open"],
-          ...(view === "mine"
-            ? { assignee: { userId: viewer.id } }
-            : view === "everyone"
-              ? { assignee: { everyone: true } }
-              : undefined),
+          statuses: query.q ? ["open", "done", "dismissed"] : ["open"],
           ...(query.conversationId
             ? { conversationId: query.conversationId }
             : undefined),

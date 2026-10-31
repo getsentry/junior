@@ -19,22 +19,18 @@ import {
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
-/** Review desk views. Each shows open items, or archived ones. */
-export const REVIEW_DESK_VIEWS = ["mine", "everyone", "all"] as const;
-export type ReviewDeskView = (typeof REVIEW_DESK_VIEWS)[number];
-
 const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
-/** List the Review items that the viewer can see in one view. */
+/**
+ * List the open Review items that the viewer can see. A search also finds
+ * archived items.
+ */
 export function useReviewItemsData(filters: {
-  archived: boolean;
   conversationId?: string;
   q?: string;
-  view: ReviewDeskView;
 }) {
-  const params = new URLSearchParams({ view: filters.view });
-  if (filters.archived) params.set("archived", "true");
+  const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
   }
