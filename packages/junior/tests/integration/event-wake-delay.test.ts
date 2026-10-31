@@ -15,6 +15,7 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationWorkerContext,
@@ -247,6 +248,15 @@ describe("event wake delay", () => {
       true,
     );
     expect(agentRuns[1]?.actor).toMatchObject({ platform: "system" });
+    // Each Turn keeps the Identity of its Actor, not of the event author.
+    const turns = await Promise.all(
+      agentRuns.map((agentRun) =>
+        getTurnRecord(conversationId, agentRun.turnId),
+      ),
+    );
+    expect(turns.map((turn) => turn?.actorIdentityId)).toEqual(
+      userMessages.map((message) => message.authorIdentityId),
+    );
     // The one message lists every Event, not only the first.
     expect(userMessages[1]!.meta?.events).toEqual([
       expect.objectContaining({

@@ -86,12 +86,7 @@ const agentInputSchema = z
   .object({
     attachments: z.array(z.unknown()).optional(),
     authorId: z.string().min(1).optional(),
-    /**
-     * Identity of the input author, resolved at ingress.
-     *
-     * TODO(dcramer): Set this at every ingress after every deployed worker
-     * reads it. This schema is strict, so an older worker rejects the entry.
-     */
+    /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     text: z.string(),
