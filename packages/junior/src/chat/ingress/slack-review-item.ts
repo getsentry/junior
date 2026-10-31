@@ -29,6 +29,7 @@ import {
   type SlackReviewItemClick,
 } from "@/chat/slack/review-item-card";
 import {
+  createSlackReviewItemShow,
   readSlackReviewItemCardConversationId,
   syncReviewItemSlackCards,
 } from "@/chat/slack/review-item-card-sync";
@@ -160,9 +161,11 @@ async function act(args: {
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn.
       firstCloseOnly: true,
-      getSlackAdapter: () => services.adapter,
+      delivery: {
+        queue: services.queue,
+        show: createSlackReviewItemShow(() => services.adapter),
+      },
       id: current.id,
-      queue: services.queue,
       user: actor.user,
       ...(args.answer ? { answer: args.answer(current) } : undefined),
     });

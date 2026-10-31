@@ -15,7 +15,6 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getDb } from "@/chat/db";
 import {
   canActOnReviewItem,
@@ -33,7 +32,7 @@ import {
   searchReviewItems,
   type ReviewItem,
 } from "@/chat/review-items/store";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 
 const LIST_LIMIT = 100;
 
@@ -88,7 +87,7 @@ function actionErrorResponse(error: unknown): Response {
 
 /** Create the authenticated review desk routes. */
 export function createReviewItemRoutes(services: {
-  queue: ConversationWorkQueue;
+  delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
   app.get(
@@ -170,9 +169,8 @@ export function createReviewItemRoutes(services: {
       try {
         const item = await actOnReviewItem({
           action: body.action,
-          getSlackAdapter: getProductionSlackAdapter,
+          delivery: services.delivery,
           id,
-          queue: services.queue,
           user: viewer,
           ...(body.action === "submit"
             ? { answer: { ...body.answer, requestId: id } }

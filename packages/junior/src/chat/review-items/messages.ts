@@ -6,6 +6,7 @@ import {
   webActorFromEmail,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import {
   EVENT_WAIT_MS,
@@ -195,7 +196,17 @@ export async function sendReviewItemMessages(args: {
     ),
   );
   // Try every Conversation first, so one failure does not hide the change
-  // from the others. A retry sends only the missing messages.
+  // from the others. A retry sends only the missing messages. The caller
+  // reports the error; this log names each Conversation that missed it.
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logWarn("review_item.message.failed", {
+        "app.review_item.id": args.item.id,
+        "app.review_item.change": args.change.kind,
+        "gen_ai.conversation.id": conversationIds[index],
+      });
+    }
+  });
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;
 }
