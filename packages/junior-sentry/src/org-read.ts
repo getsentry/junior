@@ -50,37 +50,42 @@ function requestOrg(url: string): string | undefined {
 }
 
 // The token can read only the organization that installed its integration.
-// Sentry paths accept the organization ID or slug, so return both. Return
-// undefined when the lookup fails, so reads keep the org read token.
+// Sentry paths accept the organization ID or slug, so return both. Ask the
+// request's host, because the organization list is scoped to its region.
+// Return undefined when the lookup fails, so reads keep the org read token.
 async function loadTokenOrgs(
   ctx: EgressHookContext,
   token: string,
+  host: string,
 ): Promise<string[] | undefined> {
   const tokenId = createHash("sha256").update(token).digest("hex").slice(0, 16);
-  return await ctx.cache.getOrLoad(`org-read-orgs:${tokenId}`, async () => {
-    try {
-      const response = await fetch("https://sentry.io/api/0/organizations/", {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(TOKEN_ORG_TIMEOUT_MS),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+  return await ctx.cache.getOrLoad(
+    `org-read-orgs:${host}:${tokenId}`,
+    async () => {
+      try {
+        const response = await fetch(`https://${host}/api/0/organizations/`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(TOKEN_ORG_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const orgs = tokenOrgsSchema.parse(await response.json());
+        if (orgs.length === 0) {
+          throw new Error("no organizations");
+        }
+        return {
+          value: orgs.flatMap((org) => [org.id, org.slug.toLowerCase()]),
+          ttlMs: TOKEN_ORG_TTL_MS,
+        };
+      } catch (error) {
+        ctx.log.warn("sentry.org_read.token_org_lookup_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { value: undefined };
       }
-      const orgs = tokenOrgsSchema.parse(await response.json());
-      if (orgs.length === 0) {
-        throw new Error("no organizations");
-      }
-      return {
-        value: orgs.flatMap((org) => [org.id, org.slug.toLowerCase()]),
-        ttlMs: TOKEN_ORG_TTL_MS,
-      };
-    } catch (error) {
-      ctx.log.warn("sentry.org_read.token_org_lookup_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { value: undefined };
-    }
-  });
+    },
+  );
 }
 
 /**
@@ -96,7 +101,9 @@ export async function sentryGrantForEgress(
     return undefined;
   }
   const org = requestOrg(ctx.request.url)?.toLowerCase();
-  const tokenOrgs = org ? await loadTokenOrgs(ctx, token) : undefined;
+  const tokenOrgs = org
+    ? await loadTokenOrgs(ctx, token, new URL(ctx.request.url).hostname)
+    : undefined;
   if (org && tokenOrgs && !tokenOrgs.includes(org)) {
     return undefined;
   }

@@ -99,8 +99,9 @@ describe("sentry org read access", () => {
     expect(
       await grantFor("GET", "https://sentry.io/api/0/projects/other/app/"),
     ).toBeUndefined();
+    // The lookup asks the request's regional host.
     expect(fetch).toHaveBeenCalledWith(
-      "https://sentry.io/api/0/organizations/",
+      "https://us.sentry.io/api/0/organizations/",
       expect.objectContaining({
         headers: { Authorization: "Bearer org-read-token" },
       }),
