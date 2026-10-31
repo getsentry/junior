@@ -390,7 +390,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           );
         }
         const item = await readableItem(existing.id, scope);
-        await syncReviewItemSlackCards({ item });
+        await syncReviewItemSlackCards({ itemId: item.id });
         return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
@@ -410,7 +410,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       }
       // A Slack turn has the token of its workspace. Other runs use the
       // default bot token.
-      await syncReviewItemSlackCards({ item });
+      await syncReviewItemSlackCards({ itemId: item.id });
       return { created: true, item: itemResult(item) };
     },
   });
@@ -543,7 +543,7 @@ export function createUpdateReviewItemTool(
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
         const closedItem = await readableItem(item.id, scope);
-        await syncReviewItemSlackCards({ item: closedItem });
+        await syncReviewItemSlackCards({ itemId: closedItem.id });
         await sendReviewItemMessages({
           change: { kind: "closed", reason: input.reason },
           exceptConversationId: context.conversationId,
@@ -554,7 +554,7 @@ export function createUpdateReviewItemTool(
         return { item: itemResult(closedItem) };
       }
       const changed = await readableItem(item.id, scope);
-      await syncReviewItemSlackCards({ item: changed });
+      await syncReviewItemSlackCards({ itemId: changed.id });
       return { item: itemResult(changed) };
     },
   });

@@ -159,7 +159,7 @@ export async function actOnReviewItem(args: {
     const taken = await readReviewItemForUser(user, item.id);
     await syncReviewItemSlackCards({
       getSlackAdapter: args.getSlackAdapter,
-      item: taken,
+      itemId: taken.id,
     });
     await sendReviewItemMessages({
       change: reviewItemChange(action, user),
@@ -202,7 +202,7 @@ export async function actOnReviewItem(args: {
   }
   await syncReviewItemSlackCards({
     getSlackAdapter: args.getSlackAdapter,
-    item: closed,
+    itemId: closed.id,
   });
   await sendReviewItemMessages({
     change: reviewItemChange(action, user),

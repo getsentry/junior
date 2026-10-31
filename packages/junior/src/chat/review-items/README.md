@@ -116,9 +116,10 @@ each card, so Junior can change it in place.
   can no longer show the item loses its content.
 - Cards are optional UI. A Slack failure is logged and does not fail the
   change.
-- A sync posts the card, then saves its row. When two syncs post in the
-  same thread, the first row wins and the other sync removes its card. A
-  card whose row cannot be saved is removed too, so every card changes.
+- Syncs of one item run one at a time under a state lock (`withLock` in
+  `chat/state/locks.ts`). So two syncs cannot post two cards in one thread.
+  Each sync reads the latest item, so a sync that waits shows the newest
+  state. A card whose row cannot be saved is removed, so every card changes.
 
 The card uses the `requestUserInput` controls. A request with one `choice`
 field shows one button per option. Other requests show an Answer button that

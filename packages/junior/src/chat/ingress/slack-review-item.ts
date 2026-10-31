@@ -123,7 +123,7 @@ async function refreshCards(
   if (!item) return;
   await syncReviewItemSlackCards({
     getSlackAdapter: () => services.adapter,
-    item,
+    itemId: item.id,
   });
 }
 
