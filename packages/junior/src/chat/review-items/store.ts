@@ -240,11 +240,10 @@ export async function getOpenReviewItemByDedupeKey(
 }
 
 /**
- * Add a Review item, or update the open item with the same dedupe key. The
- * update replaces the content and assignees and keeps every linked
- * Conversation. Return the item and whether it is new.
+ * Add one open Review item. Return undefined when another open item already
+ * uses its dedupe key.
  */
-export async function saveReviewItem(
+export async function insertReviewItem(
   db: JuniorDatabase,
   input: ReviewItemContent & {
     addedByConversationId: string;
@@ -253,9 +252,9 @@ export async function saveReviewItem(
     nowMs: number;
     tenant?: ProviderTenant;
   },
-): Promise<{ created: boolean; item: ReviewItem }> {
+): Promise<ReviewItem | undefined> {
   const now = new Date(input.nowMs);
-  const { created, id } = await db.transaction(async (tx) => {
+  const id = await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(juniorReviewItems)
       .values({
@@ -275,40 +274,14 @@ export async function saveReviewItem(
         where: sql`${juniorReviewItems.status} = 'open'`,
       })
       .returning({ id: juniorReviewItems.id });
-    if (inserted[0]) {
-      await replaceLinks(tx, inserted[0].id, input);
-      return { created: true, id: inserted[0].id };
-    }
-    const updated = await tx
-      .update(juniorReviewItems)
-      .set({ ...contentColumns(input), updatedAt: now })
-      .where(
-        and(
-          eq(juniorReviewItems.dedupeKey, input.dedupeKey),
-          eq(juniorReviewItems.status, "open"),
-        ),
-      )
-      .returning({ id: juniorReviewItems.id });
-    const existing = updated[0];
-    if (!existing) {
-      throw new Error(`Review item ${input.dedupeKey} closed during save`);
-    }
-    const links = await tx
-      .select({ conversationId: juniorReviewItemConversations.conversationId })
-      .from(juniorReviewItemConversations)
-      .where(eq(juniorReviewItemConversations.itemId, existing.id));
-    await replaceLinks(tx, existing.id, {
-      assigneeUserIds: input.assigneeUserIds,
-      conversationIds: [
-        ...links.map((link) => link.conversationId),
-        ...input.conversationIds,
-      ],
-    });
-    return { created: false, id: existing.id };
+    if (!inserted[0]) return undefined;
+    await replaceLinks(tx, inserted[0].id, input);
+    return inserted[0].id;
   });
+  if (!id) return undefined;
   const item = await getReviewItem(db, id);
-  if (!item) throw new Error(`Review item ${id} is missing after save`);
-  return { created, item };
+  if (!item) throw new Error(`Review item ${id} is missing after insert`);
+  return item;
 }
 
 /** Replace the content of one open Review item. Return false when closed. */

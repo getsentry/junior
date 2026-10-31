@@ -2,6 +2,7 @@ import type { Identity, User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { juniorIdentities } from "@/db/schema";
 import {
   createAddReviewItemTool,
   createSearchReviewItemsTool,
@@ -133,6 +134,24 @@ describe("review item tools", () => {
     expect(
       (await execute(reader.search, { assignee: "ana@example.com" })).count,
     ).toBe(1);
+
+    // A Slack mention resolves only inside the workspace of the item.
+    const ben = await user("ben@example.com");
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(1),
+        id: "identity:T999:U999",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U999",
+        providerTenantId: "T999",
+        updatedAt: new Date(1),
+        userId: ben.id,
+      });
+    await expect(
+      execute(first.update, { id: added.item.id, assignees: ["<@U999>"] }),
+    ).rejects.toThrow("<@U999> has no Junior user yet");
 
     // A public item stays inside its Slack workspace.
     await conversation("slack:CFAR:1.000004", "CFAR", "public", "T999");

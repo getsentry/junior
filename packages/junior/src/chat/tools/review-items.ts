@@ -18,10 +18,11 @@ import {
   getOpenReviewItemByDedupeKey,
   getReviewItem,
   isSameTenant,
-  saveReviewItem,
+  insertReviewItem,
   searchReviewItems,
   updateReviewItemContent,
   type ReviewItem,
+  type ReviewItemContent,
   type ReviewItemReader,
   type ReviewItemStatus,
   type ReviewItemVisibility,
@@ -336,34 +337,64 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         tenant: existing ? existing.tenant : scope.tenant,
         visibility,
       });
-      const assignees = await resolveAssignees(db, input.assignees);
+      const assignees = await resolveAssignees(
+        db,
+        input.assignees,
+        existing ? existing.tenant : scope.tenant,
+      );
       await requireAssigneesAllowed(
         scope,
         context.conversationId,
         visibility,
         assignees,
       );
-      const { created, item } = await saveReviewItem(db, {
-        addedByConversationId: context.conversationId,
+      const content: ReviewItemContent = {
         assignedToEveryone: assignees.everyone,
         assigneeUserIds: assignees.userIds,
         body: input.body,
         conversationIds,
-        dedupeKey: input.dedupe_key,
         kind: input.kind,
-        nowMs: Date.now(),
         title: input.title,
         visibility,
-        ...(scope.reader.automationId
-          ? { automationId: scope.reader.automationId }
-          : undefined),
-        ...(scope.tenant ? { tenant: scope.tenant } : undefined),
         ...(input.request ? { request: input.request } : undefined),
         ...(input.subject
           ? { subject: subjectInput(input.subject) }
           : undefined),
+      };
+      // Write only the item that the checks above read, so a concurrent add
+      // cannot make this call change another item.
+      if (existing) {
+        const updated = await updateReviewItemContent(db, {
+          ...content,
+          id: existing.id,
+          nowMs: Date.now(),
+        });
+        if (!updated) {
+          throw new ToolInputError(
+            `Review item ${existing.id} closed. Add the item again.`,
+          );
+        }
+        return {
+          created: false,
+          item: itemResult(await readableItem(existing.id, scope)),
+        };
+      }
+      const item = await insertReviewItem(db, {
+        ...content,
+        addedByConversationId: context.conversationId,
+        dedupeKey: input.dedupe_key,
+        nowMs: Date.now(),
+        ...(scope.reader.automationId
+          ? { automationId: scope.reader.automationId }
+          : undefined),
+        ...(scope.tenant ? { tenant: scope.tenant } : undefined),
       });
-      return { created, item: itemResult(item) };
+      if (!item) {
+        throw new ToolInputError(
+          "Another open item started to use this `dedupe_key`. Add the item again.",
+        );
+      }
+      return { created: true, item: itemResult(item) };
     },
   });
 }
@@ -445,7 +476,7 @@ export function createUpdateReviewItemTool(context: ReviewItemToolContext) {
           visibility,
         });
         const assignees = input.assignees
-          ? await resolveAssignees(db, input.assignees)
+          ? await resolveAssignees(db, input.assignees, item.tenant)
           : {
               everyone: item.assignedToEveryone,
               userIds: item.assignees.map((assignee) => assignee.userId),
@@ -543,7 +574,9 @@ export function createSearchReviewItemsTool(context: ReviewItemToolContext) {
         limit: input.limit ?? DEFAULT_LIMIT,
         statuses,
         ...(input.assignee
-          ? { assignee: await resolveAssignee(db, input.assignee) }
+          ? {
+              assignee: await resolveAssignee(db, input.assignee, scope.tenant),
+            }
           : undefined),
         ...(input.automation_id
           ? { automationId: input.automation_id }

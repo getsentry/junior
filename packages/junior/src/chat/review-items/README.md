@@ -40,7 +40,8 @@ behavior.
   assigned User must be the Actor or a person in that Conversation.
 - Each item stores the provider tenant, such as the Slack workspace, of the
   Conversation that added it. Every link must be in that tenant. A public
-  item is visible only to readers in the same tenant.
+  item is visible only to readers in the same tenant. A Slack mention in
+  the assignees resolves only to a User in that tenant.
 - A reader can see an item when it is public in the reader's tenant, when the
   reader is an assigned User, when it is linked to the reader's Conversation,
   or when the reader's Automation added it. `canReadReviewItem` and the
