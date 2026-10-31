@@ -65,13 +65,17 @@ export function reviewItemChange(
   return { kind: "dismissed", user };
 }
 
-/** Return whether a closed item is the result of this same action. */
+/**
+ * Return whether a closed item is the result of this same action. A close by
+ * a reply in the thread is never the same as an action on the card.
+ */
 function isSameClose(
   item: ReviewItem,
   action: Exclude<ReviewItemAction, "take">,
   user: User,
 ): boolean {
   return (
+    item.closeReason !== REVIEW_ITEM_REPLIED_REASON &&
     item.closedBy?.userId === user.id &&
     item.status === closedStatus(action) &&
     (action === "submit") === Boolean(item.answer)
@@ -217,10 +221,25 @@ function replyAnswers(item: ReviewItem, user: User | undefined): boolean {
   );
 }
 
+/** Save a typed reply as the free-text answer of an action item. */
+function replyAnswer(
+  item: ReviewItem,
+  text: string,
+): UserInputAnswer | undefined {
+  if (!item.request) return undefined;
+  const answer = normalizeUserInputAnswer(item.request, {
+    other: text,
+    requestId: item.id,
+    values: {},
+  });
+  return isEmptyUserInputAnswer(answer) ? undefined : answer;
+}
+
 /**
  * Close the open action items that a person answered with a reply in their
  * thread. Call it after the reply is saved to the Conversation, so the
- * reply always reaches the agent.
+ * reply always reaches the agent. The reply text is saved as the `other`
+ * answer of each closed item, so the item keeps what the person said.
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
@@ -243,6 +262,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   resolveUser: () => Promise<User | undefined>;
+  text: string;
 }): Promise<void> {
   const db = getDb();
   const items = await listReplyActionItems(db, args.conversationId);
@@ -254,7 +274,9 @@ export async function closeReviewItemsAnsweredByReply(args: {
   )) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
+      const answer = replyAnswer(item, args.text);
       const closed = await closeReviewItem(db, {
+        ...(answer ? { answer } : undefined),
         id: item.id,
         nowMs,
         reason: REVIEW_ITEM_REPLIED_REASON,
