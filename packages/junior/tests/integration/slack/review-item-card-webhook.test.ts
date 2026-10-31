@@ -570,7 +570,7 @@ describe("Slack webhook: Review item cards", () => {
 
     await reply("U123", "1712345.0004");
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
-      // The item keeps the reply, without the mention of Junior.
+      // The item saves the message text without the mention of Junior.
       answer: { other: "Hold, the tests are red", values: {} },
       closeReason: "Replied in thread",
       closedBy: { email: "ana@example.com" },
@@ -593,7 +593,7 @@ describe("Slack webhook: Review item cards", () => {
       userId: "U123",
       value: buttonValue(card, "junior_review_item:choice:0"),
     });
-    // A later answer on the desk is not a retry of the reply.
+    // A later desk answer from Ana does not count as a retry, so it fails.
     await expect(
       actOnReviewItem({
         action: "submit",

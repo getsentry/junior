@@ -66,8 +66,8 @@ export function reviewItemChange(
 }
 
 /**
- * Return whether a closed item is the result of this same action. A close by
- * a reply in the thread is never the same as an action on the card.
+ * Return whether a closed item is the result of this same action. An item
+ * that a person's message closed never matches a card or desk action.
  */
 function isSameClose(
   item: ReviewItem,
@@ -221,8 +221,8 @@ function replyAnswers(item: ReviewItem, user: User | undefined): boolean {
   );
 }
 
-/** Save a typed reply as the free-text answer of an action item. */
-function replyAnswer(
+/** Return the answer that the text of a person's message gives to an item. */
+function messageAnswer(
   item: ReviewItem,
   text: string,
 ): UserInputAnswer | undefined {
@@ -238,8 +238,8 @@ function replyAnswer(
 /**
  * Close the open action items that a person answered with a reply in their
  * thread. Call it after the reply is saved to the Conversation, so the
- * reply always reaches the agent. The reply text is saved as the `other`
- * answer of each closed item, so the item keeps what the person said.
+ * reply always reaches the agent. Each item that it closes saves `text` as
+ * its answer, so the item keeps what the person said.
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
@@ -274,7 +274,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
   )) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
-      const answer = replyAnswer(item, args.text);
+      const answer = messageAnswer(item, args.text);
       const closed = await closeReviewItem(db, {
         ...(answer ? { answer } : undefined),
         id: item.id,
