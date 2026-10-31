@@ -360,6 +360,21 @@ export type MessageSummary = {
   total: number;
 };
 
+/**
+ * Return the person who wrote one transcript user message. Child agent input
+ * has no person. Other messages fall back to the conversation actor.
+ */
+export function transcriptMessageActor(
+  conversation: ConversationTranscript,
+  message: TranscriptViewMessage,
+): ActorIdentity | undefined {
+  if (transcriptRoleKind(message.role) !== "user") return undefined;
+  if (message.agentInvocationId) return undefined;
+  if (actorLabel(message.actorIdentity)) return message.actorIdentity;
+  if (actorLabel(conversation.actorIdentity)) return conversation.actorIdentity;
+  return undefined;
+}
+
 /** Return the best available actor label for one transcript message. */
 export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
@@ -371,11 +386,7 @@ export function transcriptMessageActorLabel(
     // The conversation actor started the child agent but did not write its
     // input, so do not fall back to that actor here.
     if (message.agentInvocationId) return "Agent invocation";
-    return (
-      actorLabel(message.actorIdentity) ??
-      actorLabel(conversation.actorIdentity) ??
-      "User"
-    );
+    return actorLabel(transcriptMessageActor(conversation, message)) ?? "User";
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";

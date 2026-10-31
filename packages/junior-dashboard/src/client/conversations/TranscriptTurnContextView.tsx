@@ -1,10 +1,5 @@
-import {
-  Brain,
-  Braces,
-  ChevronRight,
-  Layers,
-  SlidersHorizontal,
-} from "lucide-react";
+import type { ActorIdentity } from "@sentry/junior/api/schema";
+import { ChevronRight, Layers } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -13,8 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router";
 
+import { ActorAvatar } from "../components/ActorAvatar";
 import { DetailsPanel } from "../components/DetailsPanel";
+import { participantName } from "../components/ParticipantAvatarStack";
 import { Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Drawer } from "../components/Drawer";
@@ -24,21 +22,26 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
-import { formatMessageTimestamp, formatTime } from "../format";
+import { formatMessageTimestamp, formatTime, peoplePath } from "../format";
 import {
   memoryRecallContent,
   userCustomizationContent,
   type MemoryRecallContent,
 } from "./turnContext";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { DetailsCard } from "./DetailsList";
 import { HighlightText } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
-/** The turn context that a page panel shows, keyed by its message. */
-export type TurnContextSelection = {
+/** What one turn context view shows: who spoke, when, and the context. */
+export type TurnContext = {
+  actor?: ActorIdentity;
   contexts: TranscriptViewTurnContext[];
-  id: string;
+  timestamp?: number;
 };
+
+/** The turn context that a page panel shows, keyed by its message. */
+export type TurnContextSelection = TurnContext & { id: string };
 
 /** Let the page that owns a panel show turn context there. */
 export type TurnContextPanel = {
@@ -71,10 +74,9 @@ export function TurnContextPanelProvider(props: {
  * keys context by `messageId`, so every control for one message, including a
  * remounted one, shows the same open state.
  */
-export function TranscriptTurnContextView(props: {
-  contexts: TranscriptViewTurnContext[];
-  messageId?: string;
-}) {
+export function TranscriptTurnContextView(
+  props: TurnContext & { messageId?: string },
+) {
   const panel = useContext(TurnContextPanelContext);
   const [open, setOpen] = useState(false);
   const instanceId = useId();
@@ -100,7 +102,12 @@ export function TranscriptTurnContextView(props: {
               data-turn-context-id={id}
               onClick={() => {
                 if (!panel) return setOpen(true);
-                panel.onToggle({ contexts: props.contexts, id });
+                panel.onToggle({
+                  actor: props.actor,
+                  contexts: props.contexts,
+                  id,
+                  timestamp: props.timestamp,
+                });
               }}
               size="icon"
             >
@@ -127,7 +134,11 @@ export function TranscriptTurnContextView(props: {
               openKey={instanceId}
               titleId={instanceId}
             >
-              <TurnContextList contexts={props.contexts} />
+              <TurnContextBody
+                actor={props.actor}
+                contexts={props.contexts}
+                timestamp={props.timestamp}
+              />
             </Drawer>,
             document.body,
           )
@@ -137,10 +148,7 @@ export function TranscriptTurnContextView(props: {
 }
 
 /** Show turn context in the page panel: an aside, or a sheet on small screens. */
-export function TurnContextDetails(props: {
-  contexts: TranscriptViewTurnContext[];
-  onClose(): void;
-}) {
+export function TurnContextDetails(props: TurnContext & { onClose(): void }) {
   return (
     <DetailsPanel
       label="Turn context"
@@ -151,168 +159,157 @@ export function TurnContextDetails(props: {
         </h2>
       }
     >
-      <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <TurnContextList contexts={props.contexts} />
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <TurnContextBody
+          actor={props.actor}
+          contexts={props.contexts}
+          timestamp={props.timestamp}
+        />
       </div>
     </DetailsPanel>
   );
 }
 
-// The current actor's customization comes first, above plugin context.
-function TurnContextList(props: { contexts: TranscriptViewTurnContext[] }) {
+/** Show who spoke, then their customization, then plugin context. */
+function TurnContextBody(props: TurnContext) {
   const contexts = [...props.contexts].sort(
     (a, b) =>
       Number(Boolean(userCustomizationContent(b))) -
       Number(Boolean(userCustomizationContent(a))),
   );
-  return contexts.map((context, index) => (
-    <TurnContext
-      context={context}
-      key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
-    />
-  ));
+  return (
+    <div className="grid min-w-0 gap-3">
+      {props.actor ? (
+        <TurnContextActor actor={props.actor} timestamp={props.timestamp} />
+      ) : null}
+      {contexts.map((context, index) => (
+        <TurnContextCard
+          context={context}
+          key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
+        />
+      ))}
+    </div>
+  );
 }
 
-function TurnContext(props: { context: TranscriptViewTurnContext }) {
-  const memory = memoryRecallContent(props.context);
-  const customization = memory
-    ? undefined
-    : userCustomizationContent(props.context);
-  const Icon = memory ? Brain : customization ? SlidersHorizontal : Braces;
-  const title = memory
-    ? "Recalled memories"
-    : customization
-      ? "User customization"
-      : props.context.pluginName;
-
+function TurnContextActor(props: { actor: ActorIdentity; timestamp?: number }) {
+  const name = participantName(props.actor);
+  const email = props.actor.email?.trim();
+  const handle = props.actor.slackUserName?.trim();
+  const meta = [
+    email && email !== name ? email : undefined,
+    handle && handle !== name ? `@${handle}` : undefined,
+  ].filter(Boolean);
   return (
-    <section className="border-b border-dashboard-border-strong py-5 last:border-b-0">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Icon
-            aria-hidden="true"
-            className="shrink-0 text-dashboard-accent-text/60"
-            size={15}
-          />
-          <h3 className="m-0 truncate text-sm font-semibold text-dashboard-text">
-            {title}
-          </h3>
+    <section
+      aria-label="Speaker"
+      className="flex min-w-0 items-center gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3"
+    >
+      <ActorAvatar name={name} size="detail" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-baseline justify-between gap-3">
+          {email ? (
+            <Link
+              className="min-w-0 truncate text-sm font-medium text-dashboard-text no-underline hover:underline"
+              to={peoplePath(email)}
+            >
+              {name}
+            </Link>
+          ) : (
+            <span className="min-w-0 truncate text-sm font-medium text-dashboard-text">
+              {name}
+            </span>
+          )}
+          {props.timestamp !== undefined ? (
+            <time
+              className="shrink-0 text-xs tabular-nums text-dashboard-text-muted"
+              dateTime={new Date(props.timestamp).toISOString()}
+            >
+              {formatMessageTimestamp(props.timestamp, true)}
+            </time>
+          ) : null}
         </div>
-        <span className="shrink-0 text-xs text-dashboard-text-muted">
-          {props.context.kind} · v{props.context.version}
-        </span>
+        {meta.length ? (
+          <p
+            className="m-0 mt-0.5 truncate text-xs text-dashboard-text-muted"
+            title={props.actor.slackUserId}
+          >
+            {meta.join(" · ")}
+          </p>
+        ) : null}
       </div>
-
-      {memory ? (
-        <MemoryRecall
-          loadedAt={props.context.loadedAt}
-          memories={memory.memories}
-        />
-      ) : customization ? (
-        <UserCustomization text={customization.text} />
-      ) : (
-        <GenericContext context={props.context} />
-      )}
     </section>
   );
 }
 
-function UserCustomization(props: { text: string }) {
+function TurnContextCard(props: { context: TranscriptViewTurnContext }) {
+  const memory = memoryRecallContent(props.context);
+  if (memory) {
+    return (
+      <DetailsCard count={memory.memories.length} title="Recalled memories">
+        <MemoryRecall memories={memory.memories} />
+      </DetailsCard>
+    );
+  }
+  const customization = userCustomizationContent(props.context);
+  if (customization) {
+    return (
+      <DetailsCard title="User customization">
+        <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text">
+          <HighlightText text={customization.text} />
+        </p>
+      </DetailsCard>
+    );
+  }
   return (
-    <div className="whitespace-pre-wrap rounded-lg border border-dashboard-border-strong px-3 py-3 text-sm leading-6 text-dashboard-text">
-      <HighlightText text={props.text} />
-    </div>
+    <DetailsCard
+      title={`${props.context.pluginName} · ${props.context.kind} v${props.context.version}`}
+    >
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+        <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
+      </pre>
+    </DetailsCard>
   );
 }
 
-function MemoryRecall(props: {
-  loadedAt: string;
-  memories: MemoryRecallContent["memories"];
-}) {
+// The trigger holds the full text and only stops truncating when open, so
+// search highlights and browser find reach it without a second copy.
+function MemoryRecall(props: { memories: MemoryRecallContent["memories"] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
-      {props.memories.map((memory, index) => (
-        <Collapsible
-          className="border-t border-dashboard-border-strong first:border-t-0"
-          key={memory.id}
-        >
-          <TranscriptSummaryTrigger className="group flex items-start gap-2.5">
+    <div className="-mx-1.5 -mb-1.5 -mt-1 grid gap-0.5">
+      {props.memories.map((memory) => (
+        <Collapsible key={memory.id}>
+          <TranscriptSummaryTrigger className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 px-1.5">
             <ChevronRight
               aria-hidden="true"
               className={cn(
                 dashboardDisclosureChevronClass,
-                "mt-0.5 text-dashboard-text-muted",
+                "mt-[3px] text-dashboard-text-muted",
               )}
             />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-dashboard-text-muted">
-                  Memory {index + 1}
-                </span>
-                <span className="shrink-0 text-xs text-dashboard-text-muted">
-                  {memory.kind} · {memory.scope}
-                </span>
-              </span>
-              <span className="mt-1 block truncate text-sm text-dashboard-text-muted">
-                <HighlightText text={memory.content} />
-              </span>
+            <span className="min-w-0 truncate text-sm leading-5 text-dashboard-text group-aria-expanded:whitespace-pre-wrap group-aria-expanded:break-words">
+              <HighlightText text={memory.content} />
+            </span>
+            <span className="shrink-0 text-xs leading-5 text-dashboard-text-muted">
+              {memory.kind}
             </span>
           </TranscriptSummaryTrigger>
-
           <CollapsibleContent hiddenUntilFound>
-            <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
-              <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
-                <HighlightText text={memory.content} />
-              </div>
-
-              <dl className="mt-4 grid gap-2 text-xs">
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                  <dt className="text-dashboard-text-muted">Memory ID</dt>
-                  <dd className="m-0 break-all font-mono text-dashboard-text-muted">
-                    <HighlightText text={memory.id} />
-                  </dd>
-                </div>
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                  <dt className="text-dashboard-text-muted">Observed</dt>
-                  <dd className="m-0 text-dashboard-text-muted">
-                    {formatTime(new Date(memory.observedAtMs).toISOString())}
-                  </dd>
-                </div>
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                  <dt className="text-dashboard-text-muted">Scope</dt>
-                  <dd className="m-0 text-dashboard-text-muted">
-                    {memory.scope}
-                  </dd>
-                </div>
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                  <dt className="text-dashboard-text-muted">Kind</dt>
-                  <dd className="m-0 text-dashboard-text-muted">
-                    {memory.kind}
-                  </dd>
-                </div>
-              </dl>
-            </div>
+            <p className="m-0 flex flex-wrap gap-x-1.5 px-1.5 pb-1.5 pl-7 text-xs text-dashboard-text-muted">
+              <span>{memory.scope}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                Observed{" "}
+                {formatTime(new Date(memory.observedAtMs).toISOString())}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className="break-all font-mono">
+                <HighlightText text={memory.id} />
+              </span>
+            </p>
           </CollapsibleContent>
         </Collapsible>
       ))}
-      <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
-        {props.memories.length}{" "}
-        {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
-        {formatMessageTimestamp(Date.parse(props.loadedAt))}
-      </p>
-    </div>
-  );
-}
-
-function GenericContext(props: { context: TranscriptViewTurnContext }) {
-  return (
-    <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-dashboard-fill-soft p-3 text-xs leading-relaxed text-dashboard-text-muted">
-        <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
-      </pre>
-      <p className="m-0 mt-3 text-xs text-dashboard-text-muted">
-        Loaded {formatMessageTimestamp(Date.parse(props.context.loadedAt))}
-      </p>
     </div>
   );
 }

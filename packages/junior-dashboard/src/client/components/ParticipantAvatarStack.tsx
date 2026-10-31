@@ -13,7 +13,8 @@ type ParticipantAvatarStackProps = {
   size: "detail" | "list";
 };
 
-function participantName(participant: ActorIdentity): string {
+/** Name an actor for display: full name first, then handle, email, or ID. */
+export function participantName(participant: ActorIdentity): string {
   return (
     participant.fullName?.trim() ||
     participant.slackUserName?.trim() ||
