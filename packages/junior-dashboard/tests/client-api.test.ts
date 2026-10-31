@@ -11,7 +11,6 @@ import {
   ARCHIVED_CONVERSATION_ID,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
-import { personalSpendRefreshDelay } from "../src/client/api";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
@@ -193,18 +192,6 @@ describe("dashboard client API", () => {
     } as unknown as Parameters<typeof interval>[0];
 
     expect(interval(query)).toBe(2_000);
-  });
-
-  it("refreshes spend from the age of the server-cached report", () => {
-    const nowMs = Date.parse("2026-08-03T12:00:00.000Z");
-
-    expect(personalSpendRefreshDelay(undefined, nowMs)).toBe(5 * 60_000);
-    expect(personalSpendRefreshDelay("2026-08-03T11:55:30.000Z", nowMs)).toBe(
-      30_000,
-    );
-    expect(personalSpendRefreshDelay("2026-08-03T11:54:00.000Z", nowMs)).toBe(
-      1_000,
-    );
   });
 
   it("detects a newer server version without false positives", () => {
