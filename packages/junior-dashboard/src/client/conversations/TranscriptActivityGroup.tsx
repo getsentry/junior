@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { formatMs } from "../format";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -29,6 +30,10 @@ export function isCollapsibleActivityEntry(
   // Child agent rows stay in the main view, like their result events.
   if (entry.kind === "subagent") return false;
   if (entry.kind === "message") return false;
+  // A review card stays visible where the agent added the item.
+  if (entry.kind === "tool" && reviewItemIdFromToolCall(entry.part)) {
+    return false;
+  }
   return true;
 }
 

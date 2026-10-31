@@ -35,6 +35,7 @@ export function ConversationHomeList(props: {
   finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   timeZone: string;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
@@ -94,6 +95,7 @@ export function ConversationHomeList(props: {
             key={section.key}
             onArchiveError={handleArchiveError}
             onArchived={handleArchived}
+            waitingConversationIds={props.waitingConversationIds}
             section={section}
           />
         ))}
@@ -169,6 +171,7 @@ function ConversationCardSection(props: {
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   section: ConversationSection;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
@@ -188,6 +191,7 @@ function ConversationCardSection(props: {
             key={conversation.id}
             onArchiveError={props.onArchiveError}
             onArchived={props.onArchived}
+            waitingOnViewer={props.waitingConversationIds.has(conversation.id)}
           />
         ))}
       </div>
@@ -200,6 +204,7 @@ function ConversationCard(props: {
   finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  waitingOnViewer: boolean;
 }) {
   const conversation = props.conversation;
   const archive = useArchiveConversation(conversation.id, {
@@ -231,6 +236,7 @@ function ConversationCard(props: {
               finishedSinceSeen={props.finishedSinceSeen}
               isPrivate={isPrivate}
               status={status}
+              waitingOnViewer={props.waitingOnViewer}
             />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">

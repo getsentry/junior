@@ -112,6 +112,15 @@ describe("review item actions API", () => {
 
     const anaCount = await (await api(fixture, ana).get("/count")).json();
     expect(anaCount).toEqual({ mine: 1 });
+    // The linked Conversations wait on Ana, but not on Cal.
+    expect(
+      await (await api(fixture, ana).get("/waiting-conversations")).json(),
+    ).toEqual({
+      conversationIds: ["slack:CPUB:1.000001", "slack:CPUB:1.000002"],
+    });
+    expect(
+      await (await api(fixture, cal).get("/waiting-conversations")).json(),
+    ).toEqual({ conversationIds: [] });
     const calList = await (await api(fixture, cal).get("?view=all")).json();
     expect(calList.items).toMatchObject([{ id, canAct: false }]);
     // A person outside the Slack workspace does not see the public item.
@@ -161,6 +170,9 @@ describe("review item actions API", () => {
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
       mine: 0,
     });
+    expect(
+      await (await api(fixture, ben).get("/waiting-conversations")).json(),
+    ).toEqual({ conversationIds: [] });
     const archived = await (
       await api(fixture, ben).get("?view=mine&archived=true")
     ).json();

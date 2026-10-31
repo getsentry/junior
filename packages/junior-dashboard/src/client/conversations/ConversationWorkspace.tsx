@@ -20,6 +20,7 @@ import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
+import { useWaitingConversationIds } from "../review-desk/queries";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
 const CONVERSATION_PAGE_SIZE = 20;
@@ -61,6 +62,7 @@ export function ConversationWorkspace() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+  const waitingConversationIds = useWaitingConversationIds();
   const { finishedConversationIds, markRead } =
     useConversationFinishedIndicators(
       conversations,
@@ -107,6 +109,7 @@ export function ConversationWorkspace() {
               finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
               timeZone={getDashboardTimeZone()}
+              waitingConversationIds={waitingConversationIds}
             />
             <PagePagination
               className="pt-1"
@@ -135,6 +138,7 @@ export function ConversationWorkspace() {
           query={query}
           selectedId={selectedId}
           timeZone={getDashboardTimeZone()}
+          waitingConversationIds={waitingConversationIds}
         />
       </div>
       <section

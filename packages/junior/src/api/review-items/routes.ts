@@ -10,6 +10,7 @@ import {
   reviewItemListSchema,
   reviewItemParamsSchema,
   reviewItemSchema,
+  reviewItemWaitingConversationsSchema,
   type ReviewItemPayload,
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
@@ -24,6 +25,7 @@ import {
 } from "@/chat/review-items/actions";
 import {
   countReviewItems,
+  listWaitingConversationIds,
   reviewItemReaderForUser,
   searchReviewItems,
   type ReviewItem,
@@ -128,6 +130,12 @@ export function createReviewItemRoutes(services: {
         assignee: { userId: viewer.id },
         statuses: ["open"],
       }),
+    });
+  });
+  app.get("/waiting-conversations", requireViewer, async (context) => {
+    const viewer = context.get("viewer");
+    return jsonResponse(reviewItemWaitingConversationsSchema, {
+      conversationIds: await listWaitingConversationIds(getDb(), viewer),
     });
   });
   app.get(

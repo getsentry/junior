@@ -48,6 +48,7 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
+  waitingConversationIds: ReadonlySet<string>;
   /**
    * `panel` = split-pane dock with internal scroll.
    * `landing` = flow nav under create compose (parent owns scroll).
@@ -186,6 +187,9 @@ export function ConversationSidebar(props: {
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
+                  waitingOnViewer={props.waitingConversationIds.has(
+                    entry.conversation.id,
+                  )}
                 />
               )
             }
@@ -271,6 +275,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
+  waitingOnViewer: boolean;
 }) {
   const archive = useArchiveConversation(props.conversation.id, {
     // Read the attempted direction from the mutation call, not the (possibly
@@ -316,6 +321,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
               finishedSinceSeen={props.finishedSinceSeen}
               isPrivate={isPrivate}
               status={status}
+              waitingOnViewer={props.waitingOnViewer}
             />
           </div>
           <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text">

@@ -10,6 +10,8 @@ import {
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
 import { ShimmerText } from "../components/ShimmerText";
+import { TranscriptReviewItemCard } from "../review-desk/ReviewItemCard";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
@@ -64,7 +66,17 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
     </ToolFrame>
   );
 
-  return <div className="min-w-0">{frame}</div>;
+  const reviewItemId = reviewItemIdFromToolCall(props.part);
+  return (
+    <div className="min-w-0">
+      {frame}
+      {reviewItemId ? (
+        <div className="mt-2">
+          <TranscriptReviewItemCard itemId={reviewItemId} />
+        </div>
+      ) : null}
+    </div>
+  );
 });
 
 function ToolSignature(props: {
