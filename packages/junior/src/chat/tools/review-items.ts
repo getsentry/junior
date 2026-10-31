@@ -175,11 +175,12 @@ async function requireLinks(args: {
 
 /**
  * Check who a private item can go to. It cannot go to Everyone. Each User
- * must be the current Actor or a person in the current Conversation.
+ * must be the current Actor or a person in one of the given Conversations:
+ * the current one and, for an existing item, the one that added it.
  */
 async function requireAssigneesAllowed(
   scope: ActorScope,
-  conversationId: string,
+  conversationIds: readonly string[],
   visibility: ReviewItemVisibility,
   assignees: ResolvedAssignees,
 ): Promise<void> {
@@ -190,11 +191,16 @@ async function requireAssigneesAllowed(
     );
   }
   const others = assignees.userIds.filter((id) => id !== scope.user?.id);
-  const inConversation = await conversationParticipantUserIds(
-    getDb(),
-    conversationId,
-    others,
-  );
+  const inConversation = new Set<string>();
+  for (const conversationId of new Set(conversationIds)) {
+    for (const id of await conversationParticipantUserIds(
+      getDb(),
+      conversationId,
+      others,
+    )) {
+      inConversation.add(id);
+    }
+  }
   const outside = others.filter((id) => !inConversation.has(id));
   if (outside.length > 0) {
     throw new ToolInputError(
@@ -307,7 +313,11 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       requireRequest(input.kind, Boolean(input.request));
       const db = getDb();
       const scope = await actorScope(context);
-      const existing = await getOpenReviewItemByDedupeKey(db, input.dedupe_key);
+      const existing = await getOpenReviewItemByDedupeKey(
+        db,
+        input.dedupe_key,
+        scope.tenant,
+      );
       if (
         existing &&
         (!canReadReviewItem(existing, scope.reader) ||
@@ -346,7 +356,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       );
       await requireAssigneesAllowed(
         scope,
-        context.conversationId,
+        existing
+          ? [context.conversationId, existing.addedByConversationId]
+          : [context.conversationId],
         visibility,
         assignees,
       );
@@ -492,7 +504,7 @@ export function createUpdateReviewItemTool(
         if (input.assignees) {
           await requireAssigneesAllowed(
             scope,
-            context.conversationId,
+            [context.conversationId, item.addedByConversationId],
             visibility,
             assignees,
           );

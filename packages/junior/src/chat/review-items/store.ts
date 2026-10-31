@@ -6,6 +6,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNull,
   or,
   sql,
   type SQL,
@@ -233,10 +234,14 @@ export async function getReviewItem(
   return (await hydrate(db, rows))[0];
 }
 
-/** Read the open Review item with one dedupe key, if there is one. */
+/**
+ * Read the open Review item with one dedupe key in one provider tenant, if
+ * there is one. Dedupe keys are unique only inside a tenant.
+ */
 export async function getOpenReviewItemByDedupeKey(
   db: JuniorDatabase,
   dedupeKey: string,
+  tenant: ProviderTenant | undefined,
 ): Promise<ReviewItem | undefined> {
   const rows = await db
     .select()
@@ -245,14 +250,20 @@ export async function getOpenReviewItemByDedupeKey(
       and(
         eq(juniorReviewItems.dedupeKey, dedupeKey),
         eq(juniorReviewItems.status, "open"),
+        tenant
+          ? and(
+              eq(juniorReviewItems.provider, tenant.provider),
+              eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+            )
+          : isNull(juniorReviewItems.provider),
       ),
     );
   return (await hydrate(db, rows))[0];
 }
 
 /**
- * Add one open Review item. Return undefined when another open item already
- * uses its dedupe key.
+ * Add one open Review item. Return undefined when another open item in the
+ * same tenant already uses its dedupe key.
  */
 export async function insertReviewItem(
   db: JuniorDatabase,
@@ -280,10 +291,9 @@ export async function insertReviewItem(
         status: "open",
         updatedAt: now,
       })
-      .onConflictDoNothing({
-        target: juniorReviewItems.dedupeKey,
-        where: sql`${juniorReviewItems.status} = 'open'`,
-      })
+      // The only possible conflict is the open dedupe index. It is an
+      // expression index, so the statement names no target.
+      .onConflictDoNothing()
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);

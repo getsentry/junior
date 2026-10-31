@@ -183,6 +183,7 @@ function dashboardHostRoutePaths(
     `${conversationsPath}/*`,
     pagePath("locations"),
     `${pagePath("locations")}/*`,
+    pagePath("review"),
     peoplePath,
     `${peoplePath}/*`,
     pagePath("automations"),

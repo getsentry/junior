@@ -1,0 +1,2 @@
+DROP INDEX "junior_review_items_open_dedupe_uidx";--> statement-breakpoint
+CREATE UNIQUE INDEX "junior_review_items_open_dedupe_uidx" ON "junior_review_items" USING btree (coalesce("provider", ''),coalesce("provider_tenant_id", ''),"dedupe_key") WHERE "junior_review_items"."status" = 'open';
