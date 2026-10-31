@@ -29,8 +29,9 @@
 
 ## Dependencies
 
-- #2441 before step 2, release B. Both change the execution record write
-  and the Turn cursor. Release A does not change the execution record write.
+- #2441 before the step 2 writers. Both change the Conversation write and
+  the Turn checkpoint. The step 2 readers do not change the Conversation
+  write.
 - #2260 (stacked on #2217) before step 3. Step 3 builds event authors and
   the trust rule on #2260's event author. #2260's Watch requester is
   provenance, not an Owner.
@@ -73,36 +74,42 @@ Built in #2443 (merged).
   - ingress paths: Slack, web, fork, event, scheduled automation, event
     automation, plugin dispatch, local CLI, and Agent invocation.
 - **Decided in this step:**
-  - **Field name.** `authorIdentityId` on all three records. The mailbox
-    entry has it on `input`, next to `input.authorId`. The Turn cursor has
-    it next to `actor`. The Message event already has it on `main`, and SQL
-    stores it in `junior_conversation_events.actor_identity_id`.
-  - **Two releases.** The mailbox entry schema is strict. On `main`, a
-    worker that reads an entry with an unknown field marks the whole
-    Conversation execution record as invalid
-    (`normalizeExecution` in `task-execution/state.ts`). The Turn cursor
-    schema strips unknown fields, so an older worker drops the id when it
-    rewrites the cursor.
-    - Release A: the mailbox entry and the Turn cursor accept
-      `authorIdentityId`, and every rewrite keeps it. No code sets it yet.
-    - Release B: ships after release A runs on every worker, and after
-      #2441. Every ingress sets the id. The worker carries it from the
-      mailbox entry to the Turn and to each new user Message. The
-      Conversation write keeps the stored id and stops guessing from the
-      Source. The Conversation exposes its Owner from the old column. No
-      code writes or reads the two unused Identity columns. The fallbacks
-      log.
-  - **Fallbacks that log in release B.** Each one logs only when an id is
-    missing. They do not log in release A, because no writer sets an id yet.
-    - A new user Message with no `authorIdentityId`. The event write still
+  - **Field names.** Each name matches the words already on its record.
+    - Inbound message: `input.authorIdentityId`, next to `input.authorId`.
+    - Message event: `authorIdentityId`, already on `main`. SQL stores it
+      in `junior_conversation_events.actor_identity_id`.
+    - Turn checkpoint: `actorIdentityId`, next to `actor`. It is the
+      Identity of the Turn Actor. For an event Turn, that is the system
+      Identity, not the event author.
+  - **Readers first.** #2473 adds the readers. The writers ship in a later
+    PR, after #2473 runs on every worker. One PR is not safe:
+    - The Inbound message schema is strict. The Slack, web, Agent
+      invocation, and plugin dispatch kinds of `input.metadata` are strict
+      too. Old code rejects the id on the entry and in its metadata.
+    - The mailbox is in shared Redis. Vercel Queues sends a queue message
+      only to the deployment that sent it, but this does not stop an old
+      worker from reading a new mailbox entry.
+    - During a deploy, an old worker can still run a Turn while new code
+      adds a steering message to the same Conversation. After that, the old
+      worker cannot read the Conversation execution
+      (`normalizeExecution` in `task-execution/state.ts`). Its lease
+      check-in, mailbox drain, and completion fail, so its Turn cannot
+      finish.
+    - The Turn checkpoint and the Message event are safe. An old worker
+      drops an unknown Turn checkpoint field when it rewrites the
+      checkpoint. The Message event field is already on `main`.
+- **Plan choices for the writers. David has not confirmed these.**
+  - The fallback logs ship with the writers. Each one logs only when an id
+    is missing:
+    - a new user Message with no `authorIdentityId`. The event write still
       guesses the author (`resolveEventActorIdentityId`).
-    - A new root Conversation with no Owner id. The write still uses the
+    - a new root Conversation with no Owner id. The write still uses the
       Actor or the legacy Source row (`resolveConversationActorIdentityId`).
-    - A Turn cursor with no `authorIdentityId` when a Turn resumes.
-- **Decide in release B:** the author of the task Message that a parent
-  agent writes in a child Conversation, and of the result Message that a
-  child sends back. Current proposal: the system Identity. An agent wrote the
-  text, and its provenance has no Actor, so it never counts as user intent.
+    - a Turn checkpoint with no `actorIdentityId` when a Turn resumes.
+  - The system Identity is the author of the task Message that a parent
+    agent writes in a child Conversation, and of the result Message that a
+    child sends back. An agent wrote the text, and its provenance has no
+    Actor, so it never counts as user intent.
 
 ## 3. One System Identity And Real Identities
 

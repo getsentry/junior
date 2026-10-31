@@ -115,12 +115,12 @@ export interface TurnRecord {
    */
   actor?: Actor;
   /**
-   * Identity of the Actor that started this Turn, next to the Actor.
+   * Identity id of `actor`, the Actor that started this Turn.
    *
    * TODO(dcramer): Set this at every ingress after every deployed worker keeps
    * it when it rewrites the Turn cursor.
    */
-  authorIdentityId?: string;
+  actorIdentityId?: string;
   channelName?: string;
   /** Delegated subject the Turn started with. Resume must verify it again. */
   credentialSubject?: CredentialSubject;
@@ -262,7 +262,7 @@ const storedTurnRecordSchema = z
   .object({
     // TODO(dcramer): Require Actor after no deployed Turn cursor can omit it.
     actor: actorSchema.optional(),
-    authorIdentityId: z.string().min(1).optional(),
+    actorIdentityId: z.string().min(1).optional(),
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
@@ -470,7 +470,7 @@ function materializeTurnRecord(
     actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
-      authorIdentityId: stored.authorIdentityId,
+      actorIdentityId: stored.actorIdentityId,
       channelName: runtimeMetrics?.channelName,
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
@@ -571,7 +571,7 @@ export async function getTurnRecordForResume(
 /** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
   actor?: Actor;
-  authorIdentityId?: string;
+  actorIdentityId?: string;
   conversationId: string;
   credentialSubject?: CredentialSubject;
   dispatchId?: string;
@@ -611,7 +611,7 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     ...definedProps({
       actor: args.actor,
-      authorIdentityId: args.authorIdentityId,
+      actorIdentityId: args.actorIdentityId,
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
@@ -743,7 +743,7 @@ async function updateTurnState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...definedProps({
-        authorIdentityId: args.existing.authorIdentityId,
+        actorIdentityId: args.existing.actorIdentityId,
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
@@ -920,7 +920,7 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
-        authorIdentityId: existingRecord?.authorIdentityId,
+        actorIdentityId: existingRecord?.actorIdentityId,
         credentialSubject:
           existingRecord?.credentialSubject ?? args.credentialSubject,
         cumulativeToolCallCount:

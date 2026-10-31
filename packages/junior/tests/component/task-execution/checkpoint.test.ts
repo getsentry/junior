@@ -611,7 +611,7 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("requires v2, keeps the author Identity id, and ignores unknown fields in stored turn cursors", async () => {
+  it("requires v2, keeps the Actor Identity id, and ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
@@ -642,7 +642,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
-        authorIdentityId: "identity-1",
+        actorIdentityId: "identity-1",
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -671,7 +671,7 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
-      authorIdentityId: "identity-1",
+      actorIdentityId: "identity-1",
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
@@ -690,7 +690,7 @@ describe("turn checkpoint", () => {
     await expect(
       stateAdapter.get(turnCursorKey(conversationId, turnId)),
     ).resolves.toMatchObject({
-      authorIdentityId: "identity-1",
+      actorIdentityId: "identity-1",
       sliceId: 2,
     });
   });
