@@ -210,6 +210,44 @@ describe("Guardian confirmation on the review desk", () => {
     // Reject approves nothing.
     await answer(again, ana, "Reject");
     await askedItemId(turn(context, ana), "preview-42");
+
+    // The approver must see all of the input. Input that does not fit gets
+    // no item, and the agent asks in text.
+    const long = turn(context, ana);
+    await expect(
+      long.review("call", "deleteWorkspace", deleteWorkspace, {
+        workspace: "x".repeat(2_100),
+      }),
+    ).rejects.toMatchObject({ decision: "ask" });
+    expect(
+      getToolActionRejectionMarker(
+        long.projectToolResult("call", { details: {}, isError: true }),
+      )?.reviewItemId,
+    ).toBeUndefined();
+  });
+
+  it("counts only the approval of the person who must approve", async () => {
+    const conversationId = "slack:CRUN:3.000001";
+    await conversation(conversationId, "public");
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const context = { conversationId, source: SLACK_SOURCE };
+
+    // An agent moves Ana's item to Bob, and Bob approves it.
+    const id = await askedItemId(turn(context, ana), "preview-42");
+    const update = createUpdateReviewItemTool(
+      { ...context, resolveActorIdentity: async () => undefined },
+      () => queue,
+    );
+    await update.execute!(
+      { id, assignees: ["bob@example.com"] } as never,
+      {} as never,
+    );
+    await answer(id, bob, "Approve");
+
+    // Bob's answer resumes the Conversation as Bob. It approves nothing.
+    expect(await askedItemId(turn(context, bob), "preview-42")).not.toBe(id);
+    expect(await askedItemId(turn(context, ana), "preview-42")).not.toBe(id);
   });
 
   it("asks the Automation creator from an Automation run", async () => {

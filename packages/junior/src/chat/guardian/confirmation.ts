@@ -59,12 +59,21 @@ function fenced(text: string, language: string): string {
 }
 
 /**
- * The dedupe key of the confirmation item for one exact action in one
- * Conversation: the tool and its exact input. A retry of the same blocked
- * call has the same key, so it updates the open item.
+ * Who an item belongs to: the Automation that added it, whose creator
+ * approves, or the Actor who must approve. It is part of the dedupe key, so
+ * an agent cannot move an approval to another person by a change to the
+ * assignees.
+ */
+type ConfirmationOwner = "automation" | `user:${string}`;
+
+/**
+ * The dedupe key of the confirmation item for one exact action of one owner
+ * in one Conversation: the tool and its exact input. A retry of the same
+ * blocked call has the same key, so it updates the open item.
  */
 function confirmationKey(
   conversationId: string,
+  owner: ConfirmationOwner,
   proposal: ToolActionProposal,
 ): string {
   const action = canonicalJson({
@@ -73,7 +82,7 @@ function confirmationKey(
     name: proposal.tool.name,
   });
   const hash = createHash("sha256")
-    .update(JSON.stringify([conversationId, action]))
+    .update(JSON.stringify([conversationId, owner, action]))
     .digest("hex");
   return `guardian:${hash}`;
 }
@@ -82,10 +91,16 @@ function confirmationKey(
  * Render the item content from the proposal only, so the same action always
  * gets the same content. The approval check compares the item with this
  * render, so an item that an agent changed no longer approves anything.
+ * Return undefined when the exact input does not fit in the body: the
+ * approver must see all of the input that they approve.
  */
 function confirmationContent(
   proposal: ToolActionProposal,
-): Pick<ReviewItemContent, "body" | "title"> & { request: UserInputRequest } {
+):
+  | (Pick<ReviewItemContent, "body" | "title"> & { request: UserInputRequest })
+  | undefined {
+  const input = JSON.stringify(canonicalJson(proposal.input), null, 2);
+  if (input.length > MAX_INPUT_CHARS) return undefined;
   const action = truncate(
     proposal.tool.proposalDescription ?? `Run \`${proposal.tool.name}\`.`,
     MAX_ACTION_CHARS,
@@ -93,10 +108,6 @@ function confirmationContent(
   const tool = proposal.tool.dispatcherName
     ? `\`${proposal.tool.name}\` (through \`${proposal.tool.dispatcherName}\`)`
     : `\`${proposal.tool.name}\``;
-  const input = truncate(
-    JSON.stringify(canonicalJson(proposal.input), null, 2),
-    MAX_INPUT_CHARS,
-  );
   return {
     title: `Approve: ${action}`,
     body: [
@@ -149,7 +160,7 @@ async function approverUserId(
  * for the same action. It links the current Conversation, so its card shows
  * in the thread and the Conversation shows as waiting on the approver.
  * Return the item id, or undefined when no User can approve, such as an
- * Actor without a Junior User.
+ * Actor without a Junior User, or when the input is too long to show.
  */
 export async function requestActionConfirmation(
   context: ActionConfirmationContext,
@@ -161,8 +172,13 @@ export async function requestActionConfirmation(
     scope.reader.automationId,
     scope.user?.id,
   );
-  if (!approver) return undefined;
-  const dedupeKey = confirmationKey(context.conversationId, proposal);
+  const rendered = confirmationContent(proposal);
+  if (!approver || !rendered) return undefined;
+  const dedupeKey = confirmationKey(
+    context.conversationId,
+    scope.reader.automationId ? "automation" : `user:${approver}`,
+    proposal,
+  );
   const existing = await getOpenReviewItemByDedupeKey(
     db,
     dedupeKey,
@@ -190,7 +206,7 @@ export async function requestActionConfirmation(
     visibility,
   });
   const content: ReviewItemContent = {
-    ...confirmationContent(proposal),
+    ...rendered,
     assignedToEveryone: false,
     assigneeUserIds: assignees.userIds,
     conversationIds: [
@@ -235,6 +251,7 @@ function isUnchangedApproval(
   proposal: ToolActionProposal,
 ): boolean {
   const expected = confirmationContent(proposal);
+  if (!expected) return false;
   const values = item.answer?.values[DECISION_FIELD_ID];
   return (
     item.kind === "action" &&
@@ -256,8 +273,9 @@ function isUnchangedApproval(
  * Consume the approval of this exact action, if the approver gave one. It is
  * true only once for each approval: for the newest item of this exact
  * action in this Conversation, when that item is unchanged, and when the
- * approver closed it with Approve and no note. A retry after that needs a
- * new approval.
+ * approver closed it with Approve and no note. The item of the current
+ * Actor comes first, then the item of an Automation run. A retry after that
+ * needs a new approval.
  */
 export async function consumeActionApproval(
   context: ActionConfirmationContext,
@@ -265,23 +283,31 @@ export async function consumeActionApproval(
 ): Promise<boolean> {
   const db = getDb();
   const scope = await readReviewItemAgentScope(context);
-  const item = await getLatestReviewItemByDedupeKey(
-    db,
-    confirmationKey(context.conversationId, proposal),
-    scope.tenant,
-  );
-  if (
-    !item ||
-    item.addedByConversationId !== context.conversationId ||
-    !isUnchangedApproval(item, proposal)
-  ) {
-    return false;
+  const owners: ConfirmationOwner[] = scope.reader.automationId
+    ? ["automation"]
+    : [...(scope.user ? [`user:${scope.user.id}` as const] : []), "automation"];
+  for (const owner of owners) {
+    const item = await getLatestReviewItemByDedupeKey(
+      db,
+      confirmationKey(context.conversationId, owner, proposal),
+      scope.tenant,
+    );
+    if (
+      !item ||
+      item.addedByConversationId !== context.conversationId ||
+      // Only an Automation run adds an item with the automation owner.
+      (owner === "automation") !== (item.automationId !== undefined) ||
+      !isUnchangedApproval(item, proposal)
+    ) {
+      continue;
+    }
+    const approver = await approverUserId(item.automationId, scope.user?.id);
+    if (!approver || item.closedBy?.userId !== approver) continue;
+    return await markReviewItemApprovalUsed(db, {
+      id: item.id,
+      nowMs: Date.now(),
+      reason: APPROVAL_USED_REASON,
+    });
   }
-  const approver = await approverUserId(item.automationId, scope.user?.id);
-  if (!approver || item.closedBy?.userId !== approver) return false;
-  return await markReviewItemApprovalUsed(db, {
-    id: item.id,
-    nowMs: Date.now(),
-    reason: APPROVAL_USED_REASON,
-  });
+  return false;
 }

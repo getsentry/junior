@@ -40,9 +40,9 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
 6. `guardianDecision` derives the decision. See "Decision" below.
 7. The gate records the decision in the conversation event log before the
    action continues.
-8. On `ask`, the gate first checks for an approval of this exact action. See
-   "Confirmation on the review desk" below. Without one, it adds the
-   Approve/Reject item.
+8. On `ask` or `allow`, the gate first uses an approval of this exact action.
+   An `ask` with an approval becomes `allow`. See "Confirmation on the review
+   desk" below. An `ask` without one adds the Approve/Reject item.
 9. On `ask` or `deny`, the gate throws `ToolActionRejectedError`. The tool
    result tells the agent what to do next. `projectToolResult` adds a marker
    to that result. When the Turn resumes, the gate restores its prior
@@ -68,12 +68,16 @@ The person confirms an `ask` on the review desk, not in a free-text reply.
 - On `ask`, core adds an `action` Review item with one `choice` field:
   Approve, then Reject. It renders the title, body, and question only from
   the proposal: the action, the tool, what the tool does, and the exact
-  input.
+  input. When the exact input does not fit in the body, core adds no item,
+  so the approver always sees all of the input that they approve.
 - The item stays in the same Conversation. It links the current
   Conversation, so its card shows in the thread and the Conversation waits
   on the assignee. Visibility follows `review-items/access.ts`.
-- The dedupe key is a hash of the Conversation id, the tool, and the exact
-  input. A retry of the same blocked call updates the open item.
+- The dedupe key is a hash of the Conversation id, the owner, the tool, and
+  the exact input. The owner is the Actor's User, or the Automation for an
+  item that an Automation run added. A retry of the same blocked call
+  updates the open item. An agent cannot change the key, so a change to the
+  assignees cannot give the approval to another person.
 - The assignee is the Actor. In an Automation run, it is the Automation
   creator.
 - The agent gets instructions to end the Turn without a question. An
@@ -93,7 +97,9 @@ item clears the ask only when all of these are true:
 - The person who submitted it picked Approve and added no note. A note can
   limit the approval, so Guardian reads it instead.
 - That person is the approver: the Automation creator for an item that an
-  Automation run added, and otherwise the current Actor.
+  Automation run added, and otherwise the current Actor. The gate reads only
+  the item of the current Actor or of an Automation run, so the Actor must
+  also be the owner of the item.
 - Its approval is not used yet. The gate marks it used, as the close reason
   of the item, before the action runs. A second attempt asks again.
 
