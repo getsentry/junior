@@ -222,8 +222,9 @@ with the Watch or Automation grant.
 - The Identity id travels next to the Actor, never inside it. The `Actor`
   schema is closed, so a new field would make old workers and external
   plugins reject it.
-- The Turn, the mailbox entry, and the Message each carry the author
-  Identity id. Step 2 decides the field names.
+- The Inbound message and the Message carry the author Identity id as
+  `authorIdentityId`. The Turn carries the Identity id of its Actor as
+  `actorIdentityId` (`tasks.md`, step 2).
 - The Conversation carries the Owner.
 
 ## Storage Rules

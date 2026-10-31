@@ -611,9 +611,10 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("requires v2 and ignores unknown fields in stored turn cursors", async () => {
+  it("requires v2, keeps the Actor Identity id, and ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:cursor-unknown-fields";
@@ -641,6 +642,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
+        actorIdentityId: "identity-1",
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -669,9 +671,28 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
+      actorIdentityId: "identity-1",
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
+
+    // A resume slice rewrites the cursor and keeps the id that a newer worker
+    // saved, even though this caller does not pass it.
+    await upsertTurnRecord({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      piMessages: [userMessage("resume")],
+      turnId,
+      sliceId: 2,
+      source: SLACK_SOURCE,
+      state: "running",
+    });
+    await expect(
+      stateAdapter.get(turnCursorKey(conversationId, turnId)),
+    ).resolves.toMatchObject({
+      actorIdentityId: "identity-1",
+      sliceId: 2,
+    });
   });
 
   it("fails before storing a turn-session record when SQL metadata fails", async () => {

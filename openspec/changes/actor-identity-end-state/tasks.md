@@ -29,8 +29,9 @@
 
 ## Dependencies
 
-- #2441 before step 2. Both change the execution record write and the Turn
-  cursor.
+- #2441 before the step 2 writers. Both change the Conversation write and
+  the Turn checkpoint. The step 2 readers do not change the Conversation
+  write.
 - #2260 (stacked on #2217) before step 3. Step 3 builds event authors and
   the trust rule on #2260's event author. #2260's Watch requester is
   provenance, not an Owner.
@@ -43,7 +44,7 @@
 
 ## 1. One Actor To Identity Mapping
 
-Built in #2443 (in review).
+Built in #2443 (merged).
 
 - **Goal:** one place maps an Actor to its Identity.
 - **Done when:** every caller uses that place, and every system and local
@@ -72,8 +73,43 @@ Built in #2443 (in review).
     unknown fields in closed schemas.
   - ingress paths: Slack, web, fork, event, scheduled automation, event
     automation, plugin dispatch, local CLI, and Agent invocation.
-- **Decide in this step:** field names, how many releases the step takes,
-  and which fallbacks log.
+- **Decided in this step:**
+  - **Field names.** Each name matches the words already on its record.
+    - Inbound message: `input.authorIdentityId`, next to `input.authorId`.
+    - Message event: `authorIdentityId`, already on `main`. SQL stores it
+      in `junior_conversation_events.actor_identity_id`.
+    - Turn checkpoint: `actorIdentityId`, next to `actor`. It is the
+      Identity of the Turn Actor. For an event Turn, that is the system
+      Identity, not the event author.
+  - **Readers first.** #2473 adds the readers. The writers ship in a later
+    PR, after #2473 runs on every worker. One PR is not safe:
+    - The Inbound message schema is strict. The Slack, web, Agent
+      invocation, and plugin dispatch kinds of `input.metadata` are strict
+      too. Old code rejects the id on the entry and in its metadata.
+    - The mailbox is in shared Redis. Vercel Queues sends a queue message
+      only to the deployment that sent it, but this does not stop an old
+      worker from reading a new mailbox entry.
+    - During a deploy, an old worker can still run a Turn while new code
+      adds a steering message to the same Conversation. After that, the old
+      worker cannot read the Conversation execution
+      (`normalizeExecution` in `task-execution/state.ts`). Its lease
+      check-in, mailbox drain, and completion fail, so its Turn cannot
+      finish.
+    - The Turn checkpoint and the Message event are safe. An old worker
+      drops an unknown Turn checkpoint field when it rewrites the
+      checkpoint. The Message event field is already on `main`.
+- **Plan choices for the writers. David has not confirmed these.**
+  - The fallback logs ship with the writers. Each one logs only when an id
+    is missing:
+    - a new user Message with no `authorIdentityId`. The event write still
+      guesses the author (`resolveEventActorIdentityId`).
+    - a new root Conversation with no Owner id. The write still uses the
+      Actor or the legacy Source row (`resolveConversationActorIdentityId`).
+    - a Turn checkpoint with no `actorIdentityId` when a Turn resumes.
+  - The system Identity is the author of the task Message that a parent
+    agent writes in a child Conversation, and of the result Message that a
+    child sends back. An agent wrote the text, and its provenance has no
+    Actor, so it never counts as user intent.
 
 ## 3. One System Identity And Real Identities
 
