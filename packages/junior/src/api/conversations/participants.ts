@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -88,7 +88,13 @@ export async function readConversationParticipants(
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
       .where(
-        inArray(juniorConversationEvents.conversationId, [...conversationIds]),
+        and(
+          inArray(juniorConversationEvents.conversationId, [
+            ...conversationIds,
+          ]),
+          // System Messages, such as events, carry the system Identity.
+          ne(juniorIdentities.kind, "system"),
+        ),
       )
       .orderBy(
         asc(juniorConversationEvents.conversationId),

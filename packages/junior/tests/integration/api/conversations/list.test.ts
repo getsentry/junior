@@ -14,6 +14,7 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
@@ -234,6 +235,21 @@ describe("conversation list API", () => {
             schemaVersion: 1,
             seq: 0,
             type: "user_message",
+          },
+          // An event Message has the system Identity as its author.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            schemaVersion: 1,
+            seq: 1,
+            type: "message",
           },
         ]);
       setPlugins([
@@ -698,6 +714,20 @@ describe("conversation list API", () => {
         .db()
         .insert(juniorConversationEvents)
         .values([
+          // An event Message author is not a participant.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_300),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            seq: 2,
+            type: "message",
+          },
           {
             actorIdentityId: "identity-participant-slack",
             conversationId: "slack:C1:shared-thread",

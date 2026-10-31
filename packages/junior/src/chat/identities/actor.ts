@@ -6,28 +6,37 @@
  * stays private here, so it can change without changing callers.
  */
 import { and, eq } from "drizzle-orm";
-import type { Actor } from "@/chat/actor";
+import type {
+  Actor,
+  LocalActor,
+  SlackActor,
+  SystemActor,
+  WebActor,
+} from "@/chat/actor";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities } from "@/db/schema";
 import { normalizeIdentityEmail, type IdentityUpsert } from "./identity";
 import { upsertIdentity } from "./sql";
 
-/** The one Identity for work that Junior does on its own. */
-const SYSTEM_IDENTITY: IdentityUpsert = {
-  kind: "system",
-  provider: "junior",
-  providerSubjectId: "system",
-  displayName: "System",
-};
+/**
+ * The fixed id of the one system Identity: kind `system`, provider `junior`,
+ * an empty tenant, and subject `system`. A migration creates the row, so
+ * callers use this id without a database read.
+ */
+export const SYSTEM_IDENTITY_ID = "system";
 
 /**
- * Return the Identity key for one Actor.
+ * Return whether an Actor uses the system Identity.
  *
- * Every SystemActor uses the one system Identity. `SystemActor.name` is
- * provenance, not part of the key. A LocalActor uses the system Identity too,
- * because the local runner has no per-person user id.
+ * `SystemActor.name` is provenance, not part of the Identity. A LocalActor
+ * uses the system Identity because the local runner has no per-person user id.
  */
-function identityKey(actor: Actor): IdentityUpsert | undefined {
+function usesSystemIdentity(actor: Actor): actor is LocalActor | SystemActor {
+  return actor.platform === "local" || actor.platform === "system";
+}
+
+/** Return the Identity key for one Slack or web Actor. */
+function identityKey(actor: SlackActor | WebActor): IdentityUpsert | undefined {
   switch (actor.platform) {
     case "slack":
       return {
@@ -59,14 +68,11 @@ function identityKey(actor: Actor): IdentityUpsert | undefined {
         metadata: { platform: "web" },
       };
     }
-    case "local":
-    case "system":
-      return SYSTEM_IDENTITY;
   }
 }
 
 /**
- * Save the Identity for one Actor and return its id.
+ * Return the Identity id for one Actor. Save a Slack or web Identity first.
  * Return undefined only for a web Actor without a verified email.
  */
 export async function resolveActorIdentityId(
@@ -74,6 +80,9 @@ export async function resolveActorIdentityId(
   actor: Actor,
   nowMs: number = Date.now(),
 ): Promise<string | undefined> {
+  if (usesSystemIdentity(actor)) {
+    return SYSTEM_IDENTITY_ID;
+  }
   const key = identityKey(actor);
   return key ? (await upsertIdentity(executor, key, nowMs)).id : undefined;
 }
@@ -83,6 +92,9 @@ export async function findActorIdentityId(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<string | undefined> {
+  if (usesSystemIdentity(actor)) {
+    return SYSTEM_IDENTITY_ID;
+  }
   const key = identityKey(actor);
   if (!key) {
     return undefined;

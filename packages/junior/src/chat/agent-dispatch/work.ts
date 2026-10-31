@@ -9,7 +9,8 @@ import type { StateAdapter } from "chat";
 import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
@@ -122,6 +123,8 @@ export interface AgentDispatchConversationWorkerOptions {
 export function buildAgentDispatchInboundMessage(
   dispatch: DispatchRecord,
   nowMs = Date.now(),
+  /** Identity of the dispatch Actor, resolved at ingress. */
+  authorIdentityId?: string,
 ): InboundMessage {
   return {
     conversationId: getDispatchConversationId(dispatch),
@@ -133,6 +136,7 @@ export function buildAgentDispatchInboundMessage(
       // The dispatch record is the idempotent request authority. The mailbox
       // only signals which request this conversation lease may advance.
       text: "[plugin dispatch]",
+      ...(authorIdentityId ? { authorIdentityId } : undefined),
       metadata: {
         dispatchId: dispatch.id,
         kind: "agent_dispatch",
@@ -162,7 +166,11 @@ export async function enqueueAgentDispatch(
     sessionSource: claimedDispatch.source,
   });
   await appendAndEnqueueInboundMessage({
-    message: buildAgentDispatchInboundMessage(claimedDispatch, nowMs),
+    message: buildAgentDispatchInboundMessage(
+      claimedDispatch,
+      nowMs,
+      await resolveActorIdentityId(getSqlExecutor(), claimedDispatch.actor),
+    ),
     conversationStore: options.conversationStore,
     nowMs,
     queue: options.queue,
