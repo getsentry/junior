@@ -197,6 +197,10 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
+  USER_CUSTOMIZATION_MAX_CHARS,
+  userCustomizationSchema,
+} from "./schema/user-customization";
+export {
   baselineSnapshotSchema,
   deleteWorkspaceResponseSchema,
   workspaceBodySchema,

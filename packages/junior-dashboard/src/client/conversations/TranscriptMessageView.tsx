@@ -9,6 +9,7 @@ import { memo, type ReactNode } from "react";
 
 import {
   formatMessageTimestamp,
+  transcriptMessageActor,
   transcriptMessageActorLabel,
   transcriptRoleKind,
 } from "../format";
@@ -130,8 +131,10 @@ function messageAction(
   if (message.role === "user" && message.contexts?.length) {
     return (
       <TranscriptTurnContextView
+        actor={transcriptMessageActor(conversation, message)}
         contexts={message.contexts}
         messageId={message.messageId}
+        timestamp={message.timestamp}
       />
     );
   }

@@ -6,6 +6,7 @@
 export const EXPERIMENTAL_FEATURES = [
   "operator-tools",
   "passive-routing",
+  "user-customization",
 ] as const;
 
 /** One known experimental feature name. */

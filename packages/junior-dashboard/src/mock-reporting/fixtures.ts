@@ -602,6 +602,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           },
         ],
       }),
+      reportEvent(10, iso(Date.parse(startedAt), 46_000), {
+        type: "turn_context",
+        turnId: "active-turn",
+        pluginName: "junior",
+        kind: "user_customization",
+        version: 1,
+        content: {
+          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
+        },
+      }),
     ],
   });
 }

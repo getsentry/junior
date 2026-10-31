@@ -547,9 +547,11 @@ export function ConversationPage(props: {
       {turnContext ? (
         <TranscriptSearchProvider query={search}>
           <TurnContextDetails
+            actor={turnContext.actor}
             contexts={turnContext.contexts}
             key={turnContext.id}
             onClose={closeTurnContext}
+            timestamp={turnContext.timestamp}
           />
         </TranscriptSearchProvider>
       ) : null}
