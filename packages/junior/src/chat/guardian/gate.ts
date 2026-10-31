@@ -31,8 +31,11 @@ import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
 } from "@/chat/guardian/proposal";
+import { canonicalJson } from "@/chat/guardian/proposal";
 import { logException } from "@/chat/logging";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
@@ -52,6 +55,20 @@ export interface ToolActionReviewContext {
   rootConversation?: () => Promise<RootConversation>;
 }
 
+/**
+ * The review desk request for an `ask`. `guardian/confirmation.ts` owns the
+ * item and the approval.
+ */
+export interface ToolActionConfirmation {
+  /**
+   * Add or update the Approve/Reject item for this exact action. Return its
+   * id, or undefined when no person can get it.
+   */
+  request(proposal: ToolActionProposal): Promise<string | undefined>;
+  /** Consume the approver's one-time approval of this exact action, if any. */
+  consumeApproval(proposal: ToolActionProposal): Promise<boolean>;
+}
+
 /** Review capability used immediately before tool execution. */
 export interface ToolActionReview {
   review(
@@ -67,6 +84,25 @@ export interface ToolActionReview {
   ): TResult;
 }
 
+// The review desk item is the question, so the agent does not write one.
+const REVIEW_ITEM_CONFIRMATION_INSTRUCTIONS = [
+  "The action was not executed because the user must approve it first.",
+  "Junior added an Approve/Reject request for this exact action to the review desk. It shows in this conversation and is the confirmation question.",
+  "Do not ask for confirmation in text. Do not retry this action in this turn or get the same result another way.",
+  `If other requested work does not depend on this action, finish it and report it. Otherwise make your final message exactly ${NO_REPLY_MARKER}.`,
+  "The user's answer arrives later as their message. If they approve, retry this exact call with the same input. The approval covers only this exact call. If they reject, do not perform the action.",
+  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+].join("\n");
+
+const AUTOMATION_REVIEW_ITEM_CONFIRMATION_INSTRUCTIONS = [
+  "The action was not executed because the Automation creator must approve it first.",
+  "Junior added an Approve/Reject request for this exact action to the review desk for the Automation creator.",
+  "Do not ask for approval in text. Do not retry this action in this run or get the same result another way.",
+  `Finish the other work that does not depend on this action. Then end the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` and say that this action waits for approval.`,
+  "If the creator approves, the answer arrives later in this conversation. Then retry this exact call with the same input. The approval covers only this exact call.",
+].join("\n");
+
+// When no item can be added, the agent asks in text.
 const ACTION_CONFIRMATION_INSTRUCTIONS = [
   "The action was not executed because explicit user confirmation is required.",
   "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
@@ -80,6 +116,15 @@ const ACTION_DENIAL_INSTRUCTIONS = [
   "If the reason is missing or withheld authorization and exact confirmation could make the action allowable, stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
   "Proceed only with a materially safer alternative. Otherwise, stop and explain the specific risk to the user without mentioning Guardian or internal review mechanics.",
 ].join("\n");
+
+const AUTOMATION_NO_CONFIRMATION_INSTRUCTIONS = [
+  "The action was not executed because it needs approval, and no person can approve it for this run.",
+  "Do not ask for approval. Do not retry this action or get the same result another way.",
+  `End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` and say that this action was not done and why.`,
+].join("\n");
+
+const APPROVED_ON_REVIEW_DESK_REASON =
+  "The approver approved this exact action on the review desk.";
 
 const ACTION_REVIEW_LIMIT_INSTRUCTIONS = [
   "This action was rejected due to unacceptable risk.",
@@ -121,7 +166,12 @@ const CHILD_AGENT_REVIEW_LIMIT_INSTRUCTIONS = [
 /** Rejection instructions for the agent that proposed the action. */
 function rejectionInstructions(
   decision: Exclude<ToolActionDecision, "allow">,
-  options: { childAgent: boolean; exhausted: boolean },
+  options: {
+    automationRun: boolean;
+    childAgent: boolean;
+    exhausted: boolean;
+    reviewItem: boolean;
+  },
 ): string {
   if (options.exhausted) {
     return options.childAgent
@@ -129,8 +179,14 @@ function rejectionInstructions(
       : ACTION_REVIEW_LIMIT_INSTRUCTIONS;
   }
   if (decision === "ask") {
-    return options.childAgent
-      ? CHILD_AGENT_CONFIRMATION_INSTRUCTIONS
+    if (options.childAgent) return CHILD_AGENT_CONFIRMATION_INSTRUCTIONS;
+    if (options.automationRun) {
+      return options.reviewItem
+        ? AUTOMATION_REVIEW_ITEM_CONFIRMATION_INSTRUCTIONS
+        : AUTOMATION_NO_CONFIRMATION_INSTRUCTIONS;
+    }
+    return options.reviewItem
+      ? REVIEW_ITEM_CONFIRMATION_INSTRUCTIONS
       : ACTION_CONFIRMATION_INSTRUCTIONS;
   }
   return options.childAgent
@@ -360,20 +416,6 @@ export function proposalTool(
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
 const MAX_CONSECUTIVE_REJECTIONS = 3;
 
-function canonicalJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonicalJson);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, canonicalJson(child)]),
-    );
-  }
-  return value;
-}
-
 function projectedRejection(
   proposal: ToolActionProposal,
   decision: ToolActionReviewDecision,
@@ -440,6 +482,11 @@ export function createToolActionReview(options: {
     toolName: string;
     decision: ToolActionReviewDecision;
   }): Promise<void>;
+  /**
+   * Put an `ask` on the review desk. A child agent gets no item: it reports
+   * the missing approval to its parent.
+   */
+  confirmation?: ToolActionConfirmation;
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
   priorRejections?: ToolActionPriorRejection[];
@@ -447,12 +494,19 @@ export function createToolActionReview(options: {
 }): ToolActionReview {
   const priorRejections = [...(options.priorRejections ?? [])];
   const pendingRejections = new Map<string, ToolActionRejectionMarker>();
+  const confirmation = options.context.childAgent
+    ? undefined
+    : options.confirmation;
+  const sourceKind = options.context.source.kind;
+  const automationRun =
+    sourceKind === "scheduled_automation" || sourceKind === "event_automation";
   let consecutiveRejections = 0;
 
   return {
     async review(toolCallId, toolName, tool, input, signal) {
       let proposal: ToolActionProposal | undefined;
       let decision: ToolActionReviewDecision;
+      let reviewItemId: string | undefined;
       try {
         proposal = await prepareToolActionReview(
           toolName,
@@ -468,11 +522,30 @@ export function createToolActionReview(options: {
           proposal,
           signal ? { signal } : {},
         );
+        // The approver's answer to the item for this exact action confirms
+        // it once. A deny stays a deny.
+        if (
+          decision.decision === "ask" &&
+          (await confirmation?.consumeApproval(proposal))
+        ) {
+          decision = {
+            ...decision,
+            decision: "allow",
+            reason: `${decision.reason} ${APPROVED_ON_REVIEW_DESK_REASON}`,
+          };
+        }
         await options.onDecision({
           toolCallId,
           toolName: proposal.tool.name,
           decision,
         });
+        // After the rejection limit, the agent stops and explains instead.
+        if (
+          decision.decision === "ask" &&
+          consecutiveRejections + 1 < MAX_CONSECUTIVE_REJECTIONS
+        ) {
+          reviewItemId = await confirmation?.request(proposal);
+        }
       } catch (error) {
         if (signal?.aborted) {
           throw error;
@@ -510,14 +583,17 @@ export function createToolActionReview(options: {
         decision: decision.decision,
         priorRejection: reviewedAction,
         reason: reviewedAction.reason,
+        ...(reviewItemId ? { reviewItemId } : undefined),
         riskLevel: decision.riskLevel,
         userAuthorization: decision.userAuthorization,
         version: 1,
       });
       throw new ToolActionRejectedError(decision.decision, decision.reason, {
         instructions: rejectionInstructions(decision.decision, {
+          automationRun,
           childAgent: options.context.childAgent === true,
           exhausted,
+          reviewItem: reviewItemId !== undefined,
         }),
         riskLevel: decision.riskLevel,
         reviewedAction,

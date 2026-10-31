@@ -10,14 +10,15 @@ Code auto mode. The sources are in the header of `policy.ts`.
 
 ## Files
 
-| File          | Owns                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------- |
-| `gate.ts`     | The execution gate: which actions enter review, context checks, and rejection errors. |
-| `proposal.ts` | The exact request that Guardian reviews, and the decision it returns.                 |
-| `evidence.ts` | The bounded transcript evidence in a proposal.                                        |
-| `history.ts`  | Prior rejections: the durable marker on a tool result and the restore from history.   |
-| `policy.ts`   | The system prompt and the block rules.                                                |
-| `reviewer.ts` | The prompt for one proposal, the model call, and the decision from the assessment.    |
+| File              | Owns                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `gate.ts`         | The execution gate: which actions enter review, context checks, and rejection errors. |
+| `confirmation.ts` | The review desk item for an `ask`, and the one-time use of its approval.              |
+| `proposal.ts`     | The exact request that Guardian reviews, and the decision it returns.                 |
+| `evidence.ts`     | The bounded transcript evidence in a proposal.                                        |
+| `history.ts`      | Prior rejections: the durable marker on a tool result and the restore from history.   |
+| `policy.ts`       | The system prompt and the block rules.                                                |
+| `reviewer.ts`     | The prompt for one proposal, the model call, and the decision from the assessment.    |
 
 `agent-invocations/root-conversation.ts` reads the root Conversation of a
 child agent. See "User Approval" in `agent-invocations/README.md`.
@@ -39,7 +40,10 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
 6. `guardianDecision` derives the decision. See "Decision" below.
 7. The gate records the decision in the conversation event log before the
    action continues.
-8. On `ask` or `deny`, the gate throws `ToolActionRejectedError`. The tool
+8. On `ask`, the gate first checks for an approval of this exact action. See
+   "Confirmation on the review desk" below. Without one, it adds the
+   Approve/Reject item.
+9. On `ask` or `deny`, the gate throws `ToolActionRejectedError`. The tool
    result tells the agent what to do next. `projectToolResult` adds a marker
    to that result. When the Turn resumes, the gate restores its prior
    rejections from these markers.
@@ -50,9 +54,52 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
   `GUARDIAN_BLOCK_RULES` sets `ask` or `deny`.
 - A high or critical risk with `low` or `unknown` authorization becomes `ask`,
   also when the rule is `none`.
-- When no person can answer, `ask` becomes `deny`. This is an Automation run,
-  or a child agent whose root is an Automation run. The reason then says that
-  no person can confirm.
+- When no person can answer, `ask` becomes `deny`. This is a child agent whose
+  root is an Automation run. The reason then says that no person can confirm.
+  An Automation run itself keeps `ask`, and its creator confirms on the review
+  desk.
+
+## Confirmation on the review desk
+
+The person confirms an `ask` on the review desk, not in a free-text reply.
+`confirmation.ts` owns this flow. The gate calls it through
+`ToolActionConfirmation`, and `agent/tools.ts` connects it.
+
+- On `ask`, core adds an `action` Review item with one `choice` field:
+  Approve, then Reject. It renders the title, body, and question only from
+  the proposal: the action, the tool, what the tool does, and the exact
+  input.
+- The item stays in the same Conversation. It links the current
+  Conversation, so its card shows in the thread and the Conversation waits
+  on the assignee. Visibility follows `review-items/access.ts`.
+- The dedupe key is a hash of the Conversation id, the tool, and the exact
+  input. A retry of the same blocked call updates the open item.
+- The assignee is the Actor. In an Automation run, it is the Automation
+  creator.
+- The agent gets instructions to end the Turn without a question. An
+  Automation run finishes with its result. When no User can get the item,
+  the agent asks in text, or an Automation run reports that no person can
+  approve.
+- A child agent gets no item. It reports the missing approval with
+  `reportBlocked`.
+
+An approval clears one `ask` for one exact action. When Guardian returns
+`ask`, the gate reads the newest item with the dedupe key of the action. The
+item clears the ask only when all of these are true:
+
+- The current Conversation added it.
+- Its title, body, and request are the same as a new render of the
+  proposal, so an agent did not change what the person saw.
+- The person who submitted it picked Approve and added no note. A note can
+  limit the approval, so Guardian reads it instead.
+- That person is the approver: the Automation creator for an item that an
+  Automation run added, and otherwise the current Actor.
+- Its approval is not used yet. The gate marks it used, as the close reason
+  of the item, before the action runs. A second attempt asks again.
+
+A `deny` stays a `deny`. Reject, a dismiss, or a newer open item for the
+same action clears nothing. An agent cannot submit an answer, and an agent
+change to the item voids it. So a trigger or agent text never approves.
 
 ## Rules To Keep
 
@@ -71,7 +118,8 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
 - Only the gate can write the rejection marker. `projectToolResult` removes a
   marker that a tool supplied.
 - The rejection marker is a durable format with `version: 1`. A change to its
-  shape needs a new version or a migration.
+  shape needs a new version or a migration. An added optional field, such as
+  `reviewItemId`, keeps old markers valid and keeps the version.
 
 ## Change Guardian
 

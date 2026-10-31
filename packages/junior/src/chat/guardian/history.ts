@@ -47,6 +47,8 @@ const rejectionMarkerSchema = z
     decision: z.enum(["ask", "deny"]),
     priorRejection: priorRejectionSchema,
     reason: z.string().min(1),
+    /** The review desk item that asks the person to confirm an `ask`. */
+    reviewItemId: z.string().min(1).optional(),
     riskLevel: z.enum(RISK_LEVELS).optional(),
     userAuthorization: z.enum(USER_AUTHORIZATION_LEVELS).optional(),
     version: z.literal(1),

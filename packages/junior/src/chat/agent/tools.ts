@@ -78,6 +78,10 @@ import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/pi/client";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
+import {
+  requestActionConfirmation,
+  consumeActionApproval,
+} from "@/chat/guardian/confirmation";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
@@ -456,6 +460,13 @@ export async function wireAgentTools(
               }),
           }
         : undefined),
+    },
+    // An ask goes on the review desk, linked to this Conversation.
+    confirmation: {
+      request: (proposal) =>
+        requestActionConfirmation(toolRuntimeContext, proposal),
+      consumeApproval: (proposal) =>
+        consumeActionApproval(toolRuntimeContext, proposal),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({

@@ -143,6 +143,21 @@ export interface ToolActionProposal {
   };
 }
 
+/** Sort object keys, so two equal action inputs serialize the same. */
+export function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalJson(child)]),
+    );
+  }
+  return value;
+}
+
 /** Guardian capability for one schema-constrained action proposal. */
 export interface ToolActionReviewer {
   review(

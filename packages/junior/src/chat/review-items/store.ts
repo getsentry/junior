@@ -268,6 +268,34 @@ export async function getOpenReviewItemByDedupeKey(
 }
 
 /**
+ * Read the newest Review item, open or closed, with one dedupe key in one
+ * provider tenant.
+ */
+export async function getLatestReviewItemByDedupeKey(
+  db: JuniorDatabase,
+  dedupeKey: string,
+  tenant: ProviderTenant | undefined,
+): Promise<ReviewItem | undefined> {
+  const rows = await db
+    .select()
+    .from(juniorReviewItems)
+    .where(
+      and(
+        eq(juniorReviewItems.dedupeKey, dedupeKey),
+        tenant
+          ? and(
+              eq(juniorReviewItems.provider, tenant.provider),
+              eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+            )
+          : isNull(juniorReviewItems.provider),
+      ),
+    )
+    .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id))
+    .limit(1);
+  return (await hydrate(db, rows))[0];
+}
+
+/**
  * Add one open Review item. Return undefined when another open item in the
  * same tenant already uses its dedupe key.
  */
@@ -364,6 +392,29 @@ export async function closeReviewItem(
       and(
         eq(juniorReviewItems.id, input.id),
         eq(juniorReviewItems.status, "open"),
+      ),
+    )
+    .returning({ id: juniorReviewItems.id });
+  return updated.length > 0;
+}
+
+/**
+ * Record that the approved action of one done item ran, as its close
+ * reason. Return false when an earlier call recorded it, so one approval
+ * allows one action.
+ */
+export async function markReviewItemApprovalUsed(
+  db: JuniorDatabase,
+  input: { id: string; nowMs: number; reason: string },
+): Promise<boolean> {
+  const updated = await db
+    .update(juniorReviewItems)
+    .set({ closeReason: input.reason, updatedAt: new Date(input.nowMs) })
+    .where(
+      and(
+        eq(juniorReviewItems.id, input.id),
+        eq(juniorReviewItems.status, "done"),
+        isNull(juniorReviewItems.closeReason),
       ),
     )
     .returning({ id: juniorReviewItems.id });

@@ -30,7 +30,8 @@ function endsRun(message: PiMessage): boolean {
 /**
  * Return the durable tool-result boundary for one additional agent
  * continuation when an ask rejection has no destination-visible reply. A run
- * that a blocked report or an Automation result ended gets none.
+ * that a blocked report or an Automation result ended gets none. An ask with
+ * a review desk item gets none, because the item is the question.
  */
 export function actionConfirmationRetryMessages(
   messages: readonly PiMessage[],
@@ -39,7 +40,7 @@ export function actionConfirmationRetryMessages(
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const candidate = getToolActionRejectionMarker(messages[index]);
     if (candidate) {
-      if (candidate.decision === "deny") {
+      if (candidate.decision === "deny" || candidate.reviewItemId) {
         return undefined;
       }
       rejectionIndex = index;

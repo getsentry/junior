@@ -144,6 +144,7 @@ describe("Guardian action review", () => {
     };
     const automationChild: ToolActionProposal = {
       ...proposal,
+      context: { ...proposal.context, userIntent: CHILD_AGENT_USER_INTENT },
       rootConversation: {
         messages: [{ author: "automation", text: "Post the findings." }],
         truncated: false,
@@ -169,30 +170,20 @@ describe("Guardian action review", () => {
     expect(
       guardianDecision(assess("none", "high", "medium"), proposal).decision,
     ).toBe("allow");
-    // No person can answer a question in an Automation run.
+    // An Automation run asks its creator on the review desk.
     expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .reason,
-    ).toBe(
-      "r No person can confirm this action in this run, so do not ask for confirmation.",
-    );
-    expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .decision,
-    ).toBe("deny");
-    expect(
-      guardianDecision(assess("withheld_step"), automationChild).decision,
-    ).toBe("deny");
+      guardianDecision(assess("unclear_destination"), automationProposal),
+    ).toEqual({ decision: "ask", reason: "r" });
     expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
       "allow",
     );
-    // The deny says that no one can confirm, so the agent does not ask.
-    expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .reason,
-    ).toBe(
-      "r No person can confirm this action in this run, so do not ask for confirmation.",
-    );
+    // No person can answer a child of an Automation run. The deny says so,
+    // so the agent does not ask.
+    expect(guardianDecision(assess("withheld_step"), automationChild)).toEqual({
+      decision: "deny",
+      reason:
+        "r No person can confirm this action in this run, so do not ask for confirmation.",
+    });
   });
 
   it("rejects non-JSON action input before model review", async () => {

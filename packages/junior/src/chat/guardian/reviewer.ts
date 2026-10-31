@@ -129,14 +129,13 @@ export function guardianPrompt(proposal: ToolActionProposal): string {
 }
 
 /**
- * True when no person can answer a confirmation question for this action: an
- * Automation run, or a child agent whose root is an Automation run.
+ * True when no person can answer a confirmation question for this action: a
+ * child agent whose root is an Automation run. The Automation run itself
+ * asks its creator on the review desk.
  */
 function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
-  const kind = proposal.context.source.kind;
   return (
-    kind === "scheduled_automation" ||
-    kind === "event_automation" ||
+    proposal.context.userIntent === CHILD_AGENT_USER_INTENT &&
     proposal.rootConversation?.messages.some(
       (message) => message.author === "automation",
     ) === true

@@ -82,6 +82,11 @@ describe("action confirmation retry", () => {
     expect(actionConfirmationRetryMessages(messages)).toEqual(
       messages.slice(0, -1),
     );
+
+    // A review desk item is the question, so a silent reply is complete.
+    const rejection = messages[1] as { details: Record<string, any> };
+    rejection.details.guardianActionRejection.reviewItemId = "item-1";
+    expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
   });
 
   it("does not duplicate a visible reply after the ask", () => {

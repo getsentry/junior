@@ -75,6 +75,13 @@ tools in the `review-desk` source (`chat/tools/review-items.ts`). A child
 agent cannot use them. It reports to its parent with `reportBlocked`, and
 the parent adds the item.
 
+## Guardian confirmation
+
+Core adds an Approve/Reject `action` item when Guardian returns `ask`. It
+does not use the tools. See "Confirmation on the review desk" in
+`chat/guardian/README.md`. When the approved action runs, core sets the
+close reason of the done item, so one approval runs one action.
+
 ## Person actions
 
 `actions.ts` owns what a person can do. The review desk API
