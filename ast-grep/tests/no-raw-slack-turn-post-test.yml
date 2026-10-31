@@ -1,0 +1,13 @@
+id: no-raw-slack-turn-post
+valid:
+  - "await sendSlackReply({ channelId, conversationId, text });"
+  - "await thread.post(THREAD_OPTOUT_ACK);"
+  - "await args.thread.post(SLACK_SESSION_STOP_ACK);"
+  - 'await http.post("/api", body);'
+invalid:
+  - "await postSlackMessage({ channelId, text });"
+  - 'import { postSlackMessage } from "@/chat/slack/outbound";'
+  - 'import { postSlackMessage as post } from "@/chat/slack/outbound";'
+  - "await getSlackClient().chat.postMessage({ channel, text });"
+  - "await thread.post(buildTurnErrorResponse(error, eventId));"
+  - 'await args.thread.post("Done.");'

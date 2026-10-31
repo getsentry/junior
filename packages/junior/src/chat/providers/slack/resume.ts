@@ -7,7 +7,6 @@
  * consistent.
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
-import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
@@ -25,6 +24,7 @@ import {
   finishedRunReply,
   runDispatchOutcome,
   deliversFinalText,
+  postsRunNotices,
 } from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -57,7 +57,6 @@ import {
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { actorLogContext } from "@/chat/credentials/context";
-import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import {
   startProcessingReactionForMessage,
   type ProcessingReaction,
@@ -86,26 +85,29 @@ import {
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 
-async function postSlackMessageBestEffort(
-  channelId: string,
-  threadTs: string | undefined,
+/** Post a failure reply or status notice when the run's dispatch allows it. */
+async function postRunNotice(
+  resume: ResumeSlackTurnArgs,
   text: string,
-  conversationId?: string,
-  replyAttribution?: ReplyAttribution,
+): Promise<void> {
+  if (!postsRunNotices(resume.run?.dispatch)) {
+    return;
+  }
+  await sendSlackReply({
+    channelId: resume.channelId,
+    conversationId: resume.conversationId,
+    replyAttribution: resume.run?.dispatch?.replyAttribution,
+    text,
+    threadTs: resume.threadTs,
+  });
+}
+
+async function postRunNoticeBestEffort(
+  resume: ResumeSlackTurnArgs,
+  text: string,
 ): Promise<void> {
   try {
-    if (conversationId) {
-      await sendSlackReply({
-        channelId,
-        conversationId,
-        replyAttribution,
-        text,
-        threadTs,
-      });
-      return;
-    }
-
-    await postSlackApiMessage({ channelId, threadTs, text });
+    await postRunNotice(resume, text);
   } catch {
     // Status notices do not decide whether the Turn succeeds.
   }
@@ -209,19 +211,6 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
   };
 }
 
-async function postResumeFailureReply(args: {
-  channelId: string;
-  threadTs?: string;
-  eventId: string;
-  error: unknown;
-}): Promise<void> {
-  await postSlackApiMessage({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
-    text: buildTurnErrorResponse(args.error, args.eventId),
-  });
-}
-
 async function handleResumeFailure(args: {
   error: unknown;
   eventName: string;
@@ -258,12 +247,10 @@ async function handleResumeFailure(args: {
     failureStatePersistError = persistError;
   }
   try {
-    await postResumeFailureReply({
-      channelId: args.resume.channelId,
-      threadTs: args.resume.threadTs,
-      eventId,
-      error: args.error,
-    });
+    await postRunNotice(
+      args.resume,
+      buildTurnErrorResponse(args.error, eventId),
+    );
   } catch (deliveryError) {
     const deliveryEventId = logException(
       deliveryError,
@@ -454,11 +441,7 @@ async function resumeSlackTurnInContext(
       });
     }
     if (runArgs.initialText) {
-      await postSlackMessageBestEffort(
-        runArgs.channelId,
-        runArgs.threadTs,
-        runArgs.initialText,
-      );
+      await postRunNoticeBestEffort(runArgs, runArgs.initialText);
     }
     status.update(runArgs.initialStatus);
 
@@ -835,16 +818,13 @@ async function resumeSlackTurnInContext(
     try {
       await deferredPauseHandler();
       if (deferredAuthInfo) {
-        await postSlackMessageBestEffort(
-          runArgs.channelId,
-          runArgs.threadTs,
+        await postRunNoticeBestEffort(
+          runArgs,
           buildAuthPauseResponse(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
             deferredAuthInfo.requestText,
           ),
-          runArgs.conversationId,
-          runArgs.run?.dispatch?.replyAttribution,
         );
       }
       return true;

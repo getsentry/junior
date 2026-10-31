@@ -4,7 +4,7 @@ import type { DeliverMessage } from "@/chat/task-execution/assistant-message";
 import { RetryableDeliveryError } from "@/chat/agent/types";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
-import { sendSlackReply } from "@/chat/slack/reply";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 
 /**
  * Deliver system Turn output to Slack without a webhook Message.
@@ -30,13 +30,10 @@ export function createSlackSystemTurnDelivery(args: {
         state: args.state,
         task: async () =>
           await sendSlackReply({
+            ...resolveSlackReplyTarget({ destination: location, location }),
             cards,
-            channelId: location.channelId,
             conversationId,
             text,
-            ...(location.threadTs
-              ? { threadTs: location.threadTs }
-              : undefined),
           }),
       });
     } catch (error) {

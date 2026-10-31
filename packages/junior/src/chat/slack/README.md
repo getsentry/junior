@@ -76,7 +76,18 @@ gives the agent its own user ID.
 
 `reply.ts` owns destination-visible reply chunking, conversation footers, and
 the `sendSlackReply` helper. `outbound.ts` owns Slack API calls and immediate
-transport retries. Saved cards use Slack Work Objects through
+transport retries.
+
+Every visible Turn post, including error and status notices, goes through
+`sendSlackReply`, so each post has the Conversation footer. Get the channel and
+thread from `resolveSlackReplyTarget`: the Turn Source first, then the
+Conversation Location, then the Destination. Do not parse the Conversation id
+for delivery. An Automation or Watch Conversation can own a Slack thread, and
+its id is not a Slack thread id. The ast-grep rules `no-raw-slack-turn-post`
+and `no-slack-thread-from-conversation-id` enforce this and list the allowed
+exceptions.
+
+Saved cards use Slack Work Objects through
 `chat.postMessage.metadata.entities`, not Block Kit attachments. Automation
 previews use `slack#/entities/item`. They show the title, trigger, and any warning.
 The opaque ID stays in `external_ref`; operation badges and full instructions

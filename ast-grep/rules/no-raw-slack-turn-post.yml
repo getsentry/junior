@@ -1,0 +1,41 @@
+id: no-raw-slack-turn-post
+language: TypeScript
+severity: error
+message: Post visible Turn output with sendSlackReply in packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. Raw Slack posts skip the Conversation footer and choose their own thread. Only the Slack boundary modules and the private or out-of-Turn notices in this rule's ignores may post directly.
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  # Slack outbound boundary and its one reply wrapper.
+  - packages/junior/src/chat/slack/outbound.ts
+  - packages/junior/src/chat/slack/reply.ts
+  # Private auth links: ephemeral or DM, never Turn output in the thread.
+  - packages/junior/src/chat/oauth-flow.ts
+  # "Account connected" notice when no Turn resumes.
+  - packages/junior/src/handlers/oauth-callback.ts
+  # DM to the Automation creator, not Turn output.
+  - packages/junior/src/chat/automations/blocked-notice.ts
+  # requestUserInput controls. They are Block Kit buttons, not reply text, and
+  # the thread comes from the Slack tool context Location, not the
+  # Conversation id.
+  - packages/junior/src/chat/slack/tools/user-input.ts
+rule:
+  any:
+    - pattern: postSlackMessage($$$)
+    - pattern: $CLIENT.chat.postMessage($$$)
+    - all:
+        - kind: import_specifier
+        - has:
+            kind: identifier
+            regex: ^postSlackMessage$
+    - all:
+        - pattern: $THREAD.post($MESSAGE)
+        # Thread control acks are not Turn output.
+        - not:
+            has:
+              field: arguments
+              has:
+                kind: identifier
+                regex: ^(THREAD_OPTOUT_ACK|SLACK_SESSION_STOP_ACK)$
+constraints:
+  THREAD:
+    regex: (^|\.)thread$

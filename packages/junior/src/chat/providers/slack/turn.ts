@@ -26,8 +26,7 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import { sendSlackReply } from "@/chat/slack/reply";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
@@ -152,6 +151,7 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   finishedRunReply,
+  postsRunNotices,
   runDispatchOutcome,
   deliversFinalText,
 } from "@/chat/automation-result";
@@ -332,6 +332,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             visibility: destinationVisibility,
           })) ?? "private",
       });
+    const replyTarget = resolveSlackReplyTarget({ destination, source });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
     const conversationId = options.conversationId ?? threadId ?? runId;
@@ -449,6 +450,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (!actor) {
             throw new Error("Slack auth pause notice requires an actor");
           }
+          if (!postsRunNotices(options.execution?.dispatch)) {
+            return;
+          }
           const text = buildAuthPauseResponse(
             actor.userId,
             providerDisplayName,
@@ -456,17 +460,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (channelId && threadTs) {
-              await sendSlackReply({
-                channelId,
-                conversationId,
-                replyAttribution: options.execution?.dispatch?.replyAttribution,
-                text,
-                threadTs,
-              });
-            } else {
-              await thread.post(buildSlackOutputMessage(text));
-            }
+            await sendSlackReply({
+              ...replyTarget,
+              conversationId,
+              replyAttribution: options.execution?.dispatch?.replyAttribution,
+              text,
+            });
           } catch (error) {
             logException(error, "slack.auth_pause.notice_post.failed", {
               "app.slack.reply_stage": "thread_reply_auth_pause_notice",
@@ -639,7 +638,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          await thread.post(buildSlackOutputMessage(configReply.text));
+          await sendSlackReply({
+            ...replyTarget,
+            conversationId,
+            text: configReply.text,
+          });
           markConversationMessage(
             preparedState.conversation,
             preparedState.userMessageId,
@@ -853,17 +856,16 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               }
             } else {
               slackMessageTs = await sendSlackReply({
+                ...replyTarget,
                 cards,
-                channelId: destination.channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
-                ...(threadTs ? { threadTs } : undefined),
               });
               messageDestinations.push(
                 ...slackMessageTs.map((messageId) => ({
                   destination,
-                  messageId: threadTs ?? messageId,
+                  messageId: replyTarget.threadTs ?? messageId,
                 })),
               );
             }
@@ -1287,7 +1289,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               await maybePostAutomatedTurnLimitNotice({
                 conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                threadTs,
+                source,
                 update: automatedTurnLimit,
               });
             } catch (saveError) {

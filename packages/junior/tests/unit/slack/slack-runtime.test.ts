@@ -158,12 +158,10 @@ describe("createSlackTurnRuntime", () => {
         expect(thread.posts).toHaveLength(shouldPostFallback ? 1 : 0);
         expect(
           thread.posts.some((post) =>
-            typeof post === "string"
-              ? post.includes(
-                  "I ran into an internal error while processing that. " +
-                    "Reference: `event_id=",
-                )
-              : false,
+            JSON.stringify(post).includes(
+              "I ran into an internal error while processing that. " +
+                "Reference: `event_id=",
+            ),
           ),
         ).toBe(shouldPostFallback);
       },

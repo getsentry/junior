@@ -60,11 +60,15 @@ import {
   type PausedTurnRequest,
 } from "@/chat/task-execution/turn-wake";
 import {
+  resolveConversationRouting,
   resolveTurnSessionRouting,
   type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
-import { parseSlackThreadId } from "@/chat/slack/context";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
+import { postsRunNotices } from "@/chat/automation-result";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -86,7 +90,6 @@ import {
   clearPendingAuth,
   wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
-import type { SlackDestination } from "@sentry/junior-plugin-api";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
@@ -389,26 +392,31 @@ async function runPausedTurnInContext(
   options: PausedTurnOptions,
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
-  const thread = parseSlackThreadId(payload.conversationId);
   const destination = requireSlackDestination(
     payload.destination,
     "Paused turn",
   );
   const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
-  const threadTs =
-    thread?.threadTs ??
-    getTurnThreadTs(
-      await getTurnRecord(payload.conversationId, payload.turnId),
-      destination,
-    );
+  const routing = await resolveConversationRouting({
+    conversationId: payload.conversationId,
+  });
+  const pausedTurn = await getTurnRecord(
+    payload.conversationId,
+    payload.turnId,
+  );
+  const target = resolveSlackReplyTarget({
+    destination,
+    location: routing?.location,
+    source: pausedTurn?.source,
+  });
 
   return await resumeSlackTurn({
     messageText: "",
     conversationId: payload.conversationId,
     turnId: payload.turnId,
     traceContext: payload.traceContext,
-    channelId: thread?.channelId ?? destination.channelId,
-    ...(threadTs ? { threadTs } : undefined),
+    channelId: target.channelId,
+    ...(target.threadTs ? { threadTs: target.threadTs } : undefined),
     executeTurn: async (run, saveResult) =>
       await executeTurn(options.agentRunner, run, saveResult),
     scheduleSessionCompletedPluginTasks:
@@ -679,21 +687,6 @@ async function runPausedTurnInContext(
   });
 }
 
-/**
- * Return the Slack thread of a Turn whose Conversation id is not a Slack
- * thread id, such as a reply under a task post. The Turn Source keeps it.
- */
-function getTurnThreadTs(
-  turn: TurnRecord | undefined,
-  destination: SlackDestination,
-): string | undefined {
-  const source = turn?.source;
-  return (
-    (source?.kind === "slack" ? source.threadTs : undefined) ??
-    destination.threadTs
-  );
-}
-
 /** Terminally fail a stranded turn and post the standard visible fallback. */
 async function failStrandedTurnWithFallback(args: {
   conversationId: string;
@@ -735,6 +728,31 @@ async function failStrandedTurnWithFallback(args: {
     failureCode: "agent_run_failed",
     turnId: failed.turnId,
   });
+  let replyAttribution: ReplyAttribution | undefined;
+  if (failed.dispatchId) {
+    // The dispatch record owns the routing of a dispatch Conversation. Its
+    // Conversation has no Slack session Source.
+    const dispatch = await getDispatchRecord(failed.dispatchId);
+    await recordTurnSummary({
+      conversationId: args.conversationId,
+      destination: dispatch?.destination,
+      dispatchId: failed.dispatchId,
+      dispatchOutcome: "failed",
+      turnId: failed.turnId,
+      sliceId: failed.sliceId,
+      source: dispatch?.source,
+      state: "failed",
+      surface: failed.surface,
+    });
+    // A dispatch whose record is gone has no known outputs.
+    if (
+      !dispatch ||
+      !postsRunNotices(buildDispatchRoutingContext(dispatch).dispatch)
+    ) {
+      return true;
+    }
+    replyAttribution = dispatch.replyAttribution;
+  }
   let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
@@ -747,28 +765,18 @@ async function failStrandedTurnWithFallback(args: {
     });
     return true;
   }
-  if (failed.dispatchId) {
-    await recordTurnSummary({
-      conversationId: args.conversationId,
-      destination: routing.destination,
-      dispatchId: failed.dispatchId,
-      dispatchOutcome: "failed",
-      turnId: failed.turnId,
-      sliceId: failed.sliceId,
-      source: routing.source,
-      state: "failed",
-      surface: failed.surface,
-    });
-  }
-  const thread = parseSlackThreadId(args.conversationId);
-  const destination = requireSlackDestination(
-    routing.destination,
-    "Stranded paused turn",
-  );
-  const threadTs = thread?.threadTs ?? getTurnThreadTs(failed, destination);
-  await postSlackMessage({
-    channelId: thread?.channelId ?? destination.channelId,
-    ...(threadTs ? { threadTs } : undefined),
+  const target = resolveSlackReplyTarget({
+    destination: requireSlackDestination(
+      routing.destination,
+      "Stranded paused turn",
+    ),
+    location: routing.location,
+    source: failed.source,
+  });
+  await sendSlackReply({
+    ...target,
+    conversationId: args.conversationId,
+    replyAttribution,
     text: buildTurnFailureResponse(
       requireTurnFailureEventId(eventId, eventName),
     ),

@@ -49,8 +49,10 @@ import {
   getMessageTs,
   getRunId,
   getThreadId,
+  getThreadTs,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
+import { sendSlackReply } from "@/chat/slack/reply";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
   combineTurnText,
@@ -467,13 +469,27 @@ export function createSlackTurnRuntime<
   };
 
   const postFallbackErrorReplyWithLogging = async (args: {
+    conversationId: string;
     thread: Thread;
+    message: Message;
     eventId: string;
     error?: unknown;
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      await args.thread.post(buildTurnErrorResponse(args.error, args.eventId));
+      // Ingress Turns run in the inbound Slack thread, so Thread.id is a Slack
+      // thread id here, not a Conversation id.
+      const channelId = getChannelId(args.thread, args.message);
+      if (!channelId) {
+        throw new Error("Slack fallback error reply requires a channel id");
+      }
+      const threadTs = getThreadTs(getThreadId(args.thread, args.message));
+      await sendSlackReply({
+        channelId,
+        conversationId: args.conversationId,
+        text: buildTurnErrorResponse(args.error, args.eventId),
+        ...(threadTs ? { threadTs } : undefined),
+      });
     } catch (postError) {
       logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
@@ -851,7 +867,9 @@ export function createSlackTurnRuntime<
         }
         await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
+          conversationId,
           thread,
+          message,
           eventId,
           error: failureCause,
           postFailureEventName: "mention.handler.failure_reply_post.failed",
@@ -1229,7 +1247,9 @@ export function createSlackTurnRuntime<
         }
         await hooks.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
+          conversationId,
           thread,
+          message,
           eventId,
           error: failureCause,
           postFailureEventName:

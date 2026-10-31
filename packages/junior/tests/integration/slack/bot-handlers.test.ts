@@ -225,9 +225,11 @@ describe("bot handlers (integration)", () => {
       getTurnRecord(conversationId, activeSessionId),
     ).resolves.toMatchObject({ state: "paused" });
     expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
+      {
+        markdown: expect.stringContaining(
+          "I ran into an internal error while processing that.",
+        ),
+      },
     ]);
   });
 });

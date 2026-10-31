@@ -368,6 +368,8 @@ describe("durable queue contract", () => {
           { type: "toolCall", name: "systemTime", arguments: {} },
           { type: "text", text: "Deploy checked.", waitFor: "abort" },
           { type: "text", text: "Deploy checked." },
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Never sent.", waitFor: "abort" },
         ]),
       });
       const store = getConversationStore();
@@ -512,6 +514,41 @@ describe("durable queue contract", () => {
         text: "Deploy checked.",
         thread_ts: "1712345.0042",
       });
+
+      // A later reply yields, and its resumed worker dies before it saves.
+      // The failure notice must reach the same thread with the footer.
+      await q.send({ threadTs: "1712345.0042", ts: "1712345.0060" });
+      await expect(q.next(almostSpentStartedAtMs(10_000))).resolves.toEqual({
+        status: "yielded",
+      });
+      const lostTurnId = "turn_1712345_0060";
+      const lostTurn = await getTurnRecord(watchConversationId, lostTurnId);
+      if (lostTurn?.state !== "paused") throw new Error("expected paused turn");
+      await saveTurnCheckpoint({
+        conversationId: watchConversationId,
+        errorMessage: LOST_WORKER_RESUME_MESSAGE,
+        lostWorkerResumeCount: 1,
+        messages: lostTurn.piMessages,
+        mode: "paused",
+        reason: "retry",
+        sliceId: lostTurn.sliceId,
+        turnId: lostTurnId,
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        getTurnRecord(watchConversationId, lostTurnId),
+      ).resolves.toMatchObject({ state: "failed" });
+      const failurePosts = slackApiOutbox.messages();
+      expect(failurePosts).toHaveLength(4);
+      expect(failurePosts[3]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        text: expect.stringContaining("I ran into an internal error"),
+        thread_ts: "1712345.0042",
+      });
+      expect(JSON.stringify(failurePosts[3]?.params.blocks)).toContain(
+        watchConversationId,
+      );
     }, 30_000);
   });
 
