@@ -15,6 +15,7 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
+import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getDb } from "@/chat/db";
 import {
   actOnReviewItem,
@@ -167,6 +168,7 @@ export function createReviewItemRoutes(services: {
       try {
         const item = await actOnReviewItem({
           action: body.action,
+          getSlackAdapter: getProductionSlackAdapter,
           id,
           queue: services.queue,
           user: viewer,

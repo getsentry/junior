@@ -477,6 +477,13 @@
       "when": 1793414511193,
       "tag": "0067_review_item_dedupe_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793414566801,
+      "tag": "0068_review_item_slack_cards",
+      "breakpoints": true
     }
   ]
 }

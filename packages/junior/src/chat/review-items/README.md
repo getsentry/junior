@@ -100,3 +100,29 @@ A Conversation waits on a User when it has an open linked item that is
 assigned to the User or to Everyone (`listWaitingConversationIds`). An item
 with no assignees does not wait on anyone. The dashboard shows a lavender dot
 for these Conversations. The dot replaces the other status markers.
+
+## Slack cards
+
+`chat/slack/review-item-card-sync.ts` shows each item as a card in its
+linked Slack threads. `junior_review_item_slack_cards` stores the message of
+each card, so Junior can change it in place.
+
+- An open item gets a card in each linked thread that has none. A closed
+  item posts no new cards.
+- After each change by an agent or a person, every card shows the new
+  state. A closed card has no controls and shows who closed it.
+- A private item shows only in the thread that added it. Another linked
+  thread can have people who cannot see its source. A card in a thread that
+  can no longer show the item loses its content.
+- Cards are optional UI. A Slack failure is logged and does not fail the
+  change.
+
+The card uses the `requestUserInput` controls. A request with one `choice`
+field shows one button per option. Other requests show an Answer button that
+opens a form. A notice shows Done. Each card also shows Dismiss.
+
+A click comes back through `chat/ingress/slack-review-item.ts`. It needs the
+same workspace and allowed domain checks as a Slack mention, and a Junior
+User linked to the Slack account. The thread of the card gets the action as
+Slack input from the person. The other linked Conversations get the usual
+messages. A click on a closed item tells the person and changes nothing.

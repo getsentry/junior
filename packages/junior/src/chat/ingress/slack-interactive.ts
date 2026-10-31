@@ -1,5 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { Message, type StateAdapter } from "chat";
+import type { Message, StateAdapter } from "chat";
 import { parseActorUserId } from "@/chat/actor";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -7,6 +7,7 @@ import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import { openSlackModal } from "@/chat/slack/outbound";
 import {
@@ -37,6 +38,16 @@ import {
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import {
+  parseSlackReviewItemClick,
+  SLACK_REVIEW_ITEM_VIEW_ID,
+} from "@/chat/slack/review-item-card";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  handleSlackReviewItemClick,
+  handleSlackReviewItemSubmission,
+} from "./slack-review-item";
+import { buildSlackInteractionInput } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 function requireSlackPayloadUserId(
@@ -147,32 +158,16 @@ async function answerSlackUserInput(args: {
     return;
   }
 
-  const event = {
-    type: "message",
-    channel: channelId,
-    team: args.payload.team?.id,
+  const message = buildSlackInteractionInput({
+    adapter: args.adapter,
+    channelId,
+    inputTs: args.inputTs,
+    messageId: args.messageId,
+    messageTs,
+    payload: args.payload,
     text: formatUserInputAnswer(open.request, answer),
-    thread_ts: args.threadTs,
-    ts: args.inputTs,
-    user: userId,
-    user_team: userTeam,
-  };
-  const parsed = args.adapter.parseMessage(event);
-  // The answer has no Slack message of its own. Give it a non-timestamp id
-  // so every Slack timestamp reader, such as reactions, the actor
-  // `slack_ts`, and attachment lookup, resolves `raw.ts`: the request
-  // message. `inputTs` sets the time of the input.
-  const message = new Message({
-    attachments: parsed.attachments,
-    author: parsed.author,
-    formatted: parsed.formatted,
-    id: args.messageId,
-    isMention: true,
-    links: parsed.links,
-    metadata: parsed.metadata,
-    raw: { ...event, ts: messageTs },
-    text: parsed.text,
-    threadId: parsed.threadId,
+    threadTs: args.threadTs,
+    userId,
   });
 
   try {
@@ -184,7 +179,11 @@ async function answerSlackUserInput(args: {
   }
 
   await closeSlackUserInput({
-    note: slackUserInputAnswerNote({ answer, request: open.request, userId }),
+    note: slackUserInputAnswerNote({
+      answer,
+      request: open.request,
+      who: slackMention(userId),
+    }),
     open,
   });
 }
@@ -292,18 +291,35 @@ async function handleUserInputSubmission(args: {
 }
 
 /**
- * Handle Slack interactions from App Home and from user input requests:
- * block actions and submitted user input forms.
+ * Handle Slack interactions from App Home, user input requests, and Review
+ * item cards: block actions and submitted forms.
  */
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
   isAuthorAllowed: (userId: string) => Promise<boolean>;
   persistMessage: (message: Message) => Promise<void>;
+  queue: ConversationWorkQueue;
   state: StateAdapter;
   userTokenStore: UserTokenStore;
 }): Promise<void> {
   const spanAttributes = { userId: args.payload.user?.id?.trim() || undefined };
+  if (
+    args.payload.type === "view_submission" &&
+    args.payload.view?.callback_id === SLACK_REVIEW_ITEM_VIEW_ID
+  ) {
+    await withSpan(
+      "chat.slack_review_item_submit",
+      "chat.slack_review_item_submit",
+      spanAttributes,
+      () =>
+        handleSlackReviewItemSubmission({
+          payload: args.payload,
+          services: args,
+        }),
+    );
+    return;
+  }
   if (
     args.payload.type === "view_submission" &&
     args.payload.view?.callback_id === SLACK_USER_INPUT_VIEW_ID
@@ -321,6 +337,22 @@ export async function handleSlackInteractivePayload(args: {
   }
 
   for (const action of args.payload.actions ?? []) {
+    const click = parseSlackReviewItemClick(action);
+    if (click) {
+      await withSpan(
+        "chat.slack_review_item_click",
+        "chat.slack_review_item_click",
+        spanAttributes,
+        () =>
+          handleSlackReviewItemClick({
+            action,
+            click,
+            payload: args.payload,
+            services: args,
+          }),
+      );
+      return;
+    }
     const kind = slackUserInputAction(action.action_id);
     if (kind === "choice") {
       await withSpan(

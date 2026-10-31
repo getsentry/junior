@@ -6,6 +6,7 @@ import {
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
+import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
   conversationParticipantUserIds,
   EVERYONE_ASSIGNEE,
@@ -388,10 +389,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
             `Review item ${existing.id} closed. Add the item again.`,
           );
         }
-        return {
-          created: false,
-          item: itemResult(await readableItem(existing.id, scope)),
-        };
+        const item = await readableItem(existing.id, scope);
+        await syncReviewItemSlackCards({ item });
+        return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
         ...content,
@@ -408,6 +408,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           "Another open item started to use this `dedupe_key`. Add the item again.",
         );
       }
+      // A Slack turn has the token of its workspace. Other runs use the
+      // default bot token.
+      await syncReviewItemSlackCards({ item });
       return { created: true, item: itemResult(item) };
     },
   });
@@ -540,6 +543,7 @@ export function createUpdateReviewItemTool(
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
         const closedItem = await readableItem(item.id, scope);
+        await syncReviewItemSlackCards({ item: closedItem });
         await sendReviewItemMessages({
           change: { kind: "closed", reason: input.reason },
           exceptConversationId: context.conversationId,
@@ -549,7 +553,9 @@ export function createUpdateReviewItemTool(
         });
         return { item: itemResult(closedItem) };
       }
-      return { item: itemResult(await readableItem(item.id, scope)) };
+      const changed = await readableItem(item.id, scope);
+      await syncReviewItemSlackCards({ item: changed });
+      return { item: itemResult(changed) };
     },
   });
 }

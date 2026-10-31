@@ -23,6 +23,7 @@ import { juniorAutomations } from "./schema/automations";
 import {
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
   juniorReviewItems,
 } from "./schema/review-items";
 import { juniorSnapshots } from "./schema/snapshots";
@@ -49,6 +50,7 @@ export {
   juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
   juniorReviewItems,
   juniorSnapshots,
   juniorStats,
@@ -80,6 +82,7 @@ export const juniorSqlSchema = {
   juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
   juniorReviewItems,
   juniorSnapshots,
   juniorStats,
