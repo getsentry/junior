@@ -1,17 +1,18 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import { getReviewItem, type ReviewItem } from "@/chat/review-items/store";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
-import { parseSlackThreadId } from "@/chat/slack/context";
 import {
   deleteSlackMessage,
   postSlackMessage,
   updateSlackMessage,
 } from "@/chat/slack/outbound";
+import { resolveSlackReplyTarget } from "@/chat/slack/reply";
 import {
   buildHiddenSlackReviewItemCard,
   buildSlackReviewItemCard,
@@ -58,16 +59,23 @@ async function postCard(
   conversationId: string,
   getSlackAdapter: (() => SlackAdapter) | undefined,
 ): Promise<void> {
-  const thread = parseSlackThreadId(conversationId);
-  if (!thread) return;
-  const conversation = await getConversationStore().get({ conversationId });
-  const destination = conversation?.destination;
+  // An Automation run can own a Slack thread with an id that is not a Slack
+  // thread id, so the thread comes from the Conversation routing.
+  const routing = await resolveConversationRouting({ conversationId });
+  const destination = routing?.destination;
   if (destination?.platform !== "slack") return;
+  const thread = resolveSlackReplyTarget({
+    destination,
+    ...(routing?.location ? { location: routing.location } : undefined),
+  });
+  // A card belongs in the thread of its Conversation, never at channel top.
+  if (!thread.threadTs) return;
+  const threadTs = thread.threadTs;
   await inWorkspace(destination.teamId, getSlackAdapter, async () => {
     const posted = await postSlackMessage({
       ...buildSlackReviewItemCard(item),
       channelId: thread.channelId,
-      threadTs: thread.threadTs,
+      threadTs,
     });
     try {
       await getDb().insert(juniorReviewItemSlackCards).values({
