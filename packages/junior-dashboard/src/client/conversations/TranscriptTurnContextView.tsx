@@ -158,8 +158,14 @@ export function TurnContextDetails(props: {
   );
 }
 
+// The current actor's customization comes first, above plugin context.
 function TurnContextList(props: { contexts: TranscriptViewTurnContext[] }) {
-  return props.contexts.map((context, index) => (
+  const contexts = [...props.contexts].sort(
+    (a, b) =>
+      Number(Boolean(userCustomizationContent(b))) -
+      Number(Boolean(userCustomizationContent(a))),
+  );
+  return contexts.map((context, index) => (
     <TurnContext
       context={context}
       key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}

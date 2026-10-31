@@ -436,16 +436,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       reportEvent(2, iso(Date.parse(startedAt), 8_000), {
         type: "turn_context",
         turnId: "active-turn",
-        pluginName: "junior",
-        kind: "user_customization",
-        version: 1,
-        content: {
-          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
-        },
-      }),
-      reportEvent(3, iso(Date.parse(startedAt), 8_000), {
-        type: "turn_context",
-        turnId: "active-turn",
         pluginName: "memory",
         kind: "recall",
         version: 1,
@@ -462,7 +452,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
-      reportEvent(4, iso(Date.parse(startedAt), 9_000), {
+      reportEvent(3, iso(Date.parse(startedAt), 9_000), {
         type: "turn_routed",
         turnId: "active-turn",
         modelProfile: "handoff",
@@ -473,7 +463,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         costUsd: 0.0012,
       }),
       reportEvent(
-        5,
+        4,
         iso(Date.parse(startedAt), 10_000),
         {
           type: "tool_calls",
@@ -514,7 +504,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         },
       ),
       reportEvent(
-        6,
+        5,
         iso(Date.parse(startedAt), 14_000),
         {
           type: "tool_calls",
@@ -546,7 +536,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         },
       ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
-      reportEvent(7, iso(Date.parse(startedAt), 22_000), {
+      reportEvent(6, iso(Date.parse(startedAt), 22_000), {
         type: "message",
         messageId: "active-assistant",
         role: "assistant",
@@ -578,7 +568,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           "roll back or patch the slow serializer path.",
         ].join("\n"),
       }),
-      reportEvent(8, iso(Date.parse(startedAt), 40_000), {
+      reportEvent(7, iso(Date.parse(startedAt), 40_000), {
         type: "message",
         messageId: "active-user-followup",
         role: "user",
@@ -593,12 +583,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           "2. ~~error rate~~ serializer span time",
         ].join("\n"),
       }),
-      reportEvent(9, iso(Date.parse(startedAt), 42_000), {
+      reportEvent(8, iso(Date.parse(startedAt), 42_000), {
         type: "turn_lifecycle",
         turnId: "active-followup-turn",
         state: "started",
       }),
-      reportEvent(10, iso(Date.parse(startedAt), 45_000), {
+      reportEvent(9, iso(Date.parse(startedAt), 45_000), {
         type: "tool_calls",
         calls: [
           {
@@ -611,6 +601,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+      }),
+      reportEvent(10, iso(Date.parse(startedAt), 46_000), {
+        type: "turn_context",
+        turnId: "active-turn",
+        pluginName: "junior",
+        kind: "user_customization",
+        version: 1,
+        content: {
+          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
+        },
       }),
     ],
   });
