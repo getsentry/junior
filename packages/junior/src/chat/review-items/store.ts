@@ -8,7 +8,6 @@ import {
   inArray,
   isNull,
   or,
-  sql,
   type SQL,
 } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
@@ -24,6 +23,13 @@ import type {
   UserInputAnswer,
   UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
+import {
+  reviewItemAssignedTo,
+  reviewItemLinkedTo,
+  reviewItemReaderForUser,
+  reviewItemVisibleTo,
+  type ReviewItemReader,
+} from "./access";
 
 export type ReviewItemKind = "notice" | "action";
 export type ReviewItemStatus = "open" | "done" | "dismissed";
@@ -394,102 +400,6 @@ export async function takeReviewItem(
   });
 }
 
-/**
- * Who reads Review items. An item is visible when it is public and its
- * tenant is one of the reader's tenants, when the reader is an assigned
- * User, or when it is linked to the reader's Conversation or added by the
- * reader's Automation.
- */
-export interface ReviewItemReader {
-  automationId?: string;
-  conversationId?: string;
-  /** Provider tenants where the reader can see public items. */
-  tenants?: readonly ProviderTenant[];
-  userId?: string;
-}
-
-function assignedTo(userId: string): SQL {
-  return sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemAssignees.userId} = ${userId})`;
-}
-
-function linkedTo(conversationId: string): SQL {
-  return sql`exists (select 1 from ${juniorReviewItemConversations} where ${juniorReviewItemConversations.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemConversations.conversationId} = ${conversationId})`;
-}
-
-/**
- * The reader for one person: items assigned to them, and public items in the
- * provider tenants of their identities.
- */
-export function reviewItemReaderForUser(user: User): ReviewItemReader {
-  return {
-    tenants: user.identities.flatMap((identity) =>
-      identity.providerTenantId
-        ? [
-            {
-              provider: identity.provider,
-              providerTenantId: identity.providerTenantId,
-            },
-          ]
-        : [],
-    ),
-    userId: user.id,
-  };
-}
-
-/** Return whether two tenants are the same. Two missing tenants match. */
-export function isSameTenant(
-  a: ProviderTenant | undefined,
-  b: ProviderTenant | undefined,
-): boolean {
-  return (
-    a?.provider === b?.provider && a?.providerTenantId === b?.providerTenantId
-  );
-}
-
-function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
-  return tenants.map(
-    (tenant) =>
-      and(
-        eq(juniorReviewItems.visibility, "public"),
-        eq(juniorReviewItems.provider, tenant.provider),
-        eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
-      )!,
-  );
-}
-
-function visibleTo(reader: ReviewItemReader): SQL {
-  // `or` of nothing is undefined, so `false` keeps the query closed.
-  return or(
-    sql`false`,
-    ...publicIn(reader.tenants ?? []),
-    ...(reader.userId ? [assignedTo(reader.userId)] : []),
-    ...(reader.conversationId ? [linkedTo(reader.conversationId)] : []),
-    ...(reader.automationId
-      ? [eq(juniorReviewItems.automationId, reader.automationId)]
-      : []),
-  )!;
-}
-
-/** Return whether a reader can see one Review item. */
-export function canReadReviewItem(
-  item: ReviewItem,
-  reader: ReviewItemReader,
-): boolean {
-  return (
-    (item.visibility === "public" &&
-      item.tenant !== undefined &&
-      (reader.tenants ?? []).some((tenant) =>
-        isSameTenant(tenant, item.tenant),
-      )) ||
-    (reader.userId !== undefined &&
-      item.assignees.some((assignee) => assignee.userId === reader.userId)) ||
-    (reader.conversationId !== undefined &&
-      item.conversationIds.includes(reader.conversationId)) ||
-    (reader.automationId !== undefined &&
-      item.automationId === reader.automationId)
-  );
-}
-
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /** One assigned User, or Everyone. */
@@ -508,7 +418,7 @@ function searchConditions(
   filters: Omit<ReviewItemFilters, "limit">,
 ): SQL[] {
   const conditions: SQL[] = [
-    visibleTo(reader),
+    reviewItemVisibleTo(reader),
     inArray(juniorReviewItems.status, [...filters.statuses]),
   ];
   if (filters.subjectId) {
@@ -518,13 +428,13 @@ function searchConditions(
     conditions.push(eq(juniorReviewItems.automationId, filters.automationId));
   }
   if (filters.conversationId) {
-    conditions.push(linkedTo(filters.conversationId));
+    conditions.push(reviewItemLinkedTo(filters.conversationId));
   }
   if (filters.assignee) {
     conditions.push(
       "everyone" in filters.assignee
         ? eq(juniorReviewItems.assignedToEveryone, true)
-        : assignedTo(filters.assignee.userId),
+        : reviewItemAssignedTo(filters.assignee.userId),
     );
   }
   if (filters.query) {
@@ -588,8 +498,11 @@ export async function listWaitingConversationIds(
     .where(
       and(
         eq(juniorReviewItems.status, "open"),
-        visibleTo(reviewItemReaderForUser(user)),
-        or(eq(juniorReviewItems.assignedToEveryone, true), assignedTo(user.id)),
+        reviewItemVisibleTo(reviewItemReaderForUser(user)),
+        or(
+          eq(juniorReviewItems.assignedToEveryone, true),
+          reviewItemAssignedTo(user.id),
+        ),
       ),
     );
   return rows.map((row) => row.conversationId).sort();

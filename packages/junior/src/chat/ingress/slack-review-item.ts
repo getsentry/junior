@@ -5,9 +5,9 @@ import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { logException } from "@/chat/logging";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { canActOnReviewItem } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
-  canActOnReviewItem,
   readReviewItemForUser,
   ReviewItemActionError,
   reviewItemChange,

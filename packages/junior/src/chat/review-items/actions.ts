@@ -10,8 +10,12 @@ import {
 } from "@/chat/tools/runtime/user-input-request";
 import { sendReviewItemMessages, type ReviewItemChange } from "./messages";
 import {
+  canActOnReviewItem,
   canReadReviewItem,
+  isOnlyAssignee,
   reviewItemReaderForUser,
+} from "./access";
+import {
   closeReviewItem,
   getReviewItem,
   takeReviewItem,
@@ -30,27 +34,6 @@ export class ReviewItemActionError extends Error {
     this.name = "ReviewItemActionError";
     this.code = code;
   }
-}
-
-/**
- * Return whether a User can act on an open Review item: an assigned User,
- * anyone for an item assigned to Everyone, and anyone for an item with no
- * assignees. The caller checks that the User can see the item.
- */
-export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
-  if (item.status !== "open") return false;
-  if (item.assignedToEveryone) return true;
-  if (item.assignees.length === 0) return true;
-  return item.assignees.some((assignee) => assignee.userId === userId);
-}
-
-/** Return whether a User is already the only assignee, so take does nothing. */
-export function isOnlyAssignee(item: ReviewItem, userId: string): boolean {
-  return (
-    !item.assignedToEveryone &&
-    item.assignees.length === 1 &&
-    item.assignees[0]?.userId === userId
-  );
 }
 
 /** Read one Review item that a User can see, or fail as not found. */
