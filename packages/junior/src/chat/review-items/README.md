@@ -195,11 +195,12 @@ a new Turn.
 ## Purge
 
 When Junior purges the transcript of a Conversation that is not public, it
-also deletes each Review item that the Conversation tree added. It deletes
+also deletes each private Review item that the Conversation tree added. It deletes
 the Briefs of that tree in the same way (`chat/conversations/sql/purge.ts`).
-The assignees, links, and Slack card rows of the item go with it. Such an
-item is always private, because it holds private content. A public item
-stays after a purge, like a public Brief.
+The assignees, links, and Slack card rows of the item go with it. A public
+item stays after a purge, like a public Brief. This is also true when its
+destination turned private later, because other Conversations can link to
+it.
 
 ## Waiting on you
 

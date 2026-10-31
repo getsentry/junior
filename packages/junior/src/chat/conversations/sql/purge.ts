@@ -137,6 +137,7 @@ export async function selectExpiredRoots(
           or exists (
             select 1 from junior_review_items review_items
             where review_items.added_by_conversation_id = tree.conversation_id
+              and review_items.visibility = 'private'
           )
           or exists (
             select 1 from junior_conversations metadata
@@ -326,11 +327,18 @@ export async function purgeConversationTree(
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
-            // A Review item from a private Conversation holds its content.
+            // A private Review item holds content from its Conversation. A
+            // public item stays, even when its destination later turned
+            // private, because other Conversations can still link to it.
             await executor
               .db()
               .delete(juniorReviewItems)
-              .where(inArray(juniorReviewItems.addedByConversationId, ids));
+              .where(
+                and(
+                  inArray(juniorReviewItems.addedByConversationId, ids),
+                  eq(juniorReviewItems.visibility, "private"),
+                ),
+              );
           }
           await executor
             .db()
