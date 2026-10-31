@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   buttonUserInputField,
   isEmptyUserInputAnswer,
@@ -8,10 +8,30 @@ import {
   type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
+import { cn } from "../styles";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Field, FieldDescription, FieldLabel } from "./ui/field";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 
-const labelClass = "font-sans text-xs font-medium text-dashboard-text-muted";
+// Each choice is a whole selectable row, so the hit area and the selected
+// state read at a glance. The control inside keeps its own focus ring.
+const optionClass =
+  "flex cursor-pointer items-start gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5 text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover has-[[data-checked]]:border-dashboard-accent/60 has-[[data-checked]]:bg-dashboard-accent/10 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60";
+
+function OptionText(props: { description?: string; label: string }) {
+  return (
+    <span className="grid min-w-0 gap-0.5 break-words">
+      <span className="font-medium text-dashboard-text">{props.label}</span>
+      {props.description ? (
+        <span className="text-xs text-dashboard-text-muted">
+          {props.description}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 function ChoiceField(props: {
   disabled: boolean;
@@ -19,46 +39,68 @@ function ChoiceField(props: {
   onChange(values: string[]): void;
   values: string[];
 }) {
-  const name = useId();
-  const multi = props.field.kind === "multi_choice";
+  const id = useId();
+  const { field } = props;
+  const legend = (
+    <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
+      {field.label}
+    </legend>
+  );
+  const description = field.description ? (
+    <FieldDescription className="-mt-1 mb-2" id={`${id}-help`}>
+      {field.description}
+    </FieldDescription>
+  ) : null;
+  const describedBy = field.description ? `${id}-help` : undefined;
+  if (field.kind === "choice") {
+    return (
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        {legend}
+        {description}
+        <RadioGroup
+          aria-describedby={describedBy}
+          aria-label={field.label}
+          className="grid gap-2"
+          disabled={props.disabled}
+          onValueChange={(value) => props.onChange([String(value)])}
+          value={props.values[0] ?? null}
+        >
+          {field.options.map((option) => (
+            <label className={optionClass} key={option.label}>
+              <RadioGroupItem className="mt-0.5" value={option.label} />
+              <OptionText
+                description={option.description}
+                label={option.label}
+              />
+            </label>
+          ))}
+        </RadioGroup>
+      </fieldset>
+    );
+  }
   return (
-    <fieldset className="m-0 min-w-0 border-0 p-0">
-      <legend className={labelClass}>{props.field.label}</legend>
-      {props.field.description ? (
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          {props.field.description}
-        </p>
-      ) : null}
-      <div className="mt-1 grid gap-1">
-        {props.field.options.map((option) => (
-          <label
-            className="flex cursor-pointer items-start gap-2 text-sm"
-            key={option.label}
-          >
-            <input
+    <fieldset
+      aria-describedby={describedBy}
+      className="m-0 min-w-0 border-0 p-0"
+    >
+      {legend}
+      {description}
+      <div className="grid gap-2">
+        {field.options.map((option) => (
+          <label className={optionClass} key={option.label}>
+            <Checkbox
               checked={props.values.includes(option.label)}
-              className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
+              className="mt-0.5"
               disabled={props.disabled}
-              name={name}
-              onChange={() =>
+              onCheckedChange={(checked) =>
                 props.onChange(
-                  !multi
-                    ? [option.label]
-                    : props.values.includes(option.label)
-                      ? props.values.filter((value) => value !== option.label)
-                      : [...props.values, option.label],
+                  checked
+                    ? [...props.values, option.label]
+                    : props.values.filter((value) => value !== option.label),
                 )
               }
-              type={multi ? "checkbox" : "radio"}
             />
-            <span className="min-w-0 break-words">
-              {option.label}
-              {option.description ? (
-                <span className="block text-xs text-dashboard-text-muted">
-                  {option.description}
-                </span>
-              ) : null}
-            </span>
+            <OptionText description={option.description} label={option.label} />
           </label>
         ))}
       </div>
@@ -67,6 +109,7 @@ function ChoiceField(props: {
 }
 
 function TextField(props: {
+  className?: string;
   description?: string;
   disabled: boolean;
   label: string;
@@ -75,23 +118,22 @@ function TextField(props: {
 }) {
   const id = useId();
   return (
-    <div className="grid gap-1">
-      <label className={labelClass} htmlFor={id}>
-        {props.label}
-      </label>
+    <Field>
+      <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
       {props.description ? (
-        <p className="m-0 text-xs text-dashboard-text-muted">
+        <FieldDescription className="-mt-1" id={`${id}-help`}>
           {props.description}
-        </p>
+        </FieldDescription>
       ) : null}
       <Textarea
-        className="min-h-16 leading-relaxed"
+        aria-describedby={props.description ? `${id}-help` : undefined}
+        className={cn("min-h-20 leading-relaxed", props.className)}
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
         value={props.value}
       />
-    </div>
+    </Field>
   );
 }
 
@@ -99,12 +141,14 @@ function TextField(props: {
  * Render the answer controls of a `requestUserInput` request. A request with
  * one short choice field shows one button per choice, and a click is the
  * answer. Other requests show a form that the reader submits once. A failed
- * `onSubmit` lets the reader try again.
+ * `onSubmit` lets the reader try again. `secondaryActions`, such as Dismiss,
+ * sit in the same action row, after the answer controls.
  */
 export function UserInputForm(props: {
   onSubmit(answer: UserInputAnswer): Promise<void>;
   request: UserInputRequest;
   requestId: string;
+  secondaryActions?: ReactNode;
 }) {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -144,11 +188,17 @@ export function UserInputForm(props: {
     }
   }
 
+  const secondary = props.secondaryActions ? (
+    <div className="flex flex-wrap gap-1 sm:ml-auto">
+      {props.secondaryActions}
+    </div>
+  ) : null;
+
   return (
     <>
       {buttonField ? (
         <>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {buttonField.options.map((option) => (
               <Button
                 disabled={sending}
@@ -164,6 +214,7 @@ export function UserInputForm(props: {
                 {option.label}
               </Button>
             ))}
+            {secondary}
           </div>
           {buttonField.options.some((option) => option.description) ? (
             <ul className="mb-0 mt-2 list-none p-0 text-xs text-dashboard-text-muted">
@@ -181,7 +232,7 @@ export function UserInputForm(props: {
           ) : null}
         </>
       ) : (
-        <form className="mt-2 grid gap-3" onSubmit={submit}>
+        <form className="mt-4 grid gap-5" onSubmit={submit}>
           {props.request.fields.map((field) =>
             field.kind === "text" ? (
               <TextField
@@ -207,16 +258,18 @@ export function UserInputForm(props: {
             ),
           )}
           <TextField
-            description="Anything else, or an answer that is not listed."
+            className="min-h-16"
+            description="Optional. Anything else, or an answer that is not listed."
             disabled={sending}
             label="Other"
             onChange={setOther}
             value={other}
           />
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <Button disabled={sending} type="submit" variant="primary">
               Send
             </Button>
+            {secondary}
           </div>
         </form>
       )}

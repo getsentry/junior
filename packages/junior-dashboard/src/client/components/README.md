@@ -90,6 +90,10 @@ Rules for adopted components:
 - For a link that looks like a button, put `buttonVariants()` on the router
   `Link`. A form page has one `Button variant="primary"` for its main save
   action.
+- Use `Button variant="quiet"` for a secondary action beside the primary one,
+  such as Dismiss. It has no border, so the primary action stays dominant.
+- In a form, show each choice as a whole bordered row around `RadioGroupItem`
+  or `Checkbox`. The row shows hover and selected state. See `UserInputForm`.
 
 ## Foundations
 
