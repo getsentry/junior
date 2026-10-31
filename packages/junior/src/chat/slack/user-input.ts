@@ -10,7 +10,6 @@ import { z } from "zod";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
-  slackMention,
 } from "@/chat/slack/mrkdwn";
 import {
   buttonUserInputField,
@@ -43,7 +42,7 @@ function plainText(text: string) {
 }
 
 /** The question and a short list of what to answer, in Slack markdown. */
-function slackUserInputText(request: UserInputRequest): string {
+export function slackUserInputText(request: UserInputRequest): string {
   const buttonField = buttonUserInputField(request);
   const notes = buttonField
     ? buttonField.options
@@ -145,11 +144,12 @@ function toOption(option: {
 /**
  * Render a request as a Slack modal form: one input for each field and one
  * optional Other text input. Every input is optional, so a person can answer
- * with free text only.
+ * with free text only. `callbackId` and `privateMetadata` tell the submit
+ * handler what the form answers.
  */
-export function buildSlackUserInputModal(
+export function buildSlackUserInputForm(
   request: UserInputRequest,
-  target: SlackUserInputFormTarget,
+  form: { callbackId: string; privateMetadata: string },
 ): ModalView {
   const inputs: InputBlock[] = request.fields.map((field) => ({
     type: "input",
@@ -179,8 +179,8 @@ export function buildSlackUserInputModal(
   }));
   return {
     type: "modal",
-    callback_id: SLACK_USER_INPUT_VIEW_ID,
-    private_metadata: JSON.stringify(target),
+    callback_id: form.callbackId,
+    private_metadata: form.privateMetadata,
     title: plainText("Answer"),
     submit: plainText("Send"),
     close: plainText("Cancel"),
@@ -201,6 +201,17 @@ export function buildSlackUserInputModal(
       },
     ],
   };
+}
+
+/** Render the answer form of a request in a Slack thread. */
+export function buildSlackUserInputModal(
+  request: UserInputRequest,
+  target: SlackUserInputFormTarget,
+): ModalView {
+  return buildSlackUserInputForm(request, {
+    callbackId: SLACK_USER_INPUT_VIEW_ID,
+    privateMetadata: JSON.stringify(target),
+  });
 }
 
 /** Read the target message of a submitted modal form. */
@@ -258,14 +269,15 @@ export function parseSlackUserInputSubmission(args: {
 /**
  * Write the note that replaces the controls of an answered request. One
  * clicked button shows as "@person chose *X*". A form answer lists each
- * field. Without an answer, the note says that the person replied.
+ * field. Without an answer, the note says that the person replied. `who` is
+ * Slack markdown, such as a mention.
  */
 export function slackUserInputAnswerNote(args: {
   answer?: UserInputAnswer;
   request: UserInputRequest;
-  userId: string;
+  who: string;
 }): string {
-  const who = slackMention(args.userId);
+  const { who } = args;
   if (!args.answer) return `${who} replied in the thread`;
   const answer = args.answer;
   const buttonField = buttonUserInputField(args.request);

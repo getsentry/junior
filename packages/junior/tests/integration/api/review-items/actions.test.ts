@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { takeReviewItem } from "@/chat/review-items/store";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import {
@@ -196,6 +197,10 @@ describe("review item actions API", () => {
     ).json();
     expect(everyone.items).toMatchObject([{ id, canAct: true, canTake: true }]);
 
+    // The take committed, but its messages did not go out. A retry of the
+    // take sends them.
+    await takeReviewItem(getDb(), { id, nowMs: Date.now(), userId: cal.id });
+    await api(fixture, cal).act(id, { action: "take" });
     const taken = await api(fixture, cal).act(id, { action: "take" });
     expect(await taken.json()).toMatchObject({
       assignedToEveryone: false,

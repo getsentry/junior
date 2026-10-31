@@ -1,5 +1,7 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   isEmptyUserInputAnswer,
@@ -67,10 +69,12 @@ function closedStatus(action: Exclude<ReviewItemAction, "take">) {
   return action === "dismiss" ? "dismissed" : "done";
 }
 
-function changeFor(
-  action: Exclude<ReviewItemAction, "take">,
+/** The change that one person action makes, for messages and notes. */
+export function reviewItemChange(
+  action: ReviewItemAction,
   user: User,
 ): ReviewItemChange {
+  if (action === "take") return { kind: "taken", user };
   if (action === "submit") return { kind: "submitted", user };
   if (action === "complete") return { kind: "completed", user };
   return { kind: "dismissed", user };
@@ -114,11 +118,20 @@ function submittedAnswer(
  * Do one person action on a Review item and tell its linked Conversations.
  * The first submit, complete, or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
- * succeeds, so a client can retry after a failure.
+ * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
+ * only the call that closes the item succeeds, and every other call gets a
+ * conflict. Use it when the caller adds its own input for the action, such
+ * as a Slack card click, so one action adds one Turn. `exceptConversationId`
+ * is the Conversation where the person acted. It gets the person's input
+ * from its own surface, so it gets no message here. Slack cards of the item
+ * change in place; see `syncReviewItemSlackCards` for `getSlackAdapter`.
  */
 export async function actOnReviewItem(args: {
   action: ReviewItemAction;
   answer?: UserInputAnswer;
+  exceptConversationId?: string;
+  firstCloseOnly?: boolean;
+  getSlackAdapter?: () => SlackAdapter;
   id: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -139,13 +152,22 @@ export async function actOnReviewItem(args: {
         "Only an assignee can take this item.",
       );
     }
-    if (isOnlyAssignee(item, user.id)) return item;
-    if (!(await takeReviewItem(db, { id: item.id, nowMs, userId: user.id }))) {
+    // A retry after a failed send finds the User already the only assignee.
+    // It still sends: each take message has a key, so only missing ones go.
+    if (
+      !isOnlyAssignee(item, user.id) &&
+      !(await takeReviewItem(db, { id: item.id, nowMs, userId: user.id }))
+    ) {
       throw new ReviewItemActionError("conflict", "Review item is closed.");
     }
     const taken = await readReviewItemForUser(user, item.id);
+    await syncReviewItemSlackCards({
+      getSlackAdapter: args.getSlackAdapter,
+      itemId: taken.id,
+    });
     await sendReviewItemMessages({
-      change: { kind: "taken", user },
+      change: reviewItemChange(action, user),
+      exceptConversationId: args.exceptConversationId,
       item: taken,
       nowMs,
       queue: args.queue,
@@ -154,6 +176,7 @@ export async function actOnReviewItem(args: {
   }
 
   let closed = item;
+  let closedNow = false;
   if (item.status === "open") {
     if (!canActOnReviewItem(item, user.id)) {
       throw new ReviewItemActionError(
@@ -169,7 +192,7 @@ export async function actOnReviewItem(args: {
     }
     const answer =
       action === "submit" ? submittedAnswer(item, args.answer) : undefined;
-    await closeReviewItem(db, {
+    closedNow = await closeReviewItem(db, {
       closedByUserId: user.id,
       id: item.id,
       nowMs,
@@ -178,11 +201,16 @@ export async function actOnReviewItem(args: {
     });
     closed = await readReviewItemForUser(user, item.id);
   }
-  if (!isSameClose(closed, action, user)) {
+  if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
+  await syncReviewItemSlackCards({
+    getSlackAdapter: args.getSlackAdapter,
+    itemId: closed.id,
+  });
   await sendReviewItemMessages({
-    change: changeFor(action, user),
+    change: reviewItemChange(action, user),
+    exceptConversationId: args.exceptConversationId,
     item: closed,
     nowMs,
     queue: args.queue,

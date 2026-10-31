@@ -6,7 +6,9 @@ import {
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
+import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
+  automationCreatorUserId,
   conversationParticipantUserIds,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
@@ -110,8 +112,9 @@ async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
     reader: {
       conversationId: context.conversationId,
       ...(automationId ? { automationId } : undefined),
+      // No `userId`: an assignment lets a person see the item on the review
+      // desk, not let an agent read it into another Conversation.
       ...(tenant ? { tenants: [tenant] } : undefined),
-      ...(user ? { userId: user.id } : undefined),
     },
     ...(tenant ? { tenant } : undefined),
     ...(user ? { user } : undefined),
@@ -119,14 +122,14 @@ async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
 }
 
 /**
- * Whether the agent can change an item. A private item, and any item seen
- * from a private Conversation, can change only from the Conversation or
- * Automation that added it. This keeps private content in its Conversation.
+ * Whether the agent can change an item. Only an agent in the tenant of the
+ * item can change it. A public item changes only from a public
+ * Conversation, so private content never reaches its readers. A private
+ * item changes only from the Conversation or Automation that added it.
  */
 function canChange(item: ReviewItem, scope: ActorScope): boolean {
-  if (!scope.inPrivateConversation && item.visibility === "public") {
-    return true;
-  }
+  if (!isSameTenant(item.tenant, scope.tenant)) return false;
+  if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
     item.addedByConversationId === scope.reader.conversationId ||
     (scope.reader.automationId !== undefined &&
@@ -175,14 +178,17 @@ async function requireLinks(args: {
 
 /**
  * Check who a private item can go to. It cannot go to Everyone. Each User
- * must be the current Actor or a person in one of the given Conversations:
- * the current one and, for an existing item, the one that added it.
+ * must be the current Actor, a person in one of the given Conversations
+ * (the current one and, for an existing item, the one that added it), or
+ * the creator of the Automation that added the item. An Automation run
+ * often has no Actor and no people yet, and its creator wrote the work.
  */
 async function requireAssigneesAllowed(
   scope: ActorScope,
   conversationIds: readonly string[],
   visibility: ReviewItemVisibility,
   assignees: ResolvedAssignees,
+  automationId: string | undefined,
 ): Promise<void> {
   if (visibility === "public") return;
   if (assignees.everyone) {
@@ -190,7 +196,12 @@ async function requireAssigneesAllowed(
       "A private item cannot be assigned to Everyone. Assign Users instead.",
     );
   }
-  const others = assignees.userIds.filter((id) => id !== scope.user?.id);
+  const creatorId = automationId
+    ? await automationCreatorUserId(getDb(), automationId)
+    : undefined;
+  const others = assignees.userIds.filter(
+    (id) => id !== scope.user?.id && id !== creatorId,
+  );
   const inConversation = new Set<string>();
   for (const conversationId of new Set(conversationIds)) {
     for (const id of await conversationParticipantUserIds(
@@ -361,6 +372,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           : [context.conversationId],
         visibility,
         assignees,
+        existing ? existing.automationId : scope.reader.automationId,
       );
       const content: ReviewItemContent = {
         assignedToEveryone: assignees.everyone,
@@ -388,10 +400,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
             `Review item ${existing.id} closed. Add the item again.`,
           );
         }
-        return {
-          created: false,
-          item: itemResult(await readableItem(existing.id, scope)),
-        };
+        const item = await readableItem(existing.id, scope);
+        await syncReviewItemSlackCards({ itemId: item.id });
+        return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
         ...content,
@@ -408,6 +419,9 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           "Another open item started to use this `dedupe_key`. Add the item again.",
         );
       }
+      // A Slack turn has the token of its workspace. Other runs use the
+      // default bot token.
+      await syncReviewItemSlackCards({ itemId: item.id });
       return { created: true, item: itemResult(item) };
     },
   });
@@ -463,19 +477,27 @@ export function createUpdateReviewItemTool(
       const db = getDb();
       const scope = await actorScope(context);
       const item = await readableItem(input.id, scope);
-      if (item.status !== "open") {
+      const changesContent =
+        input.title || input.body || input.assignees || input.conversation_ids;
+      // A retry of the same agent close finds the item closed. It still sends
+      // the close: the message has a key, so only missing messages go.
+      const retriesClose =
+        item.status !== "open" &&
+        !changesContent &&
+        !item.closedBy &&
+        input.status === item.status &&
+        input.reason === item.closeReason;
+      if (item.status !== "open" && !retriesClose) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
       if (!canChange(item, scope)) {
         throw new ToolInputError(
-          "Only the Conversation or Automation that added this item can change it.",
+          "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
         );
       }
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
       }
-      const changesContent =
-        input.title || input.body || input.assignees || input.conversation_ids;
       if (changesContent) {
         // The Conversation that added the item always stays linked.
         const conversationIds = [
@@ -509,6 +531,7 @@ export function createUpdateReviewItemTool(
             [context.conversationId, item.addedByConversationId],
             visibility,
             assignees,
+            item.automationId,
           );
         }
         const updated = await updateReviewItemContent(db, {
@@ -530,16 +553,19 @@ export function createUpdateReviewItemTool(
       }
       if (input.status && input.reason) {
         const nowMs = Date.now();
-        const closed = await closeReviewItem(db, {
-          id: item.id,
-          nowMs,
-          reason: input.reason,
-          status: input.status,
-        });
+        const closed =
+          retriesClose ||
+          (await closeReviewItem(db, {
+            id: item.id,
+            nowMs,
+            reason: input.reason,
+            status: input.status,
+          }));
         if (!closed) {
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
         const closedItem = await readableItem(item.id, scope);
+        await syncReviewItemSlackCards({ itemId: closedItem.id });
         await sendReviewItemMessages({
           change: { kind: "closed", reason: input.reason },
           exceptConversationId: context.conversationId,
@@ -549,7 +575,9 @@ export function createUpdateReviewItemTool(
         });
         return { item: itemResult(closedItem) };
       }
-      return { item: itemResult(await readableItem(item.id, scope)) };
+      const changed = await readableItem(item.id, scope);
+      await syncReviewItemSlackCards({ itemId: changed.id });
+      return { item: itemResult(changed) };
     },
   });
 }

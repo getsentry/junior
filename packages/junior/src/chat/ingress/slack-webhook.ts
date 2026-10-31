@@ -61,6 +61,7 @@ import {
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -592,7 +593,10 @@ async function routeParsedMessage(args: {
     isSaved: (error) =>
       error instanceof SlackEventPersistenceError && error.saved,
     note: (request) =>
-      slackUserInputAnswerNote({ request, userId: message.author.userId }),
+      slackUserInputAnswerNote({
+        request,
+        who: slackMention(message.author.userId),
+      }),
     persist,
     state: args.state,
     threadTs: args.event.thread_ts,
@@ -828,6 +832,7 @@ export async function handleSlackWebhook(args: {
           services: args.services,
           state,
         }),
+      queue: args.services.queue,
       state,
       waitUntil: args.waitUntil,
     });

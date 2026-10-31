@@ -18,6 +18,9 @@ ignores:
   # the thread comes from the Slack tool context Location, not the
   # Conversation id.
   - packages/junior/src/chat/slack/tools/user-input.ts
+  # Review item cards. They are Block Kit controls that change in place, not
+  # reply text, and the thread comes from resolveSlackReplyTarget.
+  - packages/junior/src/chat/slack/review-item-card-sync.ts
 rule:
   any:
     - pattern: postSlackMessage($$$)

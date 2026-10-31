@@ -9,6 +9,7 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
   slackInteractivePayloadSchema,
@@ -46,6 +47,7 @@ export async function handleSlackForm(args: {
     message: Message,
     installation: SlackInstallationContext,
   ) => Promise<void>;
+  queue: ConversationWorkQueue;
   state: StateAdapter;
   waitUntil: WaitUntilFn;
 }): Promise<Response> {
@@ -84,6 +86,7 @@ export async function handleSlackForm(args: {
                   args.isAuthorAllowed(userId, installation),
                 persistMessage: (message) =>
                   args.persistMessage(message, installation),
+                queue: args.queue,
                 state,
                 userTokenStore: args.getUserTokenStore(),
               }),

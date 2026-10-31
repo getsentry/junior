@@ -139,3 +139,21 @@ export const juniorReviewItemConversations = pgTable(
     ),
   ],
 );
+
+/**
+ * The Slack message that shows a Review item in one linked Slack thread.
+ * Junior updates it in place after each change.
+ */
+export const juniorReviewItemSlackCards = pgTable(
+  "junior_review_item_slack_cards",
+  {
+    itemId: text("item_id")
+      .notNull()
+      .references(() => juniorReviewItems.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").notNull(),
+    teamId: text("team_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    messageTs: text("message_ts").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.itemId, table.conversationId] })],
+);

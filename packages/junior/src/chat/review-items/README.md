@@ -38,8 +38,9 @@ behavior.
   public. It is `public` otherwise. No change makes a private item public.
 - A private item links only to the Conversation that added it, and to later
   runs of the same Automation. It cannot be assigned to Everyone. Each
-  assigned User must be the Actor, or a person in the current Conversation
-  or in the Conversation that added the item.
+  assigned User must be the Actor, a person in the current Conversation or
+  in the Conversation that added the item, or the creator of the Automation
+  that added the item. An Automation run often has no Actor and no people.
 - Each item stores the provider tenant, such as the Slack workspace, of the
   Conversation that added it. Every link must be in that tenant. A public
   item is visible only to readers in the same tenant. A Slack mention in
@@ -48,9 +49,13 @@ behavior.
   reader is an assigned User, when it is linked to the reader's Conversation,
   or when the reader's Automation added it. `canReadReviewItem` and the
   search query in `store.ts` apply the same rule.
+- The agent tools read as the Conversation, not as the Actor. An assigned
+  User sees the item on the review desk. An agent in another Conversation of
+  that User does not, so it cannot copy private content there.
 - A public item can link other Conversations only when they are public.
-- An agent can change a private item, or any item from a private
-  Conversation, only from the Conversation or Automation that added it. This
+- An agent can change an item only from a Conversation in its tenant. It
+  can change a public item only from a public Conversation. It can change a
+  private item only from the Conversation or Automation that added it. This
   keeps private content out of other Conversations.
 - An agent can never submit the answer to an action item. Only an assignee
   can submit.
@@ -69,7 +74,8 @@ the parent adds the item.
 
 - An assigned User can act on an open item. Anyone who can see the item can
   act when it is assigned to Everyone or when it has no assignees.
-- **Take** makes the person the only assignee. The item stays open.
+- **Take** makes the person the only assignee. The item stays open. A
+  retry of a take sends missing messages again.
 - **Submit** saves the answer to an action item and marks it `done`.
 - **Complete** marks a notice `done`. An action item needs an answer, so it
   cannot be completed.
@@ -92,7 +98,8 @@ a new Turn.
 - A Conversation is open until Junior purges its transcript. Archive is
   only a list state of one viewer, so it does not stop messages.
 - Each message has an idempotency key, so a retry does not add a second
-  message.
+  message. A retry of the same agent close, with the same status and
+  reason, sends missing messages again.
 
 ## Waiting on you
 
@@ -100,3 +107,37 @@ A Conversation waits on a User when it has an open linked item that is
 assigned to the User or to Everyone (`listWaitingConversationIds`). An item
 with no assignees does not wait on anyone. The dashboard shows a lavender dot
 for these Conversations. The dot replaces the other status markers.
+
+## Slack cards
+
+`chat/slack/review-item-card-sync.ts` shows each item as a card in its
+linked Slack threads. `junior_review_item_slack_cards` stores the message of
+each card, so Junior can change it in place.
+
+- An open item gets a card in each linked thread that has none. A closed
+  item posts no new cards.
+- After each change by an agent or a person, every card shows the new
+  state. A closed card has no controls and shows who closed it.
+- A card in a thread that the item is no longer linked to loses its
+  content.
+- Cards are optional UI. A Slack failure is logged and does not fail the
+  change.
+- Syncs of one item run one at a time under a state lock (`withLock` in
+  `chat/state/locks.ts`). So two syncs cannot post two cards in one thread.
+  Each sync reads the latest item, so a sync that waits shows the newest
+  state. A card whose row cannot be saved is removed, so every card changes.
+
+The card uses the `requestUserInput` controls. A request with one `choice`
+field shows one button per option. Other requests show an Answer button that
+opens a form. A notice shows Done. Each card also shows Dismiss.
+
+A click comes back through `chat/ingress/slack-review-item.ts`. It needs the
+same workspace and allowed domain checks as a Slack mention, and a Junior
+User linked to the Slack account. The card row names the Conversation of
+the card, because an Automation run can own a thread under an id that is
+not a Slack thread id. That Conversation gets the action as Slack input
+from the person. A choice button carries its label. A click on a stale card
+whose label the item no longer offers changes nothing. The other linked Conversations get the usual
+messages. Only the click that closes the item adds input, so two fast
+clicks add one Turn. A click on a closed item tells the person and changes
+nothing.
