@@ -48,9 +48,13 @@ behavior.
   reader is an assigned User, when it is linked to the reader's Conversation,
   or when the reader's Automation added it. `canReadReviewItem` and the
   search query in `store.ts` apply the same rule.
+- The agent tools read as the Conversation, not as the Actor. An assigned
+  User sees the item on the review desk. An agent in another Conversation of
+  that User does not, so it cannot copy private content there.
 - A public item can link other Conversations only when they are public.
-- An agent can change a private item, or any item from a private
-  Conversation, only from the Conversation or Automation that added it. This
+- An agent can change an item only from a Conversation in its tenant. It
+  can change a public item only from a public Conversation. It can change a
+  private item only from the Conversation or Automation that added it. This
   keeps private content out of other Conversations.
 - An agent can never submit the answer to an action item. Only an assignee
   can submit.

@@ -111,8 +111,9 @@ async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
     reader: {
       conversationId: context.conversationId,
       ...(automationId ? { automationId } : undefined),
+      // No `userId`: an assignment lets a person see the item on the review
+      // desk, not let an agent read it into another Conversation.
       ...(tenant ? { tenants: [tenant] } : undefined),
-      ...(user ? { userId: user.id } : undefined),
     },
     ...(tenant ? { tenant } : undefined),
     ...(user ? { user } : undefined),
@@ -120,14 +121,14 @@ async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
 }
 
 /**
- * Whether the agent can change an item. A private item, and any item seen
- * from a private Conversation, can change only from the Conversation or
- * Automation that added it. This keeps private content in its Conversation.
+ * Whether the agent can change an item. Only an agent in the tenant of the
+ * item can change it. A public item changes only from a public
+ * Conversation, so private content never reaches its readers. A private
+ * item changes only from the Conversation or Automation that added it.
  */
 function canChange(item: ReviewItem, scope: ActorScope): boolean {
-  if (!scope.inPrivateConversation && item.visibility === "public") {
-    return true;
-  }
+  if (!isSameTenant(item.tenant, scope.tenant)) return false;
+  if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
     item.addedByConversationId === scope.reader.conversationId ||
     (scope.reader.automationId !== undefined &&
@@ -471,7 +472,7 @@ export function createUpdateReviewItemTool(
       }
       if (!canChange(item, scope)) {
         throw new ToolInputError(
-          "Only the Conversation or Automation that added this item can change it.",
+          "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
         );
       }
       if (input.status && !input.reason) {

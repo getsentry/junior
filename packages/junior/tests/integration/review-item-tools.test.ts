@@ -163,9 +163,10 @@ describe("review item tools", () => {
 
     // A public item stays inside its Slack workspace.
     await conversation("slack:CFAR:1.000004", "CFAR", "public", "T999");
+    // Ana is assigned, but an agent there still cannot read or change it.
     const outsider = tools({
       conversationId: "slack:CFAR:1.000004",
-      resolveActorIdentity: asActor(undefined),
+      resolveActorIdentity: asActor(ana),
       source: { kind: "slack" } as any,
     });
     expect((await execute(outsider.search, {})).count).toBe(0);
@@ -237,19 +238,17 @@ describe("review item tools", () => {
       conversation_ids: [],
     });
     expect(relinked.item.conversation_ids).toEqual(["slack:CPRIV:1.000001"]);
-    // Ana can read it from a public Conversation, but not change it there.
+    // Ana is assigned, but an agent in a public Conversation cannot read it
+    // into that Conversation.
     const anaInPublic = tools({
       conversationId: "slack:CPUB:1.000002",
       resolveActorIdentity: asActor(ana),
       source: { kind: "slack" } as any,
     });
-    expect((await execute(anaInPublic.search, {})).count).toBe(1);
+    expect((await execute(anaInPublic.search, {})).count).toBe(0);
     await expect(
-      execute(anaInPublic.update, {
-        id: added.item.id,
-        conversation_ids: ["slack:CPUB:1.000002"],
-      }),
-    ).rejects.toThrow("Only the Conversation or Automation that added");
+      execute(anaInPublic.update, { id: added.item.id, title: "Seen" }),
+    ).rejects.toThrow("is not found");
 
     // Ben is not assigned and his Conversation is not linked.
     const other = tools({
@@ -280,7 +279,7 @@ describe("review item tools", () => {
     ).rejects.toThrow("Use a different key.");
     await expect(
       execute(owner.update, { id: shared.item.id, body: "Private detail." }),
-    ).rejects.toThrow("Only the Conversation or Automation that added");
+    ).rejects.toThrow("A public item changes only from a public Conversation");
     // Nor can he link a private Conversation that he cannot see.
     await expect(
       execute(other.add, {
@@ -353,6 +352,28 @@ describe("review item tools", () => {
       created: false,
       item: { id: added.item.id, assignees: ["ana@example.com"] },
     });
+
+    // A run in a private Conversation cannot write into the public item of
+    // an earlier run, by its key or by an update.
+    await conversation("slack:CPUB:1.000009", "CPUB", "public");
+    const shared = await execute(run("slack:CPUB:1.000009").add, {
+      ...notice,
+      assignees: ["everyone"],
+      dedupe_key: "digest-public",
+    });
+    expect(shared.item.visibility).toBe("public");
+    await expect(
+      execute(run("slack:DRUN:1.000002").add, {
+        ...notice,
+        dedupe_key: "digest-public",
+      }),
+    ).rejects.toThrow("Use a different key.");
+    await expect(
+      execute(run("slack:DRUN:1.000002").update, {
+        id: shared.item.id,
+        body: "Private detail.",
+      }),
+    ).rejects.toThrow("A public item changes only from a public Conversation");
   });
 
   it("lets an agent close an item once, with a reason", async () => {
