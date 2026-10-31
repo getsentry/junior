@@ -68,6 +68,7 @@ function failingConversationStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
@@ -455,6 +456,61 @@ describe("turn checkpoint", () => {
     });
   });
 
+  it("keeps an older turn's metrics and the newer turn's status after a newer turn writes metrics", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { abandonTurnRecord, getTurnRecordForResume, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const conversationStore = getConversationStore();
+    const conversationId = "local:metrics-older-turn";
+
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+      piMessages: [userMessage("needs auth")],
+      resumeReason: "auth",
+      turnId: "turn-paused",
+      sliceId: 1,
+      state: "paused",
+    });
+    const paused = await getTurnRecordForResume(conversationId, "turn-paused");
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 500,
+      cumulativeUsage: { inputTokens: 3, cost: { total: 0.03 } },
+      piMessages: [...paused!.piMessages, userMessage("newer message")],
+      turnId: "turn-newer",
+      sliceId: 1,
+      state: "running",
+    });
+
+    // A resume of the older Turn continues from its own totals.
+    await expect(
+      getTurnRecordForResume(conversationId, "turn-paused"),
+    ).resolves.toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+
+    await abandonTurnRecord({ conversationId, turnId: "turn-paused" });
+
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      execution: { runId: "turn-newer", status: "running" },
+      executionMetrics: { durationMs: 500, runId: "turn-newer" },
+    });
+    await expect(
+      conversationStore.getRunMetrics({
+        conversationId,
+        runId: "turn-paused",
+      }),
+    ).resolves.toEqual({
+      durationMs: 1_500,
+      usage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+  });
+
   it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertTurnRecord } =
@@ -537,6 +593,7 @@ describe("turn checkpoint", () => {
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
+      getRunMetrics: vi.fn(async () => undefined),
       findSlackDestinationByName: vi.fn(async () => undefined),
       recordActivity: vi.fn(async () => undefined),
       recordExecution: vi.fn(async () => undefined),
