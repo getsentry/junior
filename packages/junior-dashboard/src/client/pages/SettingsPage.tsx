@@ -65,7 +65,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Settings</h1>
         <p className="mt-2 mb-0 max-w-2xl text-sm text-dashboard-text-muted">
-          Manage how your account appears in the dashboard.
+          Manage your profile and preferences.
         </p>
 
         <form className="mt-6" onSubmit={submit}>
