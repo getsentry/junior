@@ -90,6 +90,11 @@ the first run builds the `junior-sandbox-runtime` image:
 JUNIOR_DOCKER_SANDBOX_TEST=1 pnpm --filter @sentry/junior exec vitest run tests/integration/docker-sandbox-provider.test.ts
 ```
 
+A Docker sandbox has a small toolset: `gh`, `jq`, and `rg`. It does not have
+other plugin CLIs, browsers, or Docker. Install a missing tool with `sudo`, for
+example `sudo npm i -g vercel`. A plain `npm i -g` fails with `EACCES`. Do not
+QA browser or Docker-in-sandbox behavior with this provider.
+
 ### Inside a Vercel Sandbox
 
 A Vercel Sandbox sends some HTTPS traffic through a TLS proxy. For example,
@@ -124,6 +129,50 @@ Rules:
   correct only for this environment.
 - Give the proxy CA file, not the full system CA bundle. Junior always adds its
   own egress CA, and the Docker sandbox keeps its public CAs.
+
+### Prewarm the Sandbox Snapshot
+
+The first sandbox builds a dependency snapshot. This build takes about 1
+minute and makes an image of about 840 MB. Later sandboxes start from that
+snapshot in a few seconds. Build the snapshot before the first QA turn, so the
+turn does not wait for it.
+
+After you pull new commits, build all packages before you start the dev
+server. `pnpm dev` rebuilds only core and the dashboard, so other plugin
+packages can keep old builds:
+
+```sh
+pnpm build
+```
+
+Start `pnpm dev` with the Docker settings. When the dev server is ready, run
+`snapshot create` with the same state settings as the dev server. With the
+BullMQ queue, the dev server keeps the snapshot pointer in the Compose Redis.
+`pnpm cli` uses memory state by default, so it cannot find that pointer:
+
+```sh
+JUNIOR_STATE_ADAPTER=redis \
+REDIS_URL=redis://localhost:6382 \
+JUNIOR_SANDBOX_PROVIDER=docker \
+JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/vercel-proxy-ca.pem \
+  pnpm cli -- snapshot create
+```
+
+On a developer workstation, remove the
+`JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` line. Use the rules in "Inside a Vercel
+Sandbox".
+
+The last output line shows the result. `cache_hit=true` means the snapshot was
+already ready. `resolve_outcome=rebuilt` means the command built it.
+
+Rules:
+
+- Set the state settings only for this command. Do not change the defaults of
+  `pnpm cli`. Local chat uses memory state, so it works without Redis.
+- If you run the command without the Redis settings, it builds a second
+  snapshot that the dev server does not use.
+- A snapshot stays valid until its dependency list changes or its image is
+  deleted.
 
 ## Choosing a Probe
 
@@ -212,6 +261,11 @@ If local chat fails with a `junior_conversation_messages` or
 SQL conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
 If commands in a Docker sandbox fail certificate checks for a host that the
 Vercel Sandbox proxies, the extra CA is not set. See "Inside a Vercel Sandbox".
+If startup fails with `Junior plugin "<name>" events is invalid` or a similar
+plugin error after a pull, the plugin packages have old builds. Run
+`pnpm build`, then start the dev server again.
+If the first sandbox command waits for about a minute, the dependency snapshot
+is being built. See "Prewarm the Sandbox Snapshot".
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.
