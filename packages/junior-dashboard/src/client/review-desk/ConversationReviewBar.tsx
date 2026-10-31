@@ -19,7 +19,6 @@ export function ConversationReviewBar(props: { conversationId: string }) {
     useReviewItemsData({
       archived: false,
       conversationId: props.conversationId,
-      view: "all",
     }).data?.items ?? [];
   if (items.length === 0) return null;
   const label = itemCountLabel(items.length);

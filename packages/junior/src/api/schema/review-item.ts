@@ -56,14 +56,13 @@ export const reviewItemSchema = z
 
 export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 
-/** Review desk list filters. */
+/** Review desk list filters. The list has every item the viewer can see. */
 export const reviewItemListQuerySchema = z
   .object({
     /** `true` lists done and dismissed items instead of open ones. */
     archived: z.enum(["true", "false"]).optional(),
     conversationId: z.string().min(1).optional(),
     q: z.string().trim().max(200).optional(),
-    view: z.enum(["mine", "everyone", "all"]).optional(),
   })
   .strict();
 

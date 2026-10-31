@@ -5,7 +5,6 @@ import type {
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-import { FilterTabList } from "../components/FilterBar";
 import { InlineError } from "../components/InlineError";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
@@ -13,34 +12,17 @@ import { Card } from "../components/layout/Card";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
 import { Skeleton } from "../components/ui/skeleton";
+import { Toggle } from "../components/ui/toggle";
 import { automationPath, formatRelativeTime } from "../format";
-import {
-  parseSearchParamEnum,
-  pathWithSearch,
-  useDebouncedSearchParam,
-} from "../searchParams";
+import { pathWithSearch, useDebouncedSearchParam } from "../searchParams";
 import { cn } from "../styles";
 import { ReviewItemDetail } from "./ReviewItemDetail";
 import {
-  REVIEW_DESK_VIEWS,
   useBlockedAutomationsData,
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
 import { assigneeLabel, reviewItemPath } from "./reviewItemFormat";
-
-const VIEW_TABS = [
-  { label: "Mine", value: "mine" },
-  { label: "Everyone", value: "everyone" },
-  { label: "All", value: "all" },
-] as const;
-
-const STATE_TABS = [
-  { label: "Open", value: "open" },
-  { label: "Archived", value: "archived" },
-] as const;
-
-const ITEM_STATES = ["open", "archived"] as const;
 
 const rowClass =
   "grid gap-0.5 rounded-md px-3 py-2 text-inherit no-underline transition-colors";
@@ -140,33 +122,29 @@ function ReviewListLoading() {
 }
 
 /**
- * Render the review desk: open or archived Review items in the Mine,
- * Everyone, and All views, with the selected item beside the list.
+ * Render the review desk: the open Review items that the viewer can see, or
+ * the archived ones, with search and the selected item beside the list.
  */
 export function ReviewDeskPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const view =
-    parseSearchParamEnum(searchParams.get("view"), REVIEW_DESK_VIEWS) ?? "mine";
-  const state =
-    parseSearchParamEnum(searchParams.get("state"), ITEM_STATES) ?? "open";
-  // The selected item can be missing from the new list, so a tab change
-  // drops it and the first item of the new list shows.
-  function selectTab(key: "state" | "view", value: string, initial: string) {
+  const archived = searchParams.get("archived") === "true";
+  // The selected item can be missing from the new list, so the toggle drops
+  // it and the first item of the new list shows.
+  function setArchived(value: boolean) {
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
         next.delete("item");
-        if (value === initial) next.delete(key);
-        else next.set(key, value);
+        if (value) next.set("archived", "true");
+        else next.delete("archived");
         return next;
       },
       { replace: true },
     );
   }
   const [search, setSearch, q] = useDebouncedSearchParam();
-  const archived = state === "archived";
-  const items = useReviewItemsData({ archived, q, view });
-  const showBlocked = !archived && view !== "everyone" && !q;
+  const items = useReviewItemsData({ archived, q });
+  const showBlocked = !archived && !q;
   const blocked = useBlockedAutomationsData(showBlocked);
   const list = items.data?.items ?? [];
   const selectedId = searchParams.get("item") ?? list[0]?.id;
@@ -188,26 +166,17 @@ export function ReviewDeskPage() {
         description="Items that need a person, and who can act on them."
         title="Review desk"
       />
-      <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <FilterTabList
-          ariaLabel="Assignee view"
-          items={VIEW_TABS}
-          onChange={(value) => selectTab("view", value, "mine")}
-          value={view}
-        />
-        <FilterTabList
-          ariaLabel="Item state"
-          items={STATE_TABS}
-          onChange={(value) => selectTab("state", value, "open")}
-          value={state}
-        />
+      <div className="flex min-w-0 items-center gap-3">
         <SearchInput
-          className="ml-auto w-full sm:w-64"
+          className="min-w-0 flex-1"
           label="Search review items"
           onChange={setSearch}
           placeholder="Search items"
           value={search}
         />
+        <Toggle onPressedChange={setArchived} pressed={archived} variant="pill">
+          Show archived
+        </Toggle>
       </div>
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <Card className="grid content-start gap-4 py-3" padding="none">
