@@ -181,10 +181,7 @@ export function UserInputForm(props: {
           ) : null}
         </>
       ) : (
-        <form
-          className="mt-2 grid max-h-96 gap-3 overflow-y-auto"
-          onSubmit={submit}
-        >
+        <form className="mt-2 grid gap-3" onSubmit={submit}>
           {props.request.fields.map((field) =>
             field.kind === "text" ? (
               <TextField

@@ -24,13 +24,16 @@ export function UserInputRequestCard(props: {
           text={props.request.question}
         />
       </div>
-      <UserInputForm
-        onSubmit={(answer) =>
-          props.onAnswer(formatUserInputAnswer(props.request, answer))
-        }
-        request={props.request}
-        requestId={props.request.toolCallId}
-      />
+      {/* Above the composer, a long form scrolls so the transcript stays visible. */}
+      <div className="max-h-96 overflow-y-auto">
+        <UserInputForm
+          onSubmit={(answer) =>
+            props.onAnswer(formatUserInputAnswer(props.request, answer))
+          }
+          request={props.request}
+          requestId={props.request.toolCallId}
+        />
+      </div>
     </section>
   );
 }

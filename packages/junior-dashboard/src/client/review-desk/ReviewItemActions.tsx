@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  formatUserInputAnswer,
+  normalizeUserInputAnswer,
   type ReviewItemActionBody,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
@@ -8,6 +8,7 @@ import {
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
+import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
 import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
@@ -21,6 +22,33 @@ function actionError(error: unknown): string {
     return error.apiError;
   }
   return "Could not save this action. Try again.";
+}
+
+/** Show the submitted answer as one line for each answered field. */
+function AnswerSummary(props: {
+  answer: NonNullable<ReviewItemPayload["answer"]>;
+  request: NonNullable<ReviewItemPayload["request"]>;
+}) {
+  const answer = normalizeUserInputAnswer(props.request, props.answer);
+  const rows = props.request.fields.flatMap((field) => {
+    const values = answer.values[field.id];
+    return values?.length
+      ? [{ label: field.label, value: values.join(", ") }]
+      : [];
+  });
+  if (answer.other) rows.push({ label: "Other", value: answer.other });
+  return (
+    <dl className="m-0 grid gap-2 rounded-md bg-dashboard-fill-soft p-3">
+      {rows.map((row) => (
+        <div className="grid gap-0.5" key={row.label}>
+          <dt className="text-xs font-medium text-dashboard-text-muted">
+            {row.label}
+          </dt>
+          <dd className="m-0 whitespace-pre-wrap break-words">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 /** Show who closed an item, when, and the submitted answer. */
@@ -37,9 +65,7 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
       {item.request && item.answer ? (
-        <pre className="m-0 whitespace-pre-wrap rounded-md bg-dashboard-fill-soft p-3 font-sans text-sm">
-          {formatUserInputAnswer(item.request, item.answer)}
-        </pre>
+        <AnswerSummary answer={item.answer} request={item.request} />
       ) : null}
     </div>
   );
@@ -77,7 +103,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     <div className="grid gap-3">
       {item.kind === "action" && item.request ? (
         <div className="grid gap-2 text-sm">
-          <p className="m-0 font-medium">{item.request.question}</p>
+          <TranscriptMarkdown text={item.request.question} />
           <UserInputForm
             onSubmit={(answer) =>
               run({

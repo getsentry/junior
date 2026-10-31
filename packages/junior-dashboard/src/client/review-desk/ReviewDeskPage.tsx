@@ -15,7 +15,11 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
 import { Skeleton } from "../components/ui/skeleton";
 import { automationPath, formatRelativeTime } from "../format";
-import { useDebouncedSearchParam, useSearchParamEnum } from "../searchParams";
+import {
+  parseSearchParamEnum,
+  pathWithSearch,
+  useDebouncedSearchParam,
+} from "../searchParams";
 import { cn } from "../styles";
 import { ReviewItemDetail } from "./ReviewItemDetail";
 import {
@@ -37,6 +41,8 @@ const STATE_TABS = [
   { label: "Archived", value: "archived" },
 ] as const;
 
+const ITEM_STATES = ["open", "archived"] as const;
+
 const rowClass =
   "grid gap-0.5 rounded-md px-3 py-2 text-inherit no-underline transition-colors";
 
@@ -51,7 +57,11 @@ function ListGroup(props: { children: ReactNode; title: string }) {
   );
 }
 
-function ItemRow(props: { item: ReviewItemPayload; selected: boolean }) {
+function ItemRow(props: {
+  item: ReviewItemPayload;
+  searchParams: URLSearchParams;
+  selected: boolean;
+}) {
   const { item } = props;
   const unassigned = !item.assignedToEveryone && item.assignees.length === 0;
   return (
@@ -65,7 +75,7 @@ function ItemRow(props: { item: ReviewItemPayload; selected: boolean }) {
             : "hover:bg-dashboard-fill-soft",
         )}
         replace
-        to={reviewItemPath(item.id)}
+        to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
       >
         <span className="truncate text-sm font-medium">{item.title}</span>
         <span className="flex min-w-0 items-center gap-2 text-xs text-dashboard-text-muted">
@@ -125,12 +135,25 @@ function ReviewListLoading() {
  * Everyone, and All views, with the selected item beside the list.
  */
 export function ReviewDeskPage() {
-  const [searchParams] = useSearchParams();
-  const [view, setView] = useSearchParamEnum("view", "mine", REVIEW_DESK_VIEWS);
-  const [state, setState] = useSearchParamEnum("state", "open", [
-    "open",
-    "archived",
-  ]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view =
+    parseSearchParamEnum(searchParams.get("view"), REVIEW_DESK_VIEWS) ?? "mine";
+  const state =
+    parseSearchParamEnum(searchParams.get("state"), ITEM_STATES) ?? "open";
+  // The selected item can be missing from the new list, so a tab change
+  // drops it and the first item of the new list shows.
+  function selectTab(key: "state" | "view", value: string, initial: string) {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("item");
+        if (value === initial) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
   const [search, setSearch, q] = useDebouncedSearchParam();
   const archived = state === "archived";
   const items = useReviewItemsData({ archived, q, view });
@@ -160,13 +183,13 @@ export function ReviewDeskPage() {
         <FilterTabList
           ariaLabel="Assignee view"
           items={VIEW_TABS}
-          onChange={(value) => setView(value as typeof view)}
+          onChange={(value) => selectTab("view", value, "mine")}
           value={view}
         />
         <FilterTabList
           ariaLabel="Item state"
           items={STATE_TABS}
-          onChange={(value) => setState(value as typeof state)}
+          onChange={(value) => selectTab("state", value, "open")}
           value={state}
         />
         <SearchInput
@@ -192,11 +215,12 @@ export function ReviewDeskPage() {
           ) : (
             <>
               {actions.length > 0 ? (
-                <ListGroup title="Needs an answer">
+                <ListGroup title={archived ? "Questions" : "Needs an answer"}>
                   {actions.map((item) => (
                     <ItemRow
                       item={item}
                       key={item.id}
+                      searchParams={searchParams}
                       selected={item.id === selected?.id}
                     />
                   ))}
@@ -208,6 +232,7 @@ export function ReviewDeskPage() {
                     <ItemRow
                       item={item}
                       key={item.id}
+                      searchParams={searchParams}
                       selected={item.id === selected?.id}
                     />
                   ))}
