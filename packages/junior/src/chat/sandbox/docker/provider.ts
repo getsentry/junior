@@ -17,7 +17,8 @@ import {
   commitSnapshot,
   SNAPSHOT_REPOSITORY,
 } from "@/chat/sandbox/docker/session";
-import type { SandboxProvider } from "@/chat/sandbox/provider";
+import { dockerSandboxRuntimeDependencies } from "@/chat/sandbox/docker/settings";
+import type { SandboxProvider, SnapshotRuntime } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
   WorkspaceSnapshotBuilder,
@@ -157,6 +158,35 @@ async function deleteWorkspaceSnapshotBuilders(
   if (failures.length > 0) throw failures[0];
 }
 
+/**
+ * Keep only the runtime dependencies named in the Docker settings.
+ *
+ * Local sandboxes stay small this way. Postinstall commands are skipped,
+ * because they often download large tools. Unknown names fail, so a typo does
+ * not quietly drop a tool.
+ */
+function selectSnapshotRuntime(runtime: SnapshotRuntime): SnapshotRuntime {
+  const names = dockerSandboxRuntimeDependencies();
+  if (!names) return runtime;
+  const declared = new Set(
+    runtime.dependencies.flatMap((dependency) =>
+      "package" in dependency ? [dependency.package] : [],
+    ),
+  );
+  const unknown = [...names].filter((name) => !declared.has(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES names packages that are not declared runtime dependencies: ${unknown.join(", ")}`,
+    );
+  }
+  return {
+    dependencies: runtime.dependencies.filter(
+      (dependency) => "package" in dependency && names.has(dependency.package),
+    ),
+    postinstall: [],
+  };
+}
+
 /** Local Docker implementation of the sandbox provider contract. */
 export const dockerSandboxProvider: SandboxProvider = {
   errors: dockerSandboxErrors,
@@ -165,4 +195,5 @@ export const dockerSandboxProvider: SandboxProvider = {
   createWorkspaceSnapshotBuilder,
   getWorkspaceSnapshotBuilder,
   deleteWorkspaceSnapshotBuilders,
+  selectSnapshotRuntime,
 };

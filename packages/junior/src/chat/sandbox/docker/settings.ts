@@ -27,3 +27,23 @@ export function dockerSandboxDir(): string {
 export function dockerSandboxExtraCaFile(): string | undefined {
   return process.env.JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS?.trim() || undefined;
 }
+
+/**
+ * Optional list of runtime dependency packages that snapshots install.
+ *
+ * `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES` is a comma-separated list of
+ * declared package names, such as `gh,jq,ripgrep`. When it is set, snapshots
+ * install only those packages and run no postinstall commands. The agent
+ * installs other tools when it needs them. When it is unset, snapshots install
+ * every declared dependency.
+ */
+export function dockerSandboxRuntimeDependencies(): Set<string> | undefined {
+  const raw = process.env.JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES;
+  if (raw === undefined) return undefined;
+  return new Set(
+    raw
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+}

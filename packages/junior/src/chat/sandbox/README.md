@@ -240,6 +240,10 @@ Vercel Sandbox, and some workloads do not behave the same. Set
 - When the Docker host itself is behind a TLS proxy, such as inside a Vercel
   Sandbox, set `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` to that proxy's CA file.
   Each sandbox then trusts it too.
+- `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES` limits the snapshot to the named
+  runtime dependencies and skips all postinstall commands. Unknown names fail.
+  The selection is part of the profile hash, so it gets its own snapshot.
+  Vercel snapshots ignore it.
 
 ### Limitations
 

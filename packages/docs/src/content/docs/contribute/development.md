@@ -77,6 +77,7 @@ Optional settings:
 
 - `JUNIOR_DOCKER_SANDBOX_DIR` sets the directory of the local egress CA. The default is `~/.cache/junior/docker-sandbox`.
 - `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` names a PEM file that each sandbox also trusts. Set it when your machine is behind a TLS proxy.
+- `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES` is a comma-separated list of runtime dependencies that the snapshot installs, such as `spal-release,ripgrep,gh,jq`. When it is set, the snapshot installs only those packages and runs no postinstall commands, so other plugin CLIs, browsers, and Docker-in-Docker are not installed. The agent installs other tools when it needs them. When it is unset, the snapshot installs all of them.
 
 To remove all Docker sandboxes and snapshots:
 
