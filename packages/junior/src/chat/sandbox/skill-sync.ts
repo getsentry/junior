@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -10,6 +11,7 @@ import {
   isAlreadyExistsError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
+import type { SetSpanAttributes } from "@/chat/logging";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -19,6 +21,12 @@ interface SkillSyncFile {
 }
 
 const DIRECTORY_CREATE_CONCURRENCY = 8;
+
+/**
+ * Digest of the last complete skill sync. It lives under the skills root, so
+ * removing that directory also forces a full sync.
+ */
+const SKILL_SYNC_DIGEST_PATH = `${SANDBOX_SKILLS_ROOT}/.sync-digest`;
 
 function toPosixRelative(base: string, absolute: string): string {
   return path.relative(base, absolute).split(path.sep).join("/");
@@ -210,16 +218,41 @@ export function isHostFileMissingError(error: unknown): boolean {
   );
 }
 
-/** Copy the current skill set and reference files into a sandbox. */
+function skillSyncDigest(files: SkillSyncFile[]): string {
+  const hash = createHash("sha256");
+  for (const file of files) {
+    hash.update(file.path);
+    hash.update("\0");
+    hash.update(String(file.content.length));
+    hash.update("\0");
+    hash.update(file.content);
+  }
+  return hash.digest("hex");
+}
+
+async function readSkillSyncDigest(
+  sandbox: Pick<SandboxSession, "readFileToBuffer">,
+): Promise<string | undefined> {
+  const content = await sandbox.readFileToBuffer({
+    path: SKILL_SYNC_DIGEST_PATH,
+  });
+  return content ? content.toString("utf8").trim() : undefined;
+}
+
+/**
+ * Copy the current skill set and reference files into a sandbox.
+ *
+ * A reused sandbox skips the copy when its digest matches the files to write.
+ */
 export async function syncSkillsToSandbox(params: {
-  sandbox: Pick<SandboxSession, "mkDir" | "writeFiles">;
+  sandbox: Pick<SandboxSession, "mkDir" | "readFileToBuffer" | "writeFiles">;
   skills: SkillMetadata[];
   referenceFiles?: string[];
   withSpan: <T>(
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>,
+    callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   ) => Promise<T>;
   workspaceRoot?: string;
 }): Promise<void> {
@@ -231,11 +264,17 @@ export async function syncSkillsToSandbox(params: {
     {
       "app.sandbox.skills_count": params.skills.length,
     },
-    async () => {
+    async (setSpanAttributes) => {
       const filesToWrite = await buildSkillSyncFiles(
         params.skills,
         params.referenceFiles,
       );
+      const digest = skillSyncDigest(filesToWrite);
+      if ((await readSkillSyncDigest(params.sandbox)) === digest) {
+        setSpanAttributes({ "app.sandbox.sync.skipped": true });
+        return;
+      }
+      setSpanAttributes({ "app.sandbox.sync.skipped": false });
       const bytesWritten = filesToWrite.reduce(
         (total, file) => total + file.content.length,
         0,
@@ -277,7 +316,15 @@ export async function syncSkillsToSandbox(params: {
               }
             }
 
-            await params.sandbox.writeFiles(filesToWrite);
+            // The digest goes last, so a copy that stops early leaves the
+            // old digest and the next sync copies everything again.
+            await params.sandbox.writeFiles([
+              ...filesToWrite,
+              {
+                path: SKILL_SYNC_DIGEST_PATH,
+                content: Buffer.from(digest, "utf8"),
+              },
+            ]);
           } catch (error) {
             throwSandboxOperationError("sandbox writeFiles", error, true);
           }

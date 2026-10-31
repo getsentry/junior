@@ -413,7 +413,7 @@ Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
 `process.executable.name`, `process.exit.code`, `app.sandbox.source`,
-`app.sandbox.acquire.outcome`,
+`app.sandbox.acquire.outcome`, `app.sandbox.sync.skipped`,
 `app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
 `app.sandbox.search.parsed_records`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
@@ -427,6 +427,9 @@ the sandbox:
 - `resumed`: `sandbox.get` reopened the stored sandbox.
 - `created`: `sandbox.create` booted a new sandbox. Its
   `app.sandbox.source` and `app.sandbox.snapshot.*` attributes tell how.
+
+`app.sandbox.sync.skipped` on `sandbox.sync_skills` is `true` when the sandbox
+already had the current skill files, so no files were copied.
 
 Workspace switches create their sandbox outside `sandbox.acquire`. To find the
 sandbox cost of one turn, add the durations of the top-level `sandbox.*` spans

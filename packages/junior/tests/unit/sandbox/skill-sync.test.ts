@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SetSpanAttributes } from "@/chat/logging";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
@@ -26,9 +27,9 @@ function immediateSpan<T>(
   _name: string,
   _op: string,
   _attributes: Record<string, unknown>,
-  callback: () => Promise<T>,
+  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
 ): Promise<T> {
-  return callback();
+  return callback(() => {});
 }
 
 afterEach(async () => {
@@ -120,5 +121,45 @@ describe("sandbox skill sync", () => {
     releaseSiblings?.();
     await sync;
     expect(parentMissing).toBe(false);
+  });
+
+  it("skips the copy until the skill files change", async () => {
+    const skillPath = await makeSkill();
+    const sandboxFiles = new Map<string, Buffer>();
+    let writeCount = 0;
+    const sandbox = {
+      async mkDir() {},
+      async readFileToBuffer(input: { path: string }) {
+        return sandboxFiles.get(input.path) ?? null;
+      },
+      async writeFiles(files: Array<{ path: string; content: Uint8Array }>) {
+        writeCount += 1;
+        for (const file of files) {
+          sandboxFiles.set(file.path, Buffer.from(file.content));
+        }
+      },
+    };
+    const sync = () =>
+      syncSkillsToSandbox({
+        sandbox,
+        skills: [{ name: "demo", description: "Demo", skillPath }],
+        withSpan: immediateSpan,
+      });
+
+    await sync();
+    const firstWriteCount = writeCount;
+    expect(sandboxFiles.get(sandboxSkillFile("demo"))?.toString()).toBe(
+      "skill",
+    );
+
+    await sync();
+    expect(writeCount).toBe(firstWriteCount);
+
+    await fs.writeFile(path.join(skillPath, "SKILL.md"), "changed", "utf8");
+    await sync();
+    expect(writeCount).toBeGreaterThan(firstWriteCount);
+    expect(sandboxFiles.get(sandboxSkillFile("demo"))?.toString()).toBe(
+      "changed",
+    );
   });
 });
