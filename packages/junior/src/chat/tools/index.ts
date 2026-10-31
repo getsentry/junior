@@ -22,6 +22,11 @@ import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createRequestUserInputTool } from "@/chat/tools/runtime/request-user-input";
+import {
+  createAddReviewItemTool,
+  createSearchReviewItemsTool,
+  createUpdateReviewItemTool,
+} from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
@@ -374,6 +379,21 @@ export function createTools(
         : context.source.kind === "web" || slackQuestionContext
           ? undefined
           : "It needs a Turn that a person started in Slack or the web dashboard.",
+    ),
+  );
+
+  // Review items link to root Conversations, where a person can see them.
+  Object.assign(
+    tools,
+    disableTools(
+      {
+        addReviewItem: createAddReviewItemTool(context),
+        searchReviewItems: createSearchReviewItemsTool(context),
+        updateReviewItem: createUpdateReviewItemTool(context),
+      },
+      context.parentConversationId
+        ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
+        : undefined,
     ),
   );
 

@@ -350,6 +350,9 @@ describe("Slack tool registration", () => {
     expect(childTools.requestUserInput?.disabledReason).toContain(
       "reportBlocked",
     );
+    expect(childTools.addReviewItem?.disabledReason).toContain(
+      "reportBlocked",
+    );
   });
 
   it("does not register Slack tools for local destinations", () => {
