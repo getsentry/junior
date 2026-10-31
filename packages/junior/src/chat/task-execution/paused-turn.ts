@@ -65,7 +65,10 @@ import {
   type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
+import { postsRunNotices } from "@/chat/automation-result";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -725,6 +728,31 @@ async function failStrandedTurnWithFallback(args: {
     failureCode: "agent_run_failed",
     turnId: failed.turnId,
   });
+  let replyAttribution: ReplyAttribution | undefined;
+  if (failed.dispatchId) {
+    // The dispatch record owns the routing of a dispatch Conversation. Its
+    // Conversation has no Slack session Source.
+    const dispatch = await getDispatchRecord(failed.dispatchId);
+    await recordTurnSummary({
+      conversationId: args.conversationId,
+      destination: dispatch?.destination,
+      dispatchId: failed.dispatchId,
+      dispatchOutcome: "failed",
+      turnId: failed.turnId,
+      sliceId: failed.sliceId,
+      source: dispatch?.source,
+      state: "failed",
+      surface: failed.surface,
+    });
+    // A dispatch whose record is gone has no known outputs.
+    if (
+      !dispatch ||
+      !postsRunNotices(buildDispatchRoutingContext(dispatch).dispatch)
+    ) {
+      return true;
+    }
+    replyAttribution = dispatch.replyAttribution;
+  }
   let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
@@ -737,19 +765,6 @@ async function failStrandedTurnWithFallback(args: {
     });
     return true;
   }
-  if (failed.dispatchId) {
-    await recordTurnSummary({
-      conversationId: args.conversationId,
-      destination: routing.destination,
-      dispatchId: failed.dispatchId,
-      dispatchOutcome: "failed",
-      turnId: failed.turnId,
-      sliceId: failed.sliceId,
-      source: routing.source,
-      state: "failed",
-      surface: failed.surface,
-    });
-  }
   const target = resolveSlackReplyTarget({
     destination: requireSlackDestination(
       routing.destination,
@@ -758,9 +773,6 @@ async function failStrandedTurnWithFallback(args: {
     location: routing.location,
     source: failed.source,
   });
-  const replyAttribution = failed.dispatchId
-    ? (await getDispatchRecord(failed.dispatchId))?.replyAttribution
-    : undefined;
   await sendSlackReply({
     ...target,
     conversationId: args.conversationId,

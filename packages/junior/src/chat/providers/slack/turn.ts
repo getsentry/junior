@@ -151,6 +151,7 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   finishedRunReply,
+  postsRunNotices,
   runDispatchOutcome,
   deliversFinalText,
 } from "@/chat/automation-result";
@@ -448,6 +449,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         ): Promise<void> => {
           if (!actor) {
             throw new Error("Slack auth pause notice requires an actor");
+          }
+          if (!postsRunNotices(options.execution?.dispatch)) {
+            return;
           }
           const text = buildAuthPauseResponse(
             actor.userId,
