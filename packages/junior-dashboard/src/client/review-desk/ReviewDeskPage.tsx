@@ -262,7 +262,9 @@ export function ReviewDeskPage() {
         </Card>
         <Card className="min-w-0" padding="md">
           {selected ? (
-            <ReviewItemDetail item={selected} />
+            // A key per item resets the answer form and its send lock, so
+            // one item's answer can never reach another item.
+            <ReviewItemDetail item={selected} key={selected.id} />
           ) : direct.error ? (
             <InlineError>Review item not found.</InlineError>
           ) : (
