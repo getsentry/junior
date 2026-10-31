@@ -1,17 +1,17 @@
 import { removedCardSchema } from "@/chat/conversations/cards";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import {
+  deleteToolAutomation,
+  requireToolAutomation,
+  slackToolViewer,
+} from "@/chat/automations/tool-access";
 import { z } from "zod";
-import { getDb } from "@/chat/db";
-import { deleteEventAutomation } from "@/chat/event-automations/store";
 import {
   compactEventAutomation,
   eventAutomationToolResultSchema,
   requireEventAutomationSlackContext,
-  writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Create the core tool that deletes an event automation. */
@@ -28,23 +28,24 @@ export function createDeleteEventAutomationTool(
       readOnlyHint: false,
     },
     executionMode: "sequential",
-    description: "Delete an event automation.",
+    description:
+      "Delete an event automation. Anyone in the workspace can delete an automation in a public channel. Automations in private channels and DMs can be deleted from there or by their creator.",
     inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
     outputSchema: eventAutomationToolResultSchema
       .omit({ objectCards: true })
       .extend({ removedCards: z.array(removedCardSchema) }),
     async execute({ automationId }) {
-      const { actor } = requireEventAutomationSlackContext(context);
-      const current = await writableEventAutomation(context, automationId);
-      const deleted = await deleteEventAutomation(getDb(), current.id);
-      if (!deleted) {
-        throw new ToolInputError("Event automation was not found.");
-      }
-      await createPluginAnnotations({
-        conversationId: context.conversationId,
-        db: getDb(),
-        plugin: "junior",
-      }).remove("object", automationId);
+      const { actor, destination } =
+        requireEventAutomationSlackContext(context);
+      const current = await requireToolAutomation(
+        slackToolViewer(await context.resolveActorIdentity?.(), destination),
+        "event",
+        automationId,
+      );
+      const deleted = await deleteToolAutomation(
+        context.conversationId,
+        current,
+      );
       return {
         automation: compactEventAutomation(deleted, catalog, actor.userId),
         removedCards: [{ plugin: "junior", key: automationId }],

@@ -1,14 +1,23 @@
-import type { User } from "@sentry/junior-plugin-api";
+import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 
 /**
- * Return whether the user created the Automation. Both kinds store the
+ * The person who reads or manages Automations. A Slack tool call also names
+ * the active Slack channel. People there can manage the Automations that
+ * deliver to it, also in private channels and DMs.
+ */
+export type AutomationViewer = Pick<User, "identities"> & {
+  channel?: SlackDestination;
+};
+
+/**
+ * Return whether the viewer created the Automation. Both kinds store the
  * creating Junior identity, so one rule decides ownership.
  */
 export function isAutomationCreator(
-  user: User,
+  viewer: AutomationViewer,
   automation: { creatorIdentityId: string },
 ): boolean {
-  return user.identities.some(
+  return viewer.identities.some(
     (identity) => identity.id === automation.creatorIdentityId,
   );
 }

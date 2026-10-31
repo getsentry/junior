@@ -31,7 +31,10 @@ import {
   type AutomationExecutionSummary,
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
-import { isAutomationCreator } from "@/chat/automations/creator";
+import {
+  isAutomationCreator,
+  type AutomationViewer,
+} from "@/chat/automations/creator";
 import { getDb } from "@/chat/db";
 import {
   getDispatchIdForConversation,
@@ -44,17 +47,12 @@ import {
   sameDefinitionValue,
 } from "@/chat/automations/versions";
 import {
-  deleteEventAutomation,
   listDeletedEventAutomationsCreatedBy,
   parseEventAutomationRow,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
 import { describeEventAutomationTrigger } from "@/chat/event-automations/tool-support";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import {
-  deleteViewerScheduledAutomation,
-  PersonalScheduledAutomationNotFoundError,
-} from "@/chat/scheduled-automations/personal";
 import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
@@ -334,10 +332,10 @@ function eventAutomationSummary(
   };
 }
 
-function viewerTeamIds(user: User): string[] {
+function viewerTeamIds(viewer: AutomationViewer): string[] {
   return [
     ...new Set(
-      user.identities
+      viewer.identities
         .filter((identity) => identity.provider === "slack")
         .map((identity) => identity.providerTenantId)
         .filter((teamId): teamId is string => Boolean(teamId)),
@@ -345,9 +343,16 @@ function viewerTeamIds(user: User): string[] {
   ];
 }
 
-/** Resolve an Automation the viewer owns or can read through a public Destination. */
+/**
+ * Resolve an Automation the viewer can read and manage. This is the one
+ * access rule for the dashboard and the agent tools. The viewer can use an
+ * Automation that they created, an Automation with a public Destination in
+ * their Slack workspace, or an Automation that delivers to the Slack channel
+ * where they ask. `viewerAutomationCollection` applies the same rule in SQL.
+ * Creator-only fields and credential rules are in `edit-rules.ts`.
+ */
 export async function resolveViewerTaskCandidate(
-  user: User,
+  viewer: AutomationViewer,
   id: string,
 ): Promise<TaskCandidate | undefined> {
   const [row] = await getDb()
@@ -362,24 +367,29 @@ export async function resolveViewerTaskCandidate(
     if (!task) return undefined;
     candidate = {
       kind: "scheduled",
-      ownedByViewer: isAutomationCreator(user, task),
+      ownedByViewer: isAutomationCreator(viewer, task),
       task,
     };
   } else {
     const task = parseEventAutomationRow(row);
     candidate = {
       kind: "event",
-      ownedByViewer: isAutomationCreator(user, task),
+      ownedByViewer: isAutomationCreator(viewer, task),
       task,
     };
   }
   const { task } = candidate;
   if (task.status === "deleted") return undefined;
+  // A Slack tool call manages only its own workspace.
+  if (viewer.channel && viewer.channel.teamId !== task.destination.teamId)
+    return undefined;
   if (candidate.ownedByViewer) return candidate;
+  if (viewer.channel?.channelId === task.destination.channelId)
+    return candidate;
   const destinations = await destinationDetails([task.destination]);
   const destination = destinations.get(destinationKey(task.destination));
   const publicToViewer =
-    viewerTeamIds(user).includes(task.destination.teamId) &&
+    viewerTeamIds(viewer).includes(task.destination.teamId) &&
     destination?.visibility === "public";
   return publicToViewer ? candidate : undefined;
 }
@@ -866,22 +876,4 @@ export async function readConversationSourceTask(args: {
     triggerLabel:
       events.length === 1 ? `${label} ${eventActionLabel(events[0]!)}` : label,
   };
-}
-
-/** Delete one viewer-owned scheduled or event automation. */
-export async function deleteViewerTask(user: User, id: string): Promise<void> {
-  const candidate = await resolveViewerTaskCandidate(user, id);
-  if (!candidate?.ownedByViewer) throw new ViewerTaskNotFoundError();
-  if (candidate.kind === "scheduled") {
-    try {
-      await deleteViewerScheduledAutomation(getDb(), user, id);
-      return;
-    } catch (error) {
-      if (error instanceof PersonalScheduledAutomationNotFoundError) {
-        throw new ViewerTaskNotFoundError();
-      }
-      throw error;
-    }
-  }
-  await deleteEventAutomation(getDb(), id);
 }

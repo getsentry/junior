@@ -8,11 +8,7 @@ import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
-import { getDb } from "@/chat/db";
-import {
-  getEventAutomation,
-  type StoredEventAutomation,
-} from "@/chat/event-automations/store";
+import type { StoredEventAutomation } from "@/chat/event-automations/store";
 import {
   EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
   type EventAutomation,
@@ -206,41 +202,6 @@ export function eventAutomationMatchesDestination(
     task.destination.teamId === destination.teamId &&
     task.destination.channelId === destination.channelId
   );
-}
-
-/**
- * Return whether the active destination may update or delete this automation.
- * Same-destination automations stay local. Public automations may be managed by id from
- * another destination in the same workspace.
- */
-export function eventAutomationIsWritableFrom(
-  task: EventAutomation,
-  destination: { channelId: string; teamId: string },
-): boolean {
-  if (task.destination.teamId !== destination.teamId) {
-    return false;
-  }
-  return (
-    task.destination.channelId === destination.channelId ||
-    task.destinationVisibility === "public"
-  );
-}
-
-/** Load one automation the active destination may update or delete. */
-export async function writableEventAutomation(
-  context: ToolRuntimeContext,
-  id: string,
-): Promise<StoredEventAutomation> {
-  const { destination } = requireEventAutomationSlackContext(context);
-  const task = await getEventAutomation(getDb(), id);
-  if (
-    !task ||
-    task.status === "deleted" ||
-    !eventAutomationIsWritableFrom(task, destination)
-  ) {
-    throw new ToolInputError("Event automation was not found.");
-  }
-  return task;
 }
 
 /**

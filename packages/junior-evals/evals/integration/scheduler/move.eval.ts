@@ -50,7 +50,7 @@ describe("Schedule Destination Updates", () => {
     );
 
     const lists = completedToolCalls(
-      "slackScheduleListAutomations",
+      "slackScheduleSearchAutomations",
       conversation,
     );
     expect(lists.length).toBeGreaterThan(0);
@@ -96,7 +96,7 @@ describe("Schedule Destination Updates", () => {
     );
 
     expect(
-      completedToolCalls("slackScheduleListAutomations", conversation).length,
+      completedToolCalls("slackScheduleSearchAutomations", conversation).length,
     ).toBeGreaterThan(0);
     const updates = completedToolCalls(
       "slackScheduleUpdateAutomation",

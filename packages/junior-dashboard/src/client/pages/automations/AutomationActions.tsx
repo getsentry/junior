@@ -43,7 +43,7 @@ export function AutomationActions({
   const completed = automation.status === "completed";
   const paused = automation.status === "paused";
   const blocked = automation.status === "blocked";
-  const canPause = automation.ownedByViewer && !completed;
+  const canPause = !completed;
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
     mutationFn: async () => {
@@ -135,25 +135,23 @@ export function AutomationActions({
             </Popover>
           </>
         ) : null}
-        {automation.ownedByViewer ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  focusableWhenDisabled
-                  aria-label="Delete automation"
-                  size="icon"
-                  variant="danger"
-                  onClick={(event) => onDelete(event.currentTarget)}
-                  disabled={mutation.isPending}
-                >
-                  <Trash2 aria-hidden="true" size={16} />
-                </Button>
-              }
-            />
-            <TooltipContent size="compact">Delete automation</TooltipContent>
-          </Tooltip>
-        ) : null}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                focusableWhenDisabled
+                aria-label="Delete automation"
+                size="icon"
+                variant="danger"
+                onClick={(event) => onDelete(event.currentTarget)}
+                disabled={mutation.isPending}
+              >
+                <Trash2 aria-hidden="true" size={16} />
+              </Button>
+            }
+          />
+          <TooltipContent size="compact">Delete automation</TooltipContent>
+        </Tooltip>
       </div>
       {mutation.error ? (
         <div className="max-w-sm">

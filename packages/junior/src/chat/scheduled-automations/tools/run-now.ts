@@ -1,3 +1,4 @@
+import { requireCredentialStart } from "@/chat/automations/edit-rules";
 import { automationRevision } from "@/chat/automations/revision";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
@@ -25,28 +26,28 @@ export function createSlackScheduleRunAutomationNowTool(
       readOnlyHint: false,
     },
     description:
-      "Queue an existing active scheduled task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Anyone in the Slack channel where it delivers can run it. From another channel in the same workspace, only its creator can run it.",
+      "Queue an existing active scheduled task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Anyone who can manage the automation can run it. When it uses its creator's credentials, only the creator can run it now.",
     executionMode: "sequential",
     inputSchema: z.object({
       automationId: z
         .string()
         .min(1)
         .describe(
-          "ID of the active scheduled automation to run now, from slackScheduleListAutomations or its dashboard URL.",
+          "ID of the active scheduled automation to run now, from slackScheduleSearchAutomations or its dashboard URL.",
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async ({ automationId }) => {
-      const lookup = await getWritableTask({
-        action: "lifecycle",
+      const { task: lookup, ownedByViewer } = await getWritableTask(
         context,
-        taskId: automationId,
-      });
+        automationId,
+      );
       if (lookup.status !== "active") {
         throwToolInputError(
           "Scheduled automation must be active before it can be run now.",
         );
       }
+      requireCredentialStart(lookup, ownedByViewer);
 
       const nowMs = Date.now();
       const next: ScheduledAutomation = {

@@ -75,11 +75,12 @@ Each event automation can start at most 10 runs in a rolling minute. Set `limits
 - New automations start in the conversation where they were created; creators can later update their own automation so it delivers in another conversation they are currently talking in.
 - A automation may use its creator's connected account when access was delegated to that automation.
 - Only the creator can enable creator credential access or change a automation's destination.
-- Anyone in the destination conversation can manage a scheduled automation there. From another conversation, Junior uses the dashboard rules: the creator, and anyone who can read the automation's public channel, can edit it. Only the creator can pause, resume, run, or delete it from another conversation.
+- Anyone in the workspace can find, edit, pause, resume, and delete an automation in a public channel, from the dashboard or from any Slack conversation. An automation in a private channel or DM can be managed only by its creator or from that conversation.
+- When someone other than the creator changes the instruction, schedule, or trigger, the automation switches to Junior's credentials. Someone other than the creator cannot resume or run an automation that uses the creator's connected account. They can switch it to Junior's credentials first.
 - Event content is treated as data, not as a user instruction.
 - Action review still applies when required.
 
-Signed-in users can inspect and delete their automations from the dashboard **Automations** page. Completed one-off reminders stay under **Mine** so creators can confirm they ran.
+Signed-in users can inspect and manage these automations from the dashboard **Automations** page. Completed one-off reminders stay under **Mine** so creators can confirm they ran.
 
 ## Verify Automations
 

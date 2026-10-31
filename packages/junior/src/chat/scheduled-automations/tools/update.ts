@@ -13,15 +13,15 @@ import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
-import { readScheduledAutomation, saveScheduledAutomation } from "../tasks";
+import { saveScheduledAutomation } from "../tasks";
 import { scheduleIntentSchema } from "../schedule-intent";
 import { scheduledAutomationAttributes } from "../telemetry";
 import {
   getConversationAccess,
   normalizeStatus,
   requireActiveChannel,
+  getWritableTask,
   requireActor,
-  requireScheduledAutomationAccess,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
@@ -42,7 +42,7 @@ export function createSlackScheduleUpdateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      'Update a scheduled automation. Anyone in the Slack channel where it delivers can update it. From another channel in the same workspace, its creator, or anyone who can read its public channel, can update it, but only the creator can change status. Set destination to "here" to move it to the active Slack channel; only the creator can move it.',
+      'Update a scheduled automation. Anyone in the workspace can update an automation in a public channel. Automations in private channels and DMs can be updated from there or by their creator. Only the creator can enable creator credentials, change outcomes, or move it. A non-creator who changes the instruction or schedule switches it to system credentials. Set destination to "here" to move it to the active Slack channel.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -50,7 +50,7 @@ export function createSlackScheduleUpdateAutomationTool(
           .string()
           .min(1)
           .describe(
-            "Scheduled automation ID returned by slackScheduleListAutomations.",
+            "Scheduled automation ID returned by slackScheduleSearchAutomations.",
           ),
         title: automationTitleSchema.optional(),
         instruction: automationInstructionToolSchema.optional(),
@@ -92,10 +92,10 @@ export function createSlackScheduleUpdateAutomationTool(
       const activeDestination = requireActiveChannel(context);
       const actor = requireActor(context, activeDestination);
       const db = getDb();
-      const lookup = await readScheduledAutomation(db, input.automationId);
-      if (!lookup || lookup.status === "deleted") {
-        throwToolInputError("Scheduled automation was not found.");
-      }
+      const { task: lookup, ownedByViewer: isCreator } = await getWritableTask(
+        context,
+        input.automationId,
+      );
       if (lookup.status === "completed") {
         throwToolInputError(
           "Completed scheduled automations cannot be updated. Create a new automation instead.",
@@ -104,41 +104,13 @@ export function createSlackScheduleUpdateAutomationTool(
       if (lookup.destination.platform !== "slack") {
         throwToolInputError("Scheduled automation destination is invalid.");
       }
-      if (lookup.destination.teamId !== activeDestination.teamId) {
-        throwToolInputError(
-          "Scheduled automations can only be managed within the same Slack workspace.",
-        );
-      }
 
       const moveDestination = input.destination != null;
       const requestedDestination = activeDestination;
       const alreadyHere = sameDestination(lookup, activeDestination);
-      const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
-
-      // A move is creator-only below, so it does not need dashboard access.
-      if (!moveDestination) {
-        await requireScheduledAutomationAccess({
-          action: input.status === undefined ? "edit" : "lifecycle",
-          context,
-          destination: activeDestination,
-          task: lookup,
-        });
-      }
       if (moveDestination && !isCreator) {
         throwToolInputError(
           "Only the scheduled automation creator can move this task.",
-        );
-      }
-      if (input.credentialMode === "creator" && !isCreator) {
-        throwToolInputError(
-          "Only the scheduled automation creator can enable creator credential use.",
-        );
-      }
-      // TODO(dcramer): Allow public Automation members to change outcomes after
-      // shared policy or the web UI can authorize the new Destination safely.
-      if (input.outcomes !== undefined && !isCreator) {
-        throwToolInputError(
-          "Only the scheduled automation creator can change message destinations.",
         );
       }
 

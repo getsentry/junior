@@ -1,15 +1,16 @@
 /**
- * Web edits. Owners and public Destination readers can edit. Creator-only
- * rules still apply, and lifecycle actions stay creator-only.
+ * Web edits and lifecycle actions. Anyone who can read an Automation can
+ * manage it. Creator-only fields and credential rules still apply.
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
-import { AutomationEditError } from "./edit-rules";
+import { AutomationEditError, requireCredentialStart } from "./edit-rules";
 import type { AutomationEditFields } from "./edit-schema";
 import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
+  deleteEventAutomation,
   saveEventAutomation,
   setEventAutomationStatus,
   type StoredEventAutomation,
@@ -17,7 +18,10 @@ import {
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import {
+  deleteScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import {
   weekdaySchema,
@@ -45,23 +49,13 @@ type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
 
-/** Owners and public Destination readers can edit. Others get not found. */
+/** Owners and public Destination readers can manage. Others get not found. */
 async function requireEditableAutomation(
   user: User,
   id: string,
 ): Promise<TaskCandidate> {
   const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  return candidate;
-}
-
-/** Lifecycle actions are creator-only. Others get not found. */
-async function requireOwnedAutomation(
-  user: User,
-  id: string,
-): Promise<TaskCandidate> {
-  const candidate = await requireEditableAutomation(user, id);
-  if (!candidate.ownedByViewer) throw new ViewerTaskNotFoundError();
   return candidate;
 }
 
@@ -311,36 +305,48 @@ export async function activateViewerAutomationVersion(
   throw new ViewerTaskNotFoundError();
 }
 
-/** Pause or resume future triggers. Already-claimed work can finish. */
+/** Pause or resume future triggers from the dashboard. */
 export async function changeViewerAutomationLifecycle(
   user: User,
   id: string,
   input: { action: "pause" | "resume"; revision: string },
 ): Promise<AutomationEdit> {
-  const current = await requireOwnedAutomation(user, id);
+  const next = await changeAutomationLifecycle(
+    await requireEditableAutomation(user, id),
+    input,
+  );
+  return editView(next, next.ownedByViewer);
+}
+
+/**
+ * Pause or resume future triggers. Already-claimed work can finish. A
+ * non-creator cannot resume work that uses creator credentials.
+ */
+export async function changeAutomationLifecycle(
+  current: TaskCandidate,
+  input: { action: "pause" | "resume"; revision: string },
+): Promise<TaskCandidate> {
   requireAutomationRevision(current.task, input.revision);
   const status = current.task.status;
+  const ownedByViewer = current.ownedByViewer;
   if (status === "completed")
     throw new AutomationEditError("Completed Automations cannot be restarted.");
-  if (input.action === "pause" && status === "paused")
-    return editView(current, true);
-  if (
-    input.action === "resume" &&
-    status !== "paused" &&
-    status !== "blocked"
-  ) {
-    throw new AutomationEditError(
-      "Only paused or blocked Automations can be resumed.",
-    );
+  if (input.action === "pause" && status === "paused") return current;
+  if (input.action === "resume") {
+    if (status !== "paused" && status !== "blocked")
+      throw new AutomationEditError(
+        "Only paused or blocked Automations can be resumed.",
+      );
+    requireCredentialStart(current.task, ownedByViewer);
   }
   if (current.kind === "event") {
     const task = await setEventAutomationStatus(
       getDb(),
-      id,
+      current.task.id,
       input.action === "pause" ? "paused" : "active",
       input.revision,
     );
-    return editView({ kind: "event", task }, true);
+    return { kind: "event", task, ownedByViewer };
   }
   const nowMs = Date.now();
   const next = { ...current.task, updatedAtMs: nowMs, runNowAtMs: undefined };
@@ -371,5 +377,26 @@ export async function changeViewerAutomationLifecycle(
     }
   }
   const task = await saveScheduledAutomation(getDb(), next, input.revision);
-  return editView({ kind: "scheduled", task }, true);
+  return { kind: "scheduled", task, ownedByViewer };
+}
+
+/** Delete one Automation from the dashboard. */
+export async function deleteViewerTask(user: User, id: string): Promise<void> {
+  if (!(await deleteAutomation(await requireEditableAutomation(user, id))))
+    throw new ViewerTaskNotFoundError();
+}
+
+/**
+ * Delete one Automation that the caller may manage. The row stays for
+ * history. Returns undefined when it was already deleted.
+ */
+export async function deleteAutomation(
+  current: TaskCandidate,
+): Promise<TaskCandidate | undefined> {
+  if (current.kind === "event") {
+    const task = await deleteEventAutomation(getDb(), current.task.id);
+    return task ? { ...current, task } : undefined;
+  }
+  const task = await deleteScheduledAutomation(getDb(), current.task.id);
+  return task ? { ...current, task } : undefined;
 }

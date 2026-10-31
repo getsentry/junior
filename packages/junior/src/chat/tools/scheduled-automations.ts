@@ -1,6 +1,6 @@
 import { createSlackScheduleCreateAutomationTool } from "@/chat/scheduled-automations/tools/create";
 import { createSlackScheduleDeleteAutomationTool } from "@/chat/scheduled-automations/tools/delete";
-import { createSlackScheduleListAutomationsTool } from "@/chat/scheduled-automations/tools/list";
+import { createSlackScheduleSearchAutomationsTool } from "@/chat/scheduled-automations/tools/search";
 import { createSlackScheduleRunAutomationNowTool } from "@/chat/scheduled-automations/tools/run-now";
 import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
 import type { SchedulerToolContext } from "@/chat/scheduled-automations/tool-support";
@@ -43,8 +43,8 @@ export function createScheduledAutomationTools(
     {
       slackScheduleCreateAutomation:
         createSlackScheduleCreateAutomationTool(taskContext),
-      slackScheduleListAutomations:
-        createSlackScheduleListAutomationsTool(taskContext),
+      slackScheduleSearchAutomations:
+        createSlackScheduleSearchAutomationsTool(taskContext),
       slackScheduleUpdateAutomation:
         createSlackScheduleUpdateAutomationTool(taskContext),
       slackScheduleDeleteAutomation:

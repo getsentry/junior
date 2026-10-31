@@ -36,32 +36,25 @@ Do not put the timezone on the Actor. The Actor is stored with each message, and
 
 A scheduled Automation targets a Slack channel or direct message. It never targets a thread. A tool call from a thread uses the active channel as the Destination.
 
-Create always uses the active Slack channel. List shows the active channel by
-default.
+Create always uses the active Slack channel. `slackScheduleSearchAutomations`
+uses the dashboard Automations search. It finds the requester's tasks, tasks in
+public channels of the workspace, and tasks in the active conversation. Scope
+`here` limits it to the active conversation.
 
 Cross-channel rehomes stay destination-first and reuse the existing tools:
 
 1. ask in the channel where the task should deliver next;
-2. `slackScheduleListAutomations` with optional `channel_id` / `query` finds the requester's matching task elsewhere in the workspace;
+2. `slackScheduleSearchAutomations` with optional `query` / `channel_id` finds the requester's matching task elsewhere in the workspace;
 3. `slackScheduleUpdateAutomation` with `destination: "here"` rehomes that existing task row into the active channel.
 
 Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
 
 ## Management access
 
-`requireScheduledAutomationAccess` in `tool-support.ts` decides who can update,
-run, or delete a task from a tool:
-
-- Anyone in the channel where the task delivers can manage it.
-- From another channel in the same workspace, the dashboard rule applies.
-  `resolveViewerTaskCandidate` must find the task for the requester's linked
-  Junior user. That means the requester owns it, or can read its public
-  Destination.
-- Status changes, run-now, and delete are lifecycle actions. From another
-  channel, only the creator can take them, as on the dashboard.
-
-Creator-only field rules, such as credential mode and outcomes, apply
-everywhere.
+The tools use the shared rule in `chat/automations/README.md` (Management
+access). `getWritableTask` in `tool-support.ts` loads a task with that rule.
+Run-now counts as a start: a non-creator cannot run now a task that still uses
+creator credentials.
 
 ## Pause and resume
 

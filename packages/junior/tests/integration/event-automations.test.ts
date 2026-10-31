@@ -701,6 +701,14 @@ describe("event automations", () => {
   });
 
   it("lists in one channel and manages public tasks by id from another", async () => {
+    // Slack turns record the public Destination before tools run.
+    await getConversationStore().recordActivity({
+      conversationId: `slack:${teamId}:C123:public-task`,
+      actor: { platform: "slack", slackUserId: "U123", teamId },
+      destination: { platform: "slack", teamId, channelId: "C123" },
+      channelName: "reviews",
+      visibility: "public",
+    });
     const created = await createTask(
       "Address the requested changes.",
       undefined,
@@ -733,19 +741,35 @@ describe("event automations", () => {
       {},
     )) as { automations: unknown[] };
     expect(otherChannel.automations).toEqual([]);
-    await execute(
-      createUpdateEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        instruction: "Change a public task from another channel.",
-      },
+    const update = (input: Record<string, unknown>) =>
+      execute(
+        createUpdateEventAutomationTool(
+          context("U999", "COTHER"),
+          EVENT_CATALOG,
+        ),
+        { automationId: created.automation.id, ...input },
+      );
+    await update({ status: "paused" });
+    // The paused task still uses the creator's credentials.
+    await expect(update({ status: "active" })).rejects.toThrow(
+      "Only the creator can resume it or run it now.",
     );
+    await update({ instruction: "Change a public task from another channel." });
     expect(
       await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
+      status: "paused",
       task: { text: "Change a public task from another channel." },
     });
+    await update({ status: "active" });
+    await execute(
+      createDeleteEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
+      { automationId: created.automation.id },
+    );
+    expect(
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
+    ).toMatchObject({ status: "deleted" });
   });
 
   it("keeps private task updates in the owning channel or DM", async () => {

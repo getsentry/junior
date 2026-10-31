@@ -7,20 +7,21 @@ import {
   automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
 import { requireRequesterMention } from "@/chat/automations/requester-mention";
+import { changeAutomationLifecycle } from "@/chat/automations/edit";
 import { automationRevision } from "@/chat/automations/revision";
+import {
+  requireToolAutomation,
+  slackToolViewer,
+} from "@/chat/automations/tool-access";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
-import {
-  saveEventAutomation,
-  setEventAutomationStatus,
-} from "@/chat/event-automations/store";
+import { saveEventAutomation } from "@/chat/event-automations/store";
 import {
   eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
   requireEventAutomationSlackContext,
-  writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -42,7 +43,7 @@ export function createUpdateEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, credential use, or status of an event automation.",
+      "Update the instruction, registered trigger, credential use, or status of an event automation. Anyone in the workspace can update an automation in a public channel. Automations in private channels and DMs can be updated from there or by their creator. A non-creator who changes the instruction or trigger switches it to system credentials.",
     inputSchema: z
       .object({
         automationId: z.string().min(1),
@@ -70,7 +71,7 @@ export function createUpdateEventAutomationTool(
           .enum(["active", "paused"])
           .nullable()
           .describe(
-            "Set active to resume a paused or blocked automation, or paused to stop it. Only the creator can change the status. Omit or use null to leave unchanged.",
+            "Set active to resume a paused or blocked automation, or paused to stop it. When it uses its creator's credentials, only the creator can resume it. Omit or use null to leave unchanged.",
           )
           .optional(),
       })
@@ -105,12 +106,14 @@ export function createUpdateEventAutomationTool(
     },
     outputSchema: eventAutomationToolResultSchema,
     async execute(input) {
-      const current = await writableEventAutomation(
-        context,
+      const { actor, destination } =
+        requireEventAutomationSlackContext(context);
+      const candidate = await requireToolAutomation(
+        slackToolViewer(await context.resolveActorIdentity?.(), destination),
+        "event",
         input.automationId,
       );
-      const { actor } = requireEventAutomationSlackContext(context);
-      const isCreator = actor.userId === current.createdBy.slackUserId;
+      const { task: current, ownedByViewer: isCreator } = candidate;
       const edits =
         input.title !== undefined ||
         input.instruction !== undefined ||
@@ -119,12 +122,6 @@ export function createUpdateEventAutomationTool(
         input.credentialMode != null;
       if (!edits && input.status == null) {
         throw new ToolInputError("Event automation update requires a change.");
-      }
-      // Pause and resume belong to the creator, as in the Automation settings.
-      if (input.status != null && !isCreator) {
-        throw new ToolInputError(
-          "Only the creator of this event automation can pause or resume it.",
-        );
       }
       if (
         input.instruction != null &&
@@ -176,12 +173,14 @@ export function createUpdateEventAutomationTool(
         saved = edited;
       }
       if (input.status != null) {
-        saved = await setEventAutomationStatus(
-          getDb(),
-          saved.id,
-          input.status,
-          automationRevision(saved),
+        const changed = await changeAutomationLifecycle(
+          { ...candidate, task: saved },
+          {
+            action: input.status === "paused" ? "pause" : "resume",
+            revision: automationRevision(saved),
+          },
         );
+        saved = changed.task as typeof saved;
       }
       return eventAutomationToolResult(
         context.conversationId,

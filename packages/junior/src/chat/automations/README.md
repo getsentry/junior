@@ -18,9 +18,40 @@ Counts use the same access rules. Public access and Destination labels come
 from the Destination directory. Missing or private entries do not grant access.
 
 Scheduled automations run through the heartbeat. Event automations run when a
-matching event arrives. The dashboard can edit Automations that the user owns
-or can read through a public Destination. Pause, resume, and delete stay
-creator-only on the web.
+matching event arrives.
+
+## Management access
+
+One rule decides who can read and manage an Automation, on the dashboard and
+in the agent tools. `resolveViewerTaskCandidate` in `read.ts` applies it to one
+Automation, and `viewerAutomationCollection` in `collection.ts` applies it in
+SQL. Keep the two aligned. `tool-access.ts` builds the tool viewer and the
+tool error text.
+
+A person can read, edit, pause, resume, and delete an Automation when one of
+these is true:
+
+- they created it;
+- its Destination is a public channel in one of their linked Slack workspaces;
+- they ask from a Slack tool call in the channel or DM where it delivers.
+
+A Slack tool call manages only Automations in its own workspace. Other people
+get not found. So private channel and DM Automations stay with their creator
+and the people in that conversation.
+
+Some rules stay with the creator (`edit-rules.ts`):
+
+- Only the creator can enable creator credential use, change outcomes, or move
+  the Destination.
+- When a non-creator changes the instruction, Schedule, or event selector, the
+  Automation switches to system credentials.
+- A non-creator cannot resume or run now an Automation that still uses creator
+  credentials (`requireCredentialStart`). They can switch it to system
+  credentials first. Pause and delete do not start work, so anyone with access
+  can use them.
+
+These rules make sure that the creator's credentials run only work that the
+creator approved and started.
 
 Deleted automations keep their execution history and title. They do not match
 new events or schedules.
@@ -127,8 +158,8 @@ be made active. A one-time version does not keep its run time.
 
 ## Pause and attention
 
-Pause and resume are creator-only actions, separate from form saves. Both check
-the read revision under the same lock as edits. They keep credentials and history
+Pause and resume are separate from form saves. Both check the read revision
+under the same lock as edits. See Management access for who can use them. They keep credentials and history
 and cannot restart completed work.
 
 `scope=attention` filters the full collection before counting and paging. It
