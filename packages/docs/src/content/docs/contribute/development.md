@@ -73,11 +73,12 @@ The Docker provider needs a Docker daemon on a unix socket. It uses `/var/run/do
 
 The first sandbox builds the `junior-sandbox-runtime` image. This takes a few minutes. Later sandboxes start in seconds. `pnpm dev` and `pnpm cli -- chat ...` both use the provider. Each process runs its own egress proxy, and the process that last acquired a sandbox carries its web traffic.
 
+Docker sandboxes have a small toolset: `gh`, `jq`, and `ripgrep`. They do not include other plugin CLIs, browsers, or Docker. The agent installs other tools with `sudo` when it needs them. Vercel sandboxes still include every tool that the plugins declare.
+
 Optional settings:
 
 - `JUNIOR_DOCKER_SANDBOX_DIR` sets the directory of the local egress CA. The default is `~/.cache/junior/docker-sandbox`.
 - `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` names a PEM file that each sandbox also trusts. Set it when your machine is behind a TLS proxy.
-- `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES` is a comma-separated list of runtime dependencies that the snapshot installs, such as `spal-release,ripgrep,gh,jq`. When it is set, the snapshot installs only those packages and runs no postinstall commands, so other plugin CLIs, browsers, and Docker-in-Docker are not installed. The agent installs other tools when it needs them. When it is unset, the snapshot installs all of them.
 
 To remove all Docker sandboxes and snapshots:
 

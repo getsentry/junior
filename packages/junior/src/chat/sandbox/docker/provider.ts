@@ -17,7 +17,6 @@ import {
   commitSnapshot,
   SNAPSHOT_REPOSITORY,
 } from "@/chat/sandbox/docker/session";
-import { dockerSandboxRuntimeDependencies } from "@/chat/sandbox/docker/settings";
 import type { SandboxProvider, SnapshotRuntime } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
@@ -158,30 +157,28 @@ async function deleteWorkspaceSnapshotBuilders(
   if (failures.length > 0) throw failures[0];
 }
 
+// Docker sandboxes are for local development. They install only these tools,
+// so the snapshot stays small and builds fast. The agent installs other tools
+// when it needs them. `spal-release` adds the repository for `ripgrep`.
+const DOCKER_SNAPSHOT_PACKAGES = new Set([
+  "spal-release",
+  "ripgrep",
+  "gh",
+  "jq",
+]);
+
 /**
- * Keep only the runtime dependencies named in the Docker settings.
+ * Keep only the small Docker base from the declared runtime dependencies.
  *
- * Local sandboxes stay small this way. Postinstall commands are skipped,
- * because they often download large tools. Unknown names fail, so a typo does
- * not quietly drop a tool.
+ * Postinstall commands are skipped, because they often download large tools.
+ * A base package that no plugin declares is not installed.
  */
 function selectSnapshotRuntime(runtime: SnapshotRuntime): SnapshotRuntime {
-  const names = dockerSandboxRuntimeDependencies();
-  if (!names) return runtime;
-  const declared = new Set(
-    runtime.dependencies.flatMap((dependency) =>
-      "package" in dependency ? [dependency.package] : [],
-    ),
-  );
-  const unknown = [...names].filter((name) => !declared.has(name));
-  if (unknown.length > 0) {
-    throw new Error(
-      `JUNIOR_DOCKER_SANDBOX_RUNTIME_DEPENDENCIES names packages that are not declared runtime dependencies: ${unknown.join(", ")}`,
-    );
-  }
   return {
     dependencies: runtime.dependencies.filter(
-      (dependency) => "package" in dependency && names.has(dependency.package),
+      (dependency) =>
+        "package" in dependency &&
+        DOCKER_SNAPSHOT_PACKAGES.has(dependency.package),
     ),
     postinstall: [],
   };
