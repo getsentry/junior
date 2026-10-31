@@ -539,9 +539,7 @@ describe("dashboard routes", () => {
   });
 
   it("returns the signed-in identity", async () => {
-    readViewerAvatarUrl.mockResolvedValueOnce(
-      "https://avatars.slack-edge.com/person_512.jpg",
-    );
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/avatars/identity-1");
     const app = dashboard({
       session: {
         token: "secret-session-token",
@@ -557,7 +555,7 @@ describe("dashboard routes", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
-        avatarUrl: "https://avatars.slack-edge.com/person_512.jpg",
+        avatarUrl: "/api/people/avatars/identity-1",
         email: "person@sentry.io",
         emailVerified: true,
         isAdmin: false,

@@ -21,17 +21,20 @@ timezone to this column. The scheduler and plugin tools use it, through
 `junior_identities.avatar_url` is the profile photo URL from the provider.
 Only the native identities save it. `identities/avatar.ts` owns the rules.
 
-- A Slack Turn saves the Slack photo of its Actor (`chat/slack/avatar.ts`).
-  Junior saves only a photo that the person set. Slack's default photo is
-  not saved, so the Google photo can show instead.
+- A Slack Turn saves the Slack photo of its Actor (`chat/slack/avatar.ts`), at
+  most once a day for each person. Junior saves only a photo that the person
+  set. Slack's default photo is not saved, so the Google photo can show
+  instead.
 - Each Google sign-in saves the Google `picture` claim.
 - Each save replaces the old photo. No photo clears it. A failed Slack lookup
   keeps the old photo.
-- Junior saves only HTTPS URLs on the photo hosts of the provider. The
-  dashboard loads the URL directly and sends no referrer.
+- Junior saves and fetches only HTTPS URLs on the photo hosts of the provider.
 - `readUserAvatarUrls()` picks one photo for each user: the Slack photo, then
   the Google photo. Conversation participants, automation creators, and
-  `/api/me` use it.
+  `/api/me` return it as a Junior API path, never as the provider URL.
+- `GET /api/people/avatars/:identityId` serves the photo. Junior fetches it
+  from the provider once and keeps it in the state cache for a day. Browsers
+  never contact Slack or Google, and they never see the provider URL.
 
 ## Actor Identities
 

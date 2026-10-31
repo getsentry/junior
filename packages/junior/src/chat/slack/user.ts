@@ -4,9 +4,6 @@ import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
 import { parseAvatarUrl } from "@/chat/identities/avatar";
 
-// Slack serves custom profile photos from this host.
-const SLACK_AVATAR_HOSTS = ["avatars.slack-edge.com"];
-
 interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
@@ -116,7 +113,7 @@ export async function lookupSlackUser(
     const userName = payload.user.name?.trim() || undefined;
     const fullName = payload.user.profile?.real_name?.trim() || undefined;
     const avatarUrl = payload.user.profile?.is_custom_image
-      ? parseAvatarUrl(payload.user.profile.image_512, SLACK_AVATAR_HOSTS)
+      ? parseAvatarUrl(payload.user.profile.image_512, "slack")
       : undefined;
 
     const result: SlackUserLookupResult = {

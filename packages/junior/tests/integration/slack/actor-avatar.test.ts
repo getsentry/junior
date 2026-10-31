@@ -42,4 +42,18 @@ describe("Slack actor profile photo", () => {
   it("does not save Slack's default photo", async () => {
     expect(await savedSlackPhoto("U0DEFAULT", false)).toEqual([null]);
   });
+
+  it("saves the photo of a person at most once a day", async () => {
+    expect(await savedSlackPhoto("U0DAILY", true)).toEqual([
+      "https://avatars.slack-edge.com/U0DAILY_512.png",
+    ]);
+    await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/earlier_512.png" })
+      .where(eq(juniorIdentities.providerSubjectId, "U0DAILY"));
+    // A second Turn on the same day does not save the photo again.
+    expect(await savedSlackPhoto("U0DAILY", true)).toEqual([
+      "https://avatars.slack-edge.com/earlier_512.png",
+    ]);
+  });
 });

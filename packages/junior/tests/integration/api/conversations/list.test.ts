@@ -801,12 +801,12 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
-            avatarUrl: "https://lh3.googleusercontent.com/a/google-owner",
+            avatarUrl: "/api/people/avatars/identity-google-owner",
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
-            avatarUrl: "https://avatars.slack-edge.com/participant_512.jpg",
+            avatarUrl: "/api/people/avatars/identity-participant-slack",
             email: "participant@example.com",
             fullName: "Participant",
             slackUserId: "UPARTICIPANT1",

@@ -113,7 +113,7 @@ describe("Automations API", () => {
       await fixture.sql
         .db()
         .update(juniorIdentities)
-        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .set({ avatarUrl: "https://avatars.slack-edge.com/aisha_512.png" })
         .where(eq(juniorIdentities.id, otherIdentity!.id));
 
       // Keep fixture times inside the trailing 7-day stats window.
@@ -375,7 +375,7 @@ describe("Automations API", () => {
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -388,7 +388,7 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -471,7 +471,7 @@ describe("Automations API", () => {
           (automation) => automation.id === "event_public_tasks_api",
         );
       expect(unverifiedCreator?.createdByAvatarUrl).toBe(
-        "https://example.com/aisha.png",
+        `/api/people/avatars/${otherIdentity!.id}`,
       );
       expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 

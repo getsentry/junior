@@ -1,5 +1,8 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import { readUserAvatarUrls } from "@/chat/identities/avatar";
+import {
+  identityAvatarUrl,
+  readUserAvatarUrls,
+} from "@/chat/identities/avatar";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -39,9 +42,7 @@ function participantIdentity(
   row: ParticipantIdentityRow,
   userAvatarUrls: ReadonlyMap<string, string>,
 ): ActorIdentity | undefined {
-  const avatarUrl = row.userId
-    ? userAvatarUrls.get(row.userId)
-    : (row.avatarUrl ?? undefined);
+  const avatarUrl = identityAvatarUrl(row, userAvatarUrls);
   const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
   const email = row.email?.trim() || row.userEmail?.trim();
   const slack = row.provider === "slack";

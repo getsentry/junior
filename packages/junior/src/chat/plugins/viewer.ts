@@ -135,7 +135,7 @@ export async function updateViewerDisplayNameFromSql(
   return userRow ? await readUserById(db, userRow) : undefined;
 }
 
-/** Read the profile photo of one canonical user: Slack, then Google. */
+/** Read the photo path of one canonical user: Slack, then Google. */
 export async function readViewerAvatarUrl(
   userId: string,
 ): Promise<string | undefined> {
