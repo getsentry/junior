@@ -138,7 +138,7 @@ function TextField(props: {
 }
 
 /**
- * Render the answer controls of a `requestUserInput` request. A request with
+ * Render the answer controls of an action item request. A request with
  * one short choice field shows one button per choice, and a click is the
  * answer. Other requests show a form that the reader submits once. A failed
  * `onSubmit` lets the reader try again. `secondaryActions`, such as Dismiss,

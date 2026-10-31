@@ -8,13 +8,15 @@ behavior.
 
 - A Review item has a kind, a status, a title, a body, and assignees.
 - A `notice` only tells a person something. An `action` asks for an answer.
-  Its `request` uses the same shape as `requestUserInput`: a question and 1-4
-  fields.
+  Its `request` (`userInputRequestSchema`) is a question and 1-4 fields.
+- An action item is the only way the agent asks a person for input.
 - The status is `open`, `done`, or `dismissed`. Only a person or an agent
   closes an item. Nothing closes it on its own.
 - An assignee is a User or **Everyone**. Everyone is a flag on the item. It
-  means that any person who can see the item can act on it. The add tool
-  needs at least one assignee.
+  means that any person who can see the item can act on it. When the agent
+  names no assignee, a new item goes to the User of the Actor, or else to the
+  creator of the Automation of the run. When neither has a User, such as a
+  Slack Actor who has not signed in, the item has no assignees.
 - An item can have a subject, such as a pull request, and links to one or
   more Conversations. The Conversation of the agent that adds the item is
   always linked. An update cannot remove that link.
@@ -23,8 +25,10 @@ behavior.
 
 ## Dedupe key
 
-- Each item has a dedupe key. Only one open item in a provider tenant can
-  use a key. Other tenants do not see the key and can use it too.
+- Each item has a dedupe key. Without a key from the agent, the key comes
+  from the tool call id, so a retry of the call updates the same item. Only
+  one open item in a provider tenant can use a key. Other tenants do not see
+  the key and can use it too.
 - When an agent adds an item with the key of an open item, it updates that
   item. The update replaces the content and the assignees. It keeps every
   linked Conversation and adds the new one.
@@ -70,10 +74,12 @@ parentheses.
 
 ## Tools
 
-`addReviewItem`, `updateReviewItem`, and `searchReviewItems` are deferred
-tools in the `review-desk` source (`chat/tools/review-items.ts`). A child
-agent cannot use them. It reports to its parent with `reportBlocked`, and
-the parent adds the item.
+`chat/tools/review-items.ts` owns the tools. `addReviewItem` is loaded in
+every root Turn, because it is how the agent asks a person anything. Its
+description holds the rules for when to ask and when to wait.
+`updateReviewItem` and `searchReviewItems` are deferred tools in the
+`review-desk` source. A child agent cannot use them. It reports to its
+parent with `reportBlocked`, and the parent adds the item.
 
 ## Person actions
 
@@ -92,6 +98,26 @@ the parent adds the item.
 - The first submit, complete, or dismiss closes the item for every assignee.
   The item records who closed it and when. A retry of the same close
   succeeds and sends missing messages again.
+
+## Reply in the thread
+
+A person can answer an action item with a message instead of the card
+(`closeReviewItemsAnsweredByReply` in `actions.ts`). The message is a Slack
+mention or DM to Junior, or a dashboard message, in a Conversation. Junior
+saves the message first, so it always reaches the agent. Then it closes each
+item that matches all of these:
+
+- The item is an open `action` item.
+- The agent added it in this Conversation (`addedByConversationId`). Items
+  that are only linked to the Conversation stay open.
+- The person is an assigned User, or the item has no assignees.
+
+An item assigned to Everyone, or only to other people, stays open. The
+item closes as `done` with the reason `Replied in thread`, and the person
+closes it. A Slack person without a Junior User closes only items with no
+assignees. The message is the answer in its own Conversation. Each other
+linked Conversation gets an Event. The first close wins, so a reply after a
+click changes nothing.
 
 ## Messages to linked Conversations
 
@@ -136,8 +162,8 @@ each card, so Junior can change it in place.
   Each sync reads the latest item, so a sync that waits shows the newest
   state. A card whose row cannot be saved is removed, so every card changes.
 
-The card uses the `requestUserInput` controls. A request with one `choice`
-field shows one button per option. Other requests show an Answer button that
+The card uses the request controls in `chat/slack/user-input.ts`. A request
+with one `choice` field shows one button per option. Other requests show an Answer button that
 opens a form. A notice shows Done. Each card also shows Dismiss.
 
 A click comes back through `chat/ingress/slack-review-item.ts`. It needs the

@@ -7,10 +7,8 @@ export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
-  formatUserInputAnswer,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
-  userInputRequestSchema,
 } from "../chat/tools/runtime/user-input-request";
 export type {
   UserInputAnswer,

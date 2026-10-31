@@ -1,22 +1,29 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
+import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createConversationRoutes } from "@/api/conversations/routes";
+import type { JuniorApiEnv } from "@/api/route";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
+import { getReviewItem } from "@/chat/review-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { juniorIdentities } from "@/db/schema";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
+  SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -109,7 +116,7 @@ async function addItem(
     source: { kind: "slack" } as any,
   });
   return (await (tool as any).execute(input, {})) as {
-    item: { id: string };
+    item: { assignees: string[]; id: string };
   };
 }
 
@@ -193,7 +200,59 @@ describe("Slack webhook: Review item cards", () => {
           },
         ],
       });
-    return { click, interact, queue, state };
+    /** A message from a person to Junior in the card thread. */
+    async function reply(userId: string, ts: string) {
+      const waitUntil = client.waitUntil();
+      const response = await handleSlackWebhook({
+        request: client.event({
+          ...slackEventsApiEnvelope({
+            eventType: "app_mention",
+            channel: "C123",
+            text: `<@${SLACK_BOT_USER_ID}> Hold, the tests are red`,
+            threadTs: "1712345.0001",
+            ts,
+            user: userId,
+          }),
+          event_id: `Ev_${ts}`,
+        }),
+        waitUntil: waitUntil.fn,
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+      expect(response.status).toBe(200);
+      await waitUntil.flush();
+    }
+    /** A message from a person to the Conversation on the dashboard. */
+    async function postInDashboard(viewer: User) {
+      const app = new Hono<JuniorApiEnv>();
+      app.use("*", async (context, next) => {
+        context.set("viewer", viewer);
+        await next();
+      });
+      app.route(
+        "/api/conversations",
+        createConversationRoutes({
+          attachmentStorage: createMemoryAttachmentStorage(),
+          queue,
+        }),
+      );
+      return await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(THREAD)}/messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey: "dashboard-reply",
+            message: "Hold, the tests are red.",
+          }),
+        },
+      );
+    }
+    return { click, interact, postInDashboard, queue, reply, state };
   }
 
   it("closes an item everywhere on the first click in a Slack card", async () => {
@@ -487,5 +546,78 @@ describe("Slack webhook: Review item cards", () => {
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
       "ana@example.com marked this done",
     );
+  });
+
+  it("closes a question when its assignee replies in the thread", async () => {
+    const { click, reply, state } = harness();
+    await slackThread(THREAD, "public");
+    const ana = await slackUser("ana@example.com", "U123");
+    await slackUser("ben@example.com", "U456");
+
+    // The agent asks without naming anyone, so the question goes to Ana.
+    const { item } = await addItem(ana, {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      request: SHIP_REQUEST,
+    });
+    expect(item.assignees).toEqual(["ana@example.com"]);
+    const [card] = slackApiOutbox.messages();
+
+    // Ben is not assigned, so his reply does not answer for Ana.
+    await reply("U456", "1712345.0003");
+    expect((await getReviewItem(getDb(), item.id))?.status).toBe("open");
+
+    await reply("U123", "1712345.0004");
+    expect(await getReviewItem(getDb(), item.id)).toMatchObject({
+      closeReason: "Replied in thread",
+      closedBy: { email: "ana@example.com" },
+      status: "done",
+    });
+    const updates = slackApiOutbox.calls("chat.update");
+    expect(updates).toHaveLength(1);
+    expect(blocksOf(updates[0]).some((block) => block.type === "actions")).toBe(
+      false,
+    );
+    expect(JSON.stringify(blocksOf(updates[0]))).toContain(
+      "ana@example.com replied in the thread",
+    );
+
+    // The reply is the answer. A later click on the old card adds no Turn.
+    await click({
+      actionId: "junior_review_item:choice:0",
+      actionTs: "1712345.0005",
+      itemId: item.id,
+      userId: "U123",
+      value: buttonValue(card, "junior_review_item:choice:0"),
+    });
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages.map((message) => message.input.authorId)).toEqual([
+      "U456",
+      "U123",
+    ]);
+  });
+
+  it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {
+    const { postInDashboard, queue } = harness();
+    await slackThread(THREAD, "public");
+    const ana = await slackUser("ana@example.com", "U123");
+    const { item } = await addItem(ana, {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      request: SHIP_REQUEST,
+    });
+    queue.rejectSends();
+
+    // The dashboard shows an error, but the mailbox already saved the reply.
+    expect((await postInDashboard(ana)).status).toBe(500);
+    expect(await getReviewItem(getDb(), item.id)).toMatchObject({
+      closeReason: "Replied in thread",
+      status: "done",
+    });
   });
 });

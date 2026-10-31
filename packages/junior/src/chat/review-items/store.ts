@@ -32,6 +32,12 @@ import {
 } from "./access";
 
 export type ReviewItemKind = "notice" | "action";
+
+/**
+ * Close reason of an action item that a person answered with a reply in
+ * its thread instead of on the card or the review desk.
+ */
+export const REVIEW_ITEM_REPLIED_REASON = "Replied in thread";
 export type ReviewItemStatus = "open" | "done" | "dismissed";
 export type ReviewItemVisibility = "public" | "private";
 
@@ -238,6 +244,24 @@ export async function getReviewItem(
     .from(juniorReviewItems)
     .where(eq(juniorReviewItems.id, id));
   return (await hydrate(db, rows))[0];
+}
+
+/** Read the open action items that the agent added in one Conversation. */
+export async function listOpenActionItemsAddedBy(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<ReviewItem[]> {
+  const rows = await db
+    .select()
+    .from(juniorReviewItems)
+    .where(
+      and(
+        eq(juniorReviewItems.addedByConversationId, conversationId),
+        eq(juniorReviewItems.kind, "action"),
+        eq(juniorReviewItems.status, "open"),
+      ),
+    );
+  return await hydrate(db, rows);
 }
 
 /**
