@@ -233,6 +233,8 @@ function dashboardHostRoutePaths(
     "/api/locations/*",
     "/api/people",
     "/api/people/*",
+    "/api/review-items",
+    "/api/review-items/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
     "/api/service-accounts",
