@@ -192,10 +192,36 @@ describe("review item actions API", () => {
       dedupe_key: "pr:7",
     });
 
-    const everyone = await (
-      await api(fixture, cal).get("?view=everyone")
+    const otherId = await addItem({
+      kind: "notice",
+      title: "Another pull request needs review",
+      body: "It waits on a reviewer too.",
+      assignees: ["everyone"],
+      dedupe_key: "pr:8",
+    });
+
+    // The list pages newest change first. Each cursor reads the next page
+    // of the same list only.
+    const first = await (
+      await api(fixture, cal).get("?view=everyone&limit=1")
     ).json();
-    expect(everyone.items).toMatchObject([{ id, canAct: true, canTake: true }]);
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const cursor = encodeURIComponent(first.nextCursor);
+    const second = await (
+      await api(fixture, cal).get(`?view=everyone&limit=1&cursor=${cursor}`)
+    ).json();
+    expect(second.nextCursor).toBeUndefined();
+    expect(
+      [...first.items, ...second.items].map((item: any) => item.id).sort(),
+    ).toEqual([id, otherId].sort());
+    expect([...first.items, ...second.items]).toContainEqual(
+      expect.objectContaining({ id, canAct: true, canTake: true }),
+    );
+    expect(
+      (await api(fixture, cal).get(`?view=mine&limit=1&cursor=${cursor}`))
+        .status,
+    ).toBe(400);
 
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.

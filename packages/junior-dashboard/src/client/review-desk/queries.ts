@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
@@ -26,7 +27,10 @@ export type ReviewDeskView = (typeof REVIEW_DESK_VIEWS)[number];
 const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
-/** List the Review items that the viewer can see in one view. */
+/**
+ * List the Review items that the viewer can see in one view, one page at a
+ * time. `items` holds the items of every loaded page, and `query` pages.
+ */
 export function useReviewItemsData(filters: {
   archived: boolean;
   conversationId?: string;
@@ -40,17 +44,27 @@ export function useReviewItemsData(filters: {
   }
   if (filters.q) params.set("q", filters.q);
   const search = params.toString();
-  return useQuery({
+  const query = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const pageParams = new URLSearchParams(search);
+      if (pageParam) pageParams.set("cursor", pageParam);
+      return fetchDashboardJson(
         reviewItemListSchema,
-        `/api/review-items?${search}`,
+        `/api/review-items?${pageParams.toString()}`,
         signal,
-      ),
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     placeholderData: keepPreviousData,
     retry: false,
   });
+  const items = useMemo(
+    () => (query.data?.pages ?? []).flatMap((page) => page.items),
+    [query.data?.pages],
+  );
+  return { items, query };
 }
 
 /** Read one Review item, for a link to an item outside the current list. */

@@ -62,13 +62,21 @@ export const reviewItemListQuerySchema = z
     /** `true` lists done and dismissed items instead of open ones. */
     archived: z.enum(["true", "false"]).optional(),
     conversationId: z.string().min(1).optional(),
+    /** `nextCursor` of the page before. */
+    cursor: z.string().min(1).max(1_000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
     q: z.string().trim().max(200).optional(),
     view: z.enum(["mine", "everyone", "all"]).optional(),
   })
   .strict();
 
+/** One page of Review items, newest change first. */
 export const reviewItemListSchema = z
-  .object({ items: z.array(reviewItemSchema) })
+  .object({
+    items: z.array(reviewItemSchema),
+    /** Set when more items follow. Pass it as `cursor` to read them. */
+    nextCursor: z.string().min(1).optional(),
+  })
   .strict();
 
 /** Open Review items that wait on the viewer. */

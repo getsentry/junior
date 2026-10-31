@@ -7,6 +7,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   or,
   sql,
   type SQL,
@@ -490,8 +491,19 @@ export function canReadReviewItem(
   );
 }
 
+/**
+ * A position in the search order: the last item of the page before. Search
+ * returns the items after it.
+ */
+export interface ReviewItemPosition {
+  id: string;
+  updatedAt: Date;
+}
+
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
+  /** Return only the items after this position in the search order. */
+  after?: ReviewItemPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
@@ -505,7 +517,7 @@ export interface ReviewItemFilters {
 
 function searchConditions(
   reader: ReviewItemReader,
-  filters: Omit<ReviewItemFilters, "limit">,
+  filters: Omit<ReviewItemFilters, "after" | "limit">,
 ): SQL[] {
   const conditions: SQL[] = [
     visibleTo(reader),
@@ -543,7 +555,7 @@ function searchConditions(
 export async function countReviewItems(
   db: JuniorDatabase,
   reader: ReviewItemReader,
-  filters: Omit<ReviewItemFilters, "limit">,
+  filters: Omit<ReviewItemFilters, "after" | "limit">,
 ): Promise<number> {
   const rows = await db
     .select({ count: count() })
@@ -552,7 +564,21 @@ export async function countReviewItems(
   return rows[0]?.count ?? 0;
 }
 
-/** Find the Review items that a reader can see, newest change first. */
+function afterPosition(position: ReviewItemPosition): SQL {
+  return or(
+    lt(juniorReviewItems.updatedAt, position.updatedAt),
+    and(
+      eq(juniorReviewItems.updatedAt, position.updatedAt),
+      lt(juniorReviewItems.id, position.id),
+    ),
+  )!;
+}
+
+/**
+ * Find the Review items that a reader can see, newest change first. The
+ * order is `updated_at` and then `id`, both descending, so `after` pages
+ * through it.
+ */
 export async function searchReviewItems(
   db: JuniorDatabase,
   reader: ReviewItemReader,
@@ -561,7 +587,12 @@ export async function searchReviewItems(
   const rows = await db
     .select()
     .from(juniorReviewItems)
-    .where(and(...searchConditions(reader, filters)))
+    .where(
+      and(
+        ...searchConditions(reader, filters),
+        ...(filters.after ? [afterPosition(filters.after)] : []),
+      ),
+    )
     .orderBy(desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id))
     .limit(filters.limit);
   return await hydrate(db, rows);

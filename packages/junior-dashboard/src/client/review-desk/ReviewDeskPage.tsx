@@ -7,6 +7,7 @@ import type {
 
 import { FilterTabList } from "../components/FilterBar";
 import { InlineError } from "../components/InlineError";
+import { LoadMorePagination } from "../components/Pagination";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { Card } from "../components/layout/Card";
@@ -165,10 +166,13 @@ export function ReviewDeskPage() {
   }
   const [search, setSearch, q] = useDebouncedSearchParam();
   const archived = state === "archived";
-  const items = useReviewItemsData({ archived, q, view });
+  const { items: list, query: items } = useReviewItemsData({
+    archived,
+    q,
+    view,
+  });
   const showBlocked = !archived && view !== "everyone" && !q;
   const blocked = useBlockedAutomationsData(showBlocked);
-  const list = items.data?.items ?? [];
   const selectedId = searchParams.get("item") ?? list[0]?.id;
   const listed = list.find((item) => item.id === selectedId);
   // A link can select an item that is not in the current view.
@@ -257,6 +261,12 @@ export function ReviewDeskPage() {
                   ))}
                 </ListGroup>
               ) : null}
+              <LoadMorePagination
+                className="px-3"
+                hasMore={!items.isPlaceholderData && Boolean(items.hasNextPage)}
+                loading={items.isFetchingNextPage}
+                onLoadMore={() => void items.fetchNextPage()}
+              />
             </>
           )}
         </Card>
