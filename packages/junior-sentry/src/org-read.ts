@@ -24,6 +24,8 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const ORG_PATH_RESOURCES = new Set(["organizations", "projects", "teams"]);
 const TOKEN_ORG_TTL_MS = 60 * 60 * 1000;
 const TOKEN_ORG_TIMEOUT_MS = 5_000;
+// sentry.io serves the US region, so it is not a separate region.
+const SENTRY_REGION_HOSTS = ["us.sentry.io", "de.sentry.io"];
 
 const tokenOrgsSchema = z.array(z.object({ id: z.string(), slug: z.string() }));
 
@@ -49,43 +51,49 @@ function requestOrg(url: string): string | undefined {
   return resource && ORG_PATH_RESOURCES.has(resource) ? org : undefined;
 }
 
-// The token can read only the organization that installed its integration.
-// Sentry paths accept the organization ID or slug, so return both. Ask the
-// request's host, because the organization list is scoped to its region.
-// Return undefined when the lookup fails, so reads keep the org read token.
-async function loadTokenOrgs(
+async function listRegionOrgs(
   ctx: EgressHookContext,
   token: string,
   host: string,
+): Promise<string[]> {
+  try {
+    const response = await fetch(`https://${host}/api/0/organizations/`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(TOKEN_ORG_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const orgs = tokenOrgsSchema.parse(await response.json());
+    return orgs.flatMap((org) => [org.id, org.slug.toLowerCase()]);
+  } catch (error) {
+    ctx.log.warn("sentry.org_read.token_org_lookup_failed", {
+      host,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+// The token can read only the organization that installed its integration.
+// Sentry paths accept the organization ID or slug, so return both. Each region
+// lists only its own organizations, so ask every region. Return undefined when
+// no region lists one, so reads keep the org read token.
+async function loadTokenOrgs(
+  ctx: EgressHookContext,
+  token: string,
 ): Promise<string[] | undefined> {
   const tokenId = createHash("sha256").update(token).digest("hex").slice(0, 16);
-  return await ctx.cache.getOrLoad(
-    `org-read-orgs:${host}:${tokenId}`,
-    async () => {
-      try {
-        const response = await fetch(`https://${host}/api/0/organizations/`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(TOKEN_ORG_TIMEOUT_MS),
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const orgs = tokenOrgsSchema.parse(await response.json());
-        if (orgs.length === 0) {
-          throw new Error("no organizations");
-        }
-        return {
-          value: orgs.flatMap((org) => [org.id, org.slug.toLowerCase()]),
-          ttlMs: TOKEN_ORG_TTL_MS,
-        };
-      } catch (error) {
-        ctx.log.warn("sentry.org_read.token_org_lookup_failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return { value: undefined };
-      }
-    },
-  );
+  return await ctx.cache.getOrLoad(`org-read-orgs:${tokenId}`, async () => {
+    const orgs = (
+      await Promise.all(
+        SENTRY_REGION_HOSTS.map((host) => listRegionOrgs(ctx, token, host)),
+      )
+    ).flat();
+    return orgs.length > 0
+      ? { value: orgs, ttlMs: TOKEN_ORG_TTL_MS }
+      : { value: undefined };
+  });
 }
 
 /**
@@ -101,9 +109,7 @@ export async function sentryGrantForEgress(
     return undefined;
   }
   const org = requestOrg(ctx.request.url)?.toLowerCase();
-  const tokenOrgs = org
-    ? await loadTokenOrgs(ctx, token, new URL(ctx.request.url).hostname)
-    : undefined;
+  const tokenOrgs = org ? await loadTokenOrgs(ctx, token) : undefined;
   if (org && tokenOrgs && !tokenOrgs.includes(org)) {
     return undefined;
   }

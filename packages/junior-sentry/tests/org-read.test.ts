@@ -34,10 +34,16 @@ async function grantFor(method: string, url: string) {
 describe("sentry org read access", () => {
   beforeEach(() => {
     process.env.SENTRY_READ_TOKEN = "org-read-token";
-    // Sentry lists only the installing org for an internal integration token.
+    // Each region lists only its own orgs for an internal integration token.
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json([{ id: "1", slug: "sentry" }])),
+      vi.fn(async (url: string) =>
+        Response.json(
+          url.startsWith("https://us.sentry.io/")
+            ? [{ id: "1", slug: "sentry" }]
+            : [],
+        ),
+      ),
     );
   });
 
@@ -99,9 +105,14 @@ describe("sentry org read access", () => {
     expect(
       await grantFor("GET", "https://sentry.io/api/0/projects/other/app/"),
     ).toBeUndefined();
-    // The lookup asks the request's regional host.
+    expect(
+      await grantFor(
+        "GET",
+        "https://de.sentry.io/api/0/organizations/eu-org/issues/",
+      ),
+    ).toBeUndefined();
     expect(fetch).toHaveBeenCalledWith(
-      "https://us.sentry.io/api/0/organizations/",
+      "https://de.sentry.io/api/0/organizations/",
       expect.objectContaining({
         headers: { Authorization: "Bearer org-read-token" },
       }),
