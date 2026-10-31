@@ -32,6 +32,16 @@ const asks: ToolActionReviewer = {
   }),
 };
 
+// Guardian allows when the resume message names the approved action.
+const allows: ToolActionReviewer = {
+  review: async () => ({
+    decision: "allow",
+    reason: "The user approved deleting this Workspace.",
+    riskLevel: "high",
+    userAuthorization: "high",
+  }),
+};
+
 const deleteWorkspace: AnyToolDefinition = {
   approvalMode: "review",
   description: "Permanently delete a Workspace and all of its contents.",
@@ -64,6 +74,7 @@ async function conversation(
 function turn(
   context: ActionConfirmationContext,
   actor: User | undefined,
+  reviewer: ToolActionReviewer = asks,
 ): ToolActionReview {
   const confirmationContext = {
     ...context,
@@ -88,7 +99,7 @@ function turn(
     },
     onDecision: async () => undefined,
     onFatal: () => undefined,
-    reviewer: asks,
+    reviewer,
   });
 }
 
@@ -168,10 +179,14 @@ describe("Guardian confirmation on the review desk", () => {
     expect(other).not.toBe(id);
 
     await answer(id, ana, "Approve");
+    // Guardian allows the retry by itself. The run still uses the approval.
     await expect(
-      turn(context, ana).review("retry", "deleteWorkspace", deleteWorkspace, {
-        workspace: "preview-42",
-      }),
+      turn(context, ana, allows).review(
+        "retry",
+        "deleteWorkspace",
+        deleteWorkspace,
+        { workspace: "preview-42" },
+      ),
     ).resolves.toMatchObject({ decision: "allow" });
     expect(await getReviewItem(getDb(), id)).toMatchObject({
       closeReason: "The approved action ran.",

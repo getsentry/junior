@@ -523,11 +523,12 @@ export function createToolActionReview(options: {
           signal ? { signal } : {},
         );
         // The approver's answer to the item for this exact action confirms
-        // it once. A deny stays a deny.
-        if (
-          decision.decision === "ask" &&
-          (await confirmation?.consumeApproval(proposal))
-        ) {
+        // it once. A deny stays a deny. An allow also uses the approval, so
+        // a later ask for the same action cannot reuse it.
+        const approved =
+          decision.decision !== "deny" &&
+          (await confirmation?.consumeApproval(proposal));
+        if (approved && decision.decision === "ask") {
           decision = {
             ...decision,
             decision: "allow",
