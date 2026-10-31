@@ -52,8 +52,19 @@ Canonical words used across Junior's code and documentation.
   fields that the agent or tools need. Those fields do not select the runtime.
   A Turn stores the Actor selected from the input that started it. Steering
   inputs keep their own Actors.
-- **Automation**: a saved instruction that Junior runs later. It has an owner,
-  a trigger, an instruction, and an ordered list of outcomes.
+- **Owner**: the Identity that started a root Conversation. It is a human for
+  Slack, web, and fork Conversations. It is the system Identity for
+  Automation runs, plugin dispatch, and the local CLI. A child Conversation
+  uses the Owner of its root. An Automation has a creator, not an Owner.
+- **Trusted author**: an event author whose own text Junior treats like a
+  chat message from that author. The author is a linked member on an allowed
+  domain, or a login on a plugin trusted authors list, such as
+  `githubPlugin({ trustedAuthors })`. An event from an author who is not
+  trusted does not start a run.
+  This is not the "trusted" summary or details of an Event. Those are plugin
+  facts, and they never count as instructions.
+- **Automation**: a saved instruction that Junior runs later. It has a
+  creator, a trigger, an instruction, and an ordered list of outcomes.
 - **Schedule**: a time-based trigger for an Automation.
 - **Automation version**: one saved definition of an Automation. The
   definition is its title, instruction, trigger, Destination, outcomes, and
