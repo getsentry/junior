@@ -67,13 +67,25 @@ async function updateCard(
   );
 }
 
-// A card row with this ts means a sync is posting the card now.
-const POSTING_MESSAGE_TS = "";
+// A card row with a ts like `posting:<ms>` means a sync claimed it at that
+// time and is posting the card now.
+const POSTING_PREFIX = "posting:";
+// A claim older than this lost its sync, such as in a crash, so another
+// sync can take it over.
+const POSTING_TIMEOUT_MS = 60_000;
+
+/** Return whether a card row is a claim that its sync never finished. */
+function isAbandonedClaim(row: CardRow, nowMs: number): boolean {
+  if (!row.messageTs.startsWith(POSTING_PREFIX)) return false;
+  const claimedMs = Number(row.messageTs.slice(POSTING_PREFIX.length));
+  return !(claimedMs > nowMs - POSTING_TIMEOUT_MS);
+}
 
 async function postCard(
   item: ReviewItem,
   conversationId: string,
   getSlackAdapter: (() => SlackAdapter) | undefined,
+  abandoned: CardRow | undefined,
 ): Promise<void> {
   const thread = parseSlackThreadId(conversationId);
   if (!thread) return;
@@ -87,18 +99,32 @@ async function postCard(
   );
   // Claim the row before the post, so two syncs cannot post two cards and
   // every posted card has a row that later syncs change.
-  const claimed = await db
-    .insert(juniorReviewItemSlackCards)
-    .values({
-      channelId: thread.channelId,
-      conversationId,
-      itemId: item.id,
-      messageTs: POSTING_MESSAGE_TS,
-      teamId: destination.teamId,
-    })
-    .onConflictDoNothing()
-    .returning({ itemId: juniorReviewItemSlackCards.itemId });
+  const claim = {
+    channelId: thread.channelId,
+    messageTs: `${POSTING_PREFIX}${Date.now()}`,
+    teamId: destination.teamId,
+  };
+  const claimed = abandoned
+    ? await db
+        .update(juniorReviewItemSlackCards)
+        .set(claim)
+        .where(
+          and(
+            key,
+            eq(juniorReviewItemSlackCards.messageTs, abandoned.messageTs),
+          ),
+        )
+        .returning({ itemId: juniorReviewItemSlackCards.itemId })
+    : await db
+        .insert(juniorReviewItemSlackCards)
+        .values({ ...claim, conversationId, itemId: item.id })
+        .onConflictDoNothing()
+        .returning({ itemId: juniorReviewItemSlackCards.itemId });
   if (!claimed[0]) return;
+  const ownClaim = and(
+    key,
+    eq(juniorReviewItemSlackCards.messageTs, claim.messageTs),
+  );
   await inWorkspace(destination.teamId, getSlackAdapter, async () => {
     let posted: { ts: SlackMessageTs };
     try {
@@ -108,21 +134,28 @@ async function postCard(
         threadTs: thread.threadTs,
       });
     } catch (error) {
-      await db.delete(juniorReviewItemSlackCards).where(key);
+      await db.delete(juniorReviewItemSlackCards).where(ownClaim);
       throw error;
     }
+    // A card without a row never changes, so remove it. That is the case
+    // when the write fails, or when a slow post lost its claim to another
+    // sync. A failed write leaves the claim for a later sync to take over.
+    const removeCard = () =>
+      deleteSlackMessage({ channelId: thread.channelId, timestamp: posted.ts });
+    let saved: unknown[];
     try {
-      await db
+      saved = await db
         .update(juniorReviewItemSlackCards)
         .set({ messageTs: posted.ts })
-        .where(key);
+        .where(ownClaim)
+        .returning({ itemId: juniorReviewItemSlackCards.itemId });
     } catch (error) {
-      // A card without a row never changes, so remove it.
-      await deleteSlackMessage({
-        channelId: thread.channelId,
-        timestamp: posted.ts,
-      });
+      await removeCard();
       throw error;
+    }
+    if (!saved[0]) {
+      await removeCard();
+      return;
     }
     // A change during the post skipped this card, so show the latest state.
     const latest = await getReviewItem(db, item.id);
@@ -140,7 +173,8 @@ async function postCard(
  * Show the current state of a Review item in its linked Slack threads. An
  * open item gets a card in each linked thread that has none. Each existing
  * card changes in place. A card in a thread that can no longer show the item
- * loses its content. A closed item posts no new cards. Cards are
+ * loses its content. A closed item posts no new cards. A claim that its
+ * sync never finished is taken over after a timeout. Cards are
  * optional UI: a failure is logged and never fails the change that caused
  * it. Pass `getSlackAdapter` outside Slack work, such as in the dashboard
  * API, so each card uses the token of its workspace.
@@ -156,7 +190,17 @@ export async function syncReviewItemSlackCards(args: {
         .select()
         .from(juniorReviewItemSlackCards)
         .where(eq(juniorReviewItemSlackCards.itemId, item.id));
-      const carded = new Set(rows.map((row) => row.conversationId));
+      const nowMs = Date.now();
+      const abandoned = new Map(
+        rows
+          .filter((row) => isAbandonedClaim(row, nowMs))
+          .map((row) => [row.conversationId, row]),
+      );
+      const carded = new Set(
+        rows
+          .filter((row) => !abandoned.has(row.conversationId))
+          .map((row) => row.conversationId),
+      );
       const missing =
         item.status === "open"
           ? item.conversationIds.filter(
@@ -165,7 +209,9 @@ export async function syncReviewItemSlackCards(args: {
           : [];
       const results = await Promise.allSettled([
         ...rows.map((row) => updateCard(item, row, getSlackAdapter)),
-        ...missing.map((id) => postCard(item, id, getSlackAdapter)),
+        ...missing.map((id) =>
+          postCard(item, id, getSlackAdapter, abandoned.get(id)),
+        ),
       ]);
       const failed = results.find((result) => result.status === "rejected");
       if (failed) throw failed.reason;

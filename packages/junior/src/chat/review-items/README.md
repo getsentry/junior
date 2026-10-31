@@ -117,7 +117,9 @@ each card, so Junior can change it in place.
 - Cards are optional UI. A Slack failure is logged and does not fail the
   change.
 - A sync claims the card row before it posts. So two syncs cannot post two
-  cards, and each posted card has a row that later syncs change.
+  cards, and each posted card has a row that later syncs change. A claim
+  stores the time it started. After one minute, another sync can take over
+  a claim whose sync failed or stopped.
 
 The card uses the `requestUserInput` controls. A request with one `choice`
 field shows one button per option. Other requests show an Answer button that
@@ -127,4 +129,6 @@ A click comes back through `chat/ingress/slack-review-item.ts`. It needs the
 same workspace and allowed domain checks as a Slack mention, and a Junior
 User linked to the Slack account. The thread of the card gets the action as
 Slack input from the person. The other linked Conversations get the usual
-messages. A click on a closed item tells the person and changes nothing.
+messages. Only the click that closes the item adds input, so two fast
+clicks add one Turn. A click on a closed item tells the person and changes
+nothing.

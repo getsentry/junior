@@ -118,7 +118,10 @@ function submittedAnswer(
  * Do one person action on a Review item and tell its linked Conversations.
  * The first submit, complete, or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
- * succeeds, so a client can retry after a failure. `exceptConversationId`
+ * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
+ * only the call that closes the item succeeds, and every other call gets a
+ * conflict. Use it when the caller adds its own input for the action, such
+ * as a Slack card click, so one action adds one Turn. `exceptConversationId`
  * is the Conversation where the person acted. It gets the person's input
  * from its own surface, so it gets no message here. Slack cards of the item
  * change in place; see `syncReviewItemSlackCards` for `getSlackAdapter`.
@@ -127,6 +130,7 @@ export async function actOnReviewItem(args: {
   action: ReviewItemAction;
   answer?: UserInputAnswer;
   exceptConversationId?: string;
+  firstCloseOnly?: boolean;
   getSlackAdapter?: () => SlackAdapter;
   id: string;
   nowMs?: number;
@@ -168,6 +172,7 @@ export async function actOnReviewItem(args: {
   }
 
   let closed = item;
+  let closedNow = false;
   if (item.status === "open") {
     if (!canActOnReviewItem(item, user.id)) {
       throw new ReviewItemActionError(
@@ -183,7 +188,7 @@ export async function actOnReviewItem(args: {
     }
     const answer =
       action === "submit" ? submittedAnswer(item, args.answer) : undefined;
-    await closeReviewItem(db, {
+    closedNow = await closeReviewItem(db, {
       closedByUserId: user.id,
       id: item.id,
       nowMs,
@@ -192,7 +197,7 @@ export async function actOnReviewItem(args: {
     });
     closed = await readReviewItemForUser(user, item.id);
   }
-  if (!isSameClose(closed, action, user)) {
+  if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
   await syncReviewItemSlackCards({

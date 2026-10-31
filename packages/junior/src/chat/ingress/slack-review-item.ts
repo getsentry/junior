@@ -151,20 +151,12 @@ async function act(args: {
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
-    if (current.status !== "open") {
-      // A click on a stale card must not add a second Turn for the same
-      // close, so it does not use the retry of `actOnReviewItem`.
-      await tellPerson(
-        target,
-        actor.slackUserId,
-        "This item is already closed.",
-      );
-      await refreshCards(services, actor.user, current.id);
-      return;
-    }
     item = await actOnReviewItem({
       action: args.action,
       exceptConversationId: conversationId,
+      // Two clicks can both see an open item. Only the click that closes it
+      // adds the input to this thread, so one action adds one Turn.
+      firstCloseOnly: true,
       getSlackAdapter: () => services.adapter,
       id: current.id,
       queue: services.queue,
