@@ -13,13 +13,14 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /**
  * Build the tool that saves the current user's customization when the app
- * enables `user-customization`. Child agents do not get it.
+ * enables `user-customization`. Child agents never get it, whatever input
+ * started the Turn.
  */
 export function createUserCustomizationTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
   if (!isExperimentalFeatureEnabled("user-customization")) return {};
-  if (context.source.kind === "agent_invocation") return {};
+  if (context.parentConversationId) return {};
 
   return {
     updateUserCustomization: zodTool({
