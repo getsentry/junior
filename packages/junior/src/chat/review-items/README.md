@@ -23,7 +23,8 @@ behavior.
 
 ## Dedupe key
 
-- Each item has a dedupe key. Only one open item can use a key.
+- Each item has a dedupe key. Only one open item in a provider tenant can
+  use a key. Other tenants do not see the key and can use it too.
 - When an agent adds an item with the key of an open item, it updates that
   item. The update replaces the content and the assignees. It keeps every
   linked Conversation and adds the new one.
@@ -37,7 +38,8 @@ behavior.
   public. It is `public` otherwise. No change makes a private item public.
 - A private item links only to the Conversation that added it, and to later
   runs of the same Automation. It cannot be assigned to Everyone. Each
-  assigned User must be the Actor or a person in that Conversation.
+  assigned User must be the Actor, or a person in the current Conversation
+  or in the Conversation that added the item.
 - Each item stores the provider tenant, such as the Slack workspace, of the
   Conversation that added it. Every link must be in that tenant. A public
   item is visible only to readers in the same tenant. A Slack mention in

@@ -80,9 +80,14 @@ export const juniorReviewItems = pgTable(
       "junior_review_items_visibility_check",
       sql`${table.visibility} = 'public' or not ${table.assignedToEveryone}`,
     ),
-    // Add with the key of an open item updates that item.
+    // Add with the key of an open item updates that item. Keys are unique
+    // only inside one provider tenant, so tenants cannot collide.
     uniqueIndex("junior_review_items_open_dedupe_uidx")
-      .on(table.dedupeKey)
+      .on(
+        sql`coalesce(${table.provider}, '')`,
+        sql`coalesce(${table.providerTenantId}, '')`,
+        table.dedupeKey,
+      )
       .where(sql`${table.status} = 'open'`),
     index("junior_review_items_status_idx").on(
       table.status,

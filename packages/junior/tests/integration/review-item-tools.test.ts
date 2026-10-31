@@ -2,7 +2,11 @@ import type { Identity, User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { juniorIdentities } from "@/db/schema";
+import {
+  juniorAutomations,
+  juniorConversationParticipants,
+  juniorIdentities,
+} from "@/db/schema";
 import {
   createAddReviewItemTool,
   createSearchReviewItemsTool,
@@ -165,6 +169,10 @@ describe("review item tools", () => {
       source: { kind: "slack" } as any,
     });
     expect((await execute(outsider.search, {})).count).toBe(0);
+    // Dedupe keys are per workspace, so the same key is a new item there.
+    const theirs = await execute(outsider.add, add);
+    expect(theirs.created).toBe(true);
+    expect(theirs.item.id).not.toBe(added.item.id);
     await expect(
       execute(outsider.update, {
         id: added.item.id,
@@ -276,6 +284,69 @@ describe("review item tools", () => {
         conversation_ids: ["slack:CPRIV:1.000001"],
       }),
     ).rejects.toThrow("Conversation slack:CPRIV:1.000001 is not found.");
+  });
+
+  it("keeps the people of a private Automation item in later runs", async () => {
+    await conversation("slack:DRUN:1.000001", "DRUN", "private");
+    await conversation("slack:DRUN:1.000002", "DRUN", "private");
+    const ana = await user("ana@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1),
+        rootConversationId: "slack:DRUN:1.000001",
+        userId: ana.id,
+      });
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(1),
+        id: "identity:creator",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "UCREATOR",
+        providerTenantId: "T123",
+        updatedAt: new Date(1),
+        userId: ana.id,
+      });
+    await getDb()
+      .insert(juniorAutomations)
+      .values({
+        channelId: "DRUN",
+        createdAtMs: 1,
+        creatorIdentityId: "identity:creator",
+        creatorSlackUserId: "UCREATOR",
+        id: "auto-digest",
+        instruction: "Post the digest.",
+        kind: "scheduled",
+        record: {} as any,
+        status: "active",
+        teamId: "T123",
+      });
+    const run = (conversationId: string) =>
+      tools({
+        conversationId,
+        resolveActorIdentity: asActor(undefined),
+        source: {
+          automationId: "auto-digest",
+          kind: "scheduled_automation",
+        } as any,
+      });
+    const notice = {
+      kind: "notice",
+      title: "Digest needs a look",
+      body: "Two entries changed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "digest",
+    };
+
+    const added = await execute(run("slack:DRUN:1.000001").add, notice);
+    // Ana took part only in the first run, which added the item.
+    const again = await execute(run("slack:DRUN:1.000002").add, notice);
+    expect(again).toMatchObject({
+      created: false,
+      item: { id: added.item.id, assignees: ["ana@example.com"] },
+    });
   });
 
   it("lets an agent close an item once, with a reason", async () => {
