@@ -604,12 +604,14 @@ describe("Slack webhook: Review item cards", () => {
   it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {
     const { postInDashboard, queue } = harness();
     await slackThread(THREAD, "public");
+    await slackThread(OTHER_THREAD, "public");
     const ana = await slackUser("ana@example.com", "U123");
     const { item } = await addItem(ana, {
       kind: "action",
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       request: SHIP_REQUEST,
+      conversation_ids: [OTHER_THREAD],
     });
     queue.rejectSends();
 
@@ -619,5 +621,13 @@ describe("Slack webhook: Review item cards", () => {
       closeReason: "Replied in thread",
       status: "done",
     });
+
+    // A retry of the reply still wakes the other linked thread.
+    queue.allowSends();
+    queue.clearSentRecords();
+    expect((await postInDashboard(ana)).status).toBe(200);
+    expect(
+      queue.sentRecords().map((record) => record.conversationId),
+    ).toContain(OTHER_THREAD);
   });
 });

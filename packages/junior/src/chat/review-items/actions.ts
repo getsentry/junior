@@ -18,7 +18,7 @@ import {
 import {
   closeReviewItem,
   getReviewItem,
-  listOpenActionItemsAddedBy,
+  listReplyActionItems,
   REVIEW_ITEM_REPLIED_REASON,
   takeReviewItem,
   type ReviewItem,
@@ -203,8 +203,12 @@ export async function actOnReviewItem(args: {
   return closed;
 }
 
-/** Return whether a reply from this User answers an open action item. */
+/**
+ * Return whether a reply from this User answers an open action item, or is
+ * a retry of the reply from this User that closed it.
+ */
 function replyAnswers(item: ReviewItem, user: User | undefined): boolean {
+  if (item.status !== "open") return item.closedBy?.userId === user?.id;
   if (item.assignedToEveryone) return false;
   if (item.assignees.length === 0) return true;
   return (
@@ -229,6 +233,9 @@ function replyAnswers(item: ReviewItem, user: User | undefined): boolean {
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.
+ * A retry of the reply, or a later reply from the same person, sends the
+ * missing messages of the items that it closed. Each message has a key, so
+ * a message that was sent does not go again.
  */
 export async function closeReviewItemsAnsweredByReply(args: {
   conversationId: string;
@@ -238,27 +245,31 @@ export async function closeReviewItemsAnsweredByReply(args: {
   resolveUser: () => Promise<User | undefined>;
 }): Promise<void> {
   const db = getDb();
-  const open = await listOpenActionItemsAddedBy(db, args.conversationId);
-  if (open.length === 0) return;
+  const items = await listReplyActionItems(db, args.conversationId);
+  if (items.length === 0) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
-  for (const item of open.filter((candidate) =>
+  for (const item of items.filter((candidate) =>
     replyAnswers(candidate, user),
   )) {
-    const closed = await closeReviewItem(db, {
-      id: item.id,
-      nowMs,
-      reason: REVIEW_ITEM_REPLIED_REASON,
-      status: "done",
-      ...(user ? { closedByUserId: user.id } : undefined),
-    });
-    if (!closed) continue;
-    const closedItem = await getReviewItem(db, item.id);
-    if (!closedItem) continue;
-    await syncReviewItemSlackCards({
-      getSlackAdapter: args.getSlackAdapter,
-      itemId: closedItem.id,
-    });
+    let closedItem: ReviewItem | undefined = item;
+    if (item.status === "open") {
+      const closed = await closeReviewItem(db, {
+        id: item.id,
+        nowMs,
+        reason: REVIEW_ITEM_REPLIED_REASON,
+        status: "done",
+        ...(user ? { closedByUserId: user.id } : undefined),
+      });
+      if (!closed) continue;
+      closedItem = await getReviewItem(db, item.id);
+      if (!closedItem) continue;
+      // Card sync is best effort, so a retry only needs to send messages.
+      await syncReviewItemSlackCards({
+        getSlackAdapter: args.getSlackAdapter,
+        itemId: closedItem.id,
+      });
+    }
     await sendReviewItemMessages({
       change: {
         kind: "replied",

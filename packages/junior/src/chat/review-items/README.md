@@ -117,7 +117,10 @@ item closes as `done` with the reason `Replied in thread`, and the person
 closes it. A Slack person without a Junior User closes only items with no
 assignees. The message is the answer in its own Conversation. Each other
 linked Conversation gets an Event. The first close wins, so a reply after a
-click changes nothing.
+click changes nothing. A retry of the reply, or a later reply from the same
+person, sends the Events that are missing for the items that the person
+closed by reply. Each Event has a key, so an Event that was sent does not
+go again.
 
 ## Messages to linked Conversations
 

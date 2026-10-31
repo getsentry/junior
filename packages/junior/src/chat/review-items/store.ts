@@ -246,8 +246,11 @@ export async function getReviewItem(
   return (await hydrate(db, rows))[0];
 }
 
-/** Read the open action items that the agent added in one Conversation. */
-export async function listOpenActionItemsAddedBy(
+/**
+ * Read the action items that the agent added in one Conversation and that a
+ * reply can answer: the open items, and the items that a reply closed.
+ */
+export async function listReplyActionItems(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<ReviewItem[]> {
@@ -258,7 +261,10 @@ export async function listOpenActionItemsAddedBy(
       and(
         eq(juniorReviewItems.addedByConversationId, conversationId),
         eq(juniorReviewItems.kind, "action"),
-        eq(juniorReviewItems.status, "open"),
+        or(
+          eq(juniorReviewItems.status, "open"),
+          eq(juniorReviewItems.closeReason, REVIEW_ITEM_REPLIED_REASON),
+        ),
       ),
     );
   return await hydrate(db, rows);
