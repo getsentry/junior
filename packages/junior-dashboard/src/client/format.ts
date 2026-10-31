@@ -797,6 +797,11 @@ export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;
 }
 
+/** Build the dashboard route for one memory's details. */
+export function memoryPath(memoryId: string): string {
+  return `/memories/${encodeURIComponent(memoryId)}`;
+}
+
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;

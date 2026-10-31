@@ -1,5 +1,5 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
-import { ChevronRight, Layers } from "lucide-react";
+import { Layers } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -14,7 +14,6 @@ import { ActorAvatar } from "../components/ActorAvatar";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { participantName } from "../components/ParticipantAvatarStack";
 import { Button } from "../components/ui/button";
-import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Drawer } from "../components/Drawer";
 import {
   Tooltip,
@@ -22,16 +21,15 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
-import { formatMessageTimestamp, formatTime, peoplePath } from "../format";
+import { formatMessageTimestamp, memoryPath, peoplePath } from "../format";
 import {
   memoryRecallContent,
   userCustomizationContent,
   type MemoryRecallContent,
 } from "./turnContext";
-import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { cn } from "../styles";
 import { DetailsCard } from "./DetailsList";
 import { HighlightText } from "./transcriptSearch";
-import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 /** What one turn context view shows: who spoke, when, and the context. */
 export type TurnContext = {
@@ -272,44 +270,20 @@ function TurnContextCard(props: { context: TranscriptViewTurnContext }) {
   );
 }
 
-// The trigger holds the full text and only stops truncating when open, so
-// search highlights and browser find reach it without a second copy.
+// Each row links to the memory's page, which shows its details.
 function MemoryRecall(props: { memories: MemoryRecallContent["memories"] }) {
   return (
-    <div className="-mx-1.5 -mb-1.5 -mt-1 grid gap-0.5">
+    <ul className="-mx-1.5 -mb-1.5 -mt-1 grid list-none gap-0.5 p-0">
       {props.memories.map((memory) => (
-        <Collapsible key={memory.id}>
-          <TranscriptSummaryTrigger className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 px-1.5">
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                dashboardDisclosureChevronClass,
-                "mt-[3px] text-dashboard-text-muted",
-              )}
-            />
-            <span className="min-w-0 truncate text-sm leading-5 text-dashboard-text group-aria-expanded:whitespace-pre-wrap group-aria-expanded:break-words">
-              <HighlightText text={memory.content} />
-            </span>
-            <span className="shrink-0 text-xs leading-5 text-dashboard-text-muted">
-              {memory.kind}
-            </span>
-          </TranscriptSummaryTrigger>
-          <CollapsibleContent hiddenUntilFound>
-            <p className="m-0 flex flex-wrap gap-x-1.5 px-1.5 pb-1.5 pl-7 text-xs text-dashboard-text-muted">
-              <span>{memory.scope}</span>
-              <span aria-hidden="true">·</span>
-              <span>
-                Observed{" "}
-                {formatTime(new Date(memory.observedAtMs).toISOString())}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span className="break-all font-mono">
-                <HighlightText text={memory.id} />
-              </span>
-            </p>
-          </CollapsibleContent>
-        </Collapsible>
+        <li key={memory.id}>
+          <Link
+            className="line-clamp-2 rounded-md px-1.5 py-1.5 text-sm leading-5 text-dashboard-text no-underline transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            to={memoryPath(memory.id)}
+          >
+            <HighlightText text={memory.content} />
+          </Link>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
