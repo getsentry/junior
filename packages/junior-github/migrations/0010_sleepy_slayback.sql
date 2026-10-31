@@ -1,0 +1,2 @@
+ALTER TABLE "junior_github_pull_request_requesters" ADD COLUMN "conversation_id" text;--> statement-breakpoint
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "ready_to_merge_at" timestamp with time zone;

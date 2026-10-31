@@ -1,4 +1,4 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -297,4 +297,33 @@ export async function recordGitHubPullRequestLinkedIssues(
     ),
   );
   return inserted.some((rows) => rows.length > 0);
+}
+
+/**
+ * Save whether a Junior-owned pull request is ready to merge. Return true
+ * only when this call changed it, so one caller acts on each change even when
+ * webhooks arrive together.
+ */
+export async function markGitHubPullRequestReadyToMerge(
+  db: GitHubDb,
+  input: {
+    number: number;
+    ready: boolean;
+    repositoryFullName: string;
+  },
+): Promise<boolean> {
+  const updated = await db
+    .update(juniorGitHubPullRequests)
+    .set({ readyToMergeAt: input.ready ? new Date() : null })
+    .where(
+      and(
+        sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${input.repositoryFullName.toLowerCase()}`,
+        eq(juniorGitHubPullRequests.number, input.number),
+        input.ready
+          ? isNull(juniorGitHubPullRequests.readyToMergeAt)
+          : isNotNull(juniorGitHubPullRequests.readyToMergeAt),
+      ),
+    )
+    .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
+  return updated.length > 0;
 }

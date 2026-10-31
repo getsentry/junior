@@ -111,6 +111,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
+  getProductionSlackAdapter,
 } from "@/chat/app/production";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
@@ -566,7 +567,10 @@ export async function createApp(
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ events });
+    pluginRoutes = getPluginRoutes({
+      events,
+      getSlackAdapter: getProductionSlackAdapter,
+    });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }

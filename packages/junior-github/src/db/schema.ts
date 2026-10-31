@@ -89,6 +89,11 @@ export const juniorGitHubPullRequests = pgTable(
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    /**
+     * When Junior saw the pull request become ready to merge and added its
+     * review desk notice. Null when it is not ready.
+     */
+    readyToMergeAt: timestamp("ready_to_merge_at", { withTimezone: true }),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
@@ -142,6 +147,8 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     number: integer("number").notNull(),
     /** Core `junior_identities.id` of the person who acted. */
     identityId: text("identity_id").notNull(),
+    /** The Conversation where the person asked Junior to open the pull request. */
+    conversationId: text("conversation_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },

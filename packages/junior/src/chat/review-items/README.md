@@ -16,6 +16,7 @@ behavior.
     actions").
   - A person replies in its thread (see "Reply in the thread").
   - An agent closes it with `updateReviewItem`.
+  - The plugin that added it closes it.
   - Junior purges the Conversation that added it. The item becomes
     `dismissed` with the reason `Conversation purged`. An item from an
     Automation run stays open, because a later run can still change it.
@@ -94,6 +95,26 @@ description holds the rules for when to ask and when to wait.
 `updateReviewItem` and `searchReviewItems` are deferred tools in the
 `review-desk` source. A child agent cannot use them. It reports to its
 parent with `reportBlocked`, and the parent adds the item.
+
+## Plugins
+
+A plugin adds and closes notices from its own events through
+`ctx.reviewItems` in its routes (`PluginReviewItems` in
+`@sentry/junior-plugin-api`). `plugin.ts` implements it. The plugin owns the
+decision. Core owns the rules below.
+
+- Each notice belongs to one Conversation. It links that Conversation, and it
+  is private when that Conversation is not public.
+- Core adds the plugin name to the dedupe key, so a plugin finds and changes
+  only its own items.
+- The plugin names assignees by Identity. Core assigns the linked User. A
+  private notice goes only to people in its Conversation.
+- A repeat with the same key updates the open item.
+- A plugin close sends no message to the linked Conversation. The provider
+  event that closed the item can reach that Conversation through a Watch.
+
+For example, the GitHub plugin adds a notice when a Junior pull request is
+ready to merge. See `packages/junior-github/README.md`.
 
 ## Person actions
 

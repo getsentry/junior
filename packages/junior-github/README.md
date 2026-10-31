@@ -36,7 +36,8 @@ creating another pull request, or replacing existing assignees.
 
 The plugin saves each person who asks Junior to open or update a pull request in
 `junior_github_pull_request_requesters`. Each row has only the core Junior
-identity id of that person. The plugin does not copy the user or GitHub login.
+identity id of that person. The opener row also has the Conversation where
+they asked. The plugin does not copy the user or GitHub login.
 When a webhook needs the GitHub login, it reads the identity through
 `ctx.users.readIdentity()` and uses the GitHub identity of the linked user. So a
 person who links GitHub later is found on their older pull requests too. The
@@ -63,6 +64,19 @@ filters on before it decides on a match. It loads the other values only when an
 event matches, so the agent sees all of them. A failed load leaves the value
 out. `authors` and the people involved in approvals and merges share one read of
 the commits per delivery.
+
+When a Junior pull request is ready to merge, the plugin adds a notice to the
+review desk through `ctx.reviewItems`. Ready to merge means that the pull
+request is open, is not a draft, has an approval and no open change request,
+and every check run on its head commit passed. `pull_request`,
+`pull_request_review`, and `check_suite` webhooks make the plugin read these
+facts again from GitHub. The notice goes to the opener, in the Conversation
+where they asked. `ready_to_merge_at` on the pull request records that the
+notice was added, so repeat webhooks add no second notice. A notice that a
+person closed does not come back until the pull request is ready again. The
+plugin closes the notice when the pull request merges, closes, or is no longer
+ready. "Changes requested" adds no notice. A notice failure is logged and does
+not fail the webhook.
 
 Deployment events come from GitHub `deployment` and `deployment_status`
 webhooks:

@@ -1,3 +1,4 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
@@ -82,6 +83,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
 export interface ToolHookInput {
@@ -937,6 +939,8 @@ function requirePublishedEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  /** Slack adapter for review item cards, which routes post outside Slack work. */
+  getSlackAdapter?: () => SlackAdapter;
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
@@ -969,6 +973,14 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      reviewItems: {
+        forConversation: (conversationId) =>
+          createPluginReviewItems({
+            conversationId,
+            getSlackAdapter: options.getSlackAdapter,
+            plugin: pluginName,
+          }),
+      },
       users: { readIdentity: readIdentityById },
       events: {
         async hasMatch(event) {

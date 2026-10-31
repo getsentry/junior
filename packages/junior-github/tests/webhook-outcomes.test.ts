@@ -1838,6 +1838,9 @@ describe("GitHub-owned pull request outcomes", () => {
         "0004_marvelous_toad_men.sql",
         "0005_github_cost_associations.sql",
         "0006_fat_korvac.sql",
+        "0007_shallow_millenium_guard.sql",
+        "0009_nostalgic_thing.sql",
+        "0010_sleepy_slayback.sql",
       ]) {
         await fixture.execute(await migrationSql(migration));
       }
@@ -2747,7 +2750,7 @@ describe("GitHub-owned pull request outcomes", () => {
           .select()
           .from(juniorGitHubPullRequestRequesters)
           .orderBy(juniorGitHubPullRequestRequesters.createdAt)
-      ).map((row) => [row.number, row.identityId]);
+      ).map((row) => [row.number, row.identityId, row.conversationId]);
 
     try {
       // GitHub can deliver `opened` before the create call returns. The
@@ -2783,7 +2786,7 @@ describe("GitHub-owned pull request outcomes", () => {
         toolCallId: "call-create",
       });
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer"],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
       ]);
 
       // A create that GitHub rejects saves no requester.
@@ -2799,7 +2802,7 @@ describe("GitHub-owned pull request outcomes", () => {
         }),
       ).rejects.toThrow("HTTP 422");
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer"],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
       ]);
 
       // An update adds a requester. The opener does not change.
@@ -2812,9 +2815,10 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
         ["dcramer", "admin"],
       ]);
+      // Only the opener names the Conversation where they asked.
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer"],
-        [946, "slack-identity-octocat"],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
+        [946, "slack-identity-octocat", null],
       ]);
 
       // An opener with no linked GitHub account is unknown. The bot is not
