@@ -18,6 +18,8 @@ import {
   juniorDestinations,
   juniorAgentBindings,
   juniorAgentInvocations,
+  juniorReviewItemConversations,
+  juniorReviewItems,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -903,6 +905,37 @@ describe("retention purge job", () => {
           modelId: "test-model",
         },
       ]);
+    const reviewItem = (
+      conversationId: string,
+      visibility: "public" | "private",
+    ) => ({
+      addedByConversationId: conversationId,
+      body: `${conversationId} body`,
+      createdAt: new Date(BASE_MS),
+      dedupeKey: `${conversationId}-key`,
+      id: `${conversationId}-item`,
+      kind: "notice" as const,
+      status: "open" as const,
+      title: `${conversationId} item`,
+      updatedAt: new Date(BASE_MS),
+      visibility,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorReviewItems)
+      .values([
+        reviewItem("pub", "public"),
+        reviewItem("priv", "private"),
+        // Added while the destination of "priv" was still public.
+        { ...reviewItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
+      ]);
+    await fixture.sql
+      .db()
+      .insert(juniorReviewItemConversations)
+      .values([
+        { itemId: "pub-item", conversationId: "pub" },
+        { itemId: "priv-item", conversationId: "priv" },
+      ]);
 
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 100 * DAY_MS });
 
@@ -921,6 +954,22 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorConversationBriefs),
     ).resolves.toMatchObject([{ conversationId: "pub", version: 1 }]);
+    // A private Review item holds content from its Conversation, so it goes
+    // with the Brief. Its links go with it.
+    await expect(
+      fixture.sql.db().select().from(juniorReviewItems),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "pub-item" }),
+        expect.objectContaining({ id: "flip-item" }),
+      ]),
+    );
+    expect(
+      await fixture.sql.db().select().from(juniorReviewItems),
+    ).toHaveLength(2);
+    await expect(
+      fixture.sql.db().select().from(juniorReviewItemConversations),
+    ).resolves.toMatchObject([{ itemId: "pub-item" }]);
     // The metadata row itself survives the purge.
     expect(priv.conversationId).toBe("priv");
   });
