@@ -24,6 +24,17 @@ export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 /** Anthropic's short cache TTL. Junior uses the default short retention. */
 export const SHORT_CACHE_TTL_MS = 5 * 60_000;
 
+/**
+ * Junior watches an idle period for this long. A person who replies later
+ * counts as a person who did not reply. Warmups stop before this time, so the
+ * model only needs reply chances inside it. Keep it below the queue signature
+ * age, because one delayed message closes the idle period.
+ */
+export const IDLE_HORIZON_MS = 55 * 60_000;
+
+/** Gap that Junior records for an idle period with no reply in the horizon. */
+export const NO_REPLY_GAP_MS = 24 * 60 * 60_000;
+
 const BASE_WARMUP_MARGIN_MS = 45_000;
 const MARGIN_PER_PREFIX_TOKEN_MS = 0.27;
 const MAX_SIZE_MARGIN_MS = 90_000;
@@ -109,9 +120,12 @@ export function warmupMarginMs(prefixTokens: number): number {
 
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
 export interface WarmupDecisionInput {
-  /** Human gaps (ms) seen in this conversation. */
+  /**
+   * Reply gaps (ms) of the idle periods of this conversation. An idle period
+   * with no reply counts as `NO_REPLY_GAP_MS`.
+   */
   conversationGapsMs: readonly number[];
-  /** Recent human gaps (ms) across all conversations. */
+  /** Recent reply gaps (ms) across all conversations, recorded the same way. */
   globalGapsMs: readonly number[];
   /** Time since the cached request started. */
   idleMs: number;
@@ -125,7 +139,12 @@ export interface WarmupDecisionInput {
 /** Result of one warmup decision. */
 export interface WarmupDecision {
   warm: boolean;
-  reason: "warm" | "prefix_too_small" | "cycle_limit" | "unlikely_return";
+  reason:
+    | "warm"
+    | "prefix_too_small"
+    | "cycle_limit"
+    | "horizon"
+    | "unlikely_return";
   returnProbability: number;
   threshold: number;
 }
@@ -164,6 +183,9 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   }
   if (threshold >= 1) {
     return decision("cycle_limit");
+  }
+  if (input.idleMs + SHORT_CACHE_TTL_MS > IDLE_HORIZON_MS) {
+    return decision("horizon");
   }
   return decision(probability >= threshold ? "warm" : "unlikely_return");
 }

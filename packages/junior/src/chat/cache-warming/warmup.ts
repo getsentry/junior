@@ -6,6 +6,10 @@
  * warmup sends the same request again with a one-token output limit before
  * the cache expires. The provider reads the cached prefix and refreshes its
  * TTL. `model.ts` owns the cost model.
+ *
+ * Each idle period gets one recorded reply gap, so the model also sees the
+ * people who do not reply. A reply records its gap. A delayed `horizon`
+ * message records `NO_REPLY_GAP_MS` when no reply came in the idle horizon.
  */
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -24,7 +28,9 @@ import type { ThinkingLevel } from "@/chat/pi/sdk";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   decideWarmup,
+  IDLE_HORIZON_MS,
   MIN_WARMUP_PREFIX_TOKENS,
+  NO_REPLY_GAP_MS,
   SHORT_CACHE_TTL_MS,
   warmupMarginMs,
 } from "./model";
@@ -36,30 +42,39 @@ const GLOBAL_GAPS_MAX = 2_000;
 const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * 60_000;
 const CONVERSATION_GAPS_MAX = 50;
 const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * 60_000;
-// The rising threshold stops warming after (write - read) / read cycles. That
-// is 24 cycles (about 1.5 hours) at Anthropic prices.
-const SNAPSHOT_TTL_MS = 2 * 60 * 60_000;
-const MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
+const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
-// Warmups for one model stop for a while after this many misses in a row.
+// One miss costs about one cache write, which is (write / read) warmups. So
+// the breaker opens at a low miss count among the recent warmups of a model.
+// A success does not reset it. The list expires after a quiet period.
+const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 3;
 const BREAKER_TTL_MS = 6 * 60 * 60_000;
 
 interface WarmState {
-  generation: string;
   modelId: string;
   prefixTokens: number;
   reasoning?: ThinkingLevel;
   warmups: number;
+  /** False after warmups stop. The snapshot is then deleted. */
+  active: boolean;
+}
+
+interface IdlePeriod {
+  generation: string;
+  /** Start of the request that ended the turn. */
+  sinceMs: number;
+  /** True after this period recorded its gap. */
+  gapRecorded?: boolean;
+  /** Only periods that could be warmed record gaps. */
+  warm?: WarmState;
 }
 
 interface ConversationCacheState {
-  /** Recent human gaps (ms) between a finished turn and the next model call. */
+  /** Recent reply gaps (ms) of the idle periods of this Conversation. */
   gapsMs: number[];
-  /** Start of the request that ended the last turn, while no new call came. */
-  idleSinceMs?: number;
-  warm?: WarmState;
+  idle?: IdlePeriod;
 }
 
 interface ModelRequest {
@@ -81,11 +96,22 @@ async function connectedState() {
   return state;
 }
 
-function supportsWarming(model: Model<Api>): boolean {
+// Only Anthropic models have the 5 minute cache TTL that the model assumes.
+// Other providers on the Anthropic Messages API cache in other ways.
+// Budget thinking adds the thinking budget to the one-token output limit, so
+// a warmup could cost as much as a short answer. Adaptive thinking does not.
+function supportsWarming(
+  model: Model<Api>,
+  reasoning: ThinkingLevel | undefined,
+): boolean {
   return (
     model.api === "anthropic-messages" &&
+    model.id.startsWith("anthropic/") &&
     model.cost.cacheRead > 0 &&
     model.cost.cacheWrite > model.cost.cacheRead &&
+    (!reasoning ||
+      (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking ===
+        true) &&
     // Long retention keeps the cache for an hour, so warmups are not needed.
     process.env.PI_CACHE_RETENTION !== "long"
   );
@@ -125,6 +151,58 @@ function snapshotContext(context: Context): Context {
   };
 }
 
+async function recordGap(
+  state: Awaited<ReturnType<typeof connectedState>>,
+  gapsMs: number[],
+  gapMs: number,
+): Promise<number[]> {
+  await state.appendToList(GLOBAL_GAPS_KEY, gapMs, {
+    maxLength: GLOBAL_GAPS_MAX,
+    ttlMs: GLOBAL_GAPS_TTL_MS,
+  });
+  return [...gapsMs, gapMs].slice(-CONVERSATION_GAPS_MAX);
+}
+
+async function startIdlePeriod(
+  state: Awaited<ReturnType<typeof connectedState>>,
+  conversationId: string,
+  request: ModelRequest,
+  message: AssistantMessage,
+): Promise<IdlePeriod> {
+  const idle: IdlePeriod = {
+    generation: randomUUID(),
+    sinceMs: request.startedAtMs,
+  };
+  const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
+  if (
+    !supportsWarming(request.model, request.reasoning) ||
+    prefixTokens < MIN_WARMUP_PREFIX_TOKENS
+  ) {
+    return idle;
+  }
+  const snapshot = gzipSync(
+    JSON.stringify(snapshotContext(request.context)),
+  ).toString("base64");
+  if (snapshot.length > MAX_SNAPSHOT_BYTES) {
+    logInfo("cache_warming.snapshot.skipped", {
+      "app.cache_warming.prefix_tokens": prefixTokens,
+      "app.cache_warming.snapshot_bytes": snapshot.length,
+    });
+    return idle;
+  }
+  await state.set(snapshotKey(conversationId), snapshot, IDLE_HORIZON_MS);
+  return {
+    ...idle,
+    warm: {
+      modelId: request.model.id,
+      prefixTokens,
+      ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
+      warmups: 0,
+      active: true,
+    },
+  };
+}
+
 async function recordModelCall(
   conversationId: string,
   request: ModelRequest,
@@ -135,81 +213,52 @@ async function recordModelCall(
     conversationKey(conversationId),
   );
   let gapsMs = previous?.gapsMs ?? [];
-  if (previous?.idleSinceMs !== undefined) {
-    const gapMs = request.startedAtMs - previous.idleSinceMs;
-    if (gapMs > 0) {
-      gapsMs = [...gapsMs, gapMs].slice(-CONVERSATION_GAPS_MAX);
-      await state.appendToList(GLOBAL_GAPS_KEY, gapMs, {
-        maxLength: GLOBAL_GAPS_MAX,
-        ttlMs: GLOBAL_GAPS_TTL_MS,
-      });
+  const idle = previous?.idle;
+  if (idle) {
+    const gapMs = request.startedAtMs - idle.sinceMs;
+    if (idle.warm && !idle.gapRecorded && gapMs > 0) {
+      gapsMs = await recordGap(state, gapsMs, gapMs);
     }
-    if (previous.warm && previous.warm.warmups > 0) {
+    if (idle.warm?.active) {
+      await state.delete(snapshotKey(conversationId));
+    }
+    if (idle.warm && idle.warm.warmups > 0) {
       logInfo("cache_warming.conversation.returned", {
         "app.cache_warming.gap_ms": gapMs,
-        "app.cache_warming.prefix_tokens": previous.warm.prefixTokens,
-        "app.cache_warming.warmup_count": previous.warm.warmups,
+        "app.cache_warming.prefix_tokens": idle.warm.prefixTokens,
+        "app.cache_warming.warmup_count": idle.warm.warmups,
         "gen_ai.usage.cache_read.input_tokens": message.usage.cacheRead,
         "gen_ai.usage.cache_creation.input_tokens": message.usage.cacheWrite,
       });
     }
   }
 
-  const endsTurn = message.stopReason === "stop";
-  if (!endsTurn) {
-    // Mid-turn calls arrive seconds apart. Only the first call after an idle
-    // period changes the stored state.
-    if (previous?.idleSinceMs !== undefined) {
-      await state.set(
-        conversationKey(conversationId),
-        { gapsMs } satisfies ConversationCacheState,
-        CONVERSATION_STATE_TTL_MS,
-      );
-      await state.delete(snapshotKey(conversationId));
-    }
+  // Mid-turn calls arrive seconds apart. Only the call that ends a turn
+  // starts an idle period.
+  const next: ConversationCacheState =
+    message.stopReason === "stop"
+      ? {
+          gapsMs,
+          idle: await startIdlePeriod(state, conversationId, request, message),
+        }
+      : { gapsMs };
+  if (!idle && !next.idle) {
     return;
-  }
-
-  const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
-  const next: ConversationCacheState = {
-    gapsMs,
-    idleSinceMs: request.startedAtMs,
-  };
-  if (
-    supportsWarming(request.model) &&
-    prefixTokens >= MIN_WARMUP_PREFIX_TOKENS
-  ) {
-    const snapshot = gzipSync(
-      JSON.stringify(snapshotContext(request.context)),
-    ).toString("base64");
-    if (snapshot.length <= MAX_SNAPSHOT_BYTES) {
-      next.warm = {
-        generation: randomUUID(),
-        modelId: request.model.id,
-        prefixTokens,
-        ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
-        warmups: 0,
-      };
-      await state.set(snapshotKey(conversationId), snapshot, SNAPSHOT_TTL_MS);
-    } else {
-      logInfo("cache_warming.snapshot.skipped", {
-        "app.cache_warming.prefix_tokens": prefixTokens,
-        "app.cache_warming.snapshot_bytes": snapshot.length,
-      });
-    }
   }
   await state.set(
     conversationKey(conversationId),
     next,
     CONVERSATION_STATE_TTL_MS,
   );
-  if (!next.warm && previous?.warm) {
-    await state.delete(snapshotKey(conversationId));
-  }
-  if (next.warm) {
+  if (next.idle?.warm) {
+    const { generation } = next.idle;
     await sendCacheWarmup(
-      { conversationId, cycle: 1, generation: next.warm.generation },
-      nextWarmupDelayMs(request.startedAtMs, prefixTokens),
+      { kind: "warmup", conversationId, cycle: 1, generation },
+      nextWarmupDelayMs(request.startedAtMs, next.idle.warm.prefixTokens),
+    );
+    await sendCacheWarmup(
+      { kind: "horizon", conversationId, generation },
+      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
     );
   }
 }
@@ -230,6 +279,9 @@ export function createCacheWarmingRecorder(
   conversationId: string,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
+  // After the first call of the run ends the idle period, the next mid-turn
+  // calls have nothing to record. This keeps them free of state reads.
+  let idleEnded = false;
   return {
     wrap:
       (base = streamSimple) =>
@@ -251,10 +303,12 @@ export function createCacheWarmingRecorder(
       if (
         !request ||
         message.stopReason === "error" ||
-        message.stopReason === "aborted"
+        message.stopReason === "aborted" ||
+        (idleEnded && message.stopReason !== "stop")
       ) {
         return;
       }
+      idleEnded = message.stopReason !== "stop";
       try {
         await recordModelCall(conversationId, request, message);
       } catch (error) {
@@ -269,11 +323,14 @@ export function createCacheWarmingRecorder(
 
 async function breakerOpen(modelId: string): Promise<boolean> {
   const state = await connectedState();
-  const misses = await state.getList(breakerKey(modelId));
-  return misses.length >= BREAKER_MAX_MISSES;
+  const outcomes = await state.getList<number>(breakerKey(modelId));
+  return outcomes.filter((miss) => miss === 1).length >= BREAKER_MAX_MISSES;
 }
 
-/** Run one scheduled warmup. A stale message, for a newer call, does nothing. */
+/**
+ * Run one scheduled cache warming message. A message for an idle period that
+ * already ended does nothing.
+ */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
 ): Promise<void> {
@@ -282,14 +339,46 @@ export async function runCacheWarmup(
   const current = await state.get<ConversationCacheState>(
     conversationKey(conversationId),
   );
-  const warm = current?.warm;
-  if (
-    !current ||
-    current.idleSinceMs === undefined ||
-    !warm ||
-    warm.generation !== message.generation ||
-    warm.warmups !== message.cycle - 1
-  ) {
+  const idle = current?.idle;
+  const warm = idle?.warm;
+  if (!current || !idle || !warm || idle.generation !== message.generation) {
+    return;
+  }
+
+  // Write only when a real model call did not replace the idle period.
+  const update = async (changes: Partial<IdlePeriod>, gapsMs?: number[]) => {
+    const latest = await state.get<ConversationCacheState>(
+      conversationKey(conversationId),
+    );
+    if (latest?.idle?.generation !== message.generation) {
+      return false;
+    }
+    await state.set(
+      conversationKey(conversationId),
+      {
+        gapsMs: gapsMs ?? latest.gapsMs,
+        idle: { ...latest.idle, ...changes },
+      } satisfies ConversationCacheState,
+      CONVERSATION_STATE_TTL_MS,
+    );
+    return true;
+  };
+  const stop = async () => {
+    await state.delete(snapshotKey(conversationId));
+    await update({ warm: { ...warm, active: false } });
+  };
+
+  if (message.kind === "horizon") {
+    if (!idle.gapRecorded) {
+      await state.delete(snapshotKey(conversationId));
+      await update(
+        { gapRecorded: true, warm: { ...warm, active: false } },
+        await recordGap(state, current.gapsMs, NO_REPLY_GAP_MS),
+      );
+    }
+    return;
+  }
+  if (!warm.active || warm.warmups !== message.cycle - 1) {
     return;
   }
 
@@ -306,6 +395,7 @@ export async function runCacheWarmup(
           ...attributes,
           "app.cache_warming.skip_reason": "breaker_open",
         });
+        await stop();
         return;
       }
 
@@ -313,7 +403,7 @@ export async function runCacheWarmup(
       const decision = decideWarmup({
         conversationGapsMs: current.gapsMs,
         globalGapsMs: await state.getList<number>(GLOBAL_GAPS_KEY),
-        idleMs: Date.now() - current.idleSinceMs!,
+        idleMs: Date.now() - idle.sinceMs,
         cycle: message.cycle,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,
@@ -327,20 +417,22 @@ export async function runCacheWarmup(
           ...attributes,
           "app.cache_warming.skip_reason": decision.reason,
         });
+        await stop();
         return;
       }
 
       const snapshot = await state.get<string>(snapshotKey(conversationId));
       if (!snapshot) {
+        await stop();
         return;
       }
       const context = JSON.parse(
         gunzipSync(Buffer.from(snapshot, "base64")).toString("utf8"),
       ) as Context;
       const startedAtMs = Date.now();
-      const countMiss = () =>
-        state.appendToList(breakerKey(warm.modelId), startedAtMs, {
-          maxLength: BREAKER_MAX_MISSES,
+      const countOutcome = (miss: boolean) =>
+        state.appendToList(breakerKey(warm.modelId), miss ? 1 : 0, {
+          maxLength: BREAKER_OUTCOMES_MAX,
           ttlMs: BREAKER_TTL_MS,
         });
       const { message: result } = await completeText({
@@ -349,7 +441,7 @@ export async function runCacheWarmup(
         messages: context.messages,
         ...(context.tools ? { tools: context.tools } : undefined),
         ...(warm.reasoning ? { thinkingLevel: warm.reasoning } : undefined),
-        // The output is not used. One token keeps it valid with thinking on.
+        // The output is not used.
         maxTokens: 1,
         messageAttributeMode: "metadata",
         metadata: { conversationId },
@@ -357,7 +449,8 @@ export async function runCacheWarmup(
       }).catch(async (error: unknown) => {
         // A request that the provider rejects fails the same way for each
         // Conversation. Count it, so the breaker stops these requests.
-        await countMiss();
+        await countOutcome(true);
+        await stop();
         throw error;
       });
       Object.assign(attributes, {
@@ -372,32 +465,20 @@ export async function runCacheWarmup(
       ) {
         // The request did not match the cached prefix, so it wrote a new
         // cache entry. Stop this idle period and count the miss for the model.
-        await countMiss();
+        await countOutcome(true);
         logWarn("cache_warming.warmup.failed", attributes);
+        await stop();
         return;
       }
-      await state.delete(breakerKey(warm.modelId));
+      await countOutcome(false);
       logInfo("cache_warming.warmup.completed", attributes);
 
-      // A real model call may have replaced the state during the warmup.
-      const latest = await state.get<ConversationCacheState>(
-        conversationKey(conversationId),
-      );
-      if (latest?.warm?.generation !== message.generation) {
-        return;
+      if (await update({ warm: { ...warm, warmups: message.cycle } })) {
+        await sendCacheWarmup(
+          { ...message, cycle: message.cycle + 1 },
+          nextWarmupDelayMs(startedAtMs, warm.prefixTokens),
+        );
       }
-      await state.set(
-        conversationKey(conversationId),
-        {
-          ...latest,
-          warm: { ...latest.warm, warmups: message.cycle },
-        } satisfies ConversationCacheState,
-        CONVERSATION_STATE_TTL_MS,
-      );
-      await sendCacheWarmup(
-        { ...message, cycle: message.cycle + 1 },
-        nextWarmupDelayMs(startedAtMs, warm.prefixTokens),
-      );
     },
   );
 }

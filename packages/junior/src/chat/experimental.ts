@@ -4,7 +4,6 @@
  * once they become stable defaults.
  */
 export const EXPERIMENTAL_FEATURES = [
-  "cache-warming",
   "operator-tools",
   "passive-routing",
   "user-customization",

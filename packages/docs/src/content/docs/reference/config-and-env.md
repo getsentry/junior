@@ -194,9 +194,6 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
-    // Keep the prompt cache of idle Conversations warm with delayed one-token
-    // requests, so that the next message reads the cache instead of writing it.
-    "cache-warming": true,
   },
 });
 ```
@@ -243,18 +240,6 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
-
-`cache-warming` keeps the prompt cache of an idle Conversation warm. Anthropic
-models keep a prompt cache for 5 minutes. When a turn ends, Junior stores the
-last model request in the `StateAdapter` for up to 2 hours. A delayed queue
-message then sends the same request with a one-token output limit before the
-cache expires. Junior sends the next warmup only while the chance that a person
-replies soon is high enough to pay for the warmup. Junior learns that chance
-from the reply gaps that it records, so it sends no warmups until it has
-recorded some gaps. After three warmups in a row miss the cache, Junior stops
-warmups for that model for 6 hours. Warmups show in Sentry as
-`gen_ai.chat` spans with `gen_ai.prompt.name` set to `cache_warmup`. The
-feature needs the queue, because the queue sends the warmups.
 
 ## Allowed domains
 
@@ -344,6 +329,34 @@ Each profile value may be a model id string or an object with `modelId` and opti
 Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 
 The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+
+## Prompt cache warming
+
+Anthropic models keep a prompt cache for 5 minutes. When a person replies after
+that time, the next turn writes the full history to the cache again. Junior
+keeps the cache of an idle Conversation warm when a warmup is likely to cost
+less than that write.
+
+- Junior warms only `anthropic/` models with a cached prefix of at least 50K
+  tokens. It does not warm models that use a thinking budget, because the
+  budget adds output tokens to each warmup.
+- When a turn ends, Junior stores the last model request in the `StateAdapter`.
+  Junior deletes it when the next turn starts, when warmups stop, or after 55
+  minutes.
+- A delayed queue message sends the same request with a one-token output limit
+  before the cache expires. Junior sends the next warmup only while the chance
+  that the person replies in the next 5 minutes is high enough to pay for it.
+  The needed chance goes up with each warmup.
+- Junior learns that chance from the reply gaps of idle periods. A period with
+  no reply in 55 minutes counts as no reply. Until Junior has recorded gaps, it
+  sends no warmups.
+- When 3 of the last 20 warmups of a model miss the cache or fail, Junior stops
+  warmups for that model. They start again 6 hours after the last warmup.
+- `PI_CACHE_RETENTION=long` turns warming off, because the long cache lasts an
+  hour.
+
+Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
+`cache_warmup`, and as `cache_warming.*` logs.
 
 ## Install-wide config defaults
 

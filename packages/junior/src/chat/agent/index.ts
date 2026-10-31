@@ -79,7 +79,6 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
@@ -1120,16 +1119,13 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
-    const cacheWarming = isExperimentalFeatureEnabled("cache-warming")
-      ? createCacheWarmingRecorder(conversationId)
-      : undefined;
-    const baseStreamFn = cacheWarming ? cacheWarming.wrap(streamFn) : streamFn;
+    const cacheWarming = createCacheWarmingRecorder(conversationId);
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(baseStreamFn ? { base: baseStreamFn } : undefined),
+        base: cacheWarming.wrap(streamFn),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, toolCall }) => {
@@ -1291,9 +1287,6 @@ async function executeAgentRunInPrivacyContext(
           )
             ? undefined
             : deliverAssistantMessage(message);
-        if (!cacheWarming) {
-          return delivery;
-        }
         // Record after delivery, so the reply is not late.
         return Promise.resolve(delivery).then(() =>
           cacheWarming.record(message),

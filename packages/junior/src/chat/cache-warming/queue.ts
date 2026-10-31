@@ -1,6 +1,5 @@
 /** Send and receive delayed cache warmup messages. */
 import { z } from "zod";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -19,15 +18,26 @@ export const CACHE_WARMUP_QUEUE_TOPIC = "junior_cache_warmups";
 
 const CACHE_WARMUP_DEV_CONSUMER_GROUP = "junior_cache_warmups_dev";
 
-const cacheWarmupMessageSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    cycle: z.number().int().positive(),
-    generation: z.string().min(1),
-  })
-  .strict();
+const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("warmup"),
+      conversationId: z.string().min(1),
+      cycle: z.number().int().positive(),
+      generation: z.string().min(1),
+    })
+    .strict(),
+  // Closes an idle period that got no reply within the idle horizon.
+  z
+    .object({
+      kind: z.literal("horizon"),
+      conversationId: z.string().min(1),
+      generation: z.string().min(1),
+    })
+    .strict(),
+]);
 
-/** One scheduled warmup for one idle period of one Conversation. */
+/** One scheduled step for one idle period of one Conversation. */
 export type CacheWarmupMessage = z.output<typeof cacheWarmupMessageSchema>;
 
 const cacheWarmupSign = {
@@ -35,13 +45,14 @@ const cacheWarmupSign = {
   schema: cacheWarmupMessageSchema,
   signatureVersion: "v1" as const,
   parts: (message: CacheWarmupMessage) => [
+    message.kind,
     message.conversationId,
     message.generation,
-    String(message.cycle),
+    message.kind === "warmup" ? String(message.cycle) : "",
   ],
 };
 
-/** Send a warmup message that is delivered after `delayMs`. */
+/** Send a cache warming message that is delivered after `delayMs`. */
 export async function sendCacheWarmup(
   message: CacheWarmupMessage,
   delayMs: number,
@@ -56,7 +67,9 @@ export async function sendCacheWarmup(
         QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
         Math.ceil(delayMs / 1000) + 120,
       ),
-      idempotencyKey: `cache-warmup_${message.generation}_${message.cycle}`,
+      idempotencyKey: `cache-warmup_${message.generation}_${
+        message.kind === "warmup" ? message.cycle : message.kind
+      }`,
     },
   );
 }
@@ -88,7 +101,6 @@ function cacheWarmupCallback() {
       const { runCacheWarmup } = await import("./warmup");
       await runCacheWarmup(message);
     },
-    skip: () => !isExperimentalFeatureEnabled("cache-warming"),
     topic: CACHE_WARMUP_QUEUE_TOPIC,
     verify: (value) => verifyQueueMessage(cacheWarmupSign, value),
   });

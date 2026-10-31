@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideWarmup } from "@/chat/cache-warming/model";
+import { decideWarmup, NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 
 const MINUTE = 60_000;
 // Anthropic Opus prices in $/MTok.
@@ -37,6 +37,36 @@ describe("decideWarmup", () => {
     });
 
     expect(decision).toMatchObject({ warm: false, reason: "unlikely_return" });
+  });
+
+  it("counts idle periods with no reply and stops at the idle horizon", () => {
+    const input = {
+      ...prices,
+      conversationGapsMs: [],
+      cycle: 1,
+      prefixTokens: 200_000,
+    };
+    // Only 3 of 100 idle periods got a reply. Without the 97 periods with no
+    // reply, every period would look like a reply after 7 minutes.
+    const replies = gaps(3, 7 * MINUTE);
+
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [...replies, ...gaps(97, NO_REPLY_GAP_MS)],
+        idleMs: 4 * MINUTE,
+      }),
+    ).toMatchObject({ warm: false, reason: "unlikely_return" });
+    expect(
+      decideWarmup({ ...input, globalGapsMs: replies, idleMs: 4 * MINUTE }),
+    ).toMatchObject({ warm: true });
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: gaps(100, 52 * MINUTE),
+        idleMs: 51 * MINUTE,
+      }),
+    ).toMatchObject({ warm: false, reason: "horizon" });
   });
 
   it("raises the threshold with each warmup until warming cannot pay", () => {
