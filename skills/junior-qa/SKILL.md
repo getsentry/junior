@@ -90,6 +90,11 @@ the first run builds the `junior-sandbox-runtime` image:
 JUNIOR_DOCKER_SANDBOX_TEST=1 pnpm --filter @sentry/junior exec vitest run tests/integration/docker-sandbox-provider.test.ts
 ```
 
+A Docker sandbox has a small toolset: `gh`, `jq`, and `rg`. It does not have
+other plugin CLIs, browsers, or Docker. Install a missing tool with `sudo`, for
+example `sudo npm i -g vercel`. A plain `npm i -g` fails with `EACCES`. Do not
+QA browser or Docker-in-sandbox behavior with this provider.
+
 ### Inside a Vercel Sandbox
 
 A Vercel Sandbox sends some HTTPS traffic through a TLS proxy. For example,
@@ -127,9 +132,9 @@ Rules:
 
 ### Prewarm the Sandbox Snapshot
 
-The first sandbox for a plugin set builds a dependency snapshot. For
-`apps/example`, this build takes about 3 to 4 minutes and makes an image of
-about 4 GB. Later sandboxes start from that snapshot in a few seconds. Build the
+The first sandbox builds a dependency snapshot. This build takes about 1
+minute and makes an image of about 840 MB. Later sandboxes start from that
+snapshot in a few seconds. Build the
 snapshot before the first QA turn, so the turn does not wait for it.
 
 After you pull new commits, build all packages before you start the dev
@@ -166,9 +171,8 @@ Rules:
   `pnpm cli`. Local chat uses memory state, so it works without Redis.
 - If you run the command without the Redis settings, it builds a second
   snapshot that the dev server does not use.
-- A snapshot stays valid until the plugin dependencies change or its image is
-  deleted. If the plugins have unpinned dependencies or postinstall commands,
-  it also expires after 7 days.
+- A snapshot stays valid until its dependency list changes or its image is
+  deleted.
 
 ## Choosing a Probe
 
@@ -260,8 +264,8 @@ Vercel Sandbox proxies, the extra CA is not set. See "Inside a Vercel Sandbox".
 If startup fails with `Junior plugin "<name>" events is invalid` or a similar
 plugin error after a pull, the plugin packages have old builds. Run
 `pnpm build`, then start the dev server again.
-If the first sandbox command waits for minutes, the dependency snapshot is
-being built. See "Prewarm the Sandbox Snapshot".
+If the first sandbox command waits for about a minute, the dependency snapshot
+is being built. See "Prewarm the Sandbox Snapshot".
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.
