@@ -194,6 +194,9 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
+    // Keep the prompt cache of idle Conversations warm with delayed one-token
+    // requests, so that the next message reads the cache instead of writing it.
+    "cache-warming": true,
   },
 });
 ```
@@ -240,6 +243,18 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
+
+`cache-warming` keeps the prompt cache of an idle Conversation warm. Anthropic
+models keep a prompt cache for 5 minutes. When a turn ends, Junior stores the
+last model request in the `StateAdapter` for up to 2 hours. A delayed queue
+message then sends the same request with a one-token output limit before the
+cache expires. Junior sends the next warmup only while the chance that a person
+replies soon is high enough to pay for the warmup. Junior learns that chance
+from the reply gaps that it records, so it sends no warmups until it has
+recorded some gaps. After three warmups in a row miss the cache, Junior stops
+warmups for that model for 6 hours. Warmups show in Sentry as
+`gen_ai.chat` spans with `gen_ai.prompt.name` set to `cache_warmup`. The
+feature needs the queue, because the queue sends the warmups.
 
 ## Allowed domains
 

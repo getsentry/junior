@@ -73,6 +73,7 @@ import {
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -96,6 +97,11 @@ import {
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
 import { processPluginTask } from "@/chat/plugins/task-runner";
+import {
+  cacheWarmupQueueConsumer,
+  createVercelCacheWarmupCallback,
+  registerVercelCacheWarmupDevConsumer,
+} from "@/chat/cache-warming/queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -804,6 +810,7 @@ export async function createApp(
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
+    registerVercelCacheWarmupDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -821,6 +828,13 @@ export async function createApp(
   app.post(JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE, (c) => {
     workspaceSnapshotJobPOST ??= createVercelWorkspaceSnapshotJobCallback();
     return workspaceSnapshotJobPOST(c.req.raw);
+  });
+  let cacheWarmupPOST:
+    | ReturnType<typeof createVercelCacheWarmupCallback>
+    | undefined;
+  app.post(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, (c) => {
+    cacheWarmupPOST ??= createVercelCacheWarmupCallback();
+    return cacheWarmupPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -848,6 +862,7 @@ export async function createApp(
           conversationWorkQueueConsumer(getConversationWorkOptions()),
           pluginTaskQueueConsumer(),
           workspaceSnapshotJobQueueConsumer(),
+          cacheWarmupQueueConsumer(),
         ],
         backgroundWork,
       ),

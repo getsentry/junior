@@ -78,6 +78,8 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
@@ -1118,12 +1120,16 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
+    const cacheWarming = isExperimentalFeatureEnabled("cache-warming")
+      ? createCacheWarmingRecorder(conversationId)
+      : undefined;
+    const baseStreamFn = cacheWarming ? cacheWarming.wrap(streamFn) : streamFn;
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : undefined),
+        ...(baseStreamFn ? { base: baseStreamFn } : undefined),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, toolCall }) => {
@@ -1275,21 +1281,23 @@ async function executeAgentRunInPrivacyContext(
           .then(() => undefined);
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (
-          event.message.stopReason === "error" ||
-          event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        if (
-          event.message.content.some(
+        const message = event.message;
+        const delivery =
+          message.stopReason === "error" ||
+          message.stopReason === "aborted" ||
+          message.content.some(
             (part) =>
               part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
           )
-        ) {
-          return;
+            ? undefined
+            : deliverAssistantMessage(message);
+        if (!cacheWarming) {
+          return delivery;
         }
-        return deliverAssistantMessage(event.message);
+        // Record after delivery, so the reply is not late.
+        return Promise.resolve(delivery).then(() =>
+          cacheWarming.record(message),
+        );
       }
       return undefined;
     });
