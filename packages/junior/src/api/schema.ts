@@ -287,6 +287,7 @@ export {
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemSchema,
+  reviewItemWaitingConversationsSchema,
 } from "./schema/review-item";
 export type {
   ReviewItemActionBody,

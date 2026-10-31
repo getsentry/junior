@@ -231,6 +231,12 @@ describe("review item tools", () => {
         conversation_ids: ["slack:CPUB:1.000002"],
       }),
     ).rejects.toThrow("links only to the Conversation that added it");
+    // Nor can it drop its own link and hide the item from itself.
+    const relinked = await execute(owner.update, {
+      id: added.item.id,
+      conversation_ids: [],
+    });
+    expect(relinked.item.conversation_ids).toEqual(["slack:CPRIV:1.000001"]);
     // Ana can read it from a public Conversation, but not change it there.
     const anaInPublic = tools({
       conversationId: "slack:CPUB:1.000002",

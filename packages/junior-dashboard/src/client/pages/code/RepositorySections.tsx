@@ -69,6 +69,7 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
             finishedSinceSeen={false}
             isPrivate={conversation.visibility === "private"}
             status={visualStatusForConversation(conversation)}
+            waitingOnViewer={false}
           />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">

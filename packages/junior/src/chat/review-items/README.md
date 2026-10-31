@@ -17,7 +17,7 @@ behavior.
   needs at least one assignee.
 - An item can have a subject, such as a pull request, and links to one or
   more Conversations. The Conversation of the agent that adds the item is
-  always linked.
+  always linked. An update cannot remove that link.
 - An item from an Automation run stores the Automation id. A later run of the
   same Automation can see and change it.
 
@@ -93,3 +93,10 @@ a new Turn.
   only a list state of one viewer, so it does not stop messages.
 - Each message has an idempotency key, so a retry does not add a second
   message.
+
+## Waiting on you
+
+A Conversation waits on a User when it has an open linked item that is
+assigned to the User or to Everyone (`listWaitingConversationIds`). An item
+with no assignees does not wait on anyone. The dashboard shows a lavender dot
+for these Conversations. The dot replaces the other status markers.

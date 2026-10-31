@@ -93,6 +93,7 @@ import {
 } from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
+import { ConversationReviewBar } from "../review-desk/ConversationReviewBar";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -803,6 +804,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
               request={props.userInputRequest}
             />
           ) : null}
+          <ConversationReviewBar conversationId={props.conversationId} />
           <PendingMailboxStack
             cancelError={cancelError}
             cancelPending={cancelPendingMessages.isPending}

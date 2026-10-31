@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -9,6 +10,7 @@ import {
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemSchema,
+  reviewItemWaitingConversationsSchema,
   type ReviewItemActionBody,
 } from "@sentry/junior/api/schema";
 
@@ -110,4 +112,26 @@ export function useReviewItemAction() {
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
   });
+}
+
+const NO_CONVERSATIONS: ReadonlySet<string> = new Set();
+
+/**
+ * Return the Conversations that wait on the viewer. Today only the review
+ * desk sets this: an open linked item assigned to the viewer or Everyone.
+ */
+export function useWaitingConversationIds(): ReadonlySet<string> {
+  const query = useQuery({
+    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        reviewItemWaitingConversationsSchema,
+        "/api/review-items/waiting-conversations",
+        signal,
+      ),
+    refetchInterval: COUNT_REFRESH_MS,
+    retry: false,
+  });
+  const ids = query.data?.conversationIds;
+  return useMemo(() => (ids ? new Set(ids) : NO_CONVERSATIONS), [ids]);
 }

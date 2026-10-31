@@ -79,6 +79,11 @@ export const reviewItemCountSchema = z
   })
   .strict();
 
+/** Conversations with an open item assigned to the viewer or Everyone. */
+export const reviewItemWaitingConversationsSchema = z
+  .object({ conversationIds: z.array(z.string().min(1)) })
+  .strict();
+
 export const reviewItemParamsSchema = z
   .object({ id: z.string().min(1) })
   .strict();

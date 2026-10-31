@@ -4,12 +4,26 @@ import { ActiveIndicator } from "../components/ActiveIndicator";
 import { cn } from "../styles";
 import type { VisualStatus } from "../types";
 
-/** Render a conversation status marker, with new completions taking priority. */
+/**
+ * Render a conversation status marker. "Waiting on you" replaces every other
+ * marker, then new completions take priority.
+ */
 export function ConversationListStatusIcon(props: {
   finishedSinceSeen: boolean;
   isPrivate: boolean;
   status: VisualStatus;
+  waitingOnViewer: boolean;
 }) {
+  if (props.waitingOnViewer) {
+    return (
+      <span
+        aria-label="Waiting on you"
+        className="size-2 shrink-0 rounded-full bg-violet-300 shadow-[0_0_6px_rgba(196,181,253,0.7)]"
+        role="img"
+      />
+    );
+  }
+
   if (props.finishedSinceSeen) {
     return (
       <span

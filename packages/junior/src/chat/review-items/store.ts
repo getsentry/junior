@@ -566,3 +566,31 @@ export async function searchReviewItems(
     .limit(filters.limit);
   return await hydrate(db, rows);
 }
+
+/**
+ * List the Conversations that wait on a User: each has an open linked item
+ * that the User can see and that is assigned to the User or to Everyone. An
+ * item without assignees does not wait on anyone.
+ */
+export async function listWaitingConversationIds(
+  db: JuniorDatabase,
+  user: User,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({
+      conversationId: juniorReviewItemConversations.conversationId,
+    })
+    .from(juniorReviewItemConversations)
+    .innerJoin(
+      juniorReviewItems,
+      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .where(
+      and(
+        eq(juniorReviewItems.status, "open"),
+        visibleTo(reviewItemReaderForUser(user)),
+        or(eq(juniorReviewItems.assignedToEveryone, true), assignedTo(user.id)),
+      ),
+    );
+  return rows.map((row) => row.conversationId).sort();
+}
