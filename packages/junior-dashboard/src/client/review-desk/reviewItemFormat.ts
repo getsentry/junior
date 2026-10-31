@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 /** Return the review desk route that selects one item. */
@@ -15,20 +16,20 @@ export function assigneeLabel(item: ReviewItemPayload): string {
 }
 
 const ADD_REVIEW_ITEM_TOOL_NAME = "addReviewItem";
+const executeToolInputSchema = z.object({ tool_name: z.string() });
+const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function parsedOutput(output: unknown): unknown {
-  if (typeof output !== "string") return output;
-  try {
-    return JSON.parse(output);
-  } catch {
-    return undefined;
+/** Read the item id from a tool result, which can be JSON text. */
+function addedItemId(output: unknown): string | undefined {
+  let value = output;
+  if (typeof output === "string") {
+    try {
+      value = JSON.parse(output);
+    } catch {
+      return undefined;
+    }
   }
+  return addedItemSchema.safeParse(value).data?.item.id;
 }
 
 /**
@@ -44,8 +45,9 @@ export function reviewItemIdFromToolCall(call: {
 }): string | undefined {
   if (call.status !== "completed") return undefined;
   const toolName =
-    call.name === "executeTool" ? record(call.input)?.tool_name : call.name;
+    call.name === "executeTool"
+      ? executeToolInputSchema.safeParse(call.input).data?.tool_name
+      : call.name;
   if (toolName !== ADD_REVIEW_ITEM_TOOL_NAME) return undefined;
-  const id = record(record(parsedOutput(call.output))?.item)?.id;
-  return typeof id === "string" && id ? id : undefined;
+  return addedItemId(call.output);
 }
