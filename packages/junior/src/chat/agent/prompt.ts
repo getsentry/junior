@@ -453,6 +453,18 @@ async function loadUserCustomization(
   return user ? await readUserCustomization(user.id) : undefined;
 }
 
+// Record the customization with the Turn input, so the dashboard can show it
+// beside plugin context such as recalled memories.
+function userCustomizationTurnContext(text: string): PluginTurnContext {
+  return {
+    pluginName: "junior",
+    kind: "user_customization",
+    version: 1,
+    content: { text },
+    loadedAtMs: Date.now(),
+  };
+}
+
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
 function checkpointedPrompt(args: {
@@ -720,9 +732,14 @@ export async function assemblePrompt(args: {
       : undefined),
     promptHistoryMessages,
     shouldPromptAgent,
-    turnContexts: pluginUserPromptContributions.flatMap((contribution) =>
-      contribution.context ? [contribution.context] : [],
-    ),
+    turnContexts: [
+      ...pluginUserPromptContributions.flatMap((contribution) =>
+        contribution.context ? [contribution.context] : [],
+      ),
+      ...(userCustomization
+        ? [userCustomizationTurnContext(userCustomization)]
+        : []),
+    ],
     userContentParts,
   };
 }

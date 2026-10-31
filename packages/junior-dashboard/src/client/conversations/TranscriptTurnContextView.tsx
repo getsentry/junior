@@ -1,4 +1,10 @@
-import { Brain, Braces, ChevronRight, Layers } from "lucide-react";
+import {
+  Brain,
+  Braces,
+  ChevronRight,
+  Layers,
+  SlidersHorizontal,
+} from "lucide-react";
 import {
   createContext,
   useContext,
@@ -19,7 +25,11 @@ import {
 } from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
-import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
+import {
+  memoryRecallContent,
+  userCustomizationContent,
+  type MemoryRecallContent,
+} from "./turnContext";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
@@ -159,26 +169,27 @@ function TurnContextList(props: { contexts: TranscriptViewTurnContext[] }) {
 
 function TurnContext(props: { context: TranscriptViewTurnContext }) {
   const memory = memoryRecallContent(props.context);
+  const customization = memory
+    ? undefined
+    : userCustomizationContent(props.context);
+  const Icon = memory ? Brain : customization ? SlidersHorizontal : Braces;
+  const title = memory
+    ? "Recalled memories"
+    : customization
+      ? "User customization"
+      : props.context.pluginName;
 
   return (
     <section className="border-b border-dashboard-border-strong py-5 last:border-b-0">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          {memory ? (
-            <Brain
-              aria-hidden="true"
-              className="shrink-0 text-dashboard-accent-text/60"
-              size={15}
-            />
-          ) : (
-            <Braces
-              aria-hidden="true"
-              className="shrink-0 text-dashboard-accent-text/60"
-              size={15}
-            />
-          )}
+          <Icon
+            aria-hidden="true"
+            className="shrink-0 text-dashboard-accent-text/60"
+            size={15}
+          />
           <h3 className="m-0 truncate text-sm font-semibold text-dashboard-text">
-            {memory ? "Recalled memories" : props.context.pluginName}
+            {title}
           </h3>
         </div>
         <span className="shrink-0 text-xs text-dashboard-text-muted">
@@ -191,10 +202,29 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
           loadedAt={props.context.loadedAt}
           memories={memory.memories}
         />
+      ) : customization ? (
+        <UserCustomization
+          loadedAt={props.context.loadedAt}
+          text={customization.text}
+        />
       ) : (
         <GenericContext context={props.context} />
       )}
     </section>
+  );
+}
+
+function UserCustomization(props: { loadedAt: string; text: string }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
+      <div className="whitespace-pre-wrap px-3 py-3 text-sm leading-6 text-dashboard-text">
+        <HighlightText text={props.text} />
+      </div>
+      <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
+        Saved by the sender · Loaded{" "}
+        {formatMessageTimestamp(Date.parse(props.loadedAt))}
+      </p>
+    </div>
   );
 }
 
