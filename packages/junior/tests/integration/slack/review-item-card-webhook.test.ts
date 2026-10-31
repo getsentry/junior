@@ -1,5 +1,4 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
@@ -7,7 +6,7 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
-import { juniorIdentities, juniorReviewItemSlackCards } from "@/db/schema";
+import { juniorIdentities } from "@/db/schema";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
   SLACK_SIGNING_SECRET,
@@ -211,27 +210,6 @@ describe("Slack webhook: Review item cards", () => {
       "junior_review_item:dismiss",
     ]);
 
-    // A sync that stopped after its claim leaves a card row with no card.
-    // A later sync takes the claim over and posts the card.
-    await getDb()
-      .update(juniorReviewItemSlackCards)
-      .set({ messageTs: "posting:0" })
-      .where(eq(juniorReviewItemSlackCards.conversationId, OTHER_THREAD));
-    await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed again.",
-      assignees: ["everyone"],
-      dedupe_key: "release:1.2.3",
-      request: SHIP_REQUEST,
-      conversation_ids: [OTHER_THREAD],
-    });
-    expect(
-      slackApiOutbox.messages().map((post) => post.params.channel),
-    ).toHaveLength(3);
-    expect(slackApiOutbox.messages()[2]?.params.channel).toBe("C456");
-
-    const updatesBeforeClicks = slackApiOutbox.calls("chat.update").length;
     // Two fast clicks both see an open item, but only one adds a Turn.
     await Promise.all([
       click({
@@ -277,9 +255,7 @@ describe("Slack webhook: Review item cards", () => {
     expect(other?.messages[0]?.input.text).toContain("answered review item");
 
     // Both cards lose their controls and show the answer.
-    const updates = slackApiOutbox
-      .calls("chat.update")
-      .slice(updatesBeforeClicks);
+    const updates = slackApiOutbox.calls("chat.update");
     expect(updates.slice(0, 2).map((update) => update.params.channel)).toEqual(
       expect.arrayContaining(["C123", "C456"]),
     );

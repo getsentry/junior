@@ -116,10 +116,9 @@ each card, so Junior can change it in place.
   can no longer show the item loses its content.
 - Cards are optional UI. A Slack failure is logged and does not fail the
   change.
-- A sync claims the card row before it posts. So two syncs cannot post two
-  cards, and each posted card has a row that later syncs change. A claim
-  stores the time it started. After one minute, another sync can take over
-  a claim whose sync failed or stopped.
+- A sync posts the card, then saves its row. When two syncs post in the
+  same thread, the first row wins and the other sync removes its card. A
+  card whose row cannot be saved is removed too, so every card changes.
 
 The card uses the `requestUserInput` controls. A request with one `choice`
 field shows one button per option. Other requests show an Answer button that
