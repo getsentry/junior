@@ -1,21 +1,28 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 
+import {
+  USER_CUSTOMIZATION_MAX_CHARS,
+  userCustomizationSchema,
+} from "@sentry/junior/api/schema";
 import {
   dashboardIdentitySchema,
   type DashboardIdentity,
 } from "../../api/schema";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { useDocumentTitle } from "../documentTitle";
-import { patch } from "../http";
+import { DashboardApiError, fetchDashboardJson, patch, put } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
+const userCustomizationQueryKey = ["dashboard", "user-customization"] as const;
+const USER_CUSTOMIZATION_PATH = "/api/user-customization";
 
 type SettingsPageProps = {
   identity: DashboardIdentity;
@@ -97,7 +104,100 @@ export function SettingsPage({ identity }: SettingsPageProps) {
             </div>
           </Card>
         </form>
+        <CustomizationForm />
       </section>
     </div>
+  );
+}
+
+/**
+ * Let the user save text that changes how the agent replies to them. The
+ * server returns 404 when the app does not enable this experiment.
+ */
+function CustomizationForm() {
+  const queryClient = useQueryClient();
+  const [text, setText] = useState("");
+  const customizationQuery = useQuery({
+    queryKey: userCustomizationQueryKey,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        userCustomizationSchema,
+        USER_CUSTOMIZATION_PATH,
+        signal,
+      ),
+    retry: false,
+  });
+  const savedText = customizationQuery.data?.customization;
+  useEffect(() => {
+    if (savedText !== undefined) setText(savedText);
+  }, [savedText]);
+  const save = useMutation({
+    mutationFn: (customization: string) =>
+      put(userCustomizationSchema, USER_CUSTOMIZATION_PATH, { customization }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(userCustomizationQueryKey, updated);
+    },
+  });
+  if (
+    customizationQuery.error instanceof DashboardApiError &&
+    customizationQuery.error.status === 404
+  ) {
+    return null;
+  }
+  if (savedText === undefined) {
+    return customizationQuery.isError ? (
+      <InlineError className="mt-6">
+        Could not load your customization.
+      </InlineError>
+    ) : null;
+  }
+  const canSave =
+    text.trim() !== savedText &&
+    text.trim().length <= USER_CUSTOMIZATION_MAX_CHARS &&
+    !save.isPending;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (canSave) save.mutate(text.trim());
+  }
+
+  return (
+    <form className="mt-6" onSubmit={submit}>
+      <Card className="mb-0" padding="md" variant="raised">
+        <h2 className="m-0 text-lg font-bold">Customization</h2>
+        <Field className="mt-5">
+          <FieldLabel htmlFor="user-customization">
+            How should replies to you change?
+          </FieldLabel>
+          <Textarea
+            id="user-customization"
+            maxLength={USER_CUSTOMIZATION_MAX_CHARS}
+            onChange={(event) => {
+              setText(event.target.value);
+              if (save.isError || save.isSuccess) save.reset();
+            }}
+            placeholder="Keep replies short and simple."
+            value={text}
+          />
+          <FieldDescription>
+            Added to each message you send. Do not put secrets here. (
+            {text.trim().length}/{USER_CUSTOMIZATION_MAX_CHARS})
+          </FieldDescription>
+        </Field>
+        <div className="mt-5 flex items-center gap-3">
+          <Button disabled={!canSave} type="submit">
+            {save.isPending ? "Saving…" : "Save customization"}
+          </Button>
+          {save.isSuccess ? (
+            <p className="m-0 text-sm text-emerald-300">Changes saved.</p>
+          ) : null}
+          {save.isError ? (
+            <InlineError>
+              Could not save your customization. Try again.
+            </InlineError>
+          ) : null}
+        </div>
+      </Card>
+    </form>
   );
 }

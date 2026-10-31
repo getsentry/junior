@@ -24,6 +24,8 @@ import {
   getPluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   hasRuntimeTurnContext,
@@ -441,6 +443,16 @@ function isUserContentPart(value: unknown): value is UserContentPart {
   );
 }
 
+// Load the saved text of the person who sent this Turn, so each person in a
+// shared thread gets only their own customization.
+async function loadUserCustomization(
+  context: Pick<ToolRuntimeContext, "resolveActorIdentity">,
+): Promise<string | undefined> {
+  if (!isExperimentalFeatureEnabled("user-customization")) return undefined;
+  const user = (await context.resolveActorIdentity?.())?.user;
+  return user ? await readUserCustomization(user.id) : undefined;
+}
+
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
 function checkpointedPrompt(args: {
@@ -595,11 +607,16 @@ export async function assemblePrompt(args: {
           conversationId: args.toolRuntimeContext.conversationId,
           turnId: args.turnId,
         });
+  const userCustomization =
+    !shouldPromptAgent || replayedPrompt || !isUserActor(args.currentActor)
+      ? undefined
+      : await loadUserCustomization(args.toolRuntimeContext);
   const turnContextPrompt =
     needsBootstrapContextForPrompt ||
     pluginUserPromptContributions.length > 0 ||
     (conversationNotes?.length ?? 0) > 0 ||
-    disabledTools.length > 0
+    disabledTools.length > 0 ||
+    userCustomization
       ? buildTurnContextPrompt({
           availableSkills: args.availableSkills,
           activeMcpCatalogs: args.activeMcpCatalogs,
@@ -608,6 +625,7 @@ export async function assemblePrompt(args: {
           includeSessionContext: needsBootstrapContextForPrompt,
           pluginPromptContributions: pluginUserPromptContributions,
           toolGuidance: args.toolGuidance,
+          userCustomization,
           runtime: {
             conversationId: args.spanContext.conversationId,
             slackConversation: args.run.slackConversation,

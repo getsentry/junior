@@ -190,6 +190,10 @@ const app = await createApp({
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
     "operator-tools": true,
+    // Per-user customization text, edited on the dashboard Settings page or
+    // with the updateUserCustomization tool. Junior adds it to each Turn of
+    // that user as <user-customization>.
+    "user-customization": true,
   },
 });
 ```
