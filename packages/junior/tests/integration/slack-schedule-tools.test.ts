@@ -1726,17 +1726,20 @@ describe("Slack schedule tools", () => {
     });
 
     // An ID or dashboard URL finds the requester's task from any conversation.
-    const byId = await executeTool(
-      createSlackScheduleListAutomationsTool(
-        createContext({ channelId: "CTARGET" }),
-      ),
-      {
-        query: `https://junior.example/automations/${mine.automation.id}`,
-      },
-    );
-    expect(byId.automations.map((task: { id: string }) => task.id)).toEqual([
+    for (const query of [
       mine.automation.id,
-    ]);
+      `https://junior.example/automations/${mine.automation.id}`,
+    ]) {
+      const byId = await executeTool(
+        createSlackScheduleListAutomationsTool(
+          createContext({ channelId: "CTARGET" }),
+        ),
+        { query },
+      );
+      expect(byId.automations.map((task: { id: string }) => task.id)).toEqual([
+        mine.automation.id,
+      ]);
+    }
   });
 
   it("updates destination to here for a creator-owned task", async () => {
