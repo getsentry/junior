@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
@@ -11,9 +13,11 @@ import {
   type ReviewItemAgentScope,
 } from "@/chat/review-items/access";
 import {
+  automationCreatorUserId,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
   resolveAssignees,
+  type ResolvedAssignees,
 } from "@/chat/review-items/assignees";
 import {
   closeReviewItem,
@@ -34,11 +38,11 @@ import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request"
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
-/** Deferred tool catalog source for Review items. */
+/** Deferred tool catalog source for the Review item tools after add. */
 export const REVIEW_DESK_TOOL_SOURCE = {
   id: "review-desk",
   description:
-    "Add, update, and search Review items: work on the review desk that needs a person.",
+    "Update and search Review items: work on the review desk that needs a person.",
 } as const;
 
 const DEFAULT_LIMIT = 10;
@@ -83,6 +87,23 @@ type ReviewItemToolContext = Pick<
   ToolRuntimeContext,
   "conversationId" | "resolveActorIdentity" | "source"
 >;
+
+/**
+ * Pick the assignees of a new item when the agent names none: the User of
+ * the Actor, or else the creator of the Automation of this run. A Slack
+ * Actor without a Junior User gets an item with no assignees, so that the
+ * agent can still ask; any person in the thread can then answer it.
+ */
+async function defaultAssignees(
+  scope: ReviewItemAgentScope,
+): Promise<ResolvedAssignees> {
+  const userId =
+    scope.user?.id ??
+    (scope.reader.automationId
+      ? await automationCreatorUserId(getDb(), scope.reader.automationId)
+      : undefined);
+  return { everyone: false, userIds: userId ? [userId] : [] };
+}
 
 function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "action" && !hasRequest) {
@@ -148,10 +169,7 @@ function subjectInput(
 /** Create the tool that adds a Review item or updates the open one. */
 export function createAddReviewItemTool(context: ReviewItemToolContext) {
   return zodTool({
-    description:
-      "Add an item to the review desk when work needs a person. A `notice` only tells them something. An `action` asks for an answer with a `request`: a question and 1-4 fields, the same shape as requestUserInput. The answer arrives later as a message from the person who answered, so do not wait for it. The current Conversation is always linked. If an open item has the same `dedupe_key`, this updates that item instead of adding another.",
-    exposure: "deferred",
-    source: REVIEW_DESK_TOOL_SOURCE,
+    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Ask only for a decision that is truly the person's, such as their judgment, access, or approval. Make small decisions yourself. Write the question so it stands alone: a person who sees only the card must understand it. Put the recommended option first and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, or to the Automation creator in an Automation run. The current Conversation is always linked. The answer arrives later as a message from the person who answered. A reply that the assignee types in the thread also closes the item. If your next step needs the answer, end the Turn now: the card is your reply, so end with exactly ${NO_REPLY_MARKER}, or finish the Automation run. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -163,14 +181,21 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         kind: z.enum(["notice", "action"]),
         title: titleSchema,
         body: bodySchema,
-        assignees: assigneesSchema,
+        assignees: assigneesSchema
+          .nullable()
+          .optional()
+          .describe(
+            "Who can act on the item. Omit to assign the default person. Each entry is `everyone`, an email, or a Slack mention such as `<@U123>`. Everyone means any person who can see the item.",
+          ),
         dedupe_key: z
           .string()
           .trim()
           .min(1)
           .max(200)
+          .nullable()
+          .optional()
           .describe(
-            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run.",
+            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run. Omit for a one-time question.",
           ),
         request: userInputRequestSchema
           .nullable()
@@ -184,13 +209,17 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,
-    execute: async (input) => {
+    execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
+      // A retry of the same tool call keeps the same key, so it updates the
+      // item that the first attempt added.
+      const dedupeKey =
+        input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`;
       const existing = await getOpenReviewItemByDedupeKey(
         db,
-        input.dedupe_key,
+        dedupeKey,
         scope.tenant,
       );
       if (
@@ -224,11 +253,18 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         tenant: existing ? existing.tenant : scope.tenant,
         visibility,
       });
-      const assignees = await resolveAssignees(
-        db,
-        input.assignees,
-        existing ? existing.tenant : scope.tenant,
-      );
+      const assignees = input.assignees
+        ? await resolveAssignees(
+            db,
+            input.assignees,
+            existing ? existing.tenant : scope.tenant,
+          )
+        : existing
+          ? {
+              everyone: existing.assignedToEveryone,
+              userIds: existing.assignees.map((assignee) => assignee.userId),
+            }
+          : await defaultAssignees(scope);
       await requireReviewItemAssignees({
         assignees,
         automationId: existing
@@ -273,7 +309,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       const item = await insertReviewItem(db, {
         ...content,
         addedByConversationId: context.conversationId,
-        dedupeKey: input.dedupe_key,
+        dedupeKey,
         nowMs: Date.now(),
         ...(scope.reader.automationId
           ? { automationId: scope.reader.automationId }

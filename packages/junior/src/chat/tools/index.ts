@@ -22,7 +22,6 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
-import { createRequestUserInputTool } from "@/chat/tools/runtime/request-user-input";
 import {
   createAddReviewItemTool,
   createSearchReviewItemsTool,
@@ -39,12 +38,8 @@ import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-l
 import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
-import {
-  getSlackToolContext,
-  isSlackMessageTurn,
-} from "@/chat/slack/tool-support/context";
+import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSlackUserInputShow } from "@/chat/slack/tools/user-input";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -357,33 +352,9 @@ export function createTools(
     }
   }
 
-  // Register in every Conversation so the cached tool list stays the same. A
-  // person must be there to answer: the dashboard renders the question from
-  // the transcript in a web Turn, and Slack posts buttons in a Slack message
-  // Turn. A click comes back as Slack input in the thread of the question.
-  // A child agent never asks: nobody sees its transcript, and an answer would
-  // go to the parent's thread. It reports the need to its parent instead.
-  const slackQuestionContext =
-    slackContext && isSlackMessageTurn(context) ? slackContext : undefined;
-  Object.assign(
-    tools,
-    disableTools(
-      {
-        requestUserInput: createRequestUserInputTool(
-          slackQuestionContext
-            ? createSlackUserInputShow(slackQuestionContext, state)
-            : undefined,
-        ),
-      },
-      context.parentConversationId
-        ? `A child agent cannot ask the person. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what you need.`
-        : context.source.kind === "web" || slackQuestionContext
-          ? undefined
-          : "It needs a Turn that a person started in Slack or the web dashboard.",
-    ),
-  );
-
   // Review items link to root Conversations, where a person can see them.
+  // `addReviewItem` is how the agent asks a person anything, so it is loaded
+  // in every root Turn. A child agent asks its parent instead.
   Object.assign(
     tools,
     disableTools(

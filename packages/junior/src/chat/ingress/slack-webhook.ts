@@ -65,12 +65,11 @@ import {
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
-import { slackMention } from "@/chat/slack/mrkdwn";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
-import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
+import { readActorIdentity } from "@/chat/plugins/viewer";
+import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -617,21 +616,33 @@ async function routeParsedMessage(args: {
     await persist();
     return;
   }
-  // A message to Junior answers an open question in its thread, like a click.
-  await persistSlackUserInputReply({
-    channelId: args.event.channel,
-    claimedBy: message.author.userId,
-    isSaved: (error) =>
-      error instanceof SlackEventPersistenceError && error.saved,
-    note: (request) =>
-      slackUserInputAnswerNote({
-        request,
-        who: slackMention(message.author.userId),
-      }),
-    persist,
-    state: args.state,
-    threadTs: args.event.thread_ts,
-  });
+  // A message from a person to Junior answers the open questions that the
+  // agent asked in this Conversation, like a click on their cards.
+  const closeAnswered = async () => {
+    if (message.author.isBot === true) return;
+    await closeReviewItemsAnsweredByReply({
+      conversationId,
+      getSlackAdapter: () => args.adapter,
+      queue: args.queue,
+      resolveUser: async () => {
+        const teamId = args.installation.teamId;
+        const userId = parseActorUserId(message.author.userId);
+        if (!teamId || !userId) return undefined;
+        return (await readActorIdentity(createSlackActor(teamId, userId, null)))
+          ?.user;
+      },
+    });
+  };
+  try {
+    await persist();
+  } catch (error) {
+    // A failed queue wake can follow a saved reply. The reply still answers.
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      await closeAnswered();
+    }
+    throw error;
+  }
+  await closeAnswered();
 }
 
 async function handleSlackEvent(args: {
