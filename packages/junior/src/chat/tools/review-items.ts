@@ -1,17 +1,23 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import {
+  readConversationAccessFromSql,
+  type ProviderTenant,
+} from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
 import {
+  conversationParticipantUserIds,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
   resolveAssignees,
+  type ResolvedAssignees,
 } from "@/chat/review-items/assignees";
 import {
   canReadReviewItem,
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
   getReviewItem,
+  isSameTenant,
   saveReviewItem,
   searchReviewItems,
   updateReviewItemContent,
@@ -77,7 +83,11 @@ type ReviewItemToolContext = Pick<
 >;
 
 interface ActorScope {
+  /** Whether the current Conversation is not public. */
+  inPrivateConversation: boolean;
   reader: ReviewItemReader;
+  /** Provider tenant of the current Conversation. */
+  tenant?: ProviderTenant;
   user?: User;
 }
 
@@ -88,87 +98,104 @@ async function actorScope(context: ReviewItemToolContext): Promise<ActorScope> {
     context.source.kind === "event_automation"
       ? context.source.automationId
       : undefined;
+  const current = (
+    await readConversationAccessFromSql(getDb(), [context.conversationId], user)
+  ).get(context.conversationId);
+  const tenant = current?.tenant;
   return {
+    inPrivateConversation: current?.visibility !== "public",
     reader: {
       conversationId: context.conversationId,
       ...(automationId ? { automationId } : undefined),
+      ...(tenant ? { tenants: [tenant] } : undefined),
       ...(user ? { userId: user.id } : undefined),
     },
+    ...(tenant ? { tenant } : undefined),
     ...(user ? { user } : undefined),
   };
 }
 
 /**
- * Check the Conversations to link and return the item visibility. The
- * current Conversation and the links that the item already has are always
- * allowed. A new link must be a Conversation that the Actor can see.
+ * Whether the agent can change an item. A private item, and any item seen
+ * from a private Conversation, can change only from the Conversation or
+ * Automation that added it. This keeps private content in its Conversation.
  */
-async function linkedVisibility(
-  scope: ActorScope,
-  conversationIds: readonly string[],
-  allowedIds: ReadonlySet<string>,
-): Promise<ReviewItemVisibility> {
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    conversationIds,
-    scope.user,
-  );
-  let visibility: ReviewItemVisibility = "public";
-  for (const conversationId of conversationIds) {
-    const conversation = access.get(conversationId);
-    if (
-      !conversation ||
-      (!allowedIds.has(conversationId) && !conversation.canViewPrivateContent)
-    ) {
-      throw new ToolInputError(`Conversation ${conversationId} is not found.`);
-    }
-    if (conversation.visibility !== "public") visibility = "private";
+function canChange(item: ReviewItem, scope: ActorScope): boolean {
+  if (!scope.inPrivateConversation && item.visibility === "public") {
+    return true;
   }
-  return visibility;
+  return (
+    item.addedByConversationId === scope.reader.conversationId ||
+    (scope.reader.automationId !== undefined &&
+      item.automationId === scope.reader.automationId)
+  );
 }
 
 /**
- * Stop a dedupe key from moving private content to Conversations that the
- * agent did not choose. An update keeps every link of the open item, so new
- * content from a private Conversation would reach the readers of those
- * links. Links from the same Automation are allowed: its earlier runs added
- * them.
+ * Check the Conversations to link. Every link must be in the tenant of the
+ * item. The current Conversation and the links that the item already has
+ * are always allowed. A private item gets no other links. A public item can
+ * get other links only to public Conversations.
  */
-async function requireNoPrivateReach(
-  scope: ActorScope,
-  context: ReviewItemToolContext,
-  existing: ReviewItem,
-  input: { conversation_ids?: readonly string[] | null },
-): Promise<void> {
-  if (
-    scope.reader.automationId &&
-    existing.automationId === scope.reader.automationId
-  ) {
-    return;
-  }
-  const chosen = new Set([
-    context.conversationId,
-    ...(input.conversation_ids ?? []),
-  ]);
-  if (existing.conversationIds.every((id) => chosen.has(id))) return;
+async function requireLinks(args: {
+  allowedIds: ReadonlySet<string>;
+  conversationIds: readonly string[];
+  scope: ActorScope;
+  tenant: ProviderTenant | undefined;
+  visibility: ReviewItemVisibility;
+}): Promise<void> {
   const access = await readConversationAccessFromSql(
     getDb(),
-    [context.conversationId],
-    scope.user,
+    args.conversationIds,
+    args.scope.user,
   );
-  if (access.get(context.conversationId)?.visibility === "public") return;
-  throw new ToolInputError(
-    "Another open item uses this `dedupe_key` in other Conversations. Use a different key.",
-  );
+  for (const conversationId of args.conversationIds) {
+    const conversation = access.get(conversationId);
+    if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
+      throw new ToolInputError(`Conversation ${conversationId} is not found.`);
+    }
+    if (args.allowedIds.has(conversationId)) continue;
+    if (args.visibility === "private") {
+      throw new ToolInputError(
+        "A private item links only to the Conversation that added it.",
+      );
+    }
+    if (conversation.visibility !== "public") {
+      throw new ToolInputError(
+        conversation.canViewPrivateContent
+          ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
+          : `Conversation ${conversationId} is not found.`,
+      );
+    }
+  }
 }
 
-function requireEveryoneAllowed(
+/**
+ * Check who a private item can go to. It cannot go to Everyone. Each User
+ * must be the current Actor or a person in the current Conversation.
+ */
+async function requireAssigneesAllowed(
+  scope: ActorScope,
+  conversationId: string,
   visibility: ReviewItemVisibility,
-  everyone: boolean,
-): void {
-  if (visibility === "private" && everyone) {
+  assignees: ResolvedAssignees,
+): Promise<void> {
+  if (visibility === "public") return;
+  if (assignees.everyone) {
     throw new ToolInputError(
-      "An item linked to a private Conversation cannot be assigned to Everyone. Assign Users instead.",
+      "A private item cannot be assigned to Everyone. Assign Users instead.",
+    );
+  }
+  const others = assignees.userIds.filter((id) => id !== scope.user?.id);
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    conversationId,
+    others,
+  );
+  const outside = others.filter((id) => !inConversation.has(id));
+  if (outside.length > 0) {
+    throw new ToolInputError(
+      "A private item can be assigned only to people in its Conversation.",
     );
   }
 }
@@ -278,11 +305,20 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       const db = getDb();
       const scope = await actorScope(context);
       const existing = await getOpenReviewItemByDedupeKey(db, input.dedupe_key);
-      if (existing && !canReadReviewItem(existing, scope.reader)) {
+      if (
+        existing &&
+        (!canReadReviewItem(existing, scope.reader) ||
+          !canChange(existing, scope))
+      ) {
         throw new ToolInputError(
           "Another open item uses this `dedupe_key`. Use a different key.",
         );
       }
+      // An item from a private Conversation is private. It stays private.
+      const visibility: ReviewItemVisibility =
+        scope.inPrivateConversation || existing?.visibility === "private"
+          ? "private"
+          : "public";
       const conversationIds = [
         ...new Set([
           context.conversationId,
@@ -290,16 +326,23 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           ...(input.conversation_ids ?? []),
         ]),
       ];
-      if (existing) {
-        await requireNoPrivateReach(scope, context, existing, input);
-      }
-      const visibility = await linkedVisibility(
-        scope,
+      await requireLinks({
+        allowedIds: new Set([
+          context.conversationId,
+          ...(existing?.conversationIds ?? []),
+        ]),
         conversationIds,
-        new Set([context.conversationId, ...(existing?.conversationIds ?? [])]),
-      );
+        scope,
+        tenant: existing ? existing.tenant : scope.tenant,
+        visibility,
+      });
       const assignees = await resolveAssignees(db, input.assignees);
-      requireEveryoneAllowed(visibility, assignees.everyone);
+      await requireAssigneesAllowed(
+        scope,
+        context.conversationId,
+        visibility,
+        assignees,
+      );
       const { created, item } = await saveReviewItem(db, {
         addedByConversationId: context.conversationId,
         assignedToEveryone: assignees.everyone,
@@ -314,6 +357,7 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         ...(scope.reader.automationId
           ? { automationId: scope.reader.automationId }
           : undefined),
+        ...(scope.tenant ? { tenant: scope.tenant } : undefined),
         ...(input.request ? { request: input.request } : undefined),
         ...(input.subject
           ? { subject: subjectInput(input.subject) }
@@ -371,6 +415,11 @@ export function createUpdateReviewItemTool(context: ReviewItemToolContext) {
       if (item.status !== "open") {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
+      if (!canChange(item, scope)) {
+        throw new ToolInputError(
+          "Only the Conversation or Automation that added this item can change it.",
+        );
+      }
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
       }
@@ -383,18 +432,32 @@ export function createUpdateReviewItemTool(context: ReviewItemToolContext) {
             "An action item needs at least one linked Conversation.",
           );
         }
-        const visibility = await linkedVisibility(
-          scope,
+        // This tool never changes visibility.
+        const visibility = item.visibility;
+        await requireLinks({
+          allowedIds: new Set([
+            context.conversationId,
+            ...item.conversationIds,
+          ]),
           conversationIds,
-          new Set([context.conversationId, ...item.conversationIds]),
-        );
+          scope,
+          tenant: item.tenant,
+          visibility,
+        });
         const assignees = input.assignees
           ? await resolveAssignees(db, input.assignees)
           : {
               everyone: item.assignedToEveryone,
               userIds: item.assignees.map((assignee) => assignee.userId),
             };
-        requireEveryoneAllowed(visibility, assignees.everyone);
+        if (input.assignees) {
+          await requireAssigneesAllowed(
+            scope,
+            context.conversationId,
+            visibility,
+            assignees,
+          );
+        }
         const updated = await updateReviewItemContent(db, {
           assignedToEveryone: assignees.everyone,
           assigneeUserIds: assignees.userIds,

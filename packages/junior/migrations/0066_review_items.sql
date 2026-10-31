@@ -25,6 +25,8 @@ CREATE TABLE "junior_review_items" (
 	"subject_title" text,
 	"subject_url" text,
 	"added_by_conversation_id" text NOT NULL,
+	"provider" text,
+	"provider_tenant_id" text,
 	"automation_id" text,
 	"closed_at" timestamp with time zone,
 	"closed_by_user_id" text,
@@ -33,6 +35,7 @@ CREATE TABLE "junior_review_items" (
 	"updated_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "junior_review_items_kind_check" CHECK (("junior_review_items"."kind" = 'notice' and "junior_review_items"."request" is null and "junior_review_items"."answer" is null) or ("junior_review_items"."kind" = 'action' and "junior_review_items"."request" is not null)),
 	CONSTRAINT "junior_review_items_status_check" CHECK (("junior_review_items"."status" = 'open' and "junior_review_items"."closed_at" is null) or ("junior_review_items"."status" in ('done', 'dismissed') and "junior_review_items"."closed_at" is not null)),
+	CONSTRAINT "junior_review_items_tenant_check" CHECK (("junior_review_items"."provider" is null) = ("junior_review_items"."provider_tenant_id" is null)),
 	CONSTRAINT "junior_review_items_visibility_check" CHECK ("junior_review_items"."visibility" = 'public' or not "junior_review_items"."assigned_to_everyone")
 );
 --> statement-breakpoint

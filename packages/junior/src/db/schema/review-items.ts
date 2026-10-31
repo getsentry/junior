@@ -30,7 +30,10 @@ export const juniorReviewItems = pgTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<"notice" | "action">().notNull(),
     status: text("status").$type<"open" | "done" | "dismissed">().notNull(),
-    /** `private` when a linked Conversation is not public. */
+    /**
+     * `private` when the Conversation that added it is not public. A private
+     * item stays private and links only to that Conversation.
+     */
     visibility: text("visibility").$type<"public" | "private">().notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
@@ -45,6 +48,12 @@ export const juniorReviewItems = pgTable(
     subjectUrl: text("subject_url"),
     /** Conversation of the agent that added the item. */
     addedByConversationId: text("added_by_conversation_id").notNull(),
+    /**
+     * Provider tenant, such as a Slack workspace, of the Conversation that
+     * added the item. A public item is visible only inside it.
+     */
+    provider: text("provider"),
+    providerTenantId: text("provider_tenant_id"),
     automationId: text("automation_id").references(() => juniorAutomations.id, {
       onDelete: "set null",
     }),
@@ -62,6 +71,10 @@ export const juniorReviewItems = pgTable(
     check(
       "junior_review_items_status_check",
       sql`(${table.status} = 'open' and ${table.closedAt} is null) or (${table.status} in ('done', 'dismissed') and ${table.closedAt} is not null)`,
+    ),
+    check(
+      "junior_review_items_tenant_check",
+      sql`(${table.provider} is null) = (${table.providerTenantId} is null)`,
     ),
     check(
       "junior_review_items_visibility_check",

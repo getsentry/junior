@@ -1,5 +1,5 @@
 {
-  "id": "26c4b4af-b30d-4602-88b3-e8f6a6b5f40d",
+  "id": "110d2b53-92f1-4589-b0d9-e25adbd149e2",
   "prevId": "760bea07-1830-4d2a-9fcd-f265d72ab016",
   "version": "7",
   "dialect": "postgresql",
@@ -3396,6 +3396,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_tenant_id": {
+          "name": "provider_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "automation_id": {
           "name": "automation_id",
           "type": "text",
@@ -3559,6 +3571,10 @@
         "junior_review_items_status_check": {
           "name": "junior_review_items_status_check",
           "value": "(\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"closed_at\" is null) or (\"junior_review_items\".\"status\" in ('done', 'dismissed') and \"junior_review_items\".\"closed_at\" is not null)"
+        },
+        "junior_review_items_tenant_check": {
+          "name": "junior_review_items_tenant_check",
+          "value": "(\"junior_review_items\".\"provider\" is null) = (\"junior_review_items\".\"provider_tenant_id\" is null)"
         },
         "junior_review_items_visibility_check": {
           "name": "junior_review_items_visibility_check",

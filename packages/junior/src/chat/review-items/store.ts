@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorReviewItemAssignees,
@@ -49,6 +50,8 @@ export interface ReviewItem {
   request?: UserInputRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
+  /** Provider tenant of the Conversation that added the item. */
+  tenant?: ProviderTenant;
   title: string;
   body: string;
   updatedAt: Date;
@@ -145,6 +148,14 @@ async function hydrate(
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
       ...(row.request ? { request: row.request } : undefined),
+      ...(row.provider && row.providerTenantId
+        ? {
+            tenant: {
+              provider: row.provider,
+              providerTenantId: row.providerTenantId,
+            },
+          }
+        : undefined),
       ...(row.subjectId
         ? {
             subject: {
@@ -240,6 +251,7 @@ export async function saveReviewItem(
     automationId?: string;
     dedupeKey: string;
     nowMs: number;
+    tenant?: ProviderTenant;
   },
 ): Promise<{ created: boolean; item: ReviewItem }> {
   const now = new Date(input.nowMs);
@@ -253,6 +265,8 @@ export async function saveReviewItem(
         createdAt: now,
         dedupeKey: input.dedupeKey,
         id: randomUUID(),
+        provider: input.tenant?.provider ?? null,
+        providerTenantId: input.tenant?.providerTenantId ?? null,
         status: "open",
         updatedAt: now,
       })
@@ -352,13 +366,16 @@ export async function closeReviewItem(
 }
 
 /**
- * Who reads Review items. An item is visible when it is public, when the
- * reader is an assigned User, or when it is linked to the reader's
- * Conversation or added by the reader's Automation.
+ * Who reads Review items. An item is visible when it is public and its
+ * tenant is one of the reader's tenants, when the reader is an assigned
+ * User, or when it is linked to the reader's Conversation or added by the
+ * reader's Automation.
  */
 export interface ReviewItemReader {
   automationId?: string;
   conversationId?: string;
+  /** Provider tenants where the reader can see public items. */
+  tenants?: readonly ProviderTenant[];
   userId?: string;
 }
 
@@ -370,9 +387,32 @@ function linkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorReviewItemConversations} where ${juniorReviewItemConversations.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemConversations.conversationId} = ${conversationId})`;
 }
 
+/** Return whether two tenants are the same. Two missing tenants match. */
+export function isSameTenant(
+  a: ProviderTenant | undefined,
+  b: ProviderTenant | undefined,
+): boolean {
+  return (
+    a?.provider === b?.provider && a?.providerTenantId === b?.providerTenantId
+  );
+}
+
+function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
+  return tenants.map(
+    (tenant) =>
+      and(
+        eq(juniorReviewItems.visibility, "public"),
+        eq(juniorReviewItems.provider, tenant.provider),
+        eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+      )!,
+  );
+}
+
 function visibleTo(reader: ReviewItemReader): SQL {
+  // `or` of nothing is undefined, so `false` keeps the query closed.
   return or(
-    eq(juniorReviewItems.visibility, "public"),
+    sql`false`,
+    ...publicIn(reader.tenants ?? []),
     ...(reader.userId ? [assignedTo(reader.userId)] : []),
     ...(reader.conversationId ? [linkedTo(reader.conversationId)] : []),
     ...(reader.automationId
@@ -387,7 +427,11 @@ export function canReadReviewItem(
   reader: ReviewItemReader,
 ): boolean {
   return (
-    item.visibility === "public" ||
+    (item.visibility === "public" &&
+      item.tenant !== undefined &&
+      (reader.tenants ?? []).some((tenant) =>
+        isSameTenant(tenant, item.tenant),
+      )) ||
     (reader.userId !== undefined &&
       item.assignees.some((assignee) => assignee.userId === reader.userId)) ||
     (reader.conversationId !== undefined &&

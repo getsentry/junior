@@ -1,9 +1,9 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorIdentities } from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 
 /** Text that the agent writes to assign Everyone. */
 export const EVERYONE_ASSIGNEE = "everyone";
@@ -84,4 +84,26 @@ export async function resolveAssignees(
       ),
     ],
   };
+}
+
+/** Return which of the Users take part in one root Conversation. */
+export async function conversationParticipantUserIds(
+  db: JuniorDatabase,
+  rootConversationId: string,
+  userIds: readonly string[],
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .select({ userId: juniorConversationParticipants.userId })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          rootConversationId,
+        ),
+        inArray(juniorConversationParticipants.userId, [...userIds]),
+      ),
+    );
+  return new Set(rows.map((row) => row.userId));
 }

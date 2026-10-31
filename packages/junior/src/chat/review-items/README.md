@@ -28,24 +28,29 @@ behavior.
   item. The update replaces the content and the assignees. It keeps every
   linked Conversation and adds the new one.
 - After an item closes, the same key can start a new item.
-- An agent in a private Conversation cannot reuse the key of an item that
-  links other Conversations it did not name. The update would show the
-  private content to the readers of those links. A later run of the same
-  Automation can still reuse its key.
+- The key follows the same rules as an update. An agent that cannot change
+  the open item must use a different key.
 
 ## Visibility
 
-- An item is `private` when one of its linked Conversations is not public. It
-  is `public` otherwise. Core sets this each time the links change.
-- A private item cannot be assigned to Everyone.
-- A reader can see an item when it is public, when the reader is an assigned
-  User, when it is linked to the reader's Conversation, or when the reader's
-  Automation added it. `canReadReviewItem` and the search query in `store.ts`
-  apply the same rule.
-- An agent can link another Conversation only when its Actor can see that
-  Conversation.
-- An agent can change only items that it can see. It can never submit the
-  answer to an action item. Only an assignee can submit.
+- An item is `private` when a Conversation that added or updated it is not
+  public. It is `public` otherwise. No change makes a private item public.
+- A private item links only to the Conversation that added it, and to later
+  runs of the same Automation. It cannot be assigned to Everyone. Each
+  assigned User must be the Actor or a person in that Conversation.
+- Each item stores the provider tenant, such as the Slack workspace, of the
+  Conversation that added it. Every link must be in that tenant. A public
+  item is visible only to readers in the same tenant.
+- A reader can see an item when it is public in the reader's tenant, when the
+  reader is an assigned User, when it is linked to the reader's Conversation,
+  or when the reader's Automation added it. `canReadReviewItem` and the
+  search query in `store.ts` apply the same rule.
+- A public item can link other Conversations only when they are public.
+- An agent can change a private item, or any item from a private
+  Conversation, only from the Conversation or Automation that added it. This
+  keeps private content out of other Conversations.
+- An agent can never submit the answer to an action item. Only an assignee
+  can submit.
 
 ## Tools
 

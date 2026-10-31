@@ -43,10 +43,11 @@ async function conversation(
   conversationId: string,
   channelId: string,
   visibility: "public" | "private",
+  teamId = "T123",
 ): Promise<void> {
   await getConversationStore().recordActivity({
     conversationId,
-    destination: { platform: "slack", teamId: "T123", channelId },
+    destination: { platform: "slack", teamId, channelId },
     nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
     source: "slack",
     visibility,
@@ -119,6 +120,7 @@ describe("review item tools", () => {
     });
 
     // A person in another public Conversation finds it by subject.
+    await conversation("slack:COTHER:1.000003", "COTHER", "public");
     const reader = tools({
       conversationId: "slack:COTHER:1.000003",
       resolveActorIdentity: asActor(ana),
@@ -131,6 +133,28 @@ describe("review item tools", () => {
     expect(
       (await execute(reader.search, { assignee: "ana@example.com" })).count,
     ).toBe(1);
+
+    // A public item stays inside its Slack workspace.
+    await conversation("slack:CFAR:1.000004", "CFAR", "public", "T999");
+    const outsider = tools({
+      conversationId: "slack:CFAR:1.000004",
+      resolveActorIdentity: asActor(undefined),
+      source: { kind: "slack" } as any,
+    });
+    expect((await execute(outsider.search, {})).count).toBe(0);
+    await expect(
+      execute(outsider.update, {
+        id: added.item.id,
+        status: "done",
+        reason: "not mine",
+      }),
+    ).rejects.toThrow("is not found");
+    await expect(
+      execute(first.update, {
+        id: added.item.id,
+        conversation_ids: ["slack:CPUB:1.000001", "slack:CFAR:1.000004"],
+      }),
+    ).rejects.toThrow("Conversation slack:CFAR:1.000004 is not found.");
   });
 
   it("keeps an item of a private Conversation for its assigned Users", async () => {
@@ -153,11 +177,42 @@ describe("review item tools", () => {
     await expect(
       execute(owner.add, { ...notice, assignees: ["everyone"] }),
     ).rejects.toThrow("cannot be assigned to Everyone");
+    // Ben never took part in the private Conversation.
+    await expect(
+      execute(owner.add, { ...notice, assignees: ["ben@example.com"] }),
+    ).rejects.toThrow("only to people in its Conversation");
+    await expect(
+      execute(owner.add, {
+        ...notice,
+        assignees: ["ana@example.com"],
+        conversation_ids: ["slack:CPUB:1.000002"],
+      }),
+    ).rejects.toThrow("links only to the Conversation that added it");
     const added = await execute(owner.add, {
       ...notice,
       assignees: ["ana@example.com"],
     });
     expect(added.item.visibility).toBe("private");
+    // Its own Conversation cannot make it public by changing its links.
+    await expect(
+      execute(owner.update, {
+        id: added.item.id,
+        conversation_ids: ["slack:CPUB:1.000002"],
+      }),
+    ).rejects.toThrow("links only to the Conversation that added it");
+    // Ana can read it from a public Conversation, but not change it there.
+    const anaInPublic = tools({
+      conversationId: "slack:CPUB:1.000002",
+      resolveActorIdentity: asActor(ana),
+      source: { kind: "slack" } as any,
+    });
+    expect((await execute(anaInPublic.search, {})).count).toBe(1);
+    await expect(
+      execute(anaInPublic.update, {
+        id: added.item.id,
+        conversation_ids: ["slack:CPUB:1.000002"],
+      }),
+    ).rejects.toThrow("Only the Conversation or Automation that added");
 
     // Ben is not assigned and his Conversation is not linked.
     const other = tools({
@@ -172,9 +227,9 @@ describe("review item tools", () => {
     await expect(
       execute(other.add, { ...notice, assignees: ["ben@example.com"] }),
     ).rejects.toThrow("Another open item uses this `dedupe_key`");
-    // A private Conversation cannot reuse the key of an item that other
-    // Conversations can read, because the update keeps their links.
-    await execute(other.add, {
+    // A private Conversation cannot write into a public item, by its key
+    // or by an update, because other Conversations read that item.
+    const shared = await execute(other.add, {
       ...notice,
       dedupe_key: "shared-key",
       assignees: ["everyone"],
@@ -186,6 +241,9 @@ describe("review item tools", () => {
         assignees: ["ana@example.com"],
       }),
     ).rejects.toThrow("Use a different key.");
+    await expect(
+      execute(owner.update, { id: shared.item.id, body: "Private detail." }),
+    ).rejects.toThrow("Only the Conversation or Automation that added");
     // Nor can he link a private Conversation that he cannot see.
     await expect(
       execute(other.add, {
