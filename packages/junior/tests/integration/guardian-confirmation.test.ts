@@ -16,7 +16,10 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import { getReviewItem } from "@/chat/review-items/store";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { createUpdateReviewItemTool } from "@/chat/tools/review-items";
+import {
+  createAddReviewItemTool,
+  createUpdateReviewItemTool,
+} from "@/chat/tools/review-items";
 import { juniorAutomations, juniorIdentities } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
@@ -233,12 +236,41 @@ describe("Guardian confirmation on the review desk", () => {
     const bob = await user("bob@example.com");
     const context = { conversationId, source: SLACK_SOURCE };
 
-    // An agent moves Ana's item to Bob, and Bob approves it.
     const id = await askedItemId(turn(context, ana), "preview-42");
-    const update = createUpdateReviewItemTool(
-      { ...context, resolveActorIdentity: async () => undefined },
-      () => queue,
-    );
+    const agentContext = {
+      ...context,
+      resolveActorIdentity: async () => undefined,
+    };
+    const update = createUpdateReviewItemTool(agentContext, () => queue);
+
+    // The answer goes only to the Conversation that asked. An agent cannot
+    // link another Conversation, by an update or by an add with the key.
+    const elsewhere = "slack:CRUN:3.000002";
+    await conversation(elsewhere, "public");
+    await expect(
+      update.execute!(
+        { id, conversation_ids: [conversationId, elsewhere] } as never,
+        {} as never,
+      ),
+    ).rejects.toThrow("stays linked only to the Conversation that asked");
+    const { dedupeKey } = (await getReviewItem(getDb(), id))!;
+    await expect(
+      createAddReviewItemTool(agentContext).execute!(
+        {
+          body: "Approve it.",
+          conversation_ids: [elsewhere],
+          dedupe_key: dedupeKey,
+          kind: "notice",
+          title: "Approve it.",
+        } as never,
+        {} as never,
+      ),
+    ).rejects.toThrow("Only Guardian uses this `dedupe_key`");
+    expect((await getReviewItem(getDb(), id))?.conversationIds).toEqual([
+      conversationId,
+    ]);
+
+    // An agent moves Ana's item to Bob, and Bob approves it.
     await update.execute!(
       { id, assignees: ["bob@example.com"] } as never,
       {} as never,

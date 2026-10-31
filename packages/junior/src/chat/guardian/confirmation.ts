@@ -42,6 +42,16 @@ const APPROVAL_USED_REASON = "The approved action ran.";
 const MAX_ACTION_CHARS = 180;
 const MAX_DESCRIPTION_CHARS = 600;
 const MAX_INPUT_CHARS = 2_000;
+const CONFIRMATION_KEY_PREFIX = "guardian:";
+
+/**
+ * Whether a dedupe key belongs to a Guardian confirmation item. Only core
+ * adds these items, and their links stay fixed, so an approval sends the
+ * answer of the approver only to the Conversation that asked.
+ */
+export function isActionConfirmationKey(dedupeKey: string): boolean {
+  return dedupeKey.startsWith(CONFIRMATION_KEY_PREFIX);
+}
 
 function truncate(text: string, max: number): string {
   const trimmed = text.trim();
@@ -84,7 +94,7 @@ function confirmationKey(
   const hash = createHash("sha256")
     .update(JSON.stringify([conversationId, owner, action]))
     .digest("hex");
-  return `guardian:${hash}`;
+  return `${CONFIRMATION_KEY_PREFIX}${hash}`;
 }
 
 /**
@@ -209,12 +219,8 @@ export async function requestActionConfirmation(
     ...rendered,
     assignedToEveryone: false,
     assigneeUserIds: assignees.userIds,
-    conversationIds: [
-      ...new Set([
-        context.conversationId,
-        ...(existing?.conversationIds ?? []),
-      ]),
-    ],
+    // Only the Conversation that asked gets the answer.
+    conversationIds: [context.conversationId],
     kind: "action",
     visibility,
   };

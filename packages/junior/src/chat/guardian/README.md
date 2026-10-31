@@ -70,9 +70,12 @@ The person confirms an `ask` on the review desk, not in a free-text reply.
   the proposal: the action, the tool, what the tool does, and the exact
   input. When the exact input does not fit in the body, core adds no item,
   so the approver always sees all of the input that they approve.
-- The item stays in the same Conversation. It links the current
+- The item stays in the same Conversation. It links only the current
   Conversation, so its card shows in the thread and the Conversation waits
   on the assignee. Visibility follows `review-items/access.ts`.
+- An agent cannot link another Conversation to the item, and it cannot add
+  an item with a Guardian dedupe key. So the answer of the approver goes
+  only to the Conversation that asked.
 - The dedupe key is a hash of the Conversation id, the owner, the tool, and
   the exact input. The owner is the Actor's User, or the Automation for an
   item that an Automation run added. A retry of the same blocked call

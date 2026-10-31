@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { isActionConfirmationKey } from "@/chat/guardian/confirmation";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import {
@@ -186,6 +187,11 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
     outputSchema: juniorToolOutputSchema,
     execute: async (input) => {
       requireRequest(input.kind, Boolean(input.request));
+      if (isActionConfirmationKey(input.dedupe_key)) {
+        throw new ToolInputError(
+          "Only Guardian uses this `dedupe_key`. Use a different key.",
+        );
+      }
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
       const existing = await getOpenReviewItemByDedupeKey(
@@ -363,6 +369,11 @@ export function createUpdateReviewItemTool(
       }
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
+      }
+      if (input.conversation_ids && isActionConfirmationKey(item.dedupeKey)) {
+        throw new ToolInputError(
+          "A Guardian confirmation item stays linked only to the Conversation that asked.",
+        );
       }
       if (changesContent) {
         // The Conversation that added the item always stays linked.
