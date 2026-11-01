@@ -29,3 +29,5 @@ Web input and Turn state live in `chat/conversations`. The worker lives in
   Junior user.
 - Attachments can appear after the event. Clients compare attachment metadata
   as well as event sequence.
+- A read position belongs to one viewer. It only moves forward and stops at
+  the last event, so devices can report in any order.

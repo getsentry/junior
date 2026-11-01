@@ -498,6 +498,13 @@
       "when": 1793561992655,
       "tag": "0070_review_item_foreign_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793570432539,
+      "tag": "0071_conversation_read_positions",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -832,6 +833,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
+    /** How far the signed-in viewer has read. Absent until they read. */
+    readPosition: conversationReadPositionSchema.optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
