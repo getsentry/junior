@@ -355,7 +355,7 @@ export function createTools(
   // `addReviewItem` is how the agent asks a person anything, so it is loaded
   // in every root Turn. A child agent asks its parent instead.
   const reviewItemServices = createSlackReviewItemToolServices(
-    getVercelConversationWorkQueue,
+    () => context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
   );
   Object.assign(
     tools,

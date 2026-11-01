@@ -476,6 +476,7 @@ export async function wireAgentTools(
     ...commonToolRuntimeContext,
     ...toolRoute,
     attachmentStorage: args.run.environment?.attachmentStorage,
+    conversationWorkQueue: args.run.environment?.conversationWorkQueue,
     workspaces: {
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
       switch: agentSandbox.switchWorkspace,
