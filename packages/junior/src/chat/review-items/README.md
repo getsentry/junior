@@ -22,7 +22,8 @@ behavior.
   - Someone deletes the Automation that added it. The item becomes
     `dismissed` with the reason `Automation deleted`.
 
-  A purge and an Automation delete keep the row. They send no message and
+  An Automation delete keeps the row. A purge keeps the row of a public
+  item and deletes a private item (see "Purge"). They send no message and
   do not change the Slack cards. A click on an old card tells the person
   that the item is closed.
 
@@ -191,6 +192,21 @@ a new Turn.
 - Each message has an idempotency key, so a retry does not add a second
   message. A retry of the same agent close, with the same status and
   reason, sends missing messages again.
+
+## Purge
+
+When Junior purges the transcript of a Conversation that is not public, it
+also deletes each private Review item that the Conversation tree added. It
+deletes the Briefs of that tree in the same way
+(`chat/conversations/sql/purge.ts`).
+The assignees, links, and Slack card rows of the item go with it. A public
+item stays after a purge, like a public Brief. This is also true when its
+destination turned private later, because other Conversations can link to
+it.
+
+An open private item from an Automation run also stays, because a later run
+can still change it. After it closes, the tree has work again, and the next
+purge deletes it.
 
 ## Waiting on you
 
