@@ -25,6 +25,11 @@ const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
 
 const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  channelId: {
+    kind: "string",
+    description:
+      "Slack channel ID of the message. A channel automation always names the channel where it posts.",
+  },
   userId: {
     kind: "string",
     description:
@@ -52,13 +57,18 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
     ],
     events: {
       // A channel automation stays in its own channel, so it needs the
-      // channel identifier until a channel filter can replace it.
+      // channel filter. `requireSlackChannelMessageScope` sets it to the
+      // channel where the automation posts.
       [MESSAGE_POSTED_EVENT]: {
-        reach: "resource",
+        reach: { anyOf: ["channelId"] },
         guidance:
           "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
       },
     },
+    identifierMatch: ({ identifier, eventType }) =>
+      eventType === MESSAGE_POSTED_EVENT && CHANNEL_ID_PATTERN.test(identifier)
+        ? { channelId: identifier }
+        : undefined,
     limits: {
       [CHANNEL_RESOURCE_TYPE]: {
         watch: false,
@@ -72,8 +82,10 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
 /**
  * Bind a Slack channel-message automation to its own channel.
  *
- * Resolve `current_channel` to the destination channel and reject other
- * channels, so private channel text cannot reach another channel.
+ * The trigger names the channel with the identifier `current_channel`, the
+ * channel ID, or a `channelId` filter. Reject other channels, so private
+ * channel text cannot reach another channel. Save the trigger with no
+ * identifier and a `channelId` filter for the channel where it posts.
  */
 export function requireSlackChannelMessageScope(
   automation: EventAutomation,
@@ -85,11 +97,17 @@ export function requireSlackChannelMessageScope(
       "A Slack channel-message automation works only in a channel, not in a DM.",
     );
   }
-  const identifier =
-    automation.trigger.identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
-      ? channelId
-      : automation.trigger.identifier;
-  if (identifier !== channelId) {
+  const {
+    identifier,
+    resourceType: _resourceType,
+    identifierReason: _identifierReason,
+    ...trigger
+  } = automation.trigger;
+  const named = [
+    identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER ? channelId : identifier,
+    trigger.match?.channelId,
+  ].filter((value) => value !== undefined);
+  if (named.length === 0 || named.some((value) => value !== channelId)) {
     throw new ToolInputError(
       `A Slack channel-message automation can watch only the channel where it posts. Use identifier "${SLACK_CURRENT_CHANNEL_IDENTIFIER}", or create the automation in the channel to watch.`,
     );
@@ -97,7 +115,7 @@ export function requireSlackChannelMessageScope(
   return {
     ...automation,
     credentialMode: "system",
-    trigger: { ...automation.trigger, identifier },
+    trigger: { ...trigger, match: { ...trigger.match, channelId } },
   };
 }
 
@@ -140,7 +158,7 @@ export function slackChannelMessageEvent(input: {
  * Decide whether a channel-message Event may run one automation.
  *
  * A message runs only automations that post in its own channel, so private
- * channel text cannot reach another channel. The trigger identifier already
+ * channel text cannot reach another channel. The `channelId` filter already
  * names that channel, and this check keeps the rule when it does not.
  * A bot post runs only automations whose match names its author in `userId`.
  * Bots can post often and would use up the run limit of every other

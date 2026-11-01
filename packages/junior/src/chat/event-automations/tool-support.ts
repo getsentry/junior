@@ -28,6 +28,7 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
+import { triggerWithoutIdentifier } from "@/chat/event-automations/trigger-conversion";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -51,6 +52,8 @@ const compactEventAutomationResultSchema = z
         match: z.record(z.string(), z.unknown()).optional(),
         available: z.boolean(),
         problems: z.array(z.string().min(1)).min(1).optional(),
+        /** Facts about a trigger that still works, such as a kept identifier. */
+        notes: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
     credentialMode: z.enum(["system", "creator"]),
@@ -108,7 +111,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
         .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
         .nullable()
         .describe(
-          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier.',
+          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier. When the plugin can, the identifier is saved as filters that select the same events, so the result shows identifier null and those filters.',
         )
         .optional(),
       resourceType: registeredResourceTypeSchema(plugins)
@@ -127,8 +130,12 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
 /**
  * Check a new event-automation trigger with the enabled plugins and return
  * it as it is saved. It names a resource type and an identifier, or neither.
- * The identifier gets its plugin's convention. Events and list values lose
- * repeats.
+ * The identifier gets its plugin's convention. A trigger with an identifier is
+ * saved with no identifier when its plugin can turn the identifier into
+ * filters that select the same events. Otherwise it is saved with the reason
+ * that it keeps the identifier, so each edit sets the reason again. A trigger
+ * whose filter never matches the events of its identifier is rejected,
+ * because it would never run. Events and list values lose repeats.
  */
 export function requireEventAutomationTrigger(
   catalog: EventCatalog,
@@ -154,7 +161,7 @@ export function requireEventAutomationTrigger(
     { namespace: input.namespace, resourceType, events, match: input.match },
     "event_automation",
   );
-  return {
+  const trigger: EventAutomation["trigger"] = {
     namespace: input.namespace,
     ...(identifier !== undefined && resourceType !== undefined
       ? {
@@ -170,6 +177,13 @@ export function requireEventAutomationTrigger(
     events,
     ...(match ? { match } : undefined),
   };
+  const conversion = triggerWithoutIdentifier(catalog, trigger);
+  if (!conversion.converted && conversion.conflict) {
+    throw new ToolInputError(
+      `The "${conversion.conflict}" filter never matches the events of identifier "${trigger.identifier}", so this trigger would never run. Change or remove the "${conversion.conflict}" filter.`,
+    );
+  }
+  return conversion.trigger;
 }
 
 /** Require the active Slack authority used for event-automation management. */
@@ -243,20 +257,31 @@ export async function writableEventAutomation(
   return task;
 }
 
+/** A saved trigger in words, with notes about how Junior saved it. */
+export type EventAutomationTriggerDescription = EventTriggerDescription & {
+  /**
+   * Plain facts about a trigger that still works, such as a kept
+   * identifier. Missing when there are none.
+   */
+  notes?: string[];
+};
+
 /**
  * Describe a saved trigger with the enabled plugins. Its problems say why it
  * cannot work: a plugin can remove or rename a resource type, event, or filter
  * after the trigger was saved. Resource types with `automation: false` never
- * dispatch event automations.
+ * dispatch event automations. Its notes do not stop it from working.
  */
 export function describeEventAutomationTrigger(
   trigger: EventAutomation["trigger"],
   catalog: EventCatalog,
-): EventTriggerDescription {
-  return describeRegisteredEventTrigger(
-    automationEventCatalog(catalog),
-    trigger,
-  );
+): EventAutomationTriggerDescription {
+  return {
+    ...describeRegisteredEventTrigger(automationEventCatalog(catalog), trigger),
+    ...(trigger.identifierReason
+      ? { notes: [trigger.identifierReason] }
+      : undefined),
+  };
 }
 
 /** Project an event automation into the bounded tool-result shape. */
@@ -265,7 +290,10 @@ export function compactEventAutomation(
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
-  const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
+  const { problems, notes } = describeEventAutomationTrigger(
+    task.trigger,
+    catalog,
+  );
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     status: task.status,
@@ -282,6 +310,7 @@ export function compactEventAutomation(
       ...(task.trigger.match ? { match: task.trigger.match } : undefined),
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
+      ...(notes ? { notes } : undefined),
     },
     credentialMode: task.credentialMode,
     isCreator: task.createdBy.slackUserId === requesterSlackUserId,

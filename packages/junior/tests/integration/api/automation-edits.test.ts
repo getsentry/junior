@@ -544,7 +544,7 @@ describe("Automation edit API", () => {
         expect(
           versions.map(({ version, editedBy, definition }) => [
             version,
-            editedBy?.slackUserId,
+            (editedBy as { slackUserId: string } | null)?.slackUserId,
             definition.instruction,
             definition.title,
             definition.credentialMode,
@@ -635,10 +635,10 @@ describe("Automation edit API", () => {
         expect(
           afterReader.versions
             .slice(0, 2)
-            .map(({ version, editedBy }) => [version, editedBy?.slackUserId]),
-        ).toEqual([
-          [9, "U456"],
-          [8, "U123"],
+            .map(({ version, editedBy }) => [version, editedBy]),
+        ).toMatchObject([
+          [9, { slackUserId: "U456" }],
+          [8, { slackUserId: "U123" }],
         ]);
         expect(afterReader.activeVersion).toBe(9);
         expect(
@@ -899,9 +899,8 @@ describe("Automation edit API", () => {
         trigger,
       });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
-        trigger: { ...trigger, identifier: "getsentry/junior#42" },
-      });
+      // The identifier is saved as filters that select the same events.
+      expect((await response.json()).trigger).not.toHaveProperty("identifier");
       // Version history shows each saved trigger in the shared words.
       const { versions } = automationVersionListSchema.parse(
         await (await app.request(`${url}/versions`)).json(),
@@ -918,7 +917,11 @@ describe("Automation edit API", () => {
       ).toEqual([
         {
           events: ["pull request merged"],
-          filters: ["headBranch is main"],
+          filters: [
+            "repo is getsentry/junior",
+            "headBranch is main",
+            "pullRequest is 42",
+          ],
           problems: [],
         },
         saved,
@@ -946,9 +949,9 @@ describe("Automation edit API", () => {
       expect(await summary.json()).toMatchObject({
         trigger: {
           filters: ["authorUsername is dcramer"],
-          problems: [
+          problems: expect.arrayContaining([
             expect.stringContaining('Filter "authorUsername" does not exist'),
-          ],
+          ]),
         },
       });
       expect(await unavailableIds()).toEqual([id]);

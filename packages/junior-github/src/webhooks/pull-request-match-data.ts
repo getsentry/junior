@@ -257,11 +257,17 @@ export async function withGitHubPullRequestMatchData(args: {
   };
 
   // A match decision needs every value that a filter uses.
+  const pullRequests = new Set(numbers.values());
   const keys =
     (await args.neededMatchKeys?.({
-      // Every copy sets this repo, so a broad trigger for another repo adds
-      // no lazy keys.
-      data: { repo: gitHubRepoDataSchema.parse(context.repositoryFullName) },
+      // Every copy sets this repo, and this pull request when there is one,
+      // so a trigger for another repo or pull request adds no lazy keys.
+      data: {
+        repo: gitHubRepoDataSchema.parse(context.repositoryFullName),
+        ...(pullRequests.size === 1
+          ? { pullRequest: [...pullRequests][0]! }
+          : undefined),
+      },
       eventTypes: [...new Set(pullRequestEvents.map((e) => e.eventType))],
       identifiers: [...new Set(pullRequestEvents.map((e) => e.identifier))],
     })) ?? [];

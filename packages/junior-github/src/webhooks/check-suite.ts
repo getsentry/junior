@@ -451,7 +451,7 @@ export function normalizeCheckSuiteEvents(
 /** Identifiers and event types one completed check suite may publish. */
 export function parseCheckSuitePublishTargets(body: unknown):
   | {
-      data: { repo: string };
+      data: { repo: string; pullRequest?: number };
       eventTypes: string[];
       identifiers: string[];
     }
@@ -465,18 +465,25 @@ export function parseCheckSuitePublishTargets(body: unknown):
   const identifiers = new Set<string>([
     gitHubRepositoryResource({ repo }).identifier,
   ]);
-  for (const pullRequest of parsed.data.check_suite.pull_requests) {
-    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id))
-      continue;
+  const pullRequests = parsed.data.check_suite.pull_requests.filter(
+    (pullRequest) =>
+      isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
+  );
+  for (const pullRequest of pullRequests) {
     identifiers.add(
       gitHubPullRequestResource({ number: pullRequest.number, repo })
         .identifier,
     );
   }
   return {
-    // Every copy sets this repo, so a broad trigger for another repo adds
-    // no lazy keys.
-    data: { repo: gitHubRepoDataSchema.parse(repo) },
+    // Every copy sets this repo, and this pull request when there is one,
+    // so a trigger for another repo or pull request adds no lazy keys.
+    data: {
+      repo: gitHubRepoDataSchema.parse(repo),
+      ...(pullRequests.length === 1
+        ? { pullRequest: pullRequests[0]!.number }
+        : undefined),
+    },
     eventTypes: [eventType],
     identifiers: [...identifiers],
   };

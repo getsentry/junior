@@ -11,7 +11,9 @@ route handles. Thread replies and Slackbot posts do not publish. Other bot posts
 publish with `postedByBot`, but they run only automations whose `match` names
 the bot in `userId`. Bots can post often and would use up the run limit of
 every other automation in the channel. A Watch cannot select these events. An automation can watch only the channel where it posts, so
-private channel text stays in that channel. Runs always use system credentials,
+private channel text stays in that channel. Its trigger has no identifier
+and a `channelId` filter for that channel. Ingest checks the channel of the
+Event against the destination again. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
 
@@ -34,8 +36,44 @@ identifier must have the same identifier in its row. A row with no identifier
 must have a trigger that the enabled catalog accepts, so a plugin change that
 narrows an event also stops old broad rows. Core logs and skips a row that does
 not parse or that the gate rejects, so one bad row cannot stop ingest for its
-namespace. The update tool keeps the saved identifier and resource type when
-they are left out. Only an explicit `null` removes them.
+namespace. The update tool keeps the saved identifier, resource type, and
+filters when they are left out. Only an explicit `null` removes the
+identifier, and only an empty `match` removes the filters.
+
+## Triggers with an identifier
+
+Tools and the dashboard save a trigger with an identifier as a trigger with no
+identifier when its plugin can turn the identifier into filters
+(`identifierMatch`). For example, `getsentry/junior#7` on pull request events
+becomes `repo` and `pullRequest` filters. `trigger-conversion.ts` owns the
+rule. A trigger converts only when the plugin gives the same filters for every
+selected event, each saved filter matches the identifier's value, and the
+result passes the check for a new trigger. A saved list filter that has the
+identifier's value becomes that one value. A conversion never makes a trigger
+broader.
+
+A write is rejected when a saved filter never matches the identifier's value,
+because the trigger could never run. In other cases, the trigger keeps its
+identifier and saves the plain reason in `identifierReason`. An example is a
+Sentry identifier. The Sentry plugin reads its org from each webhook URL and
+has no saved org for the install, so it cannot check the org in an identifier.
+A wrong org would make a dead trigger run, so the plugin gives no
+`identifierMatch`. Each edit that changes the trigger sets
+the reason again. The trigger description shows the reason as a note, not a
+problem, in the dashboard, Slack details, and `listEventAutomations`.
+
+The update tool changes `match` key by key. A value sets a filter, `null`
+removes it, and a filter that the update leaves out keeps its saved value.
+After a conversion the scope lives in `match`, so replacing the whole object
+would make the trigger broader. The dashboard sends the whole trigger from
+its form, which shows every saved filter.
+
+Saved rows keep their identifiers until a later change converts them. Saved
+versions keep their old triggers, and the version schema still reads
+`identifier` and `resourceType`. The version schema also reads
+`editedBy: "junior"` for a version that Junior saves when it changes a trigger
+itself. Nothing writes it yet. The reader comes first, so a release that
+writes it can roll back to this one and keep version history readable.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only

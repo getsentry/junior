@@ -92,6 +92,11 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
               {automation.trigger.events.join(", ")}
             </p>
             <TriggerFilters filters={automation.trigger.filters} />
+            {automation.trigger.notes?.map((note) => (
+              <p className="m-0 break-words" key={note}>
+                {note}
+              </p>
+            ))}
           </div>
         )}
       </AutomationFormSection>

@@ -283,7 +283,8 @@ test("makes an earlier version active from version history", async ({
       kind: "scheduled",
       version: 1,
       createdAt: "2026-07-28T16:00:00.000Z",
-      editedBy: null,
+      // A version that Junior saved names Junior as its editor.
+      editedBy: "junior",
       definition,
     },
   ];
@@ -318,6 +319,11 @@ test("makes an earlier version active from version history", async ({
   // The newest version is compared with the one before it.
   await expect(page.getByText("Compared with version 1")).toBeVisible();
   await expect(page.getByText("Added: Post a shorter summary")).toBeAttached();
+  await expect(
+    versionList
+      .getByRole("button", { name: /^Version 1/ })
+      .getByText(/^Junior · /),
+  ).toBeVisible();
   await screenshot(page, "automation-versions");
   await versionList.getByRole("button", { name: /^Version 1/ }).click();
   await expect(page).toHaveURL(/[?&]version=1(?:&|$)/);

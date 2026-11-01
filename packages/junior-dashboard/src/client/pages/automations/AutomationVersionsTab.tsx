@@ -476,6 +476,7 @@ function diffLines(before: string, after: string): DiffLine[] {
 }
 
 function versionEditor(version: ListedAutomationVersion): string {
+  if (version.editedBy === "junior") return "Junior";
   return version.editedBy
     ? (version.editedBy.fullName ??
         version.editedBy.userName ??

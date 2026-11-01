@@ -129,13 +129,14 @@ describe("Slack channel-message automations", () => {
       },
     )) as { automation: { id: string } };
 
-    // The trigger binds to the channel, and runs never get creator credentials.
-    expect(
-      await getEventAutomation(fixture.sql.db(), automation.id),
-    ).toMatchObject({
+    // The trigger binds to the channel with a filter, and runs never get
+    // creator credentials.
+    const created = await getEventAutomation(fixture.sql.db(), automation.id);
+    expect(created).toMatchObject({
       credentialMode: "system",
-      trigger: { identifier: "C123", namespace: "slack" },
+      trigger: { namespace: "slack", match: { channelId: "C123" } },
     });
+    expect(created?.trigger.identifier).toBeUndefined();
 
     // A thread reply, a bot post, and a message in another channel do not run it.
     expect(
@@ -206,6 +207,25 @@ describe("Slack channel-message automations", () => {
         trigger: trigger("current_channel", { userId: "U777" }),
       },
     )) as { automation: { id: string } };
+    // A row saved before channel filters names the channel with its
+    // identifier, and it still runs for its own channel.
+    const created = await getEventAutomation(fixture.sql.db(), automation.id);
+    const { match, ...unfiltered } = created!.trigger;
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        identifier: "C123",
+        record: sql`jsonb_set(${juniorAutomations.record}, '{trigger}', ${JSON.stringify(
+          {
+            ...unfiltered,
+            identifier: "C123",
+            resourceType: "channel",
+            match: { userId: match?.userId },
+          },
+        )}::jsonb)`,
+      })
+      .where(eq(juniorAutomations.id, automation.id));
 
     // A post from another bot does not run it.
     await postChannelMessage({
@@ -251,7 +271,7 @@ describe("Slack channel-message automations", () => {
       }),
     ).rejects.toThrow("can watch only the channel where it posts");
 
-    // A trigger with no identifier would read every channel.
+    // A trigger with no identifier must name its own channel in a filter.
     const {
       identifier: _identifier,
       resourceType: _type,
@@ -264,7 +284,15 @@ describe("Slack channel-message automations", () => {
         outcomes: [],
         trigger: anyChannel,
       }),
-    ).rejects.toThrow("This source cannot run for every resource.");
+    ).rejects.toThrow('This trigger needs a "channelId" filter');
+    await expect(
+      execute(createEventAutomationTool(channelContext, catalog), {
+        instruction: "Summarize new messages.",
+        title: "Summarize another channel",
+        outcomes: [],
+        trigger: { ...anyChannel, match: { channelId: "C999" } },
+      }),
+    ).rejects.toThrow("can watch only the channel where it posts");
 
     // A message runs only automations that post in its own channel, even
     // when a saved row names that channel and posts somewhere else.

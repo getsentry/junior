@@ -9,6 +9,7 @@ import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,
 } from "./events/issue.js";
+import { linearIdentifierMatch } from "./events/identifier-match.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
@@ -193,6 +194,7 @@ export function linearPlugin(): PluginRegistration {
       ),
       isEnabled: () => Boolean(linearWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toUpperCase(),
+      identifierMatch: linearIdentifierMatch,
     },
     manifest: {
       // Optional shared read account. It has no effect until an admin

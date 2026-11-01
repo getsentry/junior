@@ -89,6 +89,8 @@ export const eventTriggerDescriptionSchema = z
     filters: z.array(z.string().min(1)),
     /** Why the trigger cannot work. The trigger is available when empty. */
     problems: z.array(z.string().min(1)),
+    /** Facts about a trigger that still works, such as a kept identifier. */
+    notes: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict() satisfies z.ZodType<EventTriggerDescription>;
 
@@ -250,8 +252,14 @@ const automationDefinitionFields = {
 const automationVersionFields = {
   version: z.number().int().positive(),
   createdAt: z.string().datetime(),
-  /** Null for versions saved by the upgrade, because the editor is unknown. */
-  editedBy: eventAutomationPrincipalSchema.nullable(),
+  /**
+   * The person who saved the version, or `"junior"` when Junior changed the
+   * trigger itself. Null for versions saved by the upgrade, because the
+   * editor is unknown.
+   */
+  editedBy: z
+    .union([eventAutomationPrincipalSchema, z.literal("junior")])
+    .nullable(),
 };
 
 const scheduledAutomationVersionSchema = z

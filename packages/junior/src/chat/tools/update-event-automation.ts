@@ -9,6 +9,7 @@ import {
 import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { automationRevision } from "@/chat/automations/revision";
 import { editEventAutomation } from "@/chat/event-automations/edit";
+import { eventMatchSchema, type EventMatch } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import {
@@ -27,6 +28,31 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
+/**
+ * Filter changes for an update. A value sets the filter, and null removes
+ * it. A filter that is not named keeps its saved value, so an update cannot
+ * drop the filters that limit a trigger by leaving them out.
+ */
+const matchChangesSchema = z
+  .record(z.string(), z.union([eventMatchSchema.valueType, z.null()]))
+  .describe(
+    "Filter changes. A value sets the filter, null removes it, and a filter that is left out keeps its saved value. Use the matchFields of the resource type. A single value must equal the event data. A list means the event value may be any one entry.",
+  );
+
+/** Apply filter changes to the saved filters, key by key. */
+function changedMatch(
+  saved: EventMatch | undefined,
+  changes: z.output<typeof matchChangesSchema> | undefined,
+): EventMatch | undefined {
+  if (changes === undefined) return saved;
+  const match: EventMatch = { ...saved };
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) delete match[key];
+    else match[key] = value;
+  }
+  return Object.keys(match).length > 0 ? match : undefined;
+}
+
 /** Create the core tool that updates an event automation. */
 export function createUpdateEventAutomationTool(
   context: ToolRuntimeContext,
@@ -42,13 +68,14 @@ export function createUpdateEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, credential use, or status of an event automation.",
+      "Update the instruction, registered trigger, credential use, or status of an event automation. In trigger, leaving out identifier, resourceType, or match keeps the saved value, and only null removes the identifier. match changes only the filters that it names: a value sets that filter, null removes it, and a filter that it leaves out keeps its saved value.",
     inputSchema: z
       .object({
         automationId: z.string().min(1),
         title: automationTitleSchema.optional(),
         instruction: automationInstructionToolSchema.nullable().optional(),
         trigger: registeredEventAutomationTriggerSchema(catalog)
+          .extend({ match: matchChangesSchema.optional() })
           .nullable()
           .optional(),
         outcomes: z
@@ -139,11 +166,16 @@ export function createUpdateEventAutomationTool(
           {
             title: input.title,
             instruction: input.instruction ?? undefined,
-            // An omitted identifier or resource type keeps the saved one.
-            // Only an explicit null makes the trigger run for every resource.
+            // An omitted identifier, resource type, or filter keeps the saved
+            // one, so a trigger cannot get broader by omission. Only an
+            // explicit null drops the identifier or a filter.
             trigger: input.trigger
               ? {
                   ...input.trigger,
+                  match: changedMatch(
+                    current.trigger.match,
+                    input.trigger.match,
+                  ),
                   identifier:
                     input.trigger.identifier === undefined
                       ? current.trigger.identifier

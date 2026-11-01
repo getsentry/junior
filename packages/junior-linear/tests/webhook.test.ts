@@ -1,9 +1,5 @@
 import { createHmac } from "node:crypto";
-import {
-  eventMatches,
-  type EventInput,
-  type EventMatch,
-} from "@sentry/junior-plugin-api";
+import { eventMatches, type EventInput } from "@sentry/junior-plugin-api";
 import {
   filterEventMismatches,
   identifierMatchMismatches,
@@ -117,13 +113,12 @@ describe("Linear webhook events", () => {
       body.data.team.key = teamKey!;
       return normalizeLinearEvents({ body, linearEvent: "Issue" });
     });
-    const toMatch = (event: { identifier: string }): EventMatch => {
-      // Saved identifiers went through the plugin's `normalizeIdentifier`.
-      const identifier = event.identifier.toUpperCase();
-      return /-\d+$/.test(identifier)
-        ? { issueIdentifier: identifier }
-        : { teamKey: identifier };
-    };
+    // Saved identifiers went through the plugin's `normalizeIdentifier`.
+    const toMatch = (event: { eventType: string; identifier: string }) =>
+      linearPlugin().events?.identifierMatch?.({
+        eventType: event.eventType,
+        identifier: event.identifier.toUpperCase(),
+      });
 
     expect(
       identifierMatchMismatches({
@@ -133,6 +128,16 @@ describe("Linear webhook events", () => {
         toMatch,
       }),
     ).toEqual([]);
+    // Saved identifiers are uppercase. Another identifier never got events,
+    // so it gets no filters and does not start to run.
+    expect(
+      ["eng-7", "eng"].map((identifier) =>
+        linearPlugin().events?.identifierMatch?.({
+          eventType: "issue.created",
+          identifier,
+        }),
+      ),
+    ).toEqual([undefined, undefined]);
   });
 
   it("normalizes a created issue for the issue and team", () => {

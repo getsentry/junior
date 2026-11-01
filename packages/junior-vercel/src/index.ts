@@ -17,6 +17,7 @@ import {
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
+import { vercelIdentifierMatch } from "./events/identifier-match.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
 /** Register Vercel runtime metadata, tools, and signed webhook ingress. */
@@ -42,6 +43,7 @@ export function vercelPlugin(): PluginRegistration {
         ]),
       ),
       isEnabled: () => Boolean(vercelWebhookSecret()),
+      identifierMatch: vercelIdentifierMatch,
     },
     manifest: {
       apiHeaders: {

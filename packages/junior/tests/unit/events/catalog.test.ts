@@ -1,3 +1,4 @@
+import type { EventMatch } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import {
   CORE_EVENT_NAMESPACE,
@@ -137,5 +138,54 @@ describe("event catalog", () => {
         catalog,
       ).problems,
     ).toEqual(["The plugin for this source is not enabled."]);
+  });
+
+  it("converts an identifier only when every event gets the same filters", () => {
+    const fields = { kind: "string", description: "Item id." } as const;
+    const items: EventCatalog = {
+      demo: eventCatalogEntry({
+        resourceTypes: [
+          {
+            type: "item",
+            supportedEvents: ["first.opened", "second.opened"],
+            matchFields: { first: fields, second: fields },
+          },
+        ],
+        events: {
+          "first.opened": { reach: "all" },
+          "second.opened": { reach: "all" },
+        },
+        identifierMatch: ({ identifier, eventType }): EventMatch =>
+          eventType === "first.opened"
+            ? { first: identifier }
+            : { second: identifier },
+      }),
+    };
+    const trigger = (events: string[]) =>
+      requireEventAutomationTrigger(items, {
+        namespace: "demo",
+        resourceType: "item",
+        identifier: "x",
+        label: "Item x",
+        events,
+      });
+
+    expect(trigger(["first.opened"])).toEqual({
+      namespace: "demo",
+      label: "Item x",
+      events: ["first.opened"],
+      match: { first: "x" },
+    });
+    // One set of filters cannot select the same events for both, so the
+    // trigger keeps its identifier and says why.
+    expect(trigger(["first.opened", "second.opened"])).toEqual({
+      namespace: "demo",
+      resourceType: "item",
+      identifier: "x",
+      identifierReason:
+        "Kept its exact item because its events need different filters.",
+      label: "Item x",
+      events: ["first.opened", "second.opened"],
+    });
   });
 });
