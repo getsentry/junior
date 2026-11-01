@@ -24,7 +24,6 @@ import {
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
-  setDashboardTimeZone,
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
@@ -84,9 +83,6 @@ export function DashboardShell() {
   const data = query.data;
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
-  if (data) {
-    setDashboardTimeZone(data.config.timeZone);
-  }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
