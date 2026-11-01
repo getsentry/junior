@@ -32,6 +32,7 @@ import {
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
+import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
@@ -155,6 +156,7 @@ export function createConversationWork(
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
+    postAutomatedTurnLimitNoticeForConversation,
   );
   // A Slack Destination uses the Slack worker. All other root work must have
   // been selected above this function.

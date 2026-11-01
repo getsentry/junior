@@ -65,6 +65,7 @@ import {
 import {
   createTurnSandbox,
   saveFinishedTurn,
+  type PostAutomatedTurnLimitNotice,
 } from "@/chat/task-execution/core-turn";
 import type {
   ConversationWorkerContext,
@@ -206,10 +207,12 @@ function sharedAuthorIdentityId(
  * Create the shared mailbox worker for web and event Turns. Web input has no
  * provider Delivery, so its replies stay in Junior. `eventDelivery` is the
  * Delivery of event input, which sends replies to the Conversation Location.
+ * `postAutomatedTurnLimitNotice` posts the automated-turn pause notice there.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
   eventDelivery?: DeliverMessage,
+  postAutomatedTurnLimitNotice?: PostAutomatedTurnLimitNotice,
 ) {
   return async (
     context: ConversationWorkerContext,
@@ -619,6 +622,7 @@ export function createConversationTurnWorker(
                 conversation: completedState.conversation,
                 conversationId: context.conversationId,
                 destination,
+                postAutomatedTurnLimitNotice,
                 result: reply,
                 sandbox,
                 source,

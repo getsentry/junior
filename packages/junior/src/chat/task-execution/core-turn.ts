@@ -15,9 +15,12 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
+import { logException } from "@/chat/logging";
+import {
+  clearAutomatedTurnLimitNoticeClaim,
+  recordFinishedTurnForAutomatedLimit,
+} from "@/chat/services/automated-turn-limit";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import {
   getTurnRecord,
@@ -66,6 +69,16 @@ export function createTurnSandbox(args: {
 }
 
 /**
+ * Post the pause notice of the automated-turn limit at the Location of a
+ * Conversation. The owner of the Delivery supplies it.
+ */
+export type PostAutomatedTurnLimitNotice = (args: {
+  conversationId: string;
+  maxTurns: number;
+  source: Source;
+}) => Promise<unknown>;
+
+/**
  * Count one finished Turn toward the automated-turn limit, or reset the count
  * when the Turn answers its owner. A root's owner is a person. A child's
  * owner is its parent agent. Post the pause notice when the limit is full.
@@ -74,6 +87,8 @@ export async function recordAutomatedTurnLimit(args: {
   conversationId: string;
   /** True when the input came from the owner of the Conversation. */
   ownerInput?: boolean;
+  /** Posts the pause notice. Work without a Delivery omits it. */
+  postNotice?: PostAutomatedTurnLimitNotice;
   source: Source;
 }): Promise<void> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
@@ -83,14 +98,26 @@ export async function recordAutomatedTurnLimit(args: {
     // An owner input resets the count like a person's message.
     source: args.ownerInput ? undefined : args.source,
   });
-  // A Conversation without a Slack Location skips the notice and clears its
-  // claim.
-  await maybePostAutomatedTurnLimitNotice({
-    conversationId: args.conversationId,
-    maxTurns,
-    source: args.source,
-    update,
-  });
+  if (!update?.shouldPostNotice) {
+    return;
+  }
+  if (args.postNotice) {
+    await args.postNotice({
+      conversationId: args.conversationId,
+      maxTurns,
+      source: args.source,
+    });
+    return;
+  }
+  // Work without a Delivery has nowhere to post the notice. Clear its claim
+  // so that a later Turn can post it.
+  try {
+    await clearAutomatedTurnLimitNoticeClaim({
+      conversationId: args.conversationId,
+    });
+  } catch (error) {
+    logException(error, "automated_turn_limit.notice_claim_clear_failed");
+  }
 }
 
 /**
@@ -104,6 +131,7 @@ export async function saveFinishedTurn(args: {
   conversationId: string;
   destination?: Destination;
   ownerInput?: boolean;
+  postAutomatedTurnLimitNotice?: PostAutomatedTurnLimitNotice;
   result: AgentRunResult;
   sandbox: TurnSandbox;
   source: Source;
@@ -141,6 +169,7 @@ export async function saveFinishedTurn(args: {
   await recordAutomatedTurnLimit({
     conversationId: args.conversationId,
     ownerInput: args.ownerInput,
+    postNotice: args.postAutomatedTurnLimitNotice,
     source: args.source,
   });
 }
