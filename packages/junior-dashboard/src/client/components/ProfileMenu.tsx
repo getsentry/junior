@@ -76,7 +76,7 @@ export function ProfileMenu({
 
   const avatar = (
     <Avatar aria-hidden="true" className="size-8 border-0 shadow-black/40">
-      <AvatarImage alt="" src={identity.user.avatarUrl} />
+      <AvatarImage alt="User avatar" src={identity.user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
         {initials(identity.user.name, email)}
       </AvatarFallback>
