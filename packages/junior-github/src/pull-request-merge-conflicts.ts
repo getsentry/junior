@@ -25,6 +25,8 @@ const EVENT_TYPE = "pull_request.merge_conflict";
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 /** Open pull requests to look at for a Watch or event automation. */
 const OPEN_PULL_REQUEST_LIMIT = 200;
+/** Last pull request that a check looked at. The next check starts after it. */
+const CURSOR_KEY = "merge-conflicts:cursor";
 /** GitHub reads in one check, so the check stays in the heartbeat timeout. */
 const READ_LIMIT = 20;
 /** Keep the notified head longer than a Watch can be active. */
@@ -117,13 +119,26 @@ export async function checkGitHubPullRequestMergeConflicts(args: {
   ) {
     return;
   }
+  // Each check goes on from where the last one stopped, so every watched
+  // pull request gets read even when more than READ_LIMIT are watched.
+  const page = await listOpenGitHubPullRequests(args.db, {
+    afterPullRequestId: await args.state.get<string>(CURSOR_KEY),
+    limit: OPEN_PULL_REQUEST_LIMIT,
+  });
   const watched: OpenPullRequest[] = [];
-  for (const pullRequest of await listOpenGitHubPullRequests(
-    args.db,
-    OPEN_PULL_REQUEST_LIMIT,
-  )) {
+  let last: OpenPullRequest | undefined;
+  for (const pullRequest of page) {
     if (watched.length >= READ_LIMIT) break;
+    last = pullRequest;
     if (await hasMatch(args.events, pullRequest)) watched.push(pullRequest);
+  }
+  const morePullRequests =
+    last !== page.at(-1) || page.length === OPEN_PULL_REQUEST_LIMIT;
+  if (last && morePullRequests) {
+    await args.state.set(CURSOR_KEY, last.pullRequestId);
+  } else {
+    // The last page ended. The next check starts again from the first one.
+    await args.state.delete(CURSOR_KEY);
   }
   for (const pullRequest of watched) {
     try {

@@ -250,6 +250,35 @@ describe("merge conflict heartbeat", () => {
     });
   });
 
+  it("reads every watched pull request when more are watched than one check reads", async () => {
+    const at = new Date("2026-07-03T12:00:00.000Z");
+    const busy = Array.from({ length: 20 }, (_, index) => ({
+      pullRequestId: `busy-${String(index).padStart(2, "0")}`,
+      repositoryId: "2001",
+      repositoryFullName: "getsentry/junior",
+      number: 1000 + index,
+      state: "open" as const,
+      openedAt: at,
+      updatedAt: at,
+    }));
+    await fixture.db().insert(juniorGitHubPullRequests).values(busy);
+    for (const row of busy) watched.add(`getsentry/junior#${row.number}`);
+
+    await runHeartbeat();
+    expect(pullRequestReads).toHaveLength(20);
+    expect(pullRequestReads).not.toContain("946");
+
+    // The next check goes on after the last pull request it looked at.
+    vi.advanceTimersByTime(5 * 60_000);
+    await runHeartbeat();
+    expect(pullRequestReads.slice(20)).toEqual(["946"]);
+
+    // Then it starts again from the first one.
+    vi.advanceTimersByTime(5 * 60_000);
+    await runHeartbeat();
+    expect(pullRequestReads.slice(21)).toHaveLength(20);
+  });
+
   it("waits while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
