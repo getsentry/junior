@@ -7,6 +7,7 @@ import {
   buttonUserInputField,
   normalizeUserInputAnswer,
   USER_INPUT_LIMITS,
+  USER_INPUT_NOTE,
   type UserInputAnswer,
   type UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
@@ -67,8 +68,8 @@ function toOption(option: {
 
 /**
  * Render a request as a Slack modal form: one input for each field and one
- * optional Other text input. Every input is optional, so a person can answer
- * with free text only. `callbackId` and `privateMetadata` tell the submit
+ * optional note input that goes with the answers. Every input is optional,
+ * so a person can answer with free text only. `callbackId` and `privateMetadata` tell the submit
  * handler what the form answers.
  */
 export function buildSlackUserInputForm(
@@ -113,9 +114,9 @@ export function buildSlackUserInputForm(
       {
         type: "input",
         block_id: OTHER_BLOCK_ID,
-        label: plainText("Other"),
+        label: plainText(USER_INPUT_NOTE.label),
         optional: true,
-        hint: plainText("Anything else, or an answer that is not listed."),
+        hint: plainText(USER_INPUT_NOTE.description),
         element: {
           type: "plain_text_input",
           action_id: VALUE_ACTION_ID,
