@@ -8,7 +8,10 @@ import {
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+} from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -21,7 +24,6 @@ import { createModelStream } from "../fixtures/model-stream";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createConversationWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {

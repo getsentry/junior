@@ -31,8 +31,8 @@ import {
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createConversationWorkHarness,
 } from "../fixtures/agent-dispatch";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";

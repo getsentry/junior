@@ -365,7 +365,7 @@ async function getChildAgentInputInvocation(
  * reports to the child's parent. Returns undefined for work that is not
  * mailbox input for a child Conversation.
  */
-export async function startAgentInvocationsForChildInput(
+async function startAgentInvocationsForChildInput(
   context: ConversationWorkerContext,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {

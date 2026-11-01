@@ -13,6 +13,7 @@ import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { createEventTools } from "@/chat/tools/events";
+import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
@@ -25,7 +26,7 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import { createConversationWorkHarness } from "../fixtures/agent-dispatch";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
 import {
   createModelAgentRunner,
@@ -393,9 +394,10 @@ describe("agent invocation conversation work", () => {
   // A child watch event runs with an event Source. When its Turn yields, the
   // next wake must still reach the agent invocation. Production once sent it
   // to the root Event Turn worker, which needs a Destination that a child
-  // does not have. That also holds when the agent invocation ended while its
-  // Turn stayed paused. A resume wake has no messages, but its last try is
-  // still final, so a resume that keeps failing tells the parent.
+  // does not have. That also holds when the agent invocation ended or was
+  // stopped while its Turn stayed paused. A resume wake has no messages, but
+  // its last try is still final, so a resume that keeps failing tells the
+  // parent.
   const resumed = { result: "Resumed child result", status: "completed" };
   it.each([
     {
@@ -420,6 +422,13 @@ describe("agent invocation conversation work", () => {
       expected: { parentMailboxStatus: "appended", status: "failed" },
     },
     {
+      name: "a stopped child",
+      watchEvent: false,
+      stopBeforeWake: true,
+      runs: 1,
+      expected: { parentMailboxStatus: "skipped", status: "stopped" },
+    },
+    {
       name: "a resume that keeps failing",
       watchEvent: false,
       // The last try is final, so it fails the invocation, not the work.
@@ -438,6 +447,7 @@ describe("agent invocation conversation work", () => {
       expected,
       failedResumes = 0,
       runs,
+      stopBeforeWake = false,
       watchEvent,
     }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
@@ -525,6 +535,14 @@ describe("agent invocation conversation work", () => {
             invocationId,
             status: "failed",
           });
+        }
+        if (stopBeforeWake) {
+          // The stop request outlives the paused run. The stopped agent
+          // invocation takes the resume wake and does not run again.
+          await createStopAgentTool(parentConversationId).execute!(
+            { conversation_id: childConversationId },
+            {},
+          );
         }
         if (failedResumes > 0) {
           run.mockRejectedValue(new Error("resume unavailable"));

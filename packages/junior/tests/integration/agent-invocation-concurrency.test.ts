@@ -29,7 +29,7 @@ import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import { createConversationWorkHarness } from "../fixtures/agent-dispatch";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
