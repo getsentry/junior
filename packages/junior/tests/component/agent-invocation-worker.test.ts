@@ -177,27 +177,33 @@ describe("agent invocation worker", () => {
         parentConversationId: created.childConversationId,
       });
       const stopRequest = new AbortController();
-      const worker = createAgentInvocationWorker({
-        run: async () => {
-          // The stop request arrives after the run finished.
-          stopRequest.abort(new Error("Conversation work stopped"));
-          return {
-            status: "completed" as const,
-            result: {
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
+      const enqueueResult = vi
+        .fn(async () => {})
+        .mockRejectedValueOnce(new Error("Parent mailbox unavailable"));
+      const worker = createAgentInvocationWorker(
+        {
+          run: async () => {
+            // The stop request arrives after the run finished.
+            stopRequest.abort(new Error("Conversation work stopped"));
+            return {
+              status: "completed" as const,
+              result: {
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+                text: "Partial result",
               },
-              text: "Partial result",
-            },
-          };
+            };
+          },
         },
-      });
+        { enqueueResult },
+      );
       const context = {
         attempt: {
           ack: vi.fn(async () => {}),
@@ -212,9 +218,21 @@ describe("agent invocation worker", () => {
         stopSignal: () => stopRequest.signal,
       } satisfies ConversationWorkerContext;
 
+      // A failed report after the save retries the attempt. The pending stop
+      // must not end the saved result as stopped.
+      await expect(worker(context, created.invocationId)).rejects.toThrow(
+        "Parent mailbox unavailable",
+      );
+      expect(context.attempt.ack).not.toHaveBeenCalled();
       await expect(worker(context, created.invocationId)).resolves.toEqual({
         status: "completed",
       });
+      expect(enqueueResult).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parentMailboxStatus: "pending",
+          status: "completed",
+        }),
+      );
 
       // The open helper would have reported for the child. The stop ends the
       // helper, so the child's own result reports now.

@@ -47,7 +47,7 @@ export interface WorkerTurnSteps {
   awaitAuth(
     outcome: Extract<AgentRunOutcome, { status: "awaiting_auth" }>,
   ): Promise<"completed" | "paused">;
-  /** Finish after `executeTurn` recorded the terminal Turn. */
+  /** Finish after `executeTurn` recorded the terminal Turn. An error retries. */
   complete(): Promise<void>;
   /** End the Turn on any attempt for an error that a retry cannot fix. Return true when handled. */
   block?(error: unknown): Promise<boolean>;
@@ -95,7 +95,9 @@ export async function runWorkerTurn(args: {
     return { status };
   };
 
-  const advance = async (): Promise<ConversationWorkerResult | "stopped"> => {
+  const advance = async (): Promise<
+    ConversationWorkerResult | "completed" | "stopped"
+  > => {
     const prepared = await steps.prepare();
     if (prepared === "stopped") {
       return "stopped";
@@ -126,11 +128,10 @@ export async function runWorkerTurn(args: {
     if (outcome.status === "awaiting_auth") {
       return await end(await steps.awaitAuth(outcome));
     }
-    await steps.complete();
-    return await end();
+    return "completed";
   };
 
-  let ended: ConversationWorkerResult | "stopped";
+  let ended: ConversationWorkerResult | "completed" | "stopped";
   try {
     ended = await advance();
   } catch (error) {
@@ -155,11 +156,14 @@ export async function runWorkerTurn(args: {
       ended = await end();
     }
   }
-  if (ended !== "stopped") {
+  if (typeof ended !== "string") {
     return ended;
   }
+  // An error after the Turn ends, or while a stop is recorded, retries the
+  // attempt. It must not run the stop or fail step. Those steps would end
+  // finished work again and skip its report to the parent.
   try {
-    await steps.stop();
+    await (ended === "completed" ? steps.complete() : steps.stop());
     return await end();
   } catch (error) {
     if (isInputCommitLost(error)) {
