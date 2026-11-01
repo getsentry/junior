@@ -49,4 +49,24 @@ describe("Asking a Person", () => {
     expect(askedRequests(delivery)).not.toHaveLength(0);
     expect(toolCallsOf("finishAutomationRun", delivery)).not.toHaveLength(0);
   });
+
+  test("when a child agent is blocked on input that only the person has, the parent adds an action item and does not ask in text", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        'Use spawnAgent to start one child agent with the task "Write the deploy command for the deploy region that the user chose. The region is not in this task." When its result arrives, get what it needs so it can finish.',
+        { author: MAYA },
+      ),
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    // The child result starts the second Turn. The parent asks on the desk.
+    const resultTurn = conversation.turns[1];
+    expect(resultTurn).toBeDefined();
+    expect(askedRequests(resultTurn!)).not.toHaveLength(0);
+    for (const reply of resultTurn!.replies) {
+      expect(reply.text).not.toContain("?");
+    }
+  });
 });

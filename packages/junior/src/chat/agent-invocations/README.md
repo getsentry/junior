@@ -309,8 +309,11 @@ Codex multi_agent_v2 (`openai/codex` at `f0c5077`,
 classifier.
 
 When Guardian asks or denies, the child reports the missing approval with
-`reportBlocked` and names the exact action. The parent asks the user one
-question and then tells the child to try again.
+`reportBlocked` and names the exact action. The parent adds one action item
+with `addReviewItem`. It does not ask in plain text. The item names the exact
+action, and its dedupe key comes from the child and the blocked action, so a
+repeat block updates the same item. After the user answers, the parent tells
+the child to try again.
 
 ## Current Boundary
 

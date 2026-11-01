@@ -28,7 +28,7 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question with `addReviewItem`; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
+  "- Ask the user only for missing access or a decision that is truly theirs. Ask one focused question with `addReviewItem`, never in plain text; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: add it as an action item, then deliver the requested work in this Turn.",
 ];
 
 /**
@@ -109,7 +109,7 @@ const SAFETY_RULES = [
  * about one tool goes in that tool's description, not here.
  */
 const TOOL_POLICY_RULES = [
-  "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, use clear placeholders or ask one focused question instead of searching unrelated memory, history, files, or providers.",
+  "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, use clear placeholders or ask one focused question with `addReviewItem` instead of searching unrelated memory, history, files, or providers.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials.",

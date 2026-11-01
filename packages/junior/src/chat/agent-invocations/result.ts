@@ -103,7 +103,7 @@ const RESULT_NEXT_STEP = {
   completed:
     "Use this result to continue the work in this conversation. Do not repeat work that the child agent already did.",
   blocked:
-    "The child agent did not finish its task because something is missing. If you can give it, send it to the child agent with messageAgent. If it needs user approval, your own text cannot give it: ask the user one focused question that names the exact action. After the user answers in this conversation, tell the child agent with messageAgent to try again. The runtime shows the user's own messages to the child's action review. Otherwise tell the user what is missing.",
+    "The child agent did not finish its task because something is missing. If you can give it, send it to the child agent with messageAgent. If only a person can give it, such as user approval, your own text cannot give it. Do not ask in plain text: add one action item with `addReviewItem` that names the exact action. Make its `dedupe_key` from the child conversation and the blocked action, so a repeat block updates the same item. After the user answers in this conversation, tell the child agent with messageAgent to try again. The runtime shows the user's own messages to the child's action review. Otherwise tell the user what is missing.",
   failed:
     "The child agent did not finish its task. If you still need this work, use messageAgent to ask the same child agent to try again, or tell the user what is blocked.",
   stopped:
