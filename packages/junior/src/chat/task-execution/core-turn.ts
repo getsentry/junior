@@ -79,24 +79,37 @@ export type PostAutomatedTurnLimitNotice = (args: {
 }) => Promise<unknown>;
 
 /**
+ * How the input of a finished Turn changes the automated-turn limit, when
+ * its Source alone does not say it. `owner`: the input came from the owner
+ * of the Conversation, so the count resets like a person's message does.
+ * `own_work`: the input is the result of work that the Conversation started,
+ * so the count does not change.
+ */
+export type TurnLimitInput = "owner" | "own_work";
+
+/**
  * Count one finished Turn toward the automated-turn limit, or reset the count
  * when the Turn answers its owner. A root's owner is a person. A child's
- * owner is its parent agent. Post the pause notice when the limit is full.
+ * owner is its parent agent. Leave the count when the input is a result of
+ * the Conversation's own work. Post the pause notice when the limit is full.
  */
 export async function recordAutomatedTurnLimit(args: {
   conversationId: string;
-  /** True when the input came from the owner of the Conversation. */
-  ownerInput?: boolean;
+  /** Omit it to count the Turn by its Source. */
+  input?: TurnLimitInput;
   /** Posts the pause notice. Work without a Delivery omits it. */
   postNotice?: PostAutomatedTurnLimitNotice;
   source: Source;
 }): Promise<void> {
+  if (args.input === "own_work") {
+    return;
+  }
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const update = await recordFinishedTurnForAutomatedLimit({
     conversationId: args.conversationId,
     maxTurns,
     // An owner input resets the count like a person's message.
-    source: args.ownerInput ? undefined : args.source,
+    source: args.input === "owner" ? undefined : args.source,
   });
   if (!update?.shouldPostNotice) {
     return;
@@ -130,13 +143,13 @@ export async function saveFinishedTurn(args: {
   conversation?: ThreadConversationState;
   conversationId: string;
   destination?: Destination;
-  ownerInput?: boolean;
   postAutomatedTurnLimitNotice?: PostAutomatedTurnLimitNotice;
   result: AgentRunResult;
   sandbox: TurnSandbox;
   source: Source;
   surface: AgentTurnSurface;
   turnId: string;
+  turnLimitInput?: TurnLimitInput;
 }): Promise<void> {
   const { result } = args;
   await persistThreadStateById(args.conversationId, {
@@ -168,7 +181,7 @@ export async function saveFinishedTurn(args: {
   }
   await recordAutomatedTurnLimit({
     conversationId: args.conversationId,
-    ownerInput: args.ownerInput,
+    input: args.turnLimitInput,
     postNotice: args.postAutomatedTurnLimitNotice,
     source: args.source,
   });

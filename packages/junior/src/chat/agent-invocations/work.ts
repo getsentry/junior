@@ -457,14 +457,19 @@ async function saveAgentInvocationResult(args: {
     actor: args.invocation.actor,
     conversationId: args.invocation.childConversationId,
     destination: args.invocation.destination,
-    // A task or message from the parent resets the automated-turn limit, like
-    // a person's message on a root.
-    ownerInput: Boolean(args.invocation.parentToolCallId),
     result: args.result,
     sandbox: args.sandbox,
     source: args.invocation.source,
     surface: "internal",
     turnId: args.turnId,
+    // A task or message from the parent resets the automated-turn limit, like
+    // a person's message on a root. A result or message from a grandchild is
+    // work that the child started, so it does not count. Watch events count.
+    turnLimitInput: args.invocation.parentToolCallId
+      ? "owner"
+      : args.invocation.source.kind === "agent_invocation"
+        ? "own_work"
+        : undefined,
   });
   const terminal = await completeAgentInvocation({
     invocationId: args.invocation.invocationId,

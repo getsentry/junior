@@ -495,8 +495,25 @@ describe("agent invocation identity and concurrency", () => {
 
   it("wakes a child with its own timer by the same rules as a root Conversation", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const harness = await createHarness(taskModel);
+    // An action to run during the next model request of a child.
+    let duringNextRequest: (() => Promise<unknown>) | undefined;
+    const harness = await createHarness((request) => {
+      const stream = taskModel(request);
+      return async (model, context, options) => {
+        const action = duringNextRequest;
+        duringNextRequest = undefined;
+        await action?.();
+        return await stream(model, context, options);
+      };
+    });
     try {
+      // The task Turn starts a grandchild, as spawnAgent does.
+      duringNextRequest = async () =>
+        await harness.spawn({
+          idempotencyKey: "grandchild-1",
+          input: "Check one service.",
+          parentConversationId: child.childConversationId,
+        });
       // As from spawnAgent, the task has the parent's tool call, so it
       // resets the automated-turn count.
       const child = await harness.spawn({
@@ -525,8 +542,14 @@ describe("agent invocation identity and concurrency", () => {
       // The timer runs on the child as the event Actor, with an event Source
       // and the grants of the person who set it.
       const requests = harness.requests();
-      expect(requests).toHaveLength(2);
-      const timerRun = requests[1]!;
+      expect(requests.map((request) => request.conversationId)).toEqual([
+        child.childConversationId,
+        expect.not.stringMatching(child.childConversationId),
+        // The grandchild result starts a Turn on the child.
+        child.childConversationId,
+        child.childConversationId,
+      ]);
+      const timerRun = requests[3]!;
       expect(timerRun).toMatchObject({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: child.childConversationId,
@@ -555,6 +578,8 @@ describe("agent invocation identity and concurrency", () => {
         status: "completed",
       });
       // The timer Turn counts toward the automated-turn limit, as on a root.
+      // The grandchild result is work that the child started, so its Turn
+      // does not count.
       await expect(
         getAutomatedTurnLimitState({
           conversationId: child.childConversationId,
@@ -590,7 +615,7 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 600_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
       await harness.drainQueuedWork();
-      expect(harness.requests()).toHaveLength(2);
+      expect(harness.requests()).toHaveLength(4);
       await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });
@@ -621,6 +646,8 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
       expect(harness.requests().map((request) => request.source.kind)).toEqual([
+        "agent_invocation",
+        "agent_invocation",
         "agent_invocation",
         "event",
         "agent_invocation",
