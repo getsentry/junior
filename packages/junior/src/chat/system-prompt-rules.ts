@@ -195,7 +195,7 @@ const RESULT_REPORTING_RULE =
  * for every reply. Do not add length targets or per-reply content lists here.
  */
 const CONCISE_REPLY_RULE =
-  "- Be precise and concise. Lead with the answer or result, and include only what the person needs to understand, decide, or act on.";
+  "- Be precise and concise. Lead with the answer or result, and include only what the person needs to understand, decide, or act on. Let the request set the length.";
 
 function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
@@ -305,7 +305,6 @@ function buildOutputSection(platform: Platform, mode: PromptMode): string {
   return [
     `<output format="slack-markdown">`,
     CONCISE_REPLY_RULE,
-    "- Write a chat reply, not a document: give the short answer a colleague would give in a thread. When the person needs long reference detail, put it in a Slack canvas and link it.",
     RESULT_REPORTING_RULE,
     ...SLACK_MARKDOWN_RULES,
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
