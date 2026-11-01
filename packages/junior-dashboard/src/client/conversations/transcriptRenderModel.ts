@@ -75,7 +75,7 @@ export type RenderedMessageEntry = {
   };
 };
 
-export type RenderedTranscriptEntry =
+export type RenderedTranscriptEntry = (
   | RenderedAttachmentsDeliveredEntry
   | RenderedContextEventEntry
   | RenderedFailureEntry
@@ -83,7 +83,11 @@ export type RenderedTranscriptEntry =
   | RenderedStructuredEventEntry
   | RenderedReasoningEntry
   | RenderedSubagentEntry
-  | RenderedToolEntry;
+  | RenderedToolEntry
+) & {
+  /** Event sequence of the source message. Pending sends have none. */
+  seq?: number;
+};
 
 export type TranscriptViewMode = "raw" | "rich";
 
@@ -94,6 +98,8 @@ export function groupTranscriptMessages(
   const entries: RenderedTranscriptEntry[] = [];
 
   for (const message of messages) {
+    const seq = message.pending ? undefined : message.sourceSeq;
+    const source = seq === undefined ? {} : { seq };
     let textParts: TranscriptViewTextPart[] = [];
     let textGroup = 0;
     const flushMessage = () => {
@@ -108,6 +114,7 @@ export function groupTranscriptMessages(
         key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
         message: nextMessage as RenderedMessageEntry["message"],
+        ...source,
       });
       textParts = [];
       textGroup += 1;
@@ -124,6 +131,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `tool:${part.id}`,
           kind: "tool",
+          ...source,
           part,
           timestamp: part.startedTimestamp ?? message.timestamp,
         });
@@ -131,6 +139,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:reasoning:${partIndex}`,
           kind: "reasoning",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -138,6 +147,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `subagent:${part.id}`,
           kind: "subagent",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -145,6 +155,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:structured-event:${part.namespace}:${part.name}`,
           kind: "structured_event",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -152,6 +163,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:attachments-delivered`,
           kind: "attachments_delivered",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -159,6 +171,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
           kind: "context",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -170,6 +183,7 @@ export function groupTranscriptMessages(
       entries.push({
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
+        ...source,
         failureCode: message.failureCode,
         ...(message.failureReason
           ? { failureReason: message.failureReason }

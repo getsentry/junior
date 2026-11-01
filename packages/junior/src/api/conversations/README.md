@@ -63,6 +63,12 @@ title. Every summary projection reads the same message with
 the same title. A viewer who cannot see private content still gets the private
 label.
 
+`PUT /:conversationId/read-position` stores how far the signed-in viewer has
+read: the event sequence of the last transcript row they saw. The stored value
+only moves forward and stops at the last event, so devices can report in any
+order. Detail returns the viewer's value as `readPosition`. It is personal
+state, so other viewers never see it.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 

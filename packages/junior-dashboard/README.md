@@ -3,7 +3,7 @@
 The dashboard is an authenticated reporting surface over Junior conversation
 read models. It does not participate in agent execution or mutate conversation
 state. Signed-in users may update their own profile fields, such as display
-name, through dashboard settings.
+name, through dashboard settings, and their own read positions.
 
 ## Boundaries
 
@@ -45,6 +45,13 @@ name, through dashboard settings.
   image, or deferred rendering, the scroll position moves by the same distance.
   A reader at the bottom stays at the latest message. See
   `client/conversations/transcriptScrollAnchor.ts`.
+- The transcript reports how far the reader has read to
+  `PUT /api/conversations/:id/read-position`, and detail returns it as
+  `readPosition`. The server keeps one forward-only position per user, so all
+  their devices share it. When a Conversation opens, rows after that position
+  get a "New" marker, and the transcript opens at the marker. A setting on this
+  browser can open at the latest message instead. See
+  `client/conversations/transcriptReadPosition.ts`.
 - The server adapts canonical runtime events into privacy-safe reporting events.
   The transcript combines tool and subagent updates. The event log keeps each
   event in sequence order, with readable details and optional raw JSON.

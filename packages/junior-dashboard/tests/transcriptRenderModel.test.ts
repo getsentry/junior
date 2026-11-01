@@ -174,6 +174,7 @@ describe("canonical event transcript reduction", () => {
         key: "1:reasoning:0",
         kind: "reasoning",
         part: { type: "reasoning", text: "Inspect the inputs." },
+        seq: 1,
         timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
       },
       {
@@ -186,12 +187,14 @@ describe("canonical event transcript reduction", () => {
           startedTimestamp: Date.parse("2026-01-01T00:00:00.000Z"),
           status: "running",
         },
+        seq: 1,
         timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
       },
       {
         key: "1:reasoning:2",
         kind: "reasoning",
         part: { type: "reasoning", text: "Check the result." },
+        seq: 1,
         timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
       },
     ]);

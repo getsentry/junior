@@ -728,3 +728,102 @@ test("keeps the message in view while earlier history and late content load", as
   });
   await expect(reading).toBeInViewport({ ratio: 1 });
 });
+
+test("opens where the reader left off and reports what they read", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const generatedAt = "2026-08-07T11:00:00.000Z";
+  const conversationId = "read-position";
+  const conversation = {
+    conversationId,
+    cumulativeDurationMs: 1_000,
+    displayTitle: "Read position",
+    isParticipant: true,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "completed",
+    surface: "internal",
+  };
+  const reported: number[] = [];
+
+  await page.route("**/api/conversations", async (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversations: [conversation],
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route(
+    `**/api/conversations/${conversationId}/pending-messages`,
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId, generatedAt, messages: [] },
+      });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/read-position`,
+    async (route) => {
+      const { lastReadSeq } = route.request().postDataJSON() as {
+        lastReadSeq: number;
+      };
+      reported.push(lastReadSeq);
+      await route.fulfill({ json: { lastReadSeq } });
+    },
+  );
+  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        ...conversation,
+        eventHistory: { status: "available" },
+        events: Array.from({ length: 60 }, (_, seq) => ({
+          createdAt: new Date(
+            Date.parse(generatedAt) + seq * 1_000,
+          ).toISOString(),
+          data: {
+            type: "message",
+            messageId: `message-${seq}`,
+            role: seq % 2 === 0 ? "user" : "assistant",
+            text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+          },
+          seq,
+        })),
+        generatedAt,
+        readPosition: { lastReadSeq: 20 },
+      },
+    });
+  });
+
+  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const marker = transcript.getByRole("separator", { name: "New messages" });
+  const firstUnread = transcript.getByText("Transcript message 21 ");
+  const latest = transcript.getByText("Transcript message 59 ");
+  await expect(marker).toBeInViewport();
+  await expect(firstUnread).toBeInViewport();
+  await expect(latest).not.toBeInViewport();
+  await screenshot(page, "conversation-unread-marker", { view: "mobile" });
+
+  // Reading the first screen moves the shared position past the marker.
+  await expect.poll(() => reported.at(-1) ?? 0).toBeGreaterThan(20);
+  await page.getByRole("button", { name: "Jump to latest" }).click();
+  await expect(latest).toBeInViewport();
+  await expect.poll(() => reported.at(-1)).toBe(59);
+  expect(reported).toEqual([...reported].sort((left, right) => left - right));
+
+  // Readers who prefer the latest message open there, below the marker.
+  await page.goto(`${dashboard.baseURL}/settings`);
+  await page.getByRole("radio", { name: /Latest message/ }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+  await expect(latest).toBeInViewport();
+  await expect(marker).not.toBeInViewport();
+});

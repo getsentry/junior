@@ -22,6 +22,10 @@ import {
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import {
+  useTranscriptReadReporter,
+  type TranscriptUnreadRange,
+} from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
 import {
   TurnContextPanelProvider,
@@ -34,9 +38,13 @@ export function Transcript(props: {
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
+  /** The read position when the Conversation opened. */
+  lastReadSeq?: number;
   loadingPreviousPage?: boolean;
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
+  /** Receive the last event sequence the reader saw in the transcript. */
+  onRead?: (seq: number) => void;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
@@ -51,6 +59,10 @@ export function Transcript(props: {
   transcript?: ConversationTranscript;
   /** Show turn context in the owner's panel. Without it, a drawer opens. */
   turnContextPanel?: TurnContextPanel;
+  /** Open at the "New" marker instead of the latest message. */
+  startAtUnread?: boolean;
+  /** Rows that were unread when the Conversation opened get a marker. */
+  unread?: TranscriptUnreadRange;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
@@ -64,6 +76,7 @@ export function Transcript(props: {
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     pinRequestVersion: props.pinRequestVersion,
+    startAtUnread: view === "rich" && props.startAtUnread,
     view,
     versions: {
       rich: transcriptBottomVersion(props.transcript, "rich"),
@@ -71,6 +84,14 @@ export function Transcript(props: {
     },
   });
 
+  // Read positions follow the transcript rows, not the event log. Search
+  // results skip rows, so they do not move the read position.
+  const reportsRead = view === "rich" && search.trim().length === 0;
+  useTranscriptReadReporter({
+    content: bottomPinning.contentElement,
+    lastReadSeq: props.lastReadSeq,
+    onRead: reportsRead ? props.onRead : undefined,
+  });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
   const previousPageRef = useAutoLoadPreviousPage({
     enabled: Boolean(
@@ -144,6 +165,7 @@ export function Transcript(props: {
               conversation={props.transcript}
               pendingMessages={props.pendingMessages}
               responding={props.responding ?? props.live ?? false}
+              unread={props.unread}
             />
           </TurnContextPanelProvider>
         )}
