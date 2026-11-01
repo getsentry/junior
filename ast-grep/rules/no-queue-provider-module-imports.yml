@@ -1,7 +1,7 @@
 id: no-queue-provider-module-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/queue/provider.ts may import a queue provider module such as chat/queue/vercel.ts or chat/queue/bullmq.ts. Other code calls getQueueProvider(). See packages/junior/src/chat/queue/README.md.
+message: Only packages/junior/src/chat/queue/provider.ts may import a queue provider module such as chat/queue/vercel.ts or chat/queue/bullmq.ts. Other code calls getQueueProvider(). See packages/junior/src/chat/queue/AGENTS.md.
 files:
   - packages/junior/src/**/*.ts
   - packages/junior/src/**/*.tsx
