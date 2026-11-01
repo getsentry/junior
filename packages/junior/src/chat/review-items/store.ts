@@ -7,6 +7,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   or,
   type SQL,
 } from "drizzle-orm";
@@ -468,8 +469,22 @@ export async function takeReviewItem(
   });
 }
 
+/**
+ * A position in the search order: the last item of a page. Search returns
+ * the items after it.
+ */
+export interface ReviewItemPosition {
+  id: string;
+  updatedAt: Date;
+}
+
 /** Filters for Review item search. Every filter is optional. */
-interface ReviewItemFilters {
+export interface ReviewItemFilters {
+  /**
+   * Return only the items after this position. Use it with one status
+   * group, such as only open items, because open items sort first.
+   */
+  after?: ReviewItemPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
@@ -489,6 +504,17 @@ function searchConditions(
     reviewItemVisibleTo(reader),
     inArray(juniorReviewItems.status, [...filters.statuses]),
   ];
+  if (filters.after) {
+    conditions.push(
+      or(
+        lt(juniorReviewItems.updatedAt, filters.after.updatedAt),
+        and(
+          eq(juniorReviewItems.updatedAt, filters.after.updatedAt),
+          lt(juniorReviewItems.id, filters.after.id),
+        ),
+      )!,
+    );
+  }
   if (filters.subjectId) {
     conditions.push(eq(juniorReviewItems.subjectId, filters.subjectId));
   }
@@ -532,7 +558,8 @@ export async function countReviewItemsNeedingUser(
 /**
  * Find the Review items that a reader can see. Open items come first, so
  * the limit never drops an open item for a closed one. Then the newest
- * change comes first.
+ * change comes first: `updated_at`, then `id`, both descending. `after`
+ * pages through that order.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,

@@ -224,6 +224,35 @@ describe("review item actions API", () => {
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
 
+    const otherId = await addItem({
+      kind: "notice",
+      title: "Another pull request needs review",
+      body: "It waits on a reviewer too.",
+      assignees: ["everyone"],
+      dedupe_key: "pr:8",
+    });
+
+    // The list pages the open items, newest change first. A cursor reads
+    // the next page of the same list only.
+    const first = await (await api(fixture, cal).get("?limit=1")).json();
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const cursor = encodeURIComponent(first.nextCursor);
+    const second = await (
+      await api(fixture, cal).get(`?limit=1&cursor=${cursor}`)
+    ).json();
+    expect(second.nextCursor).toBeUndefined();
+    const listed = [...first.items, ...second.items];
+    expect(listed.map((item: { id: string }) => item.id).sort()).toEqual(
+      [id, otherId].sort(),
+    );
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id, canAct: true, canTake: true }),
+    );
+    expect(
+      (await api(fixture, cal).get(`?q=pull&limit=1&cursor=${cursor}`)).status,
+    ).toBe(400);
+
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.
     await takeReviewItem(getDb(), { id, nowMs: Date.now(), userId: cal.id });

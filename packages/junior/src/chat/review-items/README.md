@@ -113,6 +113,21 @@ parent with `reportBlocked`, and the parent adds the item.
   The item records who closed it and when. A retry of the same close
   succeeds and sends missing messages again.
 
+## Review desk list
+
+`GET /api/review-items` (`api/review-items/routes.ts`) lists the open items
+that the viewer can see, newest change first. It reads one page at a time
+with a cursor. The cursor holds the position of the last item and the
+filters of its list (`q` and `conversationId`). A cursor from a different
+list fails.
+
+- Only open items page. An item that closes while a person reads leaves the
+  open order, so the next page does not skip or repeat an item.
+- An item that changes while a person reads moves to the top. A later page
+  does not show it. A refresh does.
+- A search (`q`) also returns the newest archived matches with the first
+  page, up to a limit. `moreArchived` tells the dashboard that more match.
+
 ## Reply in the thread
 
 A person can answer an action item with a message instead of the card

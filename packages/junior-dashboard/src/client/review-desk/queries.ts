@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
@@ -23,8 +24,9 @@ const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
 /**
- * List the open Review items that the viewer can see. A search also finds
- * archived items.
+ * List the open Review items that the viewer can see, one page at a time.
+ * A search also finds archived items, with the first page. `items` holds
+ * the items of every loaded page, and `query` loads more.
  */
 export function useReviewItemsData(filters: {
   conversationId?: string;
@@ -36,17 +38,28 @@ export function useReviewItemsData(filters: {
   }
   if (filters.q) params.set("q", filters.q);
   const search = params.toString();
-  return useQuery({
+  const query = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const pageParams = new URLSearchParams(search);
+      if (pageParam) pageParams.set("cursor", pageParam);
+      return fetchDashboardJson(
         reviewItemListSchema,
-        `/api/review-items?${search}`,
+        `/api/review-items?${pageParams.toString()}`,
         signal,
-      ),
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     placeholderData: keepPreviousData,
     retry: false,
   });
+  const pages = query.data?.pages;
+  const items = useMemo(
+    () => (pages ?? []).flatMap((page) => page.items),
+    [pages],
+  );
+  return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
 }
 
 /** Read one Review item, for a link to an item outside the current list. */
