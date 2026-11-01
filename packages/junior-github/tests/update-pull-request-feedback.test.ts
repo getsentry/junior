@@ -12,6 +12,21 @@ function response(body: unknown, status = 200) {
   });
 }
 
+/** GitHub replies that show the comment is on a PR that `authorId` opened. */
+function pullRequestLookup(
+  commentKind: "conversation" | "review",
+  authorId = BOT_USER_ID,
+) {
+  const parentUrl =
+    commentKind === "conversation"
+      ? { issue_url: "https://api.github.com/repos/getsentry/junior/issues/7" }
+      : {
+          pull_request_url:
+            "https://api.github.com/repos/getsentry/junior/pulls/7",
+        };
+  return [response(parentUrl), response({ user: { id: authorId } })];
+}
+
 function toolContext(responses: Response[]) {
   const pending = [...responses];
   const fetch = vi.fn(async () => {
@@ -29,12 +44,15 @@ function toolContext(responses: Response[]) {
 }
 
 describe("updatePullRequestFeedback", () => {
-  it("is directly available to event turns", () => {
-    expect(toolContext([]).tool.exposure).toBe("direct");
+  it("is directly available to event turns without action review", () => {
+    const { tool } = toolContext([]);
+    expect(tool.exposure).toBe("direct");
+    expect(tool.approvalMode).toBe("approve");
   });
 
   it("adds the addressed reaction for a fresh conversation comment", async () => {
     const { fetch, tool } = toolContext([
+      ...pullRequestLookup("conversation"),
       response([]),
       response({ id: 91, content: "+1", user: { id: BOT_USER_ID } }, 201),
     ]);
@@ -57,15 +75,21 @@ describe("updatePullRequestFeedback", () => {
       reactionId: 91,
     });
 
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls[0]?.[0]).toMatchObject({
+    expect(fetch).toHaveBeenCalledTimes(4);
+    const commentRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    expect(commentRequest.url).toContain(
+      "/repos/getsentry/junior/issues/comments/55",
+    );
+    const pullRequest = fetch.mock.calls[1]?.[0]?.request as Request;
+    expect(pullRequest.url).toContain("/repos/getsentry/junior/pulls/7");
+    expect(fetch.mock.calls[2]?.[0]).toMatchObject({
       operation: "github.pull.comment-reaction.list",
     });
-    const listRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    const listRequest = fetch.mock.calls[2]?.[0]?.request as Request;
     expect(listRequest.url).toContain(
       "/repos/getsentry/junior/issues/comments/55/reactions",
     );
-    const createRequest = fetch.mock.calls[1]?.[0]?.request as Request;
+    const createRequest = fetch.mock.calls[3]?.[0]?.request as Request;
     expect(createRequest.url).toContain(
       "/repos/getsentry/junior/issues/comments/55/reactions",
     );
@@ -76,6 +100,7 @@ describe("updatePullRequestFeedback", () => {
 
   it("uses the pulls comments path for inline review comments", async () => {
     const { fetch, tool } = toolContext([
+      ...pullRequestLookup("review"),
       response([]),
       response({ id: 12, content: "-1", user: { id: BOT_USER_ID } }, 201),
     ]);
@@ -90,14 +115,42 @@ describe("updatePullRequestFeedback", () => {
       { toolCallId: "mark-declined" },
     );
 
-    const listRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    const commentRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    expect(commentRequest.url).toContain(
+      "/repos/getsentry/junior/pulls/comments/77",
+    );
+    const listRequest = fetch.mock.calls[2]?.[0]?.request as Request;
     expect(listRequest.url).toContain(
       "/repos/getsentry/junior/pulls/comments/77/reactions",
     );
   });
 
+  it("refuses feedback on a pull request that the bot did not author", async () => {
+    const { fetch, tool } = toolContext(
+      pullRequestLookup("review", HUMAN_USER_ID),
+    );
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          commentKind: "review",
+          commentId: 77,
+          status: "addressed",
+        },
+        { toolCallId: "foreign-pr" },
+      ),
+    ).rejects.toThrow(
+      "only set feedback status on comments on pull requests it authored",
+    );
+
+    // Only the two ownership reads ran. No reaction was listed or written.
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("replaces Junior's prior status reaction without touching a human reaction", async () => {
     const { fetch, tool } = toolContext([
+      ...pullRequestLookup("conversation"),
       response([
         { id: 1, content: "eyes", user: { id: BOT_USER_ID } },
         { id: 2, content: "heart", user: { id: HUMAN_USER_ID } },
@@ -118,8 +171,8 @@ describe("updatePullRequestFeedback", () => {
       ),
     ).resolves.toMatchObject({ status: "addressed", reactionId: 3 });
 
-    expect(fetch).toHaveBeenCalledTimes(3);
-    const deleteRequest = fetch.mock.calls[1]?.[0]?.request as Request;
+    expect(fetch).toHaveBeenCalledTimes(5);
+    const deleteRequest = fetch.mock.calls[3]?.[0]?.request as Request;
     expect(deleteRequest.method).toBe("DELETE");
     expect(deleteRequest.url).toContain(
       "/repos/getsentry/junior/issues/comments/55/reactions/1",
@@ -128,6 +181,7 @@ describe("updatePullRequestFeedback", () => {
 
   it("continues when a stale status reaction disappears before deletion", async () => {
     const { fetch, tool } = toolContext([
+      ...pullRequestLookup("conversation"),
       response([
         { id: 1, content: "eyes", user: { id: BOT_USER_ID } },
         { id: 2, content: "rocket", user: { id: BOT_USER_ID } },
@@ -148,11 +202,12 @@ describe("updatePullRequestFeedback", () => {
       ),
     ).resolves.toMatchObject({ status: "addressed", reactionId: 3 });
 
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(5);
   });
 
   it("is idempotent when the outcome reaction already exists", async () => {
     const { fetch, tool } = toolContext([
+      ...pullRequestLookup("conversation"),
       response([{ id: 9, content: "+1", user: { id: BOT_USER_ID } }]),
     ]);
 
@@ -168,7 +223,7 @@ describe("updatePullRequestFeedback", () => {
       ),
     ).resolves.toMatchObject({ status: "addressed", reactionId: 9 });
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("does not expose the webhook-owned reviewing state", async () => {

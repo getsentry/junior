@@ -24,6 +24,9 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubError(listPayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubError(deletePayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubError(createPayload)}`, );
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error(message);
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error("GitHub comment did not name its issue or pull request.");
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubError(pullPayload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );

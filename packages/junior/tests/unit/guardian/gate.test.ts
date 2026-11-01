@@ -77,7 +77,7 @@ function definition(
 }
 
 describe("tool action review", () => {
-  it("preserves execution behavior for unclassified core tools", async () => {
+  it("skips review for unclassified core tools and approved plugin tools", async () => {
     const reviewer = { review: vi.fn() };
     const resolveApprovalMetadata = vi.fn();
 
@@ -86,6 +86,30 @@ describe("tool action review", () => {
       "generateReport",
       definition({ resolveApprovalMetadata }),
       { reportId: "weekly" },
+      reviewContext(reviewer),
+    );
+    // A plugin tool that proves its own safety in code skips review before
+    // any context is read, so root and child agents run it the same way.
+    await reviewToolAction(
+      "tool-call",
+      "demo_markFeedback",
+      definition({
+        approvalMode: "approve",
+        annotations: {
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: true,
+          readOnlyHint: false,
+        },
+        identity: {
+          id: "demo.markFeedback",
+          name: "markFeedback",
+          plugin: "demo",
+        },
+        resolveApprovalMetadata,
+        source: { id: "demo", description: "Demo plugin" },
+      }),
+      { commentId: 55, status: "addressed" },
       reviewContext(reviewer),
     );
 
