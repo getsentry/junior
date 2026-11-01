@@ -10,7 +10,6 @@ import {
   or,
   type SQL,
 } from "drizzle-orm";
-import type { User } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -26,12 +25,12 @@ import type {
 import {
   reviewItemAssignedTo,
   reviewItemLinkedTo,
-  reviewItemReaderForUser,
+  reviewItemNeedsUser,
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
 
-export type ReviewItemKind = "notice" | "action";
+type ReviewItemKind = "notice" | "action";
 
 /**
  * Close reason of an action item that a person answered with a reply in
@@ -42,7 +41,7 @@ export type ReviewItemStatus = "open" | "done" | "dismissed";
 export type ReviewItemVisibility = "public" | "private";
 
 /** The thing a Review item is about, such as a pull request. */
-export interface ReviewItemSubject {
+interface ReviewItemSubject {
   /** Stable id that Search matches, such as a URL. */
   id: string;
   title?: string;
@@ -431,7 +430,7 @@ export async function takeReviewItem(
 }
 
 /** Filters for Review item search. Every filter is optional. */
-export interface ReviewItemFilters {
+interface ReviewItemFilters {
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
@@ -479,16 +478,15 @@ function searchConditions(
   return conditions;
 }
 
-/** Count the Review items that a reader can see and that match filters. */
-export async function countReviewItems(
+/** Count the open Review items that need a User (`reviewItemNeedsUser`). */
+export async function countReviewItemsNeedingUser(
   db: JuniorDatabase,
-  reader: ReviewItemReader,
-  filters: Omit<ReviewItemFilters, "limit">,
+  userId: string,
 ): Promise<number> {
   const rows = await db
     .select({ count: count() })
     .from(juniorReviewItems)
-    .where(and(...searchConditions(reader, filters)));
+    .where(reviewItemNeedsUser(userId));
   return rows[0]?.count ?? 0;
 }
 
@@ -516,13 +514,12 @@ export async function searchReviewItems(
 }
 
 /**
- * List the Conversations that wait on a User: each has an open linked item
- * that the User can see and that is assigned to the User or to Everyone. An
- * item without assignees does not wait on anyone.
+ * List the Conversations that wait on a User: each is linked to an open item
+ * that needs the User (`reviewItemNeedsUser`).
  */
 export async function listWaitingConversationIds(
   db: JuniorDatabase,
-  user: User,
+  userId: string,
 ): Promise<string[]> {
   const rows = await db
     .selectDistinct({
@@ -533,15 +530,6 @@ export async function listWaitingConversationIds(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
     )
-    .where(
-      and(
-        eq(juniorReviewItems.status, "open"),
-        reviewItemVisibleTo(reviewItemReaderForUser(user)),
-        or(
-          eq(juniorReviewItems.assignedToEveryone, true),
-          reviewItemAssignedTo(user.id),
-        ),
-      ),
-    );
+    .where(reviewItemNeedsUser(userId));
   return rows.map((row) => row.conversationId).sort();
 }

@@ -28,7 +28,7 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
-  countReviewItems,
+  countReviewItemsNeedingUser,
   listWaitingConversationIds,
   searchReviewItems,
   type ReviewItem,
@@ -45,10 +45,7 @@ const ERROR_STATUS = {
 } as const;
 
 /** Build the API payload of one Review item for its viewer. */
-export function reviewItemPayload(
-  item: ReviewItem,
-  viewer: User,
-): ReviewItemPayload {
+function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
   return {
     addedByConversationId: item.addedByConversationId,
     assignedToEveryone: item.assignedToEveryone,
@@ -122,16 +119,13 @@ export function createReviewItemRoutes(services: {
   app.get("/count", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemCountSchema, {
-      mine: await countReviewItems(getDb(), reviewItemReaderForUser(viewer), {
-        assignee: { userId: viewer.id },
-        statuses: ["open"],
-      }),
+      needsViewer: await countReviewItemsNeedingUser(getDb(), viewer.id),
     });
   });
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversationIds: await listWaitingConversationIds(getDb(), viewer),
+      conversationIds: await listWaitingConversationIds(getDb(), viewer.id),
     });
   });
   app.get(

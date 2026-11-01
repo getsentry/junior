@@ -143,10 +143,19 @@ a new Turn.
 
 ## Waiting on you
 
-A Conversation waits on a User when it has an open linked item that is
-assigned to the User or to Everyone (`listWaitingConversationIds`). An item
-with no assignees does not wait on anyone. The dashboard shows a lavender dot
-for these Conversations. The dot replaces the other status markers.
+An item needs a User when it is an open `action` item and the User is an
+assignee (`reviewItemNeedsUser` in `access.ts`). A notice, an item assigned
+to Everyone, and an item with no assignees need no one. One rule gives both
+of these:
+
+- The count in the dashboard nav (`needsViewer` from
+  `/api/review-items/count`).
+- The "Waiting on you" marker. A Conversation waits on a User when it is
+  linked to an item that needs the User (`listWaitingConversationIds`). The
+  dashboard shows a lavender dot for these Conversations. The dot replaces
+  the other status markers.
+
+The review desk list shows more: every open item that the reader can see.
 
 ## Slack cards
 

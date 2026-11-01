@@ -98,6 +98,7 @@ describe("review item actions API", () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
     await slackConversation("slack:CPUB:1.000002");
+    await slackConversation("slack:CPUB:1.000003");
     const ana = await user("ana@example.com");
     const ben = await user("ben@example.com");
     const cal = await user("cal@example.com");
@@ -110,10 +111,19 @@ describe("review item actions API", () => {
       dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
     });
+    // A notice does not need Ana, so it does not count.
+    await addItem({
+      kind: "notice",
+      title: "Weekly report is ready",
+      body: "Read it when you have time.",
+      assignees: ["ana@example.com"],
+      conversation_ids: ["slack:CPUB:1.000003"],
+      dedupe_key: "report:weekly",
+    });
 
     const anaCount = await (await api(fixture, ana).get("/count")).json();
-    expect(anaCount).toEqual({ mine: 1 });
-    // The linked Conversations wait on Ana, but not on Cal.
+    expect(anaCount).toEqual({ needsViewer: 1 });
+    // The Conversations of the action item wait on Ana, but not on Cal.
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
     ).toEqual({
@@ -123,7 +133,10 @@ describe("review item actions API", () => {
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
     const calList = await (await api(fixture, cal).get("")).json();
-    expect(calList.items).toMatchObject([{ id, canAct: false }]);
+    expect(calList.items).toMatchObject([
+      { kind: "notice" },
+      { id, canAct: false },
+    ]);
     // A person outside the Slack workspace does not see the public item.
     const outsider = { ...cal, identities: [] };
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
@@ -169,12 +182,15 @@ describe("review item actions API", () => {
       (await api(fixture, ben).act(id, { action: "dismiss" })).status,
     ).toBe(409);
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
-      mine: 0,
+      needsViewer: 0,
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
-    expect((await (await api(fixture, ben).get("")).json()).items).toEqual([]);
+    // The list still shows every open item that Ben can see.
+    expect(
+      (await (await api(fixture, ben).get("")).json()).items,
+    ).toMatchObject([{ kind: "notice" }]);
     // A search still finds the closed item.
     const found = await (await api(fixture, ben).get("?q=acme")).json();
     expect(found.items).toMatchObject([{ id, status: "done" }]);
@@ -185,15 +201,23 @@ describe("review item actions API", () => {
     await slackConversation("slack:CPUB:1.000001");
     const cal = await user("cal@example.com");
     const id = await addItem({
-      kind: "notice",
+      kind: "action",
       title: "Pull request needs review",
       body: "It waits on a reviewer.",
       assignees: ["everyone"],
       dedupe_key: "pr:7",
+      request: REQUEST,
     });
 
     const list = await (await api(fixture, cal).get("")).json();
     expect(list.items).toMatchObject([{ id, canAct: true, canTake: true }]);
+    // An item for Everyone needs no one until a person takes it.
+    expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
+      needsViewer: 0,
+    });
+    expect(
+      await (await api(fixture, cal).get("/waiting-conversations")).json(),
+    ).toEqual({ conversationIds: [] });
 
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.
@@ -207,8 +231,11 @@ describe("review item actions API", () => {
       status: "open",
     });
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
-      mine: 1,
+      needsViewer: 1,
     });
+    expect(
+      await (await api(fixture, cal).get("/waiting-conversations")).json(),
+    ).toEqual({ conversationIds: ["slack:CPUB:1.000001"] });
     const texts = await pendingTexts("slack:CPUB:1.000001");
     expect(texts).toEqual([
       expect.stringContaining("cal@example.com took review item"),

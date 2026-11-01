@@ -37,7 +37,7 @@ export interface ReviewItemReader {
 }
 
 /** Return whether two tenants are the same. Two missing tenants match. */
-export function isSameTenant(
+function isSameTenant(
   a: ProviderTenant | undefined,
   b: ProviderTenant | undefined,
 ): boolean {
@@ -69,6 +69,21 @@ export function reviewItemReaderForUser(user: User): ReviewItemReader {
 /** SQL: the Review item has this assigned User. */
 export function reviewItemAssignedTo(userId: string): SQL {
   return sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemAssignees.userId} = ${userId})`;
+}
+
+/**
+ * SQL: the Review item needs this User. Only an open `action` item that is
+ * assigned to the User needs them. A notice, an item for Everyone, and an
+ * item without assignees need no one. An assigned User can always see the
+ * item, so this rule needs no visibility check. The nav count and the
+ * "Waiting on you" marker use this rule.
+ */
+export function reviewItemNeedsUser(userId: string): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+    reviewItemAssignedTo(userId),
+  )!;
 }
 
 /** SQL: the Review item links this Conversation. */
