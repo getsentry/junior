@@ -4,7 +4,7 @@
  * production entry points. Each signal sets the model output and says what the
  * owner shows after the Turn ends.
  */
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import {
@@ -48,7 +48,8 @@ import {
 } from "./conversation-work";
 import { context, execute } from "./event-automations";
 import type { FixedModelOutput } from "./model-stream";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { slackApiOutbox } from "./slack-api-outbox";
 
 type Harness = Awaited<ReturnType<typeof createConversationWorkHarness>>;
@@ -90,11 +91,7 @@ export interface Owner {
   failedResumeWakes?: string[];
   /** True when a failed Turn posts no error reply, by owner policy. */
   quietFailure?: boolean;
-  /**
-   * Rows where the Slack runner ends the Turn another way. It does not use
-   * the shared lifecycle yet. Each value replaces part of the expected
-   * outcome of the row with that name.
-   */
+  /** Expected parts of rows that the Slack runner still ends another way. */
   slackRunnerGaps?: Record<string, Partial<Expected>>;
 }
 
@@ -108,36 +105,18 @@ export interface Expected {
 export const clock = { nowMs: 1_800_000_000_000 };
 export const closers: Array<() => Promise<void>> = [];
 
-/**
- * Read how the last Turn of a Conversation ended. A Turn end without its
- * start says so.
- */
+/** Read how the last Turn of a Conversation ended. */
 export async function lastTurnEnd(conversationId: string): Promise<string> {
-  const events = (
-    await getConversationEventStore().loadHistory(conversationId)
-  ).map((event) => event.data);
-  const last = events
+  const last = (await getConversationEventStore().loadHistory(conversationId))
+    .map((event) => event.data)
     .filter(
       (data) => data.type === "turn_completed" || data.type === "turn_failed",
     )
     .at(-1);
-  if (!last) {
-    return events.some((data) => data.type === "turn_started")
-      ? "running"
-      : "not started";
-  }
-  const end =
-    last.type === "turn_failed"
-      ? "failed"
-      : last.outcome === "cancelled"
-        ? "stopped"
-        : last.outcome === "blocked"
-          ? "blocked"
-          : "completed";
-  const started = events.some(
-    (data) => data.type === "turn_started" && data.turnId === last.turnId,
-  );
-  return started ? end : `${end} without a start`;
+  if (!last) return "not ended";
+  if (last.type === "turn_failed") return "failed";
+  if (last.outcome === "blocked") return "blocked";
+  return last.outcome === "cancelled" ? "stopped" : "completed";
 }
 
 async function assistantMessages(conversationId: string): Promise<string[]> {
@@ -148,10 +127,7 @@ async function assistantMessages(conversationId: string): Promise<string[]> {
     );
 }
 
-/**
- * Read the latest agent invocation of a child, its report to the parent, and
- * whether its Turn record can still resume.
- */
+/** Read the latest agent invocation of a child and its report to the parent. */
 async function readChild(conversationId: string) {
   const latest = await getLatestAgentInvocationForConversation(conversationId);
   const invocation = latest && (await getAgentInvocation(latest.invocationId));
@@ -210,6 +186,16 @@ async function spawnChild(
     )
   ).childConversationId;
 }
+
+// Slack mailbox work requeues its message after a failed attempt and
+// dead-letters it on the last attempt.
+const slackFailedWakes = [
+  ...Array.from(
+    { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
+    () => "pending_requeued",
+  ),
+  "failed",
+];
 
 export const owners: Owner[] = [
   {
@@ -275,15 +261,7 @@ export const owners: Owner[] = [
   {
     name: "root Slack",
     delivery: "slack",
-    // Slack mailbox work requeues its message after a failed attempt and
-    // dead-letters it on the last attempt.
-    failedWakes: [
-      ...Array.from(
-        { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
-        () => "pending_requeued",
-      ),
-      "failed",
-    ],
+    failedWakes: slackFailedWakes,
     // The Slack resume runner fails the Turn on the first error.
     failedResumeWakes: ["completed"],
     slackRunnerGaps: {
@@ -291,18 +269,8 @@ export const owners: Owner[] = [
       "stop after the Run keeps the result": { turn: "stopped" },
       // An execution limit retries, then posts its own reply.
       "an execution limit fails at once": {
-        wakes: [
-          ...Array.from(
-            { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
-            () => "pending_requeued",
-          ),
-          "failed",
-        ],
+        wakes: slackFailedWakes,
         shown: { replies: [expect.stringMatching(/execution limit/)] },
-      },
-      // The failure has no Turn start when the start write failed.
-      "a setup error fails on the last attempt": {
-        turn: "failed without a start",
       },
     },
     start: async (harness) => {
@@ -333,14 +301,11 @@ export const owners: Owner[] = [
     // A dispatch runs its Turn through the Slack runner.
     slackRunnerGaps: {
       // A stop before the Run ends the dispatch without a Turn.
-      "stop before the Run": { turn: "not started" },
+      "stop before the Run": { turn: "not ended" },
       // A stop after the Run drops the saved result.
       "stop after the Run keeps the result": {
         turn: "stopped",
         shown: { dispatch: "failed", replies: [] },
-      },
-      "a setup error fails on the last attempt": {
-        turn: "failed without a start",
       },
     },
     // A dispatch declares its result with a tool call.
@@ -409,6 +374,30 @@ export const owners: Owner[] = [
   },
 ];
 
+interface BeforeArgs {
+  agentRunner: AgentRunner;
+  conversationId: string;
+  stop: () => void;
+  stopped: () => Promise<unknown>;
+}
+
+/** Request a stop after each Run, and wait until the Run sees it. */
+function stopAfterEachRun(args: BeforeArgs): void {
+  const run = args.agentRunner.run.bind(args.agentRunner);
+  vi.spyOn(args.agentRunner, "run").mockImplementation(async (request) => {
+    const outcome = await run(request);
+    args.stop();
+    await args.stopped();
+    // The worker reads the stop marker on an interval.
+    await new Promise<void>((resolve) => {
+      if (!request.signal || request.signal.aborted) return resolve();
+      request.signal.addEventListener("abort", () => resolve(), { once: true });
+      setTimeout(resolve, 5_000);
+    });
+    return outcome;
+  });
+}
+
 interface Signal {
   name: string;
   /** Owners of this row. Omit it for every owner. */
@@ -417,21 +406,10 @@ interface Signal {
     reply: (text: string) => FixedModelOutput;
     stop: () => void;
   }): FixedModelOutput[];
-  /** Run after the owner setup, before the first wake. */
-  before?(args: { conversationId: string; stop: () => void }): Promise<void>;
+  /** Arrange the row after the owner setup, before the first wake. */
+  before?(args: BeforeArgs): Promise<void> | void;
   /** Make every agent run throw from this wake on. */
   failFromWake?: number;
-  /** The error that each agent run throws. */
-  failure?(): Error;
-  /** End every agent run with this outcome instead of the model output. */
-  outcome?: AgentRunOutcome;
-  /** Request a stop after each Run returns, and wait until the Turn sees it. */
-  stopAfterRun?: boolean;
-  /**
-   * Make a Turn lifecycle write fail: `complete` once, or `start` on every
-   * attempt.
-   */
-  lifecycleFailure?: "complete" | "start";
   /** Pause the first wake at its first safe boundary. */
   yieldFirst?: boolean;
   /** What the owner shows after the Turn ends. */
@@ -575,7 +553,7 @@ export const signals: Signal[] = [
   {
     name: "stop after the Run keeps the result",
     outputs: ({ reply }) => [reply(REPLY)],
-    stopAfterRun: true,
+    before: stopAfterEachRun,
     expected: (owner) => ({
       wakes: ["completed", "no_work"],
       turn: "completed",
@@ -588,18 +566,20 @@ export const signals: Signal[] = [
     name: "an error after the save while a stop is pending",
     appliesTo: isChild,
     outputs: ({ reply }) => [reply(REPLY)],
-    before: async ({ conversationId }) => {
+    before: async (args) => {
       await createAgentInvocation({
         ...invocationInput,
-        idempotencyKey: `${conversationId}-open-child`,
-        parentConversationId: conversationId,
+        idempotencyKey: `${args.conversationId}-open-child`,
+        parentConversationId: args.conversationId,
       });
+      stopAfterEachRun(args);
+      vi.spyOn(
+        ConversationTurnLifecycleService.prototype,
+        "complete",
+      ).mockRejectedValueOnce(new Error("event store unavailable"));
     },
-    stopAfterRun: true,
-    lifecycleFailure: "complete",
     expected: (owner) => ({
-      // The failed write retries the attempt. The retry reports the saved
-      // result.
+      // The failed write retries. The retry reports the saved result.
       wakes: ["failed", "completed", "no_work"],
       turn: "completed",
       shown: finished(owner, REPLY, "completed"),
@@ -608,8 +588,11 @@ export const signals: Signal[] = [
   {
     name: "an execution limit fails at once",
     outputs: () => [],
-    failFromWake: 0,
-    failure: () => new TurnToolCallLimitExceededError(1),
+    before: ({ agentRunner }) => {
+      vi.spyOn(agentRunner, "run").mockRejectedValue(
+        new TurnToolCallLimitExceededError(1),
+      );
+    },
     expected: (owner) => ({
       wakes: ["completed"],
       turn: "failed",
@@ -619,7 +602,21 @@ export const signals: Signal[] = [
   {
     name: "a setup error fails on the last attempt",
     outputs: ({ reply }) => [reply("Never sent.")],
-    lifecycleFailure: "start",
+    // The start write fails on every attempt.
+    before: () => {
+      const start = ConversationTurnLifecycleService.prototype.start;
+      let failures = CONVERSATION_WORK_MAX_RETRIES;
+      vi.spyOn(
+        ConversationTurnLifecycleService.prototype,
+        "start",
+      ).mockImplementation(async function (
+        this: ConversationTurnLifecycleService,
+        input,
+      ) {
+        if (failures-- > 0) throw new Error("event store unavailable");
+        return await start.call(this, input);
+      });
+    },
     expected: (owner) => ({
       wakes: failedAttempts(owner),
       turn: "failed",
@@ -630,7 +627,12 @@ export const signals: Signal[] = [
     name: "an auth pause blocks the child",
     appliesTo: isChild,
     outputs: () => [],
-    outcome: { providerDisplayName: "GitHub", status: "awaiting_auth" },
+    before: ({ agentRunner }) => {
+      vi.spyOn(agentRunner, "run").mockResolvedValue({
+        providerDisplayName: "GitHub",
+        status: "awaiting_auth",
+      });
+    },
     expected: (owner) => ({
       wakes: ["completed"],
       turn: "blocked",

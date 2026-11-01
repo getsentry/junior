@@ -580,17 +580,6 @@ export function createAgentInvocationWorker(
     };
 
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
-    const startTurn = async (): Promise<void> => {
-      await new ConversationTurnLifecycleService(
-        getConversationEventStore(),
-      ).start({
-        conversationId: invocation.childConversationId,
-        createdAtMs: invocation.createdAtMs,
-        inputMessageIds: [getAgentInvocationMessageId(invocation.invocationId)],
-        surface: "internal",
-        turnId,
-      });
-    };
     const endInvocation = async (
       status: "blocked" | "failed" | "stopped",
       errorMessage: string,
@@ -638,7 +627,17 @@ export function createAgentInvocationWorker(
             await finish(invocation);
             return "finished";
           }
-          await startTurn();
+          await new ConversationTurnLifecycleService(
+            getConversationEventStore(),
+          ).start({
+            conversationId: invocation.childConversationId,
+            createdAtMs: invocation.createdAtMs,
+            inputMessageIds: [
+              getAgentInvocationMessageId(invocation.invocationId),
+            ],
+            surface: "internal",
+            turnId,
+          });
           const [persisted, projection, tree] = await Promise.all([
             getPersistedThreadState(invocation.childConversationId),
             loadProjection({
@@ -734,9 +733,6 @@ export function createAgentInvocationWorker(
           return true;
         },
         fail: async (error) => {
-          // A setup error can come before the Turn start. The start is
-          // idempotent, so each failed Turn also has its start.
-          await startTurn();
           await endInvocation(
             "failed",
             error instanceof Error ? error.message : "Agent invocation failed",

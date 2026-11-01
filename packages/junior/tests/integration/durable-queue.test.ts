@@ -59,7 +59,6 @@ import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 import { stopConversationTurn } from "@/chat/conversations/stop";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
   clock,
   closers,
@@ -859,50 +858,13 @@ describe("Turn lifecycle for each work owner", () => {
           softYieldAfterMs === undefined ? {} : { softYieldAfterMs },
         );
       await owner.setup?.({ conversationId, harness, process });
-      await signal.before?.({ conversationId, stop });
+      await signal.before?.({
+        agentRunner: harness.agentRunner,
+        conversationId,
+        stop,
+        stopped: async () => await stopping,
+      });
       await stopping;
-      const runAgent = harness.agentRunner.run.bind(harness.agentRunner);
-      if (signal.outcome) {
-        vi.spyOn(harness.agentRunner, "run").mockResolvedValue(signal.outcome);
-      }
-      if (signal.stopAfterRun) {
-        vi.spyOn(harness.agentRunner, "run").mockImplementation(async (run) => {
-          const outcome = await runAgent(run);
-          stop();
-          await stopping;
-          // The worker reads the stop marker on an interval.
-          await new Promise<void>((resolve) => {
-            if (!run.signal || run.signal.aborted) return resolve();
-            run.signal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
-            setTimeout(resolve, 5_000);
-          });
-          return outcome;
-        });
-      }
-      if (signal.lifecycleFailure === "complete") {
-        vi.spyOn(
-          ConversationTurnLifecycleService.prototype,
-          "complete",
-        ).mockRejectedValueOnce(new Error("event store unavailable"));
-      }
-      if (signal.lifecycleFailure === "start") {
-        const start = ConversationTurnLifecycleService.prototype.start;
-        let failures = CONVERSATION_WORK_MAX_RETRIES;
-        vi.spyOn(
-          ConversationTurnLifecycleService.prototype,
-          "start",
-        ).mockImplementation(async function (
-          this: ConversationTurnLifecycleService,
-          input,
-        ) {
-          if (failures-- > 0) {
-            throw new Error("event store unavailable");
-          }
-          return await start.call(this, input);
-        });
-      }
       // Run each wake of this Conversation until no work is left.
       const wakes: string[] = [];
       while (
@@ -915,7 +877,7 @@ describe("Turn lifecycle for each work owner", () => {
           // A model error ends the Run with a failed outcome. Only an error
           // that the runner throws, such as a lost store, retries the wake.
           vi.spyOn(harness.agentRunner, "run").mockRejectedValue(
-            signal.failure?.() ?? new Error("agent unavailable"),
+            new Error("agent unavailable"),
           );
         }
         const result = await process(
