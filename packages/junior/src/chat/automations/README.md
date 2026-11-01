@@ -151,11 +151,13 @@ line. That line also says that "me" and "my" mean the creator. People can
 write these words in the dashboard editor.
 
 The agent tools that create or update an Automation enforce this in
-`requireInstructionPeople`. They reject an instruction that adds the creator's
-mention or name, and ask for "the Automation creator". They also reject an
-instruction that names another requester by display name without their Slack
-mention. A name does not notify the person. An update can keep a creator
-reference that the instruction already had.
+`requireInstructionReferences`. They reject an instruction that says "this
+channel", "this conversation", or "this thread", and give the channel mention
+to write instead. They reject an instruction that adds the creator's mention or
+name, and ask for "the Automation creator". They also reject an instruction
+that names another requester by display name without their Slack mention. A
+name does not notify the person. An update can keep a reference that the
+instruction already had.
 
 ## Versions
 

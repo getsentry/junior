@@ -122,7 +122,8 @@ describe("Slack channel-message automations", () => {
     const { automation } = (await execute(
       createAutomationTool(automationToolContext(channelContext), catalog),
       {
-        instruction: "Answer the question, or tag <@U123> if you can't.",
+        instruction:
+          "Answer the question, or tag the Automation creator if you can't.",
         title: "Triage discuss-integration",
         outcomes: [
           { action: "send_message", destination: "current_conversation" },

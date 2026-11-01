@@ -5,7 +5,7 @@ import {
 } from "@/chat/task-outcomes-schema";
 import { z } from "zod";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
-import { requireInstructionPeople } from "@/chat/automations/instruction-people";
+import { requireInstructionReferences } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
@@ -248,7 +248,10 @@ export function createAutomationTool(
       const caller = await requireToolCaller(context);
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
-      requireInstructionPeople(input.instruction, { creator: createdBy });
+      requireInstructionReferences(input.instruction, {
+        creator: createdBy,
+        destinationChannelId: destination.channelId,
+      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(catalog, input.trigger)

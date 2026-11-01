@@ -9,7 +9,7 @@ import {
   automationTitleSchema,
 } from "@/chat/automations/edit-schema";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireInstructionPeople } from "@/chat/automations/instruction-people";
+import { requireInstructionReferences } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -295,8 +295,9 @@ export function createUpdateAutomationTool(
         input.instruction !== undefined &&
         input.instruction !== current.task.task.text
       ) {
-        requireInstructionPeople(input.instruction, {
+        requireInstructionReferences(input.instruction, {
           creator: current.task.createdBy,
+          destinationChannelId: current.task.destination.channelId,
           requester: editor,
           previousInstruction: current.task.task.text,
         });
