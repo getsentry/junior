@@ -340,7 +340,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.`,
+      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/AGENTS.md, and packages/junior-evals/AGENTS.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;

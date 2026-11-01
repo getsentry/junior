@@ -122,7 +122,7 @@ If local validation fails, use the first matching symptom:
 | OAuth callback cannot connect   | Keep `pnpm dev` and its configured tunnel running while the CLI waits.      |
 | Context resets between commands | Expected; use one interactive `junior chat` process for context.            |
 | File-send UX needs validation   | Local validation cannot verify it; the local adapter has no file-send tool. |
-| Slack-specific behavior changed | Use the Slack adapter README, Slack skill, and integration tests instead.   |
+| Slack-specific behavior changed | Use `packages/junior/src/chat/slack/AGENTS.md`, the Slack skill, and integration tests instead.   |
 
 ## Next Step
 
