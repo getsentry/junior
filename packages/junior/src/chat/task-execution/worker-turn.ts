@@ -32,19 +32,34 @@ export interface PreparedWorkerTurn {
   saveResult(result: AgentRunResult): Promise<SavedTurnResult>;
 }
 
+/**
+ * A prepared Turn that its owner runs, such as dispatch work through its
+ * provider runtime. `execute` says whether the Turn completed or paused at a
+ * boundary. It must call `acknowledge` when the Turn saved its input.
+ */
+export interface OwnerRunWorkerTurn {
+  execute(hooks: {
+    acknowledge(): Promise<void>;
+    shouldYield(): boolean;
+    stopSignal: AbortSignal | undefined;
+  }): Promise<"completed" | "suspended">;
+}
+
 /** The steps that one work owner supplies to `runWorkerTurn`. */
 export interface WorkerTurnSteps {
   /**
    * Start the Turn and read its Run. Return `stopped` when a stop came first.
    * Return `finished` when the work already ended and only the ack is left.
    */
-  prepare(): Promise<PreparedWorkerTurn | "finished" | "stopped">;
+  prepare(): Promise<
+    PreparedWorkerTurn | OwnerRunWorkerTurn | "finished" | "stopped"
+  >;
   /** Record a stopped Turn. The lifecycle acks after this step. */
   stop(): Promise<void>;
   /** Record a Run that paused at a boundary. */
   suspend?(): Promise<void>;
   /** Record a Run that waits for authorization, and say how the attempt ends. */
-  awaitAuth(
+  awaitAuth?(
     outcome: Extract<AgentRunOutcome, { status: "awaiting_auth" }>,
   ): Promise<"completed" | "paused">;
   /** Finish after `executeTurn` recorded the terminal Turn. An error retries. */
@@ -53,6 +68,13 @@ export interface WorkerTurnSteps {
   block?(error: unknown): Promise<boolean>;
   /** Record the failure on the last attempt. */
   fail(error: unknown): Promise<void>;
+}
+
+function requireAgentRunner(agentRunner: AgentRunner | undefined) {
+  if (!agentRunner) {
+    throw new Error("A prepared Run needs an agent runner");
+  }
+  return agentRunner;
 }
 
 function isInputCommitLost(error: unknown): boolean {
@@ -66,7 +88,8 @@ function isInputCommitLost(error: unknown): boolean {
  * except on the last attempt or for an execution limit, where the Turn fails.
  */
 export async function runWorkerTurn(args: {
-  agentRunner: AgentRunner;
+  /** Runs a prepared Run. An owner that runs its own Turn omits it. */
+  agentRunner?: AgentRunner;
   context: ConversationWorkerContext;
   /** True when no attempt input needs an ack, such as on a resume. */
   inputCommitted: boolean;
@@ -105,26 +128,35 @@ export async function runWorkerTurn(args: {
     if (prepared === "finished") {
       return await end();
     }
-    const outcome = await executeTurn(
-      args.agentRunner,
-      {
-        ...prepared.run,
-        ...(stopSignal ? { signal: stopSignal } : undefined),
-        durability: {
-          ...prepared.run.durability,
-          onInputCommitted: acknowledge,
-          shouldYield: context.shouldYield,
-        },
-      },
-      async (result) => {
-        // A stop that aborted the Run ends the Turn as stopped. A Run that
-        // finished before the stop keeps its result.
-        if (result.diagnostics.outcome !== "success") {
-          stopSignal?.throwIfAborted();
-        }
-        return await prepared.saveResult(result);
-      },
-    );
+    const outcome =
+      "execute" in prepared
+        ? {
+            status: await prepared.execute({
+              acknowledge,
+              shouldYield: context.shouldYield,
+              stopSignal,
+            }),
+          }
+        : await executeTurn(
+            requireAgentRunner(args.agentRunner),
+            {
+              ...prepared.run,
+              ...(stopSignal ? { signal: stopSignal } : undefined),
+              durability: {
+                ...prepared.run.durability,
+                onInputCommitted: acknowledge,
+                shouldYield: context.shouldYield,
+              },
+            },
+            async (result) => {
+              // A stop that aborted the Run ends the Turn as stopped. A Run
+              // that finished before the stop keeps its result.
+              if (result.diagnostics.outcome !== "success") {
+                stopSignal?.throwIfAborted();
+              }
+              return await prepared.saveResult(result);
+            },
+          );
     if (outcome.status !== "completed" && stopSignal?.aborted) {
       return "stopped";
     }
@@ -133,6 +165,9 @@ export async function runWorkerTurn(args: {
       return { status: "yielded" };
     }
     if (outcome.status === "awaiting_auth") {
+      if (!steps.awaitAuth) {
+        throw new Error("This work owner cannot wait for authorization");
+      }
       return await end(await steps.awaitAuth(outcome));
     }
     return "completed";

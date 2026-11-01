@@ -86,8 +86,6 @@ export interface Owner {
   failedResumeWakes?: string[];
   /** True when a failed Turn posts no error reply, by owner policy. */
   quietFailure?: boolean;
-  /** Signals that this owner does not handle through the shared lifecycle. */
-  unsupported?: string[];
 }
 
 export const clock = { nowMs: 1_800_000_000_000 };
@@ -241,9 +239,6 @@ export const owners: Owner[] = [
     // An Automation run posts only a declared message. Its failure shows on
     // the Automation.
     quietFailure: true,
-    // Dispatch work runs its own lifecycle. A stop fails its Turn, and a
-    // failed last attempt leaves its Turn open.
-    unsupported: ["stop mid-Turn", "every attempt throws"],
     // A dispatch resumes through the Slack resume runner.
     failedResumeWakes: ["completed"],
     // A dispatch declares its result with a tool call.

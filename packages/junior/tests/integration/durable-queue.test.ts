@@ -831,9 +831,7 @@ describe("Turn lifecycle for each work owner", () => {
   });
 
   describe.each(owners)("$name", (owner) => {
-    it.each(
-      signals.filter((signal) => !owner.unsupported?.includes(signal.name)),
-    )("$name", async (signal) => {
+    it.each(signals)("$name", async (signal) => {
       let conversationId = "";
       let stopping: Promise<unknown> | undefined;
       const harness = await slack({
