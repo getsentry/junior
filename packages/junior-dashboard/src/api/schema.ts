@@ -40,7 +40,6 @@ export const dashboardConfigSchema = z
     authPath: z.string(),
     basePath: z.string(),
     sentryConversationLinks: z.boolean(),
-    timeZone: z.string().optional(),
     version: z.string().min(1),
   })
   .strict();
