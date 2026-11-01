@@ -1,4 +1,3 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
 import type {
   PluginReviewItems,
   PluginReviewNotice,
@@ -7,8 +6,8 @@ import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { PLUGIN_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";
 import { getDb } from "@/chat/db";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
-import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
 import type { JuniorDatabase } from "@/db/db";
+import type { ShowReviewItem } from "./changes";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
@@ -50,18 +49,16 @@ async function assigneeUserIds(
 /**
  * Connect a plugin to the review desk for one Conversation. Dedupe keys are
  * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
- * cannot change them. A close sends no message to the Conversation. It only
- * syncs the Slack cards. An item is
- * private when the Conversation is not public. A webhook runs outside Slack
- * work, so pass `getSlackAdapter` to post each card with the token of its
- * workspace.
+ * cannot change them. A change sends no message to the Conversation. It
+ * only shows the new state through `show`. An item is private when the
+ * Conversation is not public.
  */
 export function createPluginReviewItems(args: {
   conversationId: string;
-  getSlackAdapter?: () => SlackAdapter;
   plugin: string;
+  show: ShowReviewItem;
 }): PluginReviewItems {
-  const { conversationId, getSlackAdapter } = args;
+  const { conversationId, show } = args;
   const scopedKey = (dedupeKey: string) =>
     `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
   const readAccess = async (db: JuniorDatabase) => {
@@ -115,10 +112,7 @@ export function createPluginReviewItems(args: {
           id: existing.id,
           nowMs: Date.now(),
         });
-        await syncReviewItemSlackCards({
-          getSlackAdapter,
-          itemId: existing.id,
-        });
+        await show(existing.id);
         return;
       }
       const item = await insertReviewItem(db, {
@@ -130,7 +124,7 @@ export function createPluginReviewItems(args: {
       });
       // Undefined means a concurrent upsert added the item first.
       if (item) {
-        await syncReviewItemSlackCards({ getSlackAdapter, itemId: item.id });
+        await show(item.id);
       }
     },
     async close(input) {
@@ -149,7 +143,7 @@ export function createPluginReviewItems(args: {
         status: input.status,
       });
       if (closed) {
-        await syncReviewItemSlackCards({ getSlackAdapter, itemId: item.id });
+        await show(item.id);
       }
     },
   };

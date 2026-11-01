@@ -114,9 +114,12 @@ decision. Core owns the rules below.
 - A repeat with the same key updates the open item.
 - A plugin notice stays open when its Conversation starts a new Turn.
 - A plugin notice closes quietly. A plugin close sends no message to the
-  linked Conversation, so the close does not start a Turn. It only syncs the
-  Slack cards. The provider event that closed the item can reach the
+  linked Conversation, so the close does not start a Turn. It only shows the
+  new state through the `show` function that app setup gives
+  `getPluginRoutes`. The provider event that closed the item can reach the
   Conversation through a Watch.
+- A plugin notice never counts as an item that needs a person
+  (`reviewItemNeedsUser`), because it is a notice.
 
 For example, the GitHub plugin adds a notice when a Junior pull request is
 ready to merge. See `packages/junior-github/README.md`.
@@ -185,7 +188,8 @@ so an Event that was sent does not go again.
 
 Every change goes through one path: `deliverReviewItemChange` in
 `changes.ts`. The agent tools, the person actions, and a reply in the
-thread call it after they save the change.
+thread call it after they save the change. A plugin change sends no
+messages, so it calls only `show` (see "Plugins").
 
 - First, every surface shows the new state. App setup gives the `show`
   function. Today it is the Slack card sync. Review item code does not import

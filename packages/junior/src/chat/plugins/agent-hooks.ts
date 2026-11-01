@@ -1,4 +1,3 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
@@ -83,6 +82,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
@@ -939,8 +939,8 @@ function requirePublishedEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  /** Slack adapter for review item cards, which routes post outside Slack work. */
-  getSlackAdapter?: () => SlackAdapter;
+  /** Shows a Review item that a plugin route changed. App setup supplies it. */
+  showReviewItem?: ShowReviewItem;
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
@@ -977,8 +977,8 @@ export function getPluginRoutes(options: {
         forConversation: (conversationId) =>
           createPluginReviewItems({
             conversationId,
-            getSlackAdapter: options.getSlackAdapter,
             plugin: pluginName,
+            show: options.showReviewItem ?? (async () => {}),
           }),
       },
       users: { readIdentity: readIdentityById },

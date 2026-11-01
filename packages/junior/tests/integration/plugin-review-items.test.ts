@@ -11,10 +11,21 @@ import {
   createAddReviewItemTool,
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 
 const TENANT = { provider: "slack", providerTenantId: "T123" };
+
+const services = createSlackReviewItemToolServices(
+  createConversationWorkQueueTestAdapter,
+);
+
+/** Item ids that plugin changes showed, in order. */
+let shown: string[] = [];
+const show = async (itemId: string) => {
+  shown.push(itemId);
+};
 
 async function conversation(
   conversationId: string,
@@ -64,6 +75,7 @@ const NOTICE = {
 
 describe("plugin review items", () => {
   afterEach(async () => {
+    shown = [];
     await closeDb();
   });
 
@@ -73,6 +85,7 @@ describe("plugin review items", () => {
     const items = createPluginReviewItems({
       conversationId: "slack:C1:1.000001",
       plugin: "github",
+      show,
     });
 
     await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
@@ -118,7 +131,7 @@ describe("plugin review items", () => {
       source: { kind: "slack" } as any,
     };
     await expect(
-      createAddReviewItemTool(agent).execute!(
+      createAddReviewItemTool(agent, services).execute!(
         {
           body: "Taken over.",
           dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
@@ -129,9 +142,7 @@ describe("plugin review items", () => {
       ),
     ).rejects.toThrow("belongs to a plugin");
     await expect(
-      createUpdateReviewItemTool(agent, () =>
-        createConversationWorkQueueTestAdapter(),
-      ).execute!(
+      createUpdateReviewItemTool(agent, services).execute!(
         { id: added!.id, reason: "Not needed.", status: "dismissed" } as any,
         {} as any,
       ),
@@ -155,11 +166,15 @@ describe("plugin review items", () => {
     expect(await getReviewItem(getDb(), added!.id)).toMatchObject({
       closeReason: "The pull request merged.",
     });
+    // The add, the update, and the close each show the item. The second
+    // close changes nothing, so it shows nothing.
+    expect(shown).toEqual([added!.id, added!.id, added!.id]);
 
     // The key is scoped to the plugin, so another plugin has its own item.
     await createPluginReviewItems({
       conversationId: "slack:C1:1.000001",
       plugin: "linear",
+      show,
     }).upsert({ ...NOTICE, assigneeIdentityIds: [] });
     expect(
       await getOpenReviewItemByDedupeKey(
@@ -184,6 +199,7 @@ describe("plugin review items", () => {
     const items = createPluginReviewItems({
       conversationId: "slack:D1:1.000001",
       plugin: "github",
+      show,
     });
 
     await expect(
