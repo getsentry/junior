@@ -74,8 +74,12 @@ export function ProfileMenu({
     (page) => page.navigation === "profile",
   );
 
-  const avatar = (
-    <Avatar aria-hidden="true" className="size-8 border-0 shadow-black/40">
+  // The photo, with initials while it loads or when there is none.
+  const avatar = (className?: string) => (
+    <Avatar
+      aria-hidden="true"
+      className={cn("border-0 shadow-black/40", className)}
+    >
       <AvatarImage alt="User avatar" src={identity.user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
         {initials(identity.user.name, email)}
@@ -86,7 +90,7 @@ export function ProfileMenu({
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        {avatar}
+        {avatar("size-8")}
         <div className="min-w-0">
           <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
             {name}
@@ -255,12 +259,7 @@ export function ProfileMenu({
         aria-label={`Signed in as ${name}`}
         className="flex min-w-0 items-center gap-2.5 px-1"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        {avatar()}
         <div className="min-w-0">
           <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
             {name}
@@ -321,12 +320,7 @@ export function ProfileMenu({
             </span>
           </span>
         </span>
-        <span
-          aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        {avatar()}
         <ChevronDown
           aria-hidden="true"
           className={cn(
