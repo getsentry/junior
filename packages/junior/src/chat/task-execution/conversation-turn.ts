@@ -403,6 +403,8 @@ export function createConversationTurnWorker(
               location: conversationLocation,
               text: replyText,
             });
+            // The Location has the reply, even when the commit below fails.
+            assistantMessageDelivered = true;
           }
           await commitAssistantMessage({
             cards,
@@ -760,8 +762,13 @@ export function createConversationTurnWorker(
               });
               // Tell the people at the Location that the Turn failed. Web
               // input has no provider Delivery. The dashboard shows the
-              // failed Turn.
-              if (deliverToProvider && failureEventId) {
+              // failed Turn. A reply that the Location already has, such as
+              // a model failure reply, is not followed by a second message.
+              if (
+                deliverToProvider &&
+                failureEventId &&
+                !assistantMessageDelivered
+              ) {
                 try {
                   await deliverAssistantMessage(
                     buildTurnFailureResponse(failureEventId),

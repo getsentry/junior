@@ -51,6 +51,7 @@ import type { FixedModelOutput } from "./model-stream";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { slackApiOutbox } from "./slack-api-outbox";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 type Harness = Awaited<ReturnType<typeof createConversationWorkHarness>>;
 
@@ -597,6 +598,46 @@ export const signals: Signal[] = [
       wakes: ["completed"],
       turn: "failed",
       shown: failed(owner),
+    }),
+  },
+  {
+    // The model failure reply reaches the Location, then the save after it
+    // fails on the last attempt. The Turn fails with no second error reply.
+    name: "a save error after a delivered failure reply",
+    appliesTo: (owner) => owner.name === "root event with a Location",
+    outputs: () => [{ type: "error", errorMessage: "model unavailable" }],
+    before: ({ agentRunner, conversationId }) => {
+      // The earlier attempts throw before any reply.
+      let failures = CONVERSATION_WORK_MAX_RETRIES - 1;
+      const run = agentRunner.run.bind(agentRunner);
+      vi.spyOn(agentRunner, "run").mockImplementation(async (request) => {
+        if (failures-- > 0) throw new Error("agent unavailable");
+        return await run(request);
+      });
+      const state = getStateAdapter();
+      const set = state.set.bind(state);
+      let saveFailed = false;
+      vi.spyOn(state, "set").mockImplementation(async (key, ...rest) => {
+        if (
+          !saveFailed &&
+          key === `thread-state:${conversationId}` &&
+          slackReplies().length
+        ) {
+          saveFailed = true;
+          throw new Error("state unavailable");
+        }
+        return await set(key, ...rest);
+      });
+    },
+    expected: (owner) => ({
+      wakes: failedAttempts(owner),
+      turn: "failed",
+      // Only the model failure reply.
+      shown: {
+        replies: [
+          expect.stringMatching(/^The model provider returned an error/),
+        ],
+      },
     }),
   },
   {
