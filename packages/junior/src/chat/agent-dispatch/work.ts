@@ -379,6 +379,13 @@ async function persistTerminalDispatchTurn(
   outcome: "blocked" | "failed",
   errorMessage: string,
 ): Promise<void> {
+  // End the dispatch first. The retries are used up, so a failed Turn write
+  // below must not leave the dispatch open.
+  if (outcome === "blocked") {
+    await markDispatchBlocked(dispatch.id, errorMessage);
+  } else {
+    await markDispatchFailed(dispatch.id, errorMessage);
+  }
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
   const session = await getTurnRecord(conversationId, turnId);
@@ -398,7 +405,6 @@ async function persistTerminalDispatchTurn(
   // may resume it.
   if (outcome === "blocked") {
     await abandonTurnRecord({ conversationId, errorMessage, turnId });
-    await markDispatchBlocked(dispatch.id, errorMessage);
     return;
   }
   if (session) {
@@ -415,7 +421,6 @@ async function persistTerminalDispatchTurn(
     failureCode: "agent_run_failed",
     turnId,
   });
-  await markDispatchFailed(dispatch.id, errorMessage);
 }
 
 /** Run one dispatch start or resume under the owning conversation lease. */

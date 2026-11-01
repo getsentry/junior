@@ -689,6 +689,29 @@ export const signals: Signal[] = [
     }),
   },
   {
+    // The Turn end write fails on the last attempt. The dispatch must still
+    // end, so its Automation run does not stay open.
+    name: "a failed Turn end write still ends the dispatch",
+    appliesTo: (owner) => owner.name === "dispatch",
+    outputs: () => [],
+    failFromWake: 0,
+    before: () => {
+      vi.spyOn(
+        ConversationTurnLifecycleService.prototype,
+        "fail",
+      ).mockRejectedValue(new Error("event store unavailable"));
+    },
+    expected: (owner) => ({
+      // The last attempt throws after the dispatch ends. No work is left.
+      wakes: Array.from(
+        { length: CONVERSATION_WORK_MAX_RETRIES },
+        () => "failed",
+      ),
+      turn: "not ended",
+      shown: failed(owner),
+    }),
+  },
+  {
     name: "an auth pause blocks the child",
     appliesTo: isChild,
     outputs: () => [],
