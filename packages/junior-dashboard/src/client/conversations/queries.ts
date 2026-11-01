@@ -178,9 +178,12 @@ export function conversationDetailQueryOptions(
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
-      return reuseConversationEventReferences(
+      return keepLatestReadPosition(
         previous as ConversationSnapshot,
-        next as ConversationSnapshot,
+        reuseConversationEventReferences(
+          previous as ConversationSnapshot,
+          next as ConversationSnapshot,
+        ),
       );
     },
     refetchInterval: (query) =>
@@ -194,6 +197,20 @@ export function conversationDetailQueryOptions(
           : 10_000,
     retry: false,
   });
+}
+
+/**
+ * Read positions only move forward. A poll that started before a read report
+ * finished must not put an older position back in the cache.
+ */
+function keepLatestReadPosition(
+  previous: ConversationSnapshot,
+  next: ConversationSnapshot,
+): ConversationSnapshot {
+  const kept = previous.readPosition;
+  if (!kept) return next;
+  if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
+  return { ...next, readPosition: kept };
 }
 
 function outboxActorIdentity(

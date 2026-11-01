@@ -84,11 +84,13 @@ export function Transcript(props: {
     },
   });
 
-  // Read positions follow the transcript rows, not the event log.
+  // Read positions follow the transcript rows, not the event log. Search
+  // results skip rows, so they do not move the read position.
+  const reportsRead = view === "rich" && search.trim().length === 0;
   useTranscriptReadReporter({
     content: bottomPinning.contentElement,
     lastReadSeq: props.lastReadSeq,
-    onRead: view === "rich" ? props.onRead : undefined,
+    onRead: reportsRead ? props.onRead : undefined,
   });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
   const previousPageRef = useAutoLoadPreviousPage({
