@@ -647,11 +647,16 @@ describe("Slack webhook: Review item cards", () => {
     // A question with no assignees takes an answer from anyone, but not
     // from a Slack author outside the allowed domains.
     const unassigned = await (
-      createAddReviewItemTool({
-        conversationId: THREAD,
-        resolveActorIdentity: async () => undefined,
-        source: { kind: "slack" } as any,
-      }) as any
+      createAddReviewItemTool(
+        {
+          conversationId: THREAD,
+          resolveActorIdentity: async () => undefined,
+          source: { kind: "slack" } as any,
+        },
+        createSlackReviewItemToolServices(
+          createConversationWorkQueueTestAdapter,
+        ),
+      ) as any
     ).execute(
       {
         kind: "action",
