@@ -314,6 +314,9 @@ export function usePinnedTranscriptBottom(input: {
   const initializedRef = useRef(false);
   const initializedConversationRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
+  // The scroll position that the last restore set. Its scroll event is not
+  // a reader scroll, so it must not change follow intent.
+  const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
@@ -365,8 +368,9 @@ export function usePinnedTranscriptBottom(input: {
     if (shift !== null && Math.abs(shift) >= 1) {
       const scrollTop = scrollSnapshot(root).scrollTop + shift;
       setScrollTop(root, scrollTop);
-      // The restore is not a reader scroll. Do not read it as a pause.
-      previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
+      const restored = scrollSnapshot(root).scrollTop;
+      previousScrollTopRef.current = restored;
+      restoredScrollTopRef.current = restored;
     }
     rememberPlace();
   }, [rememberPlace]);
@@ -389,6 +393,15 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
+
+      if (source === "scroll") {
+        const restored = restoredScrollTopRef.current;
+        restoredScrollTopRef.current = null;
+        // A restore near the bottom must not turn follow mode back on.
+        if (restored !== null && Math.abs(snapshot.scrollTop - restored) < 1) {
+          return;
+        }
+      }
 
       const intent = transcriptFollowIntent({
         previousScrollTop,
@@ -554,40 +567,44 @@ export function usePinnedTranscriptBottom(input: {
     const root = scrollRootFor(contentElement);
     if (!root) return;
 
-    const target: HTMLElement | Window = root === window ? window : root;
+    // Both a scrolling element and the window send these events.
+    const target: GlobalEventHandlers = root;
     const onScroll = () => measurePosition("scroll");
     // Wheel and touch show intent before the scroll event. A live update in
     // that gap must not pull a reader who starts to scroll up back down.
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY < 0) leaveBottom();
     };
-    let touchY: number | null = null;
+    // Compare with the highest finger point in this drag, so small steps
+    // still add up to a drag down.
+    let touchTopY: number | null = null;
     const onTouchStart = (event: TouchEvent) => {
-      touchY = event.touches[0]?.clientY ?? null;
+      touchTopY = event.touches[0]?.clientY ?? null;
     };
     const onTouchMove = (event: TouchEvent) => {
       const y = event.touches[0]?.clientY;
-      if (y === undefined) return;
-      if (touchY !== null && y > touchY + USER_SCROLL_DELTA_PX) leaveBottom();
-      touchY = y;
+      if (y === undefined || touchTopY === null) return;
+      if (y > touchTopY + USER_SCROLL_DELTA_PX) leaveBottom();
+      touchTopY = Math.min(touchTopY, y);
     };
 
     measurePosition("measure");
     rememberPlace();
+    // Listen on the scroll root, so gestures outside transcript rows count.
     target.addEventListener("scroll", onScroll, { passive: true });
-    contentElement.addEventListener("wheel", onWheel, { passive: true });
-    contentElement.addEventListener("touchstart", onTouchStart, {
+    target.addEventListener("wheel", onWheel, { passive: true });
+    target.addEventListener("touchstart", onTouchStart, {
       passive: true,
     });
-    contentElement.addEventListener("touchmove", onTouchMove, {
+    target.addEventListener("touchmove", onTouchMove, {
       passive: true,
     });
     window.addEventListener("resize", syncAfterLayoutChange);
     return () => {
       target.removeEventListener("scroll", onScroll);
-      contentElement.removeEventListener("wheel", onWheel);
-      contentElement.removeEventListener("touchstart", onTouchStart);
-      contentElement.removeEventListener("touchmove", onTouchMove);
+      target.removeEventListener("wheel", onWheel);
+      target.removeEventListener("touchstart", onTouchStart);
+      target.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("resize", syncAfterLayoutChange);
     };
   }, [
