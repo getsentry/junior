@@ -674,20 +674,13 @@ export const signals: Signal[] = [
   {
     name: "a setup error fails on the last attempt",
     outputs: ({ reply }) => [reply("Never sent.")],
-    // The start write fails on every attempt.
+    // Each start write fails, also the one in a fail step. The failure
+    // must still reach the owner.
     before: () => {
-      const start = ConversationTurnLifecycleService.prototype.start;
-      let failures = CONVERSATION_WORK_MAX_RETRIES;
       vi.spyOn(
         ConversationTurnLifecycleService.prototype,
         "start",
-      ).mockImplementation(async function (
-        this: ConversationTurnLifecycleService,
-        input,
-      ) {
-        if (failures-- > 0) throw new Error("event store unavailable");
-        return await start.call(this, input);
-      });
+      ).mockRejectedValue(new Error("event store unavailable"));
     },
     expected: (owner) => ({
       wakes: failedAttempts(owner),
