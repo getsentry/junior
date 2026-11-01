@@ -77,6 +77,10 @@ Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
 
+Identity dispatch lets a plugin route start private work for the person behind
+a linked provider account. It matches only the exact account id from this
+linking flow. See `chat/agent-dispatch/README.md`.
+
 ## Allowed Domains
 
 `chat/sign-in/allowlist.ts` owns one list of allowed domains for Slack and the
@@ -84,7 +88,8 @@ dashboard. An empty list allows every domain.
 
 - Slack ingress starts a Turn from a mention or DM only when the email of the
   author's Slack profile is on an allowed domain
-  (`chat/ingress/slack-allowed-domain.ts`).
+  (`chat/ingress/slack-allowed-domain.ts`). Identity dispatch applies the
+  same rule to the linked Slack user.
 - `chat/sign-in/auth.ts` owns the one Better Auth instance of the dashboard. It
   accepts a Google sign-in only when the verified `hd` claim is an allowed
   domain. After each Google callback, a Better Auth hook saves the Google

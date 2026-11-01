@@ -1,16 +1,27 @@
 import { createPluginCache } from "@/chat/plugins/cache";
-import type {
-  HeartbeatHookContext,
-  PluginRegistration,
+import {
+  identityDispatchOptionsSchema,
+  type HeartbeatHookContext,
+  type IdentityDispatchOptions,
+  type IdentityDispatchResult,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
   bindEventAutomationCredentialSubject,
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { isNativeIdentityProvider } from "@/chat/identities/identity";
+import { findLinkedSlackUserId } from "@/chat/identities/sql";
+import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import { parseSlackUserId } from "@/chat/slack/ids";
+import { openSlackDirectMessage } from "@/chat/slack/outbound";
+import { lookupActiveSlackWorkspaceMember } from "@/chat/slack/users";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -128,6 +139,93 @@ export function createHeartbeatContext(args: {
         });
       },
     },
+  };
+}
+
+// Core owns native identities and the email-keyed `junior` web identities.
+// They are not accounts from a plugin's OAuth account-linking flow, so they
+// never start Identity dispatches.
+function isCoreIdentityProvider(provider: string): boolean {
+  return provider === "junior" || isNativeIdentityProvider(provider);
+}
+
+/**
+ * Build the plugin route entry point that starts private DM work for the
+ * person behind one provider Identity.
+ *
+ * The provider is always the calling plugin. Work starts only when the
+ * Identity is linked to exactly one Slack user in the bot's workspace, that
+ * user is a current human member, and the user's Slack email is on the allowed
+ * domains, as for Slack ingress. Without a Slack bot, nothing is linked.
+ */
+export function createIdentityDispatcher(args: {
+  allowedDomains: readonly string[];
+  conversationWorkQueue: () => ConversationWorkQueue;
+}): (
+  plugin: string,
+  options: IdentityDispatchOptions,
+) => Promise<IdentityDispatchResult> {
+  const resolveSlackTeamId = createEventTeamIdResolver();
+  const notLinked = (plugin: string, reason: string) => {
+    logInfo("dispatch.identity.not_linked", {
+      "app.plugin.name": plugin,
+      "app.dispatch.identity.reason": reason,
+    });
+    return { status: "not_linked" } as const;
+  };
+
+  return async (plugin, options) => {
+    const request = identityDispatchOptionsSchema.parse(options);
+    if (isCoreIdentityProvider(plugin)) {
+      return notLinked(plugin, "core_provider");
+    }
+    const teamId = await resolveSlackTeamId();
+    if (!teamId) {
+      return notLinked(plugin, "no_slack_bot");
+    }
+    const slackUserId = parseSlackUserId(
+      await findLinkedSlackUserId(getSqlExecutor(), {
+        provider: plugin,
+        providerSubjectId: request.subjectId,
+        slackTeamId: teamId,
+      }),
+    );
+    if (!slackUserId) {
+      return notLinked(plugin, "no_single_link");
+    }
+    const member = await lookupActiveSlackWorkspaceMember(slackUserId, teamId);
+    if (!member) {
+      return notLinked(plugin, "inactive_member");
+    }
+    if (!isSlackProfileDomainAllowed(member, args.allowedDomains)) {
+      return notLinked(plugin, "domain_not_allowed");
+    }
+
+    const dispatchOptions: SlackDispatchOptions = {
+      idempotencyKey: request.idempotencyKey,
+      credentialSubject: {
+        type: "user",
+        userId: slackUserId,
+        allowedWhen: "private-direct-conversation",
+      },
+      destination: {
+        platform: "slack",
+        teamId,
+        channelId: await openSlackDirectMessage(slackUserId),
+      },
+      destinationVisibility: "private",
+      input: request.input,
+      ...(request.replyAttribution
+        ? { replyAttribution: request.replyAttribution }
+        : undefined),
+    };
+    validateDispatchOptions(dispatchOptions);
+    return await dispatch({
+      conversationWorkQueue: args.conversationWorkQueue(),
+      nowMs: Date.now(),
+      options: bindDispatchCredentialSubject(dispatchOptions, plugin),
+      plugin,
+    });
   };
 }
 

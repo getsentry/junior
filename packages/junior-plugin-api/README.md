@@ -115,6 +115,12 @@ the server, because a hidden link does not protect a route.
   owns browser rendering.
 - `ctx.agent.dispatch` creates durable agent work with an explicit actor,
   destination, source, metadata, and idempotency identity.
+- In a webhook route, `ctx.agent.dispatchForIdentity` starts private work in a
+  Slack DM for the person behind one Identity of the plugin's provider. Give
+  the provider account id that the OAuth account-linking flow stored. Core
+  returns `not_linked` and starts no work when it cannot find exactly one
+  current Slack member linked to that Identity. Handles, emails, and display
+  names never match.
 - Dispatches may include compact `replyAttribution` for destination-visible
   context about what produced the reply. Core owns platform rendering; opaque
   dispatch metadata remains internal.

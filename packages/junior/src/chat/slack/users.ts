@@ -122,6 +122,36 @@ export async function lookupSlackUserProfile(
   return normalizeUser(user);
 }
 
+/**
+ * Look up one Slack user who is a current human member of a workspace.
+ *
+ * Returns undefined for a user that Slack cannot find, a deleted user, a bot,
+ * or a user of another workspace. Other lookup errors propagate.
+ */
+export async function lookupActiveSlackWorkspaceMember(
+  userId: SlackUserId,
+  teamId: string,
+): Promise<SlackUserProfile | undefined> {
+  let user: SlackUserProfile;
+  try {
+    user = await lookupSlackUserProfile(userId);
+  } catch (error: unknown) {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "user_not_found"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  return user.id === userId &&
+    user.team_id === teamId &&
+    !user.is_deleted &&
+    !user.is_bot
+    ? user
+    : undefined;
+}
+
 /** Look up a Slack user by email. Returns null when no user matches. */
 export async function lookupSlackUserByEmail(
   email: string,
