@@ -790,10 +790,9 @@ export function createAgentInvocationWorker(
           }),
       );
     } catch (error) {
-      if (!(error instanceof AgentRunError)) {
-        throw error;
-      }
-      const runError = error.cause;
+      // A save error has no AgentRunError wrapper. On the final attempt it
+      // must also fail the agent invocation, or the child stays open.
+      const runError = error instanceof AgentRunError ? error.cause : error;
       if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
