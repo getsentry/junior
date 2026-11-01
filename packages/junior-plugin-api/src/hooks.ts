@@ -88,6 +88,11 @@ export interface PluginHooks {
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];
+  /**
+   * Return per-request context for a new prompt, such as recalled memories.
+   * Junior runs this hook at the same time as Turn routing and sandbox setup,
+   * so it must not depend on either.
+   */
   userPrompt?(
     ctx: UserPromptContext,
   ):

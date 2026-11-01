@@ -7,6 +7,8 @@ const {
   activeSandboxVersion,
   preparedMessages,
   repositoryInstructionsAvailable,
+  repositoryInstructionsRead,
+  routerSawRepositoryInstructionsRead,
   sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
   sessionRecordResumed,
@@ -31,6 +33,12 @@ const {
   },
   repositoryInstructionsAvailable: {
     value: true,
+  },
+  repositoryInstructionsRead: {
+    value: false,
+  },
+  routerSawRepositoryInstructionsRead: {
+    value: undefined as boolean | undefined,
   },
   sessionRecordPiMessageProvenance: {
     value: [] as unknown[],
@@ -219,6 +227,15 @@ vi.mock("@/chat/pi/client", () => ({
     );
     const instruction = instructionMatch?.[1] ?? "";
 
+    if (instruction === "route while the sandbox reads AGENTS.md") {
+      const deadline = Date.now() + 2_000;
+      while (!repositoryInstructionsRead.value && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      routerSawRepositoryInstructionsRead.value =
+        repositoryInstructionsRead.value;
+    }
+
     if (prompt.includes("TypeError: x is undefined")) {
       return {
         object: {
@@ -405,9 +422,10 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       });
     };
     return {
-      captureRepositoryInstructions: async () =>
-        repositoryInstructionsAvailable.value &&
-        (options.sandboxRef || createSandboxCallCount.value > 0)
+      captureRepositoryInstructions: async () => {
+        repositoryInstructionsRead.value = true;
+        return repositoryInstructionsAvailable.value &&
+          (options.sandboxRef || createSandboxCallCount.value > 0)
           ? {
               directory: "/vercel/sandbox/repo",
               fingerprint: `agents-v${activeSandboxVersion.value}`,
@@ -425,7 +443,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
                   ? "Call retries the cobalt budget."
                   : "Use the current repository formatter.",
             }
-          : undefined,
+          : undefined;
+      },
       workspace: {
         readFileToBuffer: async () => {
           await acquire();
@@ -544,6 +563,8 @@ describe("executeAgentRun lazy sandbox boot", () => {
     activeSandboxVersion.value = 1;
     preparedMessages.value = [];
     repositoryInstructionsAvailable.value = true;
+    repositoryInstructionsRead.value = false;
+    routerSawRepositoryInstructionsRead.value = undefined;
     sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
     sessionRecordResumed.value = false;
@@ -700,6 +721,20 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).toContain(
       "Use the current repository formatter.",
     );
+  });
+
+  it("reads AGENTS.md from an existing sandbox while the router runs", async () => {
+    const reply = await generateLocalReply(
+      "route while the sandbox reads AGENTS.md",
+      {
+        state: {
+          sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+        },
+      },
+    );
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(routerSawRepositoryInstructionsRead.value).toBe(true);
   });
 
   it("uses a high thinking level for explicit code-change asks", async () => {
