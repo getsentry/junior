@@ -202,7 +202,7 @@ export function ReviewDeskPage() {
             <ReviewListLoading />
           ) : empty ? (
             <EmptyMessage>
-              {q ? `No items match "${q}".` : "Nothing needs you right now."}
+              {q ? `No items match "${q}".` : "No open items."}
             </EmptyMessage>
           ) : (
             <>

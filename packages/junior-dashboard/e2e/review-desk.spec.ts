@@ -100,7 +100,7 @@ async function mockReviewItems(page: Page) {
   await page.route("**/api/review-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
-    if (path === "/count") return route.fulfill({ json: { mine: 3 } });
+    if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       // A search also finds archived items, after the open ones.

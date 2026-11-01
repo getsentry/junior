@@ -72,15 +72,18 @@ export const reviewItemListSchema = z
   .object({ items: z.array(reviewItemSchema) })
   .strict();
 
-/** Open Review items that wait on the viewer. */
+/** The count of Review items for the nav. */
 export const reviewItemCountSchema = z
   .object({
-    /** Open items assigned to the viewer as a User. */
-    mine: z.number().int().nonnegative(),
+    /**
+     * Open action items assigned to the viewer as a User
+     * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
+     */
+    needsViewer: z.number().int().nonnegative(),
   })
   .strict();
 
-/** Conversations with an open item assigned to the viewer or Everyone. */
+/** Conversations linked to an open action item assigned to the viewer. */
 export const reviewItemWaitingConversationsSchema = z
   .object({ conversationIds: z.array(z.string().min(1)) })
   .strict();

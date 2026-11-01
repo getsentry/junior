@@ -88,7 +88,7 @@ export function useLinkedConversationTitles(
   }).map((query) => query.data ?? undefined);
 }
 
-/** Count the open Review items assigned to the viewer, for the nav. */
+/** Count the open action items assigned to the viewer, for the nav. */
 export function useReviewItemCountData(enabled: boolean) {
   return useQuery({
     enabled,

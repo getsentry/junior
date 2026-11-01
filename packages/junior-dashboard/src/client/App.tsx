@@ -119,7 +119,7 @@ export function DashboardShell() {
     loggedIn,
     pathname: location.pathname,
     primaryUserPages,
-    reviewCount: reviewCountQuery.data?.mine,
+    reviewCount: reviewCountQuery.data?.needsViewer,
     userPagesPending: userPagesQuery.isPending,
   });
 
