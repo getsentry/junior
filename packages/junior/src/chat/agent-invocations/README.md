@@ -53,22 +53,25 @@ conversation tree.
 
 1. Creation writes the invocation before attempting the mailbox append.
 2. The idempotent mailbox append sends a normal conversation queue wake.
-3. `createChildConversationWorker` is the one entry point for child work. The
-   server and the CLI run it before any root worker. It starts agent
-   invocations for child input, then runs the agent invocation that owns the
-   work through the shared `AgentRunner`. An empty wake goes to the active
-   agent invocation of the child. When none is active, it goes to the latest
-   one, which repeats its idempotent finish. Child work never falls through to
-   a root worker. A child Turn can have any Source. A watch event Turn has an
-   event Source, so a router that picks the worker by Source sends its resume
-   to the root Event Turn worker. That worker needs a Destination, and a child
-   has none.
+3. `createChildConversationWorker` runs all work of a child Conversation. The
+   server and the CLI select it from the stored `parentConversationId` of the
+   Conversation, never from a Turn Source or mailbox metadata. A child Turn can
+   have any Source. A watch event Turn has an event Source, and the root Event
+   Turn worker needs a Destination that a child does not have. The worker
+   starts agent invocations for child input, then runs the agent invocation
+   that owns the work through the shared `AgentRunner`. An empty wake goes to
+   the active agent invocation of the child. When none is active, it goes to
+   the latest one, which repeats its idempotent finish. Work that no agent
+   invocation owns is an error. It never falls through to a root worker.
 4. A cooperative yield keeps the same turn and invocation active for another
    execution slice.
 5. A stranded `running` child is re-parked at its latest durable safe boundary.
    If no model or resumable boundary remains, the session fails immediately and
-   projects onto the invocation. Empty resume wakes never become final delivery
-   attempts, so unrecoverable stranded work must not throw and requeue forever.
+   projects onto the invocation. The conversation worker marks the last attempt
+   before it gives up as final, also for an empty resume wake. On that attempt
+   any error fails the agent invocation and reports it to the parent. Without
+   this, the work stops and the agent invocation stays open, so the parent is
+   never told and later results of the child are held back as `replaced`.
 6. Completion writes the session record first, then projects the immutable
    result or error onto the agent invocation. The same SQL write sets
    `parentMailboxStatus: "pending"`.

@@ -71,6 +71,11 @@ export interface InboxAttempt {
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
     options?: { deferred?: boolean },
   ): Promise<InboundMessage[]>;
+  /**
+   * True when a failure of this attempt can end the work: the worker gives up
+   * and drops the mailbox. The adapter must record its own failure first.
+   * Resume attempts, which have no messages, can also be final.
+   */
   isFinalAttempt: boolean;
   messages: InboundMessage[];
 }
@@ -223,6 +228,21 @@ function isTerminalFailure(failure: AttemptFailure): boolean {
     failure.status === "recorded" &&
     failure.deadLetteredMessages.length > 0 &&
     failure.pendingCount === 0
+  );
+}
+
+/**
+ * Return whether a failure of this attempt can end the conversation work. The
+ * retry limit applies to every attempt, also one with no messages, such as a
+ * resume. A message also ends it at its own delivery limit.
+ */
+function isLastConversationAttempt(
+  work: ConversationWorkState,
+  messages: readonly InboundMessage[],
+): boolean {
+  return (
+    (work.execution.retryCount ?? 0) + 1 >= CONVERSATION_WORK_MAX_RETRIES ||
+    messages.some((message) => isFinalAttempt(message))
   );
 }
 
@@ -636,8 +656,9 @@ async function processConversationWorkInContext(
           conversationId,
           destination,
           drain,
-          isFinalAttempt: attemptMessages.some((message) =>
-            isFinalAttempt(message),
+          isFinalAttempt: isLastConversationAttempt(
+            leasedWork,
+            attemptMessages,
           ),
           messages: attemptMessages,
         },

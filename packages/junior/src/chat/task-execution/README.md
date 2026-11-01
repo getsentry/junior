@@ -139,6 +139,11 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
   possible.
 - Delivery failures leave enough durable state for safe retry and must not mark
   the turn delivered.
+- The worker gives up after its retry limit and drops the mailbox. No code
+  runs for that work after that. So `isFinalAttempt` is true on the last
+  attempt that can fail, including a resume attempt with no messages. On that
+  attempt each worker records its own failure: a fallback reply, a failed
+  dispatch, or a failed agent invocation that reports to its parent.
 
 ## Integration Contract
 

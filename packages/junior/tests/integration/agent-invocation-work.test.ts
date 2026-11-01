@@ -13,7 +13,10 @@ import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { createEventTools } from "@/chat/tools/events";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  CONVERSATION_WORK_MAX_RETRIES,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -391,7 +394,8 @@ describe("agent invocation conversation work", () => {
   // next wake must still reach the agent invocation. Production once sent it
   // to the root Event Turn worker, which needs a Destination that a child
   // does not have. That also holds when the agent invocation ended while its
-  // Turn stayed paused.
+  // Turn stayed paused. A resume wake has no messages, but its last try is
+  // still final, so a resume that keeps failing tells the parent.
   const resumed = { result: "Resumed child result", status: "completed" };
   it.each([
     {
@@ -415,9 +419,27 @@ describe("agent invocation conversation work", () => {
       runs: 2,
       expected: { parentMailboxStatus: "appended", status: "failed" },
     },
+    {
+      name: "a resume that keeps failing",
+      watchEvent: false,
+      // The last try is final, so it fails the invocation, not the work.
+      failedResumes: CONVERSATION_WORK_MAX_RETRIES - 1,
+      runs: CONVERSATION_WORK_MAX_RETRIES + 1,
+      expected: {
+        errorMessage: "resume unavailable",
+        parentMailboxStatus: "appended",
+        status: "failed",
+      },
+    },
   ])(
     "gives the wake after a yielded child invocation for $name to that invocation",
-    async ({ endBeforeWake, expected, runs, watchEvent }) => {
+    async ({
+      endBeforeWake,
+      expected,
+      failedResumes = 0,
+      runs,
+      watchEvent,
+    }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const { conversationStore, fixture } = await prepareParentConversation();
       const agentRunner = createModelAgentRunner(
@@ -503,6 +525,16 @@ describe("agent invocation conversation work", () => {
             invocationId,
             status: "failed",
           });
+        }
+        if (failedResumes > 0) {
+          run.mockRejectedValue(new Error("resume unavailable"));
+        }
+        for (let retry = 0; retry < failedResumes; retry++) {
+          await expect(processChild()).resolves.toMatchObject({
+            status: "failed",
+          });
+          // Each retry wake has a new idempotency key from the clock.
+          clock.mockReturnValue(clock() + 1_000);
         }
 
         await expect(processChild()).resolves.toMatchObject({
