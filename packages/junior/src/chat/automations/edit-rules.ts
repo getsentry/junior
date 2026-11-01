@@ -16,6 +16,23 @@ export class AutomationEditError extends ToolInputError {
   }
 }
 
+/**
+ * Only the creator can start work with creator credentials. Anyone who can
+ * manage the Automation can switch it to system credentials, and then resume
+ * it or run it now.
+ */
+export function requireCredentialStart(
+  automation: EventAutomation | ScheduledAutomation,
+  isCreator: boolean,
+): void {
+  if (isCreator || automation.credentialMode !== "creator") return;
+  const kind = "schedule" in automation ? "scheduled" : "event";
+  throw new AutomationEditError(
+    `This ${kind} automation uses its creator's credentials. Only the creator can resume it or run it now. Switch it to system credentials first.`,
+    "credentialMode",
+  );
+}
+
 /** Apply shared title, instruction, outcome, and creator credential rules. */
 export async function editAutomationFields(
   current: EventAutomation | ScheduledAutomation,

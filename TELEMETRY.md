@@ -521,7 +521,7 @@ skips), `scheduled_automations.heartbeat.dispatched`,
 `automation.blocked_notice.failed` (the creator notice for a blocked
 Scheduled automation or Event automation did not send)
 
-Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateAutomation`; fire
+Spans: create-turn `gen_ai.execute_tool` for `createAutomation`; fire
 path `POST /api/internal/agent/continue` for the dispatch conversation
 
 Attributes: `app.task.id`, `app.task.type`, `app.task.status`,

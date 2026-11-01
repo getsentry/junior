@@ -57,10 +57,13 @@ run adds the source message thread only at dispatch time. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
 workers during deployment; new writes reject them.
 
-Listing stays bound to the destination where the automation was created. Threads
-in that destination share the list. Update and delete also accept a public
-automation by id from another destination in the same workspace. Private
-automations stay local to their destination. Watches remain thread-bound.
+`searchAutomations` with `type: "event"` uses the dashboard Automations
+search (see Tools in `chat/automations/README.md`). Scope `current_conversation` limits it to the
+Destination of this Conversation; threads in that Destination share it. Search,
+update, and delete use the shared rule in `chat/automations/README.md`
+(Management access), so anyone in the workspace can manage a public automation
+by id from another destination. Private automations
+stay with their destination and creator. Watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
 can provide a real provider-to-workspace binding.
@@ -114,9 +117,9 @@ scheduled-automation footers. The footer does not expose raw event keys.
 
 Event automations make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system
-credentials instead. Only the creator may enable or re-enable creator mode; any
-member of the Slack destination may disable it. An executable edit by another
-user clears it. Event execution remains a system actor, with creator
+credentials instead. Only the creator may enable or re-enable creator mode; anyone
+who can manage the automation may disable it. An executable edit by another
+user clears it, and another user cannot resume it while creator mode is on. Event execution remains a system actor, with creator
 credentials bound to the exact event automation.
 
 Management results include creator attribution and whether the registered

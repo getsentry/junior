@@ -1,3 +1,6 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { githubPlugin } from "@sentry/junior-github";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,8 +11,6 @@ import { getConversationStore } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
@@ -73,8 +74,11 @@ describe("event automations with no identifier", () => {
       const catalog = getEventCatalog();
       const create = (trigger: Record<string, unknown>, toolCallId: string) =>
         execute(
-          createEventAutomationTool(context(), catalog),
-          { instruction: "Review the new pull request.", trigger },
+          createAutomationTool(automationToolContext(context()), catalog),
+          {
+            instruction: "Review the new pull request.",
+            trigger: { type: "event", ...trigger },
+          },
           toolCallId,
         ) as Promise<{
           automation: {
@@ -214,8 +218,11 @@ describe("event automations with no identifier", () => {
       );
       const update = (next: Record<string, unknown>, toolCallId: string) =>
         execute(
-          createUpdateEventAutomationTool(context(), catalog),
-          { automationId: one.automation.id, trigger: next },
+          createUpdateAutomationTool(automationToolContext(context()), catalog),
+          {
+            automationId: one.automation.id,
+            trigger: { type: "event", ...next },
+          },
           toolCallId,
         ) as Promise<{
           automation: { trigger: Record<string, unknown> };

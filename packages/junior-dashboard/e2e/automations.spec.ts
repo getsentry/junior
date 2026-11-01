@@ -300,18 +300,18 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page
     .getByRole("link", { name: "Open automation: Incident change alerts" })
     .click();
-  // Public readers can edit, but only the creator controls lifecycle.
+  // Public readers can edit, pause, and delete.
   await expect(
     page.getByRole("link", { name: "Edit automation", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Delete automation", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   const publicRail = page.getByRole("complementary", {
     name: "Automation status",
   });
   await expect(
-    publicRail.getByText(/Only Avery Chen can pause, resume, or delete it/),
+    publicRail.getByText(/Only Avery Chen can change where results go/),
   ).toBeVisible();
   const creatorLink = publicRail.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
@@ -737,7 +737,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await expect(firstRun).toBeVisible();
 });
 
-test("pauses and resumes from the Automation page, keeps failures visible, and limits actions to creators", async ({
+test("pauses and resumes from the Automation page, keeps failures visible, and lets public readers pause", async ({
   page,
   dashboard,
 }) => {
@@ -848,8 +848,8 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     .getByRole("link", { name: "Open automation: Incident change alerts" })
     .click();
   await expect(
-    page.getByRole("button", { name: /^(Pause|Resume)$/ }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "No runs yet. Results will appear here after the first run.",

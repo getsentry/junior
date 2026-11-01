@@ -63,7 +63,7 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
       [CHANNEL_RESOURCE_TYPE]: {
         watch: false,
         watchUnavailableMessage:
-          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
+          "Slack channel messages can trigger only an event automation in that channel. Use createAutomation with an event trigger.",
       },
     },
   };

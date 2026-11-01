@@ -31,8 +31,7 @@ import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-repor
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { createEventAutomationTools } from "@/chat/tools/event-automations";
-import { createScheduledAutomationTools } from "@/chat/tools/scheduled-automations";
+import { createAutomationTools } from "@/chat/tools/automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
@@ -139,8 +138,7 @@ export function createTools(
       sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
-    ...createEventAutomationTools(context, eventCatalog),
-    ...createScheduledAutomationTools(context),
+    ...createAutomationTools(context, eventCatalog),
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
     ...createUserCustomizationTools(context),

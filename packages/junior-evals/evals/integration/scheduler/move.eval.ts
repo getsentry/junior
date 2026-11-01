@@ -49,19 +49,14 @@ describe("Schedule Destination Updates", () => {
       }),
     );
 
-    const lists = completedToolCalls(
-      "slackScheduleListAutomations",
-      conversation,
-    );
+    const lists = completedToolCalls("searchAutomations", conversation);
     expect(lists.length).toBeGreaterThan(0);
     for (const list of lists) {
-      expect([undefined, null, here.channelId]).toContain(
-        (list.input as { channel_id?: unknown } | undefined)?.channel_id,
+      expect([undefined, null, `${here.teamId}:${here.channelId}`]).toContain(
+        (list.input as { destination?: unknown } | undefined)?.destination,
       );
     }
-    expect(
-      completedToolCalls("slackScheduleUpdateAutomation", conversation),
-    ).toEqual([]);
+    expect(completedToolCalls("updateAutomation", conversation)).toEqual([]);
   });
 
   test("when asked once in the destination channel, update the requester task to deliver here", async ({
@@ -96,22 +91,15 @@ describe("Schedule Destination Updates", () => {
     );
 
     expect(
-      completedToolCalls("slackScheduleListAutomations", conversation).length,
+      completedToolCalls("searchAutomations", conversation).length,
     ).toBeGreaterThan(0);
-    const updates = completedToolCalls(
-      "slackScheduleUpdateAutomation",
-      conversation,
-    );
+    const updates = completedToolCalls("updateAutomation", conversation);
     expect(updates).toHaveLength(1);
     expect(updates[0]!.input).toMatchObject({
       automationId: id,
-      destination: "here",
+      destination: "current_conversation",
     });
-    expect(
-      completedToolCalls("slackScheduleCreateAutomation", conversation),
-    ).toEqual([]);
-    expect(
-      completedToolCalls("slackScheduleDeleteAutomation", conversation),
-    ).toEqual([]);
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
+    expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ in the user's linked Slack workspaces.
 Each Automation stores `creator_identity_id`, the Junior identity that created
 it. A foreign key to `junior_identities` makes sure that identity exists. The
 user owns an Automation when one of their identities has that ID. This
-rule is the same for both kinds. The Slack create tools refuse to save an
+rule is the same for both kinds. `createAutomation` refuses to save an
 Automation when the requester has no stored identity. Migration 0058 sets the
 identity on event automations that were created before this rule, and on any
 row whose identity ID has no identity record. It adds a Slack identity when
@@ -18,9 +18,65 @@ Counts use the same access rules. Public access and Destination labels come
 from the Destination directory. Missing or private entries do not grant access.
 
 Scheduled automations run through the heartbeat. Event automations run when a
-matching event arrives. The dashboard can edit Automations that the user owns
-or can read through a public Destination. Pause, resume, and delete stay
-creator-only on the web.
+matching event arrives.
+
+## Tools
+
+One set of agent tools manages both kinds. `chat/tools/automations.ts`
+registers them, and `chat/automations/tools/` owns them:
+
+- `createAutomation` takes a `trigger`. Its `type` is `schedule` or `event`.
+- `searchAutomations` uses the dashboard Automations search. An optional
+  `type` limits it to one kind.
+- `updateAutomation` edits, pauses, resumes, or moves one Automation. A
+  replacement trigger must have the same type. Only a Scheduled automation can
+  move.
+- `deleteAutomation` deletes one Automation.
+- `runAutomationNow` queues a Scheduled automation. It rejects an Event
+  automation, because only a matching event starts one.
+
+`automationIdForToolCall` keeps the ID that each kind had before the tools
+merged, so a replayed create call finds the Automation that it created.
+
+## Management access
+
+One rule decides who can read and manage an Automation, on the dashboard and
+in the agent tools. `resolveViewerTaskCandidate` in `read.ts` applies it to one
+Automation, and `viewerAutomationCollection` in `collection.ts` applies it in
+SQL. Keep the two aligned. `tool-access.ts` builds the tool caller, its
+viewer, and the tool error text.
+
+A person can read, edit, pause, resume, and delete an Automation when one of
+these is true:
+
+- they created it;
+- its Destination is a public channel in one of their linked Slack workspaces;
+- they ask from a Conversation whose Location is the channel or DM where it
+  delivers.
+
+Other people get not found. So private channel and DM Automations stay with
+their creator and the people in that conversation.
+
+The tools work in any Turn that a person started, also in dashboard
+Conversations. A Turn that no person started, such as an Automation run or an
+Event, cannot use them. The tool viewer has the person's stored identities and
+the account of their Actor, so a missing identity lookup does not make the
+creator a non-creator. A Conversation with no Location can search and manage
+Automations, but it cannot create or move one, because it has no Destination.
+
+Some rules stay with the creator (`edit-rules.ts`):
+
+- Only the creator can enable creator credential use, change outcomes, or move
+  the Destination.
+- When a non-creator changes the instruction, Schedule, or event selector, the
+  Automation switches to system credentials.
+- A non-creator cannot resume or run now an Automation that still uses creator
+  credentials (`requireCredentialStart`). They can switch it to system
+  credentials first. Pause and delete do not start work, so anyone with access
+  can use them.
+
+These rules make sure that the creator's credentials run only work that the
+creator approved and started.
 
 Deleted automations keep their execution history and title. They do not match
 new events or schedules.
@@ -62,7 +118,7 @@ match conditions. Both include ordered outcomes and credential mode.
 
 `PATCH /api/automations/:id` requires that revision and the stored `kind`.
 It accepts only changed fields. Omitted fields stay unchanged. A replacement
-Schedule uses `ScheduleIntent`, the same input as the Slack tools. The API does
+Schedule uses `ScheduleIntent`, the same input as the agent tools. The API does
 not accept lifecycle or creator changes. It does not dispatch work or restart
 a completed Automation.
 
@@ -75,12 +131,12 @@ Replacement selectors must pass the current plugin catalog rules.
 
 The revision hashes the decoded stored values, including title and lifecycle.
 Scheduled saves compare it under the task lock. Event saves compare it under a
-SQL row lock. Slack edits use the same check. A scheduler state change can also
+SQL row lock. Tool edits use the same check. A scheduler state change can also
 invalidate an open edit. The API returns 409 for a stale edit, 400 with field
 paths for input errors, and 404 for an Automation the user cannot read. The
 editor must keep unsaved input when a save fails.
 
-A public reader edits with the same rules as a non-creator in Slack. They
+A public reader edits with the same rules as a non-creator in the tools. They
 cannot enable creator credential use or change outcomes. A change to the
 instruction or event selector switches creator credential use to system
 credentials. The edit read returns `ownedByViewer` so the editor can show
@@ -94,9 +150,14 @@ Automation. Each run puts the creator mention in the `Created by:` task input
 line. That line also says that "me" and "my" mean the creator. People can
 write these words in the dashboard editor.
 
-The agent tools that create or update an Automation reject an instruction that
-names the requester by display name without their Slack mention. A name does
-not notify the person.
+The agent tools that create or update an Automation enforce this in
+`requireInstructionReferences`. They reject an instruction that says "this
+channel", "this conversation", or "this thread", and give the channel mention
+to write instead. They reject an instruction that adds the creator's mention or
+name, and ask for "the Automation creator". They also reject an instruction
+that names another requester by display name without their Slack mention. A
+name does not notify the person. An update can keep a reference that the
+instruction already had.
 
 ## Versions
 
@@ -107,7 +168,7 @@ run-now do not make a version.
 
 The save writes the version in the same transaction and lock as the
 Automation. A save that does not change the definition does not make a
-version. A new Automation gets version 1 from its creator. Slack and web edits
+version. A new Automation gets version 1 from its creator. Tool and dashboard edits
 record the requester.
 
 Migration 0046 saves the current definition of each live Automation as
@@ -127,8 +188,8 @@ be made active. A one-time version does not keep its run time.
 
 ## Pause and attention
 
-Pause and resume are creator-only actions, separate from form saves. Both check
-the read revision under the same lock as edits. They keep credentials and history
+Pause and resume are separate from form saves. Both check the read revision
+under the same lock as edits. See Management access for who can use them. They keep credentials and history
 and cannot restart completed work.
 
 `scope=attention` filters the full collection before counting and paging. It
