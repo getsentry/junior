@@ -2,10 +2,9 @@
 
 ## Intent
 
-Tests should be easy to write because the repo gives faithful test adapters for
-common edges. They should not invent one-off mocks each time. Django's test
-suite is a useful model: it gives tests a client, isolated state, explicit env
-overrides, observable outboxes, and runner tools that find leakage.
+Shared test adapters for common edges make tests easy to write. Tests should
+not invent one-off mocks. Adapters give a client, isolated state, explicit env
+overrides, observable outboxes, and tools that find leakage.
 
 ## Policy
 
