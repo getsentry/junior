@@ -110,6 +110,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             <li
               className="scroll-mt-32 scroll-mb-2"
               data-event-seq={event.seq}
+              data-scroll-anchor={`event:${event.seq}`}
               key={event.seq}
             >
               <button
