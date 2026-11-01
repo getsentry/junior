@@ -52,7 +52,6 @@ describe("sandbox skill sync", () => {
 
     const writtenPaths: string[] = [];
     const sandbox = {
-      async mkDir() {},
       async readFileToBuffer() {
         return null;
       },
@@ -70,57 +69,31 @@ describe("sandbox skill sync", () => {
     expect(writtenPaths).toContain(sandboxSkillFile("jr-rpc"));
   });
 
-  it("creates sibling directories concurrently after their parents", async () => {
+  it("uploads nested skill files in one write without creating directories", async () => {
     const skillPath = await makeSkill();
-    let parentMissing = false;
-    const createdDirectories = new Set<string>();
-    const siblingDirectories = new Set<string>();
-    let reportFirstSibling: (() => void) | undefined;
-    const firstSiblingStarted = new Promise<void>((resolve) => {
-      reportFirstSibling = resolve;
-    });
-    let releaseSiblings: (() => void) | undefined;
-    const siblingsStarted = new Promise<void>((resolve) => {
-      releaseSiblings = resolve;
-    });
+    const uploads: string[][] = [];
     const sandbox = {
-      async mkDir(directory: string) {
-        const parent = path.posix.dirname(directory);
-        if (
-          parent.startsWith("/vercel/sandbox") &&
-          !createdDirectories.has(parent)
-        ) {
-          parentMissing = true;
-        }
-        if (
-          directory.endsWith("/references") ||
-          directory.endsWith("/scripts")
-        ) {
-          siblingDirectories.add(directory);
-          reportFirstSibling?.();
-          if (siblingDirectories.size < 2) {
-            await siblingsStarted;
-          }
-        }
-        createdDirectories.add(directory);
-      },
       async readFileToBuffer() {
         return null;
       },
-      async writeFiles() {},
+      async writeFiles(files: Array<{ path: string }>) {
+        uploads.push(files.map((file) => file.path));
+      },
     };
 
-    const sync = syncSkillsToSandbox({
+    await syncSkillsToSandbox({
       sandbox,
       skills: [{ name: "demo", description: "Demo", skillPath }],
       withSpan: immediateSpan,
     });
 
-    await firstSiblingStarted;
-    expect(siblingDirectories.size).toBe(2);
-    releaseSiblings?.();
-    await sync;
-    expect(parentMissing).toBe(false);
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toEqual(
+      expect.arrayContaining([
+        sandboxSkillFile("demo"),
+        `${path.posix.dirname(sandboxSkillFile("demo"))}/references/nested/note.md`,
+      ]),
+    );
   });
 
   it("skips the copy until the skill files change", async () => {
@@ -128,7 +101,6 @@ describe("sandbox skill sync", () => {
     const sandboxFiles = new Map<string, Buffer>();
     let writeCount = 0;
     const sandbox = {
-      async mkDir() {},
       async readFileToBuffer(input: { path: string }) {
         return sandboxFiles.get(input.path) ?? null;
       },
