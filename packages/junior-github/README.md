@@ -70,16 +70,19 @@ review desk through `ctx.reviewItems`. Ready to merge means that the pull
 request is open, is not a draft, has an approval and no open change request,
 and GitHub's `mergeable_state` is `clean`. `clean` covers required reviews,
 checks, commit statuses, and conflicts. `pull_request`, `pull_request_review`,
-and `check_suite` webhooks make the plugin read these facts again from
-GitHub. GitHub computes `mergeable_state` after a change. When it is still
-unknown after a second read, the plugin changes nothing, and a later webhook
-decides. The notice goes to the opener, in the Conversation where they asked.
-It tells them to merge the pull request, or to say why not. `ready_to_merge_at` on the pull request records that the
-notice was added, so repeat webhooks add no second notice. A notice that a
-person closed does not come back until the pull request is ready again. The
-plugin closes the notice when the pull request merges, closes, or is no longer
-ready. "Changes requested" adds no notice. A notice failure is logged and does
-not fail the webhook.
+and `check_suite` webhooks make the plugin read these facts again from GitHub.
+GitHub computes `mergeable_state` after a change. When it is still unknown
+after a second read, the plugin changes nothing, and a later webhook decides.
+The notice goes to the opener, in the Conversation where they asked. It tells
+them to merge the pull request, or to say why not. `ready_to_merge_at` on the
+pull request records that the notice was added, so repeat webhooks add no
+second notice. Each webhook locks the pull request row in one transaction
+while it reads GitHub and adds or closes the notice. So webhooks for one pull
+request run one at a time, and a failure rolls back `ready_to_merge_at`. A
+notice that a person closed does not come back until the pull request is ready
+again. The plugin closes the notice when the pull request merges, closes, or
+is no longer ready. "Changes requested" adds no notice. A notice failure is
+logged and does not fail the webhook.
 
 Deployment events come from GitHub `deployment` and `deployment_status`
 webhooks:

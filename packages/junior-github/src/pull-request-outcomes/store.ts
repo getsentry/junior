@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -300,30 +300,40 @@ export async function recordGitHubPullRequestLinkedIssues(
 }
 
 /**
- * Save whether a Junior-owned pull request is ready to merge. Return true
- * only when this call changed it, so one caller acts on each change even when
- * webhooks arrive together.
+ * Lock the row of a Junior pull request until the transaction ends, and read
+ * whether it is saved as ready to merge. So webhooks for one pull request
+ * decide its notice one at a time. Undefined when Junior does not own the
+ * pull request.
  */
-export async function markGitHubPullRequestReadyToMerge(
+export async function lockGitHubPullRequestReadyToMerge(
   db: GitHubDb,
-  input: {
-    number: number;
-    ready: boolean;
-    repositoryFullName: string;
-  },
-): Promise<boolean> {
-  const updated = await db
-    .update(juniorGitHubPullRequests)
-    .set({ readyToMergeAt: input.ready ? new Date() : null })
+  target: { number: number; repositoryFullName: string },
+): Promise<boolean | undefined> {
+  const [row] = await db
+    .select({ readyToMergeAt: juniorGitHubPullRequests.readyToMergeAt })
+    .from(juniorGitHubPullRequests)
     .where(
       and(
-        sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${input.repositoryFullName.toLowerCase()}`,
-        eq(juniorGitHubPullRequests.number, input.number),
-        input.ready
-          ? isNull(juniorGitHubPullRequests.readyToMergeAt)
-          : isNotNull(juniorGitHubPullRequests.readyToMergeAt),
+        sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${target.repositoryFullName.toLowerCase()}`,
+        eq(juniorGitHubPullRequests.number, target.number),
       ),
     )
-    .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
-  return updated.length > 0;
+    .for("update");
+  return row ? row.readyToMergeAt !== null : undefined;
+}
+
+/** Save whether a Junior pull request is ready to merge. */
+export async function setGitHubPullRequestReadyToMerge(
+  db: GitHubDb,
+  target: { number: number; ready: boolean; repositoryFullName: string },
+): Promise<void> {
+  await db
+    .update(juniorGitHubPullRequests)
+    .set({ readyToMergeAt: target.ready ? new Date() : null })
+    .where(
+      and(
+        sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${target.repositoryFullName.toLowerCase()}`,
+        eq(juniorGitHubPullRequests.number, target.number),
+      ),
+    );
 }

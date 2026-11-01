@@ -14,7 +14,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { markGitHubPullRequestReadyToMerge } from "../pull-request-outcomes/store.js";
+import {
+  lockGitHubPullRequestReadyToMerge,
+  setGitHubPullRequestReadyToMerge,
+} from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import {
@@ -97,23 +100,25 @@ async function syncOne(
   // Only a pull request that a person asked Junior to open has a requester
   // and a Conversation for the notice.
   if (!opener?.conversationId) return;
-  const state = await loadPullRequestMergeState(args.env, target);
-  const open = state.state === "open" && !state.draft;
-  // GitHub has not computed the merge state yet. A later event decides.
-  if (open && !state.mergeableState) return;
-  const ready = open && state.mergeableState === "clean" && state.approved;
-  // Only the call that changes the saved state acts. So repeat events add
-  // no second notice, and a notice that a person closed does not come back
-  // until the pull request is ready again.
-  if (
-    !(await markGitHubPullRequestReadyToMerge(args.db, { ...target, ready }))
-  ) {
-    return;
-  }
   const items = args.reviewItems.forConversation(opener.conversationId);
   const name = `${target.repositoryFullName}#${target.number}`;
   const dedupeKey = `pull-request-ready:${name.toLowerCase()}`;
-  try {
+  // The row lock makes webhooks for one pull request run one at a time, and
+  // each reads GitHub after the one before it is done. A failure rolls back
+  // the saved state, so the next event tries again.
+  await args.db.transaction(async (tx) => {
+    const saved = await lockGitHubPullRequestReadyToMerge(tx, target);
+    if (saved === undefined) return;
+    const state = await loadPullRequestMergeState(args.env, target);
+    const open = state.state === "open" && !state.draft;
+    // GitHub has not computed the merge state yet. A later event decides.
+    if (open && !state.mergeableState) return;
+    const ready = open && state.mergeableState === "clean" && state.approved;
+    // Act only on a change. So repeat events add no second notice, and a
+    // notice that a person closed does not come back until the pull request
+    // is ready again.
+    if (ready === saved) return;
+    await setGitHubPullRequestReadyToMerge(tx, { ...target, ready });
     if (ready) {
       await items.upsert({
         assigneeIdentityIds: [opener.identityId],
@@ -125,14 +130,7 @@ async function syncOne(
     } else {
       await items.close({ dedupeKey, ...closeReason(state) });
     }
-  } catch (error) {
-    // Undo the saved state, so the next event tries again.
-    await markGitHubPullRequestReadyToMerge(args.db, {
-      ...target,
-      ready: !ready,
-    });
-    throw error;
-  }
+  });
 }
 
 /**

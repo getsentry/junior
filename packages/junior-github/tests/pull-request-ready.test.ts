@@ -102,6 +102,8 @@ interface GitHubState {
   draft: boolean;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
+  /** When set, the next pull request read waits for it. */
+  holdNextPullRead?: Promise<void>;
   merged: boolean;
   reviews: Array<{ state: string; user: { login: string } }>;
   state: "closed" | "open";
@@ -117,21 +119,27 @@ function mockGitHub(github: GitHubState, requests: string[]) {
           token: "installation-token",
         }),
     ),
-    http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () => {
-      requests.push("pull");
-      const mergeableState =
-        github.mergeableStates.length > 1
-          ? github.mergeableStates.shift()
-          : github.mergeableStates[0];
-      return HttpResponse.json({
-        draft: github.draft,
-        html_url: PULL_URL,
-        mergeable_state: mergeableState,
-        merged: github.merged,
-        state: github.state,
-        title: "Add the review desk notice",
-      });
-    }),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/pulls/946",
+      async () => {
+        requests.push("pull");
+        const mergeableState =
+          github.mergeableStates.length > 1
+            ? github.mergeableStates.shift()
+            : github.mergeableStates[0];
+        const hold = github.holdNextPullRead;
+        github.holdNextPullRead = undefined;
+        await hold;
+        return HttpResponse.json({
+          draft: github.draft,
+          html_url: PULL_URL,
+          mergeable_state: mergeableState,
+          merged: github.merged,
+          state: github.state,
+          title: "Add the review desk notice",
+        });
+      },
+    ),
     // The merge webhook also classifies the commits.
     http.get(
       "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
@@ -323,6 +331,24 @@ describe("ready to merge notice", () => {
         kind: "close",
       });
 
+      // Two webhooks run at the same time. The first reads "clean", but its
+      // read is slow. The second reads "blocked". The second waits for the
+      // first, so the notice ends closed, as GitHub's latest state says.
+      let release!: () => void;
+      github.holdNextPullRead = new Promise((resolve) => {
+        release = resolve;
+      });
+      github.mergeableStates = ["clean", "blocked"];
+      const slow = webhook.handler(checkSuiteCompleted());
+      const fast = webhook.handler(checkSuiteCompleted());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      release();
+      await Promise.all([slow, fast]);
+      expect(calls.slice(-2).map((call) => call.kind)).toEqual([
+        "upsert",
+        "close",
+      ]);
+
       github.mergeableStates = ["clean"];
       await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toEqual(notice);
@@ -345,6 +371,8 @@ describe("ready to merge notice", () => {
         kind: "close",
       });
       expect(calls.map((call) => call.kind)).toEqual([
+        "upsert",
+        "close",
         "upsert",
         "close",
         "upsert",
