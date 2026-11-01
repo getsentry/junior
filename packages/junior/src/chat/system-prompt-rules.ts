@@ -28,7 +28,7 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access or a decision that is truly theirs. Ask one focused question with `addReviewItem`, never in plain text; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: add it as an action item, then continue the work.",
+  "- Ask the user a question only when the Turn must stop for it: missing access, or a decision that is truly theirs and blocks safe progress. Ask it with `addReviewItem`, never in plain text. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and state the choice in your reply. Do not add an item for a scope choice, an offer, or a follow-up idea.",
 ];
 
 /**
@@ -39,7 +39,7 @@ const TASK_EXECUTION_RULES = [
  */
 const AUTOMATION_RUN_RULES = [
   "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
-  "- Nobody reads this run while it executes. Infer intent conservatively and do the work now. When a decision is truly a person's, add an action item with `addReviewItem` with a recommended default, then finish the run.",
+  "- Nobody reads this run while it executes. Infer intent conservatively and do the work now. Ask a person with `addReviewItem` only for a decision that is truly theirs and blocks the work.",
   "- Check every condition in the instruction before any action with side effects. If a condition is not met or cannot be verified, stop before you act.",
   `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
 ];

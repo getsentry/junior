@@ -4,6 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
 
@@ -30,6 +31,34 @@ describe("Asking a Person", () => {
 
     // The dates are Maya's. The agent asks on the desk, not in plain text.
     expect(askedRequests(conversation)).not.toHaveLength(0);
+  });
+
+  test("when a scope choice does not block the work, choose the conventional option and state it without an item", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "Write a small Python function that turns a list of dicts into CSV text.",
+        { author: MAYA },
+      ),
+    );
+
+    // The delimiter, header, and quoting are scope choices with a
+    // conventional default. They do not need the person.
+    expect(toolCallsOf("addReviewItem", conversation)).toHaveLength(0);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply contains a Python function that turns a list of dicts into CSV text.",
+          "The reply states at least one choice that it made, such as the header row, the delimiter, or the quoting.",
+        ],
+        fail: [
+          "Do not ask the user to choose an option before giving the function.",
+          "Do not end with an offer or a question about extra work.",
+        ],
+      }),
+    );
   });
 
   test("when an Automation run needs the creator's decision, add an action item and finish the run", async ({
