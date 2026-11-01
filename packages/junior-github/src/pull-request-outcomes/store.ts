@@ -365,18 +365,14 @@ export async function setGitHubPullRequestReadyToMerge(
 export async function releaseGitHubPullRequestReadySync(
   db: GitHubDb,
   target: { number: number; repositoryFullName: string },
-  claim: { id: number; requests?: number },
+  claim: { id: number; requests: number },
 ): Promise<number | undefined> {
   const t = juniorGitHubPullRequests;
   const claimed = and(pullRequestRow(target), eq(t.readySyncId, claim.id));
   const released = await db
     .update(t)
     .set({ readySyncAt: null, readySyncId: null })
-    .where(
-      claim.requests === undefined
-        ? claimed
-        : and(claimed, eq(t.readySyncRequests, claim.requests)),
-    )
+    .where(and(claimed, eq(t.readySyncRequests, claim.requests)))
     .returning({ number: t.number });
   if (released.length > 0) return undefined;
   const [row] = await db

@@ -121,8 +121,11 @@ async function syncOne(
   const { id } = claim;
   let saved = claim.ready;
   let requests: number | undefined = claim.requests;
-  try {
-    while (requests !== undefined) {
+  // A failed check still checks the requests that came in during it. The
+  // first failure is thrown after the last check.
+  let failure: unknown;
+  while (requests !== undefined) {
+    try {
       const state = await loadPullRequestMergeState(args.env, target);
       const open = state.state === "open" && !state.draft;
       const ready = open && state.mergeableState === "clean" && state.approved;
@@ -147,15 +150,15 @@ async function syncOne(
         await setGitHubPullRequestReadyToMerge(args.db, { ...target, ready });
         saved = ready;
       }
-      requests = await releaseGitHubPullRequestReadySync(args.db, target, {
-        id,
-        requests,
-      });
+    } catch (error) {
+      failure ??= error;
     }
-  } catch (error) {
-    await releaseGitHubPullRequestReadySync(args.db, target, { id });
-    throw error;
+    requests = await releaseGitHubPullRequestReadySync(args.db, target, {
+      id,
+      requests,
+    });
   }
+  if (failure !== undefined) throw failure;
 }
 
 /**

@@ -355,12 +355,19 @@ describe("ready to merge notice", () => {
 
       github.merged = true;
       github.state = "closed";
-      // A failed close is tried again on the next event.
+      // The close fails once. A webhook that arrives during the failed
+      // check is not lost: the check runs again and closes the notice.
       failures.close = 1;
-      await webhook.handler(pullRequestAction("closed", true));
-      expect(calls.at(-1)).toEqual(notice);
+      let releaseMerge!: () => void;
+      github.holdNextPullRead = new Promise((resolve) => {
+        releaseMerge = resolve;
+      });
+      const failing = webhook.handler(pullRequestAction("closed", true));
+      const queued = webhook.handler(pullRequestAction("closed", true));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      releaseMerge();
+      await Promise.all([failing, queued]);
       expect(errors).toEqual(["GitHub pull request ready notice failed"]);
-      await webhook.handler(pullRequestAction("closed", true));
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
