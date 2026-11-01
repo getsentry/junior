@@ -19,8 +19,8 @@ export const agentDispatchTestDestination = {
   channelId: "C123",
 } as const;
 
-/** Compose production conversation work for one agent dispatch test. */
-export async function createAgentDispatchWorkHarness(agentRunner: AgentRunner) {
+/** Compose production conversation work for one integration test. */
+export async function createConversationWorkHarness(agentRunner: AgentRunner) {
   const state = getStateAdapter();
   await state.connect();
   const queue = createConversationWorkQueueTestAdapter();

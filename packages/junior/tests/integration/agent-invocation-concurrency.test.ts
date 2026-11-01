@@ -8,34 +8,28 @@ import {
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/store";
 import {
-  createAgentInvocationWorker,
   enqueueAgentInvocation,
-  routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
-import { startAgentInvocationsForChildInput } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { createEventTools } from "@/chat/tools/events";
-import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
 import { getConversationEventStore } from "@/chat/db";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import {
-  createConversationWorkQueueTestAdapter,
-  deferred,
-} from "../fixtures/conversation-work";
+import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+import { createConversationWorkHarness } from "../fixtures/agent-dispatch";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -70,21 +64,27 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
     nowMs: 1_000,
     source: "local",
   });
-  const state = getStateAdapter();
-  await state.connect();
-  const queue = createConversationWorkQueueTestAdapter();
   const agentRunner = createModelAgentRunnerForRun(streamForRun);
   const run = vi.spyOn(agentRunner, "run");
-  const route = routeAgentInvocationWork({
-    // The same order as production conversation work.
-    fallbackWorker: async (workContext) =>
-      (await skipInputBeforeConversationStop(workContext)) ??
-      (await startAgentInvocationsForChildInput(workContext, {
-        queue,
-        state,
-      })) ?? { status: "completed" as const },
-    invocationWorker: createAgentInvocationWorker(agentRunner),
-  });
+  const {
+    queue,
+    run: route,
+    state,
+  } = await createConversationWorkHarness(agentRunner);
+  // This harness runs only child work. Each child result also wakes the
+  // parent, and agent-invocation-work covers that parent Turn.
+  const processNext = async () => {
+    const message = queue.takeMessage();
+    if (message.conversationId === parentConversationId) {
+      return;
+    }
+    await processConversationQueueMessage(message, {
+      conversationStore,
+      queue,
+      run: route,
+      state,
+    });
+  };
 
   return {
     async close() {
@@ -93,30 +93,12 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
     async drainQueuedWork() {
       while (queue.hasQueuedMessages()) {
         const batch = queue.queuedMessages();
-        await Promise.all(
-          batch.map(async () => {
-            await processConversationQueueMessage(queue.takeMessage(), {
-              conversationStore,
-              queue,
-              run: route,
-              state,
-            });
-          }),
-        );
+        await Promise.all(batch.map(processNext));
       }
     },
     processQueuedBatch: async () => {
       const batch = queue.queuedMessages();
-      await Promise.all(
-        batch.map(async () => {
-          await processConversationQueueMessage(queue.takeMessage(), {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-          });
-        }),
-      );
+      await Promise.all(batch.map(processNext));
     },
     /** Send one parent message to an existing child, as messageAgent does. */
     message: async (args: {
@@ -499,7 +481,8 @@ describe("agent invocation identity and concurrency", () => {
           {
             conversation_id: parentConversationId,
             relation: "parent",
-            status: "idle",
+            // Both child results wait in the parent mailbox.
+            status: "pending",
             updated_at: expect.any(String),
           },
           { relation: "sibling", ...failingChild },

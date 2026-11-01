@@ -54,7 +54,11 @@ conversation tree.
 1. Creation writes the invocation before attempting the mailbox append.
 2. The idempotent mailbox append sends a normal conversation queue wake.
 3. The invocation router recognizes destinationless child work and advances it
-   through the shared `AgentRunner`.
+   through the shared `AgentRunner`. `routeAgentInvocationWork` checks for an
+   agent invocation before any other worker, in the server and in the CLI. A
+   child Turn can have any Source. A watch event Turn has an event Source, so a
+   router that picks the worker by Source sends its resume to the root Event
+   Turn worker. That worker needs a Destination, and a child has none.
 4. A cooperative yield keeps the same turn and invocation active for another
    execution slice.
 5. A stranded `running` child is re-parked at its latest durable safe boundary.

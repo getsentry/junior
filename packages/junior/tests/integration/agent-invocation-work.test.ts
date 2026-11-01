@@ -2,30 +2,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
+  getActiveAgentInvocationForConversation,
   getAgentInvocation,
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
-import {
-  enqueueAgentInvocationResult,
-  withAgentInvocationResultActors,
-} from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { createEventTools } from "@/chat/tools/events";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import {
-  createAgentInvocationWorker,
-  routeAgentInvocationWork,
-  createAndEnqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
+import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { createConversationWorkHarness } from "../fixtures/agent-dispatch";
+import { context, execute } from "../fixtures/event-automations";
 import {
   createModelAgentRunner,
   neverRunAgentRunner,
@@ -56,9 +54,24 @@ describe("agent invocation conversation work", () => {
   it("reads the parent Location and visibility without delivering child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
+    const agentRunner = createModelAgentRunner(
+      createModelStream([
+        {
+          type: "text",
+          text: "Durable child result",
+          onRequest: () => {
+            observedVisibility = getCurrentConversationPrivacy();
+          },
+        },
+      ]),
+    );
+    const run = vi.spyOn(agentRunner, "run");
+    const {
+      queue,
+      run: route,
+      state,
+    } = await createConversationWorkHarness(agentRunner);
     try {
       const created = await createAndEnqueueAgentInvocation(
         {
@@ -82,29 +95,6 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
-      let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
-      const agentRunner = createModelAgentRunner(
-        createModelStream([
-          {
-            type: "text",
-            text: "Durable child result",
-            onRequest: () => {
-              observedVisibility = getCurrentConversationPrivacy();
-            },
-          },
-        ]),
-      );
-      const run = vi.spyOn(agentRunner, "run");
-      const fallbackWorker = vi.fn(async () => ({
-        status: "completed" as const,
-      }));
-      const route = routeAgentInvocationWork({
-        fallbackWorker,
-        invocationWorker: createAgentInvocationWorker(agentRunner, {
-          enqueueResult: async (invocation) =>
-            await enqueueAgentInvocationResult(invocation, { queue, state }),
-        }),
-      });
       const queueMessage = queue.takeMessage();
 
       await expect(
@@ -302,7 +292,6 @@ describe("agent invocation conversation work", () => {
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
       expect(observedVisibility).toBe("public");
-      expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {
       await fixture.close();
     }
@@ -338,9 +327,13 @@ describe("agent invocation conversation work", () => {
       terminal,
     }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
-      const queue = createConversationWorkQueueTestAdapter();
-      const state = getStateAdapter();
-      await state.connect();
+      const {
+        queue,
+        run: route,
+        state,
+      } = await createConversationWorkHarness(
+        createModelAgentRunner(createModelStream([output])),
+      );
       try {
         const created = await createAndEnqueueAgentInvocation(
           {
@@ -349,12 +342,6 @@ describe("agent invocation conversation work", () => {
           },
           { conversationStore, queue, state },
         );
-        const route = routeAgentInvocationWork({
-          fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-          invocationWorker: createAgentInvocationWorker(
-            createModelAgentRunner(createModelStream([output])),
-          ),
-        });
 
         await expect(
           processConversationQueueMessage(queue.takeMessage(), {
@@ -400,57 +387,90 @@ describe("agent invocation conversation work", () => {
     },
   );
 
-  it("resumes a yielded invocation from durable child state", async () => {
+  // A child watch event runs with an event Source. When its Turn yields, the
+  // resume wake must still reach the agent invocation. Production once sent
+  // it to the root Event Turn worker, which needs a Destination that a child
+  // does not have.
+  it.each([
+    { name: "a parent task", watchEvent: false },
+    { name: "a watch event", watchEvent: true },
+  ])("resumes a yielded child invocation for $name", async ({ watchEvent }) => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const agentRunner = createModelAgentRunner(
+      createModelStream([
+        ...(watchEvent ? [{ type: "text" as const, text: "Watching" }] : []),
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        { type: "text", text: "Resumed child result" },
+      ]),
+    );
+    const run = vi.spyOn(agentRunner, "run");
+    const {
+      queue,
+      run: route,
+      state,
+    } = await createConversationWorkHarness(agentRunner);
     try {
       const created = await createAndEnqueueAgentInvocation(
         {
           ...invocationInput,
           idempotencyKey: "resume-1",
         },
-        {
-          conversationStore,
-          nowMs: 2_000,
-          queue,
-          state,
-        },
+        { conversationStore, queue, state },
       );
-      const agentRunner = createModelAgentRunner(
-        createModelStream([
-          { type: "toolCall", name: "systemTime", arguments: {} },
-          { type: "text", text: "Resumed child result" },
-        ]),
-      );
-      const run = vi.spyOn(agentRunner, "run");
-      const invocationWorker = createAgentInvocationWorker(agentRunner);
-      const route = routeAgentInvocationWork({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker,
-      });
+      const { childConversationId } = created;
+      // Child results also wake the parent. This test runs only the child.
+      const processChild = async (softYieldAfterMs?: number) =>
+        await processConversationQueueMessage(
+          queue.takeMessageFor(childConversationId),
+          {
+            conversationStore,
+            queue,
+            run: route,
+            state,
+            ...(softYieldAfterMs === undefined
+              ? undefined
+              : { softYieldAfterMs }),
+          },
+        );
+      if (watchEvent) {
+        // Finish the parent task, then set a timer on the child. The timer
+        // event waits for its burst window, then starts an agent invocation
+        // with the event Source.
+        await processChild();
+        await execute(
+          createEventTools(
+            { ...context(), conversationId: childConversationId },
+            getEventCatalog(),
+          ).watchTimer!,
+          { afterMs: 60_000, intent: "Check the PR checks." },
+          "child-timer",
+        );
+        clock.mockReturnValue(clock() + 120_000);
+        await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+        await processChild();
+        clock.mockReturnValue(clock() + 120_000);
+        await processChild(0);
+      }
 
+      await expect(processChild(0)).resolves.toMatchObject({
+        status: "yielded",
+      });
+      const target = watchEvent
+        ? (await getActiveAgentInvocationForConversation(childConversationId))!
+        : created;
       await expect(
-        processConversationQueueMessage(queue.takeMessage(), {
-          conversationStore,
-          queue,
-          run: route,
-          softYieldAfterMs: 0,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "yielded" });
-      await expect(
-        getAgentInvocation(created.invocationId),
+        getAgentInvocation(target.invocationId),
       ).resolves.toMatchObject({ status: "paused" });
       await expect(
         getTurnRecord(
-          created.childConversationId,
-          getAgentInvocationTurnId(created.invocationId),
+          childConversationId,
+          getAgentInvocationTurnId(target.invocationId),
         ),
       ).resolves.toMatchObject({
         state: "paused",
         resumeReason: "yield",
+        source: { kind: watchEvent ? "event" : "agent_invocation" },
         piMessages: expect.arrayContaining([
           expect.objectContaining({
             role: "toolResult",
@@ -459,23 +479,18 @@ describe("agent invocation conversation work", () => {
         ]),
       });
 
+      await expect(processChild()).resolves.toMatchObject({
+        status: "completed",
+      });
+      expect(run).toHaveBeenCalledTimes(watchEvent ? 3 : 2);
       await expect(
-        processConversationQueueMessage(queue.takeMessage(), {
-          conversationStore,
-          queue,
-          run: route,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "completed" });
-      expect(run).toHaveBeenCalledTimes(2);
-      await expect(
-        getAgentInvocation(created.invocationId),
+        getAgentInvocation(target.invocationId),
       ).resolves.toMatchObject({
         result: "Resumed child result",
         status: "completed",
       });
       const projection = await loadProjection({
-        conversationId: created.childConversationId,
+        conversationId: childConversationId,
       });
       expect(
         projection.filter(
@@ -483,20 +498,8 @@ describe("agent invocation conversation work", () => {
             message.role === "toolResult" && message.toolName === "systemTime",
         ),
       ).toHaveLength(1);
-      expect(projection).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            role: "assistant",
-            content: expect.arrayContaining([
-              expect.objectContaining({
-                type: "text",
-                text: "Resumed child result",
-              }),
-            ]),
-          }),
-        ]),
-      );
     } finally {
+      clock.mockRestore();
       await fixture.close();
     }
   });
@@ -544,9 +547,11 @@ describe("agent invocation conversation work", () => {
     "recovers a completed child turn that ends with $name through production routing",
     async ({ expected, tail, turnOutcome }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
-      const queue = createConversationWorkQueueTestAdapter();
-      const state = getStateAdapter();
-      await state.connect();
+      const {
+        queue,
+        run: route,
+        state,
+      } = await createConversationWorkHarness(neverRunAgentRunner());
       try {
         const created = await createAndEnqueueAgentInvocation(
           {
@@ -592,11 +597,6 @@ describe("agent invocation conversation work", () => {
           state: "completed",
           surface: "internal",
         });
-        const route = routeAgentInvocationWork({
-          fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-          invocationWorker: createAgentInvocationWorker(neverRunAgentRunner()),
-        });
-
         await expect(
           processConversationQueueMessage(queue.takeMessage(), {
             conversationStore,
