@@ -337,7 +337,9 @@ so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
 To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
+app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+also always gets `pull_request.review.approved`, `pull_request.merged`, and
+`pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
 `pullRequestEvents.guidance`. The guidance applies within each watch or event
 automation instruction. It does not replace or expand that instruction.
@@ -510,6 +512,20 @@ The pull request was merged.
 <summary><code>pull_request.closed_unmerged</code></summary>
 
 The pull request closed without merging.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.merge_conflict</code></summary>
+
+The pull request has merge conflicts with its base branch. GitHub sends no
+webhook for this. Junior finds it from the heartbeat: about every 5 minutes, it
+reads mergeability for open pull requests that Junior opened and that a watch or
+event automation matches. Each head commit publishes once. Trusted data
+includes `baseBranch`, `headSha`, and `url`. Filters can match only `repo` and
+`pullRequest`. The watch that Junior creates after it opens a pull request
+always gets this event, and the default guidance tells the agent to merge the
+base branch, not rebase.
 
 </details>
 

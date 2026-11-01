@@ -1,4 +1,4 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -231,6 +231,25 @@ export async function listGitHubAssignedWork(
       sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
     );
   return conversationIdsForPullRequests(rows, conversationIds);
+}
+
+/** Return open Junior-owned pull requests, most recently updated first. */
+export async function listOpenGitHubPullRequests(
+  db: GitHubDb,
+  limit: number,
+): Promise<
+  Array<{ number: number; pullRequestId: string; repositoryFullName: string }>
+> {
+  return await db
+    .select({
+      number: juniorGitHubPullRequests.number,
+      pullRequestId: juniorGitHubPullRequests.pullRequestId,
+      repositoryFullName: juniorGitHubPullRequests.repositoryFullName,
+    })
+    .from(juniorGitHubPullRequests)
+    .where(eq(juniorGitHubPullRequests.state, "open"))
+    .orderBy(desc(juniorGitHubPullRequests.updatedAt))
+    .limit(limit);
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */

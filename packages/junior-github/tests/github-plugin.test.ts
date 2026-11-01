@@ -1506,6 +1506,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         supportedEvents: [
           "pull_request.checks.failed",
@@ -1519,6 +1520,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         type: "pull_request",
       },
@@ -1593,18 +1595,21 @@ Conversation: \`local:test:old-conversation\`
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.merge_conflict",
           "pull_request.review.approved",
           "pull_request.merged",
         ],
         id: "subscription-1",
       },
     });
-    // Approval and merge always reach the people involved, so the Watch
-    // stores guidance for those outcomes.
+    // Merge conflicts always reach the Watch, so Junior keeps its pull
+    // request ready to merge. Approval and merge always reach the people
+    // involved, so the Watch stores guidance for those outcomes.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
         "pull_request.review.changes_requested",
+        "pull_request.merge_conflict",
         "pull_request.review.approved",
         "pull_request.merged",
       ],

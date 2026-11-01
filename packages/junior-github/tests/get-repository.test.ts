@@ -50,6 +50,7 @@ describe("getRepository", () => {
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         supportedEvents: [
           "deployment.created",
@@ -74,6 +75,7 @@ describe("getRepository", () => {
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         type: "repository",
       },

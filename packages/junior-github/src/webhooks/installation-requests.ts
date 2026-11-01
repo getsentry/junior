@@ -1,8 +1,9 @@
 /**
- * GitHub requests that webhook handling makes with installation tokens.
+ * GitHub requests that webhook and heartbeat handling make with installation
+ * tokens.
  *
- * A webhook delivery has no Turn and no egress context, so these requests
- * call GitHub directly. Other plugin code must use host egress.
+ * A webhook delivery or a heartbeat has no Turn and no egress context, so
+ * these requests call GitHub directly. Other plugin code must use host egress.
  */
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -50,6 +51,40 @@ export async function loadPullRequestCommitPages(
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
       { token: token.token },
     );
+}
+
+/**
+ * Return a reader for single pull requests, with read-only tokens. The reader
+ * issues one token for each repository and uses it again.
+ */
+export function createPullRequestReader(
+  env: GitHubInstallationEnv,
+): (pullRequest: {
+  number: number;
+  repositoryFullName: string;
+}) => Promise<unknown> {
+  const tokens = new Map<string, Promise<{ token: string }>>();
+  return async (pullRequest) => {
+    const { owner, name } = splitRepository(
+      pullRequest.repositoryFullName,
+      "pull request",
+    );
+    const key = `${owner}/${name}`.toLowerCase();
+    let token = tokens.get(key);
+    if (!token) {
+      token = issueInstallationToken({
+        ...env,
+        permissions: { pull_requests: "read" },
+        repositories: [name],
+      });
+      tokens.set(key, token);
+    }
+    return await githubRequest(
+      "https://api.github.com",
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
+      { token: (await token).token },
+    );
+  };
 }
 
 /** Add the "reviewing" reaction to one pull request feedback comment. */

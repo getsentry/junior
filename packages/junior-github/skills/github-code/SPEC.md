@@ -11,7 +11,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
 - Install dependencies with the lockfile frozen mode before verification when needed.
 - Finish every code change with a pushed PR, without asking, unless the user opts out or asked for investigation only. Open it ready when work and checks are done; open a draft when work, checks, or decisions remain. An open scope question goes in the PR body, not in a stop.
-- After each push to a branch with an open PR, check mergeability. Resolve conflicts without asking, by merging the PR base branch (usually the default branch). Never rebase for this. GitHub sends no event for a new conflict, and conflicted PRs get no new checks.
+- After each push to a branch with an open PR, check mergeability. Resolve conflicts without asking, by merging the PR base branch (usually the default branch). Never rebase for this. GitHub sends no event for a new conflict, and conflicted PRs get no new checks. The plugin heartbeat publishes `pull_request.merge_conflict` for watched PRs some minutes later, so the post-push check stays.
 - Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
 - Report exact validation and permission failures.
 

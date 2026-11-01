@@ -18,10 +18,12 @@ import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import {
+  createPullRequestReader,
   loadPullRequestCommitPages,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
+import { checkGitHubPullRequestMergeConflicts } from "./pull-request-merge-conflicts.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
   GITHUB_DEPLOYMENT_MATCH_FIELDS,
@@ -157,6 +159,7 @@ export function githubPlugin(
   const loadReadPermissions = createPermissionCache();
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
+  const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -333,12 +336,18 @@ export function githubPlugin(
           finishedWorkAtByConversationId,
         };
       },
+      async heartbeat(ctx) {
+        // Merge conflict events reach Watches only when events are enabled.
+        if (!readEnv("GITHUB_WEBHOOK_SECRET")) return;
+        await checkGitHubPullRequestMergeConflicts({
+          db: ctx.db as GitHubDb,
+          events: ctx.events,
+          loadPullRequest: createPullRequestReader(installationEnv),
+          log: ctx.log,
+          state: ctx.state,
+        });
+      },
       routes(ctx) {
-        const installationEnv = {
-          appIdEnv,
-          installationIdEnv,
-          privateKeyEnv,
-        };
         return [
           createGitHubWebhookRoute({
             annotations: ctx.annotations,

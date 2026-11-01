@@ -10,6 +10,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/index";
 import type { GitHubDb } from "../src/db/database";
+import { gitHubMergeConflictEvents } from "../src/pull-request-merge-conflicts";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
 import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
@@ -201,6 +202,19 @@ function releaseDelivery(repo: string, tag: string) {
   };
 }
 
+/** The events that the heartbeat publishes instead of a webhook. */
+function heartbeatEvents(scope: FixtureScope): EventInput[] {
+  return gitHubMergeConflictEvents({
+    conflict: {
+      baseBranch: "main",
+      headSha: scope.checkSha,
+      url: `https://github.com/${scope.repo}/pull/${scope.pullRequest}`,
+    },
+    number: scope.pullRequest,
+    repositoryFullName: scope.repo,
+  });
+}
+
 /** Publish deliveries the way the webhook route does, with every lookup. */
 async function publish(
   deliveries: Array<{ eventName: string; body: unknown }>,
@@ -304,7 +318,10 @@ function gitHubIdentifierMatch(event: {
 
 describe("GitHub event data", () => {
   it("declares filter events that match the data the webhooks set", async () => {
-    const events = await publish(fixtureDeliveries(BASE_SCOPE), "delivery");
+    const events = [
+      ...(await publish(fixtureDeliveries(BASE_SCOPE), "delivery")),
+      ...heartbeatEvents(BASE_SCOPE),
+    ];
     const resourceTypes = githubPlugin().events?.resourceTypes ?? [];
 
     expect(filterEventMismatches({ resourceTypes, events })).toEqual([]);
@@ -366,6 +383,9 @@ describe("GitHub event data", () => {
         fixtureDeliveries({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
         "other-repo",
       )),
+      ...heartbeatEvents(BASE_SCOPE),
+      ...heartbeatEvents({ ...BASE_SCOPE, pullRequest: 947 }),
+      ...heartbeatEvents({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
     ];
 
     expect(

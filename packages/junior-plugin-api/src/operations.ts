@@ -16,6 +16,8 @@ export interface HeartbeatHookContext extends PluginContext {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
+  /** Core-owned delivery boundary for events the plugin finds by polling. */
+  events: EventPublisher;
   nowMs: number;
   state: PluginState;
 }
