@@ -1,5 +1,5 @@
 {
-  "id": "6b48609b-f71b-4667-8dbb-da286531046e",
+  "id": "3156d5c8-917d-416b-a19b-f58e7ee76acc",
   "prevId": "6b12b332-4224-4e69-9ab7-51df6a4dd91c",
   "version": "7",
   "dialect": "postgresql",
@@ -302,6 +302,25 @@
         },
         "ready_to_merge_at": {
           "name": "ready_to_merge_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ready_sync_requests": {
+          "name": "ready_sync_requests",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ready_sync_id": {
+          "name": "ready_sync_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ready_sync_at": {
+          "name": "ready_sync_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

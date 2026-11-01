@@ -76,13 +76,16 @@ after a second read, the plugin changes nothing, and a later webhook decides.
 The notice goes to the opener, in the Conversation where they asked. It tells
 them to merge the pull request, or to say why not. `ready_to_merge_at` on the
 pull request records that the notice was added, so repeat webhooks add no
-second notice. Each webhook locks the pull request row in one transaction
-while it reads GitHub and adds or closes the notice. So webhooks for one pull
-request run one at a time, and a failure rolls back `ready_to_merge_at`. A
-notice that a person closed does not come back until the pull request is ready
-again. The plugin closes the notice when the pull request merges, closes, or
-is no longer ready. "Changes requested" adds no notice. A notice failure is
-logged and does not fail the webhook.
+second notice. One webhook at a time checks a pull request. A webhook that
+arrives during a check adds 1 to `ready_sync_requests` and stops. The webhook
+that runs the check then reads GitHub again, until no new request came in.
+`ready_sync_id` names that check, and a check older than one minute no longer
+blocks others. No database connection stays open during the GitHub calls.
+`ready_to_merge_at` changes only after the notice changes, so after a failure
+the next webhook tries again. A notice that a person closed does not come back
+until the pull request is ready again. The plugin closes the notice when the
+pull request merges, closes, or is no longer ready. "Changes requested" adds
+no notice. A notice failure is logged and does not fail the webhook.
 
 Deployment events come from GitHub `deployment` and `deployment_status`
 webhooks:

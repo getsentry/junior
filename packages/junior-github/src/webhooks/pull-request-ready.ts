@@ -15,7 +15,8 @@ import type {
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
-  lockGitHubPullRequestReadyToMerge,
+  claimGitHubPullRequestReadySync,
+  releaseGitHubPullRequestReadySync,
   setGitHubPullRequestReadyToMerge,
 } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
@@ -26,6 +27,12 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+
+/**
+ * A check normally takes a few seconds. After this time, a check that
+ * stopped without its release no longer blocks new checks.
+ */
+const READY_SYNC_STALE_MS = 60_000;
 
 /** Webhook actions that can change whether a pull request is ready. */
 const READY_ACTIONS: Record<string, ReadonlySet<string>> = {
@@ -103,34 +110,52 @@ async function syncOne(
   const items = args.reviewItems.forConversation(opener.conversationId);
   const name = `${target.repositoryFullName}#${target.number}`;
   const dedupeKey = `pull-request-ready:${name.toLowerCase()}`;
-  // The row lock makes webhooks for one pull request run one at a time, and
-  // each reads GitHub after the one before it is done. A failure rolls back
-  // the saved state, so the next event tries again.
-  await args.db.transaction(async (tx) => {
-    const saved = await lockGitHubPullRequestReadyToMerge(tx, target);
-    if (saved === undefined) return;
-    const state = await loadPullRequestMergeState(args.env, target);
-    const open = state.state === "open" && !state.draft;
-    // GitHub has not computed the merge state yet. A later event decides.
-    if (open && !state.mergeableState) return;
-    const ready = open && state.mergeableState === "clean" && state.approved;
-    // Act only on a change. So repeat events add no second notice, and a
-    // notice that a person closed does not come back until the pull request
-    // is ready again.
-    if (ready === saved) return;
-    await setGitHubPullRequestReadyToMerge(tx, { ...target, ready });
-    if (ready) {
-      await items.upsert({
-        assigneeIdentityIds: [opener.identityId],
-        body: `**${state.title}** is approved, and GitHub says that it can merge. Merge it, or say why not: ${state.url}`,
-        dedupeKey,
-        subject: { id: state.url, title: name, url: state.url },
-        title: `Ready to merge: ${name}`,
-      });
-    } else {
-      await items.close({ dedupeKey, ...closeReason(state) });
-    }
+  // One webhook at a time checks a pull request. A webhook that arrives
+  // during a check asks again, and the running webhook checks once more with
+  // a new GitHub read. No connection or lock stays open during the calls.
+  const claim = await claimGitHubPullRequestReadySync(args.db, target, {
+    now: new Date(),
+    staleMs: READY_SYNC_STALE_MS,
   });
+  if (!claim) return;
+  const { id } = claim;
+  let saved = claim.ready;
+  let requests: number | undefined = claim.requests;
+  try {
+    while (requests !== undefined) {
+      const state = await loadPullRequestMergeState(args.env, target);
+      const open = state.state === "open" && !state.draft;
+      const ready = open && state.mergeableState === "clean" && state.approved;
+      // Act only on a change. So repeat events add no second notice, and a
+      // notice that a person closed does not come back until the pull
+      // request is ready again. When GitHub has not computed the merge state
+      // yet, nothing changes, and a later event decides.
+      if ((!open || state.mergeableState) && ready !== saved) {
+        if (ready) {
+          await items.upsert({
+            assigneeIdentityIds: [opener.identityId],
+            body: `**${state.title}** is approved, and GitHub says that it can merge. Merge it, or say why not: ${state.url}`,
+            dedupeKey,
+            subject: { id: state.url, title: name, url: state.url },
+            title: `Ready to merge: ${name}`,
+          });
+        } else {
+          await items.close({ dedupeKey, ...closeReason(state) });
+        }
+        // Save after the notice changes, so a failure leaves the old state
+        // and the next event tries again.
+        await setGitHubPullRequestReadyToMerge(args.db, { ...target, ready });
+        saved = ready;
+      }
+      requests = await releaseGitHubPullRequestReadySync(args.db, target, {
+        id,
+        requests,
+      });
+    }
+  } catch (error) {
+    await releaseGitHubPullRequestReadySync(args.db, target, { id });
+    throw error;
+  }
 }
 
 /**

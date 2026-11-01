@@ -94,6 +94,17 @@ export const juniorGitHubPullRequests = pgTable(
      * review desk notice. Null when it is not ready.
      */
     readyToMergeAt: timestamp("ready_to_merge_at", { withTimezone: true }),
+    /**
+     * Webhooks that asked to check whether the pull request is ready to
+     * merge. The check runs again when this changes during a check.
+     */
+    readySyncRequests: integer("ready_sync_requests").notNull().default(0),
+    /**
+     * The request that runs the current check. Null when no check runs.
+     */
+    readySyncId: integer("ready_sync_id"),
+    /** When the current check started. */
+    readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
