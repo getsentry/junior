@@ -249,6 +249,11 @@ function messageAnswer(
  * see `deliverReviewItemChange`.
  */
 export async function closeReviewItemsAnsweredByReply(args: {
+  /**
+   * Return false when the replier may not answer, such as a Slack author
+   * outside the allowed domains. It runs only when an item can match.
+   */
+  canAnswer?: () => Promise<boolean>;
   conversationId: string;
   delivery: ReviewItemDelivery;
   nowMs?: number;
@@ -258,6 +263,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
   const db = getDb();
   const items = await listReplyActionItems(db, args.conversationId);
   if (items.length === 0) return;
+  if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
   for (const item of items.filter((candidate) =>
