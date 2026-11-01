@@ -32,6 +32,114 @@ move to the domain below.
   `sandbox.egress.upstream.requested` for write grants. Outside production,
   that event is logged for every forwarded request.
 
+## Query Recipes
+
+Conversation timeline from a Slack thread, footer link, or conversation ID.
+
+```text
+dataset=spans query='gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,span.op,span.description,span.duration,error.type
+sort=-timestamp
+```
+
+Conversation log history from the same pivot.
+
+```text
+dataset=logs query='gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,level,event.name,trace_id,span_id,error.type,exception.message
+sort=timestamp
+```
+
+Trace log history after opening a Sentry event or trace.
+
+```text
+dataset=logs query='trace_id:"<trace_id>"'
+fields=timestamp,level,event.name,span_id,gen_ai.conversation.id,error.type,exception.message
+sort=timestamp
+```
+
+Recent failed or timed-out agent runs.
+
+```text
+dataset=logs query='event.name:agent.turn.timed_out OR event.name:agent.turn.failed OR event.name:agent.turn.provider_error'
+fields=timestamp,event.name,trace_id,span_id,gen_ai.conversation.id,gen_ai.request.model,error.type
+sort=-timestamp
+```
+
+Tool failures or slow tool calls.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:"<tool_name>"'
+fields=timestamp,trace,span.description,span.duration,gen_ai.conversation.id,gen_ai.tool.call.result.size,error.type
+sort=-timestamp
+```
+
+Large tool results.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.call.result.size:>20000'
+fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.result.size,span.duration
+sort=-gen_ai.tool.call.result.size
+```
+
+Search tool volume, truncation, and raw output size.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
+fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
+sort=-timestamp
+```
+
+Slack delivery failures after the agent turn ran.
+
+```text
+dataset=logs query='event.name:slack.thread.post.failed app.slack.error_code:*'
+fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,app.slack.reply_stage,app.slack.error_code,app.slack.api_error,exception.message
+sort=-timestamp
+```
+
+Scheduled automation lifecycle by task id.
+
+```text
+dataset=logs query='app.task.id:"<task_id>"'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility,app.task.result_message_ts,messaging.destination.name
+sort=timestamp
+```
+
+Scheduled automation fire path by channel.
+
+```text
+dataset=logs query='event.name:scheduled_automation.run.dispatched messaging.destination.name:"<channel_id>"'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility
+sort=-timestamp
+```
+
+Recent scheduled-automation create/fire outcomes.
+
+```text
+dataset=logs query='event.name:scheduled_automation.create.completed OR event.name:scheduled_automation.run.claimed OR event.name:scheduled_automation.run.dispatched OR event.name:scheduled_automation.run.completed OR event.name:scheduled_automation.run.failed OR event.name:scheduled_automation.run.blocked OR event.name:scheduled_automation.run.skipped'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.status,messaging.destination.name
+sort=-timestamp
+```
+
+Credentialed provider writes, with whose authority they used. Write-grant
+egress requests are audit events (`app.log.audit:true`), so Sentry keeps them
+in production. Other info events stay out of Sentry in production.
+
+```text
+dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
+fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when,app.task.id,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code
+sort=-timestamp
+```
+
+Auth, credential, and resume failures.
+
+```text
+dataset=logs query='app.credential.provider:"<provider>"'
+fields=timestamp,event.name,gen_ai.conversation.id,app.credential.provider,app.ai.retryable_reason,exception.message
+sort=-timestamp
+```
+
 ## Identity
 
 Runs, resumes, and the sandbox egress proxy bind the same identity

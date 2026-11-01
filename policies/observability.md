@@ -3,7 +3,8 @@
 ## Intent
 
 Telemetry is for diagnosis and operations. It is not a product behavior
-contract. `../TELEMETRY.md` holds telemetry names and investigation pivots.
+contract. `../TELEMETRY.md` holds telemetry names, investigation pivots, and query
+recipes.
 
 ## Policy
 

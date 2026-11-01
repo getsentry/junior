@@ -28,8 +28,12 @@ current.
 - Name files, types, and functions. Do not explain how they work.
 - Use short bullets. Use ASD-STE100 English and the words in
   `TERMINOLOGY.md`.
-- An internal doc has at most 120 lines. `pnpm file-length:check` enforces
-  this. Aim for less than 60.
+- Core docs (`AGENTS.md`, `README.md`, and policies) have at most 120 lines.
+  Agents read them before a change, so aim for less than 60.
+- Reference docs that agents look up, such as `TELEMETRY.md` and setup guides,
+  can be long. Keep them current and free of repeated text. `TELEMETRY.md` and
+  `TERMINOLOGY.md` have at most 1,000 lines.
+- `pnpm file-length:check` enforces these limits.
 - Change a doc only when intent, an invariant, or a boundary changes. Do not
   add a paragraph for each feature. When you add a rule, remove a rule that is
   stale.

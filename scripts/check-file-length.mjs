@@ -21,7 +21,7 @@ const DOC_GUIDANCE =
 
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const DOC_FILENAMES = new Set(["AGENTS.md", "README.md"]);
-const ROOT_DOC_PATHS = new Set(["TELEMETRY.md", "TERMINOLOGY.md"]);
+const REFERENCE_DOC_PATHS = new Set(["TELEMETRY.md", "TERMINOLOGY.md"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".next",
@@ -79,13 +79,17 @@ export function checkFileLengths(
   return errors;
 }
 
-/** Internal docs: every AGENTS.md and README.md, policies, and root references. */
-export function isInternalDoc(filePath) {
+/** Core docs agents read before a change: AGENTS.md, README.md, and policies. */
+export function isCoreDoc(filePath) {
   return (
     DOC_FILENAMES.has(path.posix.basename(filePath)) ||
-    ROOT_DOC_PATHS.has(filePath) ||
     /^policies\/[^/]+\.md$/.test(filePath)
   );
+}
+
+/** Reference docs that agents look up. They may be long, but not unbounded. */
+export function isReferenceDoc(filePath) {
+  return REFERENCE_DOC_PATHS.has(filePath);
 }
 
 function collectFiles(root, include, directory = root, files = []) {
@@ -124,15 +128,21 @@ function main() {
       fileLengthExceptions,
     ),
     ...checkFileLengths(
-      collectFiles(root, isInternalDoc),
+      collectFiles(root, isCoreDoc),
       {},
       MAX_DOC_FILE_LINES,
+      DOC_GUIDANCE,
+    ),
+    ...checkFileLengths(
+      collectFiles(root, isReferenceDoc),
+      {},
+      MAX_CODE_FILE_LINES,
       DOC_GUIDANCE,
     ),
   ];
   if (errors.length === 0) {
     console.log(
-      `All code files are at most ${MAX_CODE_FILE_LINES} lines and internal docs at most ${MAX_DOC_FILE_LINES} lines.`,
+      `All code files are at most ${MAX_CODE_FILE_LINES} lines and core docs at most ${MAX_DOC_FILE_LINES} lines.`,
     );
     return;
   }

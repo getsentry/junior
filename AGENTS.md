@@ -65,7 +65,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 - If a plugin needs a runtime capability, add the smallest provider-neutral
   contract to core or `packages/junior-plugin-api`.
 - Group files by feature. Do not add feature-directory barrels.
-- Code files have at most 1,000 lines and internal docs at most 120.
+- Code files have at most 1,000 lines and core docs at most 120.
   `pnpm file-length:check` enforces this. Do not compress formatting to pass.
   Split at a feature boundary.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.

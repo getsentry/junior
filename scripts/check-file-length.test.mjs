@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   checkFileLengths,
   countFileLines,
-  isInternalDoc,
+  isCoreDoc,
+  isReferenceDoc,
 } from "./check-file-length.mjs";
 
 test("counts physical lines", () => {
@@ -56,11 +57,12 @@ test("reports stale and invalid exceptions", () => {
   );
 });
 
-test("selects internal docs", () => {
-  assert.equal(isInternalDoc("packages/junior/src/chat/AGENTS.md"), true);
-  assert.equal(isInternalDoc("packages/junior-github/README.md"), true);
-  assert.equal(isInternalDoc("policies/testing.md"), true);
-  assert.equal(isInternalDoc("TERMINOLOGY.md"), true);
-  assert.equal(isInternalDoc("CONTRIBUTING.md"), false);
-  assert.equal(isInternalDoc("packages/docs/src/content/docs/index.md"), false);
+test("separates core docs from reference docs", () => {
+  assert.equal(isCoreDoc("packages/junior/src/chat/AGENTS.md"), true);
+  assert.equal(isCoreDoc("packages/junior-github/README.md"), true);
+  assert.equal(isCoreDoc("policies/testing.md"), true);
+  assert.equal(isCoreDoc("TELEMETRY.md"), false);
+  assert.equal(isReferenceDoc("TELEMETRY.md"), true);
+  assert.equal(isCoreDoc("CONTRIBUTING.md"), false);
+  assert.equal(isReferenceDoc("CONTRIBUTING.md"), false);
 });
