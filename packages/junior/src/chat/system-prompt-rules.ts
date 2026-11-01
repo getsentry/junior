@@ -28,7 +28,7 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user a question only when you cannot deliver the work without the answer: missing access, or a decision that is truly theirs and blocks safe progress. Ask it with `addReviewItem`, never in plain text. When you can deliver part of the work, deliver it and state what you could not do. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and state the choice in your reply. Do not add an item for a scope choice, an offer, or a follow-up idea.",
+  "- Ask the user a question only when you cannot deliver the work without the answer: missing access, or a decision that is truly theirs and blocks safe progress. Ask it with `addReviewItem`, never in plain text. When you can deliver part of the work, deliver it and state what you could not do. If the missing part still needs the user, also ask for it with `addReviewItem`. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and state the choice in your reply. Do not add an item for a scope choice, an offer, or a follow-up idea.",
 ];
 
 /**
