@@ -449,11 +449,10 @@ export async function startAgentInvocationsForChildInput(
 }
 
 /**
- * Build the worker for child Conversation work. Server conversation work and
- * the local CLI both run it before any root worker. It starts agent
- * invocations for child input, then runs the agent invocation that owns the
- * work. A child Turn can have any Source, so only SQL agent invocation state
- * can select this worker. Returns undefined for root Conversation work.
+ * Build the worker for all work of a child Conversation. The caller selects
+ * it from the stored parent of the Conversation, never from a Turn Source. It
+ * starts agent invocations for child input, then runs the agent invocation
+ * that owns the work. Work that no agent invocation owns is an error.
  */
 export function createChildConversationWorker(
   agentRunner: AgentRunner,
@@ -467,15 +466,18 @@ export function createChildConversationWorker(
   const invocationWorker = createAgentInvocationWorker(agentRunner, options);
   return async (
     context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult | undefined> => {
+  ): Promise<ConversationWorkerResult> => {
     const started = await startAgentInvocationsForChildInput(context, options);
     if (started) {
       return started;
     }
     const invocationId = await resolveAgentInvocationId(context);
-    return invocationId
-      ? await invocationWorker(context, invocationId)
-      : undefined;
+    if (!invocationId) {
+      throw new Error(
+        `Child conversation ${context.conversationId} has no agent invocation for this work`,
+      );
+    }
+    return await invocationWorker(context, invocationId);
   };
 }
 

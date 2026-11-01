@@ -265,15 +265,9 @@ async function prepareLocalChatRun(
     await processConversationWork(message, {
       queue: localConversationWork.queue,
       // The local queue carries only child Conversation work.
-      run: async (context) => {
-        const result =
-          (await skipInputBeforeConversationStop(context)) ??
-          (await childWorker(context));
-        if (!result) {
-          throw new Error("Local child queue received non-invocation work");
-        }
-        return result;
-      },
+      run: async (context) =>
+        (await skipInputBeforeConversationStop(context)) ??
+        (await childWorker(context)),
     });
   });
   agentRunner = createAgentRunner(executeAgentRun, {
