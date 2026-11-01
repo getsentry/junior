@@ -53,6 +53,11 @@ traffic through verified host egress.
   perform further asynchronous work. A Workspace switch persists its prepared
   candidate before replacing the live Sandbox. Reacquiring a VM session for
   the same reference does not rewrite durable state.
+- Each sandbox preparation copies the skill files and reference files into
+  the sandbox. A digest file in the skills directory records the last complete
+  copy. When the digest matches the current files, the copy is skipped. Edits
+  that a command makes to the copied skill files stay until the skill files
+  change.
 - Agent runs do not stop sandboxes when they finish. Explicit temporary owners,
   such as dependency snapshot creation, own their own stop lifecycle.
 - Do not treat the sandbox filesystem as product storage.
@@ -240,6 +245,11 @@ Vercel Sandbox, and some workloads do not behave the same. Set
 - When the Docker host itself is behind a TLS proxy, such as inside a Vercel
   Sandbox, set `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` to that proxy's CA file.
   Each sandbox then trusts it too.
+- Docker snapshots install only a small base: `spal-release`, `ripgrep`, `gh`
+  and `jq`, when a plugin or the runtime declares them. They run no
+  postinstall commands. Other plugin CLIs, browsers, and Docker inside the
+  sandbox are not installed. The agent installs other tools with `sudo` when
+  it needs them. Vercel snapshots still install every declared dependency.
 
 ### Limitations
 

@@ -346,12 +346,13 @@ describe("review item tools", () => {
       dedupe_key: "digest",
     };
 
-    // A new run has no Actor and no people yet. It can still assign the
-    // creator of its Automation, but nobody else.
+    // A new run has no Actor and no people yet. It assigns the creator of
+    // its Automation by default, and nobody else.
     await conversation("slack:DRUN:1.000003", "DRUN", "private");
     await user("ben@example.com");
     const fresh = await execute(run("slack:DRUN:1.000003").add, {
       ...notice,
+      assignees: undefined,
       dedupe_key: "digest-fresh",
     });
     expect(fresh.item.assignees).toEqual(["ana@example.com"]);

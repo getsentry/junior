@@ -73,11 +73,6 @@ import {
   hasConversationUsageBreakdown,
 } from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
-import { UserInputRequestCard } from "./UserInputRequestCard";
-import {
-  openUserInputRequest,
-  type OpenUserInputRequest,
-} from "./userInputRequest";
 import {
   buildConversations,
   conversationDetailTitle,
@@ -195,10 +190,6 @@ export function ConversationPage(props: {
   // reuse events via structural sharing, so the footer keeps a stable id list.
   const mailboxCommittedIds = useMemo(
     () => committedMessageIds(detail.data?.events),
-    [detail.data?.events],
-  );
-  const userInputRequest = useMemo(
-    () => openUserInputRequest(detail.data?.events),
     [detail.data?.events],
   );
   // Cancel needs the latest mailbox watermark, but not as a render prop. Live
@@ -494,7 +485,6 @@ export function ConversationPage(props: {
                 detail.inlineMessages.length === 0
               }
               stoppable={live}
-              userInputRequest={userInputRequest}
             />
           ) : undefined
         }
@@ -585,8 +575,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   sendsInline: boolean;
   /** True while the conversation has a Turn that a stop can end. */
   stoppable: boolean;
-  /** Junior's open question, if no user message answers it yet. */
-  userInputRequest?: OpenUserInputRequest;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
   const stopTurn = useStopConversationTurn(props.conversationId);
@@ -665,13 +653,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const onAnswerUserInput = useCallback(async (answer: string) => {
-    onPinRequestRef.current();
-    await appendMessageRef.current.mutateAsync({
-      idempotencyKey: crypto.randomUUID(),
-      message: answer,
-    });
-  }, []);
   const onCancelMessage = useCallback(
     (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
@@ -795,14 +776,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         <>
           {props.pendingAuthorization ? (
             <PendingAuthorization authorization={props.pendingAuthorization} />
-          ) : null}
-          {/* A queued message already answers the question. */}
-          {props.userInputRequest && props.pendingMessages.length === 0 ? (
-            <UserInputRequestCard
-              key={props.userInputRequest.toolCallId}
-              onAnswer={onAnswerUserInput}
-              request={props.userInputRequest}
-            />
           ) : null}
           <ConversationReviewBar conversationId={props.conversationId} />
           <PendingMailboxStack

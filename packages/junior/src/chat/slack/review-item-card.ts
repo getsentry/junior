@@ -1,7 +1,11 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
 import { z } from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
-import type { ReviewItem, ReviewItemAssignee } from "@/chat/review-items/store";
+import {
+  REVIEW_ITEM_REPLIED_REASON,
+  type ReviewItem,
+  type ReviewItemAssignee,
+} from "@/chat/review-items/store";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
@@ -113,6 +117,9 @@ function controls(item: ReviewItem): Button[] {
 /** The note that replaces the controls of a closed item. */
 function closedNote(item: ReviewItem): string {
   const who = item.closedBy ? personName(item.closedBy) : undefined;
+  if (item.closeReason === REVIEW_ITEM_REPLIED_REASON) {
+    return `${who ?? "A person"} replied in the thread`;
+  }
   if (item.status === "done" && item.request && item.answer && who) {
     return slackUserInputAnswerNote({
       answer: item.answer,

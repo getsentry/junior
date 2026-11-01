@@ -824,7 +824,8 @@ export class SqlStore implements ConversationStore {
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
-          actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
+          // Keep the stored Identity. A human reply cannot replace a system root.
+          actorIdentityId: sql`coalesce(${juniorConversations.actorIdentityId}, excluded.actor_identity_id)`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,

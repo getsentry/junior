@@ -28,17 +28,18 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
+  "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question with `addReviewItem`; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
 ];
 
 /**
  * Block 2, `<automation-run>`: the job rules for a stored automation. No person
- * reads the run, so Junior acts without questions and ends with the result
- * tool.
+ * reads the run while it executes, so Junior does the work without waiting.
+ * A decision that only a person can make goes on the review desk, and the
+ * run ends with the result tool.
  */
 const AUTOMATION_RUN_RULES = [
   "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
-  "- Nobody reads this run while it executes. Do not ask questions, ask for approval, or offer options. Infer intent conservatively and do the work now.",
+  "- Nobody reads this run while it executes. Infer intent conservatively and do the work now. When a decision is truly a person's, add an action item with `addReviewItem` with a recommended default, then finish the run.",
   "- Check every condition in the instruction before any action with side effects. If a condition is not met or cannot be verified, stop before you act.",
   `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
 ];

@@ -7,6 +7,7 @@ import {
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
   type EventMailboxMetadata,
@@ -23,6 +24,7 @@ export type ReviewItemChange =
   | { kind: "completed"; user: User }
   | { kind: "dismissed"; user: User }
   | { kind: "taken"; user: User }
+  | { kind: "replied"; who: string }
   | { kind: "closed"; reason: string };
 
 function personName(user: User): string {
@@ -64,6 +66,13 @@ export function renderReviewItemMessage(
         `${personName(change.user)} took ${label}. They are now its only assignee.`,
         ...question,
       ].join("\n");
+    case "replied":
+      return [
+        `[review item]`,
+        "",
+        `${change.who} replied in a thread linked to ${label}, so the item closed as done. The reply went to that thread, not here, so it does not give user approval.`,
+        ...question,
+      ].join("\n");
     case "closed":
       return [
         `[review item]`,
@@ -100,7 +109,7 @@ function messageKey(item: ReviewItem, change: ReviewItemChange): string {
 }
 
 function eventMessageText(text: string, change: ReviewItemChange): string {
-  if (change.kind === "closed") return text;
+  if (!("user" in change)) return text;
   // This Conversation does not take web Messages, so Junior relays the
   // person action as an event.
   return [
@@ -121,7 +130,7 @@ async function sendOne(args: {
   text: string;
 }): Promise<void> {
   const key = messageKey(args.item, args.change);
-  if (args.change.kind !== "closed") {
+  if ("user" in args.change) {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
@@ -161,6 +170,7 @@ async function sendOne(args: {
       inboundMessageId: `${key}:${args.conversationId}`,
       input: {
         authorId: EVENT_AUTHOR_ID,
+        authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: eventMessageText(args.text, args.change),
       },

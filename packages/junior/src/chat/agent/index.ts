@@ -147,8 +147,13 @@ import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
+  loadPromptTurnContext,
 } from "@/chat/agent/prompt";
-import { wireAgentTools } from "@/chat/agent/tools";
+import {
+  createPromptHookContext,
+  createRunSandbox,
+  wireAgentTools,
+} from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
@@ -386,6 +391,9 @@ async function executeAgentRunInPrivacyContext(
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let closeTools: (() => Promise<void>) | undefined;
+  // Pre-agent work that runs beside routing. The run waits for it to settle,
+  // so a routing or wiring failure does not leave it running.
+  let preAgentSetup: Promise<unknown> | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -612,6 +620,43 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
+    // ── Pre-agent setup ──────────────────────────────────────────────
+    // Routing, sandbox setup, and prompt Turn context such as memory recall
+    // do not read one another's results, so they run at the same time.
+    const runSandbox = await createRunSandbox({
+      availableSkills,
+      configurationValues,
+      currentActor: actor,
+      currentActors: runActors,
+      durability,
+      onSandboxRefChanged: (sandboxRef) => {
+        lastKnownSandboxRef = sandboxRef;
+      },
+      run,
+      skillSandbox,
+      spanContext,
+      state,
+    });
+    closeTools = async () => runSandbox.agentSandbox.close();
+    getSandboxRef = () => runSandbox.agentSandbox.sandboxRef();
+    const repositoryInstructionsPromise = runSandbox.agentSandbox.sandboxRef()
+      ? runSandbox.agentSandbox.captureRepositoryInstructions()
+      : Promise.resolve(undefined);
+    const promptTurnContextPromise = loadPromptTurnContext({
+      context: createPromptHookContext({ actor, run, userInput }),
+      currentActor: actor,
+      existingSessionPiMessages: existingSessionRecord?.piMessages,
+      existingTurnStartMessageIndex:
+        existingSessionRecord?.turnStartMessageIndex,
+      resumedFromSessionRecord,
+      turnId,
+      userContentParts,
+    });
+    preAgentSetup = Promise.allSettled([
+      repositoryInstructionsPromise,
+      promptTurnContextPromise,
+    ]);
+
     const handoffEnabled = !isAgentRunFeatureDisabled(
       policy.disabledFeatures,
       "handoff",
@@ -812,7 +857,6 @@ async function executeAgentRunInPrivacyContext(
       abortAgent: () => agent?.abort(),
       activeSkills,
       currentActor: actor,
-      currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,
@@ -829,15 +873,13 @@ async function executeAgentRunInPrivacyContext(
         pendingPiHookError = error;
         agent?.abort();
       },
-      onSandboxRefChanged: (sandboxRef) => {
-        lastKnownSandboxRef = sandboxRef;
-      },
       preAgentPromptMessages,
       recordConnectedMcpProvider,
       requestHandoff,
       spawnAgentProfiles,
       resume: runResume,
       run,
+      sandbox: runSandbox,
       skillSandbox,
       spanContext,
       state,
@@ -849,10 +891,11 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
-    getSandboxRef = () => wiring.getSandboxRef();
-    const initialRepositoryInstructions = wiring.getSandboxRef()
-      ? await wiring.captureRepositoryInstructions()
-      : undefined;
+    const [initialRepositoryInstructions, promptTurnContext] =
+      await Promise.all([
+        repositoryInstructionsPromise,
+        promptTurnContextPromise,
+      ]);
     const recordAgentsTransition = async (
       instructions: typeof initialRepositoryInstructions,
     ) => {
@@ -927,10 +970,9 @@ async function executeAgentRunInPrivacyContext(
       resumedFromSessionRecord,
       run,
       spanContext,
-      turnId,
       disabledTools: wiring.disabledTools,
       toolGuidance: wiring.toolGuidance,
-      toolRuntimeContext: wiring.toolRuntimeContext,
+      turnContext: promptTurnContext,
       userContentParts,
     });
     baseInstructions = assembledBaseInstructions;
@@ -1224,30 +1266,42 @@ async function executeAgentRunInPrivacyContext(
           if (hookSignal?.aborted) {
             return handoffUpdate;
           }
-          // Pi appends steering after this hook returns, so add AGENTS.md
-          // context first to commit the same message order.
-          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
-            handoffUpdate,
-            nextTurn.context,
+          // Pi waits for this hook before each later model call. The span
+          // shows that wait between `gen_ai.chat` spans.
+          const stepUpdate = await withSpan(
+            "agent.step.prepare",
+            "agent.step.prepare",
+            {},
+            async () => {
+              // Pi appends steering after this hook returns, so add AGENTS.md
+              // context first to commit the same message order.
+              const contextUpdate =
+                await repositoryInstructionsContext.applyUpdate(
+                  handoffUpdate,
+                  nextTurn.context,
+                );
+              const pendingMessages = await drainSteeringMessages();
+              const capacityUpdate = await applyActiveContextCompaction(
+                contextUpdate
+                  ? currentAgentMessages()
+                  : (nextTurn.context.messages as PiMessage[]),
+                hookSignal,
+                pendingMessages,
+                true,
+              );
+              return capacityUpdate
+                ? { ...contextUpdate, ...capacityUpdate }
+                : contextUpdate;
+            },
           );
-          const pendingMessages = await drainSteeringMessages();
-          const capacityUpdate = await applyActiveContextCompaction(
-            contextUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
-            hookSignal,
-            pendingMessages,
-            true,
-          );
+          // A yield is normal control flow, so it stays out of the span.
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return capacityUpdate
-            ? { ...contextUpdate, ...capacityUpdate }
-            : contextUpdate;
+          return stepUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));
@@ -1839,6 +1893,7 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
+    await preAgentSetup;
     await closeTools?.();
   }
 }

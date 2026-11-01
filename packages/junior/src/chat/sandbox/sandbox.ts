@@ -837,14 +837,27 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           )
           .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
         [];
-      const directories =
-        workspaceDirectories.length > 0
-          ? workspaceDirectories
-          : await listRepositoryDirectories(fs);
-      return await resolveRepositoryInstructionsForDirectories({
-        directories,
-        fs,
-      });
+      return await withSandboxSpan(
+        "sandbox.repository_instructions.read",
+        "sandbox.repository_instructions.read",
+        {},
+        async (setSpanAttributes) => {
+          const directories =
+            workspaceDirectories.length > 0
+              ? workspaceDirectories
+              : await listRepositoryDirectories(fs);
+          const instructions =
+            await resolveRepositoryInstructionsForDirectories({
+              directories,
+              fs,
+            });
+          setSpanAttributes({
+            "app.repository_instructions.repo_count": directories.length,
+            "app.repository_instructions.found": Boolean(instructions),
+          });
+          return instructions;
+        },
+      );
     },
     workspace,
     async switchWorkspace(recipe, signal) {

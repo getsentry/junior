@@ -32,6 +32,43 @@ function spendWindow(nowMs: number) {
   return { end, sevenDayStart, thirtyDayStart };
 }
 
+/**
+ * Read a cheap change marker for one viewer's spend window.
+ *
+ * Writes that record Conversation metrics also move `updated_at` forward, so
+ * the marker changes when spend can change. The spend cache TTL bounds changes
+ * that the marker misses, such as a day that leaves the window.
+ */
+export async function readPersonalSpendVersion(
+  email: string,
+  nowMs = Date.now(),
+): Promise<string> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return "";
+  const { end, thirtyDayStart } = spendWindow(nowMs);
+  const [row] = await getDb()
+    .select({
+      conversations: sql<number>`count(*)::int`,
+      updatedAt: sql<
+        string | null
+      >`max(${juniorConversations.updatedAt})::text`,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        verifiedActorWhere(normalizedEmail),
+        gte(juniorConversations.lastActivityAt, thirtyDayStart),
+        lte(juniorConversations.lastActivityAt, end),
+      ),
+    );
+  return `${row?.conversations ?? 0}:${row?.updatedAt ?? ""}`;
+}
+
 /** Read one viewer's rolling model spend with one bounded aggregate query. */
 export async function readPersonalSpendFromSql(
   email: string,

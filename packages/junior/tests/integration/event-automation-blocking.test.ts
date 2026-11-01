@@ -1,3 +1,7 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createApp, defineJuniorPlugins } from "@/app";
@@ -10,9 +14,6 @@ import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { githubPlugin } from "@sentry/junior-github";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   changesRequestedEvent,
@@ -80,10 +81,16 @@ describe("event automation blocking", () => {
     const read = async () => (await getEventAutomation(db, automation.id))!;
     // The creator resumes or pauses it from chat.
     const setStatus = (status: "active" | "paused") =>
-      execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-        automationId: automation.id,
-        status,
-      });
+      execute(
+        createUpdateAutomationTool(
+          automationToolContext(context()),
+          EVENT_CATALOG,
+        ),
+        {
+          automationId: automation.id,
+          status,
+        },
+      );
     const ingest = (eventKey: string) =>
       ingestEventAutomations(changesRequestedEvent(eventKey), {
         queue,
@@ -128,10 +135,16 @@ describe("event automation blocking", () => {
 
     // Another person in the channel cannot resume it.
     await expect(
-      execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        automationId: automation.id,
-        status: "active",
-      }),
+      execute(
+        createUpdateAutomationTool(
+          automationToolContext(context("U999")),
+          EVENT_CATALOG,
+        ),
+        {
+          automationId: automation.id,
+          status: "active",
+        },
+      ),
     ).rejects.toThrow("Only the creator");
     expect(await read()).toMatchObject({ status: "blocked" });
 
@@ -211,19 +224,31 @@ describe("event automation blocking", () => {
     expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
 
     // Resume clears the count, so the next Event runs at once.
-    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      automationId: automation.id,
-      status: "active",
-    });
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(context()),
+        EVENT_CATALOG,
+      ),
+      {
+        automationId: automation.id,
+        status: "active",
+      },
+    );
     expect(await ingest("github:after-resume", nextWindowMs)).toEqual({
       dispatched: 2,
     });
 
     // Recreating a deleted automation also starts a new window.
     const remove = (automationId: string) =>
-      execute(createDeleteEventAutomationTool(context(), EVENT_CATALOG), {
-        automationId,
-      });
+      execute(
+        createDeleteAutomationTool(
+          automationToolContext(context()),
+          EVENT_CATALOG,
+        ),
+        {
+          automationId,
+        },
+      );
     await remove(sibling.id);
     await fill("github:refill", maxRuns - 1, nextWindowMs);
     await remove(automation.id);
@@ -242,10 +267,14 @@ describe("event automation blocking", () => {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     try {
       const { automation } = (await execute(
-        createEventAutomationTool(context(), getEventCatalog()),
+        createAutomationTool(
+          automationToolContext(context()),
+          getEventCatalog(),
+        ),
         {
           instruction: "Summarize the failed deployment.",
           trigger: {
+            type: "event",
             namespace: "github",
             label: "Failed deployments",
             events: ["deployment.failed"],

@@ -128,8 +128,8 @@ async function refreshCards(
 
 /**
  * Do one person action from a Slack card. The thread of the card gets the
- * action as Slack input from the person, like an answer to
- * `requestUserInput`. The other linked Conversations get messages from
+ * action as Slack input from the person, like a typed reply. The other
+ * linked Conversations get messages from
  * `actOnReviewItem`. An expected failure, such as an item that is already
  * closed, goes to the person as an ephemeral message.
  */

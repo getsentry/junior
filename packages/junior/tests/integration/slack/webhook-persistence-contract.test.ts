@@ -1,11 +1,15 @@
 import type { StateAdapter } from "chat";
+import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
+  getDb,
 } from "@/chat/db";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import { juniorIdentities } from "@/db/schema";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
@@ -25,6 +29,22 @@ import {
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+
+/** Read the Identity id that Slack ingress saved for one author. */
+async function slackIdentityId(userId: string): Promise<string> {
+  const rows = await getDb()
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerSubjectId, userId),
+      ),
+    );
+  const id = rows[0]?.id;
+  if (!id) throw new Error(`No Slack Identity for ${userId}`);
+  return id;
+}
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
@@ -262,6 +282,7 @@ describe("Slack webhook persistence contract", () => {
           data: expect.objectContaining({
             type: "message",
             text: "follow-up without another mention",
+            authorIdentityId: await slackIdentityId("U123"),
             meta: expect.objectContaining({
               replied: false,
               skippedReason: "passive_disabled:passive-routing",
@@ -445,6 +466,15 @@ describe("Slack webhook persistence contract", () => {
     expect(response.status).toBe(200);
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({ conversationId }),
+    ]);
+    const work = await getConversationWorkState({ conversationId, state });
+    expect(work?.execution.pendingMessages).toEqual([
+      expect.objectContaining({
+        input: expect.objectContaining({
+          authorId: "U123",
+          authorIdentityId: await slackIdentityId("U123"),
+        }),
+      }),
     ]);
   });
 

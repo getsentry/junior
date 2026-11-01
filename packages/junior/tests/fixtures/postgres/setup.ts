@@ -66,6 +66,18 @@ ORDER BY tablename ASC
     const tableNames = tableRows.rows.map((row) => row.qualified_name);
     if (tableNames.length > 0) {
       await client.query(`TRUNCATE TABLE ${tableNames.join(", ")} CASCADE`);
+      // Migration 0069 creates the system Identity. Truncation removes it, so
+      // add it again like a migrated database has it.
+      await client.query(`
+INSERT INTO "junior_identities" (
+  "id", "kind", "provider", "provider_tenant_id", "provider_subject_id",
+  "display_name", "created_at", "updated_at"
+)
+VALUES (
+  'system', 'system', 'junior', '', 'system', 'System',
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+`);
     }
 
     const sequenceRows = await client.query<{ qualified_name: string }>(

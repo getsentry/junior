@@ -4,7 +4,7 @@ import {
 } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
-import type { User } from "@sentry/junior-plugin-api";
+import type { AutomationViewer } from "./creator";
 import {
   and,
   asc,
@@ -26,31 +26,45 @@ import {
 } from "@/db/schema";
 
 /**
- * The web collection applies access before counts, filter options, and paging.
- * Keep its ownership rules aligned with the direct Automation reader. A public
- * Destination only grants access inside a viewer's linked Slack workspaces.
+ * The collection applies access before counts, filter options, and paging.
+ * It is the SQL form of `resolveViewerTaskCandidate`; keep the two aligned. A
+ * public Destination only grants access inside a viewer's linked Slack
+ * workspaces.
  */
-export function viewerAutomationCollection(user: User) {
+export function viewerAutomationCollection(viewer: AutomationViewer) {
   const db = getDb();
-  const identities = user.identities.filter(
-    (identity) => identity.provider === "slack",
+  const slackAccounts = viewer.identities.filter(
+    (identity) => identity.provider === "slack" && identity.providerTenantId,
   );
-  const teamIds = identities.flatMap((identity) =>
-    identity.providerTenantId ? [identity.providerTenantId] : [],
+  const teamIds = slackAccounts.map((identity) => identity.providerTenantId!);
+  const identityIds = viewer.identities.flatMap((identity) =>
+    identity.id ? [identity.id] : [],
   );
   const automation = juniorAutomations;
   const destination = juniorDestinations;
   const isScheduled = eq(automation.kind, "scheduled");
-  // Both kinds belong to the Junior identity that created them.
-  const owned = inArray(
-    automation.creatorIdentityId,
-    user.identities.map((identity) => identity.id),
-  );
+  // Keep this aligned with `isAutomationCreator`.
+  const owned = or(
+    inArray(automation.creatorIdentityId, identityIds),
+    ...slackAccounts.map((account) =>
+      and(
+        eq(automation.teamId, account.providerTenantId!),
+        eq(automation.creatorSlackUserId, account.providerSubjectId),
+      ),
+    ),
+  )!;
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
-  const publicToViewer = and(
-    inArray(automation.teamId, teamIds),
-    publicDestination,
+  const sharedToViewer = and(
     ne(automation.status, "completed"),
+    or(
+      and(inArray(automation.teamId, teamIds), publicDestination),
+      viewer.location
+        ? and(
+            eq(automation.teamId, viewer.location.teamId),
+            eq(automation.channelId, viewer.location.channelId),
+          )
+        : undefined,
+    ),
   )!;
   const runs = juniorAutomationRuns;
   const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
@@ -100,7 +114,7 @@ export function viewerAutomationCollection(user: User) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
-    .where(and(ne(automation.status, "deleted"), or(owned, publicToViewer)))
+    .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
 }
 
@@ -128,11 +142,11 @@ async function unavailableEventAutomationIds(
 
 /** Read an SQL page and complete, access-scoped counts and filter options. */
 export async function readAutomationCollection(
-  user: User,
+  viewer: AutomationViewer,
   input: AutomationListQuery,
 ) {
   const db = getDb();
-  const collection = viewerAutomationCollection(user);
+  const collection = viewerAutomationCollection(viewer);
   const unavailableIds = await unavailableEventAutomationIds(collection);
   const unavailable =
     unavailableIds.length > 0
@@ -164,8 +178,9 @@ export async function readAutomationCollection(
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,
+    // A pasted dashboard URL finds its Automation by ID.
     input.q
-      ? sql`strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0`
+      ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
   const [totals, counts, creators, destinations] = await Promise.all([

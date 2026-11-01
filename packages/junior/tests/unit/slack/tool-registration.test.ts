@@ -3,7 +3,6 @@ import {
   createEventSource,
   createLocalSource,
   createSlackSource,
-  createWebSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
@@ -150,7 +149,6 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
-    expect(tools).toHaveProperty("requestUserInput");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationBriefs");
@@ -276,17 +274,23 @@ describe("Slack tool registration", () => {
         slackActionToken: undefined,
       } as ToolRuntimeContext);
       expect(modelView(tools)).toBe(modelView(messageTurn));
-      expect(tools.createEventAutomation?.disabledReason).toBeDefined();
+      expect(tools.createAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
-      expect(tools.requestUserInput?.disabledReason).toBeDefined();
+      expect(tools.addReviewItem?.disabledReason).toBeUndefined();
     }
-    expect(messageTurn.requestUserInput?.disabledReason).toBeUndefined();
-    expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
+    expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
-    expect(messageTurn).toHaveProperty("createEventAutomation");
-    expect(messageTurn).toHaveProperty("slackScheduleCreateAutomation");
+    expect(
+      Object.keys(messageTurn).filter((name) => /Automation/.test(name)),
+    ).toEqual([
+      "createAutomation",
+      "searchAutomations",
+      "updateAutomation",
+      "deleteAutomation",
+      "runAutomationNow",
+    ]);
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -319,27 +323,10 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("addReaction");
   });
 
-  it("enables user input only where a person can answer it", () => {
-    const webTools = createTools(
-      [],
-      {},
-      {
-        conversationId: "web:test:user-input",
-        destination: {
-          platform: "local",
-          conversationId: "web:test:user-input",
-        },
-        egress: noopEgress,
-        source: createWebSource("web:test:user-input", "private"),
-        workspace: noopSandbox,
-      },
-    );
-
-    expect(webTools).toHaveProperty("requestUserInput");
-    expect(webTools.requestUserInput?.disabledReason).toBeUndefined();
-    expect(
-      createTools([], {}, ctx()).requestUserInput?.disabledReason,
-    ).toBeDefined();
+  it("loads the tool that asks a person in every root Turn", () => {
+    const tools = createTools([], {}, ctx());
+    expect(tools.addReviewItem?.exposure).not.toBe("deferred");
+    expect(tools.addReviewItem?.disabledReason).toBeUndefined();
 
     // A child agent reports the need to its parent, even in a Slack message
     // Turn of its own.
@@ -347,12 +334,7 @@ describe("Slack tool registration", () => {
       ...ctx("C12345"),
       parentConversationId: "slack:C12345:1700000000.000",
     } as ToolRuntimeContext);
-    expect(childTools.requestUserInput?.disabledReason).toContain(
-      "reportBlocked",
-    );
-    expect(childTools.addReviewItem?.disabledReason).toContain(
-      "reportBlocked",
-    );
+    expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
   });
 
   it("does not register Slack tools for local destinations", () => {
@@ -374,7 +356,10 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
-    expect(tools).not.toHaveProperty("createEventAutomation");
+    // Automation tools are not Slack tools. This Turn has no person, so they
+    // are disabled.
+    expect(tools.createAutomation?.disabledReason).toBeDefined();
+    expect(tools.runAutomationNow?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

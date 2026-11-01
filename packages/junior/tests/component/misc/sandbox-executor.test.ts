@@ -368,7 +368,6 @@ interface MockSandbox {
 function makeSandbox(
   name: string,
   options: {
-    mkDirError?: unknown;
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
@@ -378,11 +377,7 @@ function makeSandbox(
     readdir: vi.fn(async () => []),
     stat: vi.fn(async () => ({ isDirectory: () => false })),
   };
-  const mkDir = vi.fn(async () => {
-    if (options.mkDirError) {
-      throw options.mkDirError;
-    }
-  });
+  const mkDir = vi.fn(async () => {});
   const writeFiles = vi.fn(async () => {
     if (options.writeFilesError) {
       throw options.writeFilesError;
@@ -624,7 +619,7 @@ describe("createTestSandbox", () => {
 
   it("fails a stopped hinted session and reacquires it on a later call", async () => {
     const stoppedSandbox = makeSandbox("sbx_stopped", {
-      mkDirError: createApiError(
+      writeFilesError: createApiError(
         410,
         "Gone",
         "sandbox_stopped",
@@ -652,8 +647,8 @@ describe("createTestSandbox", () => {
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).not.toHaveBeenCalled();
-    expect(stoppedSandbox.mkDir).toHaveBeenCalled();
-    expect(recoveredSandbox.mkDir).toHaveBeenCalled();
+    expect(stoppedSandbox.writeFiles).toHaveBeenCalled();
+    expect(recoveredSandbox.writeFiles).toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_stopped");
   });
 
@@ -1547,7 +1542,7 @@ describe("createTestSandbox", () => {
 
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
     const forbiddenSandbox = makeSandbox("sbx_forbidden", {
-      mkDirError: createApiError(
+      writeFilesError: createApiError(
         403,
         "Forbidden",
         "forbidden",

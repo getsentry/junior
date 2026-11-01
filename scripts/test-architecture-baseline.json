@@ -132,7 +132,7 @@
     "packages/junior/tests/integration/reporting-support.test.ts": 2,
     "packages/junior/tests/integration/sandbox-egress-proxy.test.ts": 1,
     "packages/junior/tests/integration/sandbox-egress-signals.test.ts": 1,
-    "packages/junior/tests/integration/slack-schedule-tools.test.ts": 2,
+    "packages/junior/tests/integration/scheduled-automation-tools.test.ts": 2,
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 2,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 2,
     "packages/junior/tests/integration/slack/outbound-normalization-contract.test.ts": 3,

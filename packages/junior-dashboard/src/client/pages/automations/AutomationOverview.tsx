@@ -197,9 +197,9 @@ function AutomationAbout(props: { automation: AutomationSummary }) {
         <p className="mt-3 mb-0 text-xs leading-relaxed text-dashboard-text-muted">
           {automation.destination.visibility === "private"
             ? null
-            : "You can edit its settings because it is in a public channel. "}
-          Only {automation.createdBy} can pause, resume, or delete it, change
-          where results go, or turn on their connected accounts.
+            : "You can edit, pause, or delete it because it is in a public channel. "}
+          Only {automation.createdBy} can change where results go, turn on their
+          connected accounts, or resume or run it while it uses them.
         </p>
       )}
     </RailCard>

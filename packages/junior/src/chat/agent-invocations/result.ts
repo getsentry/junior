@@ -1,6 +1,7 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
@@ -185,6 +186,8 @@ function buildResultInboundMessage(
     ),
     input: {
       authorId: resultAuthorId(invocation.actor),
+      // An agent wrote the result, so the system Identity is its author.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
       text: renderResultInput(invocation, summary, openSiblings),
     },
@@ -293,6 +296,7 @@ export async function enqueueAgentMessageToParent(args: {
       inboundMessageId,
       input: {
         authorId: resultAuthorId(args.sender.actor),
+        authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: renderMessageInput(args.sender, summary, args.text),
       },

@@ -108,7 +108,7 @@ describe("Watches", () => {
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 
@@ -162,7 +162,7 @@ describe("Watches", () => {
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 

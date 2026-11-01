@@ -426,7 +426,11 @@ describe("people profile API", () => {
         source: "slack",
         nowMs,
       });
-      const [identity] = await fixture.sql.db().select().from(juniorIdentities);
+      const [identity] = await fixture.sql
+        .db()
+        .select()
+        .from(juniorIdentities)
+        .where(eq(juniorIdentities.providerSubjectId, "U-aggregate"));
       expect(identity).toBeDefined();
 
       const now = new Date(nowMs);

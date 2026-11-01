@@ -10,7 +10,8 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -140,6 +141,8 @@ export function webActorFromEmail(
 /** Build one web mailbox entry. */
 export function buildWebInboundMessage(args: {
   actor: WebActor;
+  /** Identity of the web Actor, resolved at ingress. */
+  authorIdentityId?: string;
   conversationId: string;
   createdAtMs?: number;
   /** Existing Conversation Destination, when the root already exists. */
@@ -171,6 +174,9 @@ export function buildWebInboundMessage(args: {
     inboundMessageId: args.messageId,
     input: {
       authorId: args.actor.userId,
+      ...(args.authorIdentityId
+        ? { authorIdentityId: args.authorIdentityId }
+        : undefined),
       text,
       ...(args.attachments?.length
         ? { attachments: args.attachments }
@@ -303,6 +309,10 @@ export async function appendAndEnqueueWebMessage(
   const result = await enqueue({
     message: buildWebInboundMessage({
       actor: input.actor,
+      authorIdentityId: await resolveActorIdentityId(
+        getSqlExecutor(),
+        input.actor,
+      ),
       conversationId: input.conversationId,
       destination,
       message: text,

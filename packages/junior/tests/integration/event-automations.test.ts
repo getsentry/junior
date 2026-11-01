@@ -1,3 +1,7 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import {
   context,
   createTask,
@@ -32,10 +36,6 @@ import {
 } from "@/chat/event-automations/store";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
-import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
@@ -122,13 +122,17 @@ describe("event automations", () => {
         taskContext,
       );
       const updated = await execute(
-        createUpdateEventAutomationTool(taskContext, EVENT_CATALOG),
+        createUpdateAutomationTool(
+          automationToolContext(taskContext),
+          EVENT_CATALOG,
+        ),
         {
           automationId: created.automation.id,
           credentialMode: "system",
           instruction:
             "Review fixes.\nCheck the parser and report unresolved errors.",
           trigger: {
+            type: "event",
             namespace: "github",
             identifier: "getsentry/junior#1174",
             resourceType: "pull_request",
@@ -143,7 +147,7 @@ describe("event automations", () => {
           createdAtMs: 1,
           data: {
             type: "tool_result",
-            toolName: "createEventAutomation",
+            toolName: "createAutomation",
             details: created,
             isError: false,
           },
@@ -152,7 +156,7 @@ describe("event automations", () => {
           createdAtMs: 2,
           data: {
             type: "tool_result",
-            toolName: "updateEventAutomation",
+            toolName: "updateAutomation",
             details: updated,
             isError: false,
           },
@@ -441,8 +445,10 @@ describe("event automations", () => {
     "dispatches from a thread to its $destinationVisibility channel or DM",
     async ({ channelId, destinationVisibility, sourceVisibility }) => {
       await execute(
-        createEventAutomationTool(
-          context("U123", channelId, sourceVisibility, "1700000000.000100"),
+        createAutomationTool(
+          automationToolContext(
+            context("U123", channelId, sourceVisibility, "1700000000.000100"),
+          ),
           EVENT_CATALOG,
         ),
         {
@@ -451,6 +457,7 @@ describe("event automations", () => {
             { action: "send_message", destination: "current_conversation" },
           ],
           trigger: {
+            type: "event",
             namespace: "github",
             identifier: "getsentry/junior#1174",
             resourceType: "pull_request",
@@ -517,10 +524,11 @@ describe("event automations", () => {
   it("rejects event types that the plugin did not register", async () => {
     await expect(
       execute(
-        createEventAutomationTool(context(), EVENT_CATALOG),
+        createAutomationTool(automationToolContext(context()), EVENT_CATALOG),
         {
           instruction: "Handle issue closure.",
           trigger: {
+            type: "event",
             namespace: "github",
             identifier: "getsentry/junior#1174",
             resourceType: "issue",
@@ -535,7 +543,10 @@ describe("event automations", () => {
     );
 
     const listed = (await execute(
-      createListEventAutomationsTool(context(), EVENT_CATALOG),
+      createSearchAutomationsTool(
+        automationToolContext(context()),
+        EVENT_CATALOG,
+      ),
       {},
     )) as {
       automations: unknown[];
@@ -544,7 +555,10 @@ describe("event automations", () => {
   });
 
   it("keeps tool schemas aligned with normalization and storage limits", () => {
-    const createTool = createEventAutomationTool(context(), EVENT_CATALOG);
+    const createTool = createAutomationTool(
+      automationToolContext(context()),
+      EVENT_CATALOG,
+    );
     const createProperties = (
       createTool.inputSchema as { properties?: Record<string, unknown> }
     ).properties;
@@ -553,6 +567,7 @@ describe("event automations", () => {
     const createInput = {
       instruction: "Address the requested changes.",
       trigger: {
+        type: "event",
         namespace: "github",
         identifier: "getsentry/junior#1174",
         resourceType: "pull_request",
@@ -582,8 +597,8 @@ describe("event automations", () => {
       }),
     ).toThrow(/identifier/);
 
-    const updateTool = createUpdateEventAutomationTool(
-      context(),
+    const updateTool = createUpdateAutomationTool(
+      automationToolContext(context()),
       EVENT_CATALOG,
     );
     const updateProperties = (
@@ -640,10 +655,11 @@ describe("event automations", () => {
 
   it("matches events against the plugin's canonical resource identifier", async () => {
     const created = (await execute(
-      createEventAutomationTool(context(), EVENT_CATALOG),
+      createAutomationTool(automationToolContext(context()), EVENT_CATALOG),
       {
         instruction: "Address the requested changes.",
         trigger: {
+          type: "event",
           namespace: "github",
           identifier: "GetSentry/Junior#1174",
           resourceType: "pull_request",
@@ -698,260 +714,5 @@ describe("event automations", () => {
       conversationId!.replace(/^agent-dispatch:/, ""),
     );
     expect(dispatch?.destination).toMatchObject({ teamId });
-  });
-
-  it("lists in one channel and manages public tasks by id from another", async () => {
-    const created = await createTask(
-      "Address the requested changes.",
-      undefined,
-      undefined,
-      context("U123", "C123", "public", "1700000000.100000"),
-    );
-    expect(created).not.toHaveProperty("data");
-
-    const listed = (await execute(
-      createListEventAutomationsTool(
-        context("U999", "C123", "public", "1700000000.200000"),
-        EVENT_CATALOG,
-      ),
-      {},
-    )) as {
-      automations: Array<{
-        createdBy: { slackUserId: string };
-        id: string;
-      }>;
-    };
-    expect(listed).not.toHaveProperty("data");
-    expect(listed.automations.map((task) => task.id)).toEqual([
-      created.automation.id,
-    ]);
-    expect(listed.automations[0]).toMatchObject({
-      trigger: { available: true },
-    });
-    const otherChannel = (await execute(
-      createListEventAutomationsTool(context("U999", "COTHER"), EVENT_CATALOG),
-      {},
-    )) as { automations: unknown[] };
-    expect(otherChannel.automations).toEqual([]);
-    await execute(
-      createUpdateEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        instruction: "Change a public task from another channel.",
-      },
-    );
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      credentialMode: "system",
-      task: { text: "Change a public task from another channel." },
-    });
-  });
-
-  it("keeps private task updates in the owning channel or DM", async () => {
-    const created = await createTask(
-      "Address the requested changes.",
-      undefined,
-      undefined,
-      context("U123", "D123", "private"),
-    );
-
-    await expect(
-      execute(
-        createUpdateEventAutomationTool(
-          context("U999", "COTHER", "public"),
-          EVENT_CATALOG,
-        ),
-        {
-          automationId: created.automation.id,
-          instruction: "Change a private task from another channel.",
-        },
-      ),
-    ).rejects.toThrow("Event automation was not found.");
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      task: { text: "Address the requested changes." },
-    });
-  });
-
-  it("reports when a stored task trigger is not currently available", async () => {
-    const created = await createTask("Address the requested changes.");
-
-    const listed = (await execute(
-      createListEventAutomationsTool(context(), {}),
-      {},
-    )) as {
-      automations: Array<{ id: string; trigger: { available: boolean } }>;
-    };
-    expect(listed.automations).toEqual([
-      expect.objectContaining({
-        id: created.automation.id,
-        trigger: expect.objectContaining({
-          available: false,
-          problems: ["The plugin for this source is not enabled."],
-        }),
-      }),
-    ]);
-  });
-
-  it("keeps creator credentials bound to creator-authorized execution", async () => {
-    const created = await createTask("Address the requested changes.");
-
-    await expect(
-      execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        automationId: created.automation.id,
-        credentialMode: "creator",
-      }),
-    ).rejects.toThrow(
-      "Only the event automation creator can enable creator credential use.",
-    );
-    await execute(
-      createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        trigger: {
-          namespace: "github",
-          identifier: "getsentry/junior#1174",
-          resourceType: "review_target",
-          label: "Updated GitHub PR label",
-          events: ["pull_request.review.changes_requested"],
-        },
-      },
-    );
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      credentialMode: "creator",
-      trigger: {
-        label: "Updated GitHub PR label",
-        resourceType: "review_target",
-      },
-    });
-
-    await execute(
-      createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        trigger: {
-          namespace: "github",
-          identifier: "getsentry/junior#1176",
-          resourceType: "pull_request",
-          label: "GitHub PR getsentry/junior#1176",
-          events: ["pull_request.review.changes_requested"],
-        },
-      },
-    );
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      credentialMode: "system",
-      trigger: { identifier: "getsentry/junior#1176" },
-    });
-
-    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      automationId: created.automation.id,
-      instruction: null,
-      trigger: null,
-      credentialMode: "creator",
-    });
-    await execute(
-      createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        instruction: "Address the requested changes.",
-      },
-    );
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      credentialMode: "creator",
-    });
-    await execute(
-      createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-        instruction: "Only summarize the requested changes.",
-      },
-    );
-    expect(
-      await getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).toMatchObject({
-      credentialMode: "system",
-      task: { text: "Only summarize the requested changes." },
-    });
-  });
-
-  it("deletes an event automation", async () => {
-    const created = await createTask(
-      "Summarize the requested changes.",
-      "event-automation-replayed-create",
-    );
-
-    const deleted = await execute(
-      createDeleteEventAutomationTool(context("U999"), EVENT_CATALOG),
-      {
-        automationId: created.automation.id,
-      },
-    );
-    expect(deleted).not.toHaveProperty("cards");
-    const conversationId = "local:delete-card";
-    await getConversationStore().recordActivity({
-      conversationId,
-      destination: { platform: "local", conversationId },
-      source: "internal",
-      visibility: "public",
-    });
-    await getConversationEventStore().append(conversationId, [
-      {
-        createdAtMs: 1,
-        data: {
-          type: "tool_result",
-          toolName: "createEventAutomation",
-          details: created,
-          isError: false,
-        },
-      },
-      {
-        createdAtMs: 2,
-        data: {
-          type: "tool_result",
-          toolName: "deleteEventAutomation",
-          details: deleted,
-          isError: false,
-        },
-      },
-    ]);
-    const cards = await loadPendingMessageCards(conversationId);
-    expect(cards).toEqual([]);
-    await expect(
-      execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        automationId: created.automation.id,
-        instruction: "Try to update the deleted task.",
-      }),
-    ).rejects.toThrow("Event automation was not found.");
-    const listed = (await execute(
-      createListEventAutomationsTool(context(), EVENT_CATALOG),
-      {},
-    )) as {
-      automations: unknown[];
-    };
-    expect(listed.automations).toEqual([]);
-
-    const recreated = await createTask(
-      "Summarize the requested changes after delete.",
-      "event-automation-replayed-create",
-    );
-    expect(recreated.automation).toMatchObject({
-      id: created.automation.id,
-      instruction: "Summarize the requested changes after delete.",
-    });
-    await expect(
-      getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).resolves.toMatchObject({
-      id: created.automation.id,
-      status: "active",
-      task: { text: "Summarize the requested changes after delete." },
-    });
   });
 });

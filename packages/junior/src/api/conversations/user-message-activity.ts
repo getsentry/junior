@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorIdentities } from "@/db/schema";
 
 /** Read the latest true user message time for each selected conversation. */
 export async function readLastUserMessageAtByConversation(
@@ -18,6 +18,10 @@ export async function readLastUserMessageAtByConversation(
       lastUserMessageAt: sql<Date>`max(${juniorConversationEvents.createdAt})`,
     })
     .from(juniorConversationEvents)
+    .leftJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
+    )
     .where(
       and(
         inArray(juniorConversationEvents.conversationId, conversationIds),
@@ -30,7 +34,8 @@ export async function readLastUserMessageAtByConversation(
           and(
             eq(juniorConversationEvents.type, "message"),
             eq(role, "user"),
-            isNotNull(juniorConversationEvents.actorIdentityId),
+            // System Messages, such as events, carry the system Identity.
+            eq(juniorIdentities.kind, "user"),
           ),
         ),
       ),
