@@ -388,121 +388,145 @@ describe("agent invocation conversation work", () => {
   );
 
   // A child watch event runs with an event Source. When its Turn yields, the
-  // resume wake must still reach the agent invocation. Production once sent
-  // it to the root Event Turn worker, which needs a Destination that a child
-  // does not have.
+  // next wake must still reach the agent invocation. Production once sent it
+  // to the root Event Turn worker, which needs a Destination that a child
+  // does not have. That also holds when the agent invocation ended while its
+  // Turn stayed paused.
+  const resumed = { result: "Resumed child result", status: "completed" };
   it.each([
-    { name: "a parent task", watchEvent: false },
-    { name: "a watch event", watchEvent: true },
-  ])("resumes a yielded child invocation for $name", async ({ watchEvent }) => {
-    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const agentRunner = createModelAgentRunner(
-      createModelStream([
-        ...(watchEvent ? [{ type: "text" as const, text: "Watching" }] : []),
-        { type: "toolCall", name: "systemTime", arguments: {} },
-        { type: "text", text: "Resumed child result" },
-      ]),
-    );
-    const run = vi.spyOn(agentRunner, "run");
-    const {
-      queue,
-      run: route,
-      state,
-    } = await createConversationWorkHarness(agentRunner);
-    try {
-      const created = await createAndEnqueueAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "resume-1",
-        },
-        { conversationStore, queue, state },
-      );
-      const { childConversationId } = created;
-      // Child results also wake the parent. This test runs only the child.
-      const processChild = async (softYieldAfterMs?: number) =>
-        await processConversationQueueMessage(
-          queue.takeMessageFor(childConversationId),
-          {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-            ...(softYieldAfterMs === undefined
-              ? undefined
-              : { softYieldAfterMs }),
-          },
-        );
-      if (watchEvent) {
-        // Finish the parent task, then set a timer on the child. The timer
-        // event waits for its burst window, then starts an agent invocation
-        // with the event Source.
-        await processChild();
-        await execute(
-          createEventTools(
-            { ...context(), conversationId: childConversationId },
-            getEventCatalog(),
-          ).watchTimer!,
-          { afterMs: 60_000, intent: "Check the PR checks." },
-          "child-timer",
-        );
-        clock.mockReturnValue(clock() + 120_000);
-        await runTimerWatchHeartbeat({ nowMs: clock(), queue });
-        await processChild();
-        clock.mockReturnValue(clock() + 120_000);
-        await processChild(0);
-      }
-
-      await expect(processChild(0)).resolves.toMatchObject({
-        status: "yielded",
-      });
-      const target = watchEvent
-        ? (await getActiveAgentInvocationForConversation(childConversationId))!
-        : created;
-      await expect(
-        getAgentInvocation(target.invocationId),
-      ).resolves.toMatchObject({ status: "paused" });
-      await expect(
-        getTurnRecord(
-          childConversationId,
-          getAgentInvocationTurnId(target.invocationId),
-        ),
-      ).resolves.toMatchObject({
-        state: "paused",
-        resumeReason: "yield",
-        source: { kind: watchEvent ? "event" : "agent_invocation" },
-        piMessages: expect.arrayContaining([
-          expect.objectContaining({
-            role: "toolResult",
-            toolName: "systemTime",
-          }),
+    {
+      name: "a parent task",
+      watchEvent: false,
+      endBeforeWake: false,
+      runs: 2,
+      expected: resumed,
+    },
+    {
+      name: "a watch event",
+      watchEvent: true,
+      endBeforeWake: false,
+      runs: 3,
+      expected: resumed,
+    },
+    {
+      name: "an ended watch event",
+      watchEvent: true,
+      endBeforeWake: true,
+      runs: 2,
+      expected: { parentMailboxStatus: "appended", status: "failed" },
+    },
+  ])(
+    "gives the wake after a yielded child invocation for $name to that invocation",
+    async ({ endBeforeWake, expected, runs, watchEvent }) => {
+      const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const agentRunner = createModelAgentRunner(
+        createModelStream([
+          ...(watchEvent ? [{ type: "text" as const, text: "Watching" }] : []),
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Resumed child result" },
         ]),
-      });
+      );
+      const run = vi.spyOn(agentRunner, "run");
+      const {
+        queue,
+        run: route,
+        state,
+      } = await createConversationWorkHarness(agentRunner);
+      try {
+        const created = await createAndEnqueueAgentInvocation(
+          {
+            ...invocationInput,
+            idempotencyKey: "resume-1",
+          },
+          { conversationStore, queue, state },
+        );
+        const { childConversationId } = created;
+        // Child results also wake the parent. This test runs only the child.
+        const processChild = async (softYieldAfterMs?: number) =>
+          await processConversationQueueMessage(
+            queue.takeMessageFor(childConversationId),
+            {
+              conversationStore,
+              queue,
+              run: route,
+              state,
+              ...(softYieldAfterMs === undefined
+                ? undefined
+                : { softYieldAfterMs }),
+            },
+          );
+        if (watchEvent) {
+          // Finish the parent task, then set a timer on the child. The timer
+          // event waits for its burst window, then starts an agent invocation
+          // with the event Source.
+          await processChild();
+          await execute(
+            createEventTools(
+              { ...context(), conversationId: childConversationId },
+              getEventCatalog(),
+            ).watchTimer!,
+            { afterMs: 60_000, intent: "Check the PR checks." },
+            "child-timer",
+          );
+          clock.mockReturnValue(clock() + 120_000);
+          await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+          await processChild();
+          clock.mockReturnValue(clock() + 120_000);
+          await processChild(0);
+        }
 
-      await expect(processChild()).resolves.toMatchObject({
-        status: "completed",
-      });
-      expect(run).toHaveBeenCalledTimes(watchEvent ? 3 : 2);
-      await expect(
-        getAgentInvocation(target.invocationId),
-      ).resolves.toMatchObject({
-        result: "Resumed child result",
-        status: "completed",
-      });
-      const projection = await loadProjection({
-        conversationId: childConversationId,
-      });
-      expect(
-        projection.filter(
-          (message) =>
-            message.role === "toolResult" && message.toolName === "systemTime",
-        ),
-      ).toHaveLength(1);
-    } finally {
-      clock.mockRestore();
-      await fixture.close();
-    }
-  });
+        await expect(processChild(0)).resolves.toMatchObject({
+          status: "yielded",
+        });
+        const { invocationId } =
+          (await getActiveAgentInvocationForConversation(childConversationId))!;
+        await expect(
+          getTurnRecord(
+            childConversationId,
+            getAgentInvocationTurnId(invocationId),
+          ),
+        ).resolves.toMatchObject({
+          state: "paused",
+          resumeReason: "yield",
+          source: { kind: watchEvent ? "event" : "agent_invocation" },
+          piMessages: expect.arrayContaining([
+            expect.objectContaining({
+              role: "toolResult",
+              toolName: "systemTime",
+            }),
+          ]),
+        });
+        if (endBeforeWake) {
+          await completeAgentInvocation({
+            errorMessage: "Agent invocation ended",
+            invocationId,
+            status: "failed",
+          });
+        }
+
+        await expect(processChild()).resolves.toMatchObject({
+          status: "completed",
+        });
+        expect(run).toHaveBeenCalledTimes(runs);
+        await expect(getAgentInvocation(invocationId)).resolves.toMatchObject(
+          expected,
+        );
+        const projection = await loadProjection({
+          conversationId: childConversationId,
+        });
+        expect(
+          projection.filter(
+            (message) =>
+              message.role === "toolResult" &&
+              message.toolName === "systemTime",
+          ),
+        ).toHaveLength(1);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   const missing = "Write access to getsentry/junior. Ask the user.";
   it.each([
