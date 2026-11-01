@@ -4,6 +4,7 @@ import type {
   PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { PLUGIN_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";
 import { getDb } from "@/chat/db";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
@@ -48,7 +49,9 @@ async function assigneeUserIds(
 
 /**
  * Connect a plugin to the review desk for one Conversation. Dedupe keys are
- * scoped to the plugin, so a plugin changes only its own items. An item is
+ * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
+ * cannot change them. A close sends no message to the Conversation. It only
+ * syncs the Slack cards. An item is
  * private when the Conversation is not public. A webhook runs outside Slack
  * work, so pass `getSlackAdapter` to post each card with the token of its
  * workspace.
@@ -59,7 +62,8 @@ export function createPluginReviewItems(args: {
   plugin: string;
 }): PluginReviewItems {
   const { conversationId, getSlackAdapter } = args;
-  const scopedKey = (dedupeKey: string) => `${args.plugin}:${dedupeKey}`;
+  const scopedKey = (dedupeKey: string) =>
+    `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
   const readAccess = async (db: JuniorDatabase) => {
     const access = (
       await readConversationAccessFromSql(db, [conversationId])

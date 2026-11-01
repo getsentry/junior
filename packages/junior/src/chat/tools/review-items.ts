@@ -9,6 +9,7 @@ import {
 } from "@/chat/review-items/changes";
 import {
   canAgentChangeReviewItem,
+  PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   canReadReviewItem,
   readReviewItemAgentScope,
   requireReviewItemAssignees,
@@ -230,6 +231,11 @@ export function createAddReviewItemTool(
     outputSchema: juniorToolOutputSchema,
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
+      if (input.dedupe_key?.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          `A \`dedupe_key\` that starts with \`${PLUGIN_REVIEW_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
+        );
+      }
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
       // A retry of the same tool call keeps the same key, so it updates the
@@ -417,6 +423,11 @@ export function createUpdateReviewItemTool(
         input.reason === item.closeReason;
       if (item.status !== "open" && !retriesClose) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
+      }
+      if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          "A plugin added this item. Only the plugin or a person can change it.",
+        );
       }
       if (!canAgentChangeReviewItem(item, scope)) {
         throw new ToolInputError(

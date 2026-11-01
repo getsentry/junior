@@ -7,6 +7,11 @@ import {
   getOpenReviewItemByDedupeKey,
   getReviewItem,
 } from "@/chat/review-items/store";
+import {
+  createAddReviewItemTool,
+  createUpdateReviewItemTool,
+} from "@/chat/tools/review-items";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 
 const TENANT = { provider: "slack", providerTenantId: "T123" };
@@ -47,7 +52,7 @@ async function person(
 }
 
 const NOTICE = {
-  body: "**Fix the thing** is approved and its checks pass.",
+  body: "**Fix the thing** is approved, and GitHub says that it can merge. Merge it, or say why not.",
   dedupeKey: "pull-request-ready:getsentry/junior#946",
   subject: {
     id: "https://github.com/getsentry/junior/pull/946",
@@ -73,7 +78,7 @@ describe("plugin review items", () => {
     await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
     const added = await getOpenReviewItemByDedupeKey(
       getDb(),
-      `github:${NOTICE.dedupeKey}`,
+      `plugin:github:${NOTICE.dedupeKey}`,
       TENANT,
     );
     expect(added).toMatchObject({
@@ -96,10 +101,41 @@ describe("plugin review items", () => {
     expect(
       await getOpenReviewItemByDedupeKey(
         getDb(),
-        `github:${NOTICE.dedupeKey}`,
+        `plugin:github:${NOTICE.dedupeKey}`,
         TENANT,
       ),
     ).toMatchObject({ id: added!.id, title: "Still ready to merge" });
+
+    // An agent in another public Conversation of the tenant cannot take over
+    // the plugin key, or change the plugin notice.
+    await conversation("slack:C1:1.000002", "public");
+    const agent = {
+      conversationId: "slack:C1:1.000002",
+      resolveActorIdentity: async () => ({
+        identity: { id: ana.identityId } as any,
+        user: ana.user,
+      }),
+      source: { kind: "slack" } as any,
+    };
+    await expect(
+      createAddReviewItemTool(agent).execute!(
+        {
+          body: "Taken over.",
+          dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
+          kind: "notice",
+          title: "Taken over",
+        } as any,
+        {} as any,
+      ),
+    ).rejects.toThrow("belongs to a plugin");
+    await expect(
+      createUpdateReviewItemTool(agent, () =>
+        createConversationWorkQueueTestAdapter(),
+      ).execute!(
+        { id: added!.id, reason: "Not needed.", status: "dismissed" } as any,
+        {} as any,
+      ),
+    ).rejects.toThrow("Only the plugin or a person can change it");
 
     await items.close({
       dedupeKey: NOTICE.dedupeKey,
@@ -128,7 +164,7 @@ describe("plugin review items", () => {
     expect(
       await getOpenReviewItemByDedupeKey(
         getDb(),
-        `linear:${NOTICE.dedupeKey}`,
+        `plugin:linear:${NOTICE.dedupeKey}`,
         TENANT,
       ),
     ).toMatchObject({ assignees: [], status: "open" });
@@ -157,7 +193,7 @@ describe("plugin review items", () => {
     expect(
       await getOpenReviewItemByDedupeKey(
         getDb(),
-        `github:${NOTICE.dedupeKey}`,
+        `plugin:github:${NOTICE.dedupeKey}`,
         TENANT,
       ),
     ).toMatchObject({
