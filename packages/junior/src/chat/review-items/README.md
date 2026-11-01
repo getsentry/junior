@@ -114,7 +114,9 @@ item that matches all of these:
 
 An item assigned to Everyone, or only to other people, stays open. The
 item closes as `done` with the reason `Replied in thread`, and the person
-closes it. A Slack person without a Junior User closes only items with no
+closes it. The item saves the message text as its `answer`, in the `other`
+field. Junior first removes a Slack mention of Junior at the start of the
+message. A Slack person without a Junior User closes only items with no
 assignees. The message is the answer in its own Conversation. Each other
 linked Conversation gets an Event. The first close wins, so a reply after a
 click changes nothing. A retry of the reply, or a later reply from the same

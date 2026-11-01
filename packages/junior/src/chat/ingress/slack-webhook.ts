@@ -54,6 +54,7 @@ import {
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
+import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import {
   isSlackMessageStopped,
   stopSlackThread,
@@ -631,6 +632,10 @@ async function routeParsedMessage(args: {
         return (await readActorIdentity(createSlackActor(teamId, userId, null)))
           ?.user;
       },
+      text: stripLeadingBotMention(parseContent(message).topLevelText, {
+        botUserId: args.adapter.botUserId,
+        stripLeadingSlackMentionToken: true,
+      }),
     });
   };
   try {

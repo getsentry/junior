@@ -549,7 +549,7 @@ describe("Slack webhook: Review item cards", () => {
   });
 
   it("closes a question when its assignee replies in the thread", async () => {
-    const { click, reply, state } = harness();
+    const { click, queue, reply, state } = harness();
     await slackThread(THREAD, "public");
     const ana = await slackUser("ana@example.com", "U123");
     await slackUser("ben@example.com", "U456");
@@ -570,6 +570,8 @@ describe("Slack webhook: Review item cards", () => {
 
     await reply("U123", "1712345.0004");
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
+      // The item saves the message text without the mention of Junior.
+      answer: { other: "Hold, the tests are red", values: {} },
       closeReason: "Replied in thread",
       closedBy: { email: "ana@example.com" },
       status: "done",
@@ -591,6 +593,16 @@ describe("Slack webhook: Review item cards", () => {
       userId: "U123",
       value: buttonValue(card, "junior_review_item:choice:0"),
     });
+    // A later desk answer from Ana does not count as a retry, so it fails.
+    await expect(
+      actOnReviewItem({
+        action: "submit",
+        answer: { requestId: item.id, values: { decision: ["Ship it"] } },
+        id: item.id,
+        queue,
+        user: ana,
+      }),
+    ).rejects.toThrow("Review item is closed.");
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
@@ -618,6 +630,7 @@ describe("Slack webhook: Review item cards", () => {
     // The dashboard shows an error, but the mailbox already saved the reply.
     expect((await postInDashboard(ana)).status).toBe(500);
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
+      answer: { other: "Hold, the tests are red." },
       closeReason: "Replied in thread",
       status: "done",
     });

@@ -128,6 +128,7 @@ export async function appendConversationMessageForViewer(
       getSlackAdapter: getProductionSlackAdapter,
       queue: services.queue,
       resolveUser: async () => viewer,
+      text: body.message,
     });
   try {
     let accepted: AcceptedConversationMessage;
