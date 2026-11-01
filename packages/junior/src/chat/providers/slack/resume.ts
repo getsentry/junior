@@ -49,8 +49,6 @@ import {
   recordTurnSummary,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { recordAutomatedTurnLimit } from "@/chat/task-execution/core-turn";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
@@ -675,12 +673,6 @@ async function resumeSlackTurnInContext(
         });
       }
       await runArgs.commitResult?.(reply);
-      // A resumed Turn counts like a Turn that ran in one slice.
-      await recordAutomatedTurnLimit({
-        conversationId: runArgs.conversationId,
-        postNotice: postAutomatedTurnLimitNoticeForConversation,
-        source: run.source,
-      });
       if (reply.diagnostics.outcome === "success") {
         shouldScheduleCompletedPluginTasks = true;
         return {
