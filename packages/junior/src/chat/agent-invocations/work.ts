@@ -872,27 +872,3 @@ export function createAgentInvocationWorker(
     return { status: "completed" };
   };
 }
-
-/**
- * Route child work to its agent invocation before any other worker. Server
- * conversation work and the local CLI both use this order, because a child
- * Turn can have any Source and only its agent invocation can run it.
- */
-export function routeAgentInvocationWork(options: {
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-  invocationWorker: (
-    context: ConversationWorkerContext,
-    invocationId: string,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const invocationId = await resolveAgentInvocationId(context);
-    return invocationId
-      ? await options.invocationWorker(context, invocationId)
-      : await options.fallbackWorker(context);
-  };
-}

@@ -53,15 +53,16 @@ conversation tree.
 
 1. Creation writes the invocation before attempting the mailbox append.
 2. The idempotent mailbox append sends a normal conversation queue wake.
-3. The invocation router recognizes destinationless child work and advances it
-   through the shared `AgentRunner`. `routeAgentInvocationWork` checks for an
-   agent invocation before any other worker, in the server and in the CLI. An
-   empty wake goes to the active agent invocation of the child. When none is
-   active, it goes to the latest one, which repeats its idempotent finish.
-   Child work never falls through to a root worker. A child Turn can have any
-   Source. A watch event Turn has an event Source, so a
-   router that picks the worker by Source sends its resume to the root Event
-   Turn worker. That worker needs a Destination, and a child has none.
+3. `createChildConversationWorker` is the one entry point for child work. The
+   server and the CLI run it before any root worker. It starts agent
+   invocations for child input, then runs the agent invocation that owns the
+   work through the shared `AgentRunner`. An empty wake goes to the active
+   agent invocation of the child. When none is active, it goes to the latest
+   one, which repeats its idempotent finish. Child work never falls through to
+   a root worker. A child Turn can have any Source. A watch event Turn has an
+   event Source, so a router that picks the worker by Source sends its resume
+   to the root Event Turn worker. That worker needs a Destination, and a child
+   has none.
 4. A cooperative yield keeps the same turn and invocation active for another
    execution slice.
 5. A stranded `running` child is re-parked at its latest durable safe boundary.

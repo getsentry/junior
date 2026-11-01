@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import {
+  createChildConversationWorker,
   enqueueAgentInvocationResult,
   startAgentInvocationsForChildInput,
 } from "@/chat/agent-invocations/result";
@@ -20,9 +21,9 @@ import type {
 import {
   createAgentInvocationWorker,
   createAndEnqueueAgentInvocation,
-  routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
@@ -266,21 +267,17 @@ describe("stopping child agents", () => {
       ).resolves.toMatchObject({ status: "stopped" });
 
       // A stop request can outlive its run. The stopped agent invocation
-      // handles the next empty wake.
-      const invocationWorker = vi.fn(async () => ({
-        status: "completed" as const,
-      }));
+      // handles the next empty wake, so it never reaches a root worker.
       const wake = await harness.context(pending.childConversationId);
-      await routeAgentInvocationWork({
-        fallbackWorker: async () => {
-          throw new Error("Child work reached the fallback worker");
-        },
-        invocationWorker,
-      })({ ...wake, attempt: { ...wake.attempt, messages: [] } });
-      expect(invocationWorker).toHaveBeenCalledWith(
-        expect.anything(),
-        pending.invocationId,
-      );
+      await expect(
+        createChildConversationWorker(neverRunAgentRunner(), {
+          queue: harness.queue,
+          state: harness.state,
+        })({ ...wake, attempt: { ...wake.attempt, messages: [] } }),
+      ).resolves.toEqual({ status: "completed" });
+      await expect(
+        getAgentInvocation(pending.invocationId),
+      ).resolves.toMatchObject({ status: "stopped" });
 
       // A stop that does not come from stopAgent still reaches the parent,
       // and it also stops the child agents of the child.
