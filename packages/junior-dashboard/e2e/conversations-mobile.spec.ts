@@ -610,3 +610,121 @@ test("opens and closes a conversation on mobile", async ({
   await expect(openNavigationSheet).toBeHidden();
   finishSignOut?.();
 });
+
+test("keeps the message in view while earlier history and late content load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const generatedAt = "2026-08-07T11:00:00.000Z";
+  const conversation = {
+    conversationId: "long-history",
+    cumulativeDurationMs: 1_000,
+    displayTitle: "Long history",
+    isParticipant: true,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "completed",
+    surface: "internal",
+  };
+  const events = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, index) => {
+      const seq = from + index;
+      return {
+        createdAt: new Date(
+          Date.parse(generatedAt) + seq * 1_000,
+        ).toISOString(),
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: seq % 2 === 0 ? "user" : "assistant",
+          text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+        },
+        seq,
+      };
+    });
+  let releaseEarlierPage: (() => void) | undefined;
+  const earlierPageGate = new Promise<void>((resolve) => {
+    releaseEarlierPage = resolve;
+  });
+
+  await page.route("**/api/conversations", async (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversations: [conversation],
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route(
+    "**/api/conversations/long-history/pending-messages",
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId: "long-history", generatedAt, messages: [] },
+      });
+    },
+  );
+  await page.route(
+    "**/api/conversations/long-history/events?*",
+    async (route) => {
+      await earlierPageGate;
+      await route.fulfill({
+        json: {
+          eventHistory: { status: "available" },
+          events: events(0, 40),
+          generatedAt,
+        },
+      });
+    },
+  );
+  await page.route("**/api/conversations/long-history", async (route) => {
+    await route.fulfill({
+      json: {
+        ...conversation,
+        eventHistory: { status: "available" },
+        events: events(40, 80),
+        generatedAt,
+        previousCursor: "before-40",
+      },
+    });
+  });
+
+  await page.goto(`${dashboard.baseURL}/conversations/long-history`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const latest = transcript.getByText("Transcript message 79 ");
+  await expect(latest).toBeInViewport();
+
+  // Scroll to the top to load earlier history. The reader keeps scrolling
+  // while the page loads, so their place is where they stop, not where the
+  // load started.
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(transcript.getByText("Loading earlier messages…")).toBeVisible();
+  await transcript.evaluate((element) => {
+    element.scrollTop = 160;
+  });
+  const reading = transcript.getByText("Transcript message 43 ");
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  releaseEarlierPage?.();
+  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  await expect(
+    transcript.getByText("Transcript message 39 "),
+  ).not.toBeInViewport();
+
+  // Content that grows above the reader, such as an image that loads late,
+  // must not push the message they are reading out of view.
+  await transcript.getByText("Transcript message 20 ").evaluate((element) => {
+    const spacer = document.createElement("div");
+    spacer.style.height = "1200px";
+    element.append(spacer);
+  });
+  await expect(reading).toBeInViewport({ ratio: 1 });
+});
