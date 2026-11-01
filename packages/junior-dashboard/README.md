@@ -40,6 +40,11 @@ name, through dashboard settings.
 - Earlier event pages use a separate infinite query loaded on demand. The client
   derives one ordered transcript from those immutable responses; paginated reads
   never write into another resource's cache.
+- The transcript holds the reader's place. Rows carry a scroll anchor. When
+  content above the reader changes height, such as an earlier page, a late
+  image, or deferred rendering, the scroll position moves by the same distance.
+  A reader at the bottom stays at the latest message. See
+  `client/conversations/transcriptScrollAnchor.ts`.
 - The server adapts canonical runtime events into privacy-safe reporting events.
   The transcript combines tool and subagent updates. The event log keeps each
   event in sequence order, with readable details and optional raw JSON.

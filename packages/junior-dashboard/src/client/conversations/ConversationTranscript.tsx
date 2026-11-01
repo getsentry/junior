@@ -360,7 +360,7 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <TranscriptRow indent key={activityKey}>
+          <TranscriptRow anchorKey={activityKey} indent key={activityKey}>
             <TranscriptActivityGroup
               entries={visibleEntries}
               renderEntry={renderEntry}
@@ -372,8 +372,9 @@ function TranscriptEntryList(props: {
     }
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
+      const rowKey = `${props.keyPrefix}:${entry.key}`;
       rows.push(
-        <TranscriptRow key={`${props.keyPrefix}:${entry.key}`}>
+        <TranscriptRow anchorKey={rowKey} key={rowKey}>
           {renderEntry(entry)}
         </TranscriptRow>,
       );
