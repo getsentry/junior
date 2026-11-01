@@ -22,6 +22,7 @@ related:
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
+| `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
@@ -329,6 +330,37 @@ Each profile value may be a model id string or an object with `modelId` and opti
 Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 
 The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+
+## Prompt cache warming
+
+Anthropic models keep a prompt cache for 5 minutes. When a person replies after
+that time, the next turn writes the full history to the cache again. Junior
+keeps the cache of an idle Conversation warm when a warmup is likely to cost
+less than that write.
+
+- Junior warms only `anthropic/` models with a cached prefix of at least 50K
+  tokens. It does not warm models that use a thinking budget, because the
+  budget adds output tokens to each warmup.
+- When a turn ends, Junior stores the last model request in the `StateAdapter`.
+  Junior deletes it when the next turn starts, when warmups stop, or after 55
+  minutes.
+- A delayed queue message sends the same request with a one-token output limit
+  before the cache expires. Junior sends the next warmup only while the chance
+  that the person replies in the next 5 minutes is high enough to pay for it.
+  The needed chance goes up with each warmup.
+- Junior learns that chance from the reply gaps of idle periods. A period with
+  no reply in 55 minutes counts as no reply. Until Junior has recorded gaps, it
+  sends no warmups.
+- When 3 of the last 20 warmups of a model miss the cache or fail, Junior stops
+  warmups for that model. They start again 6 hours after the last warmup.
+- `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
+  requests and drops warmups that are already in the queue. The default is
+  `true`.
+- `PI_CACHE_RETENTION=long` turns warming off, because the long cache lasts an
+  hour.
+
+Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
+`cache_warmup`, and as `cache_warming.*` logs.
 
 ## Install-wide config defaults
 

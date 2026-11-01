@@ -436,6 +436,15 @@ describe("chat config", () => {
     expect(getChatConfig().conversationWorkEnabled).toBe(false);
   });
 
+  it("enables cache warming unless its kill switch is off", async () => {
+    delete process.env.JUNIOR_CACHE_WARMING_ENABLED;
+    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(true);
+    process.env.JUNIOR_CACHE_WARMING_ENABLED = "false";
+    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(
+      false,
+    );
+  });
+
   it("rejects an invalid conversation work switch", async () => {
     process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "sometimes";
     await expect(loadConfig()).rejects.toThrow(
