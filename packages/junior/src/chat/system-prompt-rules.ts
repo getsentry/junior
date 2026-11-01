@@ -28,7 +28,7 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access or a decision that is truly theirs. Ask one focused question with `addReviewItem`, never in plain text; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: add it as an action item, then deliver the requested work in this Turn.",
+  "- Ask the user only for missing access or a decision that is truly theirs. Ask one focused question with `addReviewItem`, never in plain text; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: add it as an action item, then continue the work.",
 ];
 
 /**
