@@ -59,6 +59,7 @@ import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 import { stopConversationTurn } from "@/chat/conversations/stop";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
   clock,
   closers,
@@ -831,7 +832,8 @@ describe("Turn lifecycle for each work owner", () => {
   });
 
   describe.each(owners)("$name", (owner) => {
-    it.each(signals)("$name", async (signal) => {
+    const rows = signals.filter((signal) => signal.appliesTo?.(owner) ?? true);
+    it.each(rows)("$name", async (signal) => {
       let conversationId = "";
       let stopping: Promise<unknown> | undefined;
       const harness = await slack({
@@ -839,16 +841,17 @@ describe("Turn lifecycle for each work owner", () => {
           ...(owner.setupOutputs ?? []),
           ...signal.outputs({
             reply: owner.reply ?? ((text) => ({ type: "text", text })),
-            stop: () => {
-              stopping = stopConversationTurn({
-                conversationId,
-                queue: harness.queue,
-                state: harness.state,
-              });
-            },
+            stop: () => stop(),
           }),
         ],
       });
+      const stop = () => {
+        stopping = stopConversationTurn({
+          conversationId,
+          queue: harness.queue,
+          state: harness.state,
+        });
+      };
       conversationId = await owner.start(harness);
       const process = async (softYieldAfterMs?: number) =>
         await harness.process(
@@ -856,6 +859,50 @@ describe("Turn lifecycle for each work owner", () => {
           softYieldAfterMs === undefined ? {} : { softYieldAfterMs },
         );
       await owner.setup?.({ conversationId, harness, process });
+      await signal.before?.({ conversationId, stop });
+      await stopping;
+      const runAgent = harness.agentRunner.run.bind(harness.agentRunner);
+      if (signal.outcome) {
+        vi.spyOn(harness.agentRunner, "run").mockResolvedValue(signal.outcome);
+      }
+      if (signal.stopAfterRun) {
+        vi.spyOn(harness.agentRunner, "run").mockImplementation(async (run) => {
+          const outcome = await runAgent(run);
+          stop();
+          await stopping;
+          // The worker reads the stop marker on an interval.
+          await new Promise<void>((resolve) => {
+            if (!run.signal || run.signal.aborted) return resolve();
+            run.signal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+            setTimeout(resolve, 5_000);
+          });
+          return outcome;
+        });
+      }
+      if (signal.lifecycleFailure === "complete") {
+        vi.spyOn(
+          ConversationTurnLifecycleService.prototype,
+          "complete",
+        ).mockRejectedValueOnce(new Error("event store unavailable"));
+      }
+      if (signal.lifecycleFailure === "start") {
+        const start = ConversationTurnLifecycleService.prototype.start;
+        let failures = CONVERSATION_WORK_MAX_RETRIES;
+        vi.spyOn(
+          ConversationTurnLifecycleService.prototype,
+          "start",
+        ).mockImplementation(async function (
+          this: ConversationTurnLifecycleService,
+          input,
+        ) {
+          if (failures-- > 0) {
+            throw new Error("event store unavailable");
+          }
+          return await start.call(this, input);
+        });
+      }
       // Run each wake of this Conversation until no work is left.
       const wakes: string[] = [];
       while (
@@ -868,7 +915,7 @@ describe("Turn lifecycle for each work owner", () => {
           // A model error ends the Run with a failed outcome. Only an error
           // that the runner throws, such as a lost store, retries the wake.
           vi.spyOn(harness.agentRunner, "run").mockRejectedValue(
-            new Error("agent unavailable"),
+            signal.failure?.() ?? new Error("agent unavailable"),
           );
         }
         const result = await process(
@@ -880,7 +927,10 @@ describe("Turn lifecycle for each work owner", () => {
       }
       await stopping;
 
-      const expected = signal.expected(owner);
+      const expected = {
+        ...signal.expected(owner),
+        ...owner.slackRunnerGaps?.[signal.name],
+      };
       expect({
         wakes,
         turn: await lastTurnEnd(conversationId),

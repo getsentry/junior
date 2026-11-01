@@ -404,4 +404,5 @@ open work. The child's own child agents stop the same way, so no result of
 theirs starts the child again.
 
 A stop request can outlive the run that it stopped. If it wakes the child
-again, the latest `stopped` agent invocation handles the wake.
+again, the latest agent invocation of the child handles the wake, whatever its
+status. A finished agent invocation only repeats its idempotent finish.

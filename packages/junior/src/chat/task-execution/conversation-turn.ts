@@ -422,6 +422,15 @@ export function createConversationTurnWorker(
           assistantMessageDelivered = true;
           failureCode = "agent_run_failed";
         };
+        const startTurn = async (): Promise<void> => {
+          await lifecycle.start({
+            conversationId: context.conversationId,
+            createdAtMs: Date.now(),
+            inputMessageIds,
+            surface,
+            turnId,
+          });
+        };
         const prepare = async (): Promise<
           PreparedWorkerTurn | "finished" | "stopped"
         > => {
@@ -462,13 +471,7 @@ export function createConversationTurnWorker(
               conversation,
               conversationId: context.conversationId,
             });
-            await lifecycle.start({
-              conversationId: context.conversationId,
-              createdAtMs: Date.now(),
-              inputMessageIds,
-              surface,
-              turnId,
-            });
+            await startTurn();
             if (stopSignal?.aborted) {
               return "stopped";
             }
@@ -750,6 +753,11 @@ export function createConversationTurnWorker(
                   runId: currentRunId,
                   turnId,
                 });
+              }
+              // A setup error can come before the Turn start. The start is
+              // idempotent, so each failed Turn also has its start.
+              if (!isResume) {
+                await startTurn();
               }
               await lifecycle.fail({
                 conversationId: context.conversationId,

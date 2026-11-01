@@ -12,7 +12,9 @@ import {
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
 import {
+  createAgentInvocation,
   getAgentInvocation,
+  getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
@@ -25,12 +27,13 @@ import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
 } from "@/chat/task-execution/store";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { createEventTools } from "@/chat/tools/events";
+import { TurnToolCallLimitExceededError } from "@/chat/services/turn-limit";
 import { createAgentDispatchTestRecord } from "./agent-dispatch";
 import {
   invocationInput,
   loadSubagentEvents,
-  parentConversationId,
   prepareParentConversation,
 } from "./agent-invocations";
 import { webTestActor } from "./conversation";
@@ -45,6 +48,7 @@ import {
 } from "./conversation-work";
 import { context, execute } from "./event-automations";
 import type { FixedModelOutput } from "./model-stream";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { slackApiOutbox } from "./slack-api-outbox";
 
 type Harness = Awaited<ReturnType<typeof createConversationWorkHarness>>;
@@ -86,22 +90,54 @@ export interface Owner {
   failedResumeWakes?: string[];
   /** True when a failed Turn posts no error reply, by owner policy. */
   quietFailure?: boolean;
+  /**
+   * Rows where the Slack runner ends the Turn another way. It does not use
+   * the shared lifecycle yet. Each value replaces part of the expected
+   * outcome of the row with that name.
+   */
+  slackRunnerGaps?: Record<string, Partial<Expected>>;
+}
+
+/** What one row expects after the Turn ends. */
+export interface Expected {
+  wakes: string[];
+  turn: string;
+  shown: Record<string, unknown>;
 }
 
 export const clock = { nowMs: 1_800_000_000_000 };
 export const closers: Array<() => Promise<void>> = [];
 
-/** Read how the last Turn of a Conversation ended. */
+/**
+ * Read how the last Turn of a Conversation ended. A Turn end without its
+ * start says so.
+ */
 export async function lastTurnEnd(conversationId: string): Promise<string> {
-  const last = (await getConversationEventStore().loadHistory(conversationId))
-    .map((event) => event.data)
+  const events = (
+    await getConversationEventStore().loadHistory(conversationId)
+  ).map((event) => event.data);
+  const last = events
     .filter(
       (data) => data.type === "turn_completed" || data.type === "turn_failed",
     )
     .at(-1);
-  if (!last) return "running";
-  if (last.type === "turn_failed") return "failed";
-  return last.outcome === "cancelled" ? "stopped" : "completed";
+  if (!last) {
+    return events.some((data) => data.type === "turn_started")
+      ? "running"
+      : "not started";
+  }
+  const end =
+    last.type === "turn_failed"
+      ? "failed"
+      : last.outcome === "cancelled"
+        ? "stopped"
+        : last.outcome === "blocked"
+          ? "blocked"
+          : "completed";
+  const started = events.some(
+    (data) => data.type === "turn_started" && data.turnId === last.turnId,
+  );
+  return started ? end : `${end} without a start`;
 }
 
 async function assistantMessages(conversationId: string): Promise<string[]> {
@@ -112,33 +148,67 @@ async function assistantMessages(conversationId: string): Promise<string[]> {
     );
 }
 
-/** Read the latest agent invocation of a child and its report to the parent. */
+/**
+ * Read the latest agent invocation of a child, its report to the parent, and
+ * whether its Turn record can still resume.
+ */
 async function readChild(conversationId: string) {
   const latest = await getLatestAgentInvocationForConversation(conversationId);
   const invocation = latest && (await getAgentInvocation(latest.invocationId));
-  const ended = (await loadSubagentEvents(parentConversationId)).filter(
+  if (!invocation) return {};
+  const ended = (
+    await loadSubagentEvents(invocation.parentConversationId)
+  ).filter(
     (event) =>
       event.type === "subagent_ended" &&
-      event.subagentInvocationId === invocation?.invocationId,
+      event.subagentInvocationId === invocation.invocationId,
+  );
+  const turn = await getTurnRecord(
+    conversationId,
+    getAgentInvocationTurnId(invocation.invocationId),
   );
   return {
-    invocation: invocation?.status,
+    invocation: invocation.status,
     parentMailbox:
-      invocation && "parentMailboxStatus" in invocation
+      "parentMailboxStatus" in invocation
         ? invocation.parentMailboxStatus
         : undefined,
     reportsToParent: ended.length,
+    turnRecordOpen: turn?.state === "running" || turn?.state === "paused",
   };
 }
 
-async function spawnChild(harness: Harness, idempotencyKey: string) {
+/** Spawn a child of the root, or of another child at `depth` 2. */
+async function spawnChild(
+  harness: Harness,
+  idempotencyKey: string,
+  depth: 1 | 2 = 1,
+) {
   const { conversationStore, fixture } = await prepareParentConversation();
   closers.push(async () => await fixture.close());
+  const services = {
+    conversationStore,
+    queue: harness.queue,
+    state: harness.state,
+  };
   const created = await createAndEnqueueAgentInvocation(
     { ...invocationInput, idempotencyKey },
-    { conversationStore, queue: harness.queue, state: harness.state },
+    services,
   );
-  return created.childConversationId;
+  if (depth === 1) {
+    return created.childConversationId;
+  }
+  // The child stays open, so its own child can start.
+  return (
+    await createAndEnqueueAgentInvocation(
+      {
+        ...invocationInput,
+        idempotencyKey: `${idempotencyKey}-nested`,
+        parentConversationId: created.childConversationId,
+      },
+      services,
+    )
+  ).childConversationId;
 }
 
 export const owners: Owner[] = [
@@ -216,6 +286,25 @@ export const owners: Owner[] = [
     ],
     // The Slack resume runner fails the Turn on the first error.
     failedResumeWakes: ["completed"],
+    slackRunnerGaps: {
+      // A stop after the Run drops the saved result.
+      "stop after the Run keeps the result": { turn: "stopped" },
+      // An execution limit retries, then posts its own reply.
+      "an execution limit fails at once": {
+        wakes: [
+          ...Array.from(
+            { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
+            () => "pending_requeued",
+          ),
+          "failed",
+        ],
+        shown: { replies: [expect.stringMatching(/execution limit/)] },
+      },
+      // The failure has no Turn start when the start write failed.
+      "a setup error fails on the last attempt": {
+        turn: "failed without a start",
+      },
+    },
     start: async (harness) => {
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
@@ -241,6 +330,19 @@ export const owners: Owner[] = [
     quietFailure: true,
     // A dispatch resumes through the Slack resume runner.
     failedResumeWakes: ["completed"],
+    // A dispatch runs its Turn through the Slack runner.
+    slackRunnerGaps: {
+      // A stop before the Run ends the dispatch without a Turn.
+      "stop before the Run": { turn: "not started" },
+      // A stop after the Run drops the saved result.
+      "stop after the Run keeps the result": {
+        turn: "stopped",
+        shown: { dispatch: "failed", replies: [] },
+      },
+      "a setup error fails on the last attempt": {
+        turn: "failed without a start",
+      },
+    },
     // A dispatch declares its result with a tool call.
     reply: (message) => ({
       type: "toolCall",
@@ -266,6 +368,12 @@ export const owners: Owner[] = [
     name: "child from a parent task",
     delivery: "parent",
     start: async (harness) => await spawnChild(harness, "lifecycle-task"),
+    read: readChild,
+  },
+  {
+    name: "child at depth 2",
+    delivery: "parent",
+    start: async (harness) => await spawnChild(harness, "lifecycle-nested", 2),
     read: readChild,
   },
   {
@@ -303,30 +411,65 @@ export const owners: Owner[] = [
 
 interface Signal {
   name: string;
+  /** Owners of this row. Omit it for every owner. */
+  appliesTo?(owner: Owner): boolean;
   outputs(args: {
     reply: (text: string) => FixedModelOutput;
     stop: () => void;
   }): FixedModelOutput[];
+  /** Run after the owner setup, before the first wake. */
+  before?(args: { conversationId: string; stop: () => void }): Promise<void>;
   /** Make every agent run throw from this wake on. */
   failFromWake?: number;
+  /** The error that each agent run throws. */
+  failure?(): Error;
+  /** End every agent run with this outcome instead of the model output. */
+  outcome?: AgentRunOutcome;
+  /** Request a stop after each Run returns, and wait until the Turn sees it. */
+  stopAfterRun?: boolean;
+  /**
+   * Make a Turn lifecycle write fail: `complete` once, or `start` on every
+   * attempt.
+   */
+  lifecycleFailure?: "complete" | "start";
   /** Pause the first wake at its first safe boundary. */
   yieldFirst?: boolean;
   /** What the owner shows after the Turn ends. */
-  expected(owner: Owner): {
-    wakes: string[];
-    turn: string;
-    shown: Record<string, unknown>;
-  };
+  expected(owner: Owner): Expected;
 }
 
 const REPLY = "Deploy checked.";
 const ERROR_REPLY = expect.stringMatching(/^I ran into an internal error/);
+const isChild = (owner: Owner) => owner.delivery === "parent";
+
+/** What a failed Turn shows on its owner. */
+function failed(owner: Owner) {
+  // Where a person reads the Turn, the last attempt posts an error reply.
+  return finished(
+    owner,
+    owner.delivery === "junior" || owner.quietFailure ? undefined : ERROR_REPLY,
+    "failed",
+  );
+}
+
+/** The wakes of work that throws on every attempt until the last one. */
+function failedAttempts(owner: Owner): string[] {
+  return (
+    owner.failedWakes ?? [
+      ...Array.from(
+        { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
+        () => "failed",
+      ),
+      "completed",
+    ]
+  );
+}
 
 /** What a finished Turn shows on its owner. */
 function finished(
   owner: Owner,
   text: unknown,
-  end: "completed" | "failed" | "stopped",
+  end: "blocked" | "completed" | "failed" | "stopped",
 ) {
   if (owner.delivery === "parent") {
     // A child has no Delivery. It reports its end to the parent once.
@@ -334,6 +477,8 @@ function finished(
       invocation: end,
       parentMailbox: "appended",
       reportsToParent: 1,
+      // No Turn of an ended child can resume.
+      turnRecordOpen: false,
     };
   }
   return {
@@ -392,22 +537,9 @@ export const signals: Signal[] = [
     outputs: () => [],
     failFromWake: 0,
     expected: (owner) => ({
-      wakes: owner.failedWakes ?? [
-        ...Array.from(
-          { length: CONVERSATION_WORK_MAX_RETRIES - 1 },
-          () => "failed",
-        ),
-        "completed",
-      ],
+      wakes: failedAttempts(owner),
       turn: "failed",
-      // Where a person reads the Turn, the last attempt posts an error reply.
-      shown: finished(
-        owner,
-        owner.delivery === "junior" || owner.quietFailure
-          ? undefined
-          : ERROR_REPLY,
-        "failed",
-      ),
+      shown: failed(owner),
     }),
   },
   {
@@ -427,13 +559,82 @@ export const signals: Signal[] = [
         ]),
       ],
       turn: "failed",
-      shown: finished(
-        owner,
-        owner.delivery === "junior" || owner.quietFailure
-          ? undefined
-          : ERROR_REPLY,
-        "failed",
-      ),
+      shown: failed(owner),
+    }),
+  },
+  {
+    name: "stop before the Run",
+    outputs: ({ reply }) => [reply("Never sent.")],
+    before: async ({ stop }) => stop(),
+    expected: (owner) => ({
+      wakes: ["completed", "no_work"],
+      turn: "stopped",
+      shown: finished(owner, undefined, "stopped"),
+    }),
+  },
+  {
+    name: "stop after the Run keeps the result",
+    outputs: ({ reply }) => [reply(REPLY)],
+    stopAfterRun: true,
+    expected: (owner) => ({
+      wakes: ["completed", "no_work"],
+      turn: "completed",
+      shown: finished(owner, REPLY, "completed"),
+    }),
+  },
+  {
+    // The child still has an open child agent, so its saved result waits
+    // for that work. The stop ends that work, so the result reports now.
+    name: "an error after the save while a stop is pending",
+    appliesTo: isChild,
+    outputs: ({ reply }) => [reply(REPLY)],
+    before: async ({ conversationId }) => {
+      await createAgentInvocation({
+        ...invocationInput,
+        idempotencyKey: `${conversationId}-open-child`,
+        parentConversationId: conversationId,
+      });
+    },
+    stopAfterRun: true,
+    lifecycleFailure: "complete",
+    expected: (owner) => ({
+      // The failed write retries the attempt. The retry reports the saved
+      // result.
+      wakes: ["failed", "completed", "no_work"],
+      turn: "completed",
+      shown: finished(owner, REPLY, "completed"),
+    }),
+  },
+  {
+    name: "an execution limit fails at once",
+    outputs: () => [],
+    failFromWake: 0,
+    failure: () => new TurnToolCallLimitExceededError(1),
+    expected: (owner) => ({
+      wakes: ["completed"],
+      turn: "failed",
+      shown: failed(owner),
+    }),
+  },
+  {
+    name: "a setup error fails on the last attempt",
+    outputs: ({ reply }) => [reply("Never sent.")],
+    lifecycleFailure: "start",
+    expected: (owner) => ({
+      wakes: failedAttempts(owner),
+      turn: "failed",
+      shown: failed(owner),
+    }),
+  },
+  {
+    name: "an auth pause blocks the child",
+    appliesTo: isChild,
+    outputs: () => [],
+    outcome: { providerDisplayName: "GitHub", status: "awaiting_auth" },
+    expected: (owner) => ({
+      wakes: ["completed"],
+      turn: "blocked",
+      shown: finished(owner, undefined, "blocked"),
     }),
   },
 ];

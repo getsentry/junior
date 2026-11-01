@@ -360,12 +360,15 @@ async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
 ): Promise<void> {
   const turnId = getAgentInvocationTurnId(terminal.invocationId);
-  if (terminal.status === "stopped") {
-    // A child stopped between slices has a paused Turn record. Nothing may
+  if (terminal.status !== "completed") {
+    // A child that ends between slices has a paused Turn record. Nothing may
     // resume it.
     await abandonTurnRecord({
       conversationId: terminal.childConversationId,
-      errorMessage: "Turn cancelled",
+      errorMessage:
+        terminal.status === "stopped"
+          ? "Turn cancelled"
+          : terminal.errorMessage,
       turnId,
     });
   }
@@ -540,8 +543,26 @@ export function createAgentInvocationWorker(
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
     let invocation: AgentInvocation = loaded;
+    // Read the signal before any early return, so the worker clears a stop
+    // request that this wake handles.
+    const stopSignal = context.stopSignal?.();
     // Report the result before ack so a failed parent append retries this work.
-    const report = async (terminal: TerminalAgentInvocation): Promise<void> => {
+    const report = async (ended: TerminalAgentInvocation): Promise<void> => {
+      let terminal = ended;
+      // A stop that comes after the save still stops the child agents of
+      // this child. Then they cannot report for a `replaced` result, so this
+      // result reports now. A retry after the save reports the same way.
+      if (stopSignal?.aborted) {
+        if (terminal.parentMailboxStatus === "replaced") {
+          const reported = await reportReplacedAgentInvocation(
+            terminal.invocationId,
+          );
+          if (reported && isTerminalAgentInvocation(reported)) {
+            terminal = reported;
+          }
+        }
+        await stopChildAgentsOf(context.conversationId);
+      }
       await recordSubagentEnded(terminal);
       await options.enqueueResult?.(terminal);
     };
@@ -558,10 +579,18 @@ export function createAgentInvocationWorker(
       await report(terminal);
     };
 
-    // Read the signal before any early return, so the worker clears a stop
-    // request that this wake handles.
-    const stopSignal = context.stopSignal?.();
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
+    const startTurn = async (): Promise<void> => {
+      await new ConversationTurnLifecycleService(
+        getConversationEventStore(),
+      ).start({
+        conversationId: invocation.childConversationId,
+        createdAtMs: invocation.createdAtMs,
+        inputMessageIds: [getAgentInvocationMessageId(invocation.invocationId)],
+        surface: "internal",
+        turnId,
+      });
+    };
     const endInvocation = async (
       status: "blocked" | "failed" | "stopped",
       errorMessage: string,
@@ -609,17 +638,7 @@ export function createAgentInvocationWorker(
             await finish(invocation);
             return "finished";
           }
-          await new ConversationTurnLifecycleService(
-            getConversationEventStore(),
-          ).start({
-            conversationId: invocation.childConversationId,
-            createdAtMs: invocation.createdAtMs,
-            inputMessageIds: [
-              getAgentInvocationMessageId(invocation.invocationId),
-            ],
-            surface: "internal",
-            turnId,
-          });
+          await startTurn();
           const [persisted, projection, tree] = await Promise.all([
             getPersistedThreadState(invocation.childConversationId),
             loadProjection({
@@ -682,12 +701,11 @@ export function createAgentInvocationWorker(
           };
         },
         // `stopChildAgent` already marked its work `stopped`. Any other stop is
-        // recorded here and reported to the parent. The stop also stops the
+        // recorded here and reported to the parent. The report also stops the
         // child agents of this child, so no result of theirs starts this
         // child again.
         stop: async () => {
           await endInvocation("stopped", "Agent invocation was stopped");
-          await stopChildAgentsOf(context.conversationId);
         },
         suspend: async () => {
           await markAgentInvocationPaused(invocation.invocationId);
@@ -702,22 +720,7 @@ export function createAgentInvocationWorker(
         complete: async () => {
           // executeTurn already recorded the terminal Turn; only report the
           // result.
-          let terminal = await getAgentInvocation(invocation.invocationId);
-          // A stop that comes after the save still stops the child agents of
-          // this child. Then they cannot report for a `replaced` result, so
-          // this result reports now.
-          if (stopSignal?.aborted) {
-            if (
-              terminal &&
-              isTerminalAgentInvocation(terminal) &&
-              terminal.parentMailboxStatus === "replaced"
-            ) {
-              terminal = await reportReplacedAgentInvocation(
-                terminal.invocationId,
-              );
-            }
-            await stopChildAgentsOf(context.conversationId);
-          }
+          const terminal = await getAgentInvocation(invocation.invocationId);
           if (terminal && isTerminalAgentInvocation(terminal)) {
             await report(terminal);
           }
@@ -731,6 +734,9 @@ export function createAgentInvocationWorker(
           return true;
         },
         fail: async (error) => {
+          // A setup error can come before the Turn start. The start is
+          // idempotent, so each failed Turn also has its start.
+          await startTurn();
           await endInvocation(
             "failed",
             error instanceof Error ? error.message : "Agent invocation failed",

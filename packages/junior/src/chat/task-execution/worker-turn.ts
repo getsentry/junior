@@ -86,6 +86,7 @@ function isInputCommitLost(error: unknown): boolean {
  * Run one Turn: prepare it, run the agent, and end the attempt. A lost lease
  * returns `lost_lease`. A stop ends the Turn as stopped. Other errors retry,
  * except on the last attempt or for an execution limit, where the Turn fails.
+ * An error after the result save always retries.
  */
 export async function runWorkerTurn(args: {
   /** Runs a prepared Run. An owner that runs its own Turn omits it. */
@@ -118,6 +119,9 @@ export async function runWorkerTurn(args: {
     return { status };
   };
 
+  // After the result save, the Turn has its result. A later error must not
+  // run the stop or fail step, which would end the finished work again.
+  let saved = false;
   const advance = async (): Promise<
     ConversationWorkerResult | "completed" | "stopped"
   > => {
@@ -154,7 +158,9 @@ export async function runWorkerTurn(args: {
               if (result.diagnostics.outcome !== "success") {
                 stopSignal?.throwIfAborted();
               }
-              return await prepared.saveResult(result);
+              const turnEnd = await prepared.saveResult(result);
+              saved = true;
+              return turnEnd;
             },
           );
     if (outcome.status !== "completed" && stopSignal?.aborted) {
@@ -181,6 +187,11 @@ export async function runWorkerTurn(args: {
     const failure = error instanceof AgentRunError ? error.cause : error;
     if (isInputCommitLost(failure)) {
       return { status: "lost_lease" };
+    }
+    if (saved) {
+      // Retry instead of ending the Turn a second way. A child retry reports
+      // the saved result.
+      throw failure;
     }
     if (stopSignal?.aborted) {
       ended = "stopped";
