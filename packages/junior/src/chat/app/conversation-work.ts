@@ -156,8 +156,8 @@ export function createConversationWork(
       state: options.state,
     }),
   );
-  // A Slack Destination uses the Slack worker. All other work must have been
-  // selected above this function.
+  // A Slack Destination uses the Slack worker. All other root work must have
+  // been selected above this function.
   const destinationWorker = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
@@ -182,10 +182,13 @@ export function createConversationWork(
     if (skipped) {
       return skipped;
     }
-    // Child work must reach the child worker before any root worker.
-    const childWork = await childWorker(context);
-    if (childWork) {
-      return childWork;
+    // The stored parent decides the kind of Conversation, so child work never
+    // reaches a root worker. A child Turn can have any Source.
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
+    });
+    if (conversation?.parentConversationId) {
+      return await childWorker(context);
     }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
