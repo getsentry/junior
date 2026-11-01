@@ -461,6 +461,8 @@ export function usersInfoOk(
     isBot?: boolean;
     deleted?: boolean;
     tz?: string;
+    /** Whether the person set their own photo instead of Slack's default. */
+    isCustomImage?: boolean;
     fields?: Record<string, { value?: string; alt?: string; label?: string }>;
   } = {},
 ): {
@@ -484,6 +486,7 @@ export function usersInfoOk(
         status_text: input.statusText ?? "",
         status_emoji: input.statusEmoji ?? "",
         image_512: `https://avatars.slack-edge.com/${input.userId ?? TEST_USER_ID}_512.png`,
+        is_custom_image: input.isCustomImage ?? false,
         ...(input.fields ? { fields: input.fields } : undefined),
       },
     },

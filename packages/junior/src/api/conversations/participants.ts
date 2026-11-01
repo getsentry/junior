@@ -1,4 +1,8 @@
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import {
+  identityAvatarUrl,
+  readUserAvatarUrls,
+} from "@/chat/identities/avatar";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -9,6 +13,7 @@ import {
 import type { ActorIdentity } from "../schema/conversation";
 
 const identityColumns = {
+  avatarUrl: juniorIdentities.avatarUrl,
   displayName: juniorIdentities.displayName,
   email: juniorIdentities.email,
   handle: juniorIdentities.handle,
@@ -21,6 +26,7 @@ const identityColumns = {
 };
 
 type ParticipantIdentityRow = {
+  avatarUrl: string | null;
   displayName: string | null;
   email: string | null;
   handle: string | null;
@@ -34,11 +40,14 @@ type ParticipantIdentityRow = {
 
 function participantIdentity(
   row: ParticipantIdentityRow,
+  userAvatarUrls: ReadonlyMap<string, string>,
 ): ActorIdentity | undefined {
+  const avatarUrl = identityAvatarUrl(row, userAvatarUrls);
   const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
   const email = row.email?.trim() || row.userEmail?.trim();
   const slack = row.provider === "slack";
   const participant = {
+    ...(avatarUrl ? { avatarUrl } : undefined),
     ...(email ? { email } : undefined),
     ...(fullName ? { fullName } : undefined),
     ...(slack && row.providerSubjectId
@@ -103,12 +112,18 @@ export async function readConversationParticipants(
       ),
   ]);
 
+  const userAvatarUrls = await readUserAvatarUrls(
+    db,
+    [...rootRows, ...eventRows].flatMap((row) =>
+      row.userId ? [row.userId] : [],
+    ),
+  );
   const ordered = new Map<
     string,
     { identities: ActorIdentity[]; keys: Set<string> }
   >();
   const add = (conversationId: string, row: ParticipantIdentityRow) => {
-    const participant = participantIdentity(row);
+    const participant = participantIdentity(row, userAvatarUrls);
     if (!participant) return;
     const group = ordered.get(conversationId) ?? {
       identities: [],

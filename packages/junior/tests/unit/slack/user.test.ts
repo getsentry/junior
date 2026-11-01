@@ -29,6 +29,37 @@ describe("lookupSlackUser", () => {
     });
   });
 
+  it("returns a custom photo only from Slack's photo host", async () => {
+    resetSlackApiMockState();
+    const photo = (image_512: string) => ({
+      body: {
+        ok: true,
+        user: { profile: { image_512, is_custom_image: true } },
+      },
+    });
+    queueSlackApiResponse(
+      "users.info",
+      photo("https://avatars.slack-edge.com/2026-10-01/u1_512.jpg"),
+    );
+    queueSlackApiResponse(
+      "users.info",
+      photo("https://avatars.slack-edge.com.example.net/u2_512.jpg"),
+    );
+    queueSlackApiResponse(
+      "users.info",
+      photo("http://avatars.slack-edge.com/u3_512.jpg"),
+    );
+
+    await expect(lookupSlackUser("T-PHOTO", "U1")).resolves.toMatchObject({
+      avatarUrl: "https://avatars.slack-edge.com/2026-10-01/u1_512.jpg",
+    });
+    for (const userId of ["U2", "U3"]) {
+      const profile = await lookupSlackUser("T-PHOTO", userId);
+      expect(profile).not.toBeNull();
+      expect(profile?.avatarUrl).toBeUndefined();
+    }
+  });
+
   it("accepts null optional Slack profile fields", async () => {
     resetSlackApiMockState();
     queueSlackApiResponse("users.info", {

@@ -98,6 +98,7 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
+import { saveSlackActorAvatar } from "@/chat/slack/avatar";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type Actor } from "@/chat/actor";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
@@ -395,14 +396,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           executionActor = options.execution.dispatch.actor;
           credentialContext = options.execution.credentialContext;
         } else {
-          executionActor = await ensureSlackMessageActorIdentity(
+          const slackActor = await ensureSlackMessageActorIdentity(
             message,
             teamId,
             lookupSlackUser,
           );
-          if (executionActor) {
-            credentialContext = credentialContextForActor(executionActor);
-          }
+          await saveSlackActorAvatar(slackActor);
+          executionActor = slackActor;
+          credentialContext = credentialContextForActor(slackActor);
         }
         if (!executionActor || !credentialContext) {
           throw new Error("Slack reply execution requires an actor");

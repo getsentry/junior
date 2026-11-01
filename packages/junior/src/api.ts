@@ -39,6 +39,7 @@ import {
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
+  readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";

@@ -12,7 +12,11 @@ import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
-import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { parseAvatarUrl } from "@/chat/identities/avatar";
+import {
+  GOOGLE_IDENTITY_PROVIDER,
+  normalizeIdentityEmail,
+} from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { isAllowedDomain, readEnvList } from "./allowlist";
@@ -228,6 +232,10 @@ function createBetterAuth(config: SignInAuthConfig) {
           email,
           subject: google.accountId,
           displayName: created.user.name || undefined,
+          avatarUrl: parseAvatarUrl(
+            created.user.image,
+            GOOGLE_IDENTITY_PROVIDER,
+          ),
         });
       }),
     },

@@ -18,6 +18,8 @@ export const dashboardIdentitySchema = z
   .object({
     user: dashboardSessionUserSchema
       .extend({
+        /** Junior API path of the viewer's Slack photo, then Google photo. */
+        avatarUrl: z.string().optional(),
         /** Junior-wide admin role. The server still checks it on every admin route. */
         isAdmin: z.boolean(),
       })

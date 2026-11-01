@@ -71,6 +71,7 @@ export function ParticipantAvatar(props: {
             tabIndex={0}
           >
             <ActorAvatar
+              imageUrl={props.participant.avatarUrl}
               name={participantName(props.participant)}
               size={props.size}
             />
