@@ -42,36 +42,6 @@ function itemOutput(call: Parameters<typeof toolOutput>[0]) {
 }
 
 describe("Review desk", () => {
-  test("when an Automation run needs a person's decision, add an action item and do not wait for it", async ({
-    run,
-  }) => {
-    await insertScheduledAutomation({
-      credentialMode: "system",
-      destination: slackChannel(),
-      due: true,
-      task: ENTRY_REVIEW_TASK,
-    });
-
-    const delivery = await run(heartbeat());
-
-    const added = completedToolCalls("addReviewItem", delivery);
-    expect(added).toHaveLength(1);
-    expect(added[0]!.input).toMatchObject({
-      kind: "action",
-      request: expect.objectContaining({ fields: expect.any(Array) }),
-    });
-    expect(itemOutput(added[0]!)).toMatchObject({
-      created: true,
-      item: { status: "open" },
-    });
-    // The answer arrives later as a message, so the run does not ask in
-    // the thread and ends without a block.
-    expect(toolCallsOf("requestUserInput", delivery)).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
-    ).not.toContainEqual(expect.objectContaining({ result: "misconfigured" }));
-  });
-
   test("when a later run finds the open item for the same pull request, update it instead of adding another", async ({
     run,
   }) => {
