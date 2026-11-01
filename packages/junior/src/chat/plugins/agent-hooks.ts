@@ -6,6 +6,8 @@ import {
   pluginEventsSchema,
   promptContextSchema,
   promptMessageSchema,
+  eventDataSchema,
+  eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
   InvocationContext,
@@ -20,6 +22,8 @@ import type {
   PluginOperationalTone,
   PluginRouteApp,
   Platform,
+  Event,
+  EventData,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -42,10 +46,6 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import {
-  createPluginEventPublisher,
-  type CoreEventPublisher,
-} from "@/chat/plugins/event-publisher";
 import {
   SANDBOX_JUNIOR_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -914,9 +914,39 @@ function routeMethods(
   return methods;
 }
 
+function requirePublishedEvent(
+  plugin: PluginRegistration,
+  eventType: string,
+): void {
+  const registration = plugin.events;
+  if (!registration || registration.isEnabled?.() === false) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" cannot publish events without an active registration`,
+    );
+  }
+  if (
+    !registration.resourceTypes.some((resourceType) =>
+      resourceType.supportedEvents.includes(eventType),
+    )
+  ) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" did not register event "${eventType}"`,
+    );
+  }
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  events: CoreEventPublisher;
+  events: {
+    hasMatch?(event: Event): Promise<boolean>;
+    neededMatchKeys?(input: {
+      data?: EventData;
+      eventTypes: string[];
+      identifiers: string[];
+      namespace: string;
+    }): Promise<string[]>;
+    publish(event: Event): Promise<void>;
+  };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -940,7 +970,56 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       users: { readIdentity: readIdentityById },
-      events: createPluginEventPublisher(plugin, options.events),
+      events: {
+        async hasMatch(event) {
+          if (!options.events.hasMatch) return false;
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          return await options.events.hasMatch({
+            ...parsed,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          });
+        },
+        async neededMatchKeys(input) {
+          if (!options.events.neededMatchKeys) return [];
+          const identifiers = [
+            ...new Set(
+              input.identifiers
+                .map((identifier) =>
+                  normalizeEventIdentifier(plugin.events, identifier),
+                )
+                .filter(Boolean),
+            ),
+          ];
+          if (identifiers.length === 0 || input.eventTypes.length === 0) {
+            return [];
+          }
+          return await options.events.neededMatchKeys({
+            ...(input.data
+              ? { data: eventDataSchema.parse(input.data) }
+              : undefined),
+            eventTypes: input.eventTypes,
+            identifiers,
+            namespace: pluginName,
+          });
+        },
+        async publish(event) {
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          await options.events.publish({
+            ...parsed,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          });
+        },
+      },
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(

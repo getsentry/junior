@@ -112,11 +112,11 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /**
- * Pull request events from GitHub webhooks. The heartbeat finds
- * `pull_request.merge_conflict` by polling, because GitHub sends no webhook
- * when a pull request gets a conflict.
+ * Pull request events that a GitHub webhook payload describes. GitHub sends
+ * no webhook when a pull request gets a conflict, so the webhook reads the
+ * pull request for `pull_request.merge_conflict` instead.
  */
-const GITHUB_PULL_REQUEST_WEBHOOK_EVENTS = GITHUB_PULL_REQUEST_EVENTS.filter(
+const GITHUB_PULL_REQUEST_PAYLOAD_EVENTS = GITHUB_PULL_REQUEST_EVENTS.filter(
   (eventType) => eventType !== "pull_request.merge_conflict",
 );
 
@@ -138,11 +138,12 @@ const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
 /**
  * Exact values GitHub may set on pull request event data. Missing keys do not
  * match. The opener and author values load in
- * `webhooks/pull-request-match-data.ts` for every webhook pull request event.
+ * `webhooks/pull-request-match-data.ts` for every payload pull request event.
  * The pull request comment webhook has no head branch. A check suite result
- * that GitHub links to no pull request has no `pullRequest`. The heartbeat
- * checks for a Watch or event automation before it reads a pull request, so
- * `pull_request.merge_conflict` matches only `repo` and `pullRequest`.
+ * that GitHub links to no pull request has no `pullRequest`. The webhook
+ * checks for a Watch or event automation before it reads a pull request for
+ * a conflict, so `pull_request.merge_conflict` matches only `repo` and
+ * `pullRequest`.
  */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   ...gitHubCommentMatchFields(GITHUB_PULL_REQUEST_COMMENT_EVENTS),
@@ -158,37 +159,37 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     list: true,
     description:
       "GitHub logins of the commit authors and Co-authored-by people, including bots such as this GitHub App",
-    events: [...GITHUB_PULL_REQUEST_WEBHOOK_EVENTS],
+    events: [...GITHUB_PULL_REQUEST_PAYLOAD_EVENTS],
   },
   headBranch: {
     kind: "string",
     description: "head branch name from the webhook",
-    events: GITHUB_PULL_REQUEST_WEBHOOK_EVENTS.filter(
+    events: GITHUB_PULL_REQUEST_PAYLOAD_EVENTS.filter(
       (eventType) => eventType !== "pull_request.comment.created",
     ),
   },
   isDraft: {
     kind: "boolean",
     description: "true when the pull request is a draft",
-    events: [...GITHUB_PULL_REQUEST_WEBHOOK_EVENTS],
+    events: [...GITHUB_PULL_REQUEST_PAYLOAD_EVENTS],
   },
   openerEmail: {
     kind: "string",
     description:
       "opener email when GitHub sends it; missing on pull requests that this GitHub App opened",
-    events: [...GITHUB_PULL_REQUEST_WEBHOOK_EVENTS],
+    events: [...GITHUB_PULL_REQUEST_PAYLOAD_EVENTS],
   },
   openerUsername: {
     kind: "string",
     description:
       "login of who opened the pull request; on pull requests that this GitHub App opened, the person who asked for it, missing until that person is saved",
-    events: [...GITHUB_PULL_REQUEST_WEBHOOK_EVENTS],
+    events: [...GITHUB_PULL_REQUEST_PAYLOAD_EVENTS],
   },
   openerRole: {
     kind: "string",
     description:
       "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
-    events: [...GITHUB_PULL_REQUEST_WEBHOOK_EVENTS],
+    events: [...GITHUB_PULL_REQUEST_PAYLOAD_EVENTS],
   },
 });
 

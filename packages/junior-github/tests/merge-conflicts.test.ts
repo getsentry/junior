@@ -1,53 +1,10 @@
-import { generateKeyPairSync } from "node:crypto";
-import type {
-  EventInput,
-  HeartbeatHookContext,
-  PluginState,
-} from "@sentry/junior-plugin-api";
+import { createHmac, generateKeyPairSync } from "node:crypto";
+import type { EventInput } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { juniorGitHubPullRequests } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
-
-/** In-memory plugin state. TTLs advance with the fake clock. */
-function memoryState(): PluginState {
-  const values = new Map<string, { expiresAtMs?: number; value: unknown }>();
-  const read = (key: string) => {
-    const entry = values.get(key);
-    if (entry?.expiresAtMs !== undefined && entry.expiresAtMs <= Date.now()) {
-      values.delete(key);
-      return undefined;
-    }
-    return entry;
-  };
-  const write = (key: string, value: unknown, ttlMs?: number) => {
-    values.set(key, {
-      value,
-      ...(ttlMs ? { expiresAtMs: Date.now() + ttlMs } : undefined),
-    });
-  };
-  return {
-    async delete(key) {
-      values.delete(key);
-    },
-    async get<T>(key: string) {
-      return read(key)?.value as T | undefined;
-    },
-    async set(key, value, ttlMs) {
-      write(key, value, ttlMs);
-    },
-    async setIfNotExists(key, value, ttlMs) {
-      if (read(key)) return false;
-      write(key, value, ttlMs);
-      return true;
-    },
-    async withLock(_key, _ttlMs, callback) {
-      return await callback();
-    },
-  };
-}
 
 function pullRequestResponse(input: {
   headSha: string;
@@ -64,22 +21,51 @@ function pullRequestResponse(input: {
   };
 }
 
-describe("merge conflict heartbeat", () => {
+/** A signed conversation comment on pull request 946. */
+function commentRequest(deliveryId: string): Request {
+  const body = JSON.stringify({
+    action: "created",
+    installation: { id: 456 },
+    repository: { full_name: "getsentry/junior" },
+    issue: {
+      number: 946,
+      pull_request: {
+        url: "https://api.github.com/repos/getsentry/junior/pulls/946",
+      },
+    },
+    comment: { body: "Any update?", id: 4001, user: { login: "jane" } },
+  });
+  return new Request("https://example.test/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "x-github-delivery": deliveryId,
+      "x-github-event": "issue_comment",
+      "x-hub-signature-256": `sha256=${createHmac("sha256", "test-secret")
+        .update(body)
+        .digest("hex")}`,
+    },
+    body,
+  });
+}
+
+describe("merge conflict check on webhook events", () => {
   let fixture: GitHubFixture;
   let published: EventInput[];
-  let pullRequestReads: string[];
+  let pullRequestReads: number;
   let pullRequest: ReturnType<typeof pullRequestResponse>;
-  let state: PluginState;
-  let watched: Set<string>;
+  let watchesConflicts: boolean;
 
-  function heartbeatContext(): HeartbeatHookContext {
-    return {
-      agent: {
-        async dispatch() {
-          throw new Error("Unexpected dispatch");
-        },
-        async get() {
-          return undefined;
+  async function deliver(deliveryId: string): Promise<void> {
+    const [route] = githubPlugin().hooks!.routes!({
+      annotations: {
+        forConversation() {
+          return {
+            async upsert() {},
+            async remove() {},
+            async list() {
+              return [];
+            },
+          };
         },
       },
       cache: {
@@ -87,12 +73,18 @@ describe("merge conflict heartbeat", () => {
           return (await load()).value;
         },
       },
+      codeChanges: {
+        async associateConversations() {},
+        async record() {},
+      },
       db: fixture.db(),
       events: {
+        // The Watch made after Junior creates a pull request.
         async hasMatch(event) {
           return (
-            event.eventType === "pull_request.merge_conflict" &&
-            watched.has(event.identifier)
+            event.identifier === "getsentry/junior#946" &&
+            (event.eventType !== "pull_request.merge_conflict" ||
+              watchesConflicts)
           );
         },
         async publish(event) {
@@ -100,27 +92,31 @@ describe("merge conflict heartbeat", () => {
         },
       },
       log: { error() {}, info() {}, warn() {} },
-      nowMs: Date.now(),
       plugin: { name: "github" },
-      state,
-    };
+      users: {
+        async readIdentity() {
+          return undefined;
+        },
+      },
+    });
+    const response = await route!.handler(commentRequest(deliveryId));
+    expect(response.status).toBe(202);
   }
 
-  async function runHeartbeat(): Promise<void> {
-    await githubPlugin().hooks!.heartbeat!(heartbeatContext());
-  }
+  const conflicts = () =>
+    published.filter(
+      (event) => event.eventType === "pull_request.merge_conflict",
+    );
 
   beforeEach(async () => {
-    vi.useFakeTimers({ now: Date.parse("2026-07-02T12:00:00.000Z") });
     fixture = await createGitHubFixture();
     published = [];
-    pullRequestReads = [];
-    state = memoryState();
-    watched = new Set(["getsentry/junior#946"]);
+    pullRequestReads = 0;
+    watchesConflicts = true;
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
-      mergeable: true,
-      mergeableState: "clean",
+      mergeable: false,
+      mergeableState: "dirty",
     });
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -139,80 +135,37 @@ describe("merge conflict heartbeat", () => {
           }),
       ),
       http.get(
-        "https://api.github.com/repos/getsentry/junior/pulls/:number",
-        ({ params }) => {
-          pullRequestReads.push(String(params.number));
+        "https://api.github.com/repos/getsentry/junior/pulls/946",
+        () => {
+          pullRequestReads += 1;
           return HttpResponse.json(pullRequest);
         },
       ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
+        () => HttpResponse.json([]),
+      ),
     );
-    const at = new Date("2026-07-01T12:00:00.000Z");
-    await fixture
-      .db()
-      .insert(juniorGitHubPullRequests)
-      .values([
-        {
-          pullRequestId: "watched-pr",
-          repositoryId: "2001",
-          repositoryFullName: "getsentry/junior",
-          number: 946,
-          state: "open",
-          conversationIds: ["slack:C123:1712345.0001"],
-          openedAt: at,
-          updatedAt: at,
-        },
-        {
-          pullRequestId: "unwatched-pr",
-          repositoryId: "2001",
-          repositoryFullName: "getsentry/junior",
-          number: 947,
-          state: "open",
-          openedAt: at,
-          updatedAt: at,
-        },
-        {
-          pullRequestId: "merged-pr",
-          repositoryId: "2001",
-          repositoryFullName: "getsentry/junior",
-          number: 948,
-          state: "merged",
-          openedAt: at,
-          mergedAt: at,
-          updatedAt: at,
-        },
-      ]);
   });
 
   afterEach(async () => {
     await fixture.close();
     vi.unstubAllEnvs();
-    vi.useRealTimers();
   });
 
-  it("publishes once when the base branch moves under an idle watched pull request", async () => {
-    // The pull request merges cleanly. Only the watched pull request is read.
-    await runHeartbeat();
-    expect(pullRequestReads).toEqual(["946"]);
-    expect(published).toEqual([]);
+  it("publishes a conflict found when another event arrives for a watched pull request", async () => {
+    await deliver("delivery-1");
 
-    // The base branch moves and GitHub reports a conflict. Checks wait for
-    // the check interval, because the heartbeat runs each minute.
-    pullRequest = pullRequestResponse({
-      headSha: "1111111111111111111111111111111111111111",
-      mergeable: false,
-      mergeableState: "dirty",
-    });
-    vi.advanceTimersByTime(60_000);
-    await runHeartbeat();
-    expect(pullRequestReads).toEqual(["946"]);
-
-    vi.advanceTimersByTime(5 * 60_000);
-    await runHeartbeat();
-    expect(published).toEqual([
+    expect(published.map((event) => event.eventType)).toEqual([
+      "pull_request.comment.created",
+      "pull_request.comment.created",
+      "pull_request.merge_conflict",
+      "pull_request.merge_conflict",
+    ]);
+    expect(conflicts()).toEqual([
       expect.objectContaining({
         eventKey:
           "github:merge-conflict:getsentry/junior#946:1111111111111111111111111111111111111111",
-        eventType: "pull_request.merge_conflict",
         identifier: "getsentry/junior#946",
         objectType: "code_change",
         trustedSummary:
@@ -225,74 +178,40 @@ describe("merge conflict heartbeat", () => {
           url: "https://github.com/getsentry/junior/pull/946",
         },
       }),
-      expect.objectContaining({
-        eventType: "pull_request.merge_conflict",
-        identifier: "getsentry/junior",
-      }),
+      expect.objectContaining({ identifier: "getsentry/junior" }),
     ]);
 
-    // The same head stays conflicted, so no new event.
-    vi.advanceTimersByTime(5 * 60_000);
-    await runHeartbeat();
-    expect(published).toHaveLength(2);
-
-    // Junior merges the base branch, and the base branch moves again.
+    // The same head commit keeps its event key, so a Watch gets it once.
+    // After Junior merges the base branch, a new conflict gets a new key.
     pullRequest = pullRequestResponse({
       headSha: "2222222222222222222222222222222222222222",
       mergeable: false,
       mergeableState: "dirty",
     });
-    vi.advanceTimersByTime(5 * 60_000);
-    await runHeartbeat();
-    expect(published).toHaveLength(4);
-    expect(published[2]).toMatchObject({
-      data: { headSha: "2222222222222222222222222222222222222222" },
-    });
+    await deliver("delivery-2");
+    expect(conflicts().map((event) => event.eventKey)).toEqual([
+      expect.stringContaining(":1111111111111111111111111111111111111111"),
+      expect.stringContaining(":1111111111111111111111111111111111111111"),
+      expect.stringContaining(":2222222222222222222222222222222222222222"),
+      expect.stringContaining(":2222222222222222222222222222222222222222"),
+    ]);
   });
 
-  it("reads every watched pull request when more are watched than one check reads", async () => {
-    const at = new Date("2026-07-03T12:00:00.000Z");
-    const busy = Array.from({ length: 20 }, (_, index) => ({
-      pullRequestId: `busy-${String(index).padStart(2, "0")}`,
-      repositoryId: "2001",
-      repositoryFullName: "getsentry/junior",
-      number: 1000 + index,
-      state: "open" as const,
-      openedAt: at,
-      updatedAt: at,
-    }));
-    await fixture.db().insert(juniorGitHubPullRequests).values(busy);
-    for (const row of busy) watched.add(`getsentry/junior#${row.number}`);
-
-    await runHeartbeat();
-    expect(pullRequestReads).toHaveLength(20);
-    expect(pullRequestReads).not.toContain("946");
-
-    // The next check goes on after the last pull request it looked at.
-    vi.advanceTimersByTime(5 * 60_000);
-    await runHeartbeat();
-    expect(pullRequestReads.slice(20)).toEqual(["946"]);
-
-    // Then it starts again from the first one.
-    vi.advanceTimersByTime(5 * 60_000);
-    await runHeartbeat();
-    expect(pullRequestReads.slice(21)).toHaveLength(20);
-  });
-
-  it("waits while GitHub calculates mergeability", async () => {
+  it("publishes no conflict while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: null,
       mergeableState: "unknown",
     });
-    await runHeartbeat();
-    expect(pullRequestReads).toEqual(["946"]);
-    expect(published).toEqual([]);
+    await deliver("delivery-1");
+    expect(pullRequestReads).toBe(1);
+    expect(conflicts()).toEqual([]);
   });
 
-  it("does not read pull requests that nothing watches", async () => {
-    watched.clear();
-    await runHeartbeat();
-    expect(pullRequestReads).toEqual([]);
+  it("does not read the pull request when nothing wants conflicts", async () => {
+    watchesConflicts = false;
+    await deliver("delivery-1");
+    expect(pullRequestReads).toBe(0);
+    expect(conflicts()).toEqual([]);
   });
 });

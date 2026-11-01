@@ -12,8 +12,6 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { createApp, defineJuniorPlugins } from "@/app";
-import { createWatch } from "@/chat/events/store";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -35,13 +33,12 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue" | "events"
+    "conversationWorkQueue"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
-    events: { async publish() {} },
   });
 }
 
@@ -157,80 +154,6 @@ describe("plugin heartbeat", () => {
     expect(response.status).toBe(202);
     await waitUntil.flush();
     expect(seen).toHaveLength(1);
-  });
-
-  it("delivers events that plugin heartbeat hooks publish to Watches", async () => {
-    const conversationId = "slack:C123:1712345.0001";
-    const watch = await createWatch(
-      {
-        conversationId,
-        events: ["item.stuck"],
-        expiresAtMs: TEST_NOW_MS + 60_000,
-        identifier: "item-1",
-        intent: "Fix stuck items.",
-        label: "Item 1",
-        namespace: "poller",
-        resourceType: "item",
-      },
-      { nowMs: TEST_NOW_MS },
-    );
-    const matches: boolean[] = [];
-    const waitUntil = createWaitUntilCollector();
-    const app = await createApp({
-      conversationWork: {
-        queue: conversationWorkQueue,
-        run: async () => ({ status: "completed" }),
-      },
-      plugins: defineJuniorPlugins([
-        defineJuniorPlugin({
-          events: {
-            resourceTypes: [
-              {
-                type: "item",
-                supportedEvents: ["item.stuck"],
-                suggestedEvents: [],
-              },
-            ],
-            events: { "item.stuck": { reach: "resource" } },
-            normalizeIdentifier: (identifier) => identifier.toLowerCase(),
-          },
-          manifest: {
-            name: "poller",
-            displayName: "Poller",
-            description: "Polling test plugin",
-          },
-          hooks: {
-            async heartbeat(ctx) {
-              const event = {
-                eventKey: "poller:item-1:stuck",
-                eventType: "item.stuck",
-                identifier: "ITEM-1",
-                occurredAtMs: ctx.nowMs,
-                trustedSummary: "Item 1 is stuck.",
-              };
-              matches.push(Boolean(await ctx.events.hasMatch?.(event)));
-              await ctx.events.publish(event);
-            },
-          },
-        }),
-      ]),
-      waitUntil: waitUntil.fn,
-    });
-    const response = await app.fetch(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-    );
-
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-    expect(matches).toEqual([true]);
-    expect(conversationWorkQueue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId,
-        idempotencyKey: `event:${watch.id}:poller:item-1:stuck`,
-      }),
-    ]);
   });
 
   it("reschedules stale paused turn records", async () => {

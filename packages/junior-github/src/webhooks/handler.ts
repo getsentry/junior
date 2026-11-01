@@ -38,6 +38,10 @@ import {
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
+  loadGitHubMergeConflictEvents,
+  type GitHubPullRequestRef,
+} from "./merge-conflict.js";
+import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
 } from "./pull-request-match-data.js";
@@ -164,6 +168,8 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestCommitPages?(
     target: GitHubPullRequestTarget,
   ): Promise<GitHubCommitPageLoader>;
+  /** Read one pull request for its mergeability. */
+  loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -386,6 +392,17 @@ export function createGitHubWebhookRoute(args: {
           : undefined),
         log: args.log,
       });
+      // GitHub sends no webhook for a new conflict, so check on every other
+      // event for a watched pull request.
+      events.push(
+        ...(await loadGitHubMergeConflictEvents({
+          deliveryId,
+          events,
+          hasMatch,
+          loadPullRequest: args.loadPullRequest,
+          log: args.log,
+        })),
+      );
       const feedbackTarget = pullRequestFeedbackTarget(events);
       const feedbackHasMatch =
         feedbackTarget && hasMatch

@@ -519,13 +519,16 @@ The pull request closed without merging.
 <summary><code>pull_request.merge_conflict</code></summary>
 
 The pull request has merge conflicts with its base branch. GitHub sends no
-webhook for this. Junior finds it from the heartbeat: about every 5 minutes, it
-reads mergeability for open pull requests that Junior opened and that a watch or
-event automation matches. Each head commit publishes once. Trusted data
-includes `baseBranch`, `headSha`, and `url`. Filters can match only `repo` and
-`pullRequest`. The watch that Junior creates after it opens a pull request
-always gets this event, and the default guidance tells the agent to merge the
-base branch, not rebase.
+webhook for this. When a webhook delivers another event for an open pull
+request, such as a comment, a review, or a check result, and a watch or event
+automation wants this event, Junior reads the pull request. If GitHub reports a
+conflict, Junior publishes this event. Each head commit publishes once. GitHub
+calculates mergeability only when someone reads the pull request, so the first
+read can be unknown, and a later event reads it again. A pull request that gets
+no other events is not checked. Trusted data includes `baseBranch`, `headSha`,
+and `url`. Filters can match only `repo` and `pullRequest`. The watch that
+Junior creates after it opens a pull request always gets this event, and the
+default guidance tells the agent to merge the base branch, not rebase.
 
 </details>
 

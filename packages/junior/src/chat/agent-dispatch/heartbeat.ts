@@ -1,7 +1,5 @@
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import { createPluginEventPublisher } from "@/chat/plugins/event-publisher";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -56,9 +54,6 @@ export async function runPluginHeartbeats(args: {
   nowMs: number;
 }): Promise<void> {
   let count = 0;
-  const events = createEventAppPublisher({
-    conversationWork: () => ({ queue: args.conversationWorkQueue }),
-  });
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
@@ -75,7 +70,6 @@ export async function runPluginHeartbeats(args: {
           heartbeat(
             createHeartbeatContext({
               conversationWorkQueue: args.conversationWorkQueue,
-              events: createPluginEventPublisher(plugin, events),
               plugin,
               nowMs: args.nowMs,
             }),

@@ -10,7 +10,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/index";
 import type { GitHubDb } from "../src/db/database";
-import { gitHubMergeConflictEvents } from "../src/pull-request-merge-conflicts";
+import { gitHubMergeConflictEvents } from "../src/webhooks/merge-conflict";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
 import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
@@ -202,8 +202,8 @@ function releaseDelivery(repo: string, tag: string) {
   };
 }
 
-/** The events that the heartbeat publishes instead of a webhook. */
-function heartbeatEvents(scope: FixtureScope): EventInput[] {
+/** The events that a pull request read adds to a webhook delivery. */
+function mergeConflictEvents(scope: FixtureScope): EventInput[] {
   return gitHubMergeConflictEvents({
     conflict: {
       baseBranch: "main",
@@ -320,7 +320,7 @@ describe("GitHub event data", () => {
   it("declares filter events that match the data the webhooks set", async () => {
     const events = [
       ...(await publish(fixtureDeliveries(BASE_SCOPE), "delivery")),
-      ...heartbeatEvents(BASE_SCOPE),
+      ...mergeConflictEvents(BASE_SCOPE),
     ];
     const resourceTypes = githubPlugin().events?.resourceTypes ?? [];
 
@@ -383,9 +383,9 @@ describe("GitHub event data", () => {
         fixtureDeliveries({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
         "other-repo",
       )),
-      ...heartbeatEvents(BASE_SCOPE),
-      ...heartbeatEvents({ ...BASE_SCOPE, pullRequest: 947 }),
-      ...heartbeatEvents({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
+      ...mergeConflictEvents(BASE_SCOPE),
+      ...mergeConflictEvents({ ...BASE_SCOPE, pullRequest: 947 }),
+      ...mergeConflictEvents({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
     ];
 
     expect(

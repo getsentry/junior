@@ -1,9 +1,8 @@
 /**
- * GitHub requests that webhook and heartbeat handling make with installation
- * tokens.
+ * GitHub requests that webhook handling makes with installation tokens.
  *
- * A webhook delivery or a heartbeat has no Turn and no egress context, so
- * these requests call GitHub directly. Other plugin code must use host egress.
+ * A webhook delivery has no Turn and no egress context, so these requests
+ * call GitHub directly. Other plugin code must use host egress.
  */
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -53,38 +52,25 @@ export async function loadPullRequestCommitPages(
     );
 }
 
-/**
- * Return a reader for single pull requests, with read-only tokens. The reader
- * issues one token for each repository and uses it again.
- */
-export function createPullRequestReader(
+/** Read one pull request, with a read-only token. */
+export async function loadPullRequest(
   env: GitHubInstallationEnv,
-): (pullRequest: {
-  number: number;
-  repositoryFullName: string;
-}) => Promise<unknown> {
-  const tokens = new Map<string, Promise<{ token: string }>>();
-  return async (pullRequest) => {
-    const { owner, name } = splitRepository(
-      pullRequest.repositoryFullName,
-      "pull request",
-    );
-    const key = `${owner}/${name}`.toLowerCase();
-    let token = tokens.get(key);
-    if (!token) {
-      token = issueInstallationToken({
-        ...env,
-        permissions: { pull_requests: "read" },
-        repositories: [name],
-      });
-      tokens.set(key, token);
-    }
-    return await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
-      { token: (await token).token },
-    );
-  };
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
+    { token: token.token },
+  );
 }
 
 /** Add the "reviewing" reaction to one pull request feedback comment. */
