@@ -18,7 +18,7 @@ import {
 } from "@/chat/agent-dispatch/work";
 import {
   createAgentInvocationWorker,
-  resolveAgentInvocationId,
+  routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
 import {
   enqueueAgentInvocationResult,
@@ -176,6 +176,24 @@ export function createConversationWork(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );
   };
+  // Child work must reach its agent invocation before any root worker.
+  const routeWork = routeAgentInvocationWork({
+    invocationWorker,
+    fallbackWorker: async (context) => {
+      const mailboxTurn = await resolveMailboxTurnWork(context);
+      if (mailboxTurn) {
+        return await conversationTurnWorker(
+          context,
+          await withAgentInvocationResultActors(mailboxTurn),
+        );
+      }
+      const dispatchId = await resolveAgentDispatchId(context);
+      if (dispatchId) {
+        return await dispatchWorker(context, dispatchId);
+      }
+      return await destinationWorker(context);
+    },
+  });
   const run = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
@@ -194,22 +212,7 @@ export function createConversationWork(
     if (childInput) {
       return childInput;
     }
-    const mailboxTurn = await resolveMailboxTurnWork(context);
-    if (mailboxTurn) {
-      return await conversationTurnWorker(
-        context,
-        await withAgentInvocationResultActors(mailboxTurn),
-      );
-    }
-    const invocationId = await resolveAgentInvocationId(context);
-    if (invocationId) {
-      return await invocationWorker(context, invocationId);
-    }
-    const dispatchId = await resolveAgentDispatchId(context);
-    if (dispatchId) {
-      return await dispatchWorker(context, dispatchId);
-    }
-    return await destinationWorker(context);
+    return await routeWork(context);
   };
   return {
     conversationStore: options.conversationStore,

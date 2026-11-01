@@ -154,6 +154,19 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     return entry.message;
   }
 
+  /** Deliver the next payload for one Conversation and keep the others queued. */
+  takeMessageFor(conversationId: string): ConversationQueueMessage {
+    const index = this.#queuedMessages.findIndex(
+      (entry) => entry.message.conversationId === conversationId,
+    );
+    if (index === -1) {
+      throw new Error(
+        `Expected queued conversation work for ${conversationId}`,
+      );
+    }
+    return this.#queuedMessages.splice(index, 1)[0]!.message;
+  }
+
   /** Honor queue delays when running evals against the real clock. */
   async takeReadyMessage(
     signal?: AbortSignal,

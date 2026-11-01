@@ -21,7 +21,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
+  createConversationWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -41,7 +41,7 @@ describe("agent dispatch recovery", () => {
 
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const firstRun = await createAgentDispatchWorkHarness(
+    const firstRun = await createConversationWorkHarness(
       createModelAgentRunner(
         createModelStream([
           {
@@ -74,7 +74,7 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
-    const replay = await createAgentDispatchWorkHarness(neverRunAgentRunner());
+    const replay = await createConversationWorkHarness(neverRunAgentRunner());
     await enqueueAgentDispatch(dispatch, {
       queue: replay.queue,
       state: replay.state,
@@ -142,7 +142,7 @@ describe("agent dispatch recovery", () => {
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     let deliveries = 0;

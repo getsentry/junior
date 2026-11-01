@@ -31,7 +31,7 @@ import {
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
+  createConversationWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -70,7 +70,7 @@ describe("agent dispatch conversation work", () => {
       input,
     );
     const modelStream = vi.fn(createModelStream([sendMessage("Done")]));
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(modelStream),
     );
 
@@ -148,7 +148,7 @@ describe("agent dispatch conversation work", () => {
       queue,
       run: runWork,
       state,
-    } = await createAgentDispatchWorkHarness(agentRunner);
+    } = await createConversationWorkHarness(agentRunner);
 
     const titleRequests: TitleModelRequest[] = [];
     mockTitleModel("Weekly digest for the platform team", {
@@ -237,7 +237,7 @@ describe("agent dispatch conversation work", () => {
       ],
       { ...destination, threadTs: "1700000000.000200" },
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(
         createModelStream([sendMessage("Scheduled digest")]),
       ),
@@ -275,7 +275,7 @@ describe("agent dispatch conversation work", () => {
         },
       ],
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
 
@@ -320,7 +320,7 @@ describe("agent dispatch conversation work", () => {
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
     const processNext = async (softYieldAfterMs?: number) =>
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
@@ -396,7 +396,7 @@ describe("agent dispatch conversation work", () => {
       },
     );
     await persistConversationMessages({ conversation, conversationId });
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       neverRunAgentRunner(),
     );
 

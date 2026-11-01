@@ -870,7 +870,11 @@ export function createAgentInvocationWorker(
   };
 }
 
-/** Route invocation-backed work before falling through to existing consumers. */
+/**
+ * Route child work to its agent invocation before any other worker. Server
+ * conversation work and the local CLI both use this order, because a child
+ * Turn can have any Source and only its agent invocation can run it.
+ */
 export function routeAgentInvocationWork(options: {
   fallbackWorker: (
     context: ConversationWorkerContext,
