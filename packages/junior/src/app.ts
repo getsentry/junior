@@ -111,7 +111,9 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
+  getProductionSlackAdapter,
 } from "@/chat/app/production";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -566,7 +568,10 @@ export async function createApp(
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ events });
+    pluginRoutes = getPluginRoutes({
+      events,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+    });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }

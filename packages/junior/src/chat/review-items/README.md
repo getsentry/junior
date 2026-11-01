@@ -16,6 +16,7 @@ behavior.
     actions").
   - A person replies in its thread (see "Reply in the thread").
   - An agent closes it with `updateReviewItem`.
+  - The plugin that added it closes it.
   - Junior purges the Conversation that added it. The item becomes
     `dismissed` with the reason `Conversation purged`. An item from an
     Automation run stays open, because a later run can still change it.
@@ -96,6 +97,34 @@ description holds the rules for when to ask and when to wait.
 `review-desk` source. A child agent cannot use them. It reports to its
 parent with `reportBlocked`, and the parent adds the item.
 
+## Plugins
+
+A plugin adds and closes notices from its own events through
+`ctx.reviewItems` in its routes (`PluginReviewItems` in
+`@sentry/junior-plugin-api`). `plugin.ts` implements it. The plugin owns the
+decision. Core owns the rules below.
+
+- Each notice belongs to one Conversation. It links that Conversation, and it
+  is private when that Conversation is not public.
+- Core stores the dedupe key as `plugin:<name>:<key>`, so a plugin finds and
+  changes only its own items. The `plugin:` prefix is reserved. An agent
+  cannot add an item with it, and cannot change an item that has it
+  (`canAgentChangeReviewItem`). Only the plugin or a person changes the item.
+- The plugin names assignees by Identity. Core assigns the linked User. A
+  private notice goes only to people in its Conversation.
+- A repeat with the same key updates the open item.
+- A plugin notice stays open when its Conversation starts a new Turn.
+- A plugin notice closes quietly. A plugin close sends no message to the
+  linked Conversation, so the close does not start a Turn. It only shows the
+  new state through the `show` function that app setup gives
+  `getPluginRoutes`. The provider event that closed the item can reach the
+  Conversation through a Watch.
+- A plugin notice never counts as an item that needs a person
+  (`reviewItemNeedsUser`), because it is a notice.
+
+For example, the GitHub plugin adds a notice when a Junior pull request is
+ready to merge. See `packages/junior-github/README.md`.
+
 ## Person actions
 
 `actions.ts` owns what a person can do. The review desk API
@@ -160,7 +189,8 @@ so an Event that was sent does not go again.
 
 Every change goes through one path: `deliverReviewItemChange` in
 `changes.ts`. The agent tools, the person actions, and a reply in the
-thread call it after they save the change.
+thread call it after they save the change. A plugin change sends no
+messages, so it calls only `show` (see "Plugins").
 
 - First, every surface shows the new state. App setup gives the `show`
   function. Today it is the Slack card sync. Review item code does not import

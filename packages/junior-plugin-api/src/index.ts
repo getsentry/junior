@@ -33,4 +33,5 @@ export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
+export * from "./review-items";
 export * from "./user-pages";

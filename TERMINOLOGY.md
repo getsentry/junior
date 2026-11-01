@@ -130,7 +130,7 @@ Canonical words used across Junior's code and documentation.
   type as `calendar_event`.
 - **Item**: a linked object without a more specific native type.
 - **Review item**: work that needs a person, such as a decision or a notice.
-  An agent adds it. Its assignees act on it on the review desk. It is not an
+  An agent or a plugin adds it. Its assignees act on it on the review desk. It is not an
   Item.
 - **Review desk**: the dashboard page that lists open Review items.
 - **Assignee**: a User or Everyone who can act on a Review item. Everyone

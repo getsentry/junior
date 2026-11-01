@@ -36,7 +36,8 @@ creating another pull request, or replacing existing assignees.
 
 The plugin saves each person who asks Junior to open or update a pull request in
 `junior_github_pull_request_requesters`. Each row has only the core Junior
-identity id of that person. The plugin does not copy the user or GitHub login.
+identity id of that person. The opener row also has the Conversation where
+they asked. The plugin does not copy the user or GitHub login.
 When a webhook needs the GitHub login, it reads the identity through
 `ctx.users.readIdentity()` and uses the GitHub identity of the linked user. So a
 person who links GitHub later is found on their older pull requests too. The
@@ -63,6 +64,28 @@ filters on before it decides on a match. It loads the other values only when an
 event matches, so the agent sees all of them. A failed load leaves the value
 out. `authors` and the people involved in approvals and merges share one read of
 the commits per delivery.
+
+When a Junior pull request is ready to merge, the plugin adds a notice to the
+review desk through `ctx.reviewItems`. Ready to merge means that the pull
+request is open, is not a draft, has an approval and no open change request,
+and GitHub's `mergeable_state` is `clean`. `clean` covers required reviews,
+checks, commit statuses, and conflicts. `pull_request`, `pull_request_review`,
+and `check_suite` webhooks make the plugin read these facts again from GitHub.
+GitHub computes `mergeable_state` after a change. When it is still unknown
+after a second read, the plugin changes nothing, and a later webhook decides.
+The notice goes to the opener, in the Conversation where they asked. It tells
+them to merge the pull request, or to say why not. `ready_to_merge_at` on the
+pull request records that the notice was added, so repeat webhooks add no
+second notice. One webhook at a time checks a pull request. A webhook that
+arrives during a check adds 1 to `ready_sync_requests` and stops. The webhook
+that runs the check then reads GitHub again, until no new request came in.
+`ready_sync_id` names that check, and a check older than one minute no longer
+blocks others. No database connection stays open during the GitHub calls.
+`ready_to_merge_at` changes only after the notice changes, so after a failure
+the next webhook tries again. A notice that a person closed does not come back
+until the pull request is ready again. The plugin closes the notice when the
+pull request merges, closes, or is no longer ready. "Changes requested" adds
+no notice. A notice failure is logged and does not fail the webhook.
 
 Deployment events come from GitHub `deployment` and `deployment_status`
 webhooks:
