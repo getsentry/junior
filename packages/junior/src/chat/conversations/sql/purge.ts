@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
+import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
   juniorConversationBriefs,
@@ -118,6 +119,11 @@ export async function selectExpiredRoots(
         select 1 from junior_agent_bindings bindings
         where bindings.parent_conversation_id = tree.conversation_id
            or bindings.child_conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_review_items review_items
+        where review_items.added_by_conversation_id = tree.conversation_id
+          and review_items.status = 'open'
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
@@ -297,6 +303,12 @@ export async function purgeConversationTree(
                 inArray(juniorAgentBindings.childConversationId, ids),
               ),
             );
+          // No agent can act on an item after its Conversation is purged.
+          await dismissOpenReviewItems(executor.db(), {
+            addedByConversationIds: ids,
+            nowMs: args.nowMs,
+            reason: "Conversation purged",
+          });
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic

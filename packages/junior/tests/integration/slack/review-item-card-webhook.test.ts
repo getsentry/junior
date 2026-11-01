@@ -200,15 +200,20 @@ describe("Slack webhook: Review item cards", () => {
           },
         ],
       });
-    /** A message from a person to Junior in the card thread. */
-    async function reply(userId: string, ts: string) {
+    /**
+     * A message from a person in the card thread. Without a mention, it is a
+     * reply in a thread that Junior follows.
+     */
+    async function reply(userId: string, ts: string, { mention = true } = {}) {
       const waitUntil = client.waitUntil();
       const response = await handleSlackWebhook({
         request: client.event({
           ...slackEventsApiEnvelope({
-            eventType: "app_mention",
+            eventType: mention ? "app_mention" : "message",
             channel: "C123",
-            text: `<@${SLACK_BOT_USER_ID}> Hold, the tests are red`,
+            text: mention
+              ? `<@${SLACK_BOT_USER_ID}> Hold, the tests are red`
+              : "Hold, the tests are red",
             threadTs: "1712345.0001",
             ts,
             user: userId,
@@ -568,7 +573,10 @@ describe("Slack webhook: Review item cards", () => {
     await reply("U456", "1712345.0003");
     expect((await getReviewItem(getDb(), item.id))?.status).toBe("open");
 
-    await reply("U123", "1712345.0004");
+    // Junior follows the thread, so Ana's reply needs no mention to start a
+    // Turn. It answers like a mention.
+    await state.subscribe(THREAD);
+    await reply("U123", "1712345.0004", { mention: false });
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
       // The item saves the message text without the mention of Junior.
       answer: { other: "Hold, the tests are red", values: {} },

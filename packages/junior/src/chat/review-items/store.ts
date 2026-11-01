@@ -401,6 +401,39 @@ export async function closeReviewItem(
 }
 
 /**
+ * Dismiss the open Review items that an Automation or a set of
+ * Conversations added, when no agent can act on them any more. No person
+ * closes them. It sends no message and does not change the Slack cards.
+ */
+export async function dismissOpenReviewItems(
+  db: JuniorDatabase,
+  input: { nowMs: number; reason: string } & (
+    | { addedByConversationIds: readonly string[] }
+    | { automationId: string }
+  ),
+): Promise<void> {
+  const now = new Date(input.nowMs);
+  await db
+    .update(juniorReviewItems)
+    .set({
+      closeReason: input.reason,
+      closedAt: now,
+      status: "dismissed",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(juniorReviewItems.status, "open"),
+        "automationId" in input
+          ? eq(juniorReviewItems.automationId, input.automationId)
+          : inArray(juniorReviewItems.addedByConversationId, [
+              ...input.addedByConversationIds,
+            ]),
+      ),
+    );
+}
+
+/**
  * Make one User the only assignee of an open Review item. Return false when
  * the item is closed.
  */

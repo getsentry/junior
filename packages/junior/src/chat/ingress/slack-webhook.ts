@@ -561,17 +561,16 @@ async function routeParsedMessage(args: {
     return;
   }
 
-  // Passive thread messages are not checked for the allowed domains yet.
-  if (
-    route === "mention" &&
-    !(await isSlackAuthorDomainAllowed({
+  const isAuthorDomainAllowed = () =>
+    isSlackAuthorDomainAllowed({
       allowedBotUserIds: args.allowedBotUserIds,
       allowedDomains: args.allowedDomains,
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
-    }))
-  ) {
+    });
+  // Passive thread messages are not checked for the allowed domains yet.
+  if (route === "mention" && !(await isAuthorDomainAllowed())) {
     return;
   }
 
@@ -613,14 +612,13 @@ async function routeParsedMessage(args: {
       route,
       state: args.state,
     });
-  if (route !== "mention") {
-    await persist();
-    return;
-  }
   // A message from a person to Junior answers the open questions that the
-  // agent asked in this Conversation, like a click on their cards.
+  // agent asked in this Conversation, like a click on their cards. A reply in
+  // a subscribed thread starts a Turn too, so it answers in the same way. It
+  // answers only when its author passes the allowed domain check.
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
+    if (route === "subscribed" && !(await isAuthorDomainAllowed())) return;
     await closeReviewItemsAnsweredByReply({
       conversationId,
       getSlackAdapter: () => args.adapter,

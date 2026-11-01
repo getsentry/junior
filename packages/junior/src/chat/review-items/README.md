@@ -10,8 +10,23 @@ behavior.
 - A `notice` only tells a person something. An `action` asks for an answer.
   Its `request` (`userInputRequestSchema`) is a question and 1-4 fields.
 - An action item is the only way the agent asks a person for input.
-- The status is `open`, `done`, or `dismissed`. Only a person or an agent
-  closes an item. Nothing closes it on its own.
+- The status is `open`, `done`, or `dismissed`. An open item closes only in
+  one of these ways:
+  - A person answers it, marks a notice done, or dismisses it (see "Person
+    actions").
+  - A person replies in its thread (see "Reply in the thread").
+  - An agent closes it with `updateReviewItem`.
+  - Junior purges the Conversation that added it. The item becomes
+    `dismissed` with the reason `Conversation purged`.
+  - Someone deletes the Automation that added it. The item becomes
+    `dismissed` with the reason `Automation deleted`.
+  - The plugin that added a notice closes it. A plugin close sends no
+    message.
+
+  A purge and an Automation delete keep the row. They send no message and
+  do not change the Slack cards. A click on an old card tells the person
+  that the item is closed.
+
 - An assignee is a User or **Everyone**. Everyone is a flag on the item. It
   means that any person who can see the item can act on it. When the agent
   names no assignee, a new item goes to the User of the Actor, or else to the
@@ -103,9 +118,11 @@ parent with `reportBlocked`, and the parent adds the item.
 
 A person can answer an action item with a message instead of the card
 (`closeReviewItemsAnsweredByReply` in `actions.ts`). The message is a Slack
-mention or DM to Junior, or a dashboard message, in a Conversation. Junior
-saves the message first, so it always reaches the agent. Then it closes each
-item that matches all of these:
+mention or DM to Junior, a Slack reply without a mention in a thread that
+Junior follows (when the `passive-routing` feature is on), or a dashboard
+message, in a Conversation. A Slack author must pass the allowed domain
+check. Junior saves the message first, so it always reaches the agent. Then
+it closes each item that matches all of these:
 
 - The item is an open `action` item.
 - The agent added it in this Conversation (`addedByConversationId`). Items

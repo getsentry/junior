@@ -31,6 +31,7 @@ import {
   type MemoryAttachmentStorage,
 } from "@/chat/attachments/memory";
 import type { AttachmentWrite } from "@/chat/attachments/storage";
+import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -178,6 +179,24 @@ describe("retention purge job", () => {
       destinationId: privateDest,
       lastActivityAtMs: BASE_MS,
     });
+    const addItem = async (conversationId: string) =>
+      (await insertReviewItem(fixture.sql.db(), {
+        addedByConversationId: conversationId,
+        assignedToEveryone: false,
+        assigneeUserIds: [],
+        body: "The rollout waits on an answer.",
+        conversationIds: [conversationId],
+        dedupeKey: `rollout:${conversationId}`,
+        kind: "action",
+        nowMs: BASE_MS,
+        request: {
+          question: "Continue the rollout?",
+          fields: [{ id: "note", kind: "text", label: "Note" }],
+        },
+        title: "Continue the rollout?",
+        visibility: "public",
+      }))!.id;
+    const pubItem = await addItem("pub");
 
     // At 15 days: private is expired (14d window), public is retained (90d).
     const first = await runRetentionPurge(fixture.sql, {
@@ -189,13 +208,36 @@ describe("retention purge job", () => {
     expect(
       (await readConversation(fixture.sql, "pub")).transcriptPurgedAt,
     ).toBe(null);
+    expect((await getReviewItem(fixture.sql.db(), pubItem))?.status).toBe(
+      "open",
+    );
 
-    // At 91 days: the public conversation crosses its 90-day window.
+    // At 91 days: the public conversation crosses its 90-day window. No
+    // agent can act on its open item after the purge, so the item closes.
     const second = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 91 * DAY_MS,
     });
     expect(second.purged).toBe(1);
     expect(await eventCount(fixture.sql, "pub")).toBe(0);
+    expect(await getReviewItem(fixture.sql.db(), pubItem)).toMatchObject({
+      closeReason: "Conversation purged",
+      status: "dismissed",
+    });
+
+    // An older purge left an item open. The next run closes it, and then
+    // the tree has no more work.
+    const privItem = await addItem("priv");
+    const third = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+    expect(third.purged).toBe(1);
+    expect((await getReviewItem(fixture.sql.db(), privItem))?.status).toBe(
+      "dismissed",
+    );
+    const fourth = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+    expect(fourth.purged).toBe(0);
   });
 
   it("deletes attachment blobs after conversation content expires", async () => {
