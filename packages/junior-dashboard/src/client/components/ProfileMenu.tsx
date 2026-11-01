@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
@@ -47,6 +47,62 @@ function initials(name: string | null | undefined, email: string): string {
       .toUpperCase();
   }
   return email.slice(0, 1).toUpperCase();
+}
+
+const SPEND_COUNT_UP_MS = 700;
+
+/**
+ * Show one spend total. When the total changes, count up from the last shown
+ * value and tint the figure until the count ends.
+ */
+function SpendAmount({ value }: { value?: number }) {
+  const [shown, setShown] = useState(value);
+  const [counting, setCounting] = useState(false);
+  const shownRef = useRef(value);
+
+  useEffect(() => {
+    const from = shownRef.current;
+    if (
+      value === undefined ||
+      from === undefined ||
+      from === value ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      shownRef.current = value;
+      setShown(value);
+      setCounting(false);
+      return;
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+    const step = (time: number) => {
+      const progress = Math.min(1, (time - startedAt) / SPEND_COUNT_UP_MS);
+      const eased = 1 - (1 - progress) ** 3;
+      const next = progress < 1 ? from + (value - from) * eased : value;
+      shownRef.current = next;
+      setShown(next);
+      if (progress < 1) {
+        frame = requestAnimationFrame(step);
+      } else {
+        setCounting(false);
+      }
+    };
+    setCounting(true);
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return (
+    <span
+      className={cn(
+        "transition-colors duration-700 motion-reduce:transition-none",
+        counting && "text-dashboard-accent-text",
+      )}
+    >
+      {shown === undefined ? "—" : formatCostSummary({ total: shown })}
+    </span>
+  );
 }
 
 const profileLinkClass =
@@ -101,13 +157,13 @@ export function ProfileMenu({
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span>
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
@@ -186,13 +242,13 @@ export function ProfileMenu({
         <span className="whitespace-nowrap">
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span className="whitespace-nowrap">
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
@@ -304,7 +360,7 @@ export function ProfileMenu({
               7d
             </span>
             <span className="text-xs font-semibold text-dashboard-text">
-              {sevenDaySpend}
+              <SpendAmount value={spend?.sevenDaysUsd} />
             </span>
           </span>
           <span
@@ -316,7 +372,7 @@ export function ProfileMenu({
               30d
             </span>
             <span className="text-xs font-semibold text-dashboard-text">
-              {thirtyDaySpend}
+              <SpendAmount value={spend?.thirtyDaysUsd} />
             </span>
           </span>
         </span>
