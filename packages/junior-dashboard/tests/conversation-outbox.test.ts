@@ -5,6 +5,7 @@ import {
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
+  settleConversationOutboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
 } from "../src/client/conversations/conversationOutbox";
@@ -189,5 +190,109 @@ describe("conversation outbox", () => {
       inline: [],
       queued: merged,
     });
+  });
+
+  it("keeps inline sends until history reads them or the queue drops them", () => {
+    const accepted = (messageId: string, message: string) => ({
+      ...conversationOutboxMessageForSubmit({
+        idempotencyKey: messageId,
+        inline: true,
+        messageId,
+        message,
+        now: "2026-01-01T00:00:00.000Z",
+      }),
+      acceptedAtMs: 1_000,
+      status: "accepted" as const,
+    });
+    const serverCopy = (message: ReturnType<typeof accepted>) => ({
+      ...mailboxMessageFromOutbox(message),
+      clientStatus: undefined,
+      idempotencyKey: undefined,
+    });
+    const inline = accepted("accepted-1", "Continue in Junior");
+    const joined = accepted("accepted-2", "And the rollback owner");
+    const queuedRow = { ...accepted("queued-1", "Queued"), inline: undefined };
+    const outbox = [inline, joined, queuedRow];
+
+    // A mailbox read from before the accept proves nothing. The queued row
+    // leaves once the mailbox lists it.
+    expect(
+      settleConversationOutboxMessages(outbox, {
+        events: [],
+        mailboxReadAtMs: 900,
+        queued: [serverCopy(queuedRow)],
+      }),
+    ).toEqual([inline, joined]);
+
+    // A Turn joined the second send into the first Message, so only its
+    // started event has the second id. The Turn starts before the mailbox
+    // drops the send, so the row stays inline and out of the queue.
+    const turnStarted = [
+      {
+        seq: 1,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        data: {
+          type: "turn_lifecycle" as const,
+          turnId: "turn-1",
+          state: "started" as const,
+          inputMessageIds: ["accepted-1", "accepted-2"],
+        },
+      },
+      {
+        seq: 2,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        data: {
+          type: "message" as const,
+          messageId: "accepted-1",
+          role: "user" as const,
+          text: "Continue in Junior\nAnd the rollback owner",
+        },
+      },
+    ];
+    const server = [serverCopy(inline), serverCopy(joined)];
+    const whileQueued = settleConversationOutboxMessages([inline, joined], {
+      events: turnStarted,
+      mailboxReadAtMs: 2_000,
+      queued: server,
+    });
+    expect(whileQueued).toEqual([joined]);
+    const split = splitInlineMailboxMessages(
+      mergeConversationMailboxMessages(server, whileQueued),
+      server,
+      whileQueued,
+    );
+    expect(split.inline.map((message) => message.messageId)).toEqual([
+      "accepted-2",
+    ]);
+    expect(split.queued.map((message) => message.messageId)).toEqual([
+      "accepted-1",
+    ]);
+    // History has a Message for the first send, so the queue hides it.
+
+    // After the ack, the Turn input id settles the joined send.
+    expect(
+      settleConversationOutboxMessages([joined], {
+        events: turnStarted,
+        mailboxReadAtMs: 3_000,
+        queued: [],
+      }),
+    ).toEqual([]);
+
+    // A mailbox read after the accept has neither copy: someone removed it.
+    const unchanged = [inline];
+    expect(
+      settleConversationOutboxMessages(unchanged, {
+        events: [],
+        mailboxReadAtMs: 1_000,
+        queued: [],
+      }),
+    ).toBe(unchanged);
+    expect(
+      settleConversationOutboxMessages(unchanged, {
+        events: [],
+        mailboxReadAtMs: 1_001,
+        queued: [],
+      }),
+    ).toEqual([]);
   });
 });

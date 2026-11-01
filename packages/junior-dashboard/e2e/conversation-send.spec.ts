@@ -869,7 +869,7 @@ test("edits a queued message back into the composer", async ({
 
   await pending.getByRole("button", { name: "Edit queued message" }).click();
   await expect(
-    page.getByText("Junior already read that message."),
+    page.getByText("That message was already read or removed."),
   ).toBeVisible();
   await expect(composer).toHaveValue(
     `${queuedMessage.text}\nDraft in progress`,
