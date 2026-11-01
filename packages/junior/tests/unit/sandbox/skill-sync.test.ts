@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SetSpanAttributes } from "@/chat/logging";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
@@ -26,9 +27,9 @@ function immediateSpan<T>(
   _name: string,
   _op: string,
   _attributes: Record<string, unknown>,
-  callback: () => Promise<T>,
+  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
 ): Promise<T> {
-  return callback();
+  return callback(() => {});
 }
 
 afterEach(async () => {
@@ -51,7 +52,6 @@ describe("sandbox skill sync", () => {
 
     const writtenPaths: string[] = [];
     const sandbox = {
-      async mkDir() {},
       async readFileToBuffer() {
         return null;
       },
@@ -69,56 +69,69 @@ describe("sandbox skill sync", () => {
     expect(writtenPaths).toContain(sandboxSkillFile("jr-rpc"));
   });
 
-  it("creates sibling directories concurrently after their parents", async () => {
+  it("uploads nested skill files in one write without creating directories", async () => {
     const skillPath = await makeSkill();
-    let parentMissing = false;
-    const createdDirectories = new Set<string>();
-    const siblingDirectories = new Set<string>();
-    let reportFirstSibling: (() => void) | undefined;
-    const firstSiblingStarted = new Promise<void>((resolve) => {
-      reportFirstSibling = resolve;
-    });
-    let releaseSiblings: (() => void) | undefined;
-    const siblingsStarted = new Promise<void>((resolve) => {
-      releaseSiblings = resolve;
-    });
+    const uploads: string[][] = [];
     const sandbox = {
-      async mkDir(directory: string) {
-        const parent = path.posix.dirname(directory);
-        if (
-          parent.startsWith("/vercel/sandbox") &&
-          !createdDirectories.has(parent)
-        ) {
-          parentMissing = true;
-        }
-        if (
-          directory.endsWith("/references") ||
-          directory.endsWith("/scripts")
-        ) {
-          siblingDirectories.add(directory);
-          reportFirstSibling?.();
-          if (siblingDirectories.size < 2) {
-            await siblingsStarted;
-          }
-        }
-        createdDirectories.add(directory);
-      },
       async readFileToBuffer() {
         return null;
       },
-      async writeFiles() {},
+      async writeFiles(files: Array<{ path: string }>) {
+        uploads.push(files.map((file) => file.path));
+      },
     };
 
-    const sync = syncSkillsToSandbox({
+    await syncSkillsToSandbox({
       sandbox,
       skills: [{ name: "demo", description: "Demo", skillPath }],
       withSpan: immediateSpan,
     });
 
-    await firstSiblingStarted;
-    expect(siblingDirectories.size).toBe(2);
-    releaseSiblings?.();
-    await sync;
-    expect(parentMissing).toBe(false);
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toEqual(
+      expect.arrayContaining([
+        sandboxSkillFile("demo"),
+        `${path.posix.dirname(sandboxSkillFile("demo"))}/references/nested/note.md`,
+      ]),
+    );
+  });
+
+  it("skips the copy until the skill files change", async () => {
+    const skillPath = await makeSkill();
+    const sandboxFiles = new Map<string, Buffer>();
+    let writeCount = 0;
+    const sandbox = {
+      async readFileToBuffer(input: { path: string }) {
+        return sandboxFiles.get(input.path) ?? null;
+      },
+      async writeFiles(files: Array<{ path: string; content: Uint8Array }>) {
+        writeCount += 1;
+        for (const file of files) {
+          sandboxFiles.set(file.path, Buffer.from(file.content));
+        }
+      },
+    };
+    const sync = () =>
+      syncSkillsToSandbox({
+        sandbox,
+        skills: [{ name: "demo", description: "Demo", skillPath }],
+        withSpan: immediateSpan,
+      });
+
+    await sync();
+    const firstWriteCount = writeCount;
+    expect(sandboxFiles.get(sandboxSkillFile("demo"))?.toString()).toBe(
+      "skill",
+    );
+
+    await sync();
+    expect(writeCount).toBe(firstWriteCount);
+
+    await fs.writeFile(path.join(skillPath, "SKILL.md"), "changed", "utf8");
+    await sync();
+    expect(writeCount).toBeGreaterThan(firstWriteCount);
+    expect(sandboxFiles.get(sandboxSkillFile("demo"))?.toString()).toBe(
+      "changed",
+    );
   });
 });
