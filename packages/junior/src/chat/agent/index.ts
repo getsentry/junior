@@ -1266,30 +1266,42 @@ async function executeAgentRunInPrivacyContext(
           if (hookSignal?.aborted) {
             return handoffUpdate;
           }
-          // Pi appends steering after this hook returns, so add AGENTS.md
-          // context first to commit the same message order.
-          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
-            handoffUpdate,
-            nextTurn.context,
+          // Pi waits for this hook before each later model call. The span
+          // shows that wait between `gen_ai.chat` spans.
+          const stepUpdate = await withSpan(
+            "agent.step.prepare",
+            "agent.step.prepare",
+            {},
+            async () => {
+              // Pi appends steering after this hook returns, so add AGENTS.md
+              // context first to commit the same message order.
+              const contextUpdate =
+                await repositoryInstructionsContext.applyUpdate(
+                  handoffUpdate,
+                  nextTurn.context,
+                );
+              const pendingMessages = await drainSteeringMessages();
+              const capacityUpdate = await applyActiveContextCompaction(
+                contextUpdate
+                  ? currentAgentMessages()
+                  : (nextTurn.context.messages as PiMessage[]),
+                hookSignal,
+                pendingMessages,
+                true,
+              );
+              return capacityUpdate
+                ? { ...contextUpdate, ...capacityUpdate }
+                : contextUpdate;
+            },
           );
-          const pendingMessages = await drainSteeringMessages();
-          const capacityUpdate = await applyActiveContextCompaction(
-            contextUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
-            hookSignal,
-            pendingMessages,
-            true,
-          );
+          // A yield is normal control flow, so it stays out of the span.
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return capacityUpdate
-            ? { ...contextUpdate, ...capacityUpdate }
-            : contextUpdate;
+          return stepUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));

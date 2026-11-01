@@ -257,7 +257,12 @@ export function createSandboxRuntime(
   ): Promise<void> => {
     await syncSkills(targetSandbox);
     // Snapshots ship Docker clients; the daemon is per-boot and must start here.
-    await ensureDockerDaemon(targetSandbox);
+    await withSandboxSpan(
+      "sandbox.docker.ensure",
+      "sandbox.docker.ensure",
+      {},
+      async () => await ensureDockerDaemon(targetSandbox),
+    );
     await options.onSandboxPrepare?.(targetSandbox);
   };
 

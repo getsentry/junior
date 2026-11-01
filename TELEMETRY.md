@@ -340,6 +340,38 @@ Each reply post attempt has an `http.client` span named
 `POST slack.com/api/chat.postMessage` under `chat.turn`. It carries
 `messaging.message.id` when Slack accepts the post.
 
+#### Turn latency
+
+Use these spans to split the time of one Slack turn into phases. Most phases
+are not direct children of `chat.turn`. `chat.reply` and
+`gen_ai.invoke_agent` sit between them, so walk the whole tree.
+
+- Delivery and queue wait: `app.turn.delivery_lag_ms` and `app.turn.wait_ms`
+  on `chat.turn`.
+- Setup before the agent starts, under `chat.reply`:
+  `chat.route_execution_profile` (router), `plugin.hook` with
+  `app.plugin.hook:userPrompt` (memory recall and other prompt context), and
+  `sandbox.acquire` plus `sandbox.repository_instructions.read` when the
+  Conversation already has a sandbox.
+- Each model call: `gen_ai.chat` under `gen_ai.invoke_agent`.
+- Each tool call: `gen_ai.execute_tool`. For sandbox tools, compare it with the
+  nested `bash` or `sandbox.*` span to find overhead around the operation.
+- Work between model calls: `agent.step.prepare`. Pi waits for it before each
+  later model call. It contains `agent.repository_instructions.refresh`,
+  steering reads, and context compaction.
+- Progress saves: `turn.checkpoint.save` with `app.turn.checkpoint.mode`.
+  The agent loop waits for a `running` save after each step that had tool
+  results.
+- Visible output: `POST slack.com/api/chat.postMessage` spans.
+
+Time between `gen_ai.chat` spans that no span covers is still unlabeled.
+
+```text
+dataset=spans query='span.op:[agent.step.prepare,agent.repository_instructions.refresh,turn.checkpoint.save,plugin.hook]'
+fields=span.op,app.repository_instructions.outcome,app.plugin.hook,app.plugin.name,count(),p50(span.duration),p90(span.duration),sum(span.duration)
+sort=-sum(span.duration)
+```
+
 ### Agent And Model
 
 The turn timed out, returned no useful answer, or used unexpected reasoning.
@@ -357,7 +389,9 @@ consecutive action-review denials. The agent still receives a normal tool
 rejection that says not to keep retrying.
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
+`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`,
+`agent.step.prepare`, `agent.repository_instructions.refresh`,
+`turn.checkpoint.save`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons`, `app.ai.outcome`, `app.automation.result`,
@@ -371,7 +405,8 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
 `app.ai.cost.total_usd`, `app.ai.time_to_first_byte_ms`,
 `gen_ai.response.time_to_first_chunk`, `app.ai.first_token_type`,
-`gen_ai.response.streaming`
+`gen_ai.response.streaming`, `app.repository_instructions.outcome`,
+`app.turn.checkpoint.mode`
 
 Each `gen_ai.chat` span records how long the model took to start its reply.
 Both times start just before the model request:
@@ -398,6 +433,20 @@ fields=timestamp,trace,gen_ai.request.model,app.ai.time_to_first_byte_ms,gen_ai.
 sort=timestamp
 ```
 
+When a Conversation has a sandbox, `agent.repository_instructions.refresh`
+reads the repository `AGENTS.md` files and repo skill list again before each
+later model call. `app.repository_instructions.outcome` tells what the model
+saw:
+
+- `unchanged`: the instructions were the same as the visible ones.
+- `added`: instructions appeared for the first time.
+- `updated`: the visible instructions changed.
+- `removed`: the visible instructions no longer apply.
+- `none`: no instructions were found and none were visible.
+
+`turn.checkpoint.save` records `app.turn.checkpoint.mode`: `running`,
+`paused`, `completed`, or `failed`.
+
 ### Tools, MCP, And Sandbox
 
 A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
@@ -408,7 +457,8 @@ Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
 `sandbox.network_policy_restore.failed`
 
 Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
-`sandbox.snapshot.resolve`, `sandbox.sync_skills`, `bash`
+`sandbox.snapshot.resolve`, `sandbox.sync_skills`, `sandbox.docker.ensure`,
+`sandbox.repository_instructions.read`, `bash`
 
 Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
@@ -418,7 +468,8 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.parsed_records`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
-`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
+`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`,
+`app.repository_instructions.repo_count`, `app.repository_instructions.found`
 
 `app.sandbox.acquire.outcome` on `sandbox.acquire` tells which path returned
 the sandbox:
@@ -430,6 +481,15 @@ the sandbox:
 
 `app.sandbox.sync.skipped` on `sandbox.sync_skills` is `true` when the sandbox
 already had the current skill files, so no files were copied.
+
+`sandbox.docker.ensure` starts the Docker daemon when a sandbox is prepared.
+
+`sandbox.repository_instructions.read` reads the repository instructions from
+the sandbox. It runs at turn start and inside each
+`agent.repository_instructions.refresh`.
+`app.repository_instructions.repo_count` is the number of repository folders
+checked. `app.repository_instructions.found` is `true` when an `AGENTS.md` was
+found. The span does not record paths or file contents.
 
 Workspace switches create their sandbox outside `sandbox.acquire`. To find the
 sandbox cost of one turn, add the durations of the top-level `sandbox.*` spans
@@ -503,11 +563,15 @@ Events: `startup.discovery.completed`, `plugin.loaded`,
 `skill.directory.read.failed`, `skill.frontmatter.invalid`,
 `skill.load.stat.failed`, `plugin.root.read.failed`
 
-Spans: active turn spans carry plugin/skill attributes
+Spans: `plugin.hook`; active turn spans carry plugin/skill attributes
 
 Attributes: `app.skill.name`, `app.skill.count`, `app.plugin.name`,
 `app.plugin.count`, `app.plugin.has_mcp`, `app.capability.names`,
-`file.directory`, `app.file.skill_directory`
+`file.directory`, `app.file.skill_directory`, `app.plugin.hook`
+
+A `plugin.hook` span times one plugin hook call. `app.plugin.hook` is
+`userPrompt`, `sandboxPrepare`, or `beforeToolExecute`. `app.plugin.name` names
+the plugin. Memory recall runs in the memory plugin's `userPrompt` hook.
 
 ### Attachments And Web Search
 
