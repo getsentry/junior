@@ -24,7 +24,12 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { logException, setTags, withLogContext } from "@/chat/logging";
+import {
+  buildTurnFailureResponse,
+  logException,
+  setTags,
+  withLogContext,
+} from "@/chat/logging";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
@@ -590,13 +595,6 @@ export function createConversationTurnWorker(
               },
             },
             saveResult: async (result) => {
-              if (stopSignal?.aborted) {
-                throw (
-                  stopSignal.reason ??
-                  new DOMException("Turn cancelled", "AbortError")
-                );
-              }
-
               modelFailureCaptureAttempted =
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
@@ -756,6 +754,24 @@ export function createConversationTurnWorker(
                 failureCode,
                 turnId,
               });
+              // Tell the people at the Location that the Turn failed. Web
+              // input has no provider Delivery. The dashboard shows the
+              // failed Turn.
+              if (deliverToProvider && failureEventId) {
+                try {
+                  await deliverAssistantMessage(
+                    buildTurnFailureResponse(failureEventId),
+                  );
+                } catch (deliveryError) {
+                  captureConversationTurnFailure({
+                    conversationId: context.conversationId,
+                    error: deliveryError,
+                    failureCode: "delivery_failed",
+                    runId: currentRunId,
+                    turnId,
+                  });
+                }
+              }
             },
           },
         });

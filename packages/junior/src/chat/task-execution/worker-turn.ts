@@ -116,7 +116,14 @@ export async function runWorkerTurn(args: {
           shouldYield: context.shouldYield,
         },
       },
-      prepared.saveResult,
+      async (result) => {
+        // A stop that aborted the Run ends the Turn as stopped. A Run that
+        // finished before the stop keeps its result.
+        if (result.diagnostics.outcome !== "success") {
+          stopSignal?.throwIfAborted();
+        }
+        return await prepared.saveResult(result);
+      },
     );
     if (outcome.status !== "completed" && stopSignal?.aborted) {
       return "stopped";

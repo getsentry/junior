@@ -551,9 +551,20 @@ async function runPausedTurnInContext(
               excludeMessageId: userMessage.id,
             });
         const sandboxRef = getPersistedSandboxState(currentState);
-        const routing = await resolveTurnSessionRouting({
-          conversationId: payload.conversationId,
-        });
+        // A dispatch Turn keeps the Source of its dispatch, as its first slice
+        // does. Its Conversation has no Slack session Source to read.
+        const routing =
+          dispatchId && activeTurn.source
+            ? {
+                ...(await resolveConversationRouting({
+                  conversationId: payload.conversationId,
+                })),
+                destination,
+                source: activeTurn.source,
+              }
+            : await resolveTurnSessionRouting({
+                conversationId: payload.conversationId,
+              });
         const source = routing.source;
         const routingDestination = routing.destination;
 
