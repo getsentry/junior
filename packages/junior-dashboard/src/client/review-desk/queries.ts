@@ -141,7 +141,7 @@ const NO_CONVERSATIONS: ReadonlySet<string> = new Set();
 
 /**
  * Return the Conversations that wait on the viewer. Today only the review
- * desk sets this: an open linked item assigned to the viewer or Everyone.
+ * desk sets this: a linked open action item assigned to the viewer.
  */
 export function useWaitingConversationIds(): ReadonlySet<string> {
   const query = useQuery({
