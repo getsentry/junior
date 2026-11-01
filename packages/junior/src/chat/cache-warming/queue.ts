@@ -1,5 +1,6 @@
 /** Send and receive delayed cache warmup messages. */
 import { z } from "zod";
+import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -101,6 +102,8 @@ function cacheWarmupCallback() {
       const { runCacheWarmup } = await import("./warmup");
       await runCacheWarmup(message);
     },
+    // The kill switch also drops warmups that were already queued.
+    skip: () => !getChatConfig().cacheWarmingEnabled,
     topic: CACHE_WARMUP_QUEUE_TOPIC,
     verify: (value) => verifyQueueMessage(cacheWarmupSign, value),
   });

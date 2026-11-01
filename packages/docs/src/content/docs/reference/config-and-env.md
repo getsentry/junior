@@ -22,6 +22,7 @@ related:
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
+| `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
@@ -352,6 +353,9 @@ less than that write.
   sends no warmups.
 - When 3 of the last 20 warmups of a model miss the cache or fail, Junior stops
   warmups for that model. They start again 6 hours after the last warmup.
+- `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
+  requests and drops warmups that are already in the queue. The default is
+  `true`.
 - `PI_CACHE_RETENTION=long` turns warming off, because the long cache lasts an
   hour.
 

@@ -21,6 +21,7 @@ import {
   type Context,
   type Model,
 } from "@earendil-works/pi-ai/compat";
+import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
@@ -301,6 +302,7 @@ export function createCacheWarmingRecorder(
       const request = lastRequest;
       lastRequest = undefined;
       if (
+        !getChatConfig().cacheWarmingEnabled ||
         !request ||
         message.stopReason === "error" ||
         message.stopReason === "aborted" ||
