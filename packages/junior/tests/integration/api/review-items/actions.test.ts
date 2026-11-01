@@ -5,6 +5,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { takeReviewItem } from "@/chat/review-items/store";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import {
@@ -12,6 +13,7 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const REQUEST = {
   question: "Approve or reject this entry?",
@@ -54,11 +56,14 @@ async function slackConversation(conversationId: string): Promise<void> {
 }
 
 async function addItem(input: Record<string, unknown>): Promise<string> {
-  const tool = createAddReviewItemTool({
-    conversationId: "slack:CPUB:1.000001",
-    resolveActorIdentity: async () => undefined,
-    source: { kind: "scheduled_automation" },
-  });
+  const tool = createAddReviewItemTool(
+    {
+      conversationId: "slack:CPUB:1.000001",
+      resolveActorIdentity: async () => undefined,
+      source: { kind: "scheduled_automation" },
+    },
+    createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+  );
   const result = await (tool as any).execute(input, {});
   return result.item.id;
 }

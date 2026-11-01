@@ -33,6 +33,7 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -216,6 +217,8 @@ export type AgentEvent =
 export type AgentEnvironment = {
   attachmentStorage?: AttachmentStorage;
   configuration?: Record<string, unknown>;
+  /** Queue of the app, for tools that wake other Conversations. */
+  conversationWorkQueue?: ConversationWorkQueue;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */

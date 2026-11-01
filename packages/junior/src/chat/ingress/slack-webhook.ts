@@ -78,6 +78,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
@@ -623,8 +624,10 @@ async function routeParsedMessage(args: {
     if (message.author.isBot === true) return;
     await closeReviewItemsAnsweredByReply({
       conversationId,
-      getSlackAdapter: () => args.adapter,
-      queue: args.queue,
+      delivery: {
+        queue: args.queue,
+        show: createSlackReviewItemShow(() => args.adapter),
+      },
       resolveUser: async () => {
         const teamId = args.installation.teamId;
         const userId = parseActorUserId(message.author.userId);

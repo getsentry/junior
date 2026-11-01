@@ -120,9 +120,29 @@ message. A Slack person without a Junior User closes only items with no
 assignees. The message is the answer in its own Conversation. Each other
 linked Conversation gets an Event. The first close wins, so a reply after a
 click changes nothing. A retry of the reply, or a later reply from the same
-person, sends the Events that are missing for the items that the person
-closed by reply. Each Event has a key, so an Event that was sent does not
-go again.
+person, delivers again each item that the person closed by reply. The cards
+show the close again, and only the missing Events go. Each Event has a key,
+so an Event that was sent does not go again.
+
+## After a change
+
+Every change goes through one path: `deliverReviewItemChange` in
+`changes.ts`. The agent tools, the person actions, and a reply in the
+thread call it after they save the change.
+
+- First, every surface shows the new state. App setup gives the `show`
+  function. Today it is the Slack card sync. Review item code does not import
+  Slack code (`no-review-items-to-slack` in `.dependency-cruiser.mjs`).
+- Then a person action or an agent close goes to the other linked
+  Conversations as messages. An agent change to the content sends no
+  messages.
+- Delivery runs inline, after the change is saved. A failed message fails the
+  call that made the change. The caller can retry: a retry sends only the
+  messages that are missing. A failed card is logged. The next delivery of
+  the item shows its latest state.
+- App setup also gives the agent tools `findMentionedUserId`. The Slack
+  version (`chat/slack/review-item-tools.ts`) resolves a Slack mention to a
+  User through the Slack Identity in the workspace of the item.
 
 ## Messages to linked Conversations
 
@@ -169,8 +189,8 @@ each card, so Junior can change it in place.
   state. A closed card has no controls and shows who closed it.
 - A card in a thread that the item is no longer linked to loses its
   content.
-- Cards are optional UI. A Slack failure is logged and does not fail the
-  change.
+- Cards are optional UI. A Slack failure is logged
+  (`review_item.slack_card.sync.failed`) and does not fail the change.
 - Syncs of one item run one at a time under a state lock (`withLock` in
   `chat/state/locks.ts`). So two syncs cannot post two cards in one thread.
   Each sync reads the latest item, so a sync that waits shows the newest

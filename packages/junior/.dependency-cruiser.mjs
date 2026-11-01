@@ -50,6 +50,18 @@ export default {
       },
     },
     {
+      name: "no-review-items-to-slack",
+      comment:
+        "Review item code is provider-neutral. App setup injects Slack cards and mentions; see src/chat/review-items/README.md.",
+      severity: "error",
+      from: {
+        path: "^src/chat/(review-items/|tools/review-items\\.ts$)",
+      },
+      to: {
+        path: "^src/chat/slack/",
+      },
+    },
+    {
       name: "no-slack-sdk-outside-provider-modules",
       comment:
         "Slack SDK imports must stay in Slack-owned infrastructure or Slack tool modules.",
