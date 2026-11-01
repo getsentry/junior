@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { fileLengthExceptions } from "./file-length-exceptions.mjs";
 
 export const MAX_CODE_FILE_LINES = 1_000;
-export const MAX_DOC_FILE_LINES = 120;
+const MAX_DOC_FILE_LINES = 120;
 
 // Agents read this text as the fix instruction, so it must name the intended
 // fix and the shortcuts that only hide the size.
