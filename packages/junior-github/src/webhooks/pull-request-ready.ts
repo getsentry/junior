@@ -2,10 +2,11 @@
  * The "ready to merge" notice on the review desk for a Junior pull request.
  *
  * A pull request is ready to merge when it is open, not a draft, approved,
- * and its checks pass. Each webhook that can change one of these facts reads
- * them again from GitHub. The notice goes to the person who asked Junior to
- * open the pull request, in the Conversation where they asked. It closes
- * when the pull request merges, closes, or is no longer ready.
+ * and GitHub's merge state is `clean`. Each webhook that can change one of
+ * these facts reads them again from GitHub. The notice goes to the person
+ * who asked Junior to open the pull request, in the Conversation where they
+ * asked. It closes when the pull request merges, closes, or is no longer
+ * ready.
  */
 import type {
   PluginConversationReviewItems,
@@ -60,15 +61,6 @@ export function pullRequestReadyTargets(
   ];
 }
 
-function isReadyToMerge(state: GitHubPullRequestMergeState): boolean {
-  return (
-    state.state === "open" &&
-    !state.draft &&
-    state.approved &&
-    state.checksPassed
-  );
-}
-
 function closeReason(state: GitHubPullRequestMergeState): {
   reason: string;
   status: "done" | "dismissed";
@@ -82,21 +74,8 @@ function closeReason(state: GitHubPullRequestMergeState): {
       status: "dismissed",
     };
   }
-  if (state.draft) {
-    return {
-      reason: "The pull request is a draft again.",
-      status: "dismissed",
-    };
-  }
-  if (!state.approved) {
-    return {
-      reason:
-        "The pull request is no longer approved, or a reviewer requested changes.",
-      status: "dismissed",
-    };
-  }
   return {
-    reason: "The checks of the pull request no longer pass.",
+    reason: "The pull request is no longer ready to merge.",
     status: "dismissed",
   };
 }
@@ -119,7 +98,10 @@ async function syncOne(
   // and a Conversation for the notice.
   if (!opener?.conversationId) return;
   const state = await loadPullRequestMergeState(args.env, target);
-  const ready = isReadyToMerge(state);
+  const open = state.state === "open" && !state.draft;
+  // GitHub has not computed the merge state yet. A later event decides.
+  if (open && !state.mergeableState) return;
+  const ready = open && state.mergeableState === "clean" && state.approved;
   // Only the call that changes the saved state acts. So repeat events add
   // no second notice, and a notice that a person closed does not come back
   // until the pull request is ready again.
@@ -135,7 +117,7 @@ async function syncOne(
     if (ready) {
       await items.upsert({
         assigneeIdentityIds: [opener.identityId],
-        body: `**${state.title}** is approved and its checks pass. You can merge it: ${state.url}`,
+        body: `**${state.title}** is approved, and GitHub says that it can merge. Merge it, or say why not: ${state.url}`,
         dedupeKey,
         subject: { id: state.url, title: name, url: state.url },
         title: `Ready to merge: ${name}`,

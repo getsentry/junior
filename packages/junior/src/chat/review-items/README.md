@@ -110,6 +110,8 @@ decision. Core owns the rules below.
 - The plugin names assignees by Identity. Core assigns the linked User. A
   private notice goes only to people in its Conversation.
 - A repeat with the same key updates the open item.
+- A plugin notice stays open when its Conversation starts a new Turn. Only
+  the plugin or a person closes it.
 - A plugin close sends no message to the linked Conversation. The provider
   event that closed the item can reach that Conversation through a Watch.
 

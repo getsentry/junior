@@ -99,8 +99,9 @@ function pullRequestAction(action: string, merged = false) {
 
 /** GitHub state that the mocked REST API returns. */
 interface GitHubState {
-  checks: Array<{ conclusion: string | null; status: string }>;
   draft: boolean;
+  /** Each pull request read takes the next value. The last one repeats. */
+  mergeableStates: Array<string | null>;
   merged: boolean;
   reviews: Array<{ state: string; user: { login: string } }>;
   state: "closed" | "open";
@@ -118,10 +119,14 @@ function mockGitHub(github: GitHubState, requests: string[]) {
     ),
     http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () => {
       requests.push("pull");
+      const mergeableState =
+        github.mergeableStates.length > 1
+          ? github.mergeableStates.shift()
+          : github.mergeableStates[0];
       return HttpResponse.json({
         draft: github.draft,
-        head: { sha: "abcdef1234567890" },
         html_url: PULL_URL,
+        mergeable_state: mergeableState,
         merged: github.merged,
         state: github.state,
         title: "Add the review desk notice",
@@ -137,16 +142,6 @@ function mockGitHub(github: GitHubState, requests: string[]) {
       () => {
         requests.push("reviews");
         return HttpResponse.json(github.reviews);
-      },
-    ),
-    http.get(
-      "https://api.github.com/repos/getsentry/junior/commits/abcdef1234567890/check-runs",
-      () => {
-        requests.push("checks");
-        return HttpResponse.json({
-          check_runs: github.checks,
-          total_count: github.checks.length,
-        });
       },
     ),
   );
@@ -263,8 +258,8 @@ describe("ready to merge notice", () => {
     const failures = { close: 0 };
     const requests: string[] = [];
     const github: GitHubState = {
-      checks: [{ conclusion: "success", status: "completed" }],
       draft: false,
+      mergeableStates: ["clean"],
       merged: false,
       reviews: [],
       state: "open",
@@ -274,7 +269,7 @@ describe("ready to merge notice", () => {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls, errors, failures);
 
-      // Checks pass, but no one approved it yet.
+      // GitHub can merge it, but no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
       expect(requests).toEqual(["pull", "reviews"]);
@@ -290,7 +285,7 @@ describe("ready to merge notice", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `**Add the review desk notice** is approved and its checks pass. You can merge it: ${PULL_URL}`,
+          body: `**Add the review desk notice** is approved, and GitHub says that it can merge. Merge it, or say why not: ${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
@@ -307,20 +302,28 @@ describe("ready to merge notice", () => {
       await webhook.handler(reviewSubmitted("approved"));
       expect(calls).toEqual([notice]);
 
-      // A new push restarts the checks.
-      github.checks = [{ conclusion: null, status: "in_progress" }];
+      // GitHub has not computed the merge state after a push. Two reads
+      // stay unknown, so nothing changes, and a later event decides.
+      requests.length = 0;
+      github.mergeableStates = [null, "unknown"];
       await webhook.handler(pullRequestAction("synchronize"));
+      expect(requests).toEqual(["pull", "pull"]);
+      expect(calls).toEqual([notice]);
+
+      // The second read has the merge state: the new checks still run.
+      github.mergeableStates = ["unknown", "blocked"];
+      await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
           dedupeKey: DEDUPE_KEY,
-          reason: "The checks of the pull request no longer pass.",
+          reason: "The pull request is no longer ready to merge.",
           status: "dismissed",
         },
         kind: "close",
       });
 
-      github.checks = [{ conclusion: "success", status: "completed" }];
+      github.mergeableStates = ["clean"];
       await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toEqual(notice);
 
@@ -359,8 +362,8 @@ describe("ready to merge notice", () => {
     const requests: string[] = [];
     mockGitHub(
       {
-        checks: [{ conclusion: "success", status: "completed" }],
         draft: false,
+        mergeableStates: ["clean"],
         merged: false,
         reviews: [{ state: "APPROVED", user: { login: "reviewer" } }],
         state: "open",

@@ -1,11 +1,3 @@
-/** The thing a Review item is about, such as a pull request. */
-export interface PluginReviewItemSubject {
-  /** Stable id that Search matches, such as a URL. */
-  id: string;
-  title?: string;
-  url?: string;
-}
-
 /** A notice that a plugin puts on the review desk. */
 export interface PluginReviewNotice {
   /** Junior assigns the User linked to each Identity. */
@@ -17,7 +9,8 @@ export interface PluginReviewNotice {
    * item for each key.
    */
   dedupeKey: string;
-  subject?: PluginReviewItemSubject;
+  /** What the notice is about, such as a pull request. Search matches `id`. */
+  subject?: { id: string; title?: string; url?: string };
   title: string;
 }
 

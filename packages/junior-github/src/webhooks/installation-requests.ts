@@ -130,8 +130,8 @@ export async function loadRepositoryRole(
 
 const pullRequestSchema = z.object({
   draft: z.boolean().optional(),
-  head: z.object({ sha: z.string().min(1) }),
   html_url: z.string().url(),
+  mergeable_state: z.string().nullable().optional(),
   merged: z.boolean(),
   state: z.enum(["open", "closed"]),
   title: z.string(),
@@ -144,22 +144,20 @@ const reviewsSchema = z.array(
   }),
 );
 
-const checkRunsSchema = z.object({
-  check_runs: z.array(
-    z.object({ conclusion: z.string().nullable(), status: z.string() }),
-  ),
-  total_count: z.number(),
-});
-
-const PASSING_CHECK_CONCLUSIONS = new Set(["neutral", "skipped", "success"]);
-
 /** The pull request facts that decide whether it is ready to merge. */
 export interface GitHubPullRequestMergeState {
-  /** At least one approval, and no reviewer still requests changes. */
+  /**
+   * At least one approval, and no reviewer still requests changes. Read
+   * only when GitHub says the pull request can merge cleanly.
+   */
   approved: boolean;
-  /** The head commit has check runs, and every one finished and passed. */
-  checksPassed: boolean;
   draft: boolean;
+  /**
+   * GitHub's `mergeable_state`, such as `clean` or `blocked`. `clean` means
+   * that the required reviews and every check and status passed, and there
+   * are no conflicts. Undefined when GitHub has not computed it yet.
+   */
+  mergeableState?: string;
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -167,9 +165,10 @@ export interface GitHubPullRequestMergeState {
 
 /**
  * Read whether a pull request is ready to merge, with a read-only token.
- * Reviews and checks load only for an open pull request that is not a draft.
- * Each reviewer counts by their latest approval, change request, or
- * dismissal. Comments do not change the result.
+ * GitHub computes `mergeable_state` after a change, so an unknown state is
+ * read once more. Reviews load only for an open pull request that is not a
+ * draft and can merge cleanly. Each reviewer counts by their latest
+ * approval, change request, or dismissal. Comments do not change the result.
  */
 export async function loadPullRequestMergeState(
   env: GitHubInstallationEnv,
@@ -181,31 +180,36 @@ export async function loadPullRequestMergeState(
   );
   const token = await issueInstallationToken({
     ...env,
-    permissions: { checks: "read", pull_requests: "read" },
+    permissions: { pull_requests: "read" },
     repositories: [name],
   });
   const read = async (path: string) =>
     await githubRequest(
       "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}${path}`,
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}${path}`,
       { token: token.token },
     );
-  const pull = pullRequestSchema.parse(
-    await read(`/pulls/${pullRequest.number}`),
-  );
-  const state: GitHubPullRequestMergeState = {
-    approved: false,
-    checksPassed: false,
-    draft: pull.draft === true,
-    state: pull.merged ? "merged" : pull.state,
-    title: pull.title,
-    url: pull.html_url,
+  const readPull = async () => {
+    const pull = pullRequestSchema.parse(await read(""));
+    const mergeableState =
+      pull.mergeable_state && pull.mergeable_state !== "unknown"
+        ? pull.mergeable_state
+        : undefined;
+    return {
+      approved: false,
+      draft: pull.draft === true,
+      ...(mergeableState ? { mergeableState } : undefined),
+      state: pull.merged ? ("merged" as const) : pull.state,
+      title: pull.title,
+      url: pull.html_url,
+    };
   };
+  let state: GitHubPullRequestMergeState = await readPull();
   if (state.state !== "open" || state.draft) return state;
+  if (!state.mergeableState) state = await readPull();
+  if (state.mergeableState !== "clean") return state;
 
-  const reviews = reviewsSchema.parse(
-    await read(`/pulls/${pullRequest.number}/reviews?per_page=100`),
-  );
+  const reviews = reviewsSchema.parse(await read("/reviews?per_page=100"));
   // A later page can hold a newer change request, so a full page does not pass.
   if (reviews.length >= 100) return state;
   const latestReviews = new Map<string, string>();
@@ -222,21 +226,5 @@ export async function loadPullRequestMergeState(
   state.approved =
     reviewStates.includes("APPROVED") &&
     !reviewStates.includes("CHANGES_REQUESTED");
-  if (!state.approved) return state;
-
-  const checks = checkRunsSchema.parse(
-    await read(
-      `/commits/${encodeURIComponent(pull.head.sha)}/check-runs?filter=latest&per_page=100`,
-    ),
-  );
-  // A run past the first page could fail, so a partial list does not pass.
-  state.checksPassed =
-    checks.total_count > 0 &&
-    checks.total_count === checks.check_runs.length &&
-    checks.check_runs.every(
-      (run) =>
-        run.status === "completed" &&
-        PASSING_CHECK_CONCLUSIONS.has(run.conclusion ?? ""),
-    );
   return state;
 }
