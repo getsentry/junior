@@ -49,8 +49,13 @@ import {
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
-import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
+import {
+  TranscriptRow,
+  TranscriptRows,
+  TranscriptUnreadMarker,
+} from "./TranscriptRows";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
+import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -85,6 +90,8 @@ export const ConversationTranscriptView = memo(
     /** Sends that history does not have yet. History wins on message id. */
     pendingMessages?: readonly ConversationMailboxMessage[];
     responding?: boolean;
+    /** Show the "New" marker before the first row in this range. */
+    unread?: TranscriptUnreadRange;
   }) {
     // Cards can change while their Message events stay unchanged.
     const { events, annotations } = props.conversation;
@@ -106,6 +113,7 @@ export const ConversationTranscriptView = memo(
             conversation={props.conversation}
             messages={messages}
             responding={props.responding}
+            unread={props.unread}
           />
         </section>
       </TranscriptTimestampProvider>
@@ -121,6 +129,7 @@ function SegmentEvents(props: {
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
   responding?: boolean;
+  unread?: TranscriptUnreadRange;
 }) {
   return (
     <TranscriptRows>
@@ -134,6 +143,7 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
+          unread={props.unread}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
         props.messages.length > 0 ? (
@@ -205,6 +215,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
   }) => void;
   transcript: TranscriptViewMessage[];
   conversation: ConversationTranscript;
+  unread?: TranscriptUnreadRange;
 }) {
   const entries = useMemo(
     () => groupTranscriptMessages(props.transcript),
@@ -214,6 +225,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
     <TranscriptEntryList
       entries={entries}
       keyPrefix={props.conversation.conversationId}
+      unread={props.unread}
       renderContext={(entry) => (
         <TranscriptRailEvent
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
@@ -314,11 +326,27 @@ function TranscriptEntryList(props: {
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
+  unread?: TranscriptUnreadRange;
 }) {
   const search = useTranscriptSearch();
   const activityKeys = useRef(new Map<string, string>());
   const claimedActivityKeys = new Set<string>();
   const rows: ReactNode[] = [];
+  // Search results are not a reading order, so they get no marker.
+  const unread = search.active ? undefined : props.unread;
+  let unreadMarkerPending = unread !== undefined;
+  const isUnread = (seq: number | undefined) =>
+    unread !== undefined &&
+    seq !== undefined &&
+    seq > unread.afterSeq &&
+    seq <= unread.throughSeq;
+  const pushRow = (unreadRow: boolean, row: ReactNode) => {
+    if (unreadMarkerPending && unreadRow) {
+      unreadMarkerPending = false;
+      rows.push(<TranscriptUnreadMarker key="unread-marker" />);
+    }
+    rows.push(row);
+  };
 
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
     if (entry.kind === "subagent") return props.renderSubagent(entry);
@@ -359,8 +387,16 @@ function TranscriptEntryList(props: {
           keyPrefix: props.keyPrefix,
           knownKeys: activityKeys.current,
         });
-        rows.push(
-          <TranscriptRow anchorKey={activityKey} indent key={activityKey}>
+        const lastSeq = lastEntrySeq(activityEntries);
+        // The marker goes before the group when any of it is unread.
+        pushRow(
+          activityEntries.some((candidate) => isUnread(candidate.seq)),
+          <TranscriptRow
+            anchorKey={activityKey}
+            indent
+            key={activityKey}
+            seq={lastSeq}
+          >
             <TranscriptActivityGroup
               entries={visibleEntries}
               renderEntry={renderEntry}
@@ -373,8 +409,9 @@ function TranscriptEntryList(props: {
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       const rowKey = `${props.keyPrefix}:${entry.key}`;
-      rows.push(
-        <TranscriptRow anchorKey={rowKey} key={rowKey}>
+      pushRow(
+        isUnread(entry.seq),
+        <TranscriptRow anchorKey={rowKey} key={rowKey} seq={entry.seq}>
           {renderEntry(entry)}
         </TranscriptRow>,
       );
@@ -389,6 +426,16 @@ function TranscriptEntryList(props: {
   // Let rows participate in the parent transcript stack so messages, tool
   // groups, and the thinking indicator share one vertical gap.
   return rows;
+}
+
+function lastEntrySeq(
+  entries: readonly RenderedTranscriptEntry[],
+): number | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const seq = entries[index]!.seq;
+    if (seq !== undefined) return seq;
+  }
+  return undefined;
 }
 
 /** Keep one activity group mounted while new or historical events extend either edge. */

@@ -15,6 +15,7 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationReadPositionSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -38,6 +39,10 @@ import {
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import {
+  markMockConversationRead,
+  withMockReadPosition,
+} from "./read-positions";
 import {
   filterMockConversationsByRepository,
   readMockCodeRepository,
@@ -244,7 +249,27 @@ export function createMockReportingApi(): Hono<{
     const { conversationId } = params.data;
     const report = readMockConversationDetail(conversationId, query.data.limit);
     return report
-      ? jsonResponse(conversationDetailReportSchema, report)
+      ? jsonResponse(
+          conversationDetailReportSchema,
+          withMockReadPosition(report),
+        )
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.put("/conversations/:conversationId/read-position", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationReadPositionSchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = markMockConversationRead(
+      params.data.conversationId,
+      body.data.lastReadSeq,
+    );
+    return result
+      ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {

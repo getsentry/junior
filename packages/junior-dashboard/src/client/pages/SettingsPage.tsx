@@ -13,6 +13,11 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
+import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
+import {
+  useConversationStartPosition,
+  type ConversationStartPosition,
+} from "../conversations/transcriptReadPosition";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { useDocumentTitle } from "../documentTitle";
@@ -104,9 +109,66 @@ export function SettingsPage({ identity }: SettingsPageProps) {
             </div>
           </Card>
         </form>
+        <ConversationStartSetting />
         <CustomizationForm />
       </section>
     </div>
+  );
+}
+
+const startPositionOptions: {
+  description: string;
+  label: string;
+  value: ConversationStartPosition;
+}[] = [
+  {
+    description: "Open at the first new message, below a “New” line.",
+    label: "Where I left off",
+    value: "unread",
+  },
+  {
+    description: "Always open at the newest message.",
+    label: "Latest message",
+    value: "latest",
+  },
+];
+
+/** Let the user choose where a Conversation opens on this browser. */
+function ConversationStartSetting() {
+  const [startPosition, setStartPosition] = useConversationStartPosition();
+  return (
+    <Card className="mt-6 mb-0" padding="md" variant="raised">
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="m-0 p-0 text-lg font-bold">
+          Open conversations at
+        </legend>
+        <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+          Junior keeps your place in each conversation on all your devices. This
+          choice applies to this browser.
+        </p>
+        <RadioGroup<ConversationStartPosition>
+          aria-label="Open conversations at"
+          className="grid gap-3"
+          onValueChange={setStartPosition}
+          value={startPosition}
+        >
+          {startPositionOptions.map((option) => (
+            <label
+              className="flex cursor-pointer items-start gap-3"
+              key={option.value}
+            >
+              <RadioGroupItem className="mt-0.5" value={option.value} />
+              <span className="grid gap-0.5">
+                <span className="text-sm font-medium">{option.label}</span>
+                <span className="text-xs text-dashboard-text-muted">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+      </fieldset>
+    </Card>
   );
 }
 

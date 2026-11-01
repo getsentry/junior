@@ -36,6 +36,7 @@ import {
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
 import { resetMockConversationArchiveState } from "./mock-reporting/fixtures";
+import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
@@ -71,6 +72,7 @@ const mockDisplayNamesByEmail = new Map<string, string>();
 export function resetMockDashboardState(): void {
   mockDisplayNamesByEmail.clear();
   resetMockConversationArchiveState();
+  resetMockReadPositions();
 }
 
 export interface JuniorDashboardOptions {
