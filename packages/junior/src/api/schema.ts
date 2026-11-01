@@ -9,6 +9,7 @@ export {
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
 } from "../chat/tools/runtime/user-input-request";
 export type {
   UserInputAnswer,

@@ -45,7 +45,6 @@ export function ConversationReviewBar(props: { conversationId: string }) {
           label="Review items"
           onClose={() => setOpen(false)}
           openKey={props.conversationId}
-          width="narrow"
         >
           <div className="grid gap-3">
             {items.map((item) => (
