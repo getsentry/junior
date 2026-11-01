@@ -44,6 +44,11 @@ reads. Terms are in `TERMINOLOGY.md`.
 - Child text and parent tasks never become Guardian user intent, also on
   resume. Child actions use `CHILD_AGENT_USER_INTENT`. `root-conversation.ts`
   reads the root `message` events again for each action.
+- A root message is `user` only when its stored `authorIdentityId` is one of
+  the Identities of the person behind the child's Actor. The author id in
+  `meta` never counts. A message without a stored author Identity is
+  `other person`. The local CLI is the one exception: its messages use the
+  system Identity, so they match on the local Actor.
 - A child cannot give user approval. Results tell the parent that they are not
   from a person.
 - Children disable `handoff` and `interactive-auth`. They disable `subagents`

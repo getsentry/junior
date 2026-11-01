@@ -10,8 +10,10 @@
  * later revocation is still there after the root's model history changes.
  *
  * Only a message whose author has the same Actor identity as the Run counts
- * as authority. Each other message keeps its real author as a label and is
- * only context. Nothing is copied into the Run.
+ * as authority. A web message, such as a review desk answer, also counts when
+ * its stored author Identity links to the same User as the Run's Actor. Each
+ * other message keeps its real author as a label and is only context. Nothing
+ * is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -23,6 +25,7 @@ import {
   type RootConversation,
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
+import { readActorIdentity, readIdentityById } from "@/chat/plugins/viewer";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -105,11 +108,55 @@ function messageAuthor(
     : undefined;
 }
 
+/** A person's message from the web, such as a review desk answer. */
+function isWebUserMessage(data: MessageData): boolean {
+  return (
+    data.role === "user" &&
+    data.meta?.eventType === undefined &&
+    data.meta?.source === "web"
+  );
+}
+
+/**
+ * Return the author Identity ids of web messages from the User of `actor`.
+ * A desk answer to a Slack thread comes from the person's web Identity, not
+ * from their Slack Identity. The only trusted link is the stored User of
+ * each Identity: the runtime writes `authorIdentityId` at ingress, and an
+ * Identity links to a User only through a verified email. A missing User on
+ * either side matches nothing.
+ */
+async function sameUserWebIdentityIds(
+  actor: Actor,
+  messages: Iterable<MessageData>,
+): Promise<Set<string>> {
+  const identityIds = new Set<string>();
+  for (const data of messages) {
+    if (isWebUserMessage(data) && data.authorIdentityId) {
+      identityIds.add(data.authorIdentityId);
+    }
+  }
+  if (identityIds.size === 0) {
+    return identityIds;
+  }
+  const userId = (await readActorIdentity(actor))?.user?.id;
+  const matched = new Set<string>();
+  if (!userId) {
+    return matched;
+  }
+  for (const identityId of identityIds) {
+    if ((await readIdentityById(identityId))?.user?.id === userId) {
+      matched.add(identityId);
+    }
+  }
+  return matched;
+}
+
 /** Label one root message with its real author. */
 function messageLabel(
   root: Conversation,
   data: MessageData,
   actor: Actor,
+  sameUserIdentityIds: ReadonlySet<string>,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -120,6 +167,13 @@ function messageLabel(
   // An Event Turn input, such as a child agent result, is not a person.
   if (data.meta?.eventType !== undefined) {
     return "event";
+  }
+  if (
+    isWebUserMessage(data) &&
+    data.authorIdentityId &&
+    sameUserIdentityIds.has(data.authorIdentityId)
+  ) {
+    return "user";
   }
   const author = messageAuthor(root, data);
   if (!sameActorIdentity(author, actor)) {
@@ -235,6 +289,10 @@ export async function readRootConversation(args: {
     pinnedRead && openingEdit !== undefined
       ? { ...pinnedRead.data, text: openingEdit }
       : pinnedRead?.data;
+  const sameUserIdentityIds = await sameUserWebIdentityIds(args.actor, [
+    ...byId.values(),
+    ...(opening ? [opening] : []),
+  ]);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
@@ -244,7 +302,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor),
+      author: messageLabel(root, data, args.actor, sameUserIdentityIds),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -256,7 +314,12 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(root, opening, args.actor),
+            author: messageLabel(
+              root,
+              opening,
+              args.actor,
+              sameUserIdentityIds,
+            ),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

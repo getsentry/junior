@@ -5,7 +5,9 @@ import {
   agentInvocationInputText,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import { getConversationEventStore } from "@/chat/db";
+import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
@@ -23,9 +25,11 @@ async function recordRootMessage(
   conversationId: string,
   message: {
     author?: { isBot?: boolean; userId: string };
+    authorIdentityId?: string;
     eventType?: string;
     messageId?: string;
     role: "user" | "assistant";
+    source?: "web";
     text: string;
   },
 ): Promise<void> {
@@ -34,6 +38,7 @@ async function recordRootMessage(
   const meta = {
     ...(message.author ? { author: message.author } : undefined),
     ...(message.eventType ? { eventType: message.eventType } : undefined),
+    ...(message.source ? { source: message.source } : undefined),
   };
   await getConversationEventStore().append(conversationId, [
     {
@@ -43,6 +48,9 @@ async function recordRootMessage(
         messageId,
         role: message.role,
         text: message.text,
+        ...(message.authorIdentityId
+          ? { authorIdentityId: message.authorIdentityId }
+          : undefined),
         ...(Object.keys(meta).length > 0 ? { meta } : undefined),
       },
       createdAtMs: 1_000 + messageCount,
@@ -166,6 +174,67 @@ describe("user approval for child agents", () => {
 
       const fromGrandchild = await read(grandchild.childConversationId, user);
       expect(fromGrandchild.messages.slice(-3)).toEqual(latest);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads a review desk answer as the user only when its web Identity links to the user's User", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      // Slack ingress saves the Slack Identity with its verified email, which
+      // links it to the User of that email.
+      await resolveActorIdentityId(getSqlExecutor(), {
+        ...user,
+        email: "maya@example.com",
+      });
+      // A desk answer is a web Message. Web ingress stores the Identity of
+      // the signed-in person as the author.
+      const deskAnswer = async (email: string, text: string) => {
+        const actor = webActorFromEmail(email);
+        await recordRootMessage(slackParentConversationId, {
+          author: { userId: actor.userId },
+          authorIdentityId: await resolveActorIdentityId(
+            getSqlExecutor(),
+            actor,
+          ),
+          role: "user",
+          source: "web",
+          text,
+        });
+      };
+      await deskAnswer(
+        "maya@example.com",
+        "Approve: delete evt_nightly_digest",
+      );
+      // Another person can answer on the desk too. That is not approval.
+      await deskAnswer("sam@example.com", "Approve: delete every automation");
+
+      const child = await createAndEnqueueAgentInvocation(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "spawn-desk-answer",
+          input: "Delete evt_nightly_digest.",
+          parentToolCallId: "call-desk-answer",
+        },
+        { conversationStore, nowMs: 2_000, queue, state },
+      );
+      await expect(
+        readRootConversation({
+          actor: user,
+          conversationId: child.childConversationId,
+        }),
+      ).resolves.toEqual({
+        messages: [
+          { author: "user", text: "Approve: delete evt_nightly_digest" },
+          { author: "other person", text: "Approve: delete every automation" },
+        ],
+        truncated: false,
+      });
     } finally {
       await fixture.close();
     }
