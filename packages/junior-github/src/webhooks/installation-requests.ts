@@ -209,9 +209,16 @@ export async function loadPullRequestMergeState(
   if (!state.mergeableState) state = await readPull();
   if (state.mergeableState !== "clean") return state;
 
-  const reviews = reviewsSchema.parse(await read("/reviews?per_page=100"));
-  // A later page can hold a newer change request, so a full page does not pass.
-  if (reviews.length >= 100) return state;
+  // A later page can hold a newer review, so read every page. GitHub lists
+  // reviews oldest first.
+  const reviews: z.infer<typeof reviewsSchema> = [];
+  for (let page = 1; ; page++) {
+    const batch = reviewsSchema.parse(
+      await read(`/reviews?per_page=100&page=${page}`),
+    );
+    reviews.push(...batch);
+    if (batch.length < 100) break;
+  }
   const latestReviews = new Map<string, string>();
   for (const review of reviews) {
     if (

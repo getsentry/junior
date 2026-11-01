@@ -147,9 +147,12 @@ function mockGitHub(github: GitHubState, requests: string[]) {
     ),
     http.get(
       "https://api.github.com/repos/getsentry/junior/pulls/946/reviews",
-      () => {
+      ({ request }) => {
         requests.push("reviews");
-        return HttpResponse.json(github.reviews);
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        return HttpResponse.json(
+          github.reviews.slice((page - 1) * 100, page * 100),
+        );
       },
     ),
   );
@@ -282,9 +285,13 @@ describe("ready to merge notice", () => {
       expect(calls).toEqual([]);
       expect(requests).toEqual(["pull", "reviews"]);
 
+      // The approval is on the second page of reviews.
       github.reviews = [
         { state: "CHANGES_REQUESTED", user: { login: "reviewer" } },
-        { state: "COMMENTED", user: { login: "reviewer" } },
+        ...Array.from({ length: 100 }, () => ({
+          state: "COMMENTED",
+          user: { login: "reviewer" },
+        })),
         { state: "APPROVED", user: { login: "Reviewer" } },
       ];
       await webhook.handler(reviewSubmitted("approved"));
