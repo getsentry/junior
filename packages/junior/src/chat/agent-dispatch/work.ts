@@ -21,6 +21,8 @@ import {
   isCooperativeTurnYieldError,
 } from "@/chat/runtime/turn";
 import {
+  abandonTurnRecord,
+  failTurnRecord,
   getTurnRecord,
   listTurnSummaries,
   recordTurnSummary,
@@ -392,9 +394,20 @@ async function persistTerminalDispatchTurn(
     state: "failed",
     surface: "api",
   });
+  // A dispatch that ends between slices keeps an open Turn record. Nothing
+  // may resume it.
   if (outcome === "blocked") {
+    await abandonTurnRecord({ conversationId, errorMessage, turnId });
     await markDispatchBlocked(dispatch.id, errorMessage);
     return;
+  }
+  if (session) {
+    await failTurnRecord({
+      conversationId,
+      errorMessage,
+      expectedVersion: session.version,
+      turnId,
+    });
   }
   await new ConversationTurnLifecycleService(getConversationEventStore()).fail({
     conversationId,
@@ -527,6 +540,22 @@ export function createAgentDispatchConversationWorker(
             await projectDispatchTurnResult(dispatch.id, stopped);
             return;
           }
+          // End the Turn as root and child stops do, so nothing resumes it.
+          const conversationId = getDispatchConversationId(dispatch);
+          const turnId = getDispatchTurnId(dispatch.id);
+          await abandonTurnRecord({
+            conversationId,
+            errorMessage: "Turn cancelled",
+            turnId,
+          });
+          await new ConversationTurnLifecycleService(
+            getConversationEventStore(),
+          ).complete({
+            conversationId,
+            createdAtMs: Date.now(),
+            outcome: "cancelled",
+            turnId,
+          });
           await markDispatchFailed(dispatch.id, "Dispatch was stopped");
         },
         suspend: async () => {

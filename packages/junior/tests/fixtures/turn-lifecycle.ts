@@ -10,6 +10,7 @@ import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import {
   getDispatchConversationId,
   getDispatchRecord,
+  getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import {
   createAgentInvocation,
@@ -266,6 +267,11 @@ export const owners: Owner[] = [
     // The Slack resume runner fails the Turn on the first error.
     failedResumeWakes: ["completed"],
     slackRunnerGaps: {
+      // The resume runs the Turn after a stop request.
+      "stop after a yield": {
+        turn: "completed",
+        shown: { replies: ["Never sent."] },
+      },
       // A stop after the Run drops the saved result.
       "stop after the Run keeps the result": { turn: "stopped" },
       // An execution limit retries, then posts its own reply.
@@ -301,12 +307,10 @@ export const owners: Owner[] = [
     failedResumeWakes: ["completed"],
     // A dispatch runs its Turn through the Slack runner.
     slackRunnerGaps: {
-      // A stop before the Run ends the dispatch without a Turn.
-      "stop before the Run": { turn: "not ended" },
       // A stop after the Run drops the saved result.
       "stop after the Run keeps the result": {
         turn: "stopped",
-        shown: { dispatch: "failed", replies: [] },
+        shown: { dispatch: "failed", replies: [], turnRecordOpen: false },
       },
     },
     // A dispatch declares its result with a tool call.
@@ -323,12 +327,18 @@ export const owners: Owner[] = [
       });
       return getDispatchConversationId(dispatch);
     },
-    read: async (conversationId) => ({
-      dispatch: (
-        await getDispatchRecord(conversationId.replace("agent-dispatch:", ""))
-      )?.status,
-      replies: slackReplies(),
-    }),
+    read: async (conversationId) => {
+      const dispatchId = conversationId.replace("agent-dispatch:", "");
+      const turn = await getTurnRecord(
+        conversationId,
+        getDispatchTurnId(dispatchId),
+      );
+      return {
+        dispatch: (await getDispatchRecord(dispatchId))?.status,
+        replies: slackReplies(),
+        turnRecordOpen: turn?.state === "running" || turn?.state === "paused",
+      };
+    },
   },
   {
     name: "child from a parent task",
@@ -411,6 +421,8 @@ interface Signal {
   before?(args: BeforeArgs): Promise<void> | void;
   /** Make every agent run throw from this wake on. */
   failFromWake?: number;
+  /** Request a stop after this wake. */
+  stopAfterWake?: number;
   /** Pause the first wake at its first safe boundary. */
   yieldFirst?: boolean;
   /** What the owner shows after the Turn ends. */
@@ -462,8 +474,12 @@ function finished(
   }
   return {
     // A dispatch has no stopped status. A stop fails it.
+    // No Turn of an ended dispatch can resume.
     ...(owner.name === "dispatch"
-      ? { dispatch: end === "completed" ? "completed" : "failed" }
+      ? {
+          dispatch: end === "completed" ? "completed" : "failed",
+          turnRecordOpen: false,
+        }
       : undefined),
     replies: text ? [text] : [],
   };
@@ -539,6 +555,21 @@ export const signals: Signal[] = [
       ],
       turn: "failed",
       shown: failed(owner),
+    }),
+  },
+  {
+    name: "stop after a yield",
+    outputs: ({ reply }) => [
+      { type: "toolCall", name: "systemTime", arguments: {} },
+      reply("Never sent."),
+    ],
+    yieldFirst: true,
+    stopAfterWake: 0,
+    expected: (owner) => ({
+      // The resume wake ends the Turn. The stop wake finds no work.
+      wakes: ["yielded", "completed", "no_work"],
+      turn: "stopped",
+      shown: finished(owner, undefined, "stopped"),
     }),
   },
   {

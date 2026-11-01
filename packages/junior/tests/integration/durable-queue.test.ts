@@ -884,6 +884,10 @@ describe("Turn lifecycle for each work owner", () => {
           signal.yieldFirst && wakes.length === 0 ? 0 : undefined,
         );
         wakes.push(result.status);
+        if (signal.stopAfterWake === wakes.length - 1) {
+          stop();
+          await stopping;
+        }
         // Each retry wake has a new idempotency key from the clock.
         clock.nowMs += 1_000;
       }
