@@ -11,6 +11,12 @@ accept the result.
 `loadTurnCheckpoint` and `saveTurnCheckpoint`. `turn-cursor.ts` stores the
 checkpoint and is private to this module.
 
+`worker-turn.ts` owns the Turn lifecycle under the lease: the input ack, stop
+checks, the Run, lost leases, and the choice to retry or fail on the last
+attempt. Mailbox work and agent invocation work call `runWorkerTurn`. Each work
+owner supplies its Run, its result save, and its finish steps. The lifecycle
+does not check which owner called it.
+
 `turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
 conversation lease. SQL conversation events store history. The Redis Turn
 cursor stores only the data that is needed to resume a Turn, including the
