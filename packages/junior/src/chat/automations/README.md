@@ -150,9 +150,12 @@ Automation. Each run puts the creator mention in the `Created by:` task input
 line. That line also says that "me" and "my" mean the creator. People can
 write these words in the dashboard editor.
 
-The agent tools that create or update an Automation reject an instruction that
-names the requester by display name without their Slack mention. A name does
-not notify the person.
+The agent tools that create or update an Automation enforce this in
+`requireInstructionPeople`. They reject an instruction that adds the creator's
+mention or name, and ask for "the Automation creator". They also reject an
+instruction that names another requester by display name without their Slack
+mention. A name does not notify the person. An update can keep a creator
+reference that the instruction already had.
 
 ## Versions
 

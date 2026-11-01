@@ -28,7 +28,7 @@ export function createSearchAutomationsTool(
       readOnlyHint: true,
     },
     description:
-      'Search scheduled and event automations. It finds the requester\'s automations, automations in public channels, and automations that deliver to this conversation. Use scope "current_conversation" for this conversation and "mine" for the requester\'s own. Each result has its type and says whether the requester is the creator (isCreator); only the creator can change its credential use. For an event automation, warn when trigger.available is false and explain trigger.problems: the automation stays stored, but a plugin no longer supports its resource type, an event, or a filter. Update the trigger to fix it.',
+      "Search scheduled and event automations. It finds the requester's automations, automations in public channels, and automations that deliver to this conversation. Each result has its type and says whether the requester is the creator (isCreator); only the creator can change its credential use. For an event automation, warn when trigger.available is false and explain trigger.problems: the automation stays stored, but a plugin no longer supports its resource type, an event, or a filter. Update the trigger to fix it.",
     inputSchema: automationSearchInputSchema,
     outputSchema: automationSearchResultSchema,
     async execute(input) {

@@ -270,12 +270,18 @@ describe("Event automation management", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0]!.input).toMatchObject({
       automationId: id,
-      trigger: {
-        type: "event",
-        events: ["issue.reopened"],
-        identifier: "getsentry/junior#208",
-        namespace: "github",
-        resourceType: "issue",
+      trigger: { type: "event", events: ["issue.reopened"] },
+    });
+    // The update can omit identifier and resourceType to keep the saved ones.
+    expect(toolOutput(updates[0]!)).toMatchObject({
+      automation: {
+        id,
+        trigger: {
+          events: ["issue.reopened"],
+          identifier: "getsentry/junior#208",
+          namespace: "github",
+          resourceType: "issue",
+        },
       },
     });
     expect(

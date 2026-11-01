@@ -250,7 +250,7 @@ export const automationSearchInputSchema = z
       .enum(["all", "current_conversation", "mine"])
       .nullable()
       .describe(
-        "all: everything the requester can find. current_conversation: only automations that deliver to this conversation. mine: only automations the requester created. Defaults to all.",
+        "Omit to search everything the requester can find. Set current_conversation (only automations that deliver to this conversation) or mine (only automations the requester created) only when the user limits the search that way.",
       )
       .optional(),
     destination: z

@@ -9,7 +9,7 @@ import {
   automationTitleSchema,
 } from "@/chat/automations/edit-schema";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireRequesterMention } from "@/chat/automations/requester-mention";
+import { requireInstructionPeople } from "@/chat/automations/instruction-people";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -295,7 +295,11 @@ export function createUpdateAutomationTool(
         input.instruction !== undefined &&
         input.instruction !== current.task.task.text
       ) {
-        requireRequesterMention(input.instruction, editor);
+        requireInstructionPeople(input.instruction, {
+          creator: current.task.createdBy,
+          requester: editor,
+          previousInstruction: current.task.task.text,
+        });
       }
       let saved = current;
       if (Object.keys(input).length > 0) {
