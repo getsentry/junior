@@ -274,16 +274,23 @@ describe("Slack tool registration", () => {
         slackActionToken: undefined,
       } as ToolRuntimeContext);
       expect(modelView(tools)).toBe(modelView(messageTurn));
-      expect(tools.createEventAutomation?.disabledReason).toBeDefined();
+      expect(tools.createAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
       expect(tools.addReviewItem?.disabledReason).toBeUndefined();
     }
-    expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
+    expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
-    expect(messageTurn).toHaveProperty("createEventAutomation");
-    expect(messageTurn).toHaveProperty("createScheduledAutomation");
+    expect(
+      Object.keys(messageTurn).filter((name) => /Automation/.test(name)),
+    ).toEqual([
+      "createAutomation",
+      "searchAutomations",
+      "updateAutomation",
+      "deleteAutomation",
+      "runAutomationNow",
+    ]);
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -351,8 +358,8 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     // Automation tools are not Slack tools. This Turn has no person, so they
     // are disabled.
-    expect(tools.createEventAutomation?.disabledReason).toBeDefined();
-    expect(tools.createScheduledAutomation?.disabledReason).toBeDefined();
+    expect(tools.createAutomation?.disabledReason).toBeDefined();
+    expect(tools.runAutomationNow?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

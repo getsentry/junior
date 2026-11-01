@@ -1,4 +1,4 @@
-/** Automation access for the scheduled and event automation tools. */
+/** Automation access for the Automation tools. */
 import type { Identity, User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { automationListQuerySchema } from "@/api/schema/automation";
@@ -17,12 +17,11 @@ import {
 } from "./creator";
 import { readAutomationCollection } from "./collection";
 import { deleteAutomation } from "./edit";
-import { resolveViewerTaskCandidate, type TaskCandidate } from "./read";
-
-type ToolAutomation<K extends TaskCandidate["kind"]> = Extract<
-  TaskCandidate,
-  { kind: K }
->;
+import {
+  readTaskCandidates,
+  resolveViewerTaskCandidate,
+  type TaskCandidate,
+} from "./read";
 
 type ResolvedActor = { identity: Identity; user?: User };
 
@@ -197,43 +196,46 @@ export function requireToolCreator(
   };
 }
 
-function notFound(kind: TaskCandidate["kind"]): ToolInputError {
-  return new ToolInputError(
-    `${kind === "scheduled" ? "Scheduled" : "Event"} automation was not found. Automations in private channels and DMs can be managed only from there or by their creator.`,
-  );
-}
+const NOT_FOUND =
+  "Automation was not found. Automations in private channels and DMs can be managed only from there or by their creator.";
 
-/** Load one Automation of this kind that the tool caller can manage. */
-export async function requireToolAutomation<K extends TaskCandidate["kind"]>(
+/** Load one Automation that the tool caller can manage. */
+export async function requireToolAutomation(
   caller: AutomationToolCaller,
-  kind: K,
   id: string,
-): Promise<ToolAutomation<K>> {
+): Promise<TaskCandidate> {
   const candidate = await resolveViewerTaskCandidate(caller.viewer, id);
-  if (candidate?.kind !== kind) throw notFound(kind);
-  return candidate as ToolAutomation<K>;
+  if (!candidate) throw new ToolInputError(NOT_FOUND);
+  return candidate;
 }
 
 /** Delete an Automation for a tool and remove its card from the Conversation. */
-export async function deleteToolAutomation<K extends TaskCandidate["kind"]>(
+export async function deleteToolAutomation(
   conversationId: string,
-  current: ToolAutomation<K>,
-): Promise<ToolAutomation<K>["task"]> {
+  current: TaskCandidate,
+): Promise<TaskCandidate> {
   const deleted = await deleteAutomation(current);
-  if (!deleted) throw notFound(current.kind);
+  if (!deleted) throw new ToolInputError(NOT_FOUND);
   await createPluginAnnotations({
     conversationId,
     db: getDb(),
     plugin: "junior",
   }).remove("object", current.task.id);
-  return deleted.task as ToolAutomation<K>["task"];
+  return deleted;
 }
 
 const MAX_SEARCHED_AUTOMATIONS = 50;
 
-/** Model-facing input of the scheduled and event automation search tools. */
+/** Model-facing input of the Automation search tool. */
 export const automationSearchInputSchema = z
   .object({
+    type: z
+      .enum(["scheduled", "event"])
+      .nullable()
+      .describe(
+        "scheduled: only automations with a schedule. event: only automations that run on events. Omit to find both.",
+      )
+      .optional(),
     query: z
       .string()
       .trim()
@@ -265,15 +267,14 @@ export const automationSearchInputSchema = z
   .strict();
 
 /**
- * Search the Automations of one kind with the dashboard Automations search,
- * as the tool caller sees them. Returns IDs in search order.
+ * Search Automations with the dashboard Automations search, as the tool
+ * caller sees them. Returns them in search order.
  */
 export async function searchToolAutomations(
   context: AutomationToolContext,
   caller: AutomationToolCaller,
-  kind: TaskCandidate["kind"],
   input: z.output<typeof automationSearchInputSchema>,
-): Promise<{ ids: string[]; truncated: boolean }> {
+): Promise<{ automations: TaskCandidate[]; truncated: boolean }> {
   let destination = input.destination ?? undefined;
   if (input.scope === "current_conversation") {
     const here = destinationFilterValue(requireToolDestination(context));
@@ -289,13 +290,16 @@ export async function searchToolAutomations(
     automationListQuerySchema.parse({
       q: input.query ?? undefined,
       scope: input.scope === "mine" ? "mine" : "all",
-      type: kind,
+      type: input.type ?? "all",
       destination,
       pageSize: MAX_SEARCHED_AUTOMATIONS,
     }),
   );
   return {
-    ids: rows.map((row) => row.id),
+    automations: await readTaskCandidates(
+      caller.viewer,
+      rows.map((row) => row.id),
+    ),
     truncated: total > rows.length,
   };
 }

@@ -71,8 +71,7 @@ describe("Event automation management", () => {
     ]);
     const names = conversation.toolCalls.map((call) => call.name);
     expect(names).not.toContain("watchEvents");
-    expect(names).not.toContain("createEventAutomation");
-    expect(names).not.toContain("createScheduledAutomation");
+    expect(names).not.toContain("createAutomation");
   });
 
   test("when a resource supports the requested event, create the requested event automation", async ({
@@ -97,7 +96,7 @@ describe("Event automation management", () => {
       }),
     );
 
-    const creates = completedToolCalls("createEventAutomation", conversation);
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       credentialMode: "system",
@@ -105,6 +104,7 @@ describe("Event automation management", () => {
         { action: "send_message", destination: "current_conversation" },
       ],
       trigger: {
+        type: "event",
         namespace: "github",
         identifier: "getsentry/junior#691",
         resourceType: "pull_request",
@@ -112,7 +112,6 @@ describe("Event automation management", () => {
       },
     });
     const names = conversation.toolCalls.map((call) => call.name);
-    expect(names).not.toContain("createScheduledAutomation");
     expect(names).not.toContain("watchEvents");
   });
 
@@ -138,10 +137,11 @@ describe("Event automation management", () => {
       }),
     );
 
-    const creates = completedToolCalls("createEventAutomation", conversation);
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       trigger: {
+        type: "event",
         namespace: "github",
         identifier: "getsentry/junior#208",
         resourceType: "issue",
@@ -151,7 +151,6 @@ describe("Event automation management", () => {
       new Set(["issue.closed", "issue.reopened"]),
     );
     const names = conversation.toolCalls.map((call) => call.name);
-    expect(names).not.toContain("createScheduledAutomation");
     expect(names).not.toContain("watchEvents");
   });
 
@@ -178,10 +177,11 @@ describe("Event automation management", () => {
       }),
     );
 
-    const creates = completedToolCalls("createEventAutomation", conversation);
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       trigger: {
+        type: "event",
         namespace: "github",
         identifier: "getsentry/junior",
         resourceType: "repository",
@@ -250,7 +250,7 @@ describe("Event automation management", () => {
     );
 
     expect(
-      completedToolCalls("searchEventAutomations", listing).map(toolOutput),
+      completedToolCalls("searchAutomations", listing).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -262,7 +262,7 @@ describe("Event automation management", () => {
       }),
     ]);
     const updates = completedToolCalls(
-      "updateEventAutomation",
+      "updateAutomation",
       listing,
       update,
       removal,
@@ -271,6 +271,7 @@ describe("Event automation management", () => {
     expect(updates[0]!.input).toMatchObject({
       automationId: id,
       trigger: {
+        type: "event",
         events: ["issue.reopened"],
         identifier: "getsentry/junior#208",
         namespace: "github",
@@ -278,12 +279,12 @@ describe("Event automation management", () => {
       },
     });
     expect(
-      completedToolCalls("deleteEventAutomation", listing, update, removal).map(
+      completedToolCalls("deleteAutomation", listing, update, removal).map(
         (call) => call.input,
       ),
     ).toEqual([{ automationId: id }]);
     expect(
-      completedToolCalls("createEventAutomation", listing, update, removal),
+      completedToolCalls("createAutomation", listing, update, removal),
     ).toEqual([]);
   });
 
@@ -305,9 +306,7 @@ describe("Event automation management", () => {
     const resumed = await paused.continue(slackMention("Resume it now."));
 
     expect(
-      completedToolCalls("updateEventAutomation", paused, resumed).map(
-        toolOutput,
-      ),
+      completedToolCalls("updateAutomation", paused, resumed).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automation: expect.objectContaining({ id, status: "paused" }),
@@ -319,8 +318,8 @@ describe("Event automation management", () => {
     const names = [...paused.toolCalls, ...resumed.toolCalls].map(
       (call) => call.name,
     );
-    expect(names).not.toContain("deleteEventAutomation");
-    expect(names).not.toContain("createEventAutomation");
+    expect(names).not.toContain("deleteAutomation");
+    expect(names).not.toContain("createAutomation");
   });
 
   test("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
@@ -355,9 +354,7 @@ describe("Event automation management", () => {
     );
 
     expect(
-      completedToolCalls("searchEventAutomations", conversation).map(
-        toolOutput,
-      ),
+      completedToolCalls("searchAutomations", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -368,11 +365,7 @@ describe("Event automation management", () => {
         ],
       }),
     ]);
-    expect(completedToolCalls("updateEventAutomation", conversation)).toEqual(
-      [],
-    );
-    expect(completedToolCalls("deleteEventAutomation", conversation)).toEqual(
-      [],
-    );
+    expect(completedToolCalls("updateAutomation", conversation)).toEqual([]);
+    expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
   });
 });

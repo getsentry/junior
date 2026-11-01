@@ -1,6 +1,6 @@
 # Scheduled automations
 
-This module owns Junior's one-time and recurring task domain. Scheduled-task tools are core tools for Turns that a person started, and the core heartbeat claims due rows before plugin heartbeat hooks run.
+This module owns Junior's one-time and recurring task domain. The Automation tools in `chat/automations/tools/` are core tools for Turns that a person started, and the core heartbeat claims due rows before plugin heartbeat hooks run.
 
 ## Persistence
 
@@ -36,7 +36,7 @@ Do not put the timezone on the Actor. The Actor is stored with each message, and
 
 A scheduled Automation targets a channel or direct message. It never targets a thread. A tool call from a thread uses its channel as the Destination. Destinations are stored as Slack channels, because Slack is the only delivery provider.
 
-Create uses the Destination of the Conversation Location. A Conversation with no Location, such as a dashboard Conversation, can search and manage Automations, but it cannot create or move one. `searchScheduledAutomations`
+Create uses the Destination of the Conversation Location. A Conversation with no Location, such as a dashboard Conversation, can search and manage Automations, but it cannot create or move one. `searchAutomations`
 uses the dashboard Automations search. It finds the requester's tasks, tasks in
 public channels of their workspaces, and tasks that deliver to this Conversation. Scope
 `current_conversation` limits it to this Conversation.
@@ -44,8 +44,8 @@ public channels of their workspaces, and tasks that deliver to this Conversation
 Cross-channel rehomes stay destination-first and reuse the existing tools:
 
 1. ask in the channel where the task should deliver next;
-2. `searchScheduledAutomations` with optional `query` / `destination` finds the requester's matching task;
-3. `updateScheduledAutomation` with `destination: "current_conversation"` rehomes that existing task row into this Conversation's Destination.
+2. `searchAutomations` with optional `query` / `destination` finds the requester's matching task;
+3. `updateAutomation` with `destination: "current_conversation"` rehomes that existing task row into this Conversation's Destination.
 
 Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the Conversation visibility and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
 

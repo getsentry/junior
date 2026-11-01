@@ -45,13 +45,13 @@ describe("Scheduled Credentials", () => {
       }),
     );
 
-    const creates = completedToolCalls(
-      "createScheduledAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
-      schedule: { kind: "recurring", frequency: "weekly" },
+      trigger: {
+        type: "schedule",
+        schedule: { kind: "recurring", frequency: "weekly" },
+      },
     });
     expect([undefined, "creator"]).toContain(credentialMode(creates[0]));
   });
@@ -84,18 +84,16 @@ describe("Scheduled Credentials", () => {
     );
 
     const creates = completedToolCalls(
-      "createScheduledAutomation",
+      "createAutomation",
       proposal,
       confirmation,
     );
     expect(creates).toHaveLength(1);
     expect(credentialMode(creates[0])).toBe("system");
     expect(
-      completedToolCalls(
-        "updateScheduledAutomation",
-        proposal,
-        confirmation,
-      ).filter((call) => credentialMode(call) === "creator"),
+      completedToolCalls("updateAutomation", proposal, confirmation).filter(
+        (call) => credentialMode(call) === "creator",
+      ),
     ).toEqual([]);
   });
 
@@ -138,14 +136,10 @@ describe("Scheduled Credentials", () => {
 
     // Anyone may edit a public automation; only the creator may enable
     // creator credentials.
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
+    expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
     expect(
-      completedToolCalls("createScheduledAutomation", conversation),
-    ).toEqual([]);
-    expect(
-      completedToolCalls("deleteScheduledAutomation", conversation),
-    ).toEqual([]);
-    expect(
-      completedToolCalls("updateScheduledAutomation", conversation).filter(
+      completedToolCalls("updateAutomation", conversation).filter(
         (call) => credentialMode(call) === "creator",
       ),
     ).toEqual([]);
@@ -184,7 +178,7 @@ describe("Scheduled Credentials", () => {
     );
 
     const updates = completedToolCalls(
-      "updateScheduledAutomation",
+      "updateAutomation",
       proposal,
       confirmation,
     ).filter((call) => credentialMode(call) !== undefined);

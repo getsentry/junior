@@ -57,8 +57,8 @@ run adds the source message thread only at dispatch time. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
 workers during deployment; new writes reject them.
 
-`searchEventAutomations` uses the dashboard Automations search, like
-`searchScheduledAutomations`. Scope `current_conversation` limits it to the
+`searchAutomations` with `type: "event"` uses the dashboard Automations
+search (see Tools in `chat/automations/README.md`). Scope `current_conversation` limits it to the
 Destination of this Conversation; threads in that Destination share it. Search,
 update, and delete use the shared rule in `chat/automations/README.md`
 (Management access), so anyone in the workspace can manage a public automation

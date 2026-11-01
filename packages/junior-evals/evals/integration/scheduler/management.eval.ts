@@ -49,21 +49,23 @@ describe("Schedule Management", () => {
     );
 
     expect(
-      completedToolCalls("createScheduledAutomation", proposal, confirmation),
+      completedToolCalls("createAutomation", proposal, confirmation),
     ).toEqual([]);
     const updates = completedToolCalls(
-      "updateScheduledAutomation",
+      "updateAutomation",
       proposal,
       confirmation,
     );
     expect(updates).toContainEqual(
       expect.objectContaining({
         input: expect.objectContaining({
-          schedule: expect.objectContaining({
-            kind: "recurring",
-            frequency: "weekly",
-            time: "10:00",
-            weekdays: ["tuesday"],
+          trigger: expect.objectContaining({
+            schedule: expect.objectContaining({
+              kind: "recurring",
+              frequency: "weekly",
+              time: "10:00",
+              weekdays: ["tuesday"],
+            }),
           }),
         }),
       }),
@@ -91,10 +93,7 @@ describe("Schedule Management", () => {
       ),
     );
 
-    const updates = completedToolCalls(
-      "updateScheduledAutomation",
-      conversation,
-    );
+    const updates = completedToolCalls("updateAutomation", conversation);
     expect(updates).toHaveLength(1);
     // Each run reads "me" and "the Automation creator" as Alice.
     const { instruction } = updates[0]!.input as { instruction?: string };

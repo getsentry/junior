@@ -7,7 +7,7 @@ in the user's linked Slack workspaces.
 Each Automation stores `creator_identity_id`, the Junior identity that created
 it. A foreign key to `junior_identities` makes sure that identity exists. The
 user owns an Automation when one of their identities has that ID. This
-rule is the same for both kinds. The create tools refuse to save an
+rule is the same for both kinds. `createAutomation` refuses to save an
 Automation when the requester has no stored identity. Migration 0058 sets the
 identity on event automations that were created before this rule, and on any
 row whose identity ID has no identity record. It adds a Slack identity when
@@ -19,6 +19,24 @@ from the Destination directory. Missing or private entries do not grant access.
 
 Scheduled automations run through the heartbeat. Event automations run when a
 matching event arrives.
+
+## Tools
+
+One set of agent tools manages both kinds. `chat/tools/automations.ts`
+registers them, and `chat/automations/tools/` owns them:
+
+- `createAutomation` takes a `trigger`. Its `type` is `schedule` or `event`.
+- `searchAutomations` uses the dashboard Automations search. An optional
+  `type` limits it to one kind.
+- `updateAutomation` edits, pauses, resumes, or moves one Automation. A
+  replacement trigger must have the same type. Only a Scheduled automation can
+  move.
+- `deleteAutomation` deletes one Automation.
+- `runAutomationNow` queues a Scheduled automation. It rejects an Event
+  automation, because only a matching event starts one.
+
+`automationIdForToolCall` keeps the ID that each kind had before the tools
+merged, so a replayed create call finds the Automation that it created.
 
 ## Management access
 

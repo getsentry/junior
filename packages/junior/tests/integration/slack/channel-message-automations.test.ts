@@ -1,3 +1,6 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
@@ -6,8 +9,6 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
@@ -42,6 +43,7 @@ function trigger(
   match?: Record<string, string>,
 ) {
   return {
+    type: "event" as const,
     namespace: "slack",
     identifier,
     resourceType: "channel",
@@ -118,7 +120,7 @@ describe("Slack channel-message automations", () => {
       TEAM_ID,
     );
     const { automation } = (await execute(
-      createEventAutomationTool(channelContext, catalog),
+      createAutomationTool(automationToolContext(channelContext), catalog),
       {
         instruction: "Answer the question, or tag <@U123> if you can't.",
         title: "Triage discuss-integration",
@@ -177,10 +179,16 @@ describe("Slack channel-message automations", () => {
     expect(dispatch?.input).toContain("How do I connect the Jira integration?");
 
     // Creator credentials cannot be turned on later.
-    await execute(createUpdateEventAutomationTool(channelContext, catalog), {
-      automationId: automation.id,
-      credentialMode: "creator",
-    });
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(channelContext),
+        catalog,
+      ),
+      {
+        automationId: automation.id,
+        credentialMode: "creator",
+      },
+    );
     expect(
       await getEventAutomation(fixture.sql.db(), automation.id),
     ).toMatchObject({ credentialMode: "system" });
@@ -196,7 +204,7 @@ describe("Slack channel-message automations", () => {
       TEAM_ID,
     );
     const { automation } = (await execute(
-      createEventAutomationTool(channelContext, catalog),
+      createAutomationTool(automationToolContext(channelContext), catalog),
       {
         instruction: "Triage each new alert.",
         title: "Triage alerts",
@@ -243,12 +251,15 @@ describe("Slack channel-message automations", () => {
     );
 
     await expect(
-      execute(createEventAutomationTool(channelContext, catalog), {
-        instruction: "Summarize new messages.",
-        title: "Summarize secrets",
-        outcomes: [],
-        trigger: trigger("C999"),
-      }),
+      execute(
+        createAutomationTool(automationToolContext(channelContext), catalog),
+        {
+          instruction: "Summarize new messages.",
+          title: "Summarize secrets",
+          outcomes: [],
+          trigger: trigger("C999"),
+        },
+      ),
     ).rejects.toThrow("can watch only the channel where it posts");
 
     // A trigger with no identifier would read every channel.
@@ -258,18 +269,21 @@ describe("Slack channel-message automations", () => {
       ...anyChannel
     } = trigger();
     await expect(
-      execute(createEventAutomationTool(channelContext, catalog), {
-        instruction: "Summarize new messages.",
-        title: "Summarize every channel",
-        outcomes: [],
-        trigger: anyChannel,
-      }),
+      execute(
+        createAutomationTool(automationToolContext(channelContext), catalog),
+        {
+          instruction: "Summarize new messages.",
+          title: "Summarize every channel",
+          outcomes: [],
+          trigger: anyChannel,
+        },
+      ),
     ).rejects.toThrow("This source cannot run for every resource.");
 
     // A message runs only automations that post in its own channel, even
     // when a saved row names that channel and posts somewhere else.
     const { automation } = (await execute(
-      createEventAutomationTool(channelContext, catalog),
+      createAutomationTool(automationToolContext(channelContext), catalog),
       {
         instruction: "Summarize new messages.",
         title: "Summarize messages",
@@ -291,8 +305,10 @@ describe("Slack channel-message automations", () => {
     // A DM is not a channel, so the automation could never run there.
     await expect(
       execute(
-        createEventAutomationTool(
-          context("U123", "D123", "private", undefined, TEAM_ID),
+        createAutomationTool(
+          automationToolContext(
+            context("U123", "D123", "private", undefined, TEAM_ID),
+          ),
           catalog,
         ),
         {
@@ -314,6 +330,6 @@ describe("Slack channel-message automations", () => {
         events: ["message.posted"],
         intent: "Tell me about new messages.",
       }),
-    ).rejects.toThrow("Use createEventAutomation");
+    ).rejects.toThrow("Use createAutomation");
   });
 });

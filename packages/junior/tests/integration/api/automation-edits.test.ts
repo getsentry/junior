@@ -19,8 +19,7 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import { automationToolContext } from "@/chat/automations/tool-access";
-import { createUpdateScheduledAutomationTool } from "@/chat/scheduled-automations/tools/update";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import {
@@ -136,43 +135,19 @@ describe("Automation edit API", () => {
               identity: user.identities[0]!,
             }),
           });
-        if (kind === "scheduled") {
+        for (const instruction of [
+          "Edited from Slack.",
+          "Edited again from Slack.",
+        ]) {
           await execute(
-            createUpdateScheduledAutomationTool(slackToolContext()),
+            createUpdateAutomationTool(slackToolContext(), getEventCatalog()),
             {
               automationId: id,
-              instruction: "Edited from Slack.",
-              title: "Title from Slack",
+              instruction,
+              ...(instruction === "Edited from Slack."
+                ? { title: "Title from Slack" }
+                : undefined),
             },
-          );
-          await execute(
-            createUpdateScheduledAutomationTool(slackToolContext()),
-            { automationId: id, instruction: "Edited again from Slack." },
-          );
-        } else {
-          await execute(
-            createUpdateEventAutomationTool(
-              {
-                ...eventContext("U123", "C123", "public", undefined, "T123"),
-                conversationId: "slack:T123:U123:edit",
-              },
-              getEventCatalog(),
-            ),
-            {
-              automationId: id,
-              instruction: "Edited from Slack.",
-              title: "Title from Slack",
-            },
-          );
-          await execute(
-            createUpdateEventAutomationTool(
-              {
-                ...eventContext("U123", "C123", "public", undefined, "T123"),
-                conversationId: "slack:T123:U123:edit",
-              },
-              getEventCatalog(),
-            ),
-            { automationId: id, instruction: "Edited again from Slack." },
           );
         }
         const stale = await patch({

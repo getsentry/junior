@@ -59,10 +59,11 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    const creates = completedToolCalls("createEventAutomation", conversation);
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       trigger: {
+        type: "event",
         events: ["pull_request.review.changes_requested"],
         namespace: "github",
         identifier: "getsentry/junior#691",
@@ -101,23 +102,17 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    expect(completedToolCalls("createEventAutomation", conversation)).toEqual(
-      [],
-    );
-    expect(completedToolCalls("deleteEventAutomation", conversation)).toEqual(
-      [],
-    );
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
+    expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
     expect(
       conversation.toolCalls.filter(
         (call) =>
-          call.name === "updateEventAutomation" &&
+          call.name === "updateAutomation" &&
           credentialMode(call) === "creator",
       ),
     ).toEqual([]);
     expect(
-      completedToolCalls("searchEventAutomations", conversation).map(
-        toolOutput,
-      ),
+      completedToolCalls("searchAutomations", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -158,13 +153,9 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    expect(completedToolCalls("createEventAutomation", conversation)).toEqual(
-      [],
-    );
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
     expect(
-      completedToolCalls("searchEventAutomations", conversation).map(
-        toolOutput,
-      ),
+      completedToolCalls("searchAutomations", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -177,7 +168,7 @@ describe("Event automation credentials", () => {
       }),
     ]);
     expect(
-      completedToolCalls("updateEventAutomation", conversation).filter(
+      completedToolCalls("updateAutomation", conversation).filter(
         (call) => credentialMode(call) === "creator",
       ),
     ).toHaveLength(1);

@@ -474,19 +474,19 @@ function automationExecutionStatusSixHours(
   });
 }
 
-/** Read a page from the full accessible Automation collection. */
-export async function readViewerAutomations(
-  user: User,
-  input: AutomationListQuery = automationListQuerySchema.parse({}),
-): Promise<AutomationList> {
-  const { rows, ...page } = await readAutomationCollection(user, input);
-  const db = getDb();
-  const ids = rows.map((row) => row.id);
+/**
+ * Load live Automations by ID, in the order of `ids`. The IDs come from
+ * `readAutomationCollection`, which already applied the viewer access rule.
+ */
+export async function readTaskCandidates(
+  viewer: AutomationViewer,
+  ids: readonly string[],
+): Promise<TaskCandidate[]> {
   const stored = ids.length
-    ? await db
+    ? await getDb()
         .select()
         .from(juniorAutomations)
-        .where(inArray(juniorAutomations.id, ids))
+        .where(inArray(juniorAutomations.id, [...ids]))
     : [];
   const candidates = new Map<string, TaskCandidate>();
   for (const row of stored) {
@@ -496,7 +496,7 @@ export async function readViewerAutomations(
         candidates.set(task.id, {
           kind: "scheduled",
           task,
-          ownedByViewer: isAutomationCreator(user, task),
+          ownedByViewer: isAutomationCreator(viewer, task),
         });
       continue;
     }
@@ -505,13 +505,23 @@ export async function readViewerAutomations(
       candidates.set(task.id, {
         kind: "event",
         task,
-        ownedByViewer: isAutomationCreator(user, task),
+        ownedByViewer: isAutomationCreator(viewer, task),
       });
   }
-  const selected = rows.flatMap((row) => {
-    const candidate = candidates.get(row.id);
+  return ids.flatMap((id) => {
+    const candidate = candidates.get(id);
     return candidate ? [candidate] : [];
   });
+}
+
+/** Read a page from the full accessible Automation collection. */
+export async function readViewerAutomations(
+  user: User,
+  input: AutomationListQuery = automationListQuerySchema.parse({}),
+): Promise<AutomationList> {
+  const { rows, ...page } = await readAutomationCollection(user, input);
+  const ids = rows.map((row) => row.id);
+  const selected = await readTaskCandidates(user, ids);
   const [destinations, creators] = await Promise.all([
     destinationDetails(selected.map(({ task }) => task.destination)),
     creatorProfiles(selected),

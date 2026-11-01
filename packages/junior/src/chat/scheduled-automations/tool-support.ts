@@ -1,13 +1,7 @@
-import {
-  ownedObjectAnnotationSchema,
-  type ObjectAnnotation,
-} from "@sentry/junior-plugin-api";
+import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
-import { createHash } from "node:crypto";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
-import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
 import {
   destinationFilterValue,
@@ -16,14 +10,13 @@ import {
 import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
-  ScheduledAutomationPrincipal,
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
-const TASK_ID_PREFIX = "sched";
-
-const compactTaskResultSchema = z
+/** Model-facing shape of one scheduled automation. */
+export const compactTaskResultSchema = z
   .object({
+    type: z.literal("scheduled"),
     id: z.string(),
     title: z.string().nullable(),
     status: z.enum(["active", "blocked", "paused", "completed", "deleted"]),
@@ -78,26 +71,6 @@ const compactTaskResultSchema = z
   })
   .strict();
 
-export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
-  .extend({
-    automation: compactTaskResultSchema,
-    objectCards: z.array(ownedObjectAnnotationSchema).optional(),
-  })
-  .strict();
-
-export const scheduleListToolResultSchema = juniorToolOutputSchema
-  .extend({
-    automations: z.array(compactTaskResultSchema),
-    truncated: z.boolean(),
-  })
-  .strict();
-export type CompactTaskResult = z.output<typeof compactTaskResultSchema>;
-
-/** Normalize scheduled-automation validation failures into the core tool contract. */
-export function throwToolInputError(error: string): never {
-  throw new ToolInputError(error);
-}
-
 /**
  * Return the access class of a Destination. A DM is direct and a group DM is
  * a group. A channel keeps the visibility of the Conversation.
@@ -118,24 +91,10 @@ export function getConversationAccess(
   };
 }
 
-/** Return whether the task delivers to this Destination. */
-export function sameDestination(
-  task: ScheduledAutomation,
-  destination: AutomationDestination,
-): boolean {
-  return (
-    task.destination.platform === destination.platform &&
-    task.destination.teamId === destination.teamId &&
-    task.destination.channelId === destination.channelId
-  );
-}
-
 /** Project scheduled automation state into the stable model-facing result shape. */
-export function compactTask(
-  task: ScheduledAutomation,
-  isCreator: boolean,
-): CompactTaskResult {
+export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
   return compactTaskResultSchema.parse({
+    type: "scheduled",
     id: task.id,
     title: task.title?.trim() || null,
     status: task.status,
@@ -189,7 +148,7 @@ export function compactTask(
   });
 }
 
-/** Build the structured result shared by single-task scheduler tools. */
+/** Build the result of a tool that changed one scheduled automation, with its card. */
 export async function scheduleAutomationToolResult(
   conversationId: string,
   task: ScheduledAutomation,
@@ -229,50 +188,4 @@ export async function scheduleAutomationToolResult(
       annotation,
     ]),
   };
-}
-
-/** Build the structured result for listing scheduler tools. */
-export function scheduleListToolResult(args: {
-  automations: CompactTaskResult[];
-  truncated: boolean;
-}) {
-  return {
-    automations: args.automations,
-    truncated: args.truncated,
-  } as const;
-}
-
-/** Build a retry-stable scheduler id scoped to the creating actor and destination. */
-export function buildTaskId(args: {
-  actor: ScheduledAutomationPrincipal;
-  destination: AutomationDestination;
-  toolCallId: string | undefined;
-}): string {
-  const toolCallId = args.toolCallId?.trim();
-  if (!toolCallId) {
-    throw new Error("Scheduler task creation requires a tool-call identity.");
-  }
-  const digest = createHash("sha256")
-    .update(
-      JSON.stringify({
-        actor: args.actor.slackUserId,
-        channel: args.destination.channelId,
-        operation: toolCallId,
-        platform: args.destination.platform,
-        team: args.destination.teamId,
-      }),
-    )
-    .digest("hex")
-    .slice(0, 32);
-  return `${TASK_ID_PREFIX}_${digest}`;
-}
-
-/** Accept only persisted scheduler statuses from model-facing update input. */
-export function normalizeStatus(
-  value: string | undefined,
-): "active" | "blocked" | undefined {
-  if (value === "active" || value === "blocked") {
-    return value;
-  }
-  return undefined;
 }

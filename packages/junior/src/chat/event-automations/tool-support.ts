@@ -1,6 +1,5 @@
 import {
   eventTriggerText,
-  ownedObjectAnnotationSchema,
   type EventTriggerDescription,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
@@ -24,16 +23,14 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import {
-  destinationFilterValue,
-  type AutomationDestination,
-} from "@/chat/automations/creator";
+import { destinationFilterValue } from "@/chat/automations/creator";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
-const compactEventAutomationResultSchema = z
+/** Model-facing shape of one event automation. */
+export const compactEventAutomationResultSchema = z
   .object({
+    type: z.literal("event"),
     id: z.string().min(1),
     status: z.enum(["active", "blocked", "paused", "deleted"]),
     statusReason: z.string().nullable(),
@@ -82,22 +79,6 @@ const compactEventAutomationResultSchema = z
         username: z.string().min(1).nullable(),
       })
       .strict(),
-  })
-  .strict();
-
-/** Validate one successful event-automation mutation result. */
-export const eventAutomationToolResultSchema = juniorToolOutputSchema
-  .extend({
-    automation: compactEventAutomationResultSchema,
-    objectCards: z.array(ownedObjectAnnotationSchema),
-  })
-  .strict();
-
-/** Validate one successful event-automation list result. */
-export const eventAutomationListToolResultSchema = juniorToolOutputSchema
-  .extend({
-    automations: z.array(compactEventAutomationResultSchema),
-    truncated: z.boolean(),
   })
   .strict();
 
@@ -178,17 +159,6 @@ export function requireEventAutomationTrigger(
   };
 }
 
-/** Return whether an event automation delivers to this Destination. */
-export function eventAutomationMatchesDestination(
-  task: EventAutomation,
-  destination: AutomationDestination,
-): boolean {
-  return (
-    task.destination.teamId === destination.teamId &&
-    task.destination.channelId === destination.channelId
-  );
-}
-
 /**
  * Describe a saved trigger with the enabled plugins. Its problems say why it
  * cannot work: a plugin can remove or rename a resource type, event, or filter
@@ -213,6 +183,7 @@ export function compactEventAutomation(
 ) {
   const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
   return compactEventAutomationResultSchema.parse({
+    type: "event",
     id: task.id,
     status: task.status,
     statusReason: task.statusReason ?? null,
