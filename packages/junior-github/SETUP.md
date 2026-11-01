@@ -205,8 +205,11 @@ Be careful with mixed-surface PR commands. Use the allowlisted REST endpoints
 rather than GraphQL-backed `gh pr` mutation commands. PR-native title, body,
 base, state, ready-for-review, and requested-reviewer changes use pull request
 endpoints. Comments, labels, and assignees use GitHub's issue endpoints. All
-allowlisted bot writes share `installation-write`; merge, branch deletion, REST ref
-mutation, and administration remain unsupported API operations.
+allowlisted bot writes share `installation-write`; branch deletion, REST ref
+mutation, and administration remain unsupported API operations. Merging is off
+unless the app lists the repository in `pullRequestMerge`; then only
+`github_mergePullRequest` can merge, and it applies the merge policy in
+`src/pull-request-merge-policy.ts`.
 
 For PR creation in automation, push explicitly and pass that branch as `head`:
 
@@ -256,7 +259,7 @@ jr-rpc config set github.repo getsentry/junior
 5. Verify the issue is authored by the GitHub App bot and includes `Requested by` attribution.
 6. Exercise `github-issues` to update title/body, add/remove labels, and add a comment.
 7. Push a test branch and exercise `github-code` to create a draft PR using explicit repo targeting and `--head`.
-8. Verify allowlisted mutations, including pull request reviews and inline review comments, are attributed to the GitHub App bot. Confirm merge remains unsupported.
+8. Verify allowlisted mutations, including pull request reviews and inline review comments, are attributed to the GitHub App bot. Confirm a raw `gh pr merge` or `gh api -X PUT .../merge` is denied.
 9. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
 10. Verify raw token values are never printed in output or logs.
 11. Check logs for:

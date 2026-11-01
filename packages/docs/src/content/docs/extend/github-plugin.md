@@ -184,6 +184,39 @@ This watch always includes `pull_request.review.approved` and `pull_request.merg
 </details>
 
 <details class="plugin-config">
+<summary><code>pullRequestMerge</code></summary>
+
+Repositories where Junior may merge pull requests with `github_mergePullRequest`. Merging is off for every repository that is not in this list.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    pullRequestMerge: {
+      repositories: ["fairsource/fair.io"],
+    },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ pullRequestMerge: { repositories: ["owner/name"] } })` in `plugins.ts`
+- **Default:** Off. Junior does not register the merge tool.
+- **Required:** No
+- **Environment override:** None
+
+The list only turns merging on. Every merge must also pass these rules:
+
+- The requester has a linked GitHub account with write access to the repository. For an automation, the requester is the automation creator.
+- The pull request is open, is not a draft, and its head is the commit SHA that Junior checked.
+- GitHub reports the pull request as `clean`: checks pass, there are no conflicts, and branch protection is met.
+- No reviewer has an open change request.
+- If Junior authored the pull request, a person approved its current head commit.
+- If a person authored the pull request, Junior reviewed its current head commit and Junior wrote none of its commits.
+
+Junior does not merge pull requests that other bots authored. The App installation must have `Contents: write` on the repository. Do not add the App to branch protection bypass lists.
+
+</details>
+
+<details class="plugin-config">
 <summary><code>appIdEnv</code></summary>
 
 Names the deployment variable containing the GitHub App ID.
@@ -299,14 +332,15 @@ Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
 - Review pull requests and leave inline review comments as the App bot
+- Merge pull requests in repositories listed in `pullRequestMerge`
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
 - Watch or automate matching events when webhooks are enabled
 
 Bot-owned writes use installation credentials. Personal operations still use
-private user authorization when required. Merge remains outside the write
-allowlist.
+private user authorization when required. Merge is off unless the app lists the
+repository in `pullRequestMerge`.
 
 ### Watches
 

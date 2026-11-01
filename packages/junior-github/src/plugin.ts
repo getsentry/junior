@@ -136,6 +136,31 @@ export interface GitHubPluginOptions {
   privateKeyEnv?: string;
   /** App-configured pull request event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
+
+  /**
+   * Repositories where Junior may merge pull requests, in "owner/name" form.
+   *
+   * Merging is off when this is empty. The merge tool still applies the merge
+   * policy in `pull-request-merge-policy.ts` on every listed repository.
+   */
+  pullRequestMerge?: { repositories: string[] };
+}
+
+/** Validate and lowercase the configured merge repositories. */
+function normalizeMergeRepositories(
+  repositories: string[] | undefined,
+): ReadonlySet<string> {
+  return new Set(
+    (repositories ?? []).map((repository) => {
+      const normalized = repository.trim().toLowerCase();
+      if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(normalized)) {
+        throw new Error(
+          `githubPlugin pullRequestMerge repository "${repository}" must use "owner/name" format.`,
+        );
+      }
+      return normalized;
+    }),
+  );
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -157,6 +182,9 @@ export function githubPlugin(
   const loadReadPermissions = createPermissionCache();
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
+  const mergeRepositories = normalizeMergeRepositories(
+    options.pullRequestMerge?.repositories,
+  );
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -378,6 +406,7 @@ export function githubPlugin(
           ctx,
           readEnv(botEmailEnv),
           options.pullRequestEvents?.subscribeAfterCreate,
+          mergeRepositories,
         );
       },
       workspacePrepare: prepareWorkspace,
@@ -440,7 +469,7 @@ export function githubPlugin(
         );
       },
       grantForEgress(ctx) {
-        return githubGrantForEgress(ctx);
+        return githubGrantForEgress(ctx, { mergeRepositories });
       },
       async onEgressResponse(ctx) {
         if (ctx.response.status === 403) {

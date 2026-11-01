@@ -344,11 +344,17 @@ function mockGitHubRefresh(
 
 async function grantForEgress(input: {
   bodyText?: string;
+  mergeRepositories?: string[];
   method: string;
   operation?: string;
   url: string;
 }) {
-  const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+  const plugin = githubPlugin({
+    additionalUserScopes: ["repo"],
+    ...(input.mergeRepositories
+      ? { pullRequestMerge: { repositories: input.mergeRepositories } }
+      : undefined),
+  });
   return await plugin.hooks?.grantForEgress?.({
     db,
     log: pluginLog,
@@ -2641,12 +2647,33 @@ Conversation: \`local:test:old-conversation\`
       access: "write",
       reason: "github.installation-write",
     });
+  });
+
+  it("allows pull request merges only from the merge tool on listed repositories", async () => {
+    const merge = (input: { operation?: string; repo?: string }) =>
+      grantForEgress({
+        mergeRepositories: ["getsentry/Junior"],
+        method: "PUT",
+        ...(input.operation ? { operation: input.operation } : undefined),
+        url: `https://api.github.com/repos/${input.repo ?? "getsentry/junior"}/pulls/780/merge`,
+      });
+
+    await expect(merge({})).rejects.toThrow(
+      "must use the github_mergePullRequest tool",
+    );
+    await expect(
+      merge({ operation: "github.pull.merge", repo: "getsentry/sentry" }),
+    ).rejects.toThrow("must use the github_mergePullRequest tool");
     await expect(
       grantForEgress({
         method: "PUT",
+        operation: "github.pull.merge",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
       }),
-    ).rejects.toThrow("This GitHub write request is not supported.");
+    ).rejects.toThrow("must use the github_mergePullRequest tool");
+    await expect(
+      merge({ operation: "github.pull.merge" }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
   });
 
   it("denies GitHub pull request approvals while allowing non-approve reviews", async () => {

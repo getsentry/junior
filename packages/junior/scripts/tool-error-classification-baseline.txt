@@ -13,6 +13,9 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
+packages/junior-github/src/tools/merge-pull-request.ts	throw new Error( `GitHub ${operation} failed with HTTP ${response.status}: ${githubError(body)}`, );
+packages/junior-github/src/tools/merge-pull-request.ts	throw new Error("GitHub App bot identity is not configured.");
+packages/junior-github/src/tools/merge-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubError(lookupPayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubError(resolvePayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub App bot identity is not configured.");

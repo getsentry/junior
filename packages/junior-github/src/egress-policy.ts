@@ -324,6 +324,38 @@ type GitHubBodyWrite = {
   restPath: RegExp;
 };
 
+const PULL_REQUEST_MERGE_PATH = /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/merge$/;
+
+/**
+ * Allow a merge only from the merge tool, and only on a configured repository.
+ * The tool owns the merge policy, so raw sandbox merges stay denied.
+ */
+function enforceGitHubPullRequestMergePolicy(input: {
+  mergeRepositories: ReadonlySet<string>;
+  method: string;
+  operation?: string;
+  upstreamUrl: URL;
+}): void {
+  if (
+    input.method !== "PUT" ||
+    !isGitHubApiUrl(input.upstreamUrl) ||
+    !PULL_REQUEST_MERGE_PATH.test(input.upstreamUrl.pathname.toLowerCase())
+  ) {
+    return;
+  }
+  const repository = githubRepositoryFromUrl(input.upstreamUrl);
+  enforceEgressPolicy({
+    allowed:
+      input.operation === "github.pull.merge" &&
+      repository !== undefined &&
+      input.mergeRepositories.has(
+        `${repository.owner}/${repository.name}`.toLowerCase(),
+      ),
+    denialMessage:
+      "GitHub pull request merges must use the github_mergePullRequest tool, and only on repositories where the app allows merging.",
+  });
+}
+
 const PULL_REQUEST_COMMENT_REACTIONS_PATH =
   /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
 
@@ -459,6 +491,10 @@ function githubApiWriteGrantName(
     // Feedback-status reactions on conversation and inline review comments.
     return "installation-write";
   }
+  if (method === "PUT" && PULL_REQUEST_MERGE_PATH.test(pathname)) {
+    // Reached only after enforceGitHubPullRequestMergePolicy allows it.
+    return "installation-write";
+  }
   return undefined;
 }
 
@@ -533,10 +569,13 @@ function isGitHubGraphqlMutation(
 
 function applyGitHubEgressPolicy(input: {
   bodyText?: string;
+  mergeRepositories: ReadonlySet<string>;
   method: string;
   operation?: string;
   upstreamUrl: URL;
 }): void {
+  enforceGitHubPullRequestMergePolicy(input);
+
   const reactionWrite =
     isGitHubApiUrl(input.upstreamUrl) &&
     (input.method === "POST" || input.method === "DELETE") &&
@@ -608,12 +647,15 @@ function requireRepositoryTarget(upstreamUrl: URL): void {
   );
 }
 
+/** Apply GitHub egress policy and pick the credential grant for one request. */
 export async function githubGrantForEgress(
   ctx: EgressHookContext,
+  options: { mergeRepositories: ReadonlySet<string> },
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
   const upstreamUrl = new URL(ctx.request.url);
   applyGitHubEgressPolicy({
+    mergeRepositories: options.mergeRepositories,
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
       : undefined),

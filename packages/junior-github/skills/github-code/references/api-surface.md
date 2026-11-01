@@ -57,7 +57,8 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
 - Stacks: open each PR with `github_createPullRequest`, based on the branch below, before `gh stack link`. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
-- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
+- Merge only with `github_mergePullRequest`, and only when the tool exists. Pass the head SHA that you checked. Do not retry a merge that the tool refused.
+- Junior does not support raw merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.
