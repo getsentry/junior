@@ -615,11 +615,14 @@ async function routeParsedMessage(args: {
   // A message from a person to Junior answers the open questions that the
   // agent asked in this Conversation, like a click on their cards. A reply in
   // a subscribed thread starts a Turn too, so it answers in the same way. It
-  // answers only when its author passes the allowed domain check.
+  // skips the allowed domain check above. The close checks the domain only
+  // when an open item can match, so most replies need no profile lookup.
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
-    if (route === "subscribed" && !(await isAuthorDomainAllowed())) return;
     await closeReviewItemsAnsweredByReply({
+      ...(route === "subscribed"
+        ? { canAnswer: isAuthorDomainAllowed }
+        : undefined),
       conversationId,
       getSlackAdapter: () => args.adapter,
       queue: args.queue,

@@ -403,7 +403,10 @@ export async function closeReviewItem(
 /**
  * Dismiss the open Review items that an Automation or a set of
  * Conversations added, when no agent can act on them any more. No person
- * closes them. It sends no message and does not change the Slack cards.
+ * closes them. It sends no message and does not change the Slack cards. A
+ * close by Conversations skips the items of an Automation, because a later
+ * run of the Automation can still change them. An Automation delete closes
+ * those.
  */
 export async function dismissOpenReviewItems(
   db: JuniorDatabase,
@@ -426,9 +429,12 @@ export async function dismissOpenReviewItems(
         eq(juniorReviewItems.status, "open"),
         "automationId" in input
           ? eq(juniorReviewItems.automationId, input.automationId)
-          : inArray(juniorReviewItems.addedByConversationId, [
-              ...input.addedByConversationIds,
-            ]),
+          : and(
+              inArray(juniorReviewItems.addedByConversationId, [
+                ...input.addedByConversationIds,
+              ]),
+              isNull(juniorReviewItems.automationId),
+            ),
       ),
     );
 }

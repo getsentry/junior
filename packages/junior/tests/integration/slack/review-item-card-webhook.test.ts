@@ -1,5 +1,6 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
@@ -15,6 +16,7 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { juniorIdentities } from "@/db/schema";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { mswServer } from "../../msw/server";
 import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
@@ -23,6 +25,7 @@ import {
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 
@@ -153,7 +156,7 @@ describe("Slack webhook: Review item cards", () => {
     await closeDb();
   });
 
-  function harness() {
+  function harness(options: { allowedDomains?: string[] } = {}) {
     const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
@@ -222,6 +225,7 @@ describe("Slack webhook: Review item cards", () => {
         }),
         waitUntil: waitUntil.fn,
         services: {
+          ...options,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),
@@ -554,7 +558,22 @@ describe("Slack webhook: Review item cards", () => {
   });
 
   it("closes a question when its assignee replies in the thread", async () => {
-    const { click, queue, reply, state } = harness();
+    const { click, queue, reply, state } = harness({
+      allowedDomains: ["example.com"],
+    });
+    const emails: Record<string, string> = {
+      U123: "ana@example.com",
+      U456: "ben@example.com",
+      UOUT: "someone@contractor.dev",
+    };
+    mswServer.use(
+      http.post("https://slack.com/api/users.info", async ({ request }) => {
+        const user = new URLSearchParams(await request.text()).get("user")!;
+        return HttpResponse.json(
+          usersInfoOk({ userId: user, email: emails[user] }),
+        );
+      }),
+    );
     await slackThread(THREAD, "public");
     const ana = await slackUser("ana@example.com", "U123");
     await slackUser("ben@example.com", "U456");
@@ -619,6 +638,30 @@ describe("Slack webhook: Review item cards", () => {
       "U456",
       "U123",
     ]);
+
+    // A question with no assignees takes an answer from anyone, but not
+    // from a Slack author outside the allowed domains.
+    const unassigned = await (
+      createAddReviewItemTool({
+        conversationId: THREAD,
+        resolveActorIdentity: async () => undefined,
+        source: { kind: "slack" } as any,
+      }) as any
+    ).execute(
+      {
+        kind: "action",
+        title: "Ship release 1.2.4",
+        body: "The release checks passed.",
+        dedupe_key: "release:1.2.4",
+        request: SHIP_REQUEST,
+      },
+      {},
+    );
+    expect(unassigned.item.assignees).toEqual([]);
+    await reply("UOUT", "1712345.0006", { mention: false });
+    expect((await getReviewItem(getDb(), unassigned.item.id))?.status).toBe(
+      "open",
+    );
   });
 
   it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {

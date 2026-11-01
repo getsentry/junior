@@ -402,16 +402,23 @@ export async function deleteAutomation(
   current: TaskCandidate,
 ): Promise<TaskCandidate | undefined> {
   return await getDb().transaction(async (tx) => {
-    await dismissOpenReviewItems(tx, {
-      automationId: current.task.id,
-      nowMs: Date.now(),
-      reason: "Automation deleted",
-    });
+    // The delete takes the lock of the Automation. It holds until this
+    // transaction ends, so the dismiss runs under it.
+    const dismissItems = () =>
+      dismissOpenReviewItems(tx, {
+        automationId: current.task.id,
+        nowMs: Date.now(),
+        reason: "Automation deleted",
+      });
     if (current.kind === "event") {
       const task = await deleteEventAutomation(tx, current.task.id);
-      return task ? { ...current, task } : undefined;
+      if (!task) return undefined;
+      await dismissItems();
+      return { ...current, task };
     }
     const task = await deleteScheduledAutomation(tx, current.task.id);
-    return task ? { ...current, task } : undefined;
+    if (!task) return undefined;
+    await dismissItems();
+    return { ...current, task };
   });
 }

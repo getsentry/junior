@@ -17,11 +17,10 @@ behavior.
   - A person replies in its thread (see "Reply in the thread").
   - An agent closes it with `updateReviewItem`.
   - Junior purges the Conversation that added it. The item becomes
-    `dismissed` with the reason `Conversation purged`.
+    `dismissed` with the reason `Conversation purged`. An item from an
+    Automation run stays open, because a later run can still change it.
   - Someone deletes the Automation that added it. The item becomes
     `dismissed` with the reason `Automation deleted`.
-  - The plugin that added a notice closes it. A plugin close sends no
-    message.
 
   A purge and an Automation delete keep the row. They send no message and
   do not change the Slack cards. A click on an old card tells the person

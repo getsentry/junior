@@ -124,6 +124,7 @@ export async function selectExpiredRoots(
         select 1 from junior_review_items review_items
         where review_items.added_by_conversation_id = tree.conversation_id
           and review_items.status = 'open'
+          and review_items.automation_id is null
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
