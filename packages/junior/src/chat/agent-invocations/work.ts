@@ -257,12 +257,15 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A stop request can outlive the run that it stopped and wake the child
-  // again. The stopped agent invocation handles that wake.
+  // A child Conversation never runs on a root worker. A wake after its last
+  // agent invocation ended, such as a late stop request, goes to that agent
+  // invocation, which only repeats its idempotent finish. A paused Turn of an
+  // ended agent invocation can have an event Source, and a root worker would
+  // try to resume it.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.status === "stopped" ? latest.invocationId : undefined;
+  return latest?.invocationId;
 }
 
 /**
