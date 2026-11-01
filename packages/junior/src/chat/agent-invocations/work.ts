@@ -1,10 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
-import {
-  buildSteeringPiMessage,
-  withoutSavedSteeringMessages,
-} from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
@@ -12,7 +8,7 @@ import {
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { openConversationProjection } from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -21,29 +17,23 @@ import {
   finishTurn,
   type SavedTurnResult,
 } from "@/chat/runtime/turn-execution";
-import {
-  getPersistedSandboxState,
-  getPersistedThreadState,
-  persistThreadStateById,
-} from "@/chat/runtime/thread-state";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
-  saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { getConversationTurnBoundaryError } from "@/chat/runtime/turn";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
-import { botConfig } from "@/chat/config";
-import {
-  recordFinishedTurnForAutomatedLimit,
-  resetAutomatedTurnLimit,
-} from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
-import type { SandboxRef } from "@/chat/sandbox/ref";
+import {
+  createSteeringDrain,
+  createTurnSandbox,
+  saveFinishedTurn,
+  type TurnSandbox,
+} from "@/chat/task-execution/core-turn";
 import {
   agentTypeInstructions,
   agentTypeStartsWithParentHistory,
@@ -272,91 +262,69 @@ function createAgentMessageSteeringDrain(
   context: ConversationWorkerContext,
   running: AgentInvocation,
 ) {
-  const turnId = getAgentInvocationTurnId(running.invocationId);
-  return async (
-    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
-  ): Promise<AgentSteeringMessage[]> => {
-    const accepted: AgentSteeringMessage[] = [];
-    await context.attempt.drain(
-      async (pending) => {
-        const readIds: string[] = [];
-        const joining: AgentInvocation[] = [];
-        for (const message of pending) {
-          const metadata = agentInvocationMailboxMetadataSchema.safeParse(
-            message.input.metadata,
-          );
-          if (!metadata.success) {
-            continue;
-          }
-          const candidate = await getAgentInvocation(
-            metadata.data.agentInvocationId,
-          );
-          // Only a parent task or message steers. A grandchild result or a
-          // watch event starts its own agent invocation.
-          if (
-            !candidate?.parentToolCallId ||
-            candidate.invocationId === running.invocationId
-          ) {
-            continue;
-          }
-          if (isTerminalAgentInvocation(candidate)) {
-            // An earlier drain marked this message but did not acknowledge it.
-            if (candidate.parentMailboxStatus === "steered") {
-              readIds.push(message.inboundMessageId);
-            }
-            continue;
-          }
-          if (
-            !sameActorIdentity(candidate.actor, running.actor) ||
-            !isDeepStrictEqual(
-              candidate.credentialContext,
-              running.credentialContext,
-            )
-          ) {
-            break;
-          }
-          joining.push(candidate);
-          readIds.push(message.inboundMessageId);
-        }
-        if (joining.length === 0) {
-          return readIds;
-        }
-        // An earlier drain can save a message in the Turn and then fail
-        // before it marks the agent invocation. Do not give it to the Turn
-        // again.
-        const saved =
-          (await getTurnRecord(running.childConversationId, turnId))
-            ?.piMessages ?? [];
-        const messages = withoutSavedSteeringMessages(
-          saved,
-          joining.map(
-            (candidate): AgentSteeringMessage => ({
-              provenance: agentInstructionProvenance,
-              text: agentInvocationInputText(candidate),
-              timestampMs: candidate.createdAtMs,
-            }),
-          ),
-          buildSteeringPiMessage,
+  return createSteeringDrain<AgentInvocation>({
+    context,
+    deferred: true,
+    turnId: getAgentInvocationTurnId(running.invocationId),
+    select: async (pending) => {
+      const readIds: string[] = [];
+      const joining: AgentInvocation[] = [];
+      for (const message of pending) {
+        const metadata = agentInvocationMailboxMetadataSchema.safeParse(
+          message.input.metadata,
         );
-        // The Turn saves the messages before they are marked.
-        if (messages.length > 0) {
-          await accept(messages);
-          accepted.push(...messages);
+        if (!metadata.success) {
+          continue;
         }
-        for (const candidate of joining) {
-          const terminal = await markAgentInvocationSteered(
-            candidate.invocationId,
-          );
-          if (terminal && isTerminalAgentInvocation(terminal)) {
-            await recordSubagentEnded(terminal);
+        const candidate = await getAgentInvocation(
+          metadata.data.agentInvocationId,
+        );
+        // Only a parent task or message steers. A grandchild result or a
+        // watch event starts its own agent invocation.
+        if (
+          !candidate?.parentToolCallId ||
+          candidate.invocationId === running.invocationId
+        ) {
+          continue;
+        }
+        if (isTerminalAgentInvocation(candidate)) {
+          // An earlier drain marked this message but did not acknowledge it.
+          if (candidate.parentMailboxStatus === "steered") {
+            readIds.push(message.inboundMessageId);
           }
+          continue;
         }
-        return readIds;
-      },
-      { deferred: true },
-    );
-    return accepted;
-  };
+        if (
+          !sameActorIdentity(candidate.actor, running.actor) ||
+          !isDeepStrictEqual(
+            candidate.credentialContext,
+            running.credentialContext,
+          )
+        ) {
+          break;
+        }
+        joining.push(candidate);
+        readIds.push(message.inboundMessageId);
+      }
+      return { joining, readIds };
+    },
+    toSteeringMessage: (candidate): AgentSteeringMessage => ({
+      provenance: agentInstructionProvenance,
+      text: agentInvocationInputText(candidate),
+      timestampMs: candidate.createdAtMs,
+    }),
+    // The Turn saves the messages before they are marked.
+    afterAccept: async (joining) => {
+      for (const candidate of joining) {
+        const terminal = await markAgentInvocationSteered(
+          candidate.invocationId,
+        );
+        if (terminal && isTerminalAgentInvocation(terminal)) {
+          await recordSubagentEnded(terminal);
+        }
+      }
+    },
+  });
 }
 
 /**
@@ -474,56 +442,30 @@ function blockingInvocationError(
     : undefined;
 }
 
-/** Save one completed agent result on its child agent invocation. */
+/**
+ * Save one completed agent result. The core Turn save comes first. The
+ * Delivery of a child then saves the result on its agent invocation.
+ */
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
-  sandboxRef?: SandboxRef;
+  sandbox: TurnSandbox;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";
-  await persistThreadStateById(args.invocation.childConversationId, {
-    sandboxRef: args.result.sandboxRef ?? args.sandboxRef,
+  await saveFinishedTurn({
+    actor: args.invocation.actor,
+    conversationId: args.invocation.childConversationId,
+    destination: args.invocation.destination,
+    // A task or message from the parent resets the automated-turn limit, like
+    // a person's message on a root.
+    ownerInput: Boolean(args.invocation.parentToolCallId),
+    result: args.result,
+    sandbox: args.sandbox,
+    source: args.invocation.source,
+    surface: "internal",
+    turnId: args.turnId,
   });
-  if (args.result.piMessages?.length) {
-    await saveTurnCheckpoint({
-      mode: "completed",
-      conversationId: args.invocation.childConversationId,
-      turnId: args.turnId,
-      durationMs: args.result.diagnostics.durationMs,
-      usage: args.result.diagnostics.usage,
-      destination: args.invocation.destination,
-      ...(failed
-        ? {
-            errorMessage:
-              args.result.diagnostics.errorMessage ?? "Agent invocation failed",
-          }
-        : undefined),
-      messages: args.result.piMessages,
-      actor: args.invocation.actor,
-      source: args.invocation.source,
-      surface: "internal",
-    });
-  }
-  // As on a root, a watch event Turn counts toward the automated-turn limit,
-  // and a task or message from the parent resets it like a user message.
-  if (args.invocation.parentToolCallId) {
-    await resetAutomatedTurnLimit({
-      conversationId: args.invocation.childConversationId,
-    });
-  } else if (args.invocation.source.kind !== "agent_invocation") {
-    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    // A child has no Location, so this skips the notice and clears its claim.
-    await maybePostAutomatedTurnLimitNotice({
-      conversationId: args.invocation.childConversationId,
-      maxTurns,
-      update: await recordFinishedTurnForAutomatedLimit({
-        conversationId: args.invocation.childConversationId,
-        maxTurns,
-        source: args.invocation.source,
-      }),
-    });
-  }
   const terminal = await completeAgentInvocation({
     invocationId: args.invocation.invocationId,
     ...(failed
@@ -675,12 +617,15 @@ export function createAgentInvocationWorker(
           });
           const [persisted, projection, tree] = await Promise.all([
             getPersistedThreadState(invocation.childConversationId),
-            openConversationProjection({
+            loadProjection({
               conversationId: invocation.childConversationId,
             }),
             readChildDepthAndRootLocation(invocation.childConversationId),
           ]);
-          let sandboxRef = getPersistedSandboxState(persisted);
+          const sandbox = createTurnSandbox({
+            conversationId: invocation.childConversationId,
+            persisted,
+          });
           return {
             run: {
               conversationId: invocation.childConversationId,
@@ -694,9 +639,9 @@ export function createAgentInvocationWorker(
               // invocations read it from the child's own Conversation.
               history:
                 agentTypeStartsWithParentHistory(invocation.agentType) &&
-                projection.messages.length === 0
+                projection.length === 0
                   ? await loadForkHistory(invocation)
-                  : projection.messages,
+                  : projection,
               actor: invocation.actor,
               credentialContext: invocation.credentialContext,
               destination: invocation.destination,
@@ -712,26 +657,21 @@ export function createAgentInvocationWorker(
                 tree.depth <= maxAgentDepth,
               ),
               state: {
-                sandboxRef,
+                sandboxRef: sandbox.ref,
               },
               durability: {
                 drainSteeringMessages: createAgentMessageSteeringDrain(
                   context,
                   invocation,
                 ),
-                onSandboxRefChanged: async (nextSandboxRef) => {
-                  sandboxRef = nextSandboxRef;
-                  await persistThreadStateById(invocation.childConversationId, {
-                    sandboxRef,
-                  });
-                },
+                onSandboxRefChanged: sandbox.onSandboxRefChanged,
               },
             },
             saveResult: async (result) =>
               await saveAgentInvocationResult({
-                invocation: invocation,
+                invocation,
                 result,
-                sandboxRef,
+                sandbox,
                 turnId,
               }),
           };

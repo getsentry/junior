@@ -15,6 +15,7 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
@@ -227,6 +228,11 @@ describe("event wake delay", () => {
     nowSpy.mockReturnValue(baseMs + 45_000);
     await expect(processNext()).resolves.toEqual({ status: "completed" });
     expect(agentRuns).toHaveLength(2);
+    // The web Turn reset the automated-turn count, and the one event Turn
+    // counts once. A child agent uses the same core Turn save.
+    await expect(
+      getAutomatedTurnLimitState({ conversationId }),
+    ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
 
     const savedEvents =
       await getConversationEventStore().loadHistory(conversationId);

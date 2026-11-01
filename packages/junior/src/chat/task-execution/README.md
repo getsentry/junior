@@ -17,6 +17,14 @@ attempt. Mailbox work and agent invocation work call `runWorkerTurn`. Each work
 owner supplies its Run, its result save, and its finish steps. The lifecycle
 does not check which owner called it.
 
+`core-turn.ts` owns the Turn steps that root and child work share with
+different inputs: the sandbox ref save, the steering drain, the completed
+Turn save, and the automated-turn limit. A child agent invocation is a core
+Turn with no provider Delivery. Its own parts are only its run policy, the
+history of a fork, and its Delivery, which saves the result on the agent
+invocation and reports it to the parent. Slack Turns use only the
+automated-turn limit step today.
+
 `turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
 conversation lease. SQL conversation events store history. The Redis Turn
 cursor stores only the data that is needed to resume a Turn, including the

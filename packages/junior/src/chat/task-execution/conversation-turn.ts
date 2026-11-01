@@ -28,7 +28,6 @@ import { logException, setTags, withLogContext } from "@/chat/logging";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
-  getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
@@ -40,15 +39,12 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { botConfig } from "@/chat/config";
 import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
@@ -60,8 +56,11 @@ import {
   abandonTurnRecord,
   getTurnRecord,
   listTurnSummaries,
-  saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
+import {
+  createTurnSandbox,
+  saveFinishedTurn,
+} from "@/chat/task-execution/core-turn";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
@@ -199,11 +198,13 @@ function sharedAuthorIdentityId(
 }
 
 /**
- * Create the shared mailbox worker for web and event Turns.
+ * Create the shared mailbox worker for web and event Turns. Web input has no
+ * provider Delivery, so its replies stay in Junior. `eventDelivery` is the
+ * Delivery of event input, which sends replies to the Conversation Location.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
-  deliverMessage?: DeliverMessage,
+  eventDelivery?: DeliverMessage,
 ) {
   return async (
     context: ConversationWorkerContext,
@@ -233,6 +234,8 @@ export function createConversationTurnWorker(
     let event: EventMailboxMetadata["event"] | undefined;
     let batchEvents: ConversationMessageEvent[] = [];
     let authorIdentityId: string | undefined;
+    // The input owner selects Delivery. Source must not select it.
+    let eventInput = false;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -253,6 +256,7 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
+        eventInput = true;
         text = renderEventBatchText(messages);
         event = firstMetadata.event;
         batchEvents = eventBatchMessageEvents(messages);
@@ -283,7 +287,6 @@ export function createConversationTurnWorker(
     const savedTurn = isResume
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
-    let savedMessageIsEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -291,7 +294,7 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      savedMessageIsEvent = isEventConversationMessage(userMessage);
+      eventInput = isEventConversationMessage(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -335,14 +338,7 @@ export function createConversationTurnWorker(
     });
     const webActor = actor.platform === "web" ? actor : undefined;
     const conversationLocation = storedConversation?.location;
-    // TODO(dcramer): Remove the saved Message check after every deployed Turn
-    // cursor stores Event Source.
-    // TODO(dcramer): Remove this Source-based Delivery choice after the core
-    // Turn lifecycle stores assistant Messages and web and Event work
-    // each supplies optional provider Delivery. Source must not select Delivery.
-    const deliverToProvider =
-      Boolean(conversationLocation) &&
-      (source.kind === "event" || savedMessageIsEvent);
+    const deliverToProvider = Boolean(conversationLocation) && eventInput;
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
@@ -361,9 +357,11 @@ export function createConversationTurnWorker(
           : undefined),
       },
       async () => {
-        let sandboxRef: SandboxRef | undefined =
-          getPersistedSandboxState(persisted);
-        const initialSandboxRef = sandboxRef;
+        const sandbox = createTurnSandbox({
+          conversation,
+          conversationId: context.conversationId,
+          persisted,
+        });
         const stopSignal = context.stopSignal?.();
 
         let currentRunId: string | undefined;
@@ -386,12 +384,12 @@ export function createConversationTurnWorker(
           const cards = await loadPendingMessageCards(context.conversationId);
           let deliveryResult: DeliveryResult | undefined;
           if (deliverToProvider) {
-            if (!conversationLocation || !deliverMessage) {
+            if (!conversationLocation || !eventDelivery) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
               );
             }
-            deliveryResult = await deliverMessage({
+            deliveryResult = await eventDelivery({
               cards,
               conversationId: context.conversationId,
               location: conversationLocation,
@@ -566,7 +564,7 @@ export function createConversationTurnWorker(
                 : { disabledFeatures: ["interactive-auth"] as const }),
               state: {
                 pendingAuth: conversation.processing.pendingAuth,
-                sandboxRef,
+                sandboxRef: sandbox.ref,
               },
               delivery: deliverAssistantMessage,
               durability: {
@@ -581,18 +579,12 @@ export function createConversationTurnWorker(
                       }),
                     }
                   : undefined),
-                onSandboxRefChanged: async (nextSandboxRef) => {
-                  sandboxRef = nextSandboxRef;
-                  await persistThreadStateById(context.conversationId, {
-                    conversation,
-                    sandboxRef,
-                  });
-                },
+                onSandboxRefChanged: sandbox.onSandboxRefChanged,
                 recordPendingAuth: async (pendingAuth) => {
                   conversation.processing.pendingAuth = pendingAuth;
                   await persistThreadStateById(context.conversationId, {
                     conversation,
-                    sandboxRef,
+                    sandboxRef: sandbox.ref,
                   });
                 },
               },
@@ -624,44 +616,16 @@ export function createConversationTurnWorker(
                 sessionId: turnId,
                 userMessageId,
               });
-              await persistThreadStateById(context.conversationId, {
+              await saveFinishedTurn({
+                actor,
                 conversation: completedState.conversation,
-                sandboxRef: reply.sandboxRef ?? sandboxRef,
-              });
-              if (reply.piMessages?.length) {
-                // Prefer the live checkpoint slice after yield/resume; first
-                // completion has no prior record and starts at slice 1.
-                const latest = await getTurnRecord(
-                  context.conversationId,
-                  turnId,
-                );
-                await saveTurnCheckpoint({
-                  mode: "completed",
-                  conversationId: context.conversationId,
-                  turnId,
-                  sliceId: latest?.sliceId ?? 1,
-                  messages: reply.piMessages,
-                  durationMs: reply.diagnostics.durationMs,
-                  usage: reply.diagnostics.usage,
-                  // TODO(dcramer): Remove checkpoint Destination after resume
-                  // reads the Conversation Location.
-                  destination,
-                  source,
-                  actor,
-                  surface,
-                });
-              }
-              const automatedTurnLimit =
-                await recordFinishedTurnForAutomatedLimit({
-                  conversationId: context.conversationId,
-                  maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                  source,
-                });
-              await maybePostAutomatedTurnLimitNotice({
                 conversationId: context.conversationId,
-                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                destination,
+                result: reply,
+                sandbox,
                 source,
-                update: automatedTurnLimit,
+                surface,
+                turnId,
               });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
@@ -694,7 +658,7 @@ export function createConversationTurnWorker(
               await completeCancelledConversationTurn({
                 conversation,
                 conversationId: context.conversationId,
-                sandboxRef,
+                sandboxRef: sandbox.ref,
                 turnId,
                 userMessageId,
               });
@@ -709,7 +673,7 @@ export function createConversationTurnWorker(
               });
               await persistThreadStateById(context.conversationId, {
                 conversation,
-                sandboxRef,
+                sandboxRef: sandbox.ref,
               });
               return "paused";
             },
@@ -774,7 +738,7 @@ export function createConversationTurnWorker(
                 });
                 await persistThreadStateById(context.conversationId, {
                   conversation,
-                  sandboxRef: initialSandboxRef ?? null,
+                  sandboxRef: sandbox.initial ?? null,
                 });
               } catch (persistenceError) {
                 captureConversationTurnFailure({

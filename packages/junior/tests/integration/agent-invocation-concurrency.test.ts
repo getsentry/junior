@@ -497,10 +497,13 @@ describe("agent invocation identity and concurrency", () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
+      // As from spawnAgent, the task has the parent's tool call, so it
+      // resets the automated-turn count.
       const child = await harness.spawn({
         agentName: "watcher",
         idempotencyKey: "watch-1",
         input: "Watch the deploy.",
+        parentToolCallId: "spawn-watcher",
       });
       await harness.drainQueuedWork();
 
