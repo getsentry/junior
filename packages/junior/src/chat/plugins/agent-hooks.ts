@@ -41,7 +41,7 @@ import {
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
@@ -315,6 +315,24 @@ function pluginMcpContext(
   };
 }
 
+/** Time one plugin hook call so slow plugins show up in turn traces. */
+async function withPluginHookSpan<T>(
+  pluginName: string,
+  hookName: "beforeToolExecute" | "sandboxPrepare" | "userPrompt",
+  callback: () => Promise<T>,
+): Promise<T> {
+  return await withSpan(
+    `plugin.hook ${hookName}`,
+    "plugin.hook",
+    {},
+    callback,
+    {
+      "app.plugin.name": pluginName,
+      "app.plugin.hook": hookName,
+    },
+  );
+}
+
 function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -558,9 +576,14 @@ export async function getPluginUserPromptContributions(args: {
       continue;
     }
     try {
-      const rawResult = await hook({
-        ...invocationPluginContext(plugin, args.context, args.turnId),
-      });
+      const rawResult = await withPluginHookSpan(
+        pluginName,
+        "userPrompt",
+        async () =>
+          await hook({
+            ...invocationPluginContext(plugin, args.context, args.turnId),
+          }),
+      );
       if (rawResult === undefined) {
         continue;
       }
@@ -1681,11 +1704,16 @@ export function createPluginHookRunner(
         logInfo("agent.plugin.sandbox_preparation.started", {
           "app.plugin.name": pluginName,
         });
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          sandbox: sandboxCapability,
-        });
+        await withPluginHookSpan(
+          pluginName,
+          "sandboxPrepare",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              sandbox: sandboxCapability,
+            }),
+        );
       }
     },
     async beforeToolExecute(tool) {
@@ -1703,39 +1731,46 @@ export function createPluginHookRunner(
         }
         let replacement: Record<string, unknown> | undefined;
         let blocked: PluginToolDeniedError | ToolInputError | undefined;
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          actors,
-          tool: {
-            name: tool.name,
-            input: nextInput,
-          },
-          users: {
-            resolveActor: async () =>
-              input.actor ? await readActorIdentity(input.actor) : undefined,
-          },
-          juniorRoot: SANDBOX_JUNIOR_ROOT,
-          env: {
-            get(key) {
-              return env[key] ?? normalizeEnv(nextInput.env)[key];
-            },
-            set(key, value) {
-              env[key] = value;
-            },
-          },
-          decision: {
-            deny(reason) {
-              blocked = new PluginToolDeniedError(reason);
-            },
-            redirect(message) {
-              blocked = new ToolInputError(message);
-            },
-            replaceInput(input) {
-              replacement = input;
-            },
-          },
-        });
+        await withPluginHookSpan(
+          pluginName,
+          "beforeToolExecute",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              actors,
+              tool: {
+                name: tool.name,
+                input: nextInput,
+              },
+              users: {
+                resolveActor: async () =>
+                  input.actor
+                    ? await readActorIdentity(input.actor)
+                    : undefined,
+              },
+              juniorRoot: SANDBOX_JUNIOR_ROOT,
+              env: {
+                get(key) {
+                  return env[key] ?? normalizeEnv(nextInput.env)[key];
+                },
+                set(key, value) {
+                  env[key] = value;
+                },
+              },
+              decision: {
+                deny(reason) {
+                  blocked = new PluginToolDeniedError(reason);
+                },
+                redirect(message) {
+                  blocked = new ToolInputError(message);
+                },
+                replaceInput(input) {
+                  replacement = input;
+                },
+              },
+            }),
+        );
 
         if (blocked) {
           throw blocked;
