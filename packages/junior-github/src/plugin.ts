@@ -18,6 +18,7 @@ import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import {
+  loadPullRequest,
   loadPullRequestCommitPages,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -362,6 +363,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
+            loadPullRequest: async (pullRequest) =>
+              await loadPullRequest(installationEnv, pullRequest),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,

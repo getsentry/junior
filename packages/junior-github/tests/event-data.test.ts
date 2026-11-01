@@ -10,6 +10,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/index";
 import type { GitHubDb } from "../src/db/database";
+import { gitHubMergeConflictEvents } from "../src/webhooks/merge-conflict";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
 import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
@@ -201,6 +202,19 @@ function releaseDelivery(repo: string, tag: string) {
   };
 }
 
+/** The events that a pull request read adds to a webhook delivery. */
+function mergeConflictEvents(scope: FixtureScope): EventInput[] {
+  return gitHubMergeConflictEvents({
+    conflict: {
+      baseBranch: "main",
+      headSha: scope.checkSha,
+      url: `https://github.com/${scope.repo}/pull/${scope.pullRequest}`,
+    },
+    number: scope.pullRequest,
+    repositoryFullName: scope.repo,
+  });
+}
+
 /** Publish deliveries the way the webhook route does, with every lookup. */
 async function publish(
   deliveries: Array<{ eventName: string; body: unknown }>,
@@ -304,7 +318,10 @@ function gitHubIdentifierMatch(event: {
 
 describe("GitHub event data", () => {
   it("declares filter events that match the data the webhooks set", async () => {
-    const events = await publish(fixtureDeliveries(BASE_SCOPE), "delivery");
+    const events = [
+      ...(await publish(fixtureDeliveries(BASE_SCOPE), "delivery")),
+      ...mergeConflictEvents(BASE_SCOPE),
+    ];
     const resourceTypes = githubPlugin().events?.resourceTypes ?? [];
 
     expect(filterEventMismatches({ resourceTypes, events })).toEqual([]);
@@ -366,6 +383,9 @@ describe("GitHub event data", () => {
         fixtureDeliveries({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
         "other-repo",
       )),
+      ...mergeConflictEvents(BASE_SCOPE),
+      ...mergeConflictEvents({ ...BASE_SCOPE, pullRequest: 947 }),
+      ...mergeConflictEvents({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
     ];
 
     expect(

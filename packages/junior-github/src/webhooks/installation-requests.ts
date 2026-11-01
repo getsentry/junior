@@ -52,6 +52,27 @@ export async function loadPullRequestCommitPages(
     );
 }
 
+/** Read one pull request, with a read-only token. */
+export async function loadPullRequest(
+  env: GitHubInstallationEnv,
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
+    { token: token.token },
+  );
+}
+
 /** Add the "reviewing" reaction to one pull request feedback comment. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,
