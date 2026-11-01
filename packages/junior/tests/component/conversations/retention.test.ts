@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -11,111 +10,29 @@ import {
   selectExpiredRoots,
 } from "@/chat/conversations/sql/purge";
 import {
-  juniorAttachments,
   juniorConversationEvents,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
   juniorAgentInvocations,
+  juniorAutomations,
+  juniorIdentities,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
-  collectAttachmentGarbage,
-  storeAttachment,
-} from "@/chat/attachments/store";
-import {
-  createMemoryAttachmentStorage,
-  type MemoryAttachmentStorage,
-} from "@/chat/attachments/memory";
-import type { AttachmentWrite } from "@/chat/attachments/storage";
+  BASE_MS,
+  DAY_MS,
+  seedConversation,
+  seedDestination,
+} from "../../fixtures/conversation-retention";
+import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const BASE_MS = Date.UTC(2026, 0, 1);
-
-/** Write one placeholder object so tests can check that cleanup removed it. */
-async function putObject(
-  storage: MemoryAttachmentStorage,
-  key: string,
-): Promise<void> {
-  await storage.put({
-    body: Buffer.from(key),
-    contentType: "text/plain",
-    key,
-  });
-}
-
-async function seedDestination(
-  executor: JuniorSqlDatabase,
-  visibility: JuniorDestinationVisibility,
-): Promise<string> {
-  const id = randomUUID();
-  await executor
-    .db()
-    .insert(juniorDestinations)
-    .values({
-      id,
-      provider: "slack",
-      providerTenantId: "T1",
-      providerDestinationId: `C-${id.slice(0, 8)}`,
-      kind: "channel",
-      visibility,
-      createdAt: new Date(BASE_MS),
-      updatedAt: new Date(BASE_MS),
-    });
-  return id;
-}
-
-async function seedConversation(
-  executor: JuniorSqlDatabase,
-  args: {
-    conversationId: string;
-    destinationId?: string;
-    lastActivityAtMs: number;
-    parentConversationId?: string;
-    title?: string | null;
-    channelName?: string | null;
-    withContent?: boolean;
-  },
-): Promise<void> {
-  const at = new Date(args.lastActivityAtMs);
-  await executor
-    .db()
-    .insert(juniorConversations)
-    .values({
-      conversationId: args.conversationId,
-      schemaVersion: 1,
-      destinationId: args.destinationId ?? null,
-      parentConversationId: args.parentConversationId ?? null,
-      title: args.title === undefined ? "A title" : args.title,
-      channelName: args.channelName === undefined ? "eng" : args.channelName,
-      actor: { platform: "slack", slackUserId: "U1", teamId: "T1" },
-      createdAt: new Date(BASE_MS),
-      lastActivityAt: at,
-      updatedAt: at,
-      executionStatus: "idle",
-    });
-  if (args.withContent !== false) {
-    await executor
-      .db()
-      .insert(juniorConversationEvents)
-      .values({
-        conversationId: args.conversationId,
-        seq: 0,
-        historyVersion: 0,
-        schemaVersion: 1,
-        type: "message",
-        payload: { messageId: "m1", role: "user", text: "hi" },
-        createdAt: at,
-      });
-  }
-}
 
 async function eventCount(
   executor: JuniorSqlDatabase,
@@ -178,6 +95,55 @@ describe("retention purge job", () => {
       destinationId: privateDest,
       lastActivityAtMs: BASE_MS,
     });
+    const addItem = async (conversationId: string, automationId?: string) =>
+      (await insertReviewItem(fixture.sql.db(), {
+        addedByConversationId: conversationId,
+        assignedToEveryone: false,
+        assigneeUserIds: [],
+        ...(automationId ? { automationId } : undefined),
+        body: "The rollout waits on an answer.",
+        conversationIds: [conversationId],
+        dedupeKey: `rollout:${conversationId}:${automationId ?? "chat"}`,
+        kind: "action",
+        nowMs: BASE_MS,
+        request: {
+          question: "Continue the rollout?",
+          fields: [{ id: "note", kind: "text", label: "Note" }],
+        },
+        title: "Continue the rollout?",
+        visibility: "public",
+      }))!.id;
+    const pubItem = await addItem("pub");
+    // A live Automation keeps its item up to date in later runs, but the item
+    // still names the Conversation of the first run.
+    await fixture.sql
+      .db()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(BASE_MS),
+        id: "identity:creator",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1",
+        providerTenantId: "T1",
+        updatedAt: new Date(BASE_MS),
+      });
+    await fixture.sql
+      .db()
+      .insert(juniorAutomations)
+      .values({
+        channelId: "C1",
+        createdAtMs: BASE_MS,
+        creatorIdentityId: "identity:creator",
+        creatorSlackUserId: "U1",
+        id: "auto-rollout",
+        instruction: "Check the rollout.",
+        kind: "scheduled",
+        record: {} as any,
+        status: "active",
+        teamId: "T1",
+      });
+    const automationItem = await addItem("pub", "auto-rollout");
 
     // At 15 days: private is expired (14d window), public is retained (90d).
     const first = await runRetentionPurge(fixture.sql, {
@@ -189,317 +155,40 @@ describe("retention purge job", () => {
     expect(
       (await readConversation(fixture.sql, "pub")).transcriptPurgedAt,
     ).toBe(null);
+    expect((await getReviewItem(fixture.sql.db(), pubItem))?.status).toBe(
+      "open",
+    );
 
-    // At 91 days: the public conversation crosses its 90-day window.
+    // At 91 days: the public conversation crosses its 90-day window. No
+    // agent can act on its open item after the purge, so the item closes.
     const second = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 91 * DAY_MS,
     });
     expect(second.purged).toBe(1);
     expect(await eventCount(fixture.sql, "pub")).toBe(0);
-  });
-
-  it("deletes attachment blobs after conversation content expires", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "with-attachment",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
+    expect(await getReviewItem(fixture.sql.db(), pubItem)).toMatchObject({
+      closeReason: "Conversation purged",
+      status: "dismissed",
     });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "attachment-1",
-        conversationId: "with-attachment",
-        storageProvider: "memory",
-        storageKey: "key-1",
-        filename: "report.txt",
-        contentType: "text/plain",
-        bytes: 6,
-        sha256: "digest",
-        createdAt: new Date(BASE_MS),
-      });
-    const storage = createMemoryAttachmentStorage();
-    await putObject(storage, "key-1");
-
-    const result = await runRetentionPurge(fixture.sql, {
-      attachmentStorage: storage,
-      nowMs: BASE_MS + 15 * DAY_MS,
-    });
-
-    expect(result.attachments).toBe(1);
-    expect([...storage.objects.keys()]).toEqual([]);
-    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
-  });
-
-  it("deletes attachments 30 days after they are stored", async () => {
-    const destinationId = await seedDestination(fixture.sql, "public");
-    await seedConversation(fixture.sql, {
-      conversationId: "active-with-attachments",
-      destinationId,
-      lastActivityAtMs: BASE_MS + 31 * DAY_MS,
-    });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values([
-        {
-          id: "expired-attachment",
-          conversationId: "active-with-attachments",
-          storageProvider: "memory",
-          storageKey: "expired-key",
-          filename: "old.txt",
-          contentType: "text/plain",
-          bytes: 3,
-          sha256: "old",
-          createdAt: new Date(BASE_MS),
-        },
-        {
-          id: "current-attachment",
-          conversationId: "active-with-attachments",
-          storageProvider: "memory",
-          storageKey: "current-key",
-          filename: "new.txt",
-          contentType: "text/plain",
-          bytes: 3,
-          sha256: "new",
-          createdAt: new Date(BASE_MS + 2 * DAY_MS),
-        },
-      ]);
-    const storage = createMemoryAttachmentStorage();
-    await putObject(storage, "expired-key");
-    await putObject(storage, "current-key");
-
-    const result = await runRetentionPurge(fixture.sql, {
-      attachmentStorage: storage,
-      nowMs: BASE_MS + 30 * DAY_MS,
-    });
-
-    expect(result.purged).toBe(0);
-    expect(result.attachments).toBe(1);
-    expect([...storage.objects.keys()]).toEqual(["current-key"]);
+    // A later run of the Automation can still change its item.
     expect(
-      await fixture.sql.db().select().from(juniorAttachments),
-    ).toMatchObject([{ id: "current-attachment" }]);
-  });
+      (await getReviewItem(fixture.sql.db(), automationItem))?.status,
+    ).toBe("open");
 
-  it("keeps marked attachment rows when blob delete fails", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "with-attachment",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
+    // An older purge left an item open. The next run closes it. Then the
+    // tree has no more work, because the Automation item is not work.
+    const privItem = await addItem("priv");
+    const third = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
     });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "attachment-1",
-        conversationId: "with-attachment",
-        storageProvider: "memory",
-        storageKey: "key-1",
-        filename: "report.txt",
-        contentType: "text/plain",
-        bytes: 6,
-        sha256: "digest",
-        createdAt: new Date(BASE_MS),
-        deleteRequestedAt: new Date(BASE_MS + DAY_MS),
-      });
-    const storage = {
-      ...createMemoryAttachmentStorage(),
-      delete: async () => {
-        throw new Error("blob delete failed");
-      },
-    };
-
-    await expect(
-      collectAttachmentGarbage({
-        db: fixture.sql,
-        nowMs: BASE_MS + 15 * DAY_MS,
-        storage,
-      }),
-    ).rejects.toThrow("blob delete failed");
-
-    const rows = await fixture.sql.db().select().from(juniorAttachments);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      id: "attachment-1",
-      storageKey: "key-1",
-      deleteRequestedAt: expect.any(Date),
+    expect(third.purged).toBe(1);
+    expect((await getReviewItem(fixture.sql.db(), privItem))?.status).toBe(
+      "dismissed",
+    );
+    const fourth = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
     });
-  });
-
-  it("collects unmarked attachments owned by purged conversations", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "purged-owner",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
-    });
-    await fixture.sql
-      .db()
-      .update(juniorConversations)
-      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
-      .where(eq(juniorConversations.conversationId, "purged-owner"));
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "orphan-attachment",
-        conversationId: "purged-owner",
-        storageProvider: "memory",
-        storageKey: "orphan-key",
-        filename: "late.txt",
-        contentType: "text/plain",
-        bytes: 4,
-        sha256: "orphan",
-        createdAt: new Date(BASE_MS + DAY_MS),
-      });
-    const storage = createMemoryAttachmentStorage();
-    await putObject(storage, "orphan-key");
-
-    const result = await collectAttachmentGarbage({
-      db: fixture.sql,
-      nowMs: BASE_MS + 15 * DAY_MS,
-      storage,
-    });
-
-    expect(result.deleted).toBe(1);
-    expect([...storage.objects.keys()]).toEqual([]);
-    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
-  });
-
-  it("rejects attachment stores into purged conversations", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "purged-owner",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
-    });
-    await fixture.sql
-      .db()
-      .update(juniorConversations)
-      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
-      .where(eq(juniorConversations.conversationId, "purged-owner"));
-    const storage = createMemoryAttachmentStorage();
-
-    await expect(
-      storeAttachment({
-        conversationId: "purged-owner",
-        db: fixture.sql,
-        file: {
-          bytes: 4,
-          data: Buffer.from("late"),
-          filename: "late.txt",
-          mimeType: "text/plain",
-          path: "/tmp/late.txt",
-        },
-        storage,
-      }),
-    ).rejects.toThrow(/purged conversation/);
-
-    expect([...storage.objects.keys()]).toEqual([]);
-    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
-  });
-
-  it("marks and cleans a raced insert when purge wins after put", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "race-owner",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
-    });
-    const memoryStorage = createMemoryAttachmentStorage();
-    const puts: string[] = [];
-    // Purge the conversation after the object is written, before the SQL row.
-    const storage = {
-      ...memoryStorage,
-      put: async (input: AttachmentWrite) => {
-        await memoryStorage.put(input);
-        puts.push(input.key);
-        await fixture.sql
-          .db()
-          .update(juniorConversations)
-          .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
-          .where(eq(juniorConversations.conversationId, "race-owner"));
-      },
-    };
-
-    await expect(
-      storeAttachment({
-        conversationId: "race-owner",
-        db: fixture.sql,
-        file: {
-          bytes: 4,
-          data: Buffer.from("late"),
-          filename: "late.txt",
-          mimeType: "text/plain",
-          path: "/tmp/late.txt",
-        },
-        storage,
-      }),
-    ).rejects.toThrow(/purged conversation/);
-
-    const rows = await fixture.sql.db().select().from(juniorAttachments);
-    expect(rows).toHaveLength(1);
-    expect(puts).toEqual([rows[0]?.storageKey]);
-    expect([...memoryStorage.objects.keys()]).toEqual([]);
-    expect(rows[0]?.deleteRequestedAt).toEqual(expect.any(Date));
-  });
-
-  it("rejects live-row reuse when the conversation is already purged", async () => {
-    const destinationId = await seedDestination(fixture.sql, "private");
-    await seedConversation(fixture.sql, {
-      conversationId: "purged-owner",
-      destinationId,
-      lastActivityAtMs: BASE_MS,
-    });
-    const liveKey = "live-key";
-    const file = {
-      bytes: 4,
-      data: Buffer.from("late"),
-      filename: "late.txt",
-      mimeType: "text/plain",
-      path: "/tmp/late.txt",
-    };
-    const storage = createMemoryAttachmentStorage();
-    const stored = await storeAttachment({
-      conversationId: "purged-owner",
-      db: fixture.sql,
-      file,
-      storage,
-    });
-    const storedKeys = [...storage.objects.keys()];
-    await fixture.sql
-      .db()
-      .update(juniorConversations)
-      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
-      .where(eq(juniorConversations.conversationId, "purged-owner"));
-    // Leave the row unmarked so reuse hits the live-row path, not revive.
-    await fixture.sql
-      .db()
-      .update(juniorAttachments)
-      .set({ deleteRequestedAt: null, storageKey: liveKey })
-      .where(eq(juniorAttachments.id, stored.id));
-
-    await expect(
-      storeAttachment({
-        conversationId: "purged-owner",
-        db: fixture.sql,
-        file,
-        storage,
-      }),
-    ).rejects.toThrow(/purged conversation/);
-
-    // Early live-row reuse rejects before writing or deleting an object.
-    expect([...storage.objects.keys()]).toEqual(storedKeys);
-    const rows = await fixture.sql.db().select().from(juniorAttachments);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      id: stored.id,
-      storageKey: liveKey,
-      deleteRequestedAt: null,
-    });
+    expect(fourth.purged).toBe(0);
   });
 
   it("shortens the window when visibility flips public to private", async () => {

@@ -78,6 +78,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
@@ -561,17 +562,16 @@ async function routeParsedMessage(args: {
     return;
   }
 
-  // Passive thread messages are not checked for the allowed domains yet.
-  if (
-    route === "mention" &&
-    !(await isSlackAuthorDomainAllowed({
+  const isAuthorDomainAllowed = () =>
+    isSlackAuthorDomainAllowed({
       allowedBotUserIds: args.allowedBotUserIds,
       allowedDomains: args.allowedDomains,
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
-    }))
-  ) {
+    });
+  // Passive thread messages are not checked for the allowed domains yet.
+  if (route === "mention" && !(await isAuthorDomainAllowed())) {
     return;
   }
 
@@ -613,18 +613,22 @@ async function routeParsedMessage(args: {
       route,
       state: args.state,
     });
-  if (route !== "mention") {
-    await persist();
-    return;
-  }
   // A message from a person to Junior answers the open questions that the
-  // agent asked in this Conversation, like a click on their cards.
+  // agent asked in this Conversation, like a click on their cards. A reply in
+  // a subscribed thread starts a Turn too, so it answers in the same way. It
+  // skips the allowed domain check above. The close checks the domain only
+  // when an open item can match, so most replies need no profile lookup.
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
     await closeReviewItemsAnsweredByReply({
+      ...(route === "subscribed"
+        ? { canAnswer: isAuthorDomainAllowed }
+        : undefined),
       conversationId,
-      getSlackAdapter: () => args.adapter,
-      queue: args.queue,
+      delivery: {
+        queue: args.queue,
+        show: createSlackReviewItemShow(() => args.adapter),
+      },
       resolveUser: async () => {
         const teamId = args.installation.teamId;
         const userId = parseActorUserId(message.author.userId);

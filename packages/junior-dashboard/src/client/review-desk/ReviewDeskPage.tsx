@@ -7,6 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
+import { LoadMorePagination } from "../components/Pagination";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { Card } from "../components/layout/Card";
@@ -158,10 +159,9 @@ function ReviewListLoading() {
 export function ReviewDeskPage() {
   const [searchParams] = useSearchParams();
   const [search, setSearch, q] = useDebouncedSearchParam();
-  const items = useReviewItemsData({ q });
+  const { items: list, moreArchived, query: items } = useReviewItemsData({ q });
   const showBlocked = !q;
   const blocked = useBlockedAutomationsData(showBlocked);
-  const list = items.data?.items ?? [];
   const selectedId = searchParams.get("item") ?? list[0]?.id;
   const listed = list.find((item) => item.id === selectedId);
   // A link can select an item that is not in the current view.
@@ -202,7 +202,7 @@ export function ReviewDeskPage() {
             <ReviewListLoading />
           ) : empty ? (
             <EmptyMessage>
-              {q ? `No items match "${q}".` : "Nothing needs you right now."}
+              {q ? `No items match "${q}".` : "No open items."}
             </EmptyMessage>
           ) : (
             <>
@@ -230,6 +230,12 @@ export function ReviewDeskPage() {
                   ))}
                 </ListGroup>
               ) : null}
+              <LoadMorePagination
+                className="px-3"
+                hasMore={!items.isPlaceholderData && Boolean(items.hasNextPage)}
+                loading={items.isFetchingNextPage}
+                onLoadMore={() => void items.fetchNextPage()}
+              />
               {archived.length > 0 ? (
                 <ListGroup
                   className={
@@ -248,6 +254,12 @@ export function ReviewDeskPage() {
                       selected={item.id === selected?.id}
                     />
                   ))}
+                  {moreArchived ? (
+                    <li className="px-3 py-1 text-xs text-dashboard-text-muted">
+                      Only the newest archived matches show. Add words to the
+                      search to find older items.
+                    </li>
+                  ) : null}
                 </ListGroup>
               ) : null}
               {blockedAutomations.length > 0 ? (

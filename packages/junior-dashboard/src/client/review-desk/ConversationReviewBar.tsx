@@ -2,10 +2,13 @@ import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { Drawer } from "../components/Drawer";
+import { LoadMorePagination } from "../components/Pagination";
 import { ReviewItemCard } from "./ReviewItemCard";
 import { useReviewItemsData } from "./queries";
 
-function itemCountLabel(count: number): string {
+/** `more` marks a count of the loaded pages only, such as "50+". */
+function itemCountLabel(count: number, more: boolean): string {
+  if (more) return `${count}+ open review items`;
   return count === 1 ? "1 open review item" : `${count} open review items`;
 }
 
@@ -15,11 +18,12 @@ function itemCountLabel(count: number): string {
  */
 export function ConversationReviewBar(props: { conversationId: string }) {
   const [open, setOpen] = useState(false);
-  const items =
-    useReviewItemsData({ conversationId: props.conversationId }).data?.items ??
-    [];
+  const { items, query } = useReviewItemsData({
+    conversationId: props.conversationId,
+  });
   if (items.length === 0) return null;
-  const label = itemCountLabel(items.length);
+  const more = Boolean(query.hasNextPage);
+  const label = itemCountLabel(items.length, more);
   return (
     <>
       <button
@@ -51,6 +55,11 @@ export function ConversationReviewBar(props: { conversationId: string }) {
             {items.map((item) => (
               <ReviewItemCard item={item} key={item.id} />
             ))}
+            <LoadMorePagination
+              hasMore={more}
+              loading={query.isFetchingNextPage}
+              onLoadMore={() => void query.fetchNextPage()}
+            />
           </div>
         </Drawer>
       ) : null}

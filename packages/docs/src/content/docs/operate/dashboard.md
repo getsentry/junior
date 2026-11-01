@@ -147,7 +147,7 @@ The conversation feed and detail are backed by durable SQL conversation and even
 
 The dashboard polls the bounded detail resource while a conversation is active and loads earlier pages from the `/events` collection on demand. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 The conversation stats endpoint is separate from the recent feed. PostgreSQL computes complete 90-day counts, locations, actors, status, runtime, token usage, and estimated cost directly from durable conversation-index records; those aggregates are not derived from a bounded recent-row sample.
-Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
+Dashboard dates use the viewer's browser timezone. `JUNIOR_TIMEZONE` does not change them.
 
 For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real conversation records.
 

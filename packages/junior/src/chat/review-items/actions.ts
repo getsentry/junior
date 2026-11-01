@@ -1,14 +1,12 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
-import { sendReviewItemMessages, type ReviewItemChange } from "./messages";
+import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
+import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
   canReadReviewItem,
@@ -110,20 +108,20 @@ function submittedAnswer(
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
  * conflict. Use it when the caller adds its own input for the action, such
- * as a Slack card click, so one action adds one Turn. `exceptConversationId`
- * is the Conversation where the person acted. It gets the person's input
- * from its own surface, so it gets no message here. Slack cards of the item
- * change in place; see `syncReviewItemSlackCards` for `getSlackAdapter`.
+ * as a card click in a chat thread, so one action adds one Turn.
+ * `exceptConversationId` is the Conversation where the person acted. It gets
+ * the person's input from its own surface, so it gets no message here.
+ * `delivery` shows the change and sends the messages; see
+ * `deliverReviewItemChange`.
  */
 export async function actOnReviewItem(args: {
   action: ReviewItemAction;
   answer?: UserInputAnswer;
+  delivery: ReviewItemDelivery;
   exceptConversationId?: string;
   firstCloseOnly?: boolean;
-  getSlackAdapter?: () => SlackAdapter;
   id: string;
   nowMs?: number;
-  queue: ConversationWorkQueue;
   user: User;
 }): Promise<ReviewItem> {
   const { action, user } = args;
@@ -150,16 +148,12 @@ export async function actOnReviewItem(args: {
       throw new ReviewItemActionError("conflict", "Review item is closed.");
     }
     const taken = await readReviewItemForUser(user, item.id);
-    await syncReviewItemSlackCards({
-      getSlackAdapter: args.getSlackAdapter,
-      itemId: taken.id,
-    });
-    await sendReviewItemMessages({
+    await deliverReviewItemChange({
       change: reviewItemChange(action, user),
+      delivery: args.delivery,
       exceptConversationId: args.exceptConversationId,
       item: taken,
       nowMs,
-      queue: args.queue,
     });
     return taken;
   }
@@ -193,16 +187,12 @@ export async function actOnReviewItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
-  await syncReviewItemSlackCards({
-    getSlackAdapter: args.getSlackAdapter,
-    itemId: closed.id,
-  });
-  await sendReviewItemMessages({
+  await deliverReviewItemChange({
     change: reviewItemChange(action, user),
+    delivery: args.delivery,
     exceptConversationId: args.exceptConversationId,
     item: closed,
     nowMs,
-    queue: args.queue,
   });
   return closed;
 }
@@ -252,21 +242,28 @@ function messageAnswer(
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.
- * A retry of the reply, or a later reply from the same person, sends the
- * missing messages of the items that it closed. Each message has a key, so
- * a message that was sent does not go again.
+ * A retry of the reply, or a later reply from the same person, delivers
+ * the items that it closed again: the cards show the close, and only the
+ * missing messages go. Each message has a key, so a message that was sent
+ * does not go again. `delivery` shows the change and sends the messages;
+ * see `deliverReviewItemChange`.
  */
 export async function closeReviewItemsAnsweredByReply(args: {
+  /**
+   * Return false when the replier may not answer, such as a Slack author
+   * outside the allowed domains. It runs only when an item can match.
+   */
+  canAnswer?: () => Promise<boolean>;
   conversationId: string;
-  getSlackAdapter?: () => SlackAdapter;
+  delivery: ReviewItemDelivery;
   nowMs?: number;
-  queue: ConversationWorkQueue;
   resolveUser: () => Promise<User | undefined>;
   text: string;
 }): Promise<void> {
   const db = getDb();
   const items = await listReplyActionItems(db, args.conversationId);
   if (items.length === 0) return;
+  if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
   for (const item of items.filter((candidate) =>
@@ -286,21 +283,16 @@ export async function closeReviewItemsAnsweredByReply(args: {
       if (!closed) continue;
       closedItem = await getReviewItem(db, item.id);
       if (!closedItem) continue;
-      // Card sync is best effort, so a retry only needs to send messages.
-      await syncReviewItemSlackCards({
-        getSlackAdapter: args.getSlackAdapter,
-        itemId: closedItem.id,
-      });
     }
-    await sendReviewItemMessages({
+    await deliverReviewItemChange({
       change: {
         kind: "replied",
         who: user ? (user.displayName ?? user.email) : "A person",
       },
+      delivery: args.delivery,
       exceptConversationId: args.conversationId,
       item: closedItem,
       nowMs,
-      queue: args.queue,
     });
   }
 }

@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import { z } from "zod";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
@@ -15,7 +16,6 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getDb } from "@/chat/db";
 import {
   canActOnReviewItem,
@@ -28,14 +28,69 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
-  countReviewItems,
+  countReviewItemsNeedingUser,
   listWaitingConversationIds,
   searchReviewItems,
   type ReviewItem,
+  type ReviewItemFilters,
+  type ReviewItemPosition,
 } from "@/chat/review-items/store";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 
-const LIST_LIMIT = 100;
+// A search shows at most this many archived matches, with the first page.
+// Only open items page. An item that closes while a person reads only
+// leaves the open order, so a cursor in it never skips or repeats an item.
+const ARCHIVED_LIMIT = 50;
+
+/** The list that a cursor belongs to. */
+type ListFilters = Pick<ReviewItemFilters, "conversationId" | "query">;
+
+const cursorSchema = z
+  .object({
+    conversationId: z.string().min(1).optional(),
+    id: z.string().min(1),
+    query: z.string().min(1).optional(),
+    updatedAtMs: z.number().int(),
+    version: z.literal(1),
+  })
+  .strict();
+
+/**
+ * Encode the last open item of a page as the cursor of the next page. The
+ * cursor names its list, so it cannot page through a different list.
+ */
+function encodeCursor(item: ReviewItem, filters: ListFilters): string {
+  return Buffer.from(
+    JSON.stringify({
+      ...filters,
+      id: item.id,
+      updatedAtMs: item.updatedAt.getTime(),
+      version: 1,
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+/** Decode a cursor of the same list, or return undefined. */
+function decodeCursor(
+  cursor: string,
+  filters: ListFilters,
+): ReviewItemPosition | undefined {
+  try {
+    const parsed = cursorSchema.parse(
+      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+    );
+    if (
+      parsed.conversationId !== filters.conversationId ||
+      parsed.query !== filters.query
+    ) {
+      return undefined;
+    }
+    return { id: parsed.id, updatedAt: new Date(parsed.updatedAtMs) };
+  } catch {
+    return undefined;
+  }
+}
 
 const ERROR_STATUS = {
   conflict: 409,
@@ -45,10 +100,7 @@ const ERROR_STATUS = {
 } as const;
 
 /** Build the API payload of one Review item for its viewer. */
-export function reviewItemPayload(
-  item: ReviewItem,
-  viewer: User,
-): ReviewItemPayload {
+function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
   return {
     addedByConversationId: item.addedByConversationId,
     assignedToEveryone: item.assignedToEveryone,
@@ -88,7 +140,7 @@ function actionErrorResponse(error: unknown): Response {
 
 /** Create the authenticated review desk routes. */
 export function createReviewItemRoutes(services: {
-  queue: ConversationWorkQueue;
+  delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
   app.get(
@@ -102,36 +154,65 @@ export function createReviewItemRoutes(services: {
     async (context) => {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
-      const items = await searchReviewItems(
-        getDb(),
-        reviewItemReaderForUser(viewer),
-        {
-          limit: LIST_LIMIT,
-          statuses: query.q ? ["open", "done", "dismissed"] : ["open"],
-          ...(query.conversationId
-            ? { conversationId: query.conversationId }
-            : undefined),
-          ...(query.q ? { query: query.q } : undefined),
-        },
-      );
+      const filters: ListFilters = {
+        ...(query.conversationId
+          ? { conversationId: query.conversationId }
+          : undefined),
+        ...(query.q ? { query: query.q } : undefined),
+      };
+      const after = query.cursor
+        ? decodeCursor(query.cursor, filters)
+        : undefined;
+      if (query.cursor && !after) {
+        return jsonResponse(
+          apiErrorSchema,
+          { error: "Invalid review item cursor." },
+          { status: 400 },
+        );
+      }
+      const db = getDb();
+      const reader = reviewItemReaderForUser(viewer);
+      // Read one more item than a page to learn whether more follow.
+      const open = await searchReviewItems(db, reader, {
+        ...filters,
+        limit: query.limit + 1,
+        statuses: ["open"],
+        ...(after ? { after } : undefined),
+      });
+      const page = open.slice(0, query.limit);
+      const last = page.at(-1);
+      // The archived matches come once, with the first page.
+      const archived =
+        filters.query && !after
+          ? await searchReviewItems(db, reader, {
+              ...filters,
+              limit: ARCHIVED_LIMIT + 1,
+              statuses: ["done", "dismissed"],
+            })
+          : [];
       return jsonResponse(reviewItemListSchema, {
-        items: items.map((item) => reviewItemPayload(item, viewer)),
+        items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
+          reviewItemPayload(item, viewer),
+        ),
+        ...(archived.length > ARCHIVED_LIMIT
+          ? { moreArchived: true }
+          : undefined),
+        ...(open.length > query.limit && last
+          ? { nextCursor: encodeCursor(last, filters) }
+          : undefined),
       });
     },
   );
   app.get("/count", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemCountSchema, {
-      mine: await countReviewItems(getDb(), reviewItemReaderForUser(viewer), {
-        assignee: { userId: viewer.id },
-        statuses: ["open"],
-      }),
+      needsViewer: await countReviewItemsNeedingUser(getDb(), viewer.id),
     });
   });
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversationIds: await listWaitingConversationIds(getDb(), viewer),
+      conversationIds: await listWaitingConversationIds(getDb(), viewer.id),
     });
   });
   app.get(
@@ -163,9 +244,8 @@ export function createReviewItemRoutes(services: {
       try {
         const item = await actOnReviewItem({
           action: body.action,
-          getSlackAdapter: getProductionSlackAdapter,
+          delivery: services.delivery,
           id,
-          queue: services.queue,
           user: viewer,
           ...(body.action === "submit"
             ? { answer: { ...body.answer, requestId: id } }

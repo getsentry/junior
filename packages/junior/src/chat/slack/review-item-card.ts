@@ -242,7 +242,7 @@ const formTargetSchema = z.object({
 });
 
 /** The card and thread that a Review item form answers. */
-export type SlackReviewItemFormTarget = z.output<typeof formTargetSchema>;
+type SlackReviewItemFormTarget = z.output<typeof formTargetSchema>;
 
 /** Render the answer form of an action item. */
 export function buildSlackReviewItemModal(

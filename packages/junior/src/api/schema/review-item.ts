@@ -57,30 +57,47 @@ export const reviewItemSchema = z
 export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 
 /**
- * Review desk list filters. The list has every item the viewer can see.
- * Without `q`, it has only open items. A search also finds done and
- * dismissed items, after the open ones.
+ * Review desk list filters. The list has the open items that the viewer can
+ * see, one page at a time. A search also finds done and dismissed items,
+ * after the open ones.
  */
 export const reviewItemListQuerySchema = z
   .object({
     conversationId: z.string().min(1).optional(),
+    /** `nextCursor` of the page before. */
+    cursor: z.string().min(1).max(1_000).optional(),
+    /** The number of open items on one page. */
+    limit: z.coerce.number().int().min(1).max(100).default(50),
     q: z.string().trim().max(200).optional(),
   })
   .strict();
 
+/**
+ * One page of the review desk list. Open items come first, newest change
+ * first. The first page of a search also has the newest archived matches.
+ */
 export const reviewItemListSchema = z
-  .object({ items: z.array(reviewItemSchema) })
-  .strict();
-
-/** Open Review items that wait on the viewer. */
-export const reviewItemCountSchema = z
   .object({
-    /** Open items assigned to the viewer as a User. */
-    mine: z.number().int().nonnegative(),
+    items: z.array(reviewItemSchema),
+    /** Set when more archived items match than the list shows. */
+    moreArchived: z.boolean().optional(),
+    /** Set when more open items follow. Pass it as `cursor` to read them. */
+    nextCursor: z.string().min(1).optional(),
   })
   .strict();
 
-/** Conversations with an open item assigned to the viewer or Everyone. */
+/** The count of Review items for the nav. */
+export const reviewItemCountSchema = z
+  .object({
+    /**
+     * Open action items assigned to the viewer as a User
+     * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
+     */
+    needsViewer: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** Conversations linked to an open action item assigned to the viewer. */
 export const reviewItemWaitingConversationsSchema = z
   .object({ conversationIds: z.array(z.string().min(1)) })
   .strict();

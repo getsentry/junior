@@ -301,11 +301,6 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
-function dashboardTimeZone(): string | undefined {
-  return process.env.JUNIOR_TIMEZONE || undefined;
-}
-
 function pluginRoutePrefix(pluginName: string): string {
   return `/api/plugins/${pluginName}`;
 }
@@ -566,7 +561,6 @@ export function createDashboardApp(
       authPath,
       basePath,
       sentryConversationLinks: hasSentryConversationLinks(),
-      timeZone: dashboardTimeZone(),
       version: JUNIOR_VERSION,
     });
   });

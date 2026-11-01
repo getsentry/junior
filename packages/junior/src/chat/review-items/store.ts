@@ -7,10 +7,10 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   or,
   type SQL,
 } from "drizzle-orm";
-import type { User } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -26,12 +26,12 @@ import type {
 import {
   reviewItemAssignedTo,
   reviewItemLinkedTo,
-  reviewItemReaderForUser,
+  reviewItemNeedsUser,
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
 
-export type ReviewItemKind = "notice" | "action";
+type ReviewItemKind = "notice" | "action";
 
 /**
  * Close reason of an action item that a person answered with a reply in
@@ -42,7 +42,7 @@ export type ReviewItemStatus = "open" | "done" | "dismissed";
 export type ReviewItemVisibility = "public" | "private";
 
 /** The thing a Review item is about, such as a pull request. */
-export interface ReviewItemSubject {
+interface ReviewItemSubject {
   /** Stable id that Search matches, such as a URL. */
   id: string;
   title?: string;
@@ -401,6 +401,45 @@ export async function closeReviewItem(
 }
 
 /**
+ * Dismiss the open Review items that an Automation or a set of
+ * Conversations added, when no agent can act on them any more. No person
+ * closes them. It sends no message and does not change the Slack cards. A
+ * close by Conversations skips the items of an Automation, because a later
+ * run of the Automation can still change them. An Automation delete closes
+ * those.
+ */
+export async function dismissOpenReviewItems(
+  db: JuniorDatabase,
+  input: { nowMs: number; reason: string } & (
+    | { addedByConversationIds: readonly string[] }
+    | { automationId: string }
+  ),
+): Promise<void> {
+  const now = new Date(input.nowMs);
+  await db
+    .update(juniorReviewItems)
+    .set({
+      closeReason: input.reason,
+      closedAt: now,
+      status: "dismissed",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(juniorReviewItems.status, "open"),
+        "automationId" in input
+          ? eq(juniorReviewItems.automationId, input.automationId)
+          : and(
+              inArray(juniorReviewItems.addedByConversationId, [
+                ...input.addedByConversationIds,
+              ]),
+              isNull(juniorReviewItems.automationId),
+            ),
+      ),
+    );
+}
+
+/**
  * Make one User the only assignee of an open Review item. Return false when
  * the item is closed.
  */
@@ -430,8 +469,22 @@ export async function takeReviewItem(
   });
 }
 
+/**
+ * A position in the search order: the last item of a page. Search returns
+ * the items after it.
+ */
+export interface ReviewItemPosition {
+  id: string;
+  updatedAt: Date;
+}
+
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
+  /**
+   * Return only the items after this position. Use it with one status
+   * group, such as only open items, because open items sort first.
+   */
+  after?: ReviewItemPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
@@ -451,6 +504,17 @@ function searchConditions(
     reviewItemVisibleTo(reader),
     inArray(juniorReviewItems.status, [...filters.statuses]),
   ];
+  if (filters.after) {
+    conditions.push(
+      or(
+        lt(juniorReviewItems.updatedAt, filters.after.updatedAt),
+        and(
+          eq(juniorReviewItems.updatedAt, filters.after.updatedAt),
+          lt(juniorReviewItems.id, filters.after.id),
+        ),
+      )!,
+    );
+  }
   if (filters.subjectId) {
     conditions.push(eq(juniorReviewItems.subjectId, filters.subjectId));
   }
@@ -479,23 +543,23 @@ function searchConditions(
   return conditions;
 }
 
-/** Count the Review items that a reader can see and that match filters. */
-export async function countReviewItems(
+/** Count the open Review items that need a User (`reviewItemNeedsUser`). */
+export async function countReviewItemsNeedingUser(
   db: JuniorDatabase,
-  reader: ReviewItemReader,
-  filters: Omit<ReviewItemFilters, "limit">,
+  userId: string,
 ): Promise<number> {
   const rows = await db
     .select({ count: count() })
     .from(juniorReviewItems)
-    .where(and(...searchConditions(reader, filters)));
+    .where(reviewItemNeedsUser(userId));
   return rows[0]?.count ?? 0;
 }
 
 /**
  * Find the Review items that a reader can see. Open items come first, so
  * the limit never drops an open item for a closed one. Then the newest
- * change comes first.
+ * change comes first: `updated_at`, then `id`, both descending. `after`
+ * pages through that order.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -516,13 +580,12 @@ export async function searchReviewItems(
 }
 
 /**
- * List the Conversations that wait on a User: each has an open linked item
- * that the User can see and that is assigned to the User or to Everyone. An
- * item without assignees does not wait on anyone.
+ * List the Conversations that wait on a User: each is linked to an open item
+ * that needs the User (`reviewItemNeedsUser`).
  */
 export async function listWaitingConversationIds(
   db: JuniorDatabase,
-  user: User,
+  userId: string,
 ): Promise<string[]> {
   const rows = await db
     .selectDistinct({
@@ -533,15 +596,6 @@ export async function listWaitingConversationIds(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
     )
-    .where(
-      and(
-        eq(juniorReviewItems.status, "open"),
-        reviewItemVisibleTo(reviewItemReaderForUser(user)),
-        or(
-          eq(juniorReviewItems.assignedToEveryone, true),
-          reviewItemAssignedTo(user.id),
-        ),
-      ),
-    );
+    .where(reviewItemNeedsUser(userId));
   return rows.map((row) => row.conversationId).sort();
 }

@@ -594,6 +594,7 @@ export async function createApp(
       bindMessageAgent(request, { queue: conversationWorkQueue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
+    conversationWorkQueue,
     tracePropagation,
   });
   const runtimeServiceOverrides = {

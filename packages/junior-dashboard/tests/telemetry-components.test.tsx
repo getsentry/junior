@@ -118,7 +118,6 @@ function systemData(): SystemData {
       authRequired: false,
       basePath: "/",
       sentryConversationLinks: false,
-      timeZone: "UTC",
       version: "0.0.0-test",
     },
     me: { user: { email: "viewer@example.com", isAdmin: false } },

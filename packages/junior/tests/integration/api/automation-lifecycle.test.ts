@@ -10,6 +10,7 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { setupAutomationEditApi as setup } from "../../fixtures/automation-edit-api";
 
 describe("Automation lifecycle API", () => {
@@ -93,6 +94,24 @@ describe("Automation lifecycle API", () => {
         expect(
           await (await app.request(`${url}/versions`)).json(),
         ).toMatchObject({ versions: [{ version: 1 }] });
+        // A run of the Automation asked a person something.
+        const item = await insertReviewItem(getDb(), {
+          addedByConversationId: "slack:T123:U123:edit",
+          assignedToEveryone: false,
+          assigneeUserIds: [],
+          automationId: id,
+          body: "The digest is empty this week.",
+          conversationIds: [],
+          dedupeKey: "digest:empty",
+          kind: "action",
+          nowMs: Date.now(),
+          request: {
+            question: "Post an empty digest?",
+            fields: [{ id: "note", kind: "text", label: "Note" }],
+          },
+          title: "Post an empty digest?",
+          visibility: "public",
+        });
         // A public reader can also delete it.
         expect(
           (
@@ -103,6 +122,11 @@ describe("Automation lifecycle API", () => {
           ).status,
         ).toBe(204);
         expect((await app.request(`${url}/edit`)).status).toBe(404);
+        // No run can act on the question now, so it closes. The row stays.
+        expect(await getReviewItem(getDb(), item!.id)).toMatchObject({
+          closeReason: "Automation deleted",
+          status: "dismissed",
+        });
       } finally {
         await fixture.close();
       }

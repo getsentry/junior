@@ -10,8 +10,22 @@ behavior.
 - A `notice` only tells a person something. An `action` asks for an answer.
   Its `request` (`userInputRequestSchema`) is a question and 1-4 fields.
 - An action item is the only way the agent asks a person for input.
-- The status is `open`, `done`, or `dismissed`. Only a person or an agent
-  closes an item. Nothing closes it on its own.
+- The status is `open`, `done`, or `dismissed`. An open item closes only in
+  one of these ways:
+  - A person answers it, marks a notice done, or dismisses it (see "Person
+    actions").
+  - A person replies in its thread (see "Reply in the thread").
+  - An agent closes it with `updateReviewItem`.
+  - Junior purges the Conversation that added it. The item becomes
+    `dismissed` with the reason `Conversation purged`. An item from an
+    Automation run stays open, because a later run can still change it.
+  - Someone deletes the Automation that added it. The item becomes
+    `dismissed` with the reason `Automation deleted`.
+
+  A purge and an Automation delete keep the row. They send no message and
+  do not change the Slack cards. A click on an old card tells the person
+  that the item is closed.
+
 - An assignee is a User or **Everyone**. Everyone is a flag on the item. It
   means that any person who can see the item can act on it. When the agent
   names no assignee, a new item goes to the User of the Actor, or else to the
@@ -99,13 +113,30 @@ parent with `reportBlocked`, and the parent adds the item.
   The item records who closed it and when. A retry of the same close
   succeeds and sends missing messages again.
 
+## Review desk list
+
+`GET /api/review-items` (`api/review-items/routes.ts`) lists the open items
+that the viewer can see, newest change first. It reads one page at a time
+with a cursor. The cursor holds the position of the last item and the
+filters of its list (`q` and `conversationId`). A cursor from a different
+list fails.
+
+- Only open items page. An item that closes while a person reads leaves the
+  open order, so the next page does not skip or repeat an item.
+- An item that changes while a person reads moves to the top. A later page
+  does not show it. A refresh does.
+- A search (`q`) also returns the newest archived matches with the first
+  page, up to a limit. `moreArchived` tells the dashboard that more match.
+
 ## Reply in the thread
 
 A person can answer an action item with a message instead of the card
 (`closeReviewItemsAnsweredByReply` in `actions.ts`). The message is a Slack
-mention or DM to Junior, or a dashboard message, in a Conversation. Junior
-saves the message first, so it always reaches the agent. Then it closes each
-item that matches all of these:
+mention or DM to Junior, a Slack reply without a mention in a thread that
+Junior follows (when the `passive-routing` feature is on), or a dashboard
+message, in a Conversation. A Slack author must pass the allowed domain
+check. Junior saves the message first, so it always reaches the agent. Then
+it closes each item that matches all of these:
 
 - The item is an open `action` item.
 - The agent added it in this Conversation (`addedByConversationId`). Items
@@ -120,9 +151,29 @@ message. A Slack person without a Junior User closes only items with no
 assignees. The message is the answer in its own Conversation. Each other
 linked Conversation gets an Event. The first close wins, so a reply after a
 click changes nothing. A retry of the reply, or a later reply from the same
-person, sends the Events that are missing for the items that the person
-closed by reply. Each Event has a key, so an Event that was sent does not
-go again.
+person, delivers again each item that the person closed by reply. The cards
+show the close again, and only the missing Events go. Each Event has a key,
+so an Event that was sent does not go again.
+
+## After a change
+
+Every change goes through one path: `deliverReviewItemChange` in
+`changes.ts`. The agent tools, the person actions, and a reply in the
+thread call it after they save the change.
+
+- First, every surface shows the new state. App setup gives the `show`
+  function. Today it is the Slack card sync. Review item code does not import
+  Slack code (`no-review-items-to-slack` in `.dependency-cruiser.mjs`).
+- Then a person action or an agent close goes to the other linked
+  Conversations as messages. An agent change to the content sends no
+  messages.
+- Delivery runs inline, after the change is saved. A failed message fails the
+  call that made the change. The caller can retry: a retry sends only the
+  messages that are missing. A failed card is logged. The next delivery of
+  the item shows its latest state.
+- App setup also gives the agent tools `findMentionedUserId`. The Slack
+  version (`chat/slack/review-item-tools.ts`) resolves a Slack mention to a
+  User through the Slack Identity in the workspace of the item.
 
 ## Messages to linked Conversations
 
@@ -143,10 +194,19 @@ a new Turn.
 
 ## Waiting on you
 
-A Conversation waits on a User when it has an open linked item that is
-assigned to the User or to Everyone (`listWaitingConversationIds`). An item
-with no assignees does not wait on anyone. The dashboard shows a lavender dot
-for these Conversations. The dot replaces the other status markers.
+An item needs a User when it is an open `action` item and the User is an
+assignee (`reviewItemNeedsUser` in `access.ts`). A notice, an item assigned
+to Everyone, and an item with no assignees need no one. One rule gives both
+of these:
+
+- The count in the dashboard nav (`needsViewer` from
+  `/api/review-items/count`).
+- The "Waiting on you" marker. A Conversation waits on a User when it is
+  linked to an item that needs the User (`listWaitingConversationIds`). The
+  dashboard shows a lavender dot for these Conversations. The dot replaces
+  the other status markers.
+
+The review desk list shows more: every open item that the reader can see.
 
 ## Slack cards
 
@@ -160,8 +220,8 @@ each card, so Junior can change it in place.
   state. A closed card has no controls and shows who closed it.
 - A card in a thread that the item is no longer linked to loses its
   content.
-- Cards are optional UI. A Slack failure is logged and does not fail the
-  change.
+- Cards are optional UI. A Slack failure is logged
+  (`review_item.slack_card.sync.failed`) and does not fail the change.
 - Syncs of one item run one at a time under a state lock (`withLock` in
   `chat/state/locks.ts`). So two syncs cannot post two cards in one thread.
   Each sync reads the latest item, so a sync that waits shows the newest
