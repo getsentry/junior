@@ -298,3 +298,86 @@ export async function recordGitHubPullRequestLinkedIssues(
   );
   return inserted.some((rows) => rows.length > 0);
 }
+
+function pullRequestRow(target: {
+  number: number;
+  repositoryFullName: string;
+}) {
+  return and(
+    sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${target.repositoryFullName.toLowerCase()}`,
+    eq(juniorGitHubPullRequests.number, target.number),
+  );
+}
+
+/**
+ * Ask to check whether a Junior pull request is ready to merge, and claim the
+ * check when no other webhook runs one. A claim older than `staleMs` is free.
+ * Return the claim, or undefined when another webhook runs the check or
+ * Junior does not own the pull request. The webhook that runs the check sees
+ * the new request in `releaseGitHubPullRequestReadySync`.
+ */
+export async function claimGitHubPullRequestReadySync(
+  db: GitHubDb,
+  target: { number: number; repositoryFullName: string },
+  options: { now: Date; staleMs: number },
+): Promise<{ id: number; ready: boolean; requests: number } | undefined> {
+  const t = juniorGitHubPullRequests;
+  const staleBefore = new Date(options.now.getTime() - options.staleMs);
+  const free = sql`(${t.readySyncId} is null or ${t.readySyncAt} < ${staleBefore.toISOString()}::timestamptz)`;
+  const [row] = await db
+    .update(t)
+    .set({
+      readySyncRequests: sql`${t.readySyncRequests} + 1`,
+      // Each request has its own number, so it is the id of the claim.
+      readySyncId: sql`case when ${free} then ${t.readySyncRequests} + 1 else ${t.readySyncId} end`,
+      readySyncAt: sql`case when ${free} then ${options.now.toISOString()}::timestamptz else ${t.readySyncAt} end`,
+    })
+    .where(pullRequestRow(target))
+    .returning({
+      id: t.readySyncId,
+      readyToMergeAt: t.readyToMergeAt,
+      requests: t.readySyncRequests,
+    });
+  if (!row || row.id !== row.requests) return undefined;
+  return {
+    id: row.id,
+    ready: row.readyToMergeAt !== null,
+    requests: row.requests,
+  };
+}
+
+/** Save whether a Junior pull request is ready to merge. */
+export async function setGitHubPullRequestReadyToMerge(
+  db: GitHubDb,
+  target: { number: number; ready: boolean; repositoryFullName: string },
+): Promise<void> {
+  await db
+    .update(juniorGitHubPullRequests)
+    .set({ readyToMergeAt: target.ready ? new Date() : null })
+    .where(pullRequestRow(target));
+}
+
+/**
+ * End a claimed check. When a webhook asked again during the check, keep the
+ * claim and return the new request count, so the caller checks once more.
+ * Return undefined when the claim ended or another webhook took it.
+ */
+export async function releaseGitHubPullRequestReadySync(
+  db: GitHubDb,
+  target: { number: number; repositoryFullName: string },
+  claim: { id: number; requests: number },
+): Promise<number | undefined> {
+  const t = juniorGitHubPullRequests;
+  const claimed = and(pullRequestRow(target), eq(t.readySyncId, claim.id));
+  const released = await db
+    .update(t)
+    .set({ readySyncAt: null, readySyncId: null })
+    .where(and(claimed, eq(t.readySyncRequests, claim.requests)))
+    .returning({ number: t.number });
+  if (released.length > 0) return undefined;
+  const [row] = await db
+    .select({ requests: t.readySyncRequests })
+    .from(t)
+    .where(claimed);
+  return row?.requests;
+}

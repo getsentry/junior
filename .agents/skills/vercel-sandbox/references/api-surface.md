@@ -66,7 +66,7 @@ This section is secondary. Use it only when the task is about Junior's Vercel Sa
 | `packages/junior/src/chat/agent/index.ts`              | Owns turn timeout detection and abort                                               |
 | `packages/junior/src/chat/agent/resume.ts`             | Persists timeout continuation state                                                 |
 | `packages/junior/src/chat/app/production.ts`           | Wires production timeout and continuation behavior                                  |
-| `packages/junior/src/chat/sandbox/README.md`           | Explains that snapshots are used for runtime dependency warmup, not task workspaces |
+| `packages/junior/src/chat/sandbox/AGENTS.md`           | Explains that snapshots are used for runtime dependency warmup, not task workspaces |
 
 ## Local implementation facts worth checking in any consumer
 

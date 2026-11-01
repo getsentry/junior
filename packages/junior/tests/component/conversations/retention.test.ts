@@ -18,6 +18,8 @@ import {
   juniorAgentInvocations,
   juniorAutomations,
   juniorIdentities,
+  juniorReviewItemConversations,
+  juniorReviewItems,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -28,7 +30,11 @@ import {
   seedConversation,
   seedDestination,
 } from "../../fixtures/conversation-retention";
-import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import {
+  dismissOpenReviewItems,
+  getReviewItem,
+  insertReviewItem,
+} from "@/chat/review-items/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -95,7 +101,11 @@ describe("retention purge job", () => {
       destinationId: privateDest,
       lastActivityAtMs: BASE_MS,
     });
-    const addItem = async (conversationId: string, automationId?: string) =>
+    const addItem = async (
+      conversationId: string,
+      automationId?: string,
+      visibility: "public" | "private" = "public",
+    ) =>
       (await insertReviewItem(fixture.sql.db(), {
         addedByConversationId: conversationId,
         assignedToEveryone: false,
@@ -111,7 +121,7 @@ describe("retention purge job", () => {
           fields: [{ id: "note", kind: "text", label: "Note" }],
         },
         title: "Continue the rollout?",
-        visibility: "public",
+        visibility,
       }))!.id;
     const pubItem = await addItem("pub");
     // A live Automation keeps its item up to date in later runs, but the item
@@ -144,6 +154,11 @@ describe("retention purge job", () => {
         teamId: "T1",
       });
     const automationItem = await addItem("pub", "auto-rollout");
+    const privateAutomationItem = await addItem(
+      "priv",
+      "auto-rollout",
+      "private",
+    );
 
     // At 15 days: private is expired (14d window), public is retained (90d).
     const first = await runRetentionPurge(fixture.sql, {
@@ -158,6 +173,11 @@ describe("retention purge job", () => {
     expect((await getReviewItem(fixture.sql.db(), pubItem))?.status).toBe(
       "open",
     );
+    // A purge deletes a private item, but not an open item of an
+    // Automation, because a later run can still change it.
+    expect(
+      (await getReviewItem(fixture.sql.db(), privateAutomationItem))?.status,
+    ).toBe("open");
 
     // At 91 days: the public conversation crosses its 90-day window. No
     // agent can act on its open item after the purge, so the item closes.
@@ -189,6 +209,20 @@ describe("retention purge job", () => {
       nowMs: BASE_MS + 91 * DAY_MS,
     });
     expect(fourth.purged).toBe(0);
+
+    // After the Automation item closes, the next purge deletes it.
+    await dismissOpenReviewItems(fixture.sql.db(), {
+      automationId: "auto-rollout",
+      nowMs: BASE_MS + 91 * DAY_MS,
+      reason: "Automation deleted",
+    });
+    const fifth = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+    expect(fifth.purged).toBe(1);
+    expect(
+      await getReviewItem(fixture.sql.db(), privateAutomationItem),
+    ).toBeUndefined();
   });
 
   it("shortens the window when visibility flips public to private", async () => {
@@ -592,6 +626,37 @@ describe("retention purge job", () => {
           modelId: "test-model",
         },
       ]);
+    const reviewItem = (
+      conversationId: string,
+      visibility: "public" | "private",
+    ) => ({
+      addedByConversationId: conversationId,
+      body: `${conversationId} body`,
+      createdAt: new Date(BASE_MS),
+      dedupeKey: `${conversationId}-key`,
+      id: `${conversationId}-item`,
+      kind: "notice" as const,
+      status: "open" as const,
+      title: `${conversationId} item`,
+      updatedAt: new Date(BASE_MS),
+      visibility,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorReviewItems)
+      .values([
+        reviewItem("pub", "public"),
+        reviewItem("priv", "private"),
+        // Added while the destination of "priv" was still public.
+        { ...reviewItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
+      ]);
+    await fixture.sql
+      .db()
+      .insert(juniorReviewItemConversations)
+      .values([
+        { itemId: "pub-item", conversationId: "pub" },
+        { itemId: "priv-item", conversationId: "priv" },
+      ]);
 
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 100 * DAY_MS });
 
@@ -610,6 +675,22 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorConversationBriefs),
     ).resolves.toMatchObject([{ conversationId: "pub", version: 1 }]);
+    // A private Review item holds content from its Conversation, so it goes
+    // with the Brief. Its links go with it.
+    await expect(
+      fixture.sql.db().select().from(juniorReviewItems),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "pub-item" }),
+        expect.objectContaining({ id: "flip-item" }),
+      ]),
+    );
+    expect(
+      await fixture.sql.db().select().from(juniorReviewItems),
+    ).toHaveLength(2);
+    await expect(
+      fixture.sql.db().select().from(juniorReviewItemConversations),
+    ).resolves.toMatchObject([{ itemId: "pub-item" }]);
     // The metadata row itself survives the purge.
     expect(priv.conversationId).toBe("priv");
   });

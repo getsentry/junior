@@ -4,6 +4,7 @@ import type {
   CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginConversationReviewItems,
   PluginLogger,
   PluginRoute,
   EventInput,
@@ -37,6 +38,10 @@ import {
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
+import {
+  pullRequestReadyTargets,
+  syncGitHubPullRequestReadyNotices,
+} from "./pull-request-ready.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -172,6 +177,7 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
+  reviewItems: PluginConversationReviewItems;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -417,6 +423,18 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      await syncGitHubPullRequestReadyNotices({
+        db: args.db,
+        deliveryId,
+        env: {
+          appIdEnv: args.appIdEnv,
+          installationIdEnv: args.installationIdEnv,
+          privateKeyEnv: args.privateKeyEnv,
+        },
+        log: args.log,
+        reviewItems: args.reviewItems,
+        targets: pullRequestReadyTargets(eventName, body),
+      });
       if (
         !pullRequestOutcome &&
         !issueOutcome &&

@@ -88,7 +88,7 @@ docker network prune -f --filter label=dev.junior.sandbox
 docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
 ```
 
-The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
+The limits of this provider are in `packages/junior/src/chat/sandbox/AGENTS.md`.
 
 ## Work in isolated branches
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
@@ -10,6 +10,7 @@ import {
   juniorDestinations,
   juniorAgentBindings,
   juniorAgentInvocations,
+  juniorReviewItems,
 } from "@/db/schema";
 import { withConversationEventLock } from "./event-lock";
 import { resolveRootVisibility } from "./privacy";
@@ -134,6 +135,15 @@ export async function selectExpiredRoots(
             where briefs.conversation_id = tree.conversation_id
           )
           or exists (
+            select 1 from junior_review_items review_items
+            where review_items.added_by_conversation_id = tree.conversation_id
+              and review_items.visibility = 'private'
+              and (
+                review_items.status <> 'open'
+                or review_items.automation_id is null
+              )
+          )
+          or exists (
             select 1 from junior_conversations metadata
             where metadata.conversation_id = tree.conversation_id
               and (
@@ -179,7 +189,9 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. The metadata rows themselves survive.
+ * conversations keep only safe metadata. Non-public content also loses its
+ * Briefs and the Review items that it added. The metadata rows themselves
+ * survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -319,6 +331,24 @@ export async function purgeConversationTree(
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
+            // A private Review item holds content from its Conversation. A
+            // public item stays, even when its destination later turned
+            // private, because other Conversations can still link to it. An
+            // open item of an Automation also stays, because a later run can
+            // still change it. A later purge deletes it after it closes.
+            await executor
+              .db()
+              .delete(juniorReviewItems)
+              .where(
+                and(
+                  inArray(juniorReviewItems.addedByConversationId, ids),
+                  eq(juniorReviewItems.visibility, "private"),
+                  or(
+                    ne(juniorReviewItems.status, "open"),
+                    isNull(juniorReviewItems.automationId),
+                  ),
+                ),
+              );
           }
           await executor
             .db()

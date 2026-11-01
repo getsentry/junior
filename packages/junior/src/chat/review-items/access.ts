@@ -19,8 +19,8 @@ import {
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
 
-// Every Review item access rule lives in this file. See "Visibility" in
-// README.md for the product rules that each function applies.
+// Every Review item access rule lives in this file. See "Access" in
+// AGENTS.md for the product rules that each function applies.
 
 /**
  * Who reads Review items. An item is visible when it is public and its
@@ -185,15 +185,23 @@ export async function readReviewItemAgentScope(
 }
 
 /**
+ * Dedupe keys with this prefix belong to plugins. Only the plugin that added
+ * the item, or a person, can change it. An agent cannot use the prefix.
+ */
+export const PLUGIN_REVIEW_ITEM_KEY_PREFIX = "plugin:";
+
+/**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public
  * Conversation, so private content never reaches its readers. A private
- * item changes only from the Conversation or Automation that added it.
+ * item changes only from the Conversation or Automation that added it. An
+ * agent never changes an item that a plugin added.
  */
 export function canAgentChangeReviewItem(
   item: ReviewItem,
   scope: ReviewItemAgentScope,
 ): boolean {
+  if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
   return (

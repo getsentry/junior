@@ -194,7 +194,7 @@ export function ReviewDeskPage() {
           className="grid content-start gap-4 py-3 lg:self-start"
           padding="none"
         >
-          {items.error ? (
+          {items.error && !items.data ? (
             <InlineError className="px-3">
               Could not load review items.
             </InlineError>
@@ -236,6 +236,11 @@ export function ReviewDeskPage() {
                 loading={items.isFetchingNextPage}
                 onLoadMore={() => void items.fetchNextPage()}
               />
+              {items.isFetchNextPageError ? (
+                <InlineError className="px-3 text-center">
+                  Could not load more items. Try again.
+                </InlineError>
+              ) : null}
               {archived.length > 0 ? (
                 <ListGroup
                   className={

@@ -115,14 +115,14 @@ browser to the CLI's loopback listener.
 
 If local validation fails, use the first matching symptom:
 
-| Symptom                         | First check                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------- |
-| Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.                |
-| Missing provider credentials    | Configure the plugin/provider env required by the changed path.             |
-| OAuth callback cannot connect   | Keep `pnpm dev` and its configured tunnel running while the CLI waits.      |
-| Context resets between commands | Expected; use one interactive `junior chat` process for context.            |
-| File-send UX needs validation   | Local validation cannot verify it; the local adapter has no file-send tool. |
-| Slack-specific behavior changed | Use the Slack adapter README, Slack skill, and integration tests instead.   |
+| Symptom                         | First check                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.                                    |
+| Missing provider credentials    | Configure the plugin/provider env required by the changed path.                                 |
+| OAuth callback cannot connect   | Keep `pnpm dev` and its configured tunnel running while the CLI waits.                          |
+| Context resets between commands | Expected; use one interactive `junior chat` process for context.                                |
+| File-send UX needs validation   | Local validation cannot verify it; the local adapter has no file-send tool.                     |
+| Slack-specific behavior changed | Use `packages/junior/src/chat/slack/AGENTS.md`, the Slack skill, and integration tests instead. |
 
 ## Next Step
 

@@ -369,6 +369,7 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
+            reviewItems: ctx.reviewItems,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

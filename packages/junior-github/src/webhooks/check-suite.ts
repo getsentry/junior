@@ -448,6 +448,23 @@ export function normalizeCheckSuiteEvents(
   });
 }
 
+/** The same-repository pull requests of one completed check suite. */
+export function checkSuitePullRequests(
+  body: unknown,
+): Array<{ number: number; repositoryFullName: string }> {
+  const parsed = checkSuiteWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "completed") return [];
+  const repository = parsed.data.repository;
+  return parsed.data.check_suite.pull_requests
+    .filter((pullRequest) =>
+      isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
+    )
+    .map((pullRequest) => ({
+      number: pullRequest.number,
+      repositoryFullName: repository.full_name,
+    }));
+}
+
 /** Identifiers and event types one completed check suite may publish. */
 export function parseCheckSuitePublishTargets(body: unknown):
   | {

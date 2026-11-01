@@ -120,7 +120,9 @@ async function withJuniorOpeners(
     repositoryFullName: context.repositoryFullName,
   });
   const logins = new Map<string, string | undefined>();
-  for (const identityId of new Set(openers.values())) {
+  for (const identityId of new Set(
+    [...openers.values()].map((opener) => opener.identityId),
+  )) {
     try {
       logins.set(identityId, await context.loadGitHubLogin?.(identityId));
     } catch (error) {
@@ -130,7 +132,7 @@ async function withJuniorOpeners(
   return events.map((event) => {
     const number = botNumber(event);
     if (number === undefined) return event;
-    const identityId = openers.get(number);
+    const identityId = openers.get(number)?.identityId;
     const login = identityId ? logins.get(identityId) : undefined;
     const {
       openerEmail: _email,

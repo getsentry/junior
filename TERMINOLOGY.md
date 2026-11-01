@@ -1,204 +1,109 @@
 # Terminology
 
-Canonical words used across Junior's code and documentation.
+Canonical words for Junior code and docs. One concept, one word.
 
 ## Terms
 
-- **Workspace**: a named recipe that selects repositories and setup
-  instructions for a Sandbox snapshot.
-- **Repository**: a source-code repository known to Junior, regardless of its
-  hosting service.
-- **Code change**: a proposed change to a repository. GitHub calls it a pull
-  request. GitLab calls it a merge request.
-- **Commit**: one recorded repository revision. Its hosting service owns the
-  commit identifier.
-- **Sandbox**: an isolated execution environment for a run or snapshot build.
-- **Conversation**: the durable container for visible history and execution
-  state, identified by a globally unique `conversationId`. A Conversation may
-  have one parent Conversation. Parent and Location are independent.
-- **Brief**: the durable, versioned record of a Conversation's intent, outcome,
-  decisions, facts, and evidence links. A public Brief stays available after
-  the transcript expires.
-- **Source**: the input that caused work, such as a Slack message, local CLI
-  input, dashboard input, event, scheduled automation, plugin dispatch, or
-  Agent invocation. Every Inbound message has one Source. A Turn stores the
-  Source selected from the input that started it.
-- **Destination**: an explicit target for output or a side effect. Do not use
-  Destination as another name for a Conversation's Location. A feature may use
-  Destination before a Conversation exists. If that target becomes the linked
-  place for a new Conversation, store it as the Conversation's Location.
-- **Location**: one place outside Junior where a Conversation can be delivered,
-  such as a Slack channel or thread. A Conversation has zero or one Location.
-  A Run carries this same Location when the agent or tools need it. Location
-  does not allow output to be sent. Conversation visibility is separate.
-- **Delivery**: a function that sends Run output to the Conversation Location.
-  A Conversation without Delivery stores completed assistant Messages only.
-- **User**: one person-level record. A user may have several linked identities.
-- **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
-  CLI grants or revokes it. Plugins use it for setup that other users must not
-  reach. Do not add plugin-specific admin lists.
-- **Service account**: an optional provider account, often a bot, that Junior
-  itself uses for one plugin. An Admin connects it on the dashboard Admin
-  page, or with `junior service-account connect`. The plugin's
-  `accounts.service-account` block allows it and lists what it may use. By
-  default, per-Actor OAuth stays on. Junior uses the service account only for
-  an Actor who has not connected their own account, and only for what it
-  lists. With `accounts.user-oauth: false`, Junior uses only
-  the service account and never asks an Actor to connect.
-- **Identity**: one provider account, such as a Slack account in one workspace,
-  optionally linked to a user.
-- **Actor**: the runtime participant for one source invocation. Actor ids are
-  provider-scoped and are not canonical user ids. An Actor may keep provider
-  fields that the agent or tools need. Those fields do not select the runtime.
-  A Turn stores the Actor selected from the input that started it. Steering
-  inputs keep their own Actors.
-- **Owner**: the Identity that started a root Conversation. It is a human for
-  Slack, web, and fork Conversations. It is the system Identity for
-  Automation runs, plugin dispatch, and the local CLI. A child Conversation
-  uses the Owner of its root. An Automation has a creator, not an Owner.
-- **Trusted author**: an event author whose own text Junior treats like a
-  chat message from that author. The author is a linked member on an allowed
-  domain, or a login on a plugin trusted authors list, such as
-  `githubPlugin({ trustedAuthors })`. An event from an author who is not
-  trusted does not start a run.
-  This is not the "trusted" summary or details of an Event. Those are plugin
-  facts, and they never count as instructions.
-- **Automation**: a saved instruction that Junior runs later. It has a
-  creator, a trigger, an instruction, and an ordered list of outcomes.
-- **Schedule**: a time-based trigger for an Automation.
-- **Automation version**: one saved definition of an Automation. The
-  definition is its title, instruction, trigger, Destination, outcomes, and
-  credential mode. It is not the edit revision, which only rejects stale edits.
-  The active version is the newest version that matches the current
-  definition. To make an older version active, Junior saves its definition
-  again as a new version.
-- **Event**: one normalized change identified by namespace, identifier, event
-  type, and an idempotency key. Plugins and core can publish Events. An Event
-  can wake a Conversation. Location stays on that Conversation.
-- **Watch**: a temporary association between an Event and a Conversation. It
-  delivers matching Events to that Conversation and expires. It is not an
-  Automation.
-- **Automation run**: one dispatch of an Automation, from claim or dispatch to
-  its outcome. It is not a Run.
-- **Scheduled automation**: an Automation that has a Schedule trigger.
-- **Event automation**: an Automation that has an Event trigger.
-- **Event reach**: which event automation triggers can select one event type.
-  Each source declares it once for each of its event types. `"all"` lets a
-  trigger with no identifier run for every resource of the source.
-  `{ anyOf }` lets such a trigger run only when it sets one of the named
-  filters. `"resource"` needs a trigger with an identifier. Reach limits scope
-  and noise. It is not access control.
-- **Inbound message**: one normalized source event made available to the agent.
-- **Agent input**: the inbound content, context, and runtime metadata selected
-  for a turn.
-- **Steering message**: a user message or agent message that interrupts the
-  active turn at the next safe boundary and joins that turn. Messages arriving
-  together may be batched into the same turn.
-- **Follow-up message**: a user message that waits for the active turn to finish
-  before starting the next turn.
-- **Mailbox delivery**: the durable instruction for an inbound message:
-  `interrupt` is eligible at the next safe boundary, while `defer` follows
-  normal ordering and waits when a turn is already active.
-- **Turn**: one request-to-final-response cycle. It may span multiple runs and
-  execution slices; one model invocation is not a turn.
-- **Run**: one bounded attempt to advance a turn. A later run may resume the
-  same turn after a pause, yield, or recoverable failure.
-- **Execution slice**: one serverless invocation segment of a run.
-- **Agent history item**: one replayable model input or output, stored as a
-  `user_message`, `assistant_message`, or `tool_result` event. Tool calls remain
-  ordered content inside the assistant message that requested them.
-- **History replacement**: an explicit compaction or handoff that supplies the
-  agent history used by later turns. It is stored as the corresponding event,
-  not as a generic context-start marker.
-- **History version**: an internal sequence partition used to load agent
-  history after a replacement. It is not a product event or lifecycle state.
-- **Turn route**: the model profile and reasoning level selected for a turn
-  before model execution begins.
-- **Model profile**: a stable host-owned model name, such as `standard` or
-  `handoff`, recorded on a turn route or history replacement. A profile may
-  include a short task-fit description. The turn router and `handoff` tool use
-  this description when they choose a profile.
-- **Message**: exact normalized source or destination chat content stored for
-  transcript display, privacy, delivery handling, and search.
-- **Annotation**: saved facts or a resource link associated with one Conversation.
-  The owner supplies the object identity and facts. Updating an annotation does
-  not by itself send a message.
-- **Ticket**: an issue or planned work item from a provider. Object annotations
-  store this type as `task`.
+- **Workspace**: a named recipe of repos and setup for a Sandbox snapshot.
+- **Repository**: a source repository on any hosting service.
+- **Code change**: a proposed repo change (pull request, merge request).
+- **Commit**: one repository revision. The host owns its id.
+- **Sandbox**: an isolated environment for a Run or snapshot build.
 - **Deployment**: a revision sent to a target environment.
-- **Calendar event**: a meeting on a calendar. Object annotations store this
-  type as `calendar_event`.
-- **Item**: a linked object without a more specific native type.
-- **Review item**: work that needs a person, such as a decision or a notice.
-  An agent adds it. Its assignees act on it on the review desk. It is not an
-  Item.
-- **Review desk**: the dashboard page that lists open Review items.
-- **Assignee**: a User or Everyone who can act on a Review item. Everyone
-  means any person who can see the item.
-- **Message card**: a reference to an Annotation attached to a Message. Each
-  surface shows the latest saved facts and owns its layout. A card does not
-  record facts at delivery or fetch live provider state.
-- **Conversation note**: a short fact that core attaches to a Conversation
-  without starting a Turn. The next Turn shows it as runtime turn context. It is
-  not a Message and never gives authority.
-- **Message update**: later delivery or hydration state for an existing
-  message, stored as a `message_updated` event without creating another message.
-- **Transcript**: a reporting view rendered from stored messages and agent
-  history items. It is not the stored data itself.
-- **Turn checkpoint**: the Redis resume cursor for one turn (status + boundary into SQL history).
-- **Conversation execution**: mutable operational state for a conversation,
-  such as mailbox state, worker lease, checkpoints, and activity status.
-- **Unfinished work**: plugin-owned work associated with a conversation that
-  is not complete.
-- **Assigned work**: plugin-owned work associated with a conversation, whether
-  finished or unfinished.
-- **Agent binding**: a name, scoped to one parent agent conversation, for one
-  child conversation. Each name belongs to one child. Later work for that child
-  is an agent message, not a new binding.
-- **Agent invocation**: one retry-safe delegated task sent from a parent agent
-  conversation to a child conversation, including its durable terminal result.
-  The first task comes from `spawnAgent`. Each later task comes from an agent
-  message or from a result of the child's own child agents.
-- **Agent message**: text that one agent sends with `messageAgent` to its
-  parent agent or to one of its child agents. A message to a child starts an
-  agent invocation on that child. If the child is running, it reads the
-  message as a steering message. A message to the parent is an Event Inbound
-  message, the same as a child result. An agent message is not from a person,
-  so it does not give user approval.
-- **Agent type**: a named preset that a parent picks for a child agent with
-  `spawnAgent`. It says when to pick it, whether the child starts with a copy
-  of the parent's agent history (a fork), and what instructions the child reads
-  with each task. A type does not limit tools. A child keeps its type for later
-  agent invocations.
-- **Reasoning level**: the configured or selected amount of model reasoning for
-  a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
-- **Reply**: a destination-visible message owned by delivery or reply-policy
-  code, not agent execution.
+- **Conversation**: the durable container for visible history and execution
+  state, keyed by a unique `conversationId`. Parent is optional and separate
+  from Location.
+- **Brief**: the versioned record of a Conversation's intent, outcome,
+  decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Source**: the input that caused work (Slack message, CLI, dashboard,
+  Event, Automation, plugin dispatch, Agent invocation). Each Inbound message
+  has one; a Turn stores the one that started it.
+- **Destination**: an explicit target for output or a side effect. Not a
+  synonym for Location; a new Conversation stores it as its Location.
+- **Location**: the one outside place (Slack channel or thread) a Conversation
+  is delivered to. The Run carries it. It grants no delivery or visibility.
+- **Delivery**: sends Run output to the Location. Without it, only completed
+  assistant Messages are stored.
+- **Conversation execution**: mutable operational state (mailbox, worker
+  lease, checkpoints, activity status).
+- **Conversation note**: a core fact on a Conversation, shown to the next Turn
+  as runtime context. It starts no Turn, is not a Message, and has no authority.
+- **User**: one person-level record with zero or more linked Identities.
+- **Identity**: one provider account (for example, a Slack account in one
+  workspace), optionally linked to a User.
+- **Actor**: the runtime participant for one source invocation. Ids are
+  provider-scoped, not User ids. Provider fields do not select the runtime. A
+  Turn stores the starting Actor; steering inputs keep their own.
+- **Owner**: the Identity that started a root Conversation. Human for Slack,
+  web, and fork; the system Identity for Automation runs, plugin dispatch, and
+  CLI. Children use the root Owner. Automations have a creator, not an Owner.
+- **Admin**: a User with the Junior-wide admin role, set only by
+  `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
+- **Service account**: a provider account Junior uses for one plugin, allowed
+  by `accounts.service-account` and connected by an Admin (dashboard or
+  `junior service-account connect`). It serves Actors with no own connection;
+  `accounts.user-oauth: false` makes it the only path.
+- **Automation**: a saved instruction run later, with a creator, trigger,
+  instruction, and ordered outcomes.
+- **Schedule**: a time trigger. **Scheduled** / **Event automation**: an
+  Automation with a Schedule / Event trigger.
+- **Automation version**: one saved definition (title, instruction, trigger,
+  Destination, outcomes, credential mode). Not the edit revision.
+- **Automation run**: one dispatch of an Automation to its outcome. Not a Run.
+- **Event**: one normalized change (namespace, identifier, type, idempotency
+  key) from core or a plugin. It can wake a Conversation.
+- **Watch**: a temporary link that delivers matching Events to a Conversation.
+  Not an Automation.
+- **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
+  (needs an identifier) per event type. Limits noise, not access.
+- **Inbound message**: one normalized source event given to the agent.
+  **Agent input**: the content, context, and metadata chosen for a Turn.
+- **Steering message**: a message that joins the active Turn at the next safe
+  boundary. **Follow-up message**: one that waits for the next Turn.
+- **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
+- **Turn**: one request-to-final-response cycle. Not one model call.
+- **Run**: one bounded attempt to advance a Turn. A later Run may resume the
+  same Turn after a pause, yield, or recoverable failure.
+- **Execution slice**: one serverless invocation segment of a Run. **Turn
+  checkpoint**: the Redis resume cursor for one Turn.
+- **Turn route**: the Model profile and Reasoning level chosen before a Turn.
+- **Model profile**: a host model name (`standard`, `handoff`) with an
+  optional task-fit description for the router and `handoff`. **Reasoning
+  level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Agent history item**: a `user_message`, `assistant_message` (holds its
+  tool calls), or `tool_result` event. Not `model_item` or `model_message`.
+- **History replacement**: a compaction or handoff that sets later history.
+  **History version**: the internal partition loaded after it.
+- **Message**: normalized chat content stored for display, privacy, delivery,
+  and search. **Message update**: later state stored as `message_updated`.
+- **Reply**: a destination-visible Message owned by delivery or reply-policy
+  code. Execution code says turn, run, result, outcome, or delivery.
+- **Transcript**: a reporting view of Messages and history. Not storage.
+- **Agent binding**: a parent-scoped name for one child Conversation.
+- **Agent invocation**: one retry-safe task from a parent to a child, with
+  its terminal result. Never shorten to "invocation".
+- **Agent message**: `messageAgent` text to a parent or child. To a child it
+  starts an Agent invocation or steers a running one. To a parent it is an
+  Event Inbound message. It gives no user approval.
+- **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
+  history, and per-task instructions. It does not limit tools.
+- **Annotation**: saved facts or a link on one Conversation. An update sends
+  no message.
+- **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
+  Annotation types for provider work items, meetings, and other objects.
+- **Message card**: a Message's reference to an Annotation, shown with the
+  latest saved facts. No live provider fetch.
+- **Unfinished work** / **Assigned work**: plugin-owned work on a
+  Conversation, open / open or done.
+- **Review item**: work for a person, shown on the **Review desk**. Not an
+  Item. **Assignee**: a User or Everyone (anyone who can see it).
 
-## Naming Guidance
+## Naming
 
-- Use `provider` on provider-owned references such as Identity and Location; it
-  names the namespace that owns their provider ids.
-- Keep Source and Actor separate from the Conversation's Location. Pass
-  Location once on the Run. Do not put Location inside Source or Delivery. Do
-  not infer Delivery from Source, Actor, or Location.
-- Use `Location`. Do not create another name for the same place.
-- Use `kind` on Source to state what produced the work. Keep provider
-  identifiers inside that Source kind. Do not use `platform` for this field
-  because many Source kinds are not providers.
-- Use `turn`, `run`, and `slice` only with the meanings above.
-- Use `agent invocation` for delegated child work; do not shorten it to
-  `invocation` where it could be confused with a model or serverless
-  invocation.
-- Use `message` for platform chat content. Use `user_message`,
-  `assistant_message`, and `tool_result` for replayable agent history.
-- Use `agent history item` when referring to those three native event types as
-  a group; do not use `model_item` or `model_message`.
-- Use `turnId` for new identifiers representing a turn.
-- Use `reply` only for destination-visible messages; execution code should use
-  `turn`, `run`, `result`, `outcome`, or `delivery` as appropriate.
-- Use `transcript` only for reporting views, not storage or runtime interfaces.
-- Use `reasoning` in Junior-owned names. Use `thinkingLevel` only at Pi SDK
-  boundaries where it is the upstream API name.
-- Preserve historical `run`, `reply`, and `sessionId` names unless the owning
-  contract is intentionally migrated.
+- `provider` names the namespace of provider ids on Identity and Location.
+- Source `kind` says what produced work. Not `platform`.
+- Pass Location once on the Run. Never inside Source or Delivery. Never infer
+  Delivery from Source, Actor, or Location.
+- Use `turnId` for new Turn ids. Keep old `run`, `reply`, and `sessionId`
+  names until their contract migrates.
+- Use `reasoning`; `thinkingLevel` only at Pi SDK edges.

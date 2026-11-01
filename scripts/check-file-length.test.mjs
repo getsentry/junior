@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkFileLengths, countFileLines } from "./check-file-length.mjs";
+import {
+  checkFileLengths,
+  countFileLines,
+  isCoreDoc,
+  isReferenceDoc,
+} from "./check-file-length.mjs";
 
 test("counts physical lines", () => {
   assert.equal(countFileLines(""), 0);
@@ -50,4 +55,14 @@ test("reports stale and invalid exceptions", () => {
       "src/small.ts: file-length exception needs a reason",
     ],
   );
+});
+
+test("separates core docs from reference docs", () => {
+  assert.equal(isCoreDoc("packages/junior/src/chat/AGENTS.md"), true);
+  assert.equal(isCoreDoc("packages/junior-github/README.md"), true);
+  assert.equal(isCoreDoc("policies/testing.md"), true);
+  assert.equal(isCoreDoc("TELEMETRY.md"), false);
+  assert.equal(isReferenceDoc("TELEMETRY.md"), true);
+  assert.equal(isCoreDoc("CONTRIBUTING.md"), false);
+  assert.equal(isReferenceDoc("CONTRIBUTING.md"), false);
 });

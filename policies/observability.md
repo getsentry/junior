@@ -1,85 +1,68 @@
 # Observability
 
-Telemetry exists for diagnosis and operations. It is not a product behavior
-contract. It should not drive mocks or assertions outside instrumentation tests.
+## Intent
 
-## Signals
+Telemetry is for diagnosis and operations. It is not a product behavior
+contract. `../TELEMETRY.md` holds telemetry names, investigation pivots, and query
+recipes.
 
-- Logs describe discrete events and decisions.
-- Spans describe timed work and causal relationships.
-- Errors represent actionable failures, not normal control flow.
-- Metrics should come from stable events or spans when practical rather than
-  duplicate custom instrumentation.
+## Policy
 
-## Naming And Attributes
+### Signals
 
-- Use OpenTelemetry semantic attributes when one exists.
-- Use `app.*` for Junior-owned attributes.
-- Name events `<domain>.<operation>[.<suboperation>].<outcome>`, using lowercase
-  dot-delimited namespaces and snake case only within a namespace component.
-- Use singular count nouns for domains and operations (`message`, `tool_call`,
-  `zebra`). Use a plural only when one event represents a collection or batch,
-  or when keeping a canonical external term such as `embeddings`.
-- The final component says what was observed:
-  - Use a past participle for a completed transition: `started`, `completed`,
-    `failed`, `accepted`, `rejected`, `skipped`, `requeued`, `yielded`.
-  - Use a present participle only for work currently underway: `retrying`.
-  - Use an adjective or established state term for an observation rather than a
-    transition: `busy`, `empty`, `missing`, `invalid`, `provider_error`.
-- Do not end event names with imperative or base verbs (`retry`, `start`,
-  `unlink`) or directional shorthand (`in`, `out`). Event names describe
-  observations, not commands.
-- Event names identify one stable event structure. Never include identifiers,
-  provider names, user-controlled values, or other occurrence-specific data in
-  an event name. Record them as attributes.
-- Prefer consistent outcomes such as `started`, `completed`, `failed`,
-  `exception`, `timed_out`, `retrying`, `exhausted`, `rejected`, `denied`, and
-  `skipped`. Use `.exception` for an actual captured exception and `.failed`
-  for an unsuccessful domain outcome that may not be exceptional.
-- Keep operation names stable and low-cardinality.
-- Record correlation identifiers such as conversation, run, task, plugin,
-  provider, and sandbox session IDs when they are relevant and safe.
-- Do not encode identifiers or user-controlled values into span operation names.
-- Set error status and capture exceptions at the edge that owns the failure.
-- Preserve `Error.cause` when adding domain context. Do not replace a caught
-  error with an unrelated error.
+- Logs record discrete events and decisions. Spans record timed work and
+  causality. Errors record actionable failures, not normal control flow.
+- Derive metrics from stable events or spans when practical.
 
-## Emission
+### Names
 
-- Runtime code emits a stable event name plus occurrence-specific attributes.
-  Do not duplicate the event with a human-readable message.
+- Use OpenTelemetry semantic attributes when one exists. Use `app.*` for
+  Junior attributes.
+- Event names: `<domain>.<operation>[.<suboperation>].<outcome>`, lowercase,
+  dot-separated, snake case inside a component.
+- Use singular nouns (`message`, `tool_call`). Use a plural only for a batch
+  or a canonical external term (`embeddings`).
+- The outcome is a past participle for a transition (`started`, `completed`,
+  `failed`, `rejected`, `skipped`, `requeued`), a present participle for work
+  in progress (`retrying`), or a state term (`busy`, `empty`, `missing`,
+  `invalid`, `provider_error`). Never a base verb (`retry`) or direction
+  (`in`, `out`).
+- Prefer the shared outcomes: `started`, `completed`, `failed`, `exception`,
+  `timed_out`, `retrying`, `exhausted`, `rejected`, `denied`, `skipped`.
+- Use `.exception` for a captured exception and `.failed` for an unsuccessful
+  domain outcome.
+- Event and span names are stable and low-cardinality. Put ids, provider
+  names, and user values in attributes.
+- Record safe correlation ids (conversation, run, task, plugin, provider,
+  sandbox session) when relevant.
+
+### Emission
+
+- Emit a stable event name plus attributes. Do not add a duplicate
+  human-readable message.
 - Bind request, conversation, actor, destination, and run correlation once at
-  the owning operation edge. Nested logs inherit that context and the active
-  trace and span identifiers.
-- Async log context is not durable runtime context. Queues, callbacks, resumed
-  work, and other durable edges must carry authoritative context explicitly and
-  bind it again when execution starts.
-- Free-form messages received from providers, libraries, or plugins may be kept
-  as safe attributes by their adapter. They are not event names.
-- Backend adapters own compatibility views such as Sentry's `event.name`. The
-  provider-neutral record owns the canonical event name.
+  the operation edge. Nested logs inherit it.
+- Async log context is not durable. Queues, callbacks, and resumed work carry
+  context explicitly and bind it again.
+- Adapters may keep free-form provider messages as safe attributes, never as
+  event names.
+- Backend adapters own compatibility views such as Sentry `event.name`.
 
-## Ownership
+### Ownership
 
-- Instrumentation belongs at real runtime edges: ingress, queue dispatch, worker
-  execution, agent runs, provider requests, sandbox creation and egress, plugin
-  hooks, and delivery.
-- Lower-level helpers should return errors rather than capture the same failure
-  on their own.
-- A retry records attempts without reporting every transient attempt as a
-  distinct terminal failure.
-- Logging and tracing adapters must not change runtime behavior when telemetry
-  is unavailable.
+- Instrument real edges: ingress, queue dispatch, workers, agent runs,
+  provider requests, sandbox creation and egress, plugin hooks, delivery.
+- Set error status and capture exceptions at the edge that owns the failure.
+  Lower helpers return errors. Preserve `Error.cause`.
+- Record retry attempts without reporting each transient attempt as terminal.
+- Telemetry adapters must not change behavior when telemetry is unavailable.
+- Record safe metadata only. Follow `data-redaction.md`.
 
-## Data Safety
+### Tests
 
-Follow `data-redaction.md`. Record safe metadata, not message content, prompts,
-tool payloads, credentials, SQL values, or unrestricted provider responses.
+- Only instrumentation tests assert event names, span links, attributes, and
+  error ownership. Product tests assert outcomes.
 
-## Verification
+## Exceptions
 
-- Instrumentation tests may assert event names, span relationships, safe
-  attributes, and error ownership.
-- Product tests should assert the user-visible or durable outcome instead of
-  logs, spans, status messages, or monitoring side effects.
-- Operational query recipes and signal pivots live in `../TELEMETRY.md`.
+- None.

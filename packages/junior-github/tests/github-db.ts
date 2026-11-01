@@ -33,6 +33,7 @@ export async function createGitHubFixture(): Promise<GitHubFixture> {
     "0006_fat_korvac.sql",
     "0007_shallow_millenium_guard.sql",
     "0009_nostalgic_thing.sql",
+    "0010_sleepy_slayback.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
