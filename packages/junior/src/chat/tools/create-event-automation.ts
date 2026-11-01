@@ -12,11 +12,16 @@ import {
   getEventAutomation,
 } from "@/chat/event-automations/store";
 import {
+  automationToolContext,
+  requireToolCaller,
+  requireToolCreator,
+  requireToolDestination,
+} from "@/chat/automations/tool-access";
+import {
   eventAutomationMatchesDestination,
   eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
-  requireEventAutomationSlackContext,
   requireEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
 import type { EventAutomation } from "@/chat/event-automations/types";
@@ -73,7 +78,7 @@ export function createEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. To run for every resource of a namespace, such as any Sentry metric alert, leave out identifier and resourceType and use match filters; searchEventTypes gives the reach of each event in namespaces, and an { anyOf } reach names the filters to choose from. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event automation that delivers to the channel or DM of this conversation, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. To run for every resource of a namespace, such as any Sentry metric alert, leave out identifier and resourceType and use match filters; searchEventTypes gives the reach of each event in namespaces, and an { anyOf } reach names the filters to choose from. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema,
@@ -126,22 +131,28 @@ export function createEventAutomationTool(
     },
     outputSchema: eventAutomationToolResultSchema,
     async execute(input, options) {
-      const { actor, destination, source } =
-        requireEventAutomationSlackContext(context);
-      requireRequesterMention(input.instruction, actor);
+      const taskContext = automationToolContext(context);
+      const destination = requireToolDestination(taskContext);
+      const caller = await requireToolCaller(taskContext);
+      const { identity, createdBy } = requireToolCreator(
+        caller,
+        destination,
+        "event",
+      );
+      requireRequesterMention(input.instruction, createdBy);
       const trigger = requireEventAutomationTrigger(catalog, input.trigger);
       const id = buildEventAutomationId({
         channelId: destination.channelId,
         teamId: destination.teamId,
         toolCallId: options.toolCallId,
-        userId: actor.userId,
+        userId: createdBy.slackUserId,
       });
       const db = getDb();
       const existing = await getEventAutomation(db, id);
       if (existing) {
         if (
           !eventAutomationMatchesDestination(existing, destination) ||
-          existing.createdBy.slackUserId !== actor.userId
+          existing.createdBy.slackUserId !== createdBy.slackUserId
         ) {
           throw new ToolInputError(
             "Event automation operation identity is invalid.",
@@ -153,20 +164,9 @@ export function createEventAutomationTool(
             context.conversationId,
             existing,
             catalog,
-            actor.userId,
+            true,
           );
         }
-      }
-      const identity = (await context.resolveActorIdentity?.())?.identity;
-      if (
-        !identity ||
-        identity.provider !== "slack" ||
-        identity.providerTenantId !== destination.teamId ||
-        identity.providerSubjectId !== actor.userId
-      ) {
-        throw new ToolInputError(
-          "Event automation creator identity is unavailable.",
-        );
       }
       const title = await resolveTaskTitle({
         signal: options.signal,
@@ -176,20 +176,17 @@ export function createEventAutomationTool(
       });
       const task: EventAutomation = requireSlackChannelMessageScope({
         id,
-        destinationVisibility: source.visibility,
+        destinationVisibility:
+          taskContext.visibility === "public" ? "public" : "private",
         createdAtMs: Date.now(),
-        createdBy: {
-          slackUserId: actor.userId,
-          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-          ...(actor.userName ? { userName: actor.userName } : undefined),
-        },
+        createdBy,
         creatorIdentityId: identity.id,
         credentialMode: input.credentialMode ?? "creator",
         destination,
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,
-          actor.userId,
+          createdBy.slackUserId,
         ),
         task: { text: input.instruction },
         ...(title ? { title } : undefined),
@@ -199,7 +196,7 @@ export function createEventAutomationTool(
         context.conversationId,
         await createEventAutomation(db, task),
         catalog,
-        actor.userId,
+        true,
       );
     },
   });

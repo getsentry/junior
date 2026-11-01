@@ -1,17 +1,20 @@
 import { removedCardSchema } from "@/chat/conversations/cards";
-import { deleteToolAutomation } from "@/chat/automations/tool-access";
+import {
+  deleteToolAutomation,
+  requireToolAutomation,
+  requireToolCaller,
+  type AutomationToolContext,
+} from "@/chat/automations/tool-access";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import {
-  getWritableTask,
   compactTask,
   scheduleAutomationToolResultSchema,
-  type SchedulerToolContext,
 } from "../tool-support";
 
 /** Create a tool that deletes a scheduled automation. */
-export function createSlackScheduleDeleteAutomationTool(
-  context: SchedulerToolContext,
+export function createDeleteScheduledAutomationTool(
+  context: AutomationToolContext,
 ) {
   return zodTool({
     approvalMode: "review",
@@ -29,20 +32,25 @@ export function createSlackScheduleDeleteAutomationTool(
         .string()
         .min(1)
         .describe(
-          "ID of the scheduled automation to delete, from slackScheduleSearchAutomations or its dashboard URL.",
+          "ID of the scheduled automation to delete, from searchScheduledAutomations or its dashboard URL.",
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema.extend({
       removedCards: z.array(removedCardSchema),
     }),
     execute: async ({ automationId }) => {
-      const current = await getWritableTask(context, automationId);
+      const caller = await requireToolCaller(context);
+      const current = await requireToolAutomation(
+        caller,
+        "scheduled",
+        automationId,
+      );
       const deleted = await deleteToolAutomation(
         context.conversationId,
         current,
       );
       return {
-        automation: compactTask(deleted, context.actor?.userId),
+        automation: compactTask(deleted, current.ownedByViewer),
         removedCards: [{ plugin: "junior", key: automationId }],
       };
     },

@@ -27,7 +27,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           },
           instruction: "Remind the requester to post the weekly status update.",
         },
-        tool: "slackScheduleCreateAutomation",
+        tool: "createScheduledAutomation",
       }),
     });
   });
@@ -65,7 +65,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             },
             outcomes: [],
           },
-          tool: "slackScheduleCreateAutomation",
+          tool: "createScheduledAutomation",
         }),
       });
     });
@@ -81,10 +81,10 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           "Move my weekly planning reminder from #ops into this channel.",
         ),
         input: {
-          destination: "here",
+          destination: "current_conversation",
           automationId: "sched_planning_reminder",
         },
-        tool: "slackScheduleUpdateAutomation",
+        tool: "updateScheduledAutomation",
       }),
     });
   });
@@ -103,7 +103,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           },
           instruction: "Tell the channel standup moved.",
         },
-        tool: "slackScheduleCreateAutomation",
+        tool: "createScheduledAutomation",
       }),
     });
   });
@@ -124,7 +124,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           },
           instruction: "Tell the channel standup moved.",
         },
-        tool: "slackScheduleCreateAutomation",
+        tool: "createScheduledAutomation",
       }),
     });
   });

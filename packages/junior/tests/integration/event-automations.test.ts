@@ -34,7 +34,7 @@ import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/he
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
-import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
+import { createSearchEventAutomationsTool } from "@/chat/tools/search-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -535,7 +535,7 @@ describe("event automations", () => {
     );
 
     const listed = (await execute(
-      createListEventAutomationsTool(context(), EVENT_CATALOG),
+      createSearchEventAutomationsTool(context(), EVENT_CATALOG),
       {},
     )) as {
       automations: unknown[];
@@ -718,7 +718,7 @@ describe("event automations", () => {
     expect(created).not.toHaveProperty("data");
 
     const listed = (await execute(
-      createListEventAutomationsTool(
+      createSearchEventAutomationsTool(
         context("U999", "C123", "public", "1700000000.200000"),
         EVENT_CATALOG,
       ),
@@ -736,11 +736,21 @@ describe("event automations", () => {
     expect(listed.automations[0]).toMatchObject({
       trigger: { available: true },
     });
-    const otherChannel = (await execute(
-      createListEventAutomationsTool(context("U999", "COTHER"), EVENT_CATALOG),
-      {},
-    )) as { automations: unknown[] };
-    expect(otherChannel.automations).toEqual([]);
+    const search = async (input: Record<string, unknown>) =>
+      (
+        (await execute(
+          createSearchEventAutomationsTool(
+            context("U999", "COTHER"),
+            EVENT_CATALOG,
+          ),
+          input,
+        )) as { automations: Array<{ id: string }> }
+      ).automations.map((task) => task.id);
+    // A public automation is found from anywhere in the workspace, but not
+    // as an automation of another conversation.
+    expect(await search({})).toEqual([created.automation.id]);
+    expect(await search({ scope: "current_conversation" })).toEqual([]);
+    expect(await search({ scope: "mine" })).toEqual([]);
     const update = (input: Record<string, unknown>) =>
       execute(
         createUpdateEventAutomationTool(
@@ -807,7 +817,7 @@ describe("event automations", () => {
     const created = await createTask("Address the requested changes.");
 
     const listed = (await execute(
-      createListEventAutomationsTool(context(), {}),
+      createSearchEventAutomationsTool(context(), {}),
       {},
     )) as {
       automations: Array<{ id: string; trigger: { available: boolean } }>;
@@ -959,7 +969,7 @@ describe("event automations", () => {
       }),
     ).rejects.toThrow("Event automation was not found.");
     const listed = (await execute(
-      createListEventAutomationsTool(context(), EVENT_CATALOG),
+      createSearchEventAutomationsTool(context(), EVENT_CATALOG),
       {},
     )) as {
       automations: unknown[];

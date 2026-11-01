@@ -7,11 +7,15 @@ import {
   automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
 import { requireRequesterMention } from "@/chat/automations/requester-mention";
-import { changeAutomationLifecycle } from "@/chat/automations/edit";
+import {
+  automationEditor,
+  changeAutomationLifecycle,
+} from "@/chat/automations/edit";
 import { automationRevision } from "@/chat/automations/revision";
 import {
+  automationToolContext,
   requireToolAutomation,
-  slackToolViewer,
+  requireToolCaller,
 } from "@/chat/automations/tool-access";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { z } from "zod";
@@ -21,7 +25,6 @@ import {
   eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
-  requireEventAutomationSlackContext,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -106,17 +109,13 @@ export function createUpdateEventAutomationTool(
     },
     outputSchema: eventAutomationToolResultSchema,
     async execute(input) {
-      const { actor, destination } =
-        requireEventAutomationSlackContext(context);
+      const caller = await requireToolCaller(automationToolContext(context));
       const candidate = await requireToolAutomation(
-        slackToolViewer(
-          await context.resolveActorIdentity?.(),
-          destination,
-          actor.userId,
-        ),
+        caller,
         "event",
         input.automationId,
       );
+      const editor = automationEditor(caller.viewer, candidate);
       const { task: current, ownedByViewer: isCreator } = candidate;
       const edits =
         input.title !== undefined ||
@@ -131,7 +130,7 @@ export function createUpdateEventAutomationTool(
         input.instruction != null &&
         input.instruction !== current.task.text
       ) {
-        requireRequesterMention(input.instruction, actor);
+        requireRequesterMention(input.instruction, editor);
       }
       let saved = current;
       if (edits) {
@@ -165,11 +164,7 @@ export function createUpdateEventAutomationTool(
           getDb(),
           next,
           automationRevision(current),
-          {
-            slackUserId: actor.userId,
-            ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-            ...(actor.userName ? { userName: actor.userName } : undefined),
-          },
+          editor,
         );
         if (!edited) {
           throw new ToolInputError("Event automation was not found.");
@@ -191,7 +186,7 @@ export function createUpdateEventAutomationTool(
         context.conversationId,
         saved,
         catalog,
-        actor.userId,
+        isCreator,
       );
     },
   });

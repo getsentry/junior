@@ -27,7 +27,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -63,7 +63,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -86,7 +86,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -105,7 +105,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -135,7 +135,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("Schedule Creation", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);

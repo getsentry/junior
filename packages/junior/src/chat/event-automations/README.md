@@ -57,10 +57,12 @@ run adds the source message thread only at dispatch time. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
 workers during deployment; new writes reject them.
 
-Listing stays bound to the destination where the automation was created. Threads
-in that destination share the list. Update and delete use the shared rule in
-`chat/automations/README.md` (Management access), so anyone in the workspace can
-manage a public automation by id from another destination. Private automations
+`searchEventAutomations` uses the dashboard Automations search, like
+`searchScheduledAutomations`. Scope `current_conversation` limits it to the
+Destination of this Conversation; threads in that Destination share it. Search,
+update, and delete use the shared rule in `chat/automations/README.md`
+(Management access), so anyone in the workspace can manage a public automation
+by id from another destination. Private automations
 stay with their destination and creator. Watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins

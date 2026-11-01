@@ -16,22 +16,28 @@ import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { saveScheduledAutomation } from "../tasks";
 import { scheduleIntentSchema } from "../schedule-intent";
 import { scheduledAutomationAttributes } from "../telemetry";
+import { automationEditor } from "@/chat/automations/edit";
+import {
+  requireToolAutomation,
+  requireToolCaller,
+  requireToolDestination,
+  type AutomationToolContext,
+} from "@/chat/automations/tool-access";
 import {
   getConversationAccess,
   normalizeStatus,
-  requireActiveChannel,
-  getWritableTask,
-  requireActor,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
   throwToolInputError,
-  type SchedulerToolContext,
 } from "../tool-support";
 
-/** Create a tool that edits a scheduled automation, including moving it here. */
-export function createSlackScheduleUpdateAutomationTool(
-  context: SchedulerToolContext,
+/**
+ * Create a tool that edits a scheduled automation, including moving it to
+ * this Conversation.
+ */
+export function createUpdateScheduledAutomationTool(
+  context: AutomationToolContext,
 ) {
   return zodTool({
     approvalMode: "review",
@@ -42,7 +48,7 @@ export function createSlackScheduleUpdateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      'Update a scheduled automation. Anyone in the workspace can update an automation in a public channel. Automations in private channels and DMs can be updated from there or by their creator. Only the creator can enable creator credentials, change outcomes, or move it. A non-creator who changes the instruction or schedule switches it to system credentials. Set destination to "here" to move it to the active Slack channel.',
+      'Update a scheduled automation. Anyone in the workspace can update an automation in a public channel. Automations in private channels and DMs can be updated from there or by their creator. Only the creator can enable creator credentials, change outcomes, or move it. A non-creator who changes the instruction or schedule switches it to system credentials. Set destination to "current_conversation" to move it to the channel or DM of this conversation.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -50,7 +56,7 @@ export function createSlackScheduleUpdateAutomationTool(
           .string()
           .min(1)
           .describe(
-            "Scheduled automation ID returned by slackScheduleSearchAutomations.",
+            "Scheduled automation ID returned by searchScheduledAutomations.",
           ),
         title: automationTitleSchema.optional(),
         instruction: automationInstructionToolSchema.optional(),
@@ -72,10 +78,10 @@ export function createSlackScheduleUpdateAutomationTool(
           )
           .optional(),
         destination: z
-          .literal("here")
+          .literal("current_conversation")
           .nullable()
           .describe(
-            'Set to "here" to move the creator\'s task into the active Slack channel. Omit to keep its destination.',
+            'Set to "current_conversation" to move the creator\'s task into the channel or DM of this conversation. Omit to keep its destination.',
           )
           .optional(),
         credentialMode: z
@@ -89,32 +95,35 @@ export function createSlackScheduleUpdateAutomationTool(
       .strict(),
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input) => {
-      const activeDestination = requireActiveChannel(context);
-      const actor = requireActor(context, activeDestination);
       const db = getDb();
-      const { task: lookup, ownedByViewer: isCreator } = await getWritableTask(
-        context,
+      const caller = await requireToolCaller(context);
+      const candidate = await requireToolAutomation(
+        caller,
+        "scheduled",
         input.automationId,
       );
+      const { task: lookup, ownedByViewer: isCreator } = candidate;
       if (lookup.status === "completed") {
         throwToolInputError(
           "Completed scheduled automations cannot be updated. Create a new automation instead.",
         );
       }
-      if (lookup.destination.platform !== "slack") {
-        throwToolInputError("Scheduled automation destination is invalid.");
-      }
 
       const moveDestination = input.destination != null;
-      const requestedDestination = activeDestination;
-      const alreadyHere = sameDestination(lookup, activeDestination);
       if (moveDestination && !isCreator) {
         throwToolInputError(
           "Only the scheduled automation creator can move this task.",
         );
       }
+      const requestedDestination = moveDestination
+        ? requireToolDestination(context)
+        : undefined;
+      const alreadyHere =
+        requestedDestination !== undefined &&
+        sameDestination(lookup, requestedDestination);
 
-      const changingDestination = moveDestination && !alreadyHere;
+      const changingDestination =
+        requestedDestination !== undefined && !alreadyHere;
       if (changingDestination) {
         const incompleteRuns = await db
           .select({ id: juniorAutomationRuns.id })
@@ -140,8 +149,9 @@ export function createSlackScheduleUpdateAutomationTool(
       const instructionChanged =
         input.instruction !== undefined &&
         input.instruction !== lookup.task.text;
+      const editor = automationEditor(caller.viewer, candidate);
       if (input.instruction !== undefined && instructionChanged) {
-        requireRequesterMention(input.instruction, context.actor);
+        requireRequesterMention(input.instruction, editor);
       }
       const next = await editScheduledAutomation(
         lookup,
@@ -160,8 +170,8 @@ export function createSlackScheduleUpdateAutomationTool(
       if (changingDestination) {
         next.destination = requestedDestination;
         next.conversationAccess = getConversationAccess(
-          activeDestination,
-          context.source,
+          requestedDestination,
+          context.visibility,
         );
         next.outcomes =
           input.outcomes === undefined
@@ -193,7 +203,7 @@ export function createSlackScheduleUpdateAutomationTool(
         return scheduleAutomationToolResult(
           context.conversationId,
           lookup,
-          actor.slackUserId,
+          isCreator,
         );
       }
 
@@ -201,7 +211,7 @@ export function createSlackScheduleUpdateAutomationTool(
         db,
         next,
         automationRevision(lookup),
-        actor,
+        editor,
       );
       if (changingDestination) {
         logInfo(
@@ -212,7 +222,7 @@ export function createSlackScheduleUpdateAutomationTool(
       return scheduleAutomationToolResult(
         context.conversationId,
         committed,
-        actor.slackUserId,
+        isCreator,
       );
     },
   });

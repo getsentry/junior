@@ -7,7 +7,7 @@ in the user's linked Slack workspaces.
 Each Automation stores `creator_identity_id`, the Junior identity that created
 it. A foreign key to `junior_identities` makes sure that identity exists. The
 user owns an Automation when one of their identities has that ID. This
-rule is the same for both kinds. The Slack create tools refuse to save an
+rule is the same for both kinds. The create tools refuse to save an
 Automation when the requester has no stored identity. Migration 0058 sets the
 identity on event automations that were created before this rule, and on any
 row whose identity ID has no identity record. It adds a Slack identity when
@@ -25,19 +25,26 @@ matching event arrives.
 One rule decides who can read and manage an Automation, on the dashboard and
 in the agent tools. `resolveViewerTaskCandidate` in `read.ts` applies it to one
 Automation, and `viewerAutomationCollection` in `collection.ts` applies it in
-SQL. Keep the two aligned. `tool-access.ts` builds the tool viewer and the
-tool error text.
+SQL. Keep the two aligned. `tool-access.ts` builds the tool caller, its
+viewer, and the tool error text.
 
 A person can read, edit, pause, resume, and delete an Automation when one of
 these is true:
 
 - they created it;
 - its Destination is a public channel in one of their linked Slack workspaces;
-- they ask from a Slack tool call in the channel or DM where it delivers.
+- they ask from a Conversation whose Location is the channel or DM where it
+  delivers.
 
-A Slack tool call manages only Automations in its own workspace. Other people
-get not found. So private channel and DM Automations stay with their creator
-and the people in that conversation.
+Other people get not found. So private channel and DM Automations stay with
+their creator and the people in that conversation.
+
+The tools work in any Turn that a person started, also in dashboard
+Conversations. A Turn that no person started, such as an Automation run or an
+Event, cannot use them. The tool viewer has the person's stored identities and
+the account of their Actor, so a missing identity lookup does not make the
+creator a non-creator. A Conversation with no Location can search and manage
+Automations, but it cannot create or move one, because it has no Destination.
 
 Some rules stay with the creator (`edit-rules.ts`):
 
@@ -93,7 +100,7 @@ match conditions. Both include ordered outcomes and credential mode.
 
 `PATCH /api/automations/:id` requires that revision and the stored `kind`.
 It accepts only changed fields. Omitted fields stay unchanged. A replacement
-Schedule uses `ScheduleIntent`, the same input as the Slack tools. The API does
+Schedule uses `ScheduleIntent`, the same input as the agent tools. The API does
 not accept lifecycle or creator changes. It does not dispatch work or restart
 a completed Automation.
 
@@ -106,12 +113,12 @@ Replacement selectors must pass the current plugin catalog rules.
 
 The revision hashes the decoded stored values, including title and lifecycle.
 Scheduled saves compare it under the task lock. Event saves compare it under a
-SQL row lock. Slack edits use the same check. A scheduler state change can also
+SQL row lock. Tool edits use the same check. A scheduler state change can also
 invalidate an open edit. The API returns 409 for a stale edit, 400 with field
 paths for input errors, and 404 for an Automation the user cannot read. The
 editor must keep unsaved input when a save fails.
 
-A public reader edits with the same rules as a non-creator in Slack. They
+A public reader edits with the same rules as a non-creator in the tools. They
 cannot enable creator credential use or change outcomes. A change to the
 instruction or event selector switches creator credential use to system
 credentials. The edit read returns `ownedByViewer` so the editor can show
@@ -138,7 +145,7 @@ run-now do not make a version.
 
 The save writes the version in the same transaction and lock as the
 Automation. A save that does not change the definition does not make a
-version. A new Automation gets version 1 from its creator. Slack and web edits
+version. A new Automation gets version 1 from its creator. Tool and dashboard edits
 record the requester.
 
 Migration 0046 saves the current definition of each live Automation as

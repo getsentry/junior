@@ -72,7 +72,7 @@ describe("Event automation management", () => {
     const names = conversation.toolCalls.map((call) => call.name);
     expect(names).not.toContain("watchEvents");
     expect(names).not.toContain("createEventAutomation");
-    expect(names).not.toContain("slackScheduleCreateAutomation");
+    expect(names).not.toContain("createScheduledAutomation");
   });
 
   test("when a resource supports the requested event, create the requested event automation", async ({
@@ -112,7 +112,7 @@ describe("Event automation management", () => {
       },
     });
     const names = conversation.toolCalls.map((call) => call.name);
-    expect(names).not.toContain("slackScheduleCreateAutomation");
+    expect(names).not.toContain("createScheduledAutomation");
     expect(names).not.toContain("watchEvents");
   });
 
@@ -151,7 +151,7 @@ describe("Event automation management", () => {
       new Set(["issue.closed", "issue.reopened"]),
     );
     const names = conversation.toolCalls.map((call) => call.name);
-    expect(names).not.toContain("slackScheduleCreateAutomation");
+    expect(names).not.toContain("createScheduledAutomation");
     expect(names).not.toContain("watchEvents");
   });
 
@@ -250,7 +250,7 @@ describe("Event automation management", () => {
     );
 
     expect(
-      completedToolCalls("listEventAutomations", listing).map(toolOutput),
+      completedToolCalls("searchEventAutomations", listing).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -355,7 +355,9 @@ describe("Event automation management", () => {
     );
 
     expect(
-      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+      completedToolCalls("searchEventAutomations", conversation).map(
+        toolOutput,
+      ),
     ).toEqual([
       expect.objectContaining({
         automations: [

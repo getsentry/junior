@@ -4,24 +4,15 @@ import {
 } from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { createHash } from "node:crypto";
-import {
-  sourceSchema,
-  type Identity,
-  type SlackDestination,
-  type SlackActor,
-  type SlackSource,
-  type User,
-} from "@sentry/junior-plugin-api";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
-import { sanitizeScheduledAutomationPrincipal } from "./identity";
 import {
-  requireToolAutomation,
-  slackToolViewer,
-} from "@/chat/automations/tool-access";
+  destinationFilterValue,
+  type AutomationDestination,
+} from "@/chat/automations/creator";
 import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
@@ -29,19 +20,7 @@ import type {
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
-export interface SchedulerToolContext {
-  conversationId: string;
-  actor?: SlackActor;
-  now?: () => number;
-  source?: SlackSource;
-  users: {
-    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
-  };
-  userText?: string;
-}
-
 const TASK_ID_PREFIX = "sched";
-export const MAX_LISTED_TASKS = 50;
 
 const compactTaskResultSchema = z
   .object({
@@ -59,6 +38,7 @@ const compactTaskResultSchema = z
     nextRunAt: z.string().nullable(),
     destination: z
       .object({
+        id: z.string().min(1),
         channel: z.string().min(1),
         thread: z.string().min(1).nullable(),
       })
@@ -113,92 +93,20 @@ export const scheduleListToolResultSchema = juniorToolOutputSchema
   .strict();
 export type CompactTaskResult = z.output<typeof compactTaskResultSchema>;
 
-type SchemaIssue = {
-  code: string;
-  path: readonly PropertyKey[];
-};
-
 /** Normalize scheduled-automation validation failures into the core tool contract. */
 export function throwToolInputError(error: string): never {
   throw new ToolInputError(error);
 }
 
-/** Resolve the active Slack channel for scheduled automation operations. */
-export function requireActiveChannel(
-  context: SchedulerToolContext,
-): SlackDestination {
-  const parsed = sourceSchema.safeParse(context.source);
-  if (!parsed.success) {
-    const source = context.source as Partial<SlackSource> | undefined;
-    const issues = parsed.error.issues as readonly SchemaIssue[];
-    if (!source || source.kind !== "slack") {
-      throwToolInputError("No active Slack conversation is available.");
-    }
-    if (issues.some((issue) => issue.code === "unrecognized_keys")) {
-      throwToolInputError(
-        "Active Slack conversation must not include unknown fields.",
-      );
-    }
-    if (issues.some((issue) => issue.path[0] === "channelId")) {
-      throwToolInputError("Active Slack conversation channel is invalid.");
-    }
-    if (issues.some((issue) => issue.path[0] === "teamId")) {
-      throwToolInputError("Active Slack conversation workspace is invalid.");
-    }
-    throwToolInputError("No active Slack conversation is available.");
-  }
-
-  if (parsed.data.kind !== "slack") {
-    throwToolInputError("No active Slack conversation is available.");
-  }
-
-  return {
-    platform: "slack",
-    teamId: parsed.data.teamId,
-    channelId: parsed.data.channelId,
-  };
-}
-
-/** Require a concrete Slack actor before creating scheduler ownership state. */
-export function requireActor(
-  context: SchedulerToolContext,
-  destination: SlackDestination,
-): ScheduledAutomationPrincipal {
-  if (
-    context.actor?.platform !== "slack" ||
-    context.actor.teamId !== destination.teamId
-  ) {
-    throwToolInputError("No active Slack actor context is available.");
-  }
-  const userId = context.actor?.userId?.trim();
-  if (!userId || userId.toLowerCase() === "unknown") {
-    throwToolInputError("No active Slack actor context is available.");
-  }
-
-  return sanitizeScheduledAutomationPrincipal({
-    slackUserId: userId,
-    ...(context.actor?.userName
-      ? { userName: context.actor.userName }
-      : undefined),
-    ...(context.actor?.fullName
-      ? { fullName: context.actor.fullName }
-      : undefined),
-  });
-}
-
-function isDmChannel(channelId: string): boolean {
-  return channelId.startsWith("D");
-}
-
-/** Preserve the active destination's ingress-confirmed access classification. */
+/**
+ * Return the access class of a Destination. A DM is direct and a group DM is
+ * a group. A channel keeps the visibility of the Conversation.
+ */
 export function getConversationAccess(
-  destination: SlackDestination,
-  source: SlackSource | undefined,
+  destination: AutomationDestination,
+  visibility: "public" | "private" | undefined,
 ): ScheduledAutomationConversationAccess {
-  // TODO(dcramer): Read stored Conversation visibility when users can create
-  // Scheduled automations from web and other Conversations. Then this function will
-  // not need Slack Source.
-  if (isDmChannel(destination.channelId)) {
+  if (destination.channelId.startsWith("D")) {
     return { audience: "direct", visibility: "private" };
   }
   if (destination.channelId.startsWith("G")) {
@@ -206,41 +114,26 @@ export function getConversationAccess(
   }
   return {
     audience: "channel",
-    visibility: source?.visibility === "public" ? "public" : "private",
+    visibility: visibility === "public" ? "public" : "private",
   };
 }
 
-/** Return whether the task delivers to the active Slack channel. */
+/** Return whether the task delivers to this Destination. */
 export function sameDestination(
   task: ScheduledAutomation,
-  destination: SlackDestination,
+  destination: AutomationDestination,
 ): boolean {
-  const taskDestination = task.destination;
   return (
-    taskDestination.platform === "slack" &&
-    taskDestination.teamId === destination.teamId &&
-    taskDestination.channelId === destination.channelId
+    task.destination.platform === destination.platform &&
+    task.destination.teamId === destination.teamId &&
+    task.destination.channelId === destination.channelId
   );
-}
-
-/** Load a scheduled automation that the requester can manage from here. */
-export async function getWritableTask(
-  context: SchedulerToolContext,
-  taskId: string,
-) {
-  const channel = requireActiveChannel(context);
-  const viewer = slackToolViewer(
-    await context.users.resolveActor(),
-    channel,
-    requireActor(context, channel).slackUserId,
-  );
-  return await requireToolAutomation(viewer, "scheduled", taskId);
 }
 
 /** Project scheduled automation state into the stable model-facing result shape. */
 export function compactTask(
   task: ScheduledAutomation,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ): CompactTaskResult {
   return compactTaskResultSchema.parse({
     id: task.id,
@@ -268,12 +161,13 @@ export function compactTask(
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     destination: {
+      id: destinationFilterValue(task.destination),
       channel: task.destination.channelId,
       thread: null,
     },
     conversationAccess: task.conversationAccess,
     credentialMode: task.credentialMode,
-    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    isCreator,
     createdBy: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,
@@ -299,9 +193,9 @@ export function compactTask(
 export async function scheduleAutomationToolResult(
   conversationId: string,
   task: ScheduledAutomation,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ) {
-  const automation = compactTask(task, requesterSlackUserId);
+  const automation = compactTask(task, isCreator);
   const title =
     automation.title ??
     fallbackShortTitle(automation.instruction, "Scheduled automation");
@@ -351,7 +245,7 @@ export function scheduleListToolResult(args: {
 /** Build a retry-stable scheduler id scoped to the creating actor and destination. */
 export function buildTaskId(args: {
   actor: ScheduledAutomationPrincipal;
-  destination: SlackDestination;
+  destination: AutomationDestination;
   toolCallId: string | undefined;
 }): string {
   const toolCallId = args.toolCallId?.trim();

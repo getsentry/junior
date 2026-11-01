@@ -1,4 +1,3 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -19,7 +18,8 @@ import {
   readScheduledAutomation,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
-import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
+import { automationToolContext } from "@/chat/automations/tool-access";
+import { createUpdateScheduledAutomationTool } from "@/chat/scheduled-automations/tools/update";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
@@ -127,22 +127,18 @@ describe("Automation edit API", () => {
         expect(saved.revision).not.toBe(initial.revision);
 
         // Slack and web use the same edit rules; neither regenerates a saved title.
+        const slackToolContext = () =>
+          automationToolContext({
+            ...eventContext("U123", "C123", "public", undefined, "T123"),
+            conversationId: "slack:T123:U123:edit",
+            resolveActorIdentity: async () => ({
+              user,
+              identity: user.identities[0]!,
+            }),
+          });
         if (kind === "scheduled") {
           await execute(
-            createSlackScheduleUpdateAutomationTool({
-              actor: { platform: "slack", teamId: "T123", userId: "U123" },
-              source: createSlackSource({
-                ...destination,
-                visibility: "public",
-              }),
-              conversationId: "slack:T123:U123:edit",
-              users: {
-                resolveActor: async () => ({
-                  user,
-                  identity: user.identities[0]!,
-                }),
-              },
-            }),
+            createUpdateScheduledAutomationTool(slackToolContext()),
             {
               automationId: id,
               instruction: "Edited from Slack.",
@@ -150,20 +146,7 @@ describe("Automation edit API", () => {
             },
           );
           await execute(
-            createSlackScheduleUpdateAutomationTool({
-              actor: { platform: "slack", teamId: "T123", userId: "U123" },
-              source: createSlackSource({
-                ...destination,
-                visibility: "public",
-              }),
-              conversationId: "slack:T123:U123:edit",
-              users: {
-                resolveActor: async () => ({
-                  user,
-                  identity: user.identities[0]!,
-                }),
-              },
-            }),
+            createUpdateScheduledAutomationTool(slackToolContext()),
             { automationId: id, instruction: "Edited again from Slack." },
           );
         } else {

@@ -26,7 +26,10 @@ import {
 } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import {
+  destinationFilterValue,
+  type AutomationDestination,
+} from "@/chat/automations/creator";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const compactEventAutomationResultSchema = z
@@ -47,6 +50,13 @@ const compactEventAutomationResultSchema = z
         match: z.record(z.string(), z.unknown()).optional(),
         available: z.boolean(),
         problems: z.array(z.string().min(1)).min(1).optional(),
+      })
+      .strict(),
+    destination: z
+      .object({
+        id: z.string().min(1),
+        channel: z.string().min(1),
+        thread: z.string().min(1).nullable(),
       })
       .strict(),
     credentialMode: z.enum(["system", "creator"]),
@@ -168,35 +178,10 @@ export function requireEventAutomationTrigger(
   };
 }
 
-/** Require the active Slack authority used for event-automation management. */
-export function requireEventAutomationSlackContext(
-  context: ToolRuntimeContext,
-) {
-  if (
-    context.source.kind !== "slack" ||
-    context.destination.platform !== "slack" ||
-    context.actor?.platform !== "slack" ||
-    context.actor.teamId !== context.source.teamId
-  ) {
-    throw new ToolInputError(
-      "Event automations require an active Slack channel or DM and actor.",
-    );
-  }
-  return {
-    actor: context.actor,
-    destination: {
-      platform: "slack" as const,
-      teamId: context.source.teamId,
-      channelId: context.source.channelId,
-    },
-    source: context.source,
-  };
-}
-
-/** Return whether an event automation belongs to the active Slack destination. */
+/** Return whether an event automation delivers to this Destination. */
 export function eventAutomationMatchesDestination(
   task: EventAutomation,
-  destination: { channelId: string; teamId: string },
+  destination: AutomationDestination,
 ): boolean {
   return (
     task.destination.teamId === destination.teamId &&
@@ -224,7 +209,7 @@ export function describeEventAutomationTrigger(
 export function compactEventAutomation(
   task: StoredEventAutomation,
   catalog: EventCatalog,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ) {
   const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
   return compactEventAutomationResultSchema.parse({
@@ -244,8 +229,13 @@ export function compactEventAutomation(
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
     },
+    destination: {
+      id: destinationFilterValue(task.destination),
+      channel: task.destination.channelId,
+      thread: null,
+    },
     credentialMode: task.credentialMode,
-    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    isCreator,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
       (outcome) => ({
         action: outcome.action,
@@ -267,13 +257,9 @@ export async function eventAutomationToolResult(
   conversationId: string,
   task: StoredEventAutomation,
   catalog: EventCatalog,
-  requesterSlackUserId: string,
+  isCreator: boolean,
 ) {
-  const automation = compactEventAutomation(
-    task,
-    catalog,
-    requesterSlackUserId,
-  );
+  const automation = compactEventAutomation(task, catalog, isCreator);
   const description = describeEventAutomationTrigger(task.trigger, catalog);
   const title =
     automation.title ?? fallbackShortTitle(task.task.text, "Event automation");

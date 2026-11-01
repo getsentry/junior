@@ -347,8 +347,8 @@ function viewerTeamIds(viewer: AutomationViewer): string[] {
  * Resolve an Automation the viewer can read and manage. This is the one
  * access rule for the dashboard and the agent tools. The viewer can use an
  * Automation that they created, an Automation with a public Destination in
- * their Slack workspace, or an Automation that delivers to the Slack channel
- * where they ask. `viewerAutomationCollection` applies the same rule in SQL.
+ * their Slack workspace, or an Automation that delivers to the Location of the
+ * Conversation where they ask. `viewerAutomationCollection` applies the same rule in SQL.
  * Creator-only fields and credential rules are in `edit-rules.ts`.
  */
 export async function resolveViewerTaskCandidate(
@@ -380,11 +380,11 @@ export async function resolveViewerTaskCandidate(
   }
   const { task } = candidate;
   if (task.status === "deleted") return undefined;
-  // A Slack tool call manages only its own workspace.
-  if (viewer.channel && viewer.channel.teamId !== task.destination.teamId)
-    return undefined;
   if (candidate.ownedByViewer) return candidate;
-  if (viewer.channel?.channelId === task.destination.channelId)
+  if (
+    viewer.location?.teamId === task.destination.teamId &&
+    viewer.location.channelId === task.destination.channelId
+  )
     return candidate;
   const destinations = await destinationDetails([task.destination]);
   const destination = destinations.get(destinationKey(task.destination));

@@ -244,7 +244,7 @@ describeEval("Guardian Harmful Action Snapshots", guardianEvals, (it) => {
             time: "08:00",
           },
         },
-        tool: "slackScheduleCreateAutomation",
+        tool: "createScheduledAutomation",
       }),
     });
   });

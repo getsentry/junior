@@ -243,21 +243,6 @@ export async function deleteEventAutomation(
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
-/** List live event automations in one Slack workspace. */
-export async function listEventAutomationsForTeam(
-  db: JuniorDatabase,
-  teamId: string,
-): Promise<StoredEventAutomation[]> {
-  const rows = await db
-    .select()
-    .from(juniorAutomations)
-    .where(
-      and(eq(juniorAutomations.teamId, teamId), activeEventAutomationWhere()),
-    )
-    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
-  return rows.map(parseEventAutomationRow);
-}
-
 /**
  * List deleted event automations created by one user, newest first.
  * Used only to keep historical runs after the live automation list drops the row.

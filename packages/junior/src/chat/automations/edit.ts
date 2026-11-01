@@ -28,6 +28,7 @@ import {
   type ScheduleIntent,
 } from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import type { AutomationViewer } from "./creator";
 import { automationRevision, requireAutomationRevision } from "./revision";
 import {
   resolveViewerTaskCandidate,
@@ -59,16 +60,20 @@ async function requireEditableAutomation(
   return candidate;
 }
 
-/** Record the viewer's Slack identity in the Automation workspace as the editor. */
-function viewerEditor(
-  user: User,
+/**
+ * Return the editor that a new version names: the creator, or the viewer's
+ * account for the Destination provider and workspace.
+ */
+export function automationEditor(
+  viewer: AutomationViewer,
   automation: TaskCandidate,
 ): EventAutomation["createdBy"] | undefined {
   if (automation.ownedByViewer) return automation.task.createdBy;
-  const identity = user.identities.find(
+  const { destination } = automation.task;
+  const identity = viewer.identities.find(
     (candidate) =>
-      candidate.provider === "slack" &&
-      candidate.providerTenantId === automation.task.destination.teamId,
+      candidate.provider === destination.platform &&
+      candidate.providerTenantId === destination.teamId,
   );
   if (!identity) return undefined;
   const editor: EventAutomation["createdBy"] = {
@@ -145,7 +150,7 @@ async function saveViewerEdit(
   restored?: RestoredValues,
 ): Promise<AutomationEdit> {
   const isCreator = current.ownedByViewer;
-  const editedBy = viewerEditor(user, current);
+  const editedBy = automationEditor(user, current);
   if (input.kind === "scheduled" && current.kind === "scheduled") {
     const next = await editScheduledAutomation(
       current.task,

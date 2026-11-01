@@ -25,21 +25,22 @@ import { scheduledAutomationAttributes } from "../telemetry";
 import { SCHEDULED_AUTOMATION_SYSTEM_ACTOR } from "../types";
 import type { ScheduledAutomation } from "../types";
 import {
+  requireToolCaller,
+  requireToolCreator,
+  requireToolDestination,
+  type AutomationToolContext,
+} from "@/chat/automations/tool-access";
+import {
   buildTaskId,
   getConversationAccess,
-  requireActiveChannel,
-  requireActor,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
   throwToolInputError,
-  type SchedulerToolContext,
 } from "../tool-support";
 
-/** Create a tool that stores a scheduled automation for the active Slack context. */
-export function createSlackScheduleCreateAutomationTool(
-  context: SchedulerToolContext,
-) {
+/** Create a tool that stores a scheduled automation for this Conversation. */
+export function createScheduledAutomationTool(context: AutomationToolContext) {
   return zodTool({
     approvalMode: "review",
     annotations: {
@@ -49,7 +50,7 @@ export function createSlackScheduleCreateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Create a one-time or recurring scheduled task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
+      "Create a one-time or recurring scheduled task that delivers to the channel or DM of this conversation. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -105,10 +106,15 @@ export function createSlackScheduleCreateAutomationTool(
     },
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input, options) => {
-      const destination = requireActiveChannel(context);
-      const actor = requireActor(context, destination);
+      const destination = requireToolDestination(context);
+      const caller = await requireToolCaller(context);
+      const { identity, createdBy } = requireToolCreator(
+        caller,
+        destination,
+        "scheduled",
+      );
       const id = buildTaskId({
-        actor,
+        actor: createdBy,
         destination,
         toolCallId: options.toolCallId,
       });
@@ -118,7 +124,7 @@ export function createSlackScheduleCreateAutomationTool(
       if (existing) {
         if (
           !sameDestination(existing, destination) ||
-          existing.createdBy.slackUserId !== actor.slackUserId
+          existing.createdBy.slackUserId !== createdBy.slackUserId
         ) {
           throwToolInputError(
             "Scheduled automation operation identity is invalid.",
@@ -127,32 +133,21 @@ export function createSlackScheduleCreateAutomationTool(
         return scheduleAutomationToolResult(
           context.conversationId,
           existing,
-          actor.slackUserId,
+          true,
         );
       }
 
-      requireRequesterMention(input.instruction, context.actor);
-      const creator = await context.users.resolveActor();
-      const identity = creator?.identity;
-      if (
-        !identity ||
-        identity.provider !== "slack" ||
-        identity.providerTenantId !== destination.teamId ||
-        identity.providerSubjectId !== actor.slackUserId
-      ) {
-        throwToolInputError(
-          "Scheduled automation creator identity is unavailable.",
-        );
-      }
-
+      requireRequesterMention(input.instruction, createdBy);
       const nowMs = context.now?.() ?? Date.now();
       const defaultTimezone =
         input.schedule.timezone ??
         (await resolveUserTimezone({
           db,
           nowMs,
-          slack: { teamId: destination.teamId, userId: actor.slackUserId },
-          ...(creator.user ? { userId: creator.user.id } : undefined),
+          slack: { teamId: destination.teamId, userId: createdBy.slackUserId },
+          ...(caller.resolved?.user
+            ? { userId: caller.resolved.user.id }
+            : undefined),
         }));
       let compiled;
       try {
@@ -169,7 +164,7 @@ export function createSlackScheduleCreateAutomationTool(
       }
       const conversationAccess = getConversationAccess(
         destination,
-        context.source,
+        context.visibility,
       );
       const title = await resolveTaskTitle({
         signal: options.signal,
@@ -182,7 +177,7 @@ export function createSlackScheduleCreateAutomationTool(
         id,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
-        createdBy: actor,
+        createdBy,
         creatorIdentityId: identity.id,
         conversationAccess,
         credentialMode: input.credentialMode ?? "creator",
@@ -195,7 +190,7 @@ export function createSlackScheduleCreateAutomationTool(
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,
-          actor.slackUserId,
+          createdBy.slackUserId,
         ),
         task: {
           text: input.instruction,
@@ -206,7 +201,7 @@ export function createSlackScheduleCreateAutomationTool(
       const committed = await createScheduledAutomation(db, task);
       if (
         !sameDestination(committed, destination) ||
-        committed.createdBy.slackUserId !== actor.slackUserId
+        committed.createdBy.slackUserId !== createdBy.slackUserId
       ) {
         throwToolInputError(
           "Scheduled automation operation identity is invalid.",
@@ -219,7 +214,7 @@ export function createSlackScheduleCreateAutomationTool(
       return scheduleAutomationToolResult(
         context.conversationId,
         committed,
-        actor.slackUserId,
+        true,
       );
     },
   });

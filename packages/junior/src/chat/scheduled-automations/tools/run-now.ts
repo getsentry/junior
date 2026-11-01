@@ -6,16 +6,19 @@ import { getDb } from "@/chat/db";
 import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
-  getWritableTask,
+  requireToolAutomation,
+  requireToolCaller,
+  type AutomationToolContext,
+} from "@/chat/automations/tool-access";
+import {
   compactTask,
   scheduleAutomationToolResultSchema,
   throwToolInputError,
-  type SchedulerToolContext,
 } from "../tool-support";
 
 /** Create a tool that marks an existing scheduled automation due immediately. */
-export function createSlackScheduleRunAutomationNowTool(
-  context: SchedulerToolContext,
+export function createRunScheduledAutomationNowTool(
+  context: AutomationToolContext,
 ) {
   return zodTool({
     approvalMode: "review",
@@ -33,13 +36,14 @@ export function createSlackScheduleRunAutomationNowTool(
         .string()
         .min(1)
         .describe(
-          "ID of the active scheduled automation to run now, from slackScheduleSearchAutomations or its dashboard URL.",
+          "ID of the active scheduled automation to run now, from searchScheduledAutomations or its dashboard URL.",
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async ({ automationId }) => {
-      const { task: lookup, ownedByViewer } = await getWritableTask(
-        context,
+      const { task: lookup, ownedByViewer } = await requireToolAutomation(
+        await requireToolCaller(context),
+        "scheduled",
         automationId,
       );
       if (lookup.status !== "active") {
@@ -57,7 +61,7 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next, automationRevision(lookup));
-      return { automation: compactTask(next, context.actor?.userId) };
+      return { automation: compactTask(next, ownedByViewer) };
     },
   });
 }

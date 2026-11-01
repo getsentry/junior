@@ -2,17 +2,15 @@ import { describe, expect, it } from "vitest";
 import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const actor = {
-  platform: "slack" as const,
-  teamId: "T1",
-  userId: "U0TEST",
-  fullName: "Sam Lee",
-};
+const requester = { slackUserId: "U0TEST", fullName: "Sam Lee" };
 
 describe("requireRequesterMention", () => {
   it("rejects the requester's name when the mention is missing", () => {
     expect(() =>
-      requireRequesterMention("Remind sam lee to submit the timesheet.", actor),
+      requireRequesterMention(
+        "Remind sam lee to submit the timesheet.",
+        requester,
+      ),
     ).toThrow(
       new ToolInputError(
         "The instruction names Sam Lee without a Slack mention. Write <@U0TEST> for this person.",
@@ -28,7 +26,9 @@ describe("requireRequesterMention", () => {
       // The name is part of another word.
       "Ask Sam Leeds for the report.",
     ]) {
-      expect(() => requireRequesterMention(instruction, actor)).not.toThrow();
+      expect(() =>
+        requireRequesterMention(instruction, requester),
+      ).not.toThrow();
     }
   });
 });

@@ -29,40 +29,40 @@ import {
  * The collection applies access before counts, filter options, and paging.
  * It is the SQL form of `resolveViewerTaskCandidate`; keep the two aligned. A
  * public Destination only grants access inside a viewer's linked Slack
- * workspaces. A viewer with an active Slack channel sees only that workspace.
+ * workspaces.
  */
 export function viewerAutomationCollection(viewer: AutomationViewer) {
   const db = getDb();
-  const identities = viewer.identities.filter(
-    (identity) => identity.provider === "slack",
+  const slackAccounts = viewer.identities.filter(
+    (identity) => identity.provider === "slack" && identity.providerTenantId,
   );
-  const teamIds = identities.flatMap((identity) =>
-    identity.providerTenantId ? [identity.providerTenantId] : [],
+  const teamIds = slackAccounts.map((identity) => identity.providerTenantId!);
+  const identityIds = viewer.identities.flatMap((identity) =>
+    identity.id ? [identity.id] : [],
   );
   const automation = juniorAutomations;
   const destination = juniorDestinations;
   const isScheduled = eq(automation.kind, "scheduled");
-  // Both kinds belong to the Junior identity that created them. Keep this
-  // aligned with `isAutomationCreator`.
+  // Keep this aligned with `isAutomationCreator`.
   const owned = or(
-    inArray(
-      automation.creatorIdentityId,
-      viewer.identities.map((identity) => identity.id),
+    inArray(automation.creatorIdentityId, identityIds),
+    ...slackAccounts.map((account) =>
+      and(
+        eq(automation.teamId, account.providerTenantId!),
+        eq(automation.creatorSlackUserId, account.providerSubjectId),
+      ),
     ),
-    viewer.channel && viewer.slackUserId
-      ? and(
-          eq(automation.teamId, viewer.channel.teamId),
-          eq(automation.creatorSlackUserId, viewer.slackUserId),
-        )
-      : undefined,
   )!;
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
   const sharedToViewer = and(
     ne(automation.status, "completed"),
     or(
       and(inArray(automation.teamId, teamIds), publicDestination),
-      viewer.channel
-        ? eq(automation.channelId, viewer.channel.channelId)
+      viewer.location
+        ? and(
+            eq(automation.teamId, viewer.location.teamId),
+            eq(automation.channelId, viewer.location.channelId),
+          )
         : undefined,
     ),
   )!;
@@ -114,15 +114,7 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
-    .where(
-      and(
-        ne(automation.status, "deleted"),
-        viewer.channel
-          ? eq(automation.teamId, viewer.channel.teamId)
-          : undefined,
-        or(owned, sharedToViewer),
-      ),
-    )
+    .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
 }
 

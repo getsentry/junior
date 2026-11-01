@@ -115,7 +115,9 @@ describe("Event automation credentials", () => {
       ),
     ).toEqual([]);
     expect(
-      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+      completedToolCalls("searchEventAutomations", conversation).map(
+        toolOutput,
+      ),
     ).toEqual([
       expect.objectContaining({
         automations: [
@@ -160,7 +162,9 @@ describe("Event automation credentials", () => {
       [],
     );
     expect(
-      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+      completedToolCalls("searchEventAutomations", conversation).map(
+        toolOutput,
+      ),
     ).toEqual([
       expect.objectContaining({
         automations: [

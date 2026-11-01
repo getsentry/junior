@@ -1,14 +1,14 @@
 import { removedCardSchema } from "@/chat/conversations/cards";
 import {
+  automationToolContext,
   deleteToolAutomation,
   requireToolAutomation,
-  slackToolViewer,
+  requireToolCaller,
 } from "@/chat/automations/tool-access";
 import { z } from "zod";
 import {
   compactEventAutomation,
   eventAutomationToolResultSchema,
-  requireEventAutomationSlackContext,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -35,14 +35,8 @@ export function createDeleteEventAutomationTool(
       .omit({ objectCards: true })
       .extend({ removedCards: z.array(removedCardSchema) }),
     async execute({ automationId }) {
-      const { actor, destination } =
-        requireEventAutomationSlackContext(context);
       const current = await requireToolAutomation(
-        slackToolViewer(
-          await context.resolveActorIdentity?.(),
-          destination,
-          actor.userId,
-        ),
+        await requireToolCaller(automationToolContext(context)),
         "event",
         automationId,
       );
@@ -51,7 +45,11 @@ export function createDeleteEventAutomationTool(
         current,
       );
       return {
-        automation: compactEventAutomation(deleted, catalog, actor.userId),
+        automation: compactEventAutomation(
+          deleted,
+          catalog,
+          current.ownedByViewer,
+        ),
         removedCards: [{ plugin: "junior", key: automationId }],
       };
     },

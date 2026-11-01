@@ -49,14 +49,10 @@ describe("Schedule Management", () => {
     );
 
     expect(
-      completedToolCalls(
-        "slackScheduleCreateAutomation",
-        proposal,
-        confirmation,
-      ),
+      completedToolCalls("createScheduledAutomation", proposal, confirmation),
     ).toEqual([]);
     const updates = completedToolCalls(
-      "slackScheduleUpdateAutomation",
+      "updateScheduledAutomation",
       proposal,
       confirmation,
     );
@@ -96,7 +92,7 @@ describe("Schedule Management", () => {
     );
 
     const updates = completedToolCalls(
-      "slackScheduleUpdateAutomation",
+      "updateScheduledAutomation",
       conversation,
     );
     expect(updates).toHaveLength(1);

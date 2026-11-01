@@ -283,7 +283,7 @@ describe("Slack tool registration", () => {
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
     expect(messageTurn).toHaveProperty("createEventAutomation");
-    expect(messageTurn).toHaveProperty("slackScheduleCreateAutomation");
+    expect(messageTurn).toHaveProperty("createScheduledAutomation");
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -349,7 +349,10 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
-    expect(tools).not.toHaveProperty("createEventAutomation");
+    // Automation tools are not Slack tools. This Turn has no person, so they
+    // are disabled.
+    expect(tools.createEventAutomation?.disabledReason).toBeDefined();
+    expect(tools.createScheduledAutomation?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

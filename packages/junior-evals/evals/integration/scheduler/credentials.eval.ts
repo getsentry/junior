@@ -46,7 +46,7 @@ describe("Scheduled Credentials", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       conversation,
     );
     expect(creates).toHaveLength(1);
@@ -84,7 +84,7 @@ describe("Scheduled Credentials", () => {
     );
 
     const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
+      "createScheduledAutomation",
       proposal,
       confirmation,
     );
@@ -92,7 +92,7 @@ describe("Scheduled Credentials", () => {
     expect(credentialMode(creates[0])).toBe("system");
     expect(
       completedToolCalls(
-        "slackScheduleUpdateAutomation",
+        "updateScheduledAutomation",
         proposal,
         confirmation,
       ).filter((call) => credentialMode(call) === "creator"),
@@ -139,13 +139,13 @@ describe("Scheduled Credentials", () => {
     // Anyone may edit a public automation; only the creator may enable
     // creator credentials.
     expect(
-      completedToolCalls("slackScheduleCreateAutomation", conversation),
+      completedToolCalls("createScheduledAutomation", conversation),
     ).toEqual([]);
     expect(
-      completedToolCalls("slackScheduleDeleteAutomation", conversation),
+      completedToolCalls("deleteScheduledAutomation", conversation),
     ).toEqual([]);
     expect(
-      completedToolCalls("slackScheduleUpdateAutomation", conversation).filter(
+      completedToolCalls("updateScheduledAutomation", conversation).filter(
         (call) => credentialMode(call) === "creator",
       ),
     ).toEqual([]);
@@ -184,7 +184,7 @@ describe("Scheduled Credentials", () => {
     );
 
     const updates = completedToolCalls(
-      "slackScheduleUpdateAutomation",
+      "updateScheduledAutomation",
       proposal,
       confirmation,
     ).filter((call) => credentialMode(call) !== undefined);

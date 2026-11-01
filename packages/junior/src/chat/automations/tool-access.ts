@@ -1,13 +1,21 @@
 /** Automation access for the scheduled and event automation tools. */
-import type {
-  Identity,
-  SlackDestination,
-  User,
-} from "@sentry/junior-plugin-api";
+import type { Identity, User } from "@sentry/junior-plugin-api";
+import { z } from "zod";
+import { automationListQuerySchema } from "@/api/schema/automation";
+import { isUserActor, type UserActor } from "@/chat/actor";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { sanitizeScheduledAutomationPrincipal } from "@/chat/scheduled-automations/identity";
+import type { ScheduledAutomationPrincipal } from "@/chat/scheduled-automations/types";
+import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { AutomationViewer } from "./creator";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import {
+  destinationFilterValue,
+  type AutomationDestination,
+  type AutomationViewer,
+} from "./creator";
+import { readAutomationCollection } from "./collection";
 import { deleteAutomation } from "./edit";
 import { resolveViewerTaskCandidate, type TaskCandidate } from "./read";
 
@@ -16,21 +24,176 @@ type ToolAutomation<K extends TaskCandidate["kind"]> = Extract<
   { kind: K }
 >;
 
+type ResolvedActor = { identity: Identity; user?: User };
+
+/** The person and the Conversation of one Automation tool call. */
+export interface AutomationToolContext {
+  conversationId: string;
+  /** The person who started this Turn. Unset when no person started it. */
+  actor?: UserActor;
+  /**
+   * Destination of the Conversation Location. Unset when the Conversation has
+   * no Location that an Automation can deliver to.
+   */
+  destination?: AutomationDestination;
+  /** Conversation visibility. A new or moved Automation stores it. */
+  visibility?: "public" | "private";
+  now?: () => number;
+  users: { resolveActor(): Promise<ResolvedActor | undefined> };
+  userText?: string;
+}
+
+/** The person who calls an Automation tool, with what they can manage. */
+export interface AutomationToolCaller {
+  actor: UserActor;
+  resolved?: ResolvedActor;
+  viewer: AutomationViewer;
+}
+
 /**
- * Build the viewer for a tool call by one Slack user in one Slack channel. A
- * Slack person with no linked Junior user still has their stored Slack
- * identity.
+ * Return the Actor when that person started this Turn from any surface.
+ * Automation runs, Events, plugin dispatch, and Agent invocations act for no
+ * person, so they cannot manage Automations.
  */
-export function slackToolViewer(
-  resolved: { identity: Identity; user?: User } | undefined,
-  channel: SlackDestination,
-  slackUserId: string,
-): AutomationViewer {
+function personActor(context: ToolRuntimeContext): UserActor | undefined {
+  const { actor, source } = context;
+  if (!isUserActor(actor) || actor.platform !== source.kind) return undefined;
+  const otherWorkspace =
+    actor.platform === "slack" &&
+    source.kind === "slack" &&
+    actor.teamId !== source.teamId;
+  return otherWorkspace ? undefined : actor;
+}
+
+/** Disable reason for the Automation tools in a Turn that no person started. */
+export function automationToolsDisabledReason(
+  context: ToolRuntimeContext,
+): string | undefined {
+  return personActor(context)
+    ? undefined
+    : "It needs a Turn that a person started.";
+}
+
+/**
+ * Build the Automation tool context for this Turn. Automations deliver to a
+ * channel or DM, so a thread Location gives its channel.
+ */
+export function automationToolContext(
+  context: ToolRuntimeContext,
+): AutomationToolContext {
+  const actor = personActor(context);
+  // TODO(dcramer): Read `context.location` directly after every Conversation
+  // that came from Slack has a stored Location.
+  const location = getSlackToolContext(context);
+  const { source } = context;
   return {
-    identities:
-      resolved?.user?.identities ?? (resolved ? [resolved.identity] : []),
-    channel,
-    slackUserId,
+    conversationId: context.conversationId,
+    ...(actor ? { actor } : undefined),
+    ...(location
+      ? {
+          destination: {
+            platform: "slack",
+            teamId: location.teamId,
+            channelId: location.locationChannelId,
+          },
+        }
+      : undefined),
+    ...("visibility" in source ? { visibility: source.visibility } : undefined),
+    users: {
+      resolveActor: context.resolveActorIdentity ?? (async () => undefined),
+    },
+    ...(context.userText ? { userText: context.userText } : undefined),
+  };
+}
+
+/** The account of the Actor. It counts also when no Identity is stored. */
+function actorAccount(actor: UserActor) {
+  return {
+    provider: actor.platform,
+    providerSubjectId: actor.userId,
+    ...(actor.platform === "slack"
+      ? { providerTenantId: actor.teamId }
+      : undefined),
+    ...(actor.fullName ? { displayName: actor.fullName } : undefined),
+    ...(actor.userName ? { handle: actor.userName } : undefined),
+  };
+}
+
+function storedIdentities(resolved: ResolvedActor | undefined): Identity[] {
+  return resolved?.user?.identities ?? (resolved ? [resolved.identity] : []);
+}
+
+/**
+ * Resolve the person who calls an Automation tool. They manage Automations
+ * with the dashboard rule, and also the Automations that deliver to the
+ * Location of this Conversation.
+ */
+export async function requireToolCaller(
+  context: AutomationToolContext,
+): Promise<AutomationToolCaller> {
+  const actor = context.actor;
+  if (!actor || actor.userId.trim().toLowerCase() === "unknown") {
+    throw new ToolInputError(
+      "Automation tools need a Turn that a person started.",
+    );
+  }
+  const resolved = await context.users.resolveActor();
+  return {
+    actor,
+    ...(resolved ? { resolved } : undefined),
+    viewer: {
+      // The Actor account comes first. It has the name that the person uses
+      // now, which an edit records and checks in the instruction.
+      identities: [actorAccount(actor), ...storedIdentities(resolved)],
+      ...(context.destination ? { location: context.destination } : undefined),
+    },
+  };
+}
+
+/** Require the Destination of this Conversation for a new or moved Automation. */
+export function requireToolDestination(
+  context: AutomationToolContext,
+): AutomationDestination {
+  if (!context.destination) {
+    throw new ToolInputError(
+      "This Conversation has no channel or DM that an Automation can deliver to. Ask from the channel or DM where it should deliver.",
+    );
+  }
+  return context.destination;
+}
+
+/**
+ * Return the creator of a new Automation. It is the caller's stored Identity
+ * in the provider and workspace of the Destination, because the Automation
+ * stores its creator as an account there.
+ */
+export function requireToolCreator(
+  caller: AutomationToolCaller,
+  destination: AutomationDestination,
+  kind: TaskCandidate["kind"],
+): { identity: Identity; createdBy: ScheduledAutomationPrincipal } {
+  const matches = (identity: Identity) =>
+    identity.provider === destination.platform &&
+    identity.providerTenantId === destination.teamId;
+  const identity = [
+    caller.resolved?.identity,
+    ...storedIdentities(caller.resolved),
+  ].find((candidate) => candidate && matches(candidate));
+  if (!identity) {
+    throw new ToolInputError(
+      `${kind === "scheduled" ? "Scheduled" : "Event"} automation creator identity is unavailable.`,
+    );
+  }
+  const { actor } = caller;
+  const fullName = actor.fullName ?? identity.displayName;
+  const userName = actor.userName ?? identity.handle;
+  return {
+    identity,
+    createdBy: sanitizeScheduledAutomationPrincipal({
+      slackUserId: identity.providerSubjectId,
+      ...(fullName ? { fullName } : undefined),
+      ...(userName ? { userName } : undefined),
+    }),
   };
 }
 
@@ -42,11 +205,11 @@ function notFound(kind: TaskCandidate["kind"]): ToolInputError {
 
 /** Load one Automation of this kind that the tool caller can manage. */
 export async function requireToolAutomation<K extends TaskCandidate["kind"]>(
-  viewer: AutomationViewer,
+  caller: AutomationToolCaller,
   kind: K,
   id: string,
 ): Promise<ToolAutomation<K>> {
-  const candidate = await resolveViewerTaskCandidate(viewer, id);
+  const candidate = await resolveViewerTaskCandidate(caller.viewer, id);
   if (candidate?.kind !== kind) throw notFound(kind);
   return candidate as ToolAutomation<K>;
 }
@@ -64,4 +227,75 @@ export async function deleteToolAutomation<K extends TaskCandidate["kind"]>(
     plugin: "junior",
   }).remove("object", current.task.id);
   return deleted.task as ToolAutomation<K>["task"];
+}
+
+const MAX_SEARCHED_AUTOMATIONS = 50;
+
+/** Model-facing input of the scheduled and event automation search tools. */
+export const automationSearchInputSchema = z
+  .object({
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .nullable()
+      .describe(
+        "Text in the title or instruction, an automation ID, or a dashboard URL.",
+      )
+      .optional(),
+    scope: z
+      .enum(["all", "current_conversation", "mine"])
+      .nullable()
+      .describe(
+        "all: everything the requester can find. current_conversation: only automations that deliver to this conversation. mine: only automations the requester created. Defaults to all.",
+      )
+      .optional(),
+    destination: z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .nullable()
+      .describe(
+        "Limit results to automations that deliver to this destination. Use destination.id from an earlier result.",
+      )
+      .optional(),
+  })
+  .strict();
+
+/**
+ * Search the Automations of one kind with the dashboard Automations search,
+ * as the tool caller sees them. Returns IDs in search order.
+ */
+export async function searchToolAutomations(
+  context: AutomationToolContext,
+  caller: AutomationToolCaller,
+  kind: TaskCandidate["kind"],
+  input: z.output<typeof automationSearchInputSchema>,
+): Promise<{ ids: string[]; truncated: boolean }> {
+  let destination = input.destination ?? undefined;
+  if (input.scope === "current_conversation") {
+    const here = destinationFilterValue(requireToolDestination(context));
+    if (destination && destination !== here) {
+      throw new ToolInputError(
+        'Use scope "current_conversation" or destination, not both.',
+      );
+    }
+    destination = here;
+  }
+  const { rows, total } = await readAutomationCollection(
+    caller.viewer,
+    automationListQuerySchema.parse({
+      q: input.query ?? undefined,
+      scope: input.scope === "mine" ? "mine" : "all",
+      type: kind,
+      destination,
+      pageSize: MAX_SEARCHED_AUTOMATIONS,
+    }),
+  );
+  return {
+    ids: rows.map((row) => row.id),
+    truncated: total > rows.length,
+  };
 }
