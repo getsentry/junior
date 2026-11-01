@@ -1141,7 +1141,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("stores extracted conversation memories from completed sessions with tool results", async () => {
+  it("stores extracted conversation memories with the files their tool results cite", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -1149,7 +1149,7 @@ describe("memory plugin storage", () => {
         async completeObject(input) {
           if (
             typeof input.prompt !== "string" ||
-            !input.prompt.includes("queryAnalyticsCatalog") ||
+            !input.prompt.includes('tool="readFile"') ||
             !input.prompt.includes(
               "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
             )
@@ -1187,9 +1187,10 @@ describe("memory plugin storage", () => {
                   },
                   {
                     type: "toolResult",
-                    toolName: "queryAnalyticsCatalog",
+                    toolName: "readFile",
                     isError: false,
                     text: "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
+                    paths: ["repos/analytics/CATALOG.md"],
                   },
                   {
                     type: "message",
@@ -1203,15 +1204,24 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([
+      const memories = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryMemories);
+      expect(memories).toEqual([
         expect.objectContaining({
           content:
             "Signup funnel analysis should use the modeled warehouse cohort table.",
           scope: "private",
           subjectType: "conversation",
           kind: "procedure",
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryFileRefs),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          memoryId: memories[0]!.id,
+          path: "repos/analytics/CATALOG.md",
         }),
       ]);
     } finally {

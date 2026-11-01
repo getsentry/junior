@@ -210,6 +210,24 @@ describe("plugin background tasks", () => {
         },
         {
           role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "read-runbook",
+              name: "readFile",
+              arguments: { path: "/vercel/sandbox/repos/ops/RUNBOOK.md" },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "read-runbook",
+          toolName: "readFile",
+          isError: false,
+          content: "Page the on-call engineer first.",
+        },
+        {
+          role: "assistant",
           content: "Understood.",
         },
       ]),
@@ -255,6 +273,13 @@ describe("plugin background tasks", () => {
             toolName: "searchDocs",
             isError: false,
             text: "Incident runbooks live in Notion.",
+          },
+          {
+            type: "toolResult",
+            toolName: "readFile",
+            isError: false,
+            text: "Page the on-call engineer first.",
+            paths: ["repos/ops/RUNBOOK.md"],
           },
           {
             type: "message",

@@ -181,3 +181,26 @@ export const juniorMemorySignals = pgTable(
     ),
   ],
 );
+
+/**
+ * Sandbox files that a memory was learned from. Passive extraction adds a row
+ * when a memory cites a successful tool result that read or changed a file.
+ * The path index is for later recall by file.
+ */
+export const juniorMemoryFileRefs = pgTable(
+  "junior_memory_file_refs",
+  {
+    memoryId: text("memory_id")
+      .notNull()
+      .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
+    /** Path relative to the Sandbox root, such as `repos/junior/README.md`. */
+    path: text("path").notNull(),
+    /** Conversation where Junior first linked the file, when known. */
+    conversationId: text("conversation_id"),
+    observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.memoryId, table.path] }),
+    index("junior_memory_file_refs_path_idx").on(table.path),
+  ],
+);

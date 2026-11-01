@@ -166,6 +166,38 @@ export function resolveWorkspacePath(
   return normalized;
 }
 
+const FILE_TOOL_NAMES = new Set(["readFile", "editFile", "writeFile"]);
+
+/**
+ * Return the Sandbox file that one file tool call read or changed, relative to
+ * the Sandbox root. Plugin tasks use it as file provenance. Return undefined
+ * for other tools and for paths that the tool would reject.
+ */
+export function sandboxToolFilePath(
+  toolName: string,
+  input: unknown,
+): string | undefined {
+  if (!FILE_TOOL_NAMES.has(toolName) || !input || typeof input !== "object") {
+    return undefined;
+  }
+  const requested = (input as { path?: unknown }).path;
+  if (typeof requested !== "string" || !requested.trim()) {
+    return undefined;
+  }
+  let resolved: string;
+  try {
+    resolved = resolveWorkspacePath(requested);
+  } catch (error) {
+    if (error instanceof ToolInputError) {
+      return undefined;
+    }
+    throw error;
+  }
+  return resolved === SANDBOX_WORKSPACE_ROOT
+    ? undefined
+    : resolved.slice(SANDBOX_WORKSPACE_ROOT.length + 1);
+}
+
 /** Anchor ripgrep paths and globs to the requested search root. */
 export function getRipgrepSearchLocation(
   root: string,

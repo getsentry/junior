@@ -23,6 +23,7 @@ import { createPluginConversationEvents } from "@/chat/plugins/conversation-even
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
+import { sandboxToolFilePath } from "@/chat/tools/sandbox/file-utils";
 
 import {
   getPiMessageRole,
@@ -136,10 +137,37 @@ function messageProvenance(
   };
 }
 
+/** Map each tool call id to the Sandbox file that the call read or changed. */
+function toolCallFilePaths(messages: PiMessage[]): Map<string, string> {
+  const paths = new Map<string, string>();
+  for (const message of messages) {
+    const content = (message as { content?: unknown }).content;
+    if (getPiMessageRole(message) !== "assistant" || !Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      if (
+        !isRecord(part) ||
+        part.type !== "toolCall" ||
+        typeof part.id !== "string" ||
+        typeof part.name !== "string"
+      ) {
+        continue;
+      }
+      const path = sandboxToolFilePath(part.name, part.arguments);
+      if (path) {
+        paths.set(part.id, path);
+      }
+    }
+  }
+  return paths;
+}
+
 function runTranscriptEntry(
   message: PiMessage,
   provenance: ConversationMessageProvenance,
   runActor: Actor | undefined,
+  filePaths: Map<string, string>,
 ): PluginRunTranscriptEntry | undefined {
   const role = getPiMessageRole(message);
   if (role === "user" || role === "assistant") {
@@ -173,11 +201,13 @@ function runTranscriptEntry(
     return undefined;
   }
   const text = toolResultText(message);
+  const path = filePaths.get(message.toolCallId);
   return {
     type: "toolResult",
     toolName,
     isError: isToolResultError(message),
     ...(text ? { text } : undefined),
+    ...(path ? { paths: [path] } : undefined),
   };
 }
 
@@ -371,9 +401,13 @@ async function loadPluginRun(
   const actorUser = runActor
     ? (await readActorIdentity(runActor))?.user
     : undefined;
-  const runEntries = turnMessagesWithProvenance(record)
+  const turnMessages = turnMessagesWithProvenance(record);
+  const filePaths = toolCallFilePaths(
+    turnMessages.map(({ message }) => message),
+  );
+  const runEntries = turnMessages
     .map(({ message, provenance }) =>
-      runTranscriptEntry(message, provenance, runActor),
+      runTranscriptEntry(message, provenance, runActor, filePaths),
     )
     .filter((entry): entry is PluginRunTranscriptEntry => Boolean(entry));
   const runMessageTexts = new Set(

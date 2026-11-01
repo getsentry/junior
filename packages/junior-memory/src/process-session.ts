@@ -20,6 +20,7 @@ import {
 } from "./agent";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
+import { addMemoryFileRefs, citedFilePaths } from "./file-refs";
 
 const MEMORY_TOOL_NAMES = new Set([
   "archiveMemory",
@@ -277,7 +278,14 @@ export async function processMemorySession(
         content: memory.content,
       })),
       actors: run.actors,
-      transcript,
+      // File paths are provenance for storage, not extraction evidence.
+      transcript: transcript.map((entry) => {
+        if (entry.type !== "toolResult") {
+          return entry;
+        }
+        const { paths: _paths, ...rest } = entry;
+        return rest;
+      }),
       runtimeContext,
     });
   });
@@ -292,13 +300,19 @@ export async function processMemorySession(
       continue;
     }
     const input = passiveInput(run.runId, memory, sourceKey, target);
-    if (target === "conversation") {
-      const result = await store.createConversationMemory(input);
-      recordCapturedMemory(captured, result);
-      continue;
-    }
-    const result = await store.createMemory(input);
+    const result =
+      target === "conversation"
+        ? await store.createConversationMemory(input)
+        : await store.createMemory(input);
     recordCapturedMemory(captured, result);
+    // A duplicate capture links its files to the existing memory.
+    await addMemoryFileRefs({
+      conversationId: run.conversationId,
+      db: context.db as MemoryDb,
+      memoryId: result.memory.id,
+      nowMs: Date.now(),
+      paths: citedFilePaths(memory.evidenceMessageIndices, transcript),
+    });
   }
   await context.events.emit(
     memoriesCapturedEvent({
