@@ -2,93 +2,80 @@
 
 ## Core Principles
 
-- Use the words in `TERMINOLOGY.md`. Do not invent synonyms, overloaded terms, or long compound names when an existing term fits.
-- This is TypeScript/JavaScript, not Java. Prefer functions, plain objects, simple types, and small modules. Avoid class hierarchies, manager/factory names, and interface layers unless they solve a real problem; follow `policies/interface-design.md`.
-- Optimize for the next maintainer. Choose the smallest design that solves the proven problem, keep complexity local, and avoid speculative abstractions, configuration, extension points, and wrappers; follow `policies/correctness-complexity.md`.
-- Write docs, policies, plans, and explanations in ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required terms from `TERMINOLOGY.md` and explain them when needed. Remove other jargon.
-
-Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`.
+- Use the words in `TERMINOLOGY.md`. Do not invent synonyms or long compound
+  names when an existing term fits.
+- This is TypeScript, not Java. Prefer functions, plain objects, simple types,
+  and small modules. Follow `policies/interface-design.md`.
+- Choose the smallest design that solves the proven problem. Avoid speculative
+  abstractions, configuration, and wrappers. Follow
+  `policies/correctness-complexity.md`.
+- Write docs in ASD-STE100 English: common words, active voice, short
+  sentences. Follow `policies/documentation.md`.
+- Before you change code in a directory, read each `AGENTS.md` on the path from
+  the repo root to that directory.
 
 ## Commands
 
-| Task                       | Command                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------ |
-| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                        |
-| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                             |
-| Behavioral eval file       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`                 |
-| Behavioral eval case       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"`  |
-| Integration eval file      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`                |
-| Integration eval case      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
-| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`                   |
-| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"`    |
-| Router eval file           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts`                     |
-| Router eval case           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts -t "case name"`      |
-| Generate package schema    | `pnpm --filter <package> db:generate`                                                      |
-| Dashboard e2e              | `pnpm test:e2e:dashboard`                                                                  |
-| Release package alignment  | `pnpm release:check`                                                                       |
+Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
+`pnpm lint`, `pnpm skills:check`.
+
+| Task                   | Command                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| One test file          | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`              |
+| Eval harness test file | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                   |
+| One eval file or case  | `pnpm --filter @sentry/junior-evals evals:<suite> path/to/x.eval.ts [-t "case"]` |
+| Eval suites            | `behavioral`, `integration`, `guardian`, `router`                                |
+| Package schema         | `pnpm --filter <package> db:generate`                                            |
+| Dashboard e2e          | `pnpm test:e2e:dashboard`                                                        |
+| Release alignment      | `pnpm release:check`                                                             |
+| Local agent check      | `pnpm cli -- chat ...` (see the `junior-qa` skill)                               |
 
 ## Workflow
 
-- Use `/commit` for commits, `/pr-writer` for pull requests, and `/skill-writer` for skill changes.
-- For non-trivial changes: discover, implement the smallest vertical slice, verify, and summarize.
-- Search every consumer before changing a shared signature, error contract, or name; use a hard cutover unless compatibility is explicitly required.
-- When adding or renaming a shared export, search its exact name and the canonical domain terms a maintainer would use. The owner and consumers should be easy to distinguish without knowing the file path first.
-- Let unexpected failures reach the owning boundary; retry only expected transient failures. Follow `policies/error-handling.md`.
-- Exported functions need brief intent-focused JSDoc; follow `policies/code-comments.md`.
-- Run applicable checks, move durable explanations beside the owning code, and delete completed plans.
+- Use `/commit` for commits, `/pr-writer` for pull requests, and
+  `/skill-writer` for skill changes.
+- Discover, implement the smallest vertical slice, verify, and summarize.
+- Search every consumer before you change a shared signature, error contract,
+  or name. Use a hard cutover unless compatibility is required.
+- Let unexpected failures reach the owning boundary. Retry only expected
+  transient failures. Follow `policies/error-handling.md`.
+- Exported functions need a brief JSDoc that states intent. Follow
+  `policies/code-comments.md`.
+- Do not add a paragraph to an `AGENTS.md` or `README.md` for each feature.
+  Change a doc only when intent, an invariant, or a boundary changes.
+- Delete completed plans.
 
-## Testing And Validation
+## Testing
 
-- Follow `policies/testing.md` and `policies/evals.md`. Product/runtime behavior belongs in integration tests through real Junior wiring (fake only Slack and LLMs via shared harnesses); agent interpretation and reply quality belong in evals; unit tests are reserved for isolated deterministic logic.
-- Before adding a test, search every test layer for the behavior and extend its primary owning scenario. A source change does not automatically require a new test, and equal- or higher-fidelity existing coverage is sufficient.
-- Do not write automated tests for migrations or migration SQL. Use migration metadata and schema generation checks, then test the resulting product behavior through its primary owning scenario.
-- Do not add tests for most visual changes. Layout, styling, spacing, theme, copy presentation, and other look-and-feel work should be manually QA'd with visual evidence. Do not add unit, component, snapshot, or browser regression tests just because a UI file changed.
-- Add automated coverage for UI only when the change owns a product behavior contract: navigation, interaction, accessibility state, request or response shape, auth gating, or a realistic failure path. Even then, extend the primary owning scenario instead of adding a new junk case.
-- Do not repeat the same behavioral assertion at multiple layers or add one test per implementation branch. Add cross-layer coverage only for a distinct contract or failure boundary, and use representative cases unless exhaustive inputs protect a local deterministic invariant.
-- Test harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.
-- For local evals, run `pnpm dev:env` once, run `docker compose up -d postgres redis`, and ensure `cloudflared` is on `PATH`. Do not bind environment variables manually; the eval config loads repo env files and provisions test databases.
-- Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
-- Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
-
-## Eval Recordings
-
-- Evals replay model calls and web pages from Roach, the shared recording service at `https://roach-proxy.getsentry.net` ([`getsentry/roach`](https://github.com/getsentry/roach)). Recordings are in its GCS bucket, not in git. `packages/junior-evals/src/roach/` is a copy of its client.
-- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more, reach a new site, or add a value pattern, edit only that file.
-- All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
-- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and records new requests, which go live once. Without it, a run can only `replay`, and requests without a recording fail. CI passes the token to eval runs.
-- Each run prints `[evals] Recordings: ...` and the first miss of each test. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
-- Details: "Recordings" in `packages/junior-evals/README.md`.
+- Follow `policies/testing.md` and `policies/evals.md`.
+- Runtime behavior belongs in integration tests through real Junior wiring.
+  Fake only Slack and LLMs. Agent interpretation and reply quality belong in
+  evals. Unit tests are only for isolated fixed logic.
+- Before you add a test, find the primary owning scenario and extend it. A
+  source change does not always need a new test.
+- Do not test migrations, most visual changes, or the same assertion at more
+  than one layer.
+- Telemetry is diagnostic. Do not assert product behavior with it.
 
 ## Architecture
 
-- Core owns the runtime and provider-neutral plugin contracts. Plugins own their domain behavior.
-- Keep all provider-specific routes, API fields, permissions, errors, formatting, and policy in the owning plugin package. For example, GitHub behavior belongs in `packages/junior-github`.
-- If a plugin needs a runtime capability, add the smallest provider-neutral contract to core or `packages/junior-plugin-api`. Do not add the provider's decision to core.
-- Treat provider names, hosts, routes, and control flow in core as an architecture warning even when a static dependency rule cannot detect the problem. Follow `policies/provider-boundaries.md`.
-- Read `packages/junior/src/chat/README.md` before changing shared chat runtime behavior; it owns flow, module boundaries, vocabulary, and invariants.
-- Group files by feature and import feature files directly; do not add feature-directory barrels.
-- Keep formatter output. Do not compress or undo formatting to keep a code file
-  below 1,000 lines. Split a formatted file that exceeds 1,000 lines at a clear
-  feature or ownership boundary. Existing exceptions must stay named and
-  explained in `scripts/file-length-exceptions.mjs`; follow
-  `policies/correctness-complexity.md`.
+- Core owns the runtime and provider-neutral plugin contracts. Plugins own
+  their provider behavior: routes, API fields, permissions, errors, and
+  formatting. Follow `policies/provider-boundaries.md`.
+- If a plugin needs a runtime capability, add the smallest provider-neutral
+  contract to core or `packages/junior-plugin-api`.
+- Group files by feature. Do not add feature-directory barrels.
+- Code files have at most 1,000 lines and internal docs at most 120.
+  `pnpm file-length:check` enforces this. Do not compress formatting to pass.
+  Split at a feature boundary.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.
+- Code, schemas, exported types, and tests are authoritative. Plans in
+  `openspec/changes/<slug>/` cannot override policy.
 
 ## Where Rules Live
 
-| Need                   | Source                                                                                                           |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Repo-wide policy index | `policies/README.md`                                                                                             |
-| Runtime vocabulary     | `TERMINOLOGY.md`                                                                                                 |
-| Design and failures    | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`               |
-| Frontend components    | `policies/frontend-components.md`, `packages/junior-dashboard/src/client/components/README.md`                   |
-| Agent steering         | `policies/agent-steering.md`                                                                                     |
-| System prompt shape    | `policies/system-prompt.md`                                                                                      |
-| Provider boundaries    | `policies/provider-boundaries.md`                                                                                |
-| Comments and telemetry | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                         |
-| Chat architecture      | `packages/junior/src/chat/README.md`                                                                             |
-| Testing and evals      | `policies/testing.md`, `policies/evals.md`, `packages/junior/tests/README.md`, `packages/junior-evals/README.md` |
-| Local agent validation | `packages/docs/src/content/docs/contribute/local-agent-validation.md`                                            |
-| Temporary plans        | `openspec/changes/<slug>/`                                                                                       |
-
-Feature architecture and non-obvious invariants belong in the owning package or module `README.md`. Code, schemas, exported types, and tests are authoritative. Plans cannot override policy; update the policy for an exception.
+- Repo-wide policy: `policies/README.md`
+- Chat runtime: `packages/junior/src/chat/AGENTS.md`
+- Tests: `packages/junior/tests/AGENTS.md`
+- Evals and recordings: `packages/junior-evals/AGENTS.md`
+- Telemetry names: `TELEMETRY.md`

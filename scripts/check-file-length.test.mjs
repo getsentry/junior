@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkFileLengths, countFileLines } from "./check-file-length.mjs";
+import {
+  checkFileLengths,
+  countFileLines,
+  isInternalDoc,
+} from "./check-file-length.mjs";
 
 test("counts physical lines", () => {
   assert.equal(countFileLines(""), 0);
@@ -50,4 +54,13 @@ test("reports stale and invalid exceptions", () => {
       "src/small.ts: file-length exception needs a reason",
     ],
   );
+});
+
+test("selects internal docs", () => {
+  assert.equal(isInternalDoc("packages/junior/src/chat/AGENTS.md"), true);
+  assert.equal(isInternalDoc("packages/junior-github/README.md"), true);
+  assert.equal(isInternalDoc("policies/testing.md"), true);
+  assert.equal(isInternalDoc("TERMINOLOGY.md"), true);
+  assert.equal(isInternalDoc("CONTRIBUTING.md"), false);
+  assert.equal(isInternalDoc("packages/docs/src/content/docs/index.md"), false);
 });

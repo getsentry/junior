@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { fileLengthExceptions } from "./file-length-exceptions.mjs";
 
 export const MAX_CODE_FILE_LINES = 1_000;
+export const MAX_DOC_FILE_LINES = 120;
 
 // Agents read this text as the fix instruction, so it must name the intended
 // fix and the shortcuts that only hide the size.
@@ -13,7 +14,14 @@ const SPLIT_GUIDANCE =
   "compress formatting, or add a file-length exception to pass. " +
   "See policies/correctness-complexity.md.";
 
+const DOC_GUIDANCE =
+  "Keep only intent, invariants, and boundaries. Move facts that one symbol " +
+  "owns into its JSDoc and procedures into a skill. See " +
+  "policies/documentation.md.";
+
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
+const DOC_FILENAMES = new Set(["AGENTS.md", "README.md"]);
+const ROOT_DOC_PATHS = new Set(["TELEMETRY.md", "TERMINOLOGY.md"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".next",
@@ -37,6 +45,7 @@ export function checkFileLengths(
   files,
   exceptions,
   maxLines = MAX_CODE_FILE_LINES,
+  guidance = SPLIT_GUIDANCE,
 ) {
   const errors = [];
   const filesByPath = new Map(files.map((file) => [file.path, file.lines]));
@@ -63,28 +72,41 @@ export function checkFileLengths(
       continue;
     }
     errors.push(
-      `${file.path}: ${file.lines} lines exceeds the ${maxLines}-line limit. ${SPLIT_GUIDANCE}`,
+      `${file.path}: ${file.lines} lines exceeds the ${maxLines}-line limit. ${guidance}`,
     );
   }
 
   return errors;
 }
 
-function collectCodeFiles(root, directory = root, files = []) {
+/** Internal docs: every AGENTS.md and README.md, policies, and root references. */
+export function isInternalDoc(filePath) {
+  return (
+    DOC_FILENAMES.has(path.posix.basename(filePath)) ||
+    ROOT_DOC_PATHS.has(filePath) ||
+    /^policies\/[^/]+\.md$/.test(filePath)
+  );
+}
+
+function collectFiles(root, include, directory = root, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) {
       continue;
     }
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      collectCodeFiles(root, absolutePath, files);
+      collectFiles(root, include, absolutePath, files);
       continue;
     }
-    if (!entry.isFile() || !CODE_EXTENSIONS.has(path.extname(entry.name))) {
+    const filePath = path
+      .relative(root, absolutePath)
+      .split(path.sep)
+      .join("/");
+    if (!entry.isFile() || !include(filePath)) {
       continue;
     }
     files.push({
-      path: path.relative(root, absolutePath).split(path.sep).join("/"),
+      path: filePath,
       lines: countFileLines(fs.readFileSync(absolutePath, "utf8")),
     });
   }
@@ -94,9 +116,24 @@ function collectCodeFiles(root, directory = root, files = []) {
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
-  const errors = checkFileLengths(collectCodeFiles(root), fileLengthExceptions);
+  const errors = [
+    ...checkFileLengths(
+      collectFiles(root, (filePath) =>
+        CODE_EXTENSIONS.has(path.posix.extname(filePath)),
+      ),
+      fileLengthExceptions,
+    ),
+    ...checkFileLengths(
+      collectFiles(root, isInternalDoc),
+      {},
+      MAX_DOC_FILE_LINES,
+      DOC_GUIDANCE,
+    ),
+  ];
   if (errors.length === 0) {
-    console.log(`All code files are at most ${MAX_CODE_FILE_LINES} lines.`);
+    console.log(
+      `All code files are at most ${MAX_CODE_FILE_LINES} lines and internal docs at most ${MAX_DOC_FILE_LINES} lines.`,
+    );
     return;
   }
   console.error(["File length check failed:", ...errors].join("\n"));
