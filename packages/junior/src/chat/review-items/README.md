@@ -204,6 +204,10 @@ item stays after a purge, like a public Brief. This is also true when its
 destination turned private later, because other Conversations can link to
 it.
 
+An open private item from an Automation run also stays, because a later run
+can still change it. After it closes, the tree has work again, and the next
+purge deletes it.
+
 ## Waiting on you
 
 An item needs a User when it is an open `action` item and the User is an
