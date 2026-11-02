@@ -1,9 +1,10 @@
 /**
  * Sentry plugin runtime boundary.
  *
- * This package owns per-user Sentry OAuth, org read access, CLI setup,
- * internal-integration issue and metric alert webhook normalization, and
- * Sentry resource identities. Junior core owns watches and event automations.
+ * This package owns per-user Sentry OAuth, org read access, installations
+ * of the public integration, CLI setup, issue and metric alert webhook
+ * normalization, and Sentry resource identities. Junior core owns watches
+ * and event automations.
  */
 import {
   defineJuniorPlugin,
@@ -25,6 +26,7 @@ import {
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { sentryAppConfig } from "./installations/tokens.js";
 import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookSecret } from "./webhooks/secret.js";
@@ -64,15 +66,17 @@ export function sentryPlugin(): PluginRegistration {
           matchFields: SENTRY_METRIC_ALERT_MATCH_FIELDS,
         },
       ],
-      // One install is one Sentry org. Issue and metric alert events carry
-      // alert facts, and Junior adds nothing to Sentry, so they can run for
-      // every project. Use the `projects` filter to narrow them.
+      // Issue and metric alert events carry alert facts, and Junior adds
+      // nothing to Sentry, so they can run for every project. Use the
+      // `projects` filter to narrow them. They also run for every installed
+      // org, so install the integration in a second org only after events
+      // get an `org` filter.
       events: Object.fromEntries(
         [...SENTRY_ISSUE_EVENTS, ...SENTRY_METRIC_ALERT_EVENTS].map(
           (eventType) => [eventType, { reach: "all" }],
         ),
       ),
-      isEnabled: () => Boolean(sentryWebhookSecret()),
+      isEnabled: () => Boolean(sentryWebhookSecret() || sentryAppConfig()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
     manifest: {
@@ -90,6 +94,8 @@ export function sentryPlugin(): PluginRegistration {
         "Investigate Sentry telemetry, manage projects, teams, and alerting, and receive issue and metric alert webhooks",
       displayName: "Sentry",
       envVars: {
+        SENTRY_APP_CLIENT_ID: {},
+        SENTRY_APP_CLIENT_SECRET: {},
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
         SENTRY_READ_TOKEN: {},
@@ -119,6 +125,8 @@ export function sentryPlugin(): PluginRegistration {
       routes(ctx) {
         return [
           createSentryWebhookRoute({
+            appConfig: sentryAppConfig,
+            ctx,
             events: ctx.events,
             webhookSecret: sentryWebhookSecret,
           }),

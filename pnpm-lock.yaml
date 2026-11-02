@@ -745,6 +745,9 @@ importers:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -758,6 +761,9 @@ importers:
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      drizzle-kit:
+        specifier: 'catalog:'
+        version: 0.31.10
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0

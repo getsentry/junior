@@ -84,6 +84,28 @@ OAuth client secret used when a user connects their Sentry account.
 </details>
 
 <details class="plugin-config">
+<summary><code>SENTRY_APP_CLIENT_ID</code></summary>
+
+Client ID of the Sentry public integration that each org installs.
+
+- **Define:** Set `SENTRY_APP_CLIENT_ID` in the deployment environment
+- **Required:** Yes for org installations; otherwise no
+- **Environment override:** `SENTRY_APP_CLIENT_ID`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>SENTRY_APP_CLIENT_SECRET</code></summary>
+
+Client secret of the Sentry public integration. Junior uses it to verify the integration's webhooks and to get installation tokens.
+
+- **Define:** Set `SENTRY_APP_CLIENT_SECRET` in the deployment environment
+- **Required:** Yes for org installations; otherwise no
+- **Environment override:** `SENTRY_APP_CLIENT_SECRET`
+
+</details>
+
+<details class="plugin-config">
 <summary><code>SENTRY_READ_TOKEN</code></summary>
 
 Internal integration token with read-only scopes. Junior uses it for Sentry API reads.
@@ -136,6 +158,24 @@ Use a separate **Sentry internal integration** from the webhook integration, so 
 Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry API. This includes Explore queries for spans, logs, and traces. Sentry limits the token to the organization that installed the integration. Writes and `/api/0/users/` requests use the requesting user's OAuth token.
 
 Anyone who can talk to Junior can read every project the token can read. Sentry audit logs show the integration, not the Slack user.
+
+## Set up org installations
+
+An internal integration reads only one org. To read more than one org, use a **Sentry public integration** that each org installs. Keep it unpublished: then only the org that owns it, or a Sentry superuser, can install it.
+
+1. Create a public integration in the org that owns Junior.
+2. Grant read-only permissions for **Project**, **Issue & Event**, **Organization**, and **Release**.
+3. Set the webhook URL to `https://<junior-host>/api/webhooks/sentry`. Do not set a redirect URL, and leave **Verify Install** off.
+4. Set `SENTRY_APP_CLIENT_ID` and `SENTRY_APP_CLIENT_SECRET` to the integration's credentials.
+5. Redeploy Junior, then install the integration in each org.
+
+Sentry sends an `installation` webhook when an org installs the integration. Junior saves the org and gets the first token from that webhook. Sentry does not send the webhook again, so if Junior misses it, uninstall and install the integration again.
+
+Junior reads the org from the Sentry API path, such as `/api/0/organizations/<org>/`, `/api/0/projects/<org>/<project>/`, or `/api/0/teams/<org>/<team>/`, and uses that org's installation token. Junior denies reads of an org that has no installation. A path with no org, such as `/api/0/issues/<id>/`, uses the only installation. When more than one org installed the integration, use the org-scoped path instead.
+
+When `SENTRY_READ_TOKEN` is also set, Junior uses it for every read that no installation covers. Use this while you move from the internal integration to the public integration.
+
+An event automation without an identifier runs for every installed org. Its `projects` filter matches the same project slug in each org.
 
 ## Set up issue webhooks
 
@@ -262,7 +302,8 @@ Create the watch or event automation before the webhook arrives. Junior does not
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project. With org read access, also check the integration's read permissions.
 - **A scheduled task cannot read Sentry:** Set `SENTRY_READ_TOKEN`. Confirm the request targets the organization that installed the integration.
-- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists. For metric alerts, also confirm the integration is a trigger action on the alert.
+- **Junior is not installed in the Sentry org:** Install the public integration in that org. If it is installed but Junior still denies the read, uninstall and install it again.
+- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_SECRET` or `SENTRY_APP_CLIENT_SECRET`, then confirm a matching watch or event automation exists. For metric alerts, also confirm the integration is a trigger action on the alert.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 
 ## Next step

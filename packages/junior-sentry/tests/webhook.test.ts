@@ -91,11 +91,23 @@ function signedRequest(
   return signedRawRequest(JSON.stringify(body), options);
 }
 
+/** The internal integration alone reads no installation records. */
+const noAppContext = {
+  cache: {
+    async getOrLoad() {
+      throw new Error("The internal integration reads no installations.");
+    },
+  },
+  db: undefined,
+};
+
 function routeFixture() {
   const events: EventInput[] = [];
   return {
     events,
     route: createSentryWebhookRoute({
+      appConfig: () => undefined,
+      ctx: noAppContext,
       events: {
         async publish(event) {
           events.push(event);
@@ -437,6 +449,8 @@ describe("Sentry webhook events", () => {
 
   it("propagates publisher failures so Sentry can retry", async () => {
     const route = createSentryWebhookRoute({
+      appConfig: () => undefined,
+      ctx: noAppContext,
       events: {
         async publish() {
           throw new Error("queue unavailable");
