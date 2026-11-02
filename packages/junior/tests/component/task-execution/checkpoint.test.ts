@@ -1089,7 +1089,7 @@ describe("turn checkpoint", () => {
       await import("@/chat/task-execution/checkpoint");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const { loadConversationProjection } =
+    const { AgentHistoryBranchError, loadConversationProjection } =
       await import("@/chat/conversations/projection");
 
     const alice = {
@@ -1154,7 +1154,7 @@ describe("turn checkpoint", () => {
         ...retry,
         trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
       }),
-    ).rejects.toThrow("retried message provenance must match saved message");
+    ).rejects.toBeInstanceOf(AgentHistoryBranchError);
     const projection = await loadConversationProjection({
       conversationId: "conversation-multi-actor",
     });

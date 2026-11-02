@@ -70,6 +70,20 @@ export function sameActorIdentity(
   );
 }
 
+/** Compare provenance by authority and actor identity. */
+export function sameProvenance(
+  left: ConversationMessageProvenance,
+  right: ConversationMessageProvenance,
+): boolean {
+  if (left.authority !== right.authority) {
+    return false;
+  }
+  if (!left.actor && !right.actor) {
+    return true;
+  }
+  return sameActorIdentity(left.actor, right.actor);
+}
+
 /**
  * Return distinct instruction actors in first-seen order for attribution only.
  * Never use this list as credential authority.

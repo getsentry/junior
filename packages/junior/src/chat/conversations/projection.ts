@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
-  sameActorIdentity,
+  sameProvenance,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type {
@@ -152,19 +152,6 @@ function countMatchingDeepPrefix(
   return limit;
 }
 
-function sameProvenance(
-  saved: ConversationMessageProvenance,
-  incoming: ConversationMessageProvenance,
-): boolean {
-  if (saved.authority !== incoming.authority) {
-    return false;
-  }
-  if (!saved.actor && !incoming.actor) {
-    return true;
-  }
-  return sameActorIdentity(saved.actor, incoming.actor);
-}
-
 /**
  * Resolve the aligned provenance to persist for `nextMessages`.
  *
@@ -174,6 +161,7 @@ function sameProvenance(
  * the last new user message — the current turn's input.
  */
 function resolveCommitProvenance(args: {
+  conversationId: string;
   existing: Pick<PiConversationProjection, "messages" | "provenance">;
   nextMessages: PiMessage[];
   matchingPrefix: number;
@@ -217,17 +205,14 @@ function resolveCommitProvenance(args: {
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
       const index = start + offset;
-      // A retried turn can send a message that is already saved. Keep the
-      // saved provenance, but reject a retry that names a different actor.
-      if (index < matchingPrefix) {
-        if (!sameProvenance(provenance[index]!, entry)) {
-          throw new Error(
-            "retried message provenance must match saved message",
-          );
-        }
+      if (index >= matchingPrefix) {
+        provenance[index] = entry;
         return;
       }
-      provenance[index] = entry;
+      // A retry can resend a saved message. Its provenance cannot change.
+      if (!sameProvenance(provenance[index]!, entry)) {
+        throw new AgentHistoryBranchError(args.conversationId);
+      }
     });
   }
   return provenance;
@@ -332,19 +317,17 @@ function messageTimestamp(message: PiMessage): number {
  *
  * Checkpoints are append-only against the durable identity of the committed
  * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction and handoff may
- * intentionally replace active model history. In-place Pi mutations of already
- * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * history, a true content branch, or new provenance for a committed message is
+ * rejected — only compaction and handoff may intentionally replace active
+ * model history. In-place Pi mutations of already committed assistant
+ * envelopes (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
-  /**
-   * Explicit provenance for the last messages. For messages that are already
-   * saved, it must match the saved provenance.
-   */
+  /** Explicit provenance for the last messages, including resent ones. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */
   newMessageProvenance?: ConversationMessageProvenance;
@@ -442,6 +425,7 @@ async function commitMessagesLocked(
     nextLocalMessages,
   );
   const nextLocalProvenance = resolveCommitProvenance({
+    conversationId: args.conversationId,
     existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
