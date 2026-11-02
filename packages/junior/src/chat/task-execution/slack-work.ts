@@ -759,11 +759,11 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit Slack interruptions enter the active turn. Another
-        // person's message joins only when it starts with !!; otherwise it
-        // waits for its own turn. Deferred work and steered messages from
-        // other sources, such as the dashboard, stay pending for their own
-        // turn.
+        // Only explicit Slack interruptions from the active author enter the
+        // active turn. The turn runs with that author's credentials, so another
+        // person's message always waits for its own turn. Deferred work and
+        // steered messages from other sources, such as the dashboard, stay
+        // pending for their own turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -781,8 +781,7 @@ export function createSlackConversationWorker(
               }))
               .filter(
                 (candidate) =>
-                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
-                  hasSteeringOverride(candidate.message.text),
+                  requireSlackAuthorId(candidate.message) === activeAuthorId,
               );
             return candidates.length > 0 ? await accept(candidates) : [];
           });

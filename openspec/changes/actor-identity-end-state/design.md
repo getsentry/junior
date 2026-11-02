@@ -178,8 +178,7 @@ This matches the current rules on `main`:
   The worker puts messages in one Turn only when their author and Source
   match (`selectContiguousTurnBatch` in
   `task-execution/attempt-selection.ts`). Another Actor's mid-run Slack
-  ask waits for its own Turn. A message that starts with `!!` steers the
-  running Turn as that Actor's own attributed input.
+  ask always waits for its own Turn.
 - A system-acted event Turn uses the grants of a Watch creator only through
   `timerWatchCredentialSubject` (`chat/events/notification.ts`). It gives a
   credential subject only when every event in the batch has a valid subject
