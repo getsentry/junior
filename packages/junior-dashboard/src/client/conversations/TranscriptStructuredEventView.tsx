@@ -91,7 +91,6 @@ export function TranscriptStructuredEventView(props: {
     return (
       <div className={surfaceClass}>
         {header}
-        {/* oxlint-disable-next-line display-text/no-raw-display-text -- `body` is a React node. */}
         {body}
       </div>
     );
@@ -101,7 +100,6 @@ export function TranscriptStructuredEventView(props: {
       <TranscriptSummaryTrigger flush className="block">
         {header}
       </TranscriptSummaryTrigger>
-      {/* oxlint-disable-next-line display-text/no-raw-display-text -- `body` is a React node. */}
       <CollapsibleContent hiddenUntilFound>{body}</CollapsibleContent>
     </Collapsible>
   );
