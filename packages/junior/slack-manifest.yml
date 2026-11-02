@@ -48,6 +48,7 @@ settings:
       - assistant_thread_context_changed
       - agent_session_stopped
       - app_mention
+      - channel_created
       - message.channels
       - message.groups
       - message.im
