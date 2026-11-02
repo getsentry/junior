@@ -53,7 +53,7 @@ export function slackUserInputText(request: UserInputRequest): string {
         const detail =
           field.kind === "text"
             ? "short answer"
-            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map(optionLabel).join(", ")}`;
+            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => optionLabel(option)).join(", ")}`;
         return `- **${field.label}** (${detail})${field.description ? `: ${field.description}` : ""}`;
       });
   return normalizeSlackReplyMarkdown(

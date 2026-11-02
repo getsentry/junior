@@ -485,6 +485,38 @@ describe("Slack webhook: Review item cards", () => {
     );
   });
 
+  it("names the recommended option of a form in the card text", async () => {
+    harness();
+    await slackThread(THREAD, "public");
+    const ana = await slackUser("ana@example.com", "U123");
+    await addItem(ana, {
+      kind: "action",
+      title: "Plan the rollout",
+      body: "Pick a rollout window.",
+      assignees: ["everyone"],
+      request: {
+        question: "How should the rollout go?",
+        fields: [
+          {
+            id: "window",
+            kind: "choice",
+            label: "Window",
+            options: [
+              { label: "Tuesday 02:00 UTC", recommended: true },
+              { label: "Thursday 02:00 UTC" },
+            ],
+          },
+          { id: "notes", kind: "text", label: "Notes" },
+        ],
+      },
+    });
+
+    const [post] = slackApiOutbox.messages();
+    expect(JSON.stringify(blocksOf(post))).toContain(
+      "Tuesday 02:00 UTC (suggested), Thursday 02:00 UTC",
+    );
+  });
+
   it("keeps a long answer inside the Slack limits of a card", async () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
