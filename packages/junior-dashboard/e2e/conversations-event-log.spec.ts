@@ -577,3 +577,94 @@ for (const width of [1440, 390]) {
     await expect(jump).toBeHidden();
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`shows the start of a new tall review item card (${width}px)`, async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const conversationId = "slack:CQA123:1770003600.000200";
+    const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const response = await page.request.get(`${dashboard.baseURL}${api}`);
+    const report = await response.json();
+    const item = {
+      addedByConversationId: conversationId,
+      assignedToEveryone: false,
+      assignees: [
+        {
+          displayName: "Dashboard User",
+          email: "dev@example.com",
+          userId: "u-dev",
+        },
+      ],
+      body: "The rollout plan has three open decisions.",
+      canAct: true,
+      canTake: false,
+      conversationIds: [conversationId],
+      createdAt: report.startedAt,
+      id: "item-tall",
+      kind: "action",
+      request: {
+        question: "How should the payments-v42 rollout go?",
+        fields: ["Region", "Window", "Owner"].map((label) => ({
+          id: label.toLowerCase(),
+          kind: "choice",
+          label,
+          options: ["First", "Second", "Third", "Fourth"].map((option) => ({
+            description: `${option} ${label.toLowerCase()} option for the rollout.`,
+            label: `${option} ${label.toLowerCase()}`,
+          })),
+        })),
+      },
+      status: "open",
+      title: "Plan the payments-v42 rollout",
+      updatedAt: report.startedAt,
+      visibility: "public",
+    };
+    await page.route(`**/api/review-items/${item.id}`, (route) =>
+      route.fulfill({ json: item }),
+    );
+    report.events = [
+      ...Array.from({ length: 20 }, (_, seq) => ({
+        seq,
+        createdAt: report.startedAt,
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: "user",
+          text: `Message ${seq}`,
+        },
+      })),
+      {
+        seq: 20,
+        createdAt: report.lastSeenAt,
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              input: { kind: "action", title: item.title },
+              name: "addReviewItem",
+              output: JSON.stringify({ item: { id: item.id } }),
+              status: "completed",
+              toolCallId: "review-1",
+            },
+          ],
+        },
+      },
+    ];
+    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+
+    // The reader must see the title and question first, not the end of the form.
+    const card = page.getByRole("region", {
+      name: `Review item: ${item.title}`,
+    });
+    await expect(card.getByRole("button", { name: "Send" })).toBeAttached();
+    await expect(
+      card.getByRole("heading", { name: item.title }),
+    ).toBeInViewport();
+  });
+}
