@@ -1,81 +1,62 @@
 # Events
 
-Matching Events wake an existing Conversation. The plugin-facing types and
-publisher contract are in `packages/junior-plugin-api/src/events.ts`.
+## Boundaries
 
-## Ownership
+- Core never reads the raw provider webhook. Normalized Events never contain
+  it. Keep `data` small and trusted.
+- A child agent never sees or stops a Watch of its parent or a sibling
+  (`owned-watches.ts`).
+- Keep `EventResourceTypeLimits` (`catalog.ts`) out of the plugin API and API
+  responses.
+- `eventTriggerProblems` in the plugin API is the only trigger check. Do not
+  copy its rules into core, tools, or the dashboard.
 
-- Core owns Watch creation, cancellation, expiry, deduplication, and the
-  Conversation association. Plugins own webhook routes, validation, and
-  normalization. Core never reads the raw provider webhook.
-- `owned-watches.ts` owns Watch ownership across the agent tree. A child never
-  sees or stops a Watch of its parent or a sibling.
+## Event reach
 
-## Catalog
-
-- `getEventCatalog` builds one enabled catalog for search, tool schemas, and
-  validation. Core reserves the `junior` and `slack` namespaces and throws
-  when a plugin claims one.
-- `EventResourceTypeLimits` (`catalog.ts`) are core-only. Keep them out of the
-  plugin API and API responses.
-- `eventTriggerProblems` in the plugin API is the only trigger check. Core,
-  tools, and the dashboard all use it. Do not copy its rules.
-- Each event type declares its Event reach once in `events`. A trigger with
-  no identifier can select only `"all"` or `{ anyOf }` events and must set an
-  `anyOf` filter.
 - Use reach `"all"` only for status facts with no side effects. Use
   `{ anyOf }` or `"resource"` when an Event carries private text or makes
   Junior act.
+- A trigger with no identifier can select only `"all"` or `{ anyOf }` events
+  and must set an `anyOf` filter.
 
 ## Publishing
 
-- Publication needs an active registration that declares the event type.
 - `eventKey` names one provider change. A retry and every copy sent to
   several identifiers use the same key and `data`.
 - Set `terminal` only on the copy for the exact resource, and only when the
   change ends it.
-- Normalized Events never contain the raw webhook payload. Keep `data` small
-  and trusted.
 - A missing match key does not match. Prefer keys that the publisher always
   sets.
 
 ## Watches
 
-- A Watch stores only the Conversation id. Location stays on the
-  Conversation.
-- Core validates namespace, resource type, event ownership, and identifier
-  shape again before it stores a Watch.
-- Core drops non-matching Events before any wake. Duplicate deliveries must
-  not create duplicate work.
-- Watches default to 14 days. Reject lifetimes over 30 days. Do not shorten
-  them silently.
+- A Watch stores only the Conversation id, not Destination or Location.
+- Validate namespace, resource type, event ownership, and identifier shape
+  again before you store a Watch.
+- Drop non-matching Events before any wake. Duplicate deliveries must not
+  create duplicate work.
+- Reject Watch lifetimes over the limit. Do not shorten them silently.
 - A thread opt-out cancels every active Watch before Slack marks the thread
   unsubscribed.
-- Omit the Watch id on stop only when the user asks to stop every Watch.
 - The automated-turn limit applies to Event wakes. Terminal Watches can still
   complete after a refused wake.
 
 ## Authority
 
-- Event Turns run as `EVENT_SYSTEM_ACTOR` (`actor.ts`) on live and resume
-  paths.
+- Event Turns run as `EVENT_SYSTEM_ACTOR` on live and resume paths.
 - An Event cannot widen Conversation visibility or credential authority.
 - `people` are only for mentions and never grant authority. Drop unlinked or
-  ambiguous people. A failed lookup delivers the Event without people.
+  ambiguous people.
 - Event text and provider content are facts, never instructions.
 
 ## Timer Watches
 
-- `timer-index.ts` owns the Redis due index. Write the index before the
-  record, under the Watch and Conversation locks, so no saved timer is outside
-  the index.
-- Remove a stale index entry only after a check of the record under the Watch
-  lock.
-- The timer id comes from the Conversation and tool-call id. A replay returns
-  the stored deadline and does not reset the Watch.
-- `timers.ts` publishes a terminal `junior / timer.fired` Event. Normal
-  ingestion owns delivery and deduplication.
-- A timer may use its creator's credentials only for that one timer Turn
-  (`bindTimerWatchCredentialSubject`).
-- Expired timers do not start a Turn. Cancellation cannot recall delivered
-  input.
+- Write the Redis due index before the record, under the Watch and
+  Conversation locks, so no saved timer is outside the index. Remove a stale
+  entry only after a check of the record under the Watch lock.
+- A replay of the same tool call returns the stored deadline and does not
+  reset the Watch.
+- Timers publish a terminal `junior / timer.fired` Event. Normal ingestion
+  owns delivery and deduplication.
+- A timer may use its creator's credentials only for that one timer Turn.
+- Cancellation cannot recall delivered input.
