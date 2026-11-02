@@ -84,13 +84,14 @@ describe("Asking a Person", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Write the deploy command for the deploy region that the user chose. The region is not in this task." When its result arrives, get what it needs so it can finish.',
+        "Hand this off to a child agent: write the gcloud command that deploys our billing-api service to Cloud Run in the region I picked for it last week.",
         { author: MAYA },
       ),
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    // The child result starts the second Turn. The parent asks on the desk.
+    // Only Maya knows the region she picked, so the child reports a block.
+    // Its result starts the second Turn. The parent asks on the desk.
     const resultTurn = conversation.turns[1];
     expect(resultTurn).toBeDefined();
     expect(askedRequests(resultTurn!)).not.toHaveLength(0);
