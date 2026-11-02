@@ -16,6 +16,10 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
+import {
+  attentionConversationIds,
+  attentionFirst,
+} from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
@@ -52,17 +56,6 @@ export function ConversationWorkspace() {
     if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
-  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  const pagedConversations = useMemo(
-    () => pageItems(conversations, page, CONVERSATION_PAGE_SIZE),
-    [conversations, page],
-  );
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
   const waitingConversationIds = useWaitingConversationIds();
   const { finishedConversationIds, markRead } =
     useConversationFinishedIndicators(
@@ -71,6 +64,29 @@ export function ConversationWorkspace() {
       Boolean(feed.data),
       !search,
     );
+
+  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
+  const pagedConversations = useMemo(
+    () =>
+      pageItems(
+        attentionFirst(
+          conversations,
+          attentionConversationIds(
+            waitingConversationIds,
+            finishedConversationIds,
+          ),
+        ),
+        page,
+        CONVERSATION_PAGE_SIZE,
+      ),
+    [conversations, finishedConversationIds, page, waitingConversationIds],
+  );
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const createView = (
     <NewConversationView
