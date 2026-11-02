@@ -12,12 +12,11 @@ current.
 - `README.md` is for people who find a package on GitHub or npm. npm always
   publishes it. Keep it to the purpose, install or setup, and a link to
   `junior.sentry.dev`. Do not put internal design in it.
-- Internal notes for a directory go in `AGENTS.md` in that directory. Add one
-  only when the directory has rules that one file does not show.
-- An `AGENTS.md` states intent and policy:
-  - why the module exists, what it owns, and what it does not own
-  - invariants and boundaries, including things that must not happen
-  - safety, privacy, delivery, and recovery rules that are easy to break
+- The repo root `AGENTS.md` is the only one. Do not add one in a directory.
+  Directory docs grew with each patch and repeated what the code shows.
+- Code defines its own design. Put an invariant, a boundary, or a rule that is
+  easy to break in a comment next to the code that it governs (see
+  `code-comments.md`). Put a repo-wide rule in a policy.
 - Do not write feature descriptions, tool-by-tool behavior, step lists that
   repeat the code, schemas, test inventories, history, or rollout notes. The
   code, types, and tests own those.
@@ -33,7 +32,7 @@ current.
 - Reference docs that agents look up, such as `TELEMETRY.md` and setup guides,
   can be long. Keep them current and free of repeated text. `TELEMETRY.md` and
   `TERMINOLOGY.md` have at most 1,000 lines.
-- `pnpm file-length:check` enforces these limits.
+- `pnpm file-length:check` enforces these limits and the single `AGENTS.md`.
 - Change a doc only when intent, an invariant, or a boundary changes. Do not
   add a paragraph for each feature. When you add a rule, remove a rule that is
   stale.

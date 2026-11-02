@@ -6,6 +6,8 @@ import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
+// A schema without the core Drizzle journal must upgrade through this release
+// first. Keep this guard.
 const CORE_MIGRATION_BRIDGE_VERSION = "0.107.1";
 const MIGRATIONS_TABLE = "__drizzle_junior_core";
 

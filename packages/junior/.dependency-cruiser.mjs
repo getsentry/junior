@@ -52,7 +52,7 @@ export default {
     {
       name: "no-review-items-to-slack",
       comment:
-        "Review item code is provider-neutral. App setup injects Slack cards and mentions; see src/chat/review-items/AGENTS.md.",
+        "Review item code is provider-neutral. App setup injects Slack cards and mentions.",
       severity: "error",
       from: {
         path: "^src/chat/(review-items/|tools/review-items\\.ts$)",
