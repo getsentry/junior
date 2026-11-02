@@ -63,7 +63,7 @@ describe("sendSlackReply", () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",
       conversationId: "agent-dispatch:dispatch-1",
-      text: "a".repeat(4_500),
+      text: "a".repeat(9_000),
     });
 
     expect(messageTs).toHaveLength(3);
@@ -96,7 +96,7 @@ describe("sendSlackReply", () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",
       conversationId: "slack:C123:1700000000.000100",
-      text: "a".repeat(4_500),
+      text: "a".repeat(9_000),
       threadTs: "1700000000.000100",
     });
 
