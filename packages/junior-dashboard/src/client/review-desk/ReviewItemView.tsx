@@ -13,6 +13,9 @@ import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
 import { reviewItemStatusLabel } from "./reviewItemFormat";
 
+/** Space above the card when the view starts at its top. */
+const CARD_TOP_MARGIN_PX = 24;
+
 const textLinkClass =
   "inline-flex items-center gap-1.5 font-sans text-sm font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus";
 
@@ -32,15 +35,25 @@ export function ReviewItemView(props: {
   const { item } = props;
   const open = item.status === "open";
   const articleRef = useRef<HTMLElement>(null);
-  // Open at the decision: the messages above it are context. Messages load
-  // and grow after the first paint, so stay at the end until the reader
-  // scrolls or uses the page.
+  const cardRef = useRef<HTMLElement>(null);
+  // Open at the decision: the messages above it are context. Show the end
+  // of the page, or the top of the card when the card is taller than the
+  // view. Messages load and grow after the first paint, so keep the place
+  // until the reader scrolls or uses the page.
   useEffect(() => {
     const article = articleRef.current;
+    const card = cardRef.current;
     const scroll = article?.closest<HTMLElement>("[data-chat-scroll]");
-    if (!article || !scroll) return;
+    if (!article || !card || !scroll) return;
     const observer = new ResizeObserver(() => {
-      scroll.scrollTop = scroll.scrollHeight;
+      const cardTop =
+        card.getBoundingClientRect().top -
+        scroll.getBoundingClientRect().top +
+        scroll.scrollTop;
+      scroll.scrollTop = Math.min(
+        scroll.scrollHeight - scroll.clientHeight,
+        cardTop - CARD_TOP_MARGIN_PX,
+      );
     });
     const stop = () => observer.disconnect();
     const events = ["keydown", "pointerdown", "touchstart", "wheel"] as const;
@@ -125,6 +138,7 @@ export function ReviewItemView(props: {
           />
           <section
             aria-label={open ? "Answer" : "Outcome"}
+            ref={cardRef}
             className="grid min-w-0 gap-4 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel p-4 font-sans text-sm md:p-5"
           >
             {bodyInCard ? <DisplayText text={item.body} /> : null}

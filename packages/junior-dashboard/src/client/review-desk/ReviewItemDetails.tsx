@@ -8,6 +8,7 @@ import { DetailsCard } from "../conversations/DetailsList";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { automationPath, formatRelativeTime } from "../format";
+import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { assigneeLabel, reviewItemStatusLabel } from "./reviewItemFormat";
 
@@ -68,6 +69,7 @@ export function ReviewItemDetails(props: {
             <Fact label="Added">{formatRelativeTime(item.createdAt)}</Fact>
             <Fact label="Added by">
               <Link
+                className={dashboardInlineLinkClass}
                 title={item.addedByConversationId}
                 to={conversationPath(item.addedByConversationId, {
                   turnId: item.addedByTurnId,
@@ -78,7 +80,12 @@ export function ReviewItemDetails(props: {
               {item.automationId ? (
                 <>
                   {" · "}
-                  <Link to={automationPath(item.automationId)}>Automation</Link>
+                  <Link
+                    className={dashboardInlineLinkClass}
+                    to={automationPath(item.automationId)}
+                  >
+                    Automation
+                  </Link>
                 </>
               ) : null}
             </Fact>
@@ -91,7 +98,12 @@ export function ReviewItemDetails(props: {
           <DetailsCard title="Subject">
             <span className="text-sm">
               {subject.url ? (
-                <a href={subject.url} rel="noreferrer" target="_blank">
+                <a
+                  className={dashboardInlineLinkClass}
+                  href={subject.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {subject.title ?? subject.url}
                 </a>
               ) : (
@@ -116,6 +128,7 @@ export function ReviewItemDetails(props: {
                     key={conversationId}
                   >
                     <Link
+                      className={dashboardInlineLinkClass}
                       title={conversationId}
                       to={conversationPath(conversationId)}
                     >
