@@ -22,13 +22,13 @@ function signedInApi() {
   return app;
 }
 
-function identity(id: string, avatarUrl: string) {
+function identity(id: string, avatarUrl: string, provider = "slack") {
   return {
     id,
     avatarUrl,
     createdAt: new Date(1_000),
     kind: "user" as const,
-    provider: "slack",
+    provider,
     providerSubjectId: id,
     providerTenantId: "T1",
     updatedAt: new Date(1_000),
@@ -52,6 +52,20 @@ describe("profile photo API", () => {
           headers: { "content-type": "text/html" },
         });
       }),
+      // Google serves each photo through a redirect to another photo host.
+      http.get("https://lh3.googleusercontent.com/a/:file", ({ request }) => {
+        fetched.push(request.url);
+        const target = request.url.endsWith("/off-host")
+          ? "https://example.com/photo.png"
+          : "https://lh7-qw.googleusercontent.com/ro-a/photo";
+        return new HttpResponse(null, {
+          status: 302,
+          headers: { location: target },
+        });
+      }),
+      http.get("https://lh7-qw.googleusercontent.com/ro-a/photo", () => {
+        return new HttpResponse(PNG);
+      }),
     );
     try {
       await migrateSchema(fixture.sql);
@@ -62,6 +76,16 @@ describe("profile photo API", () => {
           identity("U-PHOTO", "https://avatars.slack-edge.com/photo.png"),
           identity("U-TEXT", "https://avatars.slack-edge.com/text.png"),
           identity("U-OTHER", "https://example.com/photo.png"),
+          identity(
+            "G-PHOTO",
+            "https://lh3.googleusercontent.com/a/photo",
+            "google",
+          ),
+          identity(
+            "G-OFF-HOST",
+            "https://lh3.googleusercontent.com/a/off-host",
+            "google",
+          ),
         ]);
 
       const signedOut = await createJuniorApi().request(
@@ -80,9 +104,15 @@ describe("profile photo API", () => {
         expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG);
       }
 
-      // A file that is not an image, a URL off the photo hosts, and an
-      // unknown Identity all have no photo.
-      for (const id of ["U-TEXT", "U-OTHER", "U-MISSING"]) {
+      const google = await app.request(
+        "http://localhost/api/people/avatars/G-PHOTO",
+      );
+      expect(google.status).toBe(200);
+      expect(new Uint8Array(await google.arrayBuffer())).toEqual(PNG);
+
+      // A file that is not an image, a URL or redirect off the photo hosts,
+      // and an unknown Identity all have no photo.
+      for (const id of ["U-TEXT", "U-OTHER", "G-OFF-HOST", "U-MISSING"]) {
         const response = await app.request(
           `http://localhost/api/people/avatars/${id}`,
         );
@@ -90,7 +120,9 @@ describe("profile photo API", () => {
       }
       expect(fetched).toEqual([
         "https://avatars.slack-edge.com/photo.png",
+        "https://lh3.googleusercontent.com/a/photo",
         "https://avatars.slack-edge.com/text.png",
+        "https://lh3.googleusercontent.com/a/off-host",
       ]);
     } finally {
       await fixture.close();
