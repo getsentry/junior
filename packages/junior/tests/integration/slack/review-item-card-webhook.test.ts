@@ -567,7 +567,7 @@ describe("Slack webhook: Review item cards", () => {
   });
 
   // Which open question a reply answers is a decision model choice, so the
-  // router eval `review-item-replies.eval.ts` checks it with the real model.
+  // classifier eval `review-item-replies.eval.ts` checks it with the real model.
   // These cases cover the rules that apply before or after that choice.
   it("keeps a question open when the person who replies may not answer it", async () => {
     const { reply, state } = harness({

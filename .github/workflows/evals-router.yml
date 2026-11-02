@@ -38,7 +38,6 @@ jobs:
               - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/router/**'
               - 'packages/junior-evals/src/router-harness.ts'
-              - 'packages/junior-evals/src/review-item-reply-harness.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/router-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.router.config.ts'
@@ -49,7 +48,6 @@ jobs:
               - 'packages/junior/src/chat/current-instruction.ts'
               - 'packages/junior/src/chat/model-profile.ts'
               - 'packages/junior/src/chat/reasoning-level.ts'
-              - 'packages/junior/src/chat/review-items/reply-match.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

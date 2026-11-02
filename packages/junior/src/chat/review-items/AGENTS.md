@@ -62,7 +62,7 @@ the tools (`chat/tools/review-items.ts`), or the review desk API
 - A decision model (`reply-match.ts`) judges each open item on its own, so a
   reply closes only the items that it answers. When the decision fails, all
   items stay open. The agent still gets the reply.
-- Tests have no decision model. The router eval
+- Tests have no decision model. The classifier eval
   `review-item-replies.eval.ts` checks which items a reply answers.
 
 ## Purge And Delete
