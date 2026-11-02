@@ -96,6 +96,10 @@ type RollupLikeConfig = {
 
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
+// Code Mode loads `quickjs.wasm` and its worker file from the installed
+// packages at run time. A trailing `*` tells Nitro to keep these packages
+// external and copy each whole package into the server output.
+const CODEMODE_TRACE_DEPS = ["@earendil-works/pi-codemode*", "quickjs-wasi*"];
 
 function isPluginModuleReference(
   value: JuniorNitroPluginSource | undefined,
@@ -276,6 +280,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         );
 
         applyRolldownTreeshakeWorkaround(nitro);
+        nitro.options.traceDeps = [
+          ...(nitro.options.traceDeps ?? []),
+          ...CODEMODE_TRACE_DEPS,
+        ];
         const pluginSource = options.plugins;
         const pluginModule = isPluginModuleReference(pluginSource)
           ? resolvePluginModule(cwd, pluginSource)
