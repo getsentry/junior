@@ -280,6 +280,47 @@ describe("Slack channel-message automations", () => {
     expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
     expect(queue.sentRecords()).toEqual([]);
 
+    // An update cannot drop the channel filter.
+    const { automation: scoped } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Summarize new messages.",
+        title: "Summarize scoped messages",
+        outcomes: [],
+        trigger: trigger(),
+      },
+      "create-scoped",
+    )) as { automation: { id: string } };
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(channelContext),
+        catalog,
+      ),
+      {
+        automationId: scoped.id,
+        trigger: { ...trigger(), match: { channelId: null } },
+      },
+      "drop-channel",
+    );
+    expect(await getEventAutomation(fixture.sql.db(), scoped.id)).toMatchObject(
+      { trigger: { match: { channelId: "C123" } } },
+    );
+
+    // A trigger saved with the channel as its identifier keeps running.
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        identifier: "C123",
+        record: sql`jsonb_set(jsonb_set(${juniorAutomations.record} #- '{trigger,match}', '{trigger,identifier}', '"C123"'), '{trigger,resourceType}', '"channel"')`,
+      })
+      .where(eq(juniorAutomations.id, scoped.id));
+    const saved = await getEventAutomation(fixture.sql.db(), scoped.id);
+    expect(saved?.trigger).toMatchObject({ identifier: "C123" });
+    expect(saved?.trigger.match).toBeUndefined();
+    expect((await postChannelMessage({ ts: "1712345.0007" })).status).toBe(200);
+    expect(queue.sentRecords()).toHaveLength(1);
+
     // A DM is not a channel, so the automation could never run there.
     await expect(
       execute(

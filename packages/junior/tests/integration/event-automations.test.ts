@@ -17,6 +17,7 @@ import { commitAssistantMessage } from "@/chat/task-execution/assistant-message"
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { mockTitleModel } from "../fixtures/title-model";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,6 +107,7 @@ describe("event automations", () => {
 
   it("delivers the current automation card and retains its reference in web history", async () => {
     const conversationId = "local:automation-card";
+    mockTitleModel("Review fixes.");
     const links = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
