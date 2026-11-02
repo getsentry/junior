@@ -161,7 +161,6 @@ function countMatchingDeepPrefix(
  * the last new user message — the current turn's input.
  */
 function resolveCommitProvenance(args: {
-  conversationId: string;
   existing: Pick<PiConversationProjection, "messages" | "provenance">;
   nextMessages: PiMessage[];
   matchingPrefix: number;
@@ -211,7 +210,7 @@ function resolveCommitProvenance(args: {
       }
       // A retry can resend a saved message. Its provenance cannot change.
       if (!sameProvenance(provenance[index]!, entry)) {
-        throw new AgentHistoryBranchError(args.conversationId);
+        throw new Error("retried message provenance must match saved message");
       }
     });
   }
@@ -317,10 +316,11 @@ function messageTimestamp(message: PiMessage): number {
  *
  * Checkpoints are append-only against the durable identity of the committed
  * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history, a true content branch, or new provenance for a committed message is
- * rejected — only compaction and handoff may intentionally replace active
- * model history. In-place Pi mutations of already committed assistant
- * envelopes (usage/stopReason) do not block the suffix.
+ * history or a true content branch is rejected — only compaction and handoff may
+ * intentionally replace active model history. In-place Pi mutations of already
+ * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * A resent committed message must keep its committed provenance. A different
+ * provenance is a hard error, not a history branch.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -425,7 +425,6 @@ async function commitMessagesLocked(
     nextLocalMessages,
   );
   const nextLocalProvenance = resolveCommitProvenance({
-    conversationId: args.conversationId,
     existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
