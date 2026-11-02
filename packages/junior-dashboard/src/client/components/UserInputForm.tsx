@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   buttonUserInputField,
@@ -19,6 +20,12 @@ import { Textarea } from "./ui/textarea";
 // state read at a glance. The control inside keeps its own focus ring.
 const optionClass =
   "flex cursor-pointer items-start gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5 text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover has-[[data-checked]]:border-dashboard-accent/60 has-[[data-checked]]:bg-dashboard-accent/10 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60";
+
+// A described choice is one button row, so its description stays beside its
+// label and one click is still the answer. The picked row keeps the accent
+// while the answer sends.
+const choiceButtonClass =
+  "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
 
 function OptionText(props: { description?: string; label: string }) {
   return (
@@ -140,9 +147,10 @@ function TextField(props: {
 /**
  * Render the answer controls of an action item request. A request with
  * one short choice field shows one button per choice, and a click is the
- * answer. Other requests show a form that the reader submits once. A failed
- * `onSubmit` lets the reader try again. `secondaryActions`, such as Dismiss,
- * sit in the same action row, after the answer controls.
+ * answer. Choices with descriptions stack as rows, so each description stays
+ * with its choice. Other requests show a form that the reader submits once.
+ * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
+ * Dismiss, sit after the answer controls.
  */
 export function UserInputForm(props: {
   onSubmit(answer: UserInputAnswer): Promise<void>;
@@ -151,7 +159,9 @@ export function UserInputForm(props: {
   secondaryActions?: ReactNode;
 }) {
   const [sending, setSending] = useState(false);
+  const [picked, setPicked] = useState<string>();
   const [failed, setFailed] = useState(false);
+  const choicesId = useId();
   const [values, setValues] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState("");
   const buttonField = buttonUserInputField(props.request);
@@ -170,8 +180,15 @@ export function UserInputForm(props: {
     } catch {
       sendLock.current = false;
       setSending(false);
+      setPicked(undefined);
       setFailed(true);
     }
+  }
+
+  /** Send one button choice as the whole answer. */
+  function pick(fieldId: string, label: string) {
+    setPicked(label);
+    void send({ requestId: props.requestId, values: { [fieldId]: [label] } });
   }
 
   const answer: UserInputAnswer = {
@@ -196,41 +213,67 @@ export function UserInputForm(props: {
 
   return (
     <>
-      {buttonField ? (
+      {buttonField?.options.some((option) => option.description) ? (
         <>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {buttonField.options.map((option) => (
-              <Button
+          <div
+            aria-label={buttonField.label}
+            className="mt-3 grid gap-2"
+            role="group"
+          >
+            {buttonField.options.map((option, index) => (
+              <button
+                aria-describedby={
+                  option.description ? `${choicesId}-${index}` : undefined
+                }
+                aria-labelledby={`${choicesId}-${index}-label`}
+                className={choiceButtonClass}
+                data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
                 key={option.label}
-                onClick={() =>
-                  void send({
-                    requestId: props.requestId,
-                    values: { [buttonField.id]: [option.label] },
-                  })
-                }
-                title={option.description}
+                onClick={() => pick(buttonField.id, option.label)}
+                type="button"
               >
-                {option.label}
-              </Button>
-            ))}
-            {secondary}
-          </div>
-          {buttonField.options.some((option) => option.description) ? (
-            <ul className="mb-0 mt-2 list-none p-0 text-xs text-dashboard-text-muted">
-              {buttonField.options
-                .filter((option) => option.description)
-                .map((option) => (
-                  <li key={option.label}>
-                    <span className="font-medium text-dashboard-text">
-                      {option.label}
+                <span className="grid min-w-0 flex-1 gap-0.5 break-words">
+                  <span
+                    className="font-medium text-dashboard-text"
+                    id={`${choicesId}-${index}-label`}
+                  >
+                    {option.label}
+                  </span>
+                  {option.description ? (
+                    <span
+                      className="text-xs text-dashboard-text-muted"
+                      id={`${choicesId}-${index}`}
+                    >
+                      {option.description}
                     </span>
-                    : {option.description}
-                  </li>
-                ))}
-            </ul>
+                  ) : null}
+                </span>
+                <ArrowRight
+                  aria-hidden="true"
+                  className="shrink-0 text-dashboard-text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[picked]:opacity-100"
+                  size={16}
+                />
+              </button>
+            ))}
+          </div>
+          {secondary ? (
+            <div className="mt-3 flex flex-wrap items-center">{secondary}</div>
           ) : null}
         </>
+      ) : buttonField ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {buttonField.options.map((option) => (
+            <Button
+              disabled={sending}
+              key={option.label}
+              onClick={() => pick(buttonField.id, option.label)}
+            >
+              {option.label}
+            </Button>
+          ))}
+          {secondary}
+        </div>
       ) : (
         <form className="mt-4 grid gap-5" onSubmit={submit}>
           {props.request.fields.map((field) =>
