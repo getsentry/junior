@@ -606,12 +606,16 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [queueActionError, setQueueActionError] = useState<string>();
   // While Junior waits for an answer, the question replaces the message box,
   // so the reader does not type the answer as a new message. The reader can
-  // still choose to write one for this item.
+  // still choose to write one for this item. The message box stays mounted,
+  // so its text and images stay, and it does not hide while it has focus.
   const reviewItem = useReviewItemData(props.reviewItemId).data;
   const [writeForReviewItemId, setWriteForReviewItemId] = useState<string>();
+  const [composerFocused, setComposerFocused] = useState(false);
+  const composerBoxRef = useRef<HTMLDivElement>(null);
   const question =
     reviewItem &&
     !props.stoppable &&
+    !composerFocused &&
     reviewItemWaitsForAnswer(reviewItem) &&
     writeForReviewItemId !== reviewItem.id
       ? reviewItem
@@ -836,9 +840,25 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         <ReviewItemPrompt
           item={question}
           onShowQuestion={() => showTranscriptPinStart(question.id)}
-          onWriteMessage={() => setWriteForReviewItemId(question.id)}
+          onWriteMessage={() => {
+            setWriteForReviewItemId(question.id);
+            // The button goes away, so move focus to the shown message box.
+            requestAnimationFrame(() =>
+              composerBoxRef.current?.querySelector("textarea")?.focus(),
+            );
+          }}
         />
-      ) : (
+      ) : null}
+      <div
+        hidden={Boolean(question)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setComposerFocused(false);
+          }
+        }}
+        onFocus={() => setComposerFocused(true)}
+        ref={composerBoxRef}
+      >
         <ConversationComposer
           confirmSubmit={unsentAnswers.confirmSubmit}
           draftId={props.conversationId}
@@ -855,7 +875,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           onSubmitStart={onSubmitStart}
           onSubmit={onSubmit}
         />
-      )}
+      </div>
     </ComposerDock>
   );
 });

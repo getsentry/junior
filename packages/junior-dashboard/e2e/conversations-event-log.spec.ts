@@ -691,7 +691,7 @@ for (const view of [desktop, mobile]) {
     ).toBeInViewport();
 
     await prompt.getByRole("button", { name: "Write a message" }).click();
-    await expect(composer).toBeVisible();
+    await expect(composer).toBeFocused();
     await expect(prompt).toBeHidden();
   });
 }
