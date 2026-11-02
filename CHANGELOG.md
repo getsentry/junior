@@ -1,4 +1,54 @@
 # Changelog
+## 0.270.0
+
+### New Features ✨
+
+#### Codemode
+
+- Register the codemode tool by @thomasjiangcy with @sentry-junior in [#2544](https://github.com/getsentry/junior/pull/2544)
+- Add tool execution bridge by @thomasjiangcy with @sentry-junior in [#2539](https://github.com/getsentry/junior/pull/2539)
+- Define Code Mode telemetry names by @thomasjiangcy with @sentry-junior in [#2528](https://github.com/getsentry/junior/pull/2528)
+- Ship QuickJS files in Nitro Function output by @thomasjiangcy with @sentry-junior in [#2531](https://github.com/getsentry/junior/pull/2531)
+
+#### Other
+
+- (dashboard) Add Needs your attention section and collapsible sections by @BYK with @sentry-junior in [#2540](https://github.com/getsentry/junior/pull/2540)
+- (github) Check for merge conflicts on pull request webhook events by @BYK with @sentry-junior in [#2501](https://github.com/getsentry/junior/pull/2501)
+- (guardian) Review tool actions as a batch by @thomasjiangcy with @sentry-junior in [#2530](https://github.com/getsentry/junior/pull/2530)
+- (memory) Store one vector per embedding model and backfill in the heartbeat by @thomasjiangcy with @sentry-junior in [#2542](https://github.com/getsentry/junior/pull/2542)
+- (tools) Add codemode exposure and give modelOnly its meaning by @thomasjiangcy with @sentry-junior in [#2529](https://github.com/getsentry/junior/pull/2529)
+
+### Bug Fixes 🐛
+
+#### Agent
+
+- Run removed profile bindings on the default profile by @thomasjiangcy with @sentry-junior in [#2538](https://github.com/getsentry/junior/pull/2538)
+- Skip context compaction after the final reply by @sentry-junior in [#2527](https://github.com/getsentry/junior/pull/2527)
+
+#### Dashboard
+
+- Lead the reader to a new review item question by @sentry-junior in [#2533](https://github.com/getsentry/junior/pull/2533)
+- Render all display text through one DisplayText component by @BYK with @sentry-junior in [#2537](https://github.com/getsentry/junior/pull/2537)
+- Ask before a reply drops unsent review item answers by @BYK with @sentry-junior in [#2536](https://github.com/getsentry/junior/pull/2536)
+- Send a JSON body when signing out by @BYK with @sentry-junior in [#2534](https://github.com/getsentry/junior/pull/2534)
+- Hold the reader's place when transcript layout changes by @BYK with @sentry-junior in [#2511](https://github.com/getsentry/junior/pull/2511)
+- Make the user input note clearly add to the answers by @BYK with @sentry-junior in [#2502](https://github.com/getsentry/junior/pull/2502)
+- Redesign the transcript review item card by @sentry-junior in [#2526](https://github.com/getsentry/junior/pull/2526)
+
+#### Other
+
+- (codemode) Ask the model to wrap up past the turn limit on both tool paths by @thomasjiangcy with @sentry-junior in [#2545](https://github.com/getsentry/junior/pull/2545)
+- (evals) Fix the integration failures on main's combined prompt by @dcramer with @sentry-junior in [#2520](https://github.com/getsentry/junior/pull/2520)
+- (memory) Check vector size before the recall distance cutoff by @sentry-junior in [#2543](https://github.com/getsentry/junior/pull/2543)
+- (people) Follow Google photo redirects on the photo hosts by @BYK with @sentry-junior in [#2535](https://github.com/getsentry/junior/pull/2535)
+- (review-items) Close only the Review items that a thread reply answers by @dcramer with @sentry-junior in [#2525](https://github.com/getsentry/junior/pull/2525)
+- (sign-in) Refresh the Google photo on each sign-in by @BYK with @sentry-junior in [#2532](https://github.com/getsentry/junior/pull/2532)
+- (slack) Stop resumed Slack turns when a user says stop by @thomasjiangcy with @sentry-junior in [#2523](https://github.com/getsentry/junior/pull/2523)
+
+### Internal Changes 🔧
+
+- (evals) Make the asking evals realistic, and ask for draft facts by @dcramer with @sentry-junior in [#2518](https://github.com/getsentry/junior/pull/2518)
+
 ## 0.269.0
 
 ### New Features ✨
