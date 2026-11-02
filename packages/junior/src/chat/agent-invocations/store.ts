@@ -764,8 +764,9 @@ export async function listPendingAgentInvocationResults(
 }
 
 /**
- * Send a `replaced` result to the parent now. A stop ended the open work of
- * the child, so no later agent invocation sends the report.
+ * Send a `replaced` result to the parent now, when no later agent invocation
+ * sends the report. A stop ended the open work of the child, or newer work of
+ * the child ended this agent invocation and does not continue its task.
  */
 export async function reportReplacedAgentInvocation(
   invocationId: string,
