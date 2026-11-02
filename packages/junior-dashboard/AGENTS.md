@@ -46,6 +46,8 @@
   `inline` for one-line previews, headings, and text in buttons. Use
   `displayPlainText` where markup cannot go. Do not show it as a raw string
   or add a Markdown, mention, link, or emoji helper for one surface.
+- `oxlint/display-text.ts` and `no-restricted-imports` enforce this. When a
+  flagged value is not display text, disable the line and give the reason.
 
 ## Browser assets
 

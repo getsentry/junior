@@ -55,9 +55,11 @@ export function useTranscriptSearch() {
 export function HighlightText({ text }: { text: string }) {
   const { normalizedQuery, active } = useTranscriptSearch();
 
+  // oxlint-disable-next-line display-text/no-raw-display-text -- DisplayText passes parsed plain-text leaves here.
   if (!active || !text) return <>{text}</>;
 
   const lower = text.toLowerCase();
+  // oxlint-disable-next-line display-text/no-raw-display-text -- DisplayText passes parsed plain-text leaves here.
   if (!lower.includes(normalizedQuery)) return <>{text}</>;
 
   const parts: ReactNode[] = [];

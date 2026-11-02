@@ -236,6 +236,7 @@ function ActivityChartAverageChip(props: {
         x={right - chipWidth / 2}
         y={chipY + chipHeight / 2}
       >
+        {/* oxlint-disable-next-line display-text/no-raw-display-text -- `text` is a chart value label. */}
         {props.text}
       </text>
     </g>

@@ -207,6 +207,7 @@ export function TranscriptActivityGroup(props: {
               strokeWidth={2.2}
             />
           </TooltipTrigger>
+          {/* oxlint-disable-next-line display-text/no-raw-display-text -- The dashboard builds this count summary. */}
           <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
       </TranscriptSummaryTrigger>

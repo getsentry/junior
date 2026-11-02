@@ -167,6 +167,7 @@ export function AutomationFilters(props: {
               onClick={() => onChange(filter.key, "")}
             >
               <span className="truncate">
+                {/* oxlint-disable-next-line display-text/no-raw-display-text -- `text` is a filter value label. */}
                 {filter.label}: {filter.text}
               </span>
               <X aria-hidden="true" className="shrink-0" size={12} />

@@ -364,6 +364,7 @@ function fieldValue(
       return definition.title ?? "First line of the instruction";
     case "instruction":
       return (
+        // oxlint-disable-next-line display-text/no-raw-display-text -- Version history compares the stored instruction source.
         <span className="whitespace-pre-wrap">{definition.instruction}</span>
       );
     case "when":
@@ -431,6 +432,7 @@ function LineDiff(props: { after: string; before: string }) {
                 {line.kind === "added" ? "Added: " : "Removed: "}
               </span>
             )}
+            {/* oxlint-disable-next-line display-text/no-raw-display-text -- The diff shows stored instruction source. */}
             {line.text || " "}
           </span>
         </div>

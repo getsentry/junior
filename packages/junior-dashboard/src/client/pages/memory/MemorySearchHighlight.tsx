@@ -20,6 +20,7 @@ function escapeRegExp(value: string): string {
 /** Render memory text with each matched search term marked. */
 export function MemorySearchHighlight(props: { query: string; text: string }) {
   const terms = memorySearchTerms(props.query);
+  // oxlint-disable-next-line display-text/no-raw-display-text -- Search results show stored memory text so marks match the query.
   if (terms.length === 0) return <>{props.text}</>;
   // Longer terms first so a term that contains another term wins the match.
   const pattern = new RegExp(
