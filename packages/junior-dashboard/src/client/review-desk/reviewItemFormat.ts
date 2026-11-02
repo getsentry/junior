@@ -108,8 +108,12 @@ export type InboxGroups = {
   needsYou: ReviewItemPayload[];
 };
 
-function oldestFirst(a: ReviewItemPayload, b: ReviewItemPayload): number {
-  return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+/** Inbox order: action items first, then the oldest, then the item id. */
+function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
+  if (a.kind !== b.kind) return a.kind === "action" ? -1 : 1;
+  const age = Date.parse(a.createdAt) - Date.parse(b.createdAt);
+  if (age !== 0) return age;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 /**
@@ -120,7 +124,20 @@ export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
   const open = items.filter((item) => item.status === "open");
   return {
     archived: items.filter((item) => item.status !== "open"),
-    fyi: open.filter((item) => item.kind === "notice").sort(oldestFirst),
-    needsYou: open.filter((item) => item.kind === "action").sort(oldestFirst),
+    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
+    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
   };
+}
+
+/**
+ * The open item that follows `current` in inbox order. `current` can be an
+ * item that closed and left the open groups.
+ */
+export function nextInboxItem(
+  groups: InboxGroups,
+  current: ReviewItemPayload,
+): ReviewItemPayload | undefined {
+  return [...groups.needsYou, ...groups.fyi].find(
+    (item) => inboxOrder(current, item) < 0,
+  );
 }

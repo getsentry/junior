@@ -92,7 +92,8 @@ const answered = {
     values: { decision: ["Approve"], reason: ["MIT license, no change."] },
   },
   body: "The initech entry changed its license.",
-  closedAt: "2026-08-07T09:00:00.000Z",
+  closedAt: "2026-08-07T09:40:00.000Z",
+  createdAt: "2026-08-07T09:30:00.000Z",
   closedBy: viewer,
   id: "item-initech",
   status: "done" as const,
@@ -255,6 +256,12 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
   await expect(
     details.getByRole("link", { name: prReady.subject.title }),
+  ).toBeVisible();
+
+  // A closed item links to the open item after it, not to the oldest one.
+  await page.goto(`${dashboard.baseURL}/review?item=${answered.id}`);
+  await expect(
+    detail.getByRole("link", { name: `Next: ${migration.title}` }),
   ).toBeVisible();
 });
 

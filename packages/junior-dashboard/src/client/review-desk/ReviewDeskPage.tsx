@@ -19,7 +19,7 @@ import {
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
-import { inboxGroups, reviewItemPath } from "./reviewItemFormat";
+import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
 
 const shellClass =
   "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
@@ -121,14 +121,24 @@ export function ReviewDeskPage() {
   // A link can select an item that is not in the current view.
   const direct = useReviewItemData(listed ? undefined : selectedId);
   const selected = listed ?? direct.data;
-  const nextItem = selected
-    ? open[open.findIndex((item) => item.id === selected.id) + 1]
-    : undefined;
+  const nextItem = selected ? nextInboxItem(groups, selected) : undefined;
 
-  const sourceIds = useMemo(
-    () => [...new Set(list.map((item) => item.addedByConversationId))],
-    [list],
-  );
+  // Read source titles only for the rows on screen and the selected item.
+  const sourceIds = useMemo(() => {
+    const shown = [
+      ...(shownCollapsed.has("needs-you") ? [] : groups.needsYou),
+      ...(shownCollapsed.has("fyi") ? [] : groups.fyi),
+      ...(shownCollapsed.has("archived") ? [] : groups.archived),
+      ...(selected ? [selected] : []),
+    ];
+    return [
+      ...new Set(
+        shown
+          .filter((item) => !item.automationId)
+          .map((item) => item.addedByConversationId),
+      ),
+    ];
+  }, [groups, selected, shownCollapsed]);
   const sourceTitles = useLinkedConversationTitles(sourceIds);
   const sourceTitle = (item: ReviewItemPayload) =>
     sourceTitles[sourceIds.indexOf(item.addedByConversationId)];

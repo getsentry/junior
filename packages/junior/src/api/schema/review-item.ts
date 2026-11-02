@@ -77,9 +77,9 @@ export const reviewItemListQuerySchema = z
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, newest change
- * first. The first page of a search, or of a list that includes archived
- * items, also has the newest archived matches.
+ * One page of the review desk list. Open items come first, oldest first.
+ * The first page of a search, or of a list that includes archived items,
+ * also has the newest archived matches.
  */
 export const reviewItemListSchema = z
   .object({
