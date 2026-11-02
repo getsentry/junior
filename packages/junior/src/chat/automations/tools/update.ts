@@ -20,15 +20,16 @@ import {
 import {
   automationToolResult,
   automationToolResultSchema,
-  automationTriggerSchema,
+  automationTriggerChangesSchema,
   triggerKind,
-  type AutomationTriggerInput,
+  type AutomationTriggerChangesInput,
 } from "@/chat/automations/tool-support";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { AutomationDestination } from "@/chat/automations/creator";
 import { sameDestination } from "@/chat/destination";
 import { editEventAutomation } from "@/chat/event-automations/edit";
+import { changedEventMatch } from "@/chat/event-automations/tool-support";
 import { saveEventAutomation } from "@/chat/event-automations/store";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { logInfo } from "@/chat/logging";
@@ -54,7 +55,7 @@ import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 type UpdateInput = {
   title?: string;
   instruction?: string;
-  trigger?: AutomationTriggerInput;
+  trigger?: AutomationTriggerChangesInput;
   outcomes?: z.output<typeof taskOutcomeInputSchema>[];
   credentialMode?: "creator" | "system";
   destination?: string;
@@ -230,19 +231,23 @@ async function updateEvent(
     {
       title: input.title,
       instruction: input.instruction,
-      // An omitted identifier or resource type keeps the saved one. Only an
-      // explicit null makes the trigger run for every resource.
+      // The tools cannot set an identifier, so a saved one stays. A filter
+      // that is left out keeps its saved value. Another namespace starts a
+      // new trigger.
       trigger: trigger
         ? {
             ...trigger,
-            identifier:
-              trigger.identifier === undefined
-                ? task.trigger.identifier
-                : (trigger.identifier ?? undefined),
-            resourceType:
-              trigger.resourceType === undefined
-                ? task.trigger.resourceType
-                : (trigger.resourceType ?? undefined),
+            ...(trigger.namespace === task.trigger.namespace
+              ? {
+                  identifier: task.trigger.identifier,
+                  resourceType: task.trigger.resourceType,
+                }
+              : undefined),
+            match: changedEventMatch(
+              task.trigger,
+              trigger.namespace,
+              trigger.match,
+            ),
           }
         : undefined,
       outcomes: input.outcomes,
@@ -266,7 +271,7 @@ export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
 ) {
-  const trigger = automationTriggerSchema(catalog);
+  const trigger = automationTriggerChangesSchema(catalog);
   const inputSchema = z
     .object({
       automationId: z
@@ -280,7 +285,7 @@ export function createUpdateAutomationTool(
       trigger: trigger
         .nullable()
         .describe(
-          "Complete replacement trigger of the same type. For an event trigger, omit identifier or resourceType to keep the saved one. Omit or use null to keep the trigger.",
+          "Replacement trigger of the same type. For an event trigger, match changes only the filters that it names. Omit or use null to keep the trigger.",
         )
         .optional(),
       outcomes: z

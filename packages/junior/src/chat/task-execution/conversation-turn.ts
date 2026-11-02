@@ -63,7 +63,6 @@ import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   abandonTurnRecord,
   getTurnRecord,
-  listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import type {
@@ -77,6 +76,7 @@ import {
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   getEventBatchDelayMs,
+  listActiveMailboxTurns,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -516,28 +516,23 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
           if (!isResume) {
-            // Match Slack: new input supersedes an auth-paused Turn
-            // instead of leaving two active Turns or letting a late OAuth
-            // wake resume stale work.
+            // Match Slack: new input supersedes every other open mailbox
+            // Turn. New input starts only when no yielded Turn waits, so an
+            // open Turn here waits for OAuth or was left open by a failed or
+            // stopped Run. A second open Turn makes every later resume fail.
             const pendingAuthorizationActorId =
               conversation.processing.pendingAuth?.actorId;
-            const authParked = (
-              await listTurnSummaries(context.conversationId)
-            ).filter(
-              (summary) =>
-                summary.surface === "api" &&
-                !summary.dispatchId &&
-                summary.state === "paused" &&
-                summary.resumeReason === "auth",
-            );
-            for (const parked of authParked) {
+            const superseded = (
+              await listActiveMailboxTurns(context.conversationId)
+            ).filter((record) => record.turnId !== turnId);
+            for (const stale of superseded) {
               if (stopSignal?.aborted) {
                 return await completeCancelledTurn();
               }
               await abandonTurnRecord({
                 conversationId: context.conversationId,
-                turnId: parked.turnId,
-                errorMessage: "Auth-paused Turn superseded by new input",
+                turnId: stale.turnId,
+                errorMessage: "Turn superseded by new input",
               });
               // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
               // connect and store credentials. The abandoned turn record makes a
@@ -545,10 +540,14 @@ export function createConversationTurnWorker(
               markTurnClosed({
                 conversation,
                 nowMs: Date.now(),
-                sessionId: parked.turnId,
+                sessionId: stale.turnId,
               });
             }
-            if (authParked.length > 0 && pendingAuthorizationActorId) {
+            const authParked = superseded.some(
+              (record) =>
+                record.state === "paused" && record.resumeReason === "auth",
+            );
+            if (authParked && pendingAuthorizationActorId) {
               // Drop the dashboard connect prompt so a superseded OAuth flow
               // cannot leave a stale banner after the user moves on.
               await deleteWebAuthorization({

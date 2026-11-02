@@ -59,6 +59,7 @@ import {
   readCallEvents,
   readFailedCallRun,
   readConversationDetail,
+  participantSlackUserIds,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
@@ -138,6 +139,8 @@ export interface Conversation extends HarnessRun {
   threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Slack user ids of the participants that the dashboard lists after the call. */
+  participantSlackUserIds: string[];
   /**
    * The label of the connect prompt that the dashboard shows to the person
    * after the call, when a turn waits for their authorization.
@@ -745,6 +748,7 @@ export async function createFixtureAgent(
       reactions,
       replies,
       statuses,
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles,
       title: detail.displayTitle,
       toolCalls: events.toolCalls,
@@ -855,6 +859,7 @@ export async function createFixtureAgent(
       reactions: [],
       replies: [],
       statuses: [],
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles: [],
       title: detail.displayTitle,
       toolCalls: [],

@@ -81,6 +81,10 @@ describe("Slack Turn Steering", () => {
       "succeeded",
       "succeeded",
     ]);
+    // Each person whose mention got its own turn joins the conversation.
+    expect(conversation.participantSlackUserIds).toEqual(
+      expect.arrayContaining(["U0SAM", "U0RIO", "U0KAI", "U0ALEX"]),
+    );
   });
 
   test("when a thread message needs no reply, Junior consumes it without a turn", async ({

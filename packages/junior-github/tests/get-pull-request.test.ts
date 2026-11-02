@@ -77,6 +77,7 @@ describe("getPullRequest", () => {
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
         identifier: "getsentry/junior#691",
+        match: { repo: "getsentry/junior", pullRequest: 691 },
         type: "pull_request",
       },
     });

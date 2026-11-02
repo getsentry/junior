@@ -326,8 +326,10 @@ repository automation to one environment or one workflow. For example, an
 automation on `getsentry/toolkit` for `deployment.failed` can match
 `environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
 
-An event automation can also run for every repository, with no identifier.
-Deployment events (`deployment.created`, `deployment.queued`,
+An event automation selects one item with filters instead: `repo` and
+`issue` or `pullRequest`, `repo` and `tag`, or `repo`, `commitSha`, and
+`environment`. Lookup tools return these filters as `match`. With fewer filters,
+it runs for more items. Deployment events (`deployment.created`, `deployment.queued`,
 `deployment.pending`, `deployment.in_progress`, `deployment.succeeded`,
 `deployment.failed`, `deployment.error`) can run that way with no filter.
 Release, issue, and pull request events need a `repo` filter, because they

@@ -204,8 +204,6 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           trigger: {
             type: "event",
             namespace: "github",
-            identifier: "getsentry/junior#208",
-            resourceType: "issue",
             label: "GitHub issue getsentry/junior#208",
             events: ["issue.reopened"],
           },
@@ -232,10 +230,9 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           trigger: {
             type: "event",
             namespace: "github",
-            resourceType: "pull_request",
-            identifier: "getsentry/junior#691",
             label: "getsentry/junior#691",
             events: ["pull_request.review.changes_requested"],
+            match: { repo: "getsentry/junior", pullRequest: 691 },
           },
           outcomes: [
             { action: "send_message", destination: "current_conversation" },

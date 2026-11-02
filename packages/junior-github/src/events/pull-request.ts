@@ -3,7 +3,11 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { gitHubCommentMatchFields } from "./comment.js";
-import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
+import {
+  gitHubCommitMatchFields,
+  gitHubRepoDataSchema,
+  gitHubRepoMatchFields,
+} from "./scope.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -230,6 +234,10 @@ export function gitHubPullRequestSubscribable(input: {
   );
   return {
     ...gitHubPullRequestResource(input),
+    match: {
+      repo: gitHubRepoDataSchema.parse(input.repo),
+      pullRequest: input.number,
+    },
     ...(suggestedEvents.length > 0
       ? { suggestedEvents: [...suggestedEvents] }
       : undefined),
