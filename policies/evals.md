@@ -18,6 +18,9 @@ runtime. Harness mechanics live in `packages/junior-evals/AGENTS.md`.
   decisions. Hard pass/fail.
 - **Router** (`evals/router/**`): exact model profile and reasoning level per
   turn. Hard pass/fail.
+- **Classifiers** (`evals/classifiers/**`): exact choices of a decision model
+  classifier, such as the Review items that a thread reply answers. Hard
+  pass/fail.
 
 ### Scenarios
 

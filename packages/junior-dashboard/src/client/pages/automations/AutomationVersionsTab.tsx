@@ -29,6 +29,7 @@ import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
+import { DisplayText } from "../../display-text/DisplayText";
 import { formatRelativeTime } from "../../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 import { cn } from "../../styles";
@@ -364,7 +365,10 @@ function fieldValue(
       return definition.title ?? "First line of the instruction";
     case "instruction":
       return (
-        <span className="whitespace-pre-wrap">{definition.instruction}</span>
+        <DisplayText
+          mentions={automation.mentions}
+          text={definition.instruction}
+        />
       );
     case "when":
       if (version.kind === "scheduled") {
@@ -431,7 +435,7 @@ function LineDiff(props: { after: string; before: string }) {
                 {line.kind === "added" ? "Added: " : "Removed: "}
               </span>
             )}
-            {line.text || " "}
+            {line.value || " "}
           </span>
         </div>
       ))}
@@ -439,7 +443,7 @@ function LineDiff(props: { after: string; before: string }) {
   );
 }
 
-type DiffLine = { kind: "added" | "removed" | "same"; text: string };
+type DiffLine = { kind: "added" | "removed" | "same"; value: string };
 
 /** Line diff from the longest common subsequence. Instructions stay short. */
 function diffLines(before: string, after: string): DiffLine[] {
@@ -461,17 +465,17 @@ function diffLines(before: string, after: string): DiffLine[] {
   let j = 0;
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
-      lines.push({ kind: "same", text: a[i]! });
+      lines.push({ kind: "same", value: a[i]! });
       i++;
       j++;
     } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
-      lines.push({ kind: "removed", text: a[i++]! });
+      lines.push({ kind: "removed", value: a[i++]! });
     } else {
-      lines.push({ kind: "added", text: b[j++]! });
+      lines.push({ kind: "added", value: b[j++]! });
     }
   }
-  while (i < a.length) lines.push({ kind: "removed", text: a[i++]! });
-  while (j < b.length) lines.push({ kind: "added", text: b[j++]! });
+  while (i < a.length) lines.push({ kind: "removed", value: a[i++]! });
+  while (j < b.length) lines.push({ kind: "added", value: b[j++]! });
   return lines;
 }
 

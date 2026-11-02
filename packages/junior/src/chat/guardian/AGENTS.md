@@ -1,6 +1,6 @@
 # Guardian
 
-Guardian reviews one tool action before it runs. A model rates the risk and
+Guardian reviews each tool action before it runs. A model rates the risk and
 how clearly the user authorized the action, and names one block rule or
 `none`. Code (`guardianDecision`) turns that rule into `allow`, `ask`, or
 `deny`. The model never picks the decision.
@@ -11,6 +11,16 @@ Run. For child agent approval, see `agent-invocations/AGENTS.md`.
 
 ## Rules
 
+- The gate takes a batch of actions and returns one result for each
+  `toolCallId`. A normal tool call is a batch of one. Each action gets its
+  own model review, decision record, and rejection marker. Reviews run in
+  parallel, with a small limit.
+- A batch over `MAX_TOOL_ACTION_BATCH` fails each action before any review.
+  The count includes actions that need no review.
+- Each action in a batch sees the same prior rejections. The gate changes
+  its state in batch order after the reviews finish.
+- The `script` of a proposal (a Code Mode script and its earlier calls) is
+  untrusted evidence. It shows where data came from and cannot authorize.
 - Unavailable review fails closed. The action does not run, and the error
   goes to the owning Run boundary. Only an abort passes through.
 - The gate records each decision in the Conversation event log before the
@@ -30,7 +40,8 @@ Run. For child agent approval, see `agent-invocations/AGENTS.md`.
   Guardian again. Three rejections in a row tell the agent to stop and
   explain. They do not end the execution slice.
 - Only the gate writes the rejection marker. `projectToolResult` removes a
-  marker that a tool supplied.
+  marker that a tool supplied. A `codemode` result carries the gate's marker
+  for each rejected nested call, and history restores those markers too.
 - The rejection marker is a durable format with `version: 1`. A change to its
   shape needs a new version or a migration.
 

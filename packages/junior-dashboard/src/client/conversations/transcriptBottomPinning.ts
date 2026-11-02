@@ -13,10 +13,25 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import {
+  captureScrollAnchor,
+  scrollAnchorShift,
+  type ScrollAnchor,
+} from "./transcriptScrollAnchor";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const PREVIOUS_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
+const PIN_START_ATTRIBUTE = "data-transcript-pin-start";
+const PIN_START_MARGIN_PX = 16;
+
+/**
+ * Mark a tall block whose start the reader must see first, such as a Review
+ * item card. The value is a stable id, so each block moves the view only once.
+ */
+export function transcriptPinStartProps(id: string) {
+  return { [PIN_START_ATTRIBUTE]: id };
+}
 
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
@@ -34,15 +49,7 @@ type BottomPinResult = {
   contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
-  preserveViewportForPrepend: () => void;
   showJumpToLatest: boolean;
-};
-
-type PrependSnapshot = {
-  historyVersion: string;
-  root: ScrollRoot;
-  scrollHeight: number;
-  scrollTop: number;
 };
 
 const useBrowserLayoutEffect =
@@ -300,26 +307,12 @@ export function programmaticSettleScrollAction(input: {
   return "ignore";
 }
 
-/** Decide when a requested history prepend can restore or discard its viewport snapshot. */
-export function prependViewportIntent(input: {
-  currentHistoryVersion: string;
-  loadingPreviousPage: boolean;
-  snapshotHistoryVersion: string;
-}): "discard" | "restore" | "wait" {
-  if (input.loadingPreviousPage) return "wait";
-  if (input.currentHistoryVersion !== input.snapshotHistoryVersion) {
-    return "restore";
-  }
-  return "discard";
-}
-
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
   conversationId?: string;
   enabled: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
-  loadingPreviousPage: boolean;
   pinRequestVersion?: number;
   view: TranscriptViewMode;
   versions: Record<TranscriptViewMode, string>;
@@ -331,13 +324,17 @@ export function usePinnedTranscriptBottom(input: {
   const initializedRef = useRef(false);
   const initializedConversationRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
-  const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
+  // The scroll position that the last restore set. Its scroll event is not
+  // a reader scroll, so it must not change follow intent.
+  const restoredScrollTopRef = useRef<number | null>(null);
+  const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
   const terminalPinPendingRef = useRef(false);
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
+  const seenPinStartsRef = useRef(new Set<string>());
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -359,14 +356,63 @@ export function usePinnedTranscriptBottom(input: {
     setFollowing(value);
   }, []);
 
+  const rememberPlace = useCallback(() => {
+    const content = contentElementRef.current;
+    const root = scrollRootFor(content);
+    if (!content || !root) return;
+    scrollAnchorRef.current = captureScrollAnchor(
+      content,
+      viewportBounds(root),
+    );
+  }, []);
+
+  // Move by the distance the anchor row moved, so content that grows or
+  // shrinks above the reader does not move what they are reading.
+  const restorePlace = useCallback(() => {
+    const content = contentElementRef.current;
+    const root = scrollRootFor(content);
+    const anchor = scrollAnchorRef.current;
+    if (!content || !root) return;
+    const shift = anchor
+      ? scrollAnchorShift(content, viewportBounds(root), anchor)
+      : null;
+    if (shift !== null && Math.abs(shift) >= 1) {
+      const scrollTop = scrollSnapshot(root).scrollTop + shift;
+      setScrollTop(root, scrollTop);
+      const restored = scrollSnapshot(root).scrollTop;
+      previousScrollTopRef.current = restored;
+      restoredScrollTopRef.current = restored;
+    }
+    rememberPlace();
+  }, [rememberPlace]);
+
+  const leaveBottom = useCallback(() => {
+    if (!followingRef.current) return;
+    const root = scrollRootFor(contentElementRef.current);
+    // Content that fits the viewport has nothing above to read.
+    if (!root || scrollSnapshot(root).scrollTop <= 0) return;
+    programmaticScrollGenerationRef.current = 0;
+    setFollowingIntent(false);
+  }, [setFollowingIntent]);
+
   const measurePosition = useCallback(
     (source: PositionMeasureSource) => {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
+      if (source === "scroll") rememberPlace();
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
+
+      if (source === "scroll") {
+        const restored = restoredScrollTopRef.current;
+        restoredScrollTopRef.current = null;
+        // A restore near the bottom must not turn follow mode back on.
+        if (restored !== null && Math.abs(snapshot.scrollTop - restored) < 1) {
+          return;
+        }
+      }
 
       const intent = transcriptFollowIntent({
         previousScrollTop,
@@ -394,7 +440,7 @@ export function usePinnedTranscriptBottom(input: {
         setFollowingIntent(false);
       }
     },
-    [setFollowingIntent],
+    [rememberPlace, setFollowingIntent],
   );
 
   const scrollToBottom = useCallback(
@@ -402,13 +448,26 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
+      // A new block that does not fit shows its start, not its end. Stop
+      // following, so later layout does not move the start out of view.
+      const startTop = newPinStartScrollTop(
+        root,
+        contentElementRef.current,
+        seenPinStartsRef.current,
+      );
+      if (startTop !== null) setFollowingIntent(false);
+
       // Only suppress pin-settle noise while still following. After the reader
       // leaves the bottom, do not open a window that can ignore their scroll.
-      const suppressSettleNoise = followingRef.current;
+      const suppressSettleNoise = startTop !== null || followingRef.current;
       const generation = suppressSettleNoise
         ? ++programmaticScrollGenerationRef.current
         : 0;
-      setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
+      setScrollTop(
+        root,
+        startTop ?? scrollSnapshot(root).scrollHeight,
+        behavior,
+      );
 
       const settleProgrammaticScroll = () => {
         if (
@@ -443,18 +502,6 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
-  const preserveViewportForPrepend = useCallback(() => {
-    const root = scrollRootFor(contentElementRef.current);
-    if (!root) return;
-    const snapshot = scrollSnapshot(root);
-    prependSnapshotRef.current = {
-      historyVersion: input.historyVersion,
-      root,
-      scrollHeight: snapshot.scrollHeight,
-      scrollTop: snapshot.scrollTop,
-    };
-  }, [input.historyVersion]);
-
   useBrowserLayoutEffect(() => {
     if (!contentElement || !input.conversationId) return;
     if (initializedConversationRef.current === input.conversationId) return;
@@ -472,36 +519,21 @@ export function usePinnedTranscriptBottom(input: {
     setHasPendingUpdate(false);
   }, [contentElement, input.conversationId, setFollowingIntent]);
 
-  useBrowserLayoutEffect(() => {
-    const previous = prependSnapshotRef.current;
-    if (!previous) return;
-
-    const intent = prependViewportIntent({
-      currentHistoryVersion: input.historyVersion,
-      loadingPreviousPage: input.loadingPreviousPage,
-      snapshotHistoryVersion: previous.historyVersion,
-    });
-    if (intent === "restore") {
-      const current = scrollSnapshot(previous.root);
-      setScrollTop(
-        previous.root,
-        scrollTopAfterPrepend(previous, current.scrollHeight),
-      );
-      prependSnapshotRef.current = null;
-      return;
-    }
-
-    if (intent === "discard") prependSnapshotRef.current = null;
-  }, [input.historyVersion, input.loadingPreviousPage]);
-
   const syncAfterLayoutChange = useCallback(() => {
     if (followingRef.current) {
       scrollToBottom("auto");
       return;
     }
 
+    restorePlace();
     measurePosition("measure");
-  }, [measurePosition, scrollToBottom]);
+  }, [measurePosition, restorePlace, scrollToBottom]);
+
+  // An earlier page renders above the reader. Hold their place before paint;
+  // a reader at the bottom stays at the latest message.
+  useBrowserLayoutEffect(() => {
+    syncAfterLayoutChange();
+  }, [input.historyVersion, syncAfterLayoutChange]);
 
   useBrowserLayoutEffect(() => {
     // Compare the same view across snapshots, not one view's tail to another.
@@ -554,22 +586,58 @@ export function usePinnedTranscriptBottom(input: {
   ]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !contentElement) return;
 
     const root = scrollRootFor(contentElement);
     if (!root) return;
 
-    const target: HTMLElement | Window = root === window ? window : root;
+    // Both a scrolling element and the window send these events.
+    const target: GlobalEventHandlers = root;
     const onScroll = () => measurePosition("scroll");
+    // Wheel and touch show intent before the scroll event. A live update in
+    // that gap must not pull a reader who starts to scroll up back down.
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) leaveBottom();
+    };
+    // Compare with the highest finger point in this drag, so small steps
+    // still add up to a drag down.
+    let touchTopY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      touchTopY = event.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY;
+      if (y === undefined || touchTopY === null) return;
+      if (y > touchTopY + USER_SCROLL_DELTA_PX) leaveBottom();
+      touchTopY = Math.min(touchTopY, y);
+    };
 
     measurePosition("measure");
+    rememberPlace();
+    // Listen on the scroll root, so gestures outside transcript rows count.
     target.addEventListener("scroll", onScroll, { passive: true });
+    target.addEventListener("wheel", onWheel, { passive: true });
+    target.addEventListener("touchstart", onTouchStart, {
+      passive: true,
+    });
+    target.addEventListener("touchmove", onTouchMove, {
+      passive: true,
+    });
     window.addEventListener("resize", syncAfterLayoutChange);
     return () => {
       target.removeEventListener("scroll", onScroll);
+      target.removeEventListener("wheel", onWheel);
+      target.removeEventListener("touchstart", onTouchStart);
+      target.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("resize", syncAfterLayoutChange);
     };
-  }, [contentElement, measurePosition, syncAfterLayoutChange]);
+  }, [
+    contentElement,
+    leaveBottom,
+    measurePosition,
+    rememberPlace,
+    syncAfterLayoutChange,
+  ]);
 
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
@@ -633,21 +701,13 @@ export function usePinnedTranscriptBottom(input: {
       contentRef,
       hasPendingUpdate,
       jumpToBottom,
-      preserveViewportForPrepend,
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         following,
         hasPendingUpdate,
       }),
     }),
-    [
-      contentRef,
-      following,
-      hasPendingUpdate,
-      input.enabled,
-      jumpToBottom,
-      preserveViewportForPrepend,
-    ],
+    [contentRef, following, hasPendingUpdate, input.enabled, jumpToBottom],
   );
 }
 
@@ -684,14 +744,6 @@ export function useAutoLoadPreviousPage(input: {
   return setSentinel;
 }
 
-/** Keep the previously visible content at the same viewport offset after a prepend. */
-export function scrollTopAfterPrepend(
-  previous: Pick<ScrollSnapshot, "scrollHeight" | "scrollTop">,
-  scrollHeight: number,
-): number {
-  return previous.scrollTop + scrollHeight - previous.scrollHeight;
-}
-
 function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   if (typeof window === "undefined") return null;
   if (!element) return window;
@@ -704,6 +756,38 @@ function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   }
 
   return window;
+}
+
+/**
+ * Return the scroll position that shows the start of the last pin-start block,
+ * when a bottom pin would cut off its start. Each block counts once.
+ */
+function newPinStartScrollTop(
+  root: ScrollRoot,
+  content: HTMLElement | null,
+  seen: Set<string>,
+): number | null {
+  const block = content
+    ? Array.from(
+        content.querySelectorAll<HTMLElement>(`[${PIN_START_ATTRIBUTE}]`),
+      ).at(-1)
+    : undefined;
+  const id = block?.getAttribute(PIN_START_ATTRIBUTE);
+  if (!block || !id || seen.has(id)) return null;
+  const rect = block.getBoundingClientRect();
+  // The block has no size until its data loads. Check it again then.
+  if (rect.height === 0) return null;
+  seen.add(id);
+
+  const snapshot = scrollSnapshot(root);
+  const offset =
+    snapshot.scrollTop -
+    (isWindowRoot(root) ? 0 : root.getBoundingClientRect().top);
+  const startTop = rect.top + offset - PIN_START_MARGIN_PX;
+  const bottomTop = snapshot.scrollHeight - snapshot.clientHeight;
+  // Keep the bottom pin when it shows the start, or when the block is above it.
+  if (startTop >= bottomTop || rect.bottom + offset <= bottomTop) return null;
+  return Math.max(0, startTop);
 }
 
 function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {
@@ -733,6 +817,12 @@ function setScrollTop(
     return;
   }
   root.scrollTo({ behavior, top: scrollTop });
+}
+
+function viewportBounds(root: ScrollRoot): { bottom: number; top: number } {
+  if (isWindowRoot(root)) return { bottom: window.innerHeight, top: 0 };
+  const top = root.getBoundingClientRect().top;
+  return { bottom: top + root.clientHeight, top };
 }
 
 function isWindowRoot(root: ScrollRoot): root is Window {

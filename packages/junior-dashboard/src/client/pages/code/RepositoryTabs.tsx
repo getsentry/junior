@@ -16,6 +16,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
+import { attentionFirst } from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversationIds } from "../../review-desk/queries";
@@ -52,7 +53,11 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
         </EmptyTelemetry>
       ) : (
         <ConversationHomeList
-          conversations={pageItems(conversations, page, PAGE_SIZE)}
+          conversations={pageItems(
+            attentionFirst(conversations, waitingConversationIds),
+            page,
+            PAGE_SIZE,
+          )}
           emptyLabel={
             search
               ? "No conversations match this search."

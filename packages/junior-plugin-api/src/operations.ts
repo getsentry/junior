@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Identity, PluginContext, User } from "./context";
+import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
@@ -17,6 +17,8 @@ export interface HeartbeatHookContext extends PluginContext {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
+  /** Host embedder bound to the configured embedding model. */
+  embedder: PluginEmbedder;
   nowMs: number;
   state: PluginState;
 }

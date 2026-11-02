@@ -15,7 +15,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { TranscriptText } from "../../conversations/TranscriptText";
+import { DisplayText } from "../../display-text/DisplayText";
 import { automationPath, formatCostSummary, peoplePath } from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
@@ -76,7 +76,7 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
     <div className="min-w-0 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
       <AutomationFormSection title="What to do">
         <div className="text-base leading-relaxed [overflow-wrap:anywhere]">
-          <TranscriptText
+          <DisplayText
             mentions={automation.mentions ?? []}
             text={automation.instruction}
           />

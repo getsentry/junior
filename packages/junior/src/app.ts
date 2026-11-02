@@ -1,6 +1,7 @@
 // Core owns host-level route ordering for Junior. ACP and MCP mount before
 // plugin routes, and plugin routes mount before the dashboard (see
 // dashboard-routes).
+
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,

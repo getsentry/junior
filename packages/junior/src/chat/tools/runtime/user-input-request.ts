@@ -111,6 +111,16 @@ export const userInputRequestSchema = z
     }
   });
 
+/**
+ * Label and help text of the free-text input that every form adds after the
+ * fields. The text goes with the picked answers and does not replace them, so
+ * every surface says that in the same words.
+ */
+export const USER_INPUT_NOTE = {
+  label: "Anything else?",
+  description: "Optional. This note is sent together with your answers above.",
+} as const;
+
 /** One field of a user input request. */
 export type UserInputField = z.output<typeof userInputFieldSchema>;
 

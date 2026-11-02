@@ -1,8 +1,8 @@
 # Evals
 
 Evals test agent-facing behavior through the real runtime. `policies/evals.md`
-owns the suite policy (integration, behavioral, guardian, router), the rubric
-rules, and the scenario limits. This file adds the harness rules.
+owns the suites, the rubric rules, and the scenario limits. This file adds the
+harness rules.
 
 ## Layer Boundaries
 
@@ -16,6 +16,8 @@ rules, and the scenario limits. This file adds the harness rules.
   builder (`src/guardian-tools.ts`).
 - `evals/router/**`: `describeEval()` with `routerEvals`. Assert the exact
   model profile and reasoning level.
+- `evals/classifiers/**`: `describeEval()` with one harness per classifier,
+  such as `reviewItemReplyEvals`. Assert the exact choice.
 - Slack HTTP payload contracts and isolated logic belong in
   `packages/junior/tests/`, not here. `pnpm lint` enforces this.
 
@@ -114,5 +116,5 @@ Pass paths, `-t`, and `--shard` directly after the script. Do not use
 
 - Do not bind env vars manually. The eval config loads repo env files.
 - Behavioral and integration need Vercel Sandbox and a Quick Tunnel. Guardian
-  and router need only AI Gateway access.
+  router, and classifiers need only AI Gateway access.
 - CI setup and labels: `evals/github-actions.md`.

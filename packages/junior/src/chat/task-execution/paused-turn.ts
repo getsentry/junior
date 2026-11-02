@@ -53,7 +53,11 @@ import {
   markConversationMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
-import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import {
+  markTurnClosed,
+  markTurnCompleted,
+  markTurnFailed,
+} from "@/chat/runtime/turn";
 import {
   getPausedTurnRequest,
   wakePausedTurn as defaultWakePausedTurn,
@@ -116,6 +120,8 @@ export interface PausedTurnOptions {
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
   shouldYield?: () => boolean;
+  /** Aborts the resumed Run when someone stops the Conversation. */
+  stopSignal?: AbortSignal;
 }
 
 /** Persist a delivered paused-turn reply as the terminal thread state. */
@@ -194,6 +200,35 @@ async function persistFailedReplyState(
   await persistThreadStateById(turn.conversationId, {
     conversation,
   });
+}
+
+/** Close a paused turn that was stopped before it delivered a reply. */
+async function persistStoppedTurnState(turn: TurnRecord): Promise<void> {
+  await abandonTurnRecord({
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    errorMessage: "Turn interrupted",
+  });
+  const currentState = await getPersistedThreadState(turn.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: turn.conversationId,
+  });
+  clearPendingAuth(conversation, turn.turnId);
+  const userMessageId = getTurnUserMessage(conversation, turn.turnId)?.id;
+  if (userMessageId) {
+    markConversationMessage(conversation, userMessageId, {
+      replied: false,
+      skippedReason: "turn interrupted",
+    });
+  }
+  markTurnClosed({
+    conversation,
+    nowMs: Date.now(),
+    sessionId: turn.turnId,
+  });
+  await persistThreadStateById(turn.conversationId, { conversation });
 }
 
 /** Convert startup failures into durable failed state before rethrowing. */
@@ -616,6 +651,9 @@ async function runPausedTurnInContext(
               configuration: authorization?.configuration,
               locationConfiguration,
             },
+            ...(runOptions.stopSignal
+              ? { signal: runOptions.stopSignal }
+              : undefined),
             state: {
               pendingAuth: conversation.processing.pendingAuth,
               sandboxRef,
@@ -642,6 +680,9 @@ async function runPausedTurnInContext(
               error instanceof Error ? error.message : String(error),
             );
             await recordDispatchOutcome("failed");
+          },
+          onStop: async () => {
+            await persistStoppedTurnState(activeTurn);
           },
           onPostDeliveryCommitFailure: async () => {
             await failTurnRecord({

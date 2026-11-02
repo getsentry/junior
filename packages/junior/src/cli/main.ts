@@ -68,6 +68,9 @@ export async function runMain(
   argv: string[],
   options: { instrument?: boolean } = {},
 ): Promise<void> {
+  // Stdout carries command output. Send info and debug logs to stderr.
+  console.info = console.error;
+  console.debug = console.error;
   loadCliEnvFiles();
   const instrument = options.instrument ?? true;
   if (instrument) {

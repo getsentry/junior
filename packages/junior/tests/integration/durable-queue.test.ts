@@ -614,6 +614,46 @@ describe("durable queue contract", () => {
     }, 30_000);
   });
 
+  describe("stop", () => {
+    it("stops a paused turn before its next run can reply", async () => {
+      // The first run yields at the host deadline. The person says `stop`
+      // before the turn continues. The next run must see the stop and end
+      // the turn without the reply.
+      const q = await slack();
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      const turnId = "turn_1712345_0001";
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({ state: "paused" });
+
+      await expect(
+        q.send({
+          eventType: "message",
+          text: "stop",
+          threadTs: "1712345.0001",
+          ts: "1712345.0002",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({ state: "abandoned" });
+      // Only the stop acknowledgment posts. The paused turn never replies.
+      expect(q.replies()).toEqual([
+        expect.stringContaining("stay out of this thread"),
+      ]);
+      // The stop queued its own wake. It finds no work left.
+      await expect(q.next()).resolves.toEqual({ status: "no_work" });
+      // A later mention still gets a normal reply. Stop timestamps compare in
+      // milliseconds, so the mention must be at least one millisecond later.
+      await expectNextTurn(q, "1712346.0001");
+    }, 30_000);
+  });
+
   describe("accepted reply is terminal", () => {
     it("completes once when the host deadline hits during Slack accept", async () => {
       // JUNIOR-7Y: mention → model reply → Slack accept dual-writes SQL → host

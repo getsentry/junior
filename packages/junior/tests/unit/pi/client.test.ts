@@ -52,8 +52,6 @@ vi.mock("@/chat/pi/gateway-auth", () => ({
     const credential = await mocks.resolveGatewayCredential();
     return credential?.token;
   }),
-  MISSING_GATEWAY_CREDENTIALS_ERROR:
-    "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
   resolveGatewayCredential: mocks.resolveGatewayCredential,
 }));
 
@@ -423,6 +421,32 @@ describe("completeText", () => {
       "gen_ai.embeddings.dimension.count": 3,
       "gen_ai.usage.input_tokens": 8,
     });
+  });
+
+  it("sends the input type only to models that embed queries differently", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2, 0.3]],
+      usage: { tokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    await embedTexts({
+      inputType: "query",
+      modelId: "voyage/voyage-4-lite",
+      texts: ["one"],
+    });
+    await embedTexts({
+      inputType: "query",
+      modelId: "openai/text-embedding-3-small",
+      texts: ["one"],
+    });
+
+    expect(mocks.embedMany.mock.calls[0]?.[0]).toMatchObject({
+      providerOptions: { voyage: { inputType: "query" } },
+    });
+    expect(mocks.embedMany.mock.calls[1]?.[0]).not.toHaveProperty(
+      "providerOptions",
+    );
   });
 
   it("leaves embedding cost unknown for models without a verified rate", async () => {

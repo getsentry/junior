@@ -2,6 +2,7 @@ import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
@@ -40,7 +41,11 @@ import type {
   ChildAgent,
   TerminalAgentInvocation,
 } from "./types";
-import { enqueueAgentInvocation } from "./work";
+import {
+  createAgentInvocationWorker,
+  enqueueAgentInvocation,
+  resolveAgentInvocationId,
+} from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
@@ -360,7 +365,7 @@ async function getChildAgentInputInvocation(
  * reports to the child's parent. Returns undefined for work that is not
  * mailbox input for a child Conversation.
  */
-export async function startAgentInvocationsForChildInput(
+async function startAgentInvocationsForChildInput(
   context: ConversationWorkerContext,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {
@@ -441,6 +446,39 @@ export async function startAgentInvocationsForChildInput(
   }
   await context.attempt.ack();
   return { status: "completed" };
+}
+
+/**
+ * Build the worker for all work of a child Conversation. The caller selects
+ * it from the stored parent of the Conversation, never from a Turn Source. It
+ * starts agent invocations for child input, then runs the agent invocation
+ * that owns the work. Work that no agent invocation owns is an error.
+ */
+export function createChildConversationWorker(
+  agentRunner: AgentRunner,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
+    queue: ConversationWorkQueue;
+    state?: StateAdapter;
+  },
+) {
+  const invocationWorker = createAgentInvocationWorker(agentRunner, options);
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const started = await startAgentInvocationsForChildInput(context, options);
+    if (started) {
+      return started;
+    }
+    const invocationId = await resolveAgentInvocationId(context);
+    if (!invocationId) {
+      throw new Error(
+        `Child conversation ${context.conversationId} has no agent invocation for this work`,
+      );
+    }
+    return await invocationWorker(context, invocationId);
+  };
 }
 
 /**

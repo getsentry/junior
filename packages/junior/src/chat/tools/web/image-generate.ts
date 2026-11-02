@@ -3,11 +3,7 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
-import {
-  completeText,
-  getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
-} from "@/chat/pi/client";
+import { completeText, getGatewayApiKey } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
@@ -224,9 +220,6 @@ export function createImageGenerateTool(
       // Raw fetch does not resolve AI Gateway auth on its own, so this path
       // has to turn the shared gateway credential into a bearer token.
       const apiKey = await getGatewayApiKey();
-      if (!apiKey) {
-        throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
-      }
       const model = options.modelId;
       const sourceImages = await Promise.all(
         images.map(async (path) => ({

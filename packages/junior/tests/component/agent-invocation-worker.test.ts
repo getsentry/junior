@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
-import type { AgentSteeringMessage } from "@/chat/agent/types";
+import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
@@ -517,6 +517,57 @@ describe("agent invocation worker", () => {
       // call, which a model request would reject.
       expect(histories).toEqual([
         readRound.map((item) => expect.objectContaining(item)),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("lets child agents spawn only down to maxAgentDepth", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const child = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "depth-child",
+      });
+      const helper = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "depth-helper",
+        parentConversationId: child.childConversationId,
+      });
+      const runs: AgentRun[] = [];
+      const worker = createAgentInvocationWorker(
+        {
+          run: async (run) => {
+            runs.push(run);
+            throw new Error("stop after reading the run");
+          },
+        },
+        { maxAgentDepth: 1 },
+      );
+      // With maxAgentDepth 1, depth 1 can spawn and depth 2 cannot.
+      for (const invocation of [child, helper]) {
+        await expect(
+          worker(
+            {
+              attempt: {
+                ack: vi.fn(),
+                conversationId: invocation.childConversationId,
+                drain: vi.fn(),
+                isFinalAttempt: false,
+                messages: [buildAgentInvocationInboundMessage(invocation)],
+              },
+              checkIn: vi.fn(),
+              conversationId: invocation.childConversationId,
+              shouldYield: () => false,
+            },
+            invocation.invocationId,
+          ),
+        ).rejects.toThrow("stop after reading the run");
+      }
+      expect(runs.map((run) => run.disabledFeatures)).toEqual([
+        ["handoff", "interactive-auth"],
+        ["handoff", "interactive-auth", "subagents"],
       ]);
     } finally {
       await fixture.close();

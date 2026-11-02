@@ -102,6 +102,23 @@ function assertFunctionHasJuniorContent(functionDir, pluginPackages) {
   }
 }
 
+// Code Mode loads these files from the installed packages at run time, so the
+// bundler cannot inline them. juniorNitro() traces both packages.
+function assertFunctionHasCodemodeFiles(functionDir) {
+  const nodeModules = path.join(functionDir, "node_modules");
+  requireFile(path.join(nodeModules, "quickjs-wasi", "quickjs.wasm"));
+  requireFile(
+    path.join(
+      nodeModules,
+      "@earendil-works",
+      "pi-codemode",
+      "dist",
+      "runtime",
+      "worker.js",
+    ),
+  );
+}
+
 // The BullMQ queue provider is for local dev only. Junior imports it at run
 // time so bundlers skip it. Fail if BullMQ or its msgpackr dependency still
 // reaches a deployed function.
@@ -130,6 +147,7 @@ if (pluginPackages.length === 0) {
 
 for (const functionDir of [serverFunctionDir, queueFunctionDir]) {
   assertFunctionHasJuniorContent(functionDir, pluginPackages);
+  assertFunctionHasCodemodeFiles(functionDir);
   assertNoDevQueuePackages(functionDir);
 }
 

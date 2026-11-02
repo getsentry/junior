@@ -6,6 +6,7 @@ import {
   createSlackSource,
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
+  type HeartbeatHookContext,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
@@ -191,8 +192,11 @@ CREATE TABLE junior_conversation_participants (
 `);
 }
 
-function unitEmbedding(index: number): number[] {
-  const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
+function unitEmbedding(
+  index: number,
+  dimensions: number = TEST_EMBEDDING_DIMENSIONS,
+): number[] {
+  const embedding = Array.from({ length: dimensions }, () => 0);
   embedding[index] = 1;
   return embedding;
 }
@@ -214,17 +218,24 @@ function createTestEmbedder(
   } = {},
 ) {
   const calls: string[][] = [];
+  const inputTypes: Array<string | undefined> = [];
+  const model = overrides.model ?? "test-embedding-model";
+  const provider = overrides.provider ?? "test-embedding-provider";
   return {
     calls,
-    async embedTexts(input: { texts: string[] }) {
+    inputTypes,
+    model,
+    provider,
+    async embedTexts(input: { inputType?: string; texts: string[] }) {
       calls.push(input.texts);
+      inputTypes.push(input.inputType);
       return {
         ...(overrides.costUsd !== undefined
           ? { costUsd: overrides.costUsd }
           : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
-        model: overrides.model ?? "test-embedding-model",
-        provider: overrides.provider ?? "test-embedding-provider",
+        model,
+        provider,
         vectors: input.texts.map((text) => vectors[text] ?? defaultEmbedding),
       };
     },
@@ -3023,6 +3034,129 @@ WHERE id = '${superseded.memory.id}'
       expect(results[0]).toEqual(
         expect.objectContaining({ id: react.memory.id }),
       );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("moves memory vectors to a new embedding model in the heartbeat", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const reactMemory = "Uses React hooks for UI state.";
+      const mangoMemory = "Favorite CLI QA snack is mango chips.";
+      const oldMemory = "Prefers superseded memories to keep old vectors.";
+      const expiredMemory = "Prefers expired memories to keep old vectors.";
+      const query = "client rendering library";
+      const oldStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: createTestEmbedder({
+          [reactMemory]: unitEmbedding(1),
+          [mangoMemory]: unitEmbedding(2),
+          [oldMemory]: unitEmbedding(3),
+          [expiredMemory]: unitEmbedding(4),
+        }),
+        now: () => TEST_NOW_MS,
+      });
+      const react = await oldStore.createMemory({
+        content: reactMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-react",
+      });
+      const mango = await oldStore.createMemory({
+        content: mangoMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-mango",
+      });
+      const superseded = await oldStore.createMemory({
+        content: oldMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-superseded",
+      });
+      const expired = await oldStore.createMemory({
+        content: expiredMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-expired",
+      });
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET superseded_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${superseded.memory.id}'
+`);
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET expires_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${expired.memory.id}'
+`);
+
+      const newEmbedder = createTestEmbedder(
+        {
+          [reactMemory]: unitEmbedding(1, 1024),
+          [mangoMemory]: unitEmbedding(2, 1024),
+          [query]: unitEmbedding(1, 1024),
+        },
+        { dimensions: 1024, model: "new-model" },
+      );
+      const heartbeatContext: HeartbeatHookContext = {
+        agent: {
+          dispatch: vi.fn(),
+          get: vi.fn(),
+        },
+        cache: {
+          async getOrLoad(_key, load) {
+            return (await load()).value;
+          },
+        },
+        db: memoryDb(fixture),
+        embedder: newEmbedder,
+        log: noopLogger,
+        nowMs: TEST_NOW_MS,
+        plugin: { name: "memory" },
+        state: memoryState,
+      };
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.inputTypes).toEqual(["document"]);
+      expect(newEmbedder.calls.map((texts) => [...texts].sort())).toEqual([
+        [mangoMemory, reactMemory].sort(),
+      ]);
+
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryEmbeddings);
+      expect(
+        rows
+          .map((row) => `${row.memoryId}:${row.model}:${row.dimensions}`)
+          .sort(),
+      ).toEqual(
+        [
+          `${react.memory.id}:test-embedding-model:1536`,
+          `${react.memory.id}:new-model:1024`,
+          `${mango.memory.id}:test-embedding-model:1536`,
+          `${mango.memory.id}:new-model:1024`,
+          `${superseded.memory.id}:test-embedding-model:1536`,
+          `${expired.memory.id}:test-embedding-model:1536`,
+        ].sort(),
+      );
+
+      const newStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: newEmbedder,
+        now: () => TEST_NOW_MS,
+      });
+      const [top] = await newStore.searchMemories({ query });
+      expect(top).toEqual(expect.objectContaining({ id: react.memory.id }));
+      expect(newEmbedder.inputTypes.at(-1)).toBe("query");
+
+      // A rerun finds nothing to embed.
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls).toHaveLength(2);
+
+      // A vector whose content hash went stale is embedded again.
+      await fixture.execute(`
+UPDATE junior_memory_embeddings
+SET content_hash = 'stale'
+WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
+`);
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls.at(-1)).toEqual([reactMemory]);
     } finally {
       await fixture.close();
     }

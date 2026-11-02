@@ -89,6 +89,12 @@ import {
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { ConversationReviewBar } from "../review-desk/ConversationReviewBar";
+import { useReviewItemData } from "../review-desk/queries";
+import {
+  latestReviewItemId,
+  reviewItemWaitsForAnswer,
+} from "../review-desk/reviewItemFormat";
+import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -190,6 +196,10 @@ export function ConversationPage(props: {
   // reuse events via structural sharing, so the footer keeps a stable id list.
   const mailboxCommittedIds = useMemo(
     () => committedMessageIds(detail.data?.events),
+    [detail.data?.events],
+  );
+  const reviewItemId = useMemo(
+    () => latestReviewItemId(detail.data?.events),
     [detail.data?.events],
   );
   // Cancel needs the latest mailbox watermark, but not as a render prop. Live
@@ -475,6 +485,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              reviewItemId={reviewItemId}
               // Without live history, an inline send would never leave the
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
@@ -568,6 +579,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** The last Review item that Junior added in the transcript. */
+  reviewItemId?: string;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -577,6 +590,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  // A message closes the review items that it answers. Ask before it drops
+  // answers that the reader did not send.
+  const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
   stopTurnRef.current = stopTurn;
@@ -586,6 +602,31 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
+  // While Junior waits for an answer, hide the message box, the review bar,
+  // and the queued messages, so the reader answers in the question and does
+  // not type the answer as a new message.
+  // Dismiss on the question closes the item and shows the message box again.
+  // The message box stays mounted, so its text and images stay, and it does
+  // not hide while it has focus.
+  const reviewItem = useReviewItemData(props.reviewItemId).data;
+  const [composerShownForItemId, setComposerShownForItemId] =
+    useState<string>();
+  const [composerFocused, setComposerFocused] = useState(false);
+  const question =
+    reviewItem &&
+    !props.stoppable &&
+    !composerFocused &&
+    reviewItemWaitsForAnswer(reviewItem) &&
+    composerShownForItemId !== reviewItem.id
+      ? reviewItem
+      : undefined;
+  // The message box can show only because it has focus. Using the review bar
+  // or queued messages moves focus out of it, so keep them shown for this item.
+  const keepComposerShown = () => {
+    if (composerFocused && reviewItem && reviewItemWaitsForAnswer(reviewItem)) {
+      setComposerShownForItemId(reviewItem.id);
+    }
+  };
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -777,41 +818,61 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           {props.pendingAuthorization ? (
             <PendingAuthorization authorization={props.pendingAuthorization} />
           ) : null}
-          <ConversationReviewBar conversationId={props.conversationId} />
-          <PendingMailboxStack
-            cancelError={cancelError}
-            cancelPending={cancelPendingMessages.isPending}
-            cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-            committedMessageIds={props.committedMessageIds}
-            conversationId={props.conversationId}
-            editTargetInboundMessageId={editTargetInboundMessageId}
-            messages={props.pendingMessages}
-            onCancelMessage={onCancelMessage}
-            onEditMessage={onEditMessage}
-            onLayoutChange={onMailboxLayoutChange}
-            onRetry={onRetry}
-            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
-            steerTargetInboundMessageId={steerTargetInboundMessageId}
-            viewerEmail={viewerEmail}
-          />
+          {/* The review bar and queued messages hide with the message box, so
+              the question is the last thing above the dock. */}
+          <div
+            hidden={Boolean(question)}
+            onFocus={keepComposerShown}
+            onPointerDown={keepComposerShown}
+          >
+            <ConversationReviewBar conversationId={props.conversationId} />
+            <PendingMailboxStack
+              cancelError={cancelError}
+              cancelPending={cancelPendingMessages.isPending}
+              cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+              committedMessageIds={props.committedMessageIds}
+              conversationId={props.conversationId}
+              editTargetInboundMessageId={editTargetInboundMessageId}
+              messages={props.pendingMessages}
+              onCancelMessage={onCancelMessage}
+              onEditMessage={onEditMessage}
+              onLayoutChange={onMailboxLayoutChange}
+              onRetry={onRetry}
+              onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+              steerTargetInboundMessageId={steerTargetInboundMessageId}
+              viewerEmail={viewerEmail}
+            />
+          </div>
+          {unsentAnswers.dialog}
         </>
       }
     >
-      <ConversationComposer
-        draftId={props.conversationId}
-        error={
-          queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
-        }
-        ref={composerRef}
-        label="Continue this conversation"
-        submitLabel="Send"
-        onFocus={onComposerFocus}
-        onStop={props.stoppable ? onStop : undefined}
-        stopPending={stopTurn.isPending}
-        onSubmitStart={onSubmitStart}
-        onSubmit={onSubmit}
-      />
+      <div
+        hidden={Boolean(question)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setComposerFocused(false);
+          }
+        }}
+        onFocus={() => setComposerFocused(true)}
+      >
+        <ConversationComposer
+          confirmSubmit={unsentAnswers.confirmSubmit}
+          draftId={props.conversationId}
+          error={
+            queueActionError ??
+            (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          }
+          ref={composerRef}
+          label="Continue this conversation"
+          submitLabel="Send"
+          onFocus={onComposerFocus}
+          onStop={props.stoppable ? onStop : undefined}
+          stopPending={stopTurn.isPending}
+          onSubmitStart={onSubmitStart}
+          onSubmit={onSubmit}
+        />
+      </div>
     </ComposerDock>
   );
 });

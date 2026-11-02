@@ -57,13 +57,13 @@ export function AutomationFilters(props: {
       key: "type",
       label: "Type",
       value: filters.type === "all" ? "" : filters.type,
-      text: filters.type === "scheduled" ? "Scheduled" : "Event",
+      valueLabel: filters.type === "scheduled" ? "Scheduled" : "Event",
     },
     {
       key: "creator",
       label: "Creator",
       value: filters.creator,
-      text:
+      valueLabel:
         data?.creators.find((option) => option.value === filters.creator)
           ?.label ?? filters.creator,
     },
@@ -71,7 +71,7 @@ export function AutomationFilters(props: {
       key: "destination",
       label: "Destination",
       value: filters.destination,
-      text:
+      valueLabel:
         data?.destinations.find(
           (option) => option.value === filters.destination,
         )?.label ?? filters.destination,
@@ -80,7 +80,7 @@ export function AutomationFilters(props: {
       key: "state",
       label: "State",
       value: filters.state === "all" ? "" : filters.state,
-      text: stateOptions.find((option) => option.value === filters.state)
+      valueLabel: stateOptions.find((option) => option.value === filters.state)
         ?.label,
     },
   ].filter((filter) => filter.value);
@@ -163,11 +163,11 @@ export function AutomationFilters(props: {
               key={filter.key}
               aria-label={`Remove ${filter.key} filter`}
               className="min-h-9 max-w-full text-xs"
-              title={`${filter.label}: ${filter.text}`}
+              title={`${filter.label}: ${filter.valueLabel}`}
               onClick={() => onChange(filter.key, "")}
             >
               <span className="truncate">
-                {filter.label}: {filter.text}
+                {filter.label}: {filter.valueLabel}
               </span>
               <X aria-hidden="true" className="shrink-0" size={12} />
             </Button>

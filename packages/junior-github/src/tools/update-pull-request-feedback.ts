@@ -71,17 +71,25 @@ function parseRepo(value: string) {
   return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
 }
 
-/** Build the GitHub API path for one pull request comment's reactions. */
-export function pullRequestCommentReactionsPath(input: {
+interface PullRequestCommentRef {
   owner: string;
   name: string;
   commentKind: PullRequestCommentKind;
   commentId: number;
-}): string {
+}
+
+function pullRequestCommentPath(input: PullRequestCommentRef): string {
   // Conversation comments live under the issues endpoint; inline review
   // comments live under the pulls endpoint. GitHub has no shared path.
   const segment = input.commentKind === "conversation" ? "issues" : "pulls";
-  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}/reactions`;
+  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}`;
+}
+
+/** Build the GitHub API path for one pull request comment's reactions. */
+export function pullRequestCommentReactionsPath(
+  input: PullRequestCommentRef,
+): string {
+  return `${pullRequestCommentPath(input)}/reactions`;
 }
 
 /** Return the GitHub reaction for one feedback state. */
@@ -116,6 +124,79 @@ const reactionSchema = z.object({
 });
 
 /**
+ * Refuse feedback on a comment unless GitHub shows that the comment is on a
+ * pull request in `repo` that the bot authored. A conversation comment is an
+ * issue comment, so its issue must also be a pull request.
+ */
+async function assertBotAuthoredPullRequest(
+  egress: PluginEgress,
+  input: PullRequestCommentRef & { botUserId: number },
+): Promise<void> {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const commentResponse = await egress.fetch({
+    provider: "github",
+    operation: "github.pull.comment.get",
+    request: new Request(
+      `https://api.github.com${pullRequestCommentPath(input)}`,
+      { headers },
+    ),
+  });
+  const commentPayload = await readJson(commentResponse);
+  if (!commentResponse.ok) {
+    const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubError(commentPayload)}`;
+    if (commentResponse.status === 404) throw new PluginToolInputError(message);
+    throw new Error(message);
+  }
+  const comment = z
+    .object({
+      issue_url: z.string().optional(),
+      pull_request_url: z.string().optional(),
+    })
+    .safeParse(commentPayload);
+  const parentUrl = comment.success
+    ? input.commentKind === "conversation"
+      ? comment.data.issue_url
+      : comment.data.pull_request_url
+    : undefined;
+  // The comment endpoint is scoped to `repo`, so only the number is read.
+  const number = /\/(?:issues|pulls)\/(\d+)$/.exec(parentUrl ?? "")?.[1];
+  if (!number) {
+    throw new Error("GitHub comment did not name its issue or pull request.");
+  }
+
+  // GitHub returns 404 here when the conversation comment is on an issue.
+  const pullResponse = await egress.fetch({
+    provider: "github",
+    operation: "github.pull.get",
+    request: new Request(
+      `https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/pulls/${number}`,
+      { headers },
+    ),
+  });
+  const pullPayload = await readJson(pullResponse);
+  if (!pullResponse.ok && pullResponse.status !== 404) {
+    throw new Error(
+      `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubError(pullPayload)}`,
+    );
+  }
+  const pull = z
+    .object({ user: z.object({ id: z.number() }).nullable() })
+    .safeParse(pullPayload);
+  if (
+    !pullResponse.ok ||
+    !pull.success ||
+    pull.data.user?.id !== input.botUserId
+  ) {
+    throw new PluginToolInputError(
+      "This bot can only set feedback status on comments on pull requests it authored.",
+    );
+  }
+}
+
+/**
  * Set Junior's feedback reaction on a pull request comment. Replace only
  * state reactions Junior previously added to the same comment.
  */
@@ -124,6 +205,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
+    // No action review: the tool checks in code that the bot authored the pull
+    // request, and it changes only the bot's own reaction, which is reversible.
+    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -131,7 +215,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only your prior status reaction on that comment.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
@@ -149,6 +233,13 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       if (botUserId === undefined) {
         throw new Error("GitHub App bot identity is not configured.");
       }
+      await assertBotAuthoredPullRequest(ctx.egress, {
+        owner: repo.owner,
+        name: repo.name,
+        commentKind,
+        commentId,
+        botUserId,
+      });
       const targetContent = pullRequestFeedbackReactionContent(status);
       const baseUrl = `https://api.github.com${pullRequestCommentReactionsPath({
         owner: repo.owner,

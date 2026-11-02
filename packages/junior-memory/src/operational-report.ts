@@ -2,7 +2,7 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, gt, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import type { MemoryDb } from "./store";
@@ -128,8 +128,9 @@ export async function buildMemoryOperationalReport(args: {
           sql<number>`count(*) filter (where ${juniorMemoryMemories.createdAtMs} >= ${args.nowMs - 30 * DAY_MS})`.mapWith(
             Number,
           ),
+        // EXISTS, not a join: a memory can have one vector per model.
         embedded:
-          sql<number>`count(${juniorMemoryEmbeddings.memoryId}) filter (where ${active})`.mapWith(
+          sql<number>`count(*) filter (where ${active} and exists (select 1 from ${juniorMemoryEmbeddings} where ${juniorMemoryEmbeddings.memoryId} = ${juniorMemoryMemories.id}))`.mapWith(
             Number,
           ),
         private:
@@ -137,11 +138,7 @@ export async function buildMemoryOperationalReport(args: {
             Number,
           ),
       })
-      .from(juniorMemoryMemories)
-      .leftJoin(
-        juniorMemoryEmbeddings,
-        eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-      ),
+      .from(juniorMemoryMemories),
     aggregateMemoryDays(args),
   ]);
 

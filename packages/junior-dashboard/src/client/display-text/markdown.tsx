@@ -11,37 +11,53 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { cn } from "../styles";
 import {
-  safeTranscriptHref,
-  TRANSCRIPT_ANCHOR_CLASS,
-} from "./transcriptMarkdownLinks";
-import { renderMentionText } from "./transcriptMentions";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+  HighlightText,
+  useTranscriptSearch,
+} from "../conversations/transcriptSearch";
+import { cn } from "../styles";
+import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
+import { renderTextTokens } from "./mentions";
 
 /**
- * Render transcript markdown as readable prose.
+ * Render display text Markdown as readable prose.
  *
  * The text is CommonMark plus GFM, with a hard break for each newline. Agent
- * replies also use Slack-style `•` bullets and bold-only section labels, so
- * those render as lists and headings too.
+ * replies also use Slack-style `•` bullets, `<url|label>` links, and
+ * bold-only section labels, so those render as lists, links, and headings
+ * too. Inline mode keeps only inline formatting, so the text fits in one
+ * line or in a button.
  */
-export function TranscriptMarkdown(props: {
-  compact?: boolean;
+export function MarkdownText(props: {
+  chat?: boolean;
+  inline?: boolean;
   text: string;
 }): ReactNode {
   if (!props.text.trim()) return null;
+  const source = normalizeSlackBullets(slackLinksToMarkdown(props.text));
+
+  if (props.inline) {
+    return (
+      <Markdown
+        components={INLINE_COMPONENTS}
+        remarkPlugins={[remarkGfm]}
+        urlTransform={safeHref}
+      >
+        {source}
+      </Markdown>
+    );
+  }
 
   return (
     <div
       className={cn(
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
-        props.compact
+        props.chat
           ? "font-sans text-base leading-relaxed"
           : "font-sans text-sm leading-6 md:leading-7",
       )}
     >
-      <div className={cn("grid min-w-0", props.compact ? "gap-3" : "gap-2")}>
+      <div className={cn("grid min-w-0", props.chat ? "gap-3" : "gap-2")}>
         <Markdown
           components={COMPONENTS}
           remarkPlugins={[
@@ -50,9 +66,9 @@ export function TranscriptMarkdown(props: {
             remarkBareUrlStops,
             remarkSectionLabels,
           ]}
-          urlTransform={safeTranscriptHref}
+          urlTransform={safeHref}
         >
-          {normalizeSlackBullets(props.text)}
+          {source}
         </Markdown>
       </div>
     </div>
@@ -255,12 +271,60 @@ const COMPONENTS: Components = {
   ),
 };
 
-// Text nodes can hold Slack mention tokens and transcript search matches.
+// Text nodes can hold Slack mention tokens, emoji codes, and search matches.
 function renderText(children: ReactNode): ReactNode {
   return Children.map(children, (child, index) =>
-    typeof child === "string" ? renderMentionText(child, `t-${index}`) : child,
+    typeof child === "string" ? renderTextTokens(child, `t-${index}`) : child,
   );
 }
+
+// Inline mode ends each block with a newline. A one-line container shows it
+// as a space, and a `whitespace-pre-wrap` container keeps the line break.
+function InlineBlock(props: { children?: ReactNode }) {
+  return (
+    <>
+      {renderText(props.children)}
+      {"\n"}
+    </>
+  );
+}
+
+function InlineCell(props: { children?: ReactNode }) {
+  return <>{renderText(props.children)} </>;
+}
+
+function InlineContainer(props: { children?: ReactNode }) {
+  return <>{props.children}</>;
+}
+
+const INLINE_COMPONENTS: Components = {
+  // A link cannot sit in a button or in another link, so keep the label.
+  a: ({ children }) => <>{renderText(children)}</>,
+  blockquote: InlineContainer,
+  code: COMPONENTS.code,
+  del: COMPONENTS.del,
+  em: COMPONENTS.em,
+  h1: InlineBlock,
+  h2: InlineBlock,
+  h3: InlineBlock,
+  h4: InlineBlock,
+  h5: InlineBlock,
+  h6: InlineBlock,
+  hr: () => "\n",
+  img: ({ alt }) => alt ?? null,
+  li: InlineBlock,
+  ol: InlineContainer,
+  p: InlineBlock,
+  pre: InlineContainer,
+  strong: COMPONENTS.strong,
+  table: InlineContainer,
+  tbody: InlineContainer,
+  td: InlineCell,
+  th: InlineCell,
+  thead: InlineContainer,
+  tr: InlineBlock,
+  ul: InlineContainer,
+};
 
 function alignClass(align: unknown): string | undefined {
   if (align === "center") return "text-center";
@@ -269,13 +333,13 @@ function alignClass(align: unknown): string | undefined {
 }
 
 function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
-  // `safeTranscriptHref` removes unsafe destinations. Keep their label text.
+  // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
 
   const opensNewTab = /^https?:/i.test(props.href);
   return (
     <a
-      className={TRANSCRIPT_ANCHOR_CLASS}
+      className={ANCHOR_CLASS}
       href={props.href}
       rel={opensNewTab ? "noreferrer" : undefined}
       target={opensNewTab ? "_blank" : undefined}

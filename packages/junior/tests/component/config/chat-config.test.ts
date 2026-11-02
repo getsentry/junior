@@ -225,15 +225,17 @@ describe("chat config", () => {
     });
   });
 
-  it("fails when a durable profile is no longer configured", async () => {
+  it("binds a durable profile that is no longer configured to the default", async () => {
     delete process.env.AI_MODEL_PROFILES;
 
     const { botConfig } = await loadConfig();
-    const { modelIdForProfile, ModelProfileNotConfiguredError } =
+    const { boundProfile, modelIdForProfile, ModelProfileNotConfiguredError } =
       await import("@/chat/model-profile");
     expect(() => modelIdForProfile(botConfig, "coding")).toThrowError(
       ModelProfileNotConfiguredError,
     );
+    expect(boundProfile(botConfig, "coding")).toBe(botConfig.defaultProfile);
+    expect(boundProfile(botConfig, "handoff")).toBe("handoff");
   });
 
   it.each([

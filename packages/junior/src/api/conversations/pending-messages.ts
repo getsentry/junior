@@ -1,13 +1,16 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
+import { parseContent } from "@/chat/slack/message/content";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
   getConversation,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { throwApiError } from "../http";
+import { resolveMentions } from "../mentions";
 import {
   conversationPendingMessagesReportSchema,
   type ActorIdentity,
@@ -35,6 +38,7 @@ const slackMailboxMessageSchema = z
   .object({
     author: slackMailboxAuthorSchema,
     id: z.string().min(1),
+    raw: z.unknown().optional(),
   })
   .passthrough();
 
@@ -44,6 +48,23 @@ const slackMailboxMetadataSchema = z
     platform: z.literal("slack"),
   })
   .passthrough();
+
+/**
+ * Project Slack text the way the Turn stores it in history. The SDK text
+ * turns `<@U123>` into a bare `@U123` or `@name`, which the dashboard
+ * cannot render as a mention.
+ */
+function slackDisplayText(
+  message: z.output<typeof slackMailboxMessageSchema>,
+  sdkText: string,
+): string {
+  return parseContent({
+    attachments: [],
+    formatted: { type: "root", children: [] },
+    raw: message.raw,
+    text: sdkText,
+  }).text;
+}
 
 function isoFromMs(value: number): string {
   return new Date(value).toISOString();
@@ -117,7 +138,10 @@ async function projectPendingMessage(
     );
     if (!metadata.success) return undefined;
     if (metadata.data.message.author.isMe === true) return undefined;
-    const text = message.input.text.trim();
+    const text = slackDisplayText(
+      metadata.data.message,
+      message.input.text,
+    ).trim();
     if (!text) return undefined;
     if (!canExposePayload) {
       return {
@@ -151,6 +175,28 @@ async function projectPendingMessage(
   }
 
   return undefined;
+}
+
+async function attachPendingMentions(
+  conversationId: string,
+  messages: ConversationPendingMessage[],
+): Promise<ConversationPendingMessage[]> {
+  if (!messages.some((message) => message.text?.includes("<@"))) {
+    return messages;
+  }
+  const executor = getSqlExecutor();
+  const tenantId = (
+    await loadConversationSlackTenantIds(executor, [conversationId])
+  ).get(conversationId);
+  const mentions = await resolveMentions(
+    executor,
+    messages.map((message) => ({ tenantId, texts: [message.text] })),
+  );
+  return messages.map((message, index) =>
+    mentions[index]!.length > 0
+      ? { ...message, mentions: mentions[index] }
+      : message,
+  );
 }
 
 /**
@@ -189,8 +235,11 @@ export async function readConversationPendingMessages(
       projectPendingMessage(message, canExposePayload),
     ),
   );
-  const messages = projectedMessages.filter(
-    (message): message is ConversationPendingMessage => Boolean(message),
+  const messages = await attachPendingMentions(
+    conversationId,
+    projectedMessages.filter((message): message is ConversationPendingMessage =>
+      Boolean(message),
+    ),
   );
 
   return conversationPendingMessagesReportSchema.parse({

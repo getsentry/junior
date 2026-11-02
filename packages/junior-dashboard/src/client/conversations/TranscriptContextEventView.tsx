@@ -8,7 +8,7 @@ import {
 import { dashboardDisclosureChevronClass } from "../styles";
 import { formatCompactNumber, formatMessageTimestamp } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
-import { TranscriptText } from "./TranscriptText";
+import { DisplayText } from "../display-text/DisplayText";
 
 /** Render a structural context change from the privacy-safe event API. */
 export function TranscriptContextEventView(props: {
@@ -57,9 +57,8 @@ export function TranscriptContextEventView(props: {
           </CollapsibleTrigger>
           <CollapsibleContent hiddenUntilFound>
             <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
-              <TranscriptText
-                mentions={props.part.mentions ?? []}
-                role="system"
+              <DisplayText
+                mentions={props.part.mentions}
                 text={event.summary}
               />
             </div>

@@ -53,6 +53,9 @@ checkpoint, paused Turns, heartbeat recovery, and the shared worker loop in
   new queue wake.
 - A Turn that loses its worker resumes once from its last save. A second loss
   fails the Turn and keeps committed history.
+- The last attempt before the worker gives up is final, also for a resume
+  wake with no messages. On that attempt each worker records its own
+  failure, so no work stops silently.
 - Lease expiry permits recovery. It must not erase mailbox work or agent
   history.
 - Heartbeats repair missing wakes and abandoned leases. They are not a second
