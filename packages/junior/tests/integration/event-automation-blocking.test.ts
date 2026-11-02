@@ -4,7 +4,6 @@ import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { createApp, defineJuniorPlugins } from "@/app";
 import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -12,14 +11,13 @@ import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { githubPlugin } from "@sentry/junior-github";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   changesRequestedEvent,
   context,
   createTask,
-  EVENT_CATALOG,
+  useGitHubEvents,
   execute,
   teamId,
 } from "../fixtures/event-automations";
@@ -62,9 +60,11 @@ describe("event automation blocking", () => {
       source: "local",
       nowMs: Date.now(),
     });
+    await useGitHubEvents();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fixture.sql
       .db()
       .delete(juniorAutomations)
@@ -84,7 +84,7 @@ describe("event automation blocking", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context()),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: automation.id,
@@ -138,7 +138,7 @@ describe("event automation blocking", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: automation.id,
@@ -227,7 +227,7 @@ describe("event automation blocking", () => {
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context()),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: automation.id,
@@ -243,7 +243,7 @@ describe("event automation blocking", () => {
       execute(
         createDeleteAutomationTool(
           automationToolContext(context()),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId,
@@ -263,65 +263,52 @@ describe("event automation blocking", () => {
   }, 30_000);
 
   it("counts each event once, however many resources it is published for", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    try {
-      const { automation } = (await execute(
-        createAutomationTool(
-          automationToolContext(context()),
-          getEventCatalog(),
-        ),
-        {
-          instruction: "Summarize the failed deployment.",
-          trigger: {
-            type: "event",
-            namespace: "github",
-            label: "Failed deployments",
-            events: ["deployment.failed"],
-          },
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(context()), getEventCatalog()),
+      {
+        instruction: "Summarize the failed deployment.",
+        trigger: {
+          type: "event",
+          namespace: "github",
+          label: "Failed deployments",
+          events: ["deployment.failed"],
         },
-        "any-deployment",
-      )) as { automation: { id: string } };
-      // A trigger with no identifier gets every copy of an event. Repeated
-      // copies must not fill the run list and block it early.
-      const copies = 12;
-      const occur = async (eventKey: string, nowMs: number) => {
-        let dispatched = 0;
-        for (let index = 0; index < copies; index += 1) {
-          const result = await ingestEventAutomations(
-            {
-              eventKey,
-              eventType: "deployment.failed",
-              occurredAtMs: nowMs,
-              namespace: "github",
-              identifier: `deployment-source:getsentry/repo-${index}:abc`,
-              trustedSummary: "A deployment failed.",
-            },
-            { nowMs, queue, teamId },
-          );
-          dispatched += result.dispatched;
-        }
-        return dispatched;
-      };
-      const nowMs = Date.now();
-      for (
-        let index = 0;
-        index < botConfig.maxEventAutomationRuns;
-        index += 1
-      ) {
-        expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
+      },
+      "any-deployment",
+    )) as { automation: { id: string } };
+    // A trigger with no identifier gets every copy of an event. Repeated
+    // copies must not fill the run list and block it early.
+    const copies = 12;
+    const occur = async (eventKey: string, nowMs: number) => {
+      let dispatched = 0;
+      for (let index = 0; index < copies; index += 1) {
+        const result = await ingestEventAutomations(
+          {
+            eventKey,
+            eventType: "deployment.failed",
+            occurredAtMs: nowMs,
+            namespace: "github",
+            identifier: `deployment-source:getsentry/repo-${index}:abc`,
+            trustedSummary: "A deployment failed.",
+          },
+          { nowMs, queue, teamId },
+        );
+        dispatched += result.dispatched;
       }
-      const db = fixture.sql.db();
-      expect(await getEventAutomation(db, automation.id)).toMatchObject({
-        status: "active",
-      });
-      // The limit is the same as for a trigger with an identifier.
-      expect(await occur("github:deploy-over", nowMs)).toBe(0);
-      expect(await getEventAutomation(db, automation.id)).toMatchObject({
-        status: "blocked",
-      });
-    } finally {
-      vi.unstubAllEnvs();
+      return dispatched;
+    };
+    const nowMs = Date.now();
+    for (let index = 0; index < botConfig.maxEventAutomationRuns; index += 1) {
+      expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
     }
+    const db = fixture.sql.db();
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "active",
+    });
+    // The limit is the same as for a trigger with an identifier.
+    expect(await occur("github:deploy-over", nowMs)).toBe(0);
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "blocked",
+    });
   }, 30_000);
 });

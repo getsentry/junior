@@ -6,6 +6,7 @@ import {
   compactEventAutomation,
   compactEventAutomationResultSchema,
   eventAutomationToolResult,
+  registeredEventAutomationTriggerChangesSchema,
   registeredEventAutomationTriggerSchema,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
@@ -40,21 +41,36 @@ export const automationSearchResultSchema = juniorToolOutputSchema
   })
   .strict();
 
+const scheduleTriggerSchema = z
+  .object({
+    type: z.literal("schedule"),
+    schedule: scheduleIntentSchema.describe(
+      "When the automation runs. The scheduler computes the exact next run from this intent and the server clock.",
+    ),
+  })
+  .strict();
+
 /**
- * Build the trigger input of the create and update tools: a schedule, or the
- * events of an enabled plugin.
+ * Build the trigger input of the create tool: a schedule, or the events of an
+ * enabled plugin.
  */
 export function automationTriggerSchema(catalog: EventCatalog) {
   return z.discriminatedUnion("type", [
-    z
-      .object({
-        type: z.literal("schedule"),
-        schedule: scheduleIntentSchema.describe(
-          "When the automation runs. The scheduler computes the exact next run from this intent and the server clock.",
-        ),
-      })
-      .strict(),
+    scheduleTriggerSchema,
     registeredEventAutomationTriggerSchema(catalog).extend({
+      type: z.literal("event"),
+    }),
+  ]);
+}
+
+/**
+ * Build the trigger input of the update tool. An event trigger changes its
+ * filters key by key.
+ */
+export function automationTriggerChangesSchema(catalog: EventCatalog) {
+  return z.discriminatedUnion("type", [
+    scheduleTriggerSchema,
+    registeredEventAutomationTriggerChangesSchema(catalog).extend({
       type: z.literal("event"),
     }),
   ]);
@@ -65,9 +81,14 @@ export type AutomationTriggerInput = z.output<
   ReturnType<typeof automationTriggerSchema>
 >;
 
+/** Automation trigger changes after parsing. */
+export type AutomationTriggerChangesInput = z.output<
+  ReturnType<typeof automationTriggerChangesSchema>
+>;
+
 /** Return the Automation kind of a trigger input. */
 export function triggerKind(
-  trigger: AutomationTriggerInput,
+  trigger: Pick<AutomationTriggerInput, "type">,
 ): TaskCandidate["kind"] {
   return trigger.type === "schedule" ? "scheduled" : "event";
 }

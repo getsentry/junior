@@ -66,6 +66,11 @@ describe("getDeployment", () => {
       },
       subscribable: {
         identifier: `deployment-source:getsentry/junior-prod:production:${COMMIT_SHA}`,
+        match: {
+          repo: "getsentry/junior-prod",
+          commitSha: COMMIT_SHA,
+          environment: "production",
+        },
         suggestedEvents: [
           "deployment.succeeded",
           "deployment.failed",

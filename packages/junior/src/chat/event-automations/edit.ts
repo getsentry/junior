@@ -7,7 +7,10 @@ import {
 } from "@/chat/automations/edit-rules";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
+import {
+  requireSlackChannelMessageScope,
+  slackChannelMessageTrigger,
+} from "@/chat/slack/channel-message-events";
 import { requireEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
 import type { z } from "zod";
@@ -36,20 +39,24 @@ export async function editEventAutomation(
 ): Promise<EventAutomation> {
   let trigger = current.trigger;
   if (input.trigger !== undefined) {
+    const inputTrigger = slackChannelMessageTrigger(
+      input.trigger,
+      current.destination.channelId,
+    );
     // An unchanged selector may contain a now-unsupported match field. Keep it.
     if (
-      changesEventAutomationTrigger(current.trigger, input.trigger) ||
-      current.trigger.resourceType !== input.trigger.resourceType
+      changesEventAutomationTrigger(current.trigger, inputTrigger) ||
+      current.trigger.resourceType !== inputTrigger.resourceType
     ) {
       try {
-        trigger = requireEventAutomationTrigger(catalog, input.trigger);
+        trigger = requireEventAutomationTrigger(catalog, inputTrigger);
       } catch (error) {
         if (error instanceof ToolInputError)
           throw new AutomationEditError(error.message, "trigger");
         throw error;
       }
     } else {
-      trigger = { ...current.trigger, label: input.trigger.label };
+      trigger = { ...current.trigger, label: inputTrigger.label };
     }
   }
   const changesExecution =

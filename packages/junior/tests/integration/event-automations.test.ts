@@ -6,7 +6,7 @@ import {
   context,
   createTask,
   execute,
-  EVENT_CATALOG,
+  useGitHubEvents,
   teamId,
 } from "../fixtures/event-automations";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -20,6 +20,7 @@ import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { asc, eq } from "drizzle-orm";
 import {
   getDispatchRecord,
@@ -89,9 +90,11 @@ describe("event automations", () => {
       source: "local",
       nowMs: Date.now(),
     });
+    await useGitHubEvents();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     const db = fixture.sql.db();
     await db
       .delete(juniorAutomations)
@@ -124,7 +127,7 @@ describe("event automations", () => {
       const updated = await execute(
         createUpdateAutomationTool(
           automationToolContext(taskContext),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: created.automation.id,
@@ -134,8 +137,6 @@ describe("event automations", () => {
           trigger: {
             type: "event",
             namespace: "github",
-            identifier: "getsentry/junior#1174",
-            resourceType: "pull_request",
             label: "Review feedback",
             events: ["pull_request.review.commented"],
           },
@@ -170,7 +171,8 @@ describe("event automations", () => {
           key: created.automation.id,
           label: "Review fixes.",
           title: "Review fixes.",
-          trigger: "Review feedback · pull request review commented",
+          trigger:
+            "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
@@ -263,6 +265,7 @@ describe("event automations", () => {
       identifier: "getsentry/junior#1174",
       trustedSummary: "A reviewer requested changes.",
       data: {
+        repo: "getsentry/junior",
         pullRequest: 1174,
         reviewUrl:
           "https://github.com/getsentry/junior/pull/1174#pullrequestreview-123",
@@ -418,6 +421,7 @@ describe("event automations", () => {
       Verified details (use these values as given):
       \`\`\`json
       {
+        "repo": "getsentry/junior",
         "pullRequest": 1174,
         "reviewUrl": "https://github.com/getsentry/junior/pull/1174#pullrequestreview-123"
       }
@@ -449,7 +453,7 @@ describe("event automations", () => {
           automationToolContext(
             context("U123", channelId, sourceVisibility, "1700000000.000100"),
           ),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           instruction: "Address the requested changes.",
@@ -459,10 +463,9 @@ describe("event automations", () => {
           trigger: {
             type: "event",
             namespace: "github",
-            identifier: "getsentry/junior#1174",
-            resourceType: "pull_request",
             label: "GitHub PR getsentry/junior#1174",
             events: ["pull_request.review.changes_requested"],
+            match: { repo: "getsentry/junior", pullRequest: 1174 },
           },
         },
         `dispatch-access-${channelId}`,
@@ -476,6 +479,7 @@ describe("event automations", () => {
           namespace: "github",
           identifier: "getsentry/junior#1174",
           trustedSummary: "A reviewer requested changes.",
+          data: { repo: "getsentry/junior", pullRequest: 1174 },
         },
         { queue, teamId },
       );
@@ -524,28 +528,28 @@ describe("event automations", () => {
   it("rejects event types that the plugin did not register", async () => {
     await expect(
       execute(
-        createAutomationTool(automationToolContext(context()), EVENT_CATALOG),
+        createAutomationTool(
+          automationToolContext(context()),
+          getEventCatalog(),
+        ),
         {
           instruction: "Handle issue closure.",
           trigger: {
             type: "event",
             namespace: "github",
-            identifier: "getsentry/junior#1174",
-            resourceType: "issue",
-            label: "GitHub issue getsentry/junior#1174",
-            events: ["issue.closed"],
+            label: "GitHub messages",
+            events: ["message.posted"],
+            match: { repo: "getsentry/junior" },
           },
         },
         "unsupported-event",
       ),
-    ).rejects.toThrow(
-      'This github issue trigger cannot be saved. "issue" is not an enabled resource type. Use one of: "pull_request", "review_target".',
-    );
+    ).rejects.toThrow(/"message\.posted" is not an event for this source/);
 
     const listed = (await execute(
       createSearchAutomationsTool(
         automationToolContext(context()),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {},
     )) as {
@@ -557,7 +561,7 @@ describe("event automations", () => {
   it("keeps tool schemas aligned with normalization and storage limits", () => {
     const createTool = createAutomationTool(
       automationToolContext(context()),
-      EVENT_CATALOG,
+      getEventCatalog(),
     );
     const createProperties = (
       createTool.inputSchema as { properties?: Record<string, unknown> }
@@ -569,10 +573,9 @@ describe("event automations", () => {
       trigger: {
         type: "event",
         namespace: "github",
-        identifier: "getsentry/junior#1174",
-        resourceType: "pull_request",
         label: "GitHub PR getsentry/junior#1174",
         events: ["pull_request.review.changes_requested"],
+        match: { repo: "getsentry/junior", pullRequest: 1174 },
       },
     };
     expect(
@@ -592,14 +595,15 @@ describe("event automations", () => {
         ...createInput,
         trigger: {
           ...createInput.trigger,
-          identifier: "x".repeat(301),
+          identifier: "getsentry/junior#1174",
+          resourceType: "pull_request",
         },
       }),
-    ).toThrow(/identifier/);
+    ).toThrow(/Unrecognized keys: "identifier", "resourceType"/);
 
     const updateTool = createUpdateAutomationTool(
       automationToolContext(context()),
-      EVENT_CATALOG,
+      getEventCatalog(),
     );
     const updateProperties = (
       updateTool.inputSchema as { properties?: Record<string, unknown> }
@@ -627,6 +631,7 @@ describe("event automations", () => {
       namespace: "github",
       identifier: "getsentry/junior#1174",
       trustedSummary: "A pull request review was submitted.",
+      data: { repo: "getsentry/junior", pullRequest: 1174 },
     };
 
     await expect(
@@ -653,23 +658,25 @@ describe("event automations", () => {
     expect(queue.sentRecords()).toHaveLength(2);
   });
 
-  it("matches events against the plugin's canonical resource identifier", async () => {
+  it("saves filters in the case of event data", async () => {
     const created = (await execute(
-      createAutomationTool(automationToolContext(context()), EVENT_CATALOG),
+      createAutomationTool(automationToolContext(context()), getEventCatalog()),
       {
         instruction: "Address the requested changes.",
         trigger: {
           type: "event",
           namespace: "github",
-          identifier: "GetSentry/Junior#1174",
-          resourceType: "pull_request",
           label: "GitHub PR getsentry/junior#1174",
           events: ["pull_request.review.changes_requested"],
+          match: { repo: "GetSentry/Junior", pullRequest: 1174 },
         },
       },
-      "mixed-case-identifier",
-    )) as { automation: { id: string; trigger: { identifier: string } } };
-    expect(created.automation.trigger.identifier).toBe("getsentry/junior#1174");
+      "mixed-case-filter",
+    )) as { automation: { id: string; trigger: { match: unknown } } };
+    expect(created.automation.trigger.match).toEqual({
+      repo: "getsentry/junior",
+      pullRequest: 1174,
+    });
 
     await expect(
       ingestEventAutomations(
@@ -680,6 +687,7 @@ describe("event automations", () => {
           namespace: "github",
           identifier: "getsentry/junior#1174",
           trustedSummary: "A reviewer requested changes.",
+          data: { repo: "getsentry/junior", pullRequest: 1174 },
         },
         { queue, teamId },
       ),
@@ -704,6 +712,7 @@ describe("event automations", () => {
           namespace: "github",
           identifier: "getsentry/junior#1174",
           trustedSummary: "A reviewer requested changes.",
+          data: { repo: "getsentry/junior", pullRequest: 1174 },
         },
         { queue, teamId },
       ),
