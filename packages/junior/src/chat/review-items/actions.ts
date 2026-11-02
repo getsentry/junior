@@ -14,6 +14,10 @@ import {
   reviewItemReaderForUser,
 } from "./access";
 import {
+  matchReplyToReviewItems,
+  type ReviewItemReplyDecision,
+} from "./reply-match";
+import {
   closeReviewItem,
   getReviewItem,
   listReplyActionItems,
@@ -236,6 +240,9 @@ function messageAnswer(
  * - The agent added it in this Conversation (`addedByConversationId`).
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
+ * - The decision model says that the reply answers this item
+ *   (`matchReplyToReviewItems`). Other open items in the thread stay open.
+ *   When the decision fails, all items stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
  * an answer on the card or the review desk. Each item closes as `done` with
@@ -255,6 +262,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
    */
   canAnswer?: () => Promise<boolean>;
   conversationId: string;
+  decide: ReviewItemReplyDecision;
   delivery: ReviewItemDelivery;
   nowMs?: number;
   resolveUser: () => Promise<User | undefined>;
@@ -266,9 +274,21 @@ export async function closeReviewItemsAnsweredByReply(args: {
   if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
-  for (const item of items.filter((candidate) =>
-    replyAnswers(candidate, user),
-  )) {
+  const answered = items.filter((candidate) => replyAnswers(candidate, user));
+  const open = answered.filter((candidate) => candidate.status === "open");
+  const matched = open.length
+    ? await matchReplyToReviewItems({
+        conversationId: args.conversationId,
+        decide: args.decide,
+        items: open,
+        text: args.text,
+      })
+    : new Set<string>();
+  // A retry of a reply still delivers the items that it closed.
+  const toDeliver = answered.filter(
+    (candidate) => candidate.status !== "open" || matched.has(candidate.id),
+  );
+  for (const item of toDeliver) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
       const answer = messageAnswer(item, args.text);
