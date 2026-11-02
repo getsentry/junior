@@ -84,6 +84,10 @@ export interface PluginModel {
 export type PluginEmbeddingInputType = "document" | "query";
 
 export interface PluginEmbedder {
+  /** Configured embedding model id; embedTexts() reports the same value. */
+  model: string;
+  /** Provider name that embedTexts() reports. */
+  provider: string;
   /** Embed plugin-owned text for derived retrieval without exposing provider credentials. */
   embedTexts(input: {
     inputType?: PluginEmbeddingInputType;

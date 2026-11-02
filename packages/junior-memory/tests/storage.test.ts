@@ -6,6 +6,7 @@ import {
   createSlackSource,
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
+  type HeartbeatHookContext,
   type PluginCliActionContext,
   type PluginConversationEventValue,
   type PluginLogger,
@@ -224,9 +225,13 @@ function createTestEmbedder(
 ) {
   const calls: string[][] = [];
   const inputTypes: Array<string | undefined> = [];
+  const model = overrides.model ?? "test-embedding-model";
+  const provider = overrides.provider ?? "test-embedding-provider";
   return {
     calls,
     inputTypes,
+    model,
+    provider,
     async embedTexts(input: { inputType?: string; texts: string[] }) {
       calls.push(input.texts);
       inputTypes.push(input.inputType);
@@ -235,8 +240,8 @@ function createTestEmbedder(
           ? { costUsd: overrides.costUsd }
           : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
-        model: overrides.model ?? "test-embedding-model",
-        provider: overrides.provider ?? "test-embedding-provider",
+        model,
+        provider,
         vectors: input.texts.map((text) => vectors[text] ?? defaultEmbedding),
       };
     },
@@ -3040,7 +3045,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("moves memory vectors to a new embedding model with reembed", async () => {
+  it("moves memory vectors to a new embedding model in the heartbeat", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -3085,16 +3090,28 @@ WHERE id = '${superseded.memory.id}'
         },
         { dimensions: 1024, model: "new-model" },
       );
-      const reembed = await runMemoryCli(
-        fixture,
-        ["reembed", "--batch-size", "1"],
-        newEmbedder,
-      );
-      expect(reembed).toMatchObject({ exitCode: 0, stderr: "" });
-      expect(reembed.stdout).toContain(
-        "Done: embedded 2 of 2 memories with test-embedding-provider new-model.",
-      );
-      expect(newEmbedder.inputTypes).toEqual(["document", "document"]);
+      const heartbeatContext: HeartbeatHookContext = {
+        agent: {
+          dispatch: vi.fn(),
+          get: vi.fn(),
+        },
+        cache: {
+          async getOrLoad(_key, load) {
+            return (await load()).value;
+          },
+        },
+        db: memoryDb(fixture),
+        embedder: newEmbedder,
+        log: noopLogger,
+        nowMs: TEST_NOW_MS,
+        plugin: { name: "memory" },
+        state: memoryState,
+      };
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.inputTypes).toEqual(["document"]);
+      expect(newEmbedder.calls.map((texts) => [...texts].sort())).toEqual([
+        [mangoMemory, reactMemory].sort(),
+      ]);
 
       const rows = await memoryDb(fixture)
         .select()
@@ -3122,8 +3139,23 @@ WHERE id = '${superseded.memory.id}'
       expect(newEmbedder.inputTypes.at(-1)).toBe("query");
 
       const rerun = await runMemoryCli(fixture, ["reembed"], newEmbedder);
+      expect(rerun).toMatchObject({ exitCode: 0, stderr: "" });
       expect(rerun.stdout).toContain(
-        "Done: embedded 0 of 2 memories with test-embedding-provider new-model.",
+        "Done: embedded 0 memories with test-embedding-provider new-model.",
+      );
+
+      await fixture.execute(`
+UPDATE junior_memory_embeddings
+SET content_hash = 'stale'
+WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
+`);
+      const repair = await runMemoryCli(
+        fixture,
+        ["reembed", "--batch-size", "1"],
+        newEmbedder,
+      );
+      expect(repair.stdout).toContain(
+        "Done: embedded 1 memory with test-embedding-provider new-model.",
       );
     } finally {
       await fixture.close();

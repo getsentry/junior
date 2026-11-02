@@ -159,6 +159,8 @@ export async function createMemoryPromptContributions(
   const sourceEmbedder = context.embedder;
   const embedder: MemoryEmbeddingProvider | undefined = sourceEmbedder
     ? {
+        model: sourceEmbedder.model,
+        provider: sourceEmbedder.provider,
         async embedTexts(input) {
           const result = await sourceEmbedder.embedTexts(input);
           embeddingCostUsd = addUsd(embeddingCostUsd, result.costUsd);

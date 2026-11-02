@@ -22,24 +22,22 @@ async function runReembed(
   ctx: PluginCliActionContext,
   options: { batchSize: number },
 ): Promise<number> {
-  const result = await reembedMemories({
+  const embedded = await reembedMemories({
     batchSize: options.batchSize,
     db: ctx.db as MemoryDb,
     embedder: ctx.embedder,
-    onBatch: async (progress) => {
-      await ctx.io.writeOutput(
-        `embedded ${progress.embedded} (checked ${progress.scanned})\n`,
-      );
+    onBatch: async (count) => {
+      await ctx.io.writeOutput(`embedded ${count}\n`);
     },
   });
-  const model = result.model ? ` with ${result.provider} ${result.model}` : "";
+  const noun = embedded === 1 ? "memory" : "memories";
   await ctx.io.writeOutput(
-    `Done: embedded ${result.embedded} of ${result.scanned} memories${model}.\n`,
+    `Done: embedded ${embedded} ${noun} with ${ctx.embedder.provider} ${ctx.embedder.model}.\n`,
   );
   return 0;
 }
 
-/** Wire the one-off backfill for the configured embedding model. */
+/** Wire a manual run of the memory vector backfill for the configured model. */
 export function configureMemoryReembedCommand(
   parent: Command,
   junior: PluginCliHost,

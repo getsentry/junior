@@ -17,6 +17,10 @@ import {
 export const EMBEDDING_METRIC: MemoryEmbeddingMetric = "cosine";
 
 export interface MemoryEmbeddingProvider {
+  /** Model id that embedTexts() uses and reports. */
+  model: string;
+  /** Provider name that embedTexts() reports. */
+  provider: string;
   /** Embed normalized memory text for derived vector retrieval. */
   embedTexts(input: {
     inputType?: "document" | "query";

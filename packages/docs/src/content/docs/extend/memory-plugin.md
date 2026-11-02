@@ -134,11 +134,9 @@ Embedding model used for vector search.
 
 The model must produce 1024- or 1536-dimensional vectors. Junior stores one vector per memory for each model and only compares vectors from the same model, so you can change the model without data loss. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
 
-To change the model after memories exist:
+To change the model after memories exist, set `AI_EMBEDDING_MODEL` to the new model and deploy. Each minute, the memory heartbeat embeds active memories that have no current vector for the configured model, in batches, for up to about 15 seconds. Until it finishes, vector search finds only the memories that it already embedded, and full-text search still finds all of them. The heartbeat also repairs vectors that a failed write left out.
 
-1. Run `AI_EMBEDDING_MODEL=<new-model> pnpm junior memory reembed` against the production database. It embeds each active memory that has no vector for the new model. You can run it again safely.
-2. Set `AI_EMBEDDING_MODEL` to the new model in the deployment environment and deploy.
-3. Run the command again to embed memories that were stored during the change.
+To embed all memories before the deploy, run `AI_EMBEDDING_MODEL=<new-model> pnpm junior memory reembed` against the production database. You can run it again safely.
 
 To roll back, set `AI_EMBEDDING_MODEL` back to the old model. The old vectors stay until you delete them.
 
@@ -211,7 +209,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 - **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
-- **Vector recall stops after a model change**: `AI_EMBEDDING_MODEL` was changed before memories had vectors for the new model. Run `pnpm junior memory reembed` with the new model.
+- **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait for it, or run `pnpm junior memory reembed` with the new model.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
 - **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance or may not be directly relevant to the request.
 

@@ -5,7 +5,11 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
-import { completeObject, embedTexts } from "@/chat/pi/client";
+import {
+  completeObject,
+  embedTexts,
+  GEN_AI_PROVIDER_NAME,
+} from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
 export function createPluginModel(
@@ -51,6 +55,8 @@ export function createPluginEmbedder(
   runtime: { signal?: AbortSignal } = {},
 ): PluginEmbedder {
   return {
+    model: botConfig.embeddingModelId,
+    provider: GEN_AI_PROVIDER_NAME,
     async embedTexts(input) {
       return await embedTexts({
         modelId: botConfig.embeddingModelId,

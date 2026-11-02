@@ -657,14 +657,21 @@ async function storeEmbedding(args: {
   memoryId: string;
   nowMs: number;
 }): Promise<void> {
-  if (!args.embedder && !args.embedding) {
+  const target = args.embedding ?? args.embedder;
+  if (!target) {
     return;
   }
   try {
     const existing = await args.db
       .select({ memoryId: juniorMemoryEmbeddings.memoryId })
       .from(juniorMemoryEmbeddings)
-      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
+      .where(
+        and(
+          eq(juniorMemoryEmbeddings.memoryId, args.memoryId),
+          eq(juniorMemoryEmbeddings.provider, target.provider),
+          eq(juniorMemoryEmbeddings.model, target.model),
+        ),
+      )
       .limit(1);
     if (existing[0]) {
       return;
