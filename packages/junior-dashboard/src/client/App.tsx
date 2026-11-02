@@ -15,7 +15,6 @@ import {
   PageContentSkeleton,
   type PageContentSkeletonVariant,
 } from "./components/PageContentSkeleton";
-import { PageRouteLoading } from "./components/PageRouteLoading";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
