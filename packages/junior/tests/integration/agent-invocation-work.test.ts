@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
@@ -19,6 +21,7 @@ import {
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
+import { getConversationEventStore } from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -31,7 +34,12 @@ import {
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import { createEventSource } from "@sentry/junior-plugin-api";
+import {
+  createEventSource,
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   destination,
@@ -400,7 +408,39 @@ describe("agent invocation conversation work", () => {
     },
   );
 
-  it("resumes a yielded invocation from durable child state", async () => {
+  it("runs an approve plugin tool with no action review and resumes the yielded child", async () => {
+    const markDone = vi.fn((_input: { itemId: string }) => ({}));
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "upkeep",
+            displayName: "Upkeep",
+            description: "Upkeep test tools",
+          },
+          hooks: {
+            tools: () => ({
+              markDone: definePluginTool({
+                // The tool checks in code that its effect is safe, so action
+                // review does not run, also in a child agent.
+                approvalMode: "approve",
+                exposure: "direct",
+                annotations: {
+                  destructiveHint: true,
+                  idempotentHint: true,
+                  openWorldHint: true,
+                  readOnlyHint: false,
+                },
+                description: "Mark one item done.",
+                inputSchema: z.object({ itemId: z.string() }),
+                outputSchema: pluginToolOutputSchema,
+                execute: markDone,
+              }),
+            }),
+          },
+        }),
+      ]),
+    });
     const { conversationStore, fixture } = await prepareParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -420,7 +460,11 @@ describe("agent invocation conversation work", () => {
       );
       const agentRunner = createModelAgentRunner(
         createModelStream([
-          { type: "toolCall", name: "systemTime", arguments: {} },
+          {
+            type: "toolCall",
+            name: "upkeep_markDone",
+            arguments: { itemId: "item-7" },
+          },
           { type: "text", text: "Resumed child result" },
         ]),
       );
@@ -454,10 +498,12 @@ describe("agent invocation conversation work", () => {
         piMessages: expect.arrayContaining([
           expect.objectContaining({
             role: "toolResult",
-            toolName: "systemTime",
+            toolName: "upkeep_markDone",
           }),
         ]),
       });
+      expect(markDone).toHaveBeenCalledOnce();
+      expect(markDone.mock.calls[0]?.[0]).toEqual({ itemId: "item-7" });
 
       await expect(
         processConversationQueueMessage(queue.takeMessage(), {
@@ -480,9 +526,20 @@ describe("agent invocation conversation work", () => {
       expect(
         projection.filter(
           (message) =>
-            message.role === "toolResult" && message.toolName === "systemTime",
+            message.role === "toolResult" &&
+            message.toolName === "upkeep_markDone",
         ),
       ).toHaveLength(1);
+      expect(markDone).toHaveBeenCalledOnce();
+      // Guardian records each decision before the action runs. It made none.
+      const events = await getConversationEventStore().loadHistory(
+        created.childConversationId,
+      );
+      expect(
+        events.filter(
+          (event) => event.data.type === "guardian_action_reviewed",
+        ),
+      ).toEqual([]);
       expect(projection).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
