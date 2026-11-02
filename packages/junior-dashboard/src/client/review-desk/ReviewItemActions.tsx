@@ -12,6 +12,7 @@ import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
 import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
+import { useReportUnsentAnswer } from "./UnsentAnswers";
 
 function personLabel(person: { displayName?: string; email: string }) {
   return person.displayName ?? person.email;
@@ -79,6 +80,8 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
   const { item } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
+  const [unsent, setUnsent] = useState(false);
+  useReportUnsentAnswer(item, unsent);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct) {
@@ -129,6 +132,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             <TranscriptMarkdown text={item.request.question} />
           </div>
           <UserInputForm
+            onUnsentChange={setUnsent}
             onSubmit={(answer) =>
               run({
                 action: "submit",

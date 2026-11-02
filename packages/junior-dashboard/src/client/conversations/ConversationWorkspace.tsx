@@ -21,6 +21,7 @@ import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { useWaitingConversationIds } from "../review-desk/queries";
+import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
 const CONVERSATION_PAGE_SIZE = 20;
@@ -145,21 +146,22 @@ export function ConversationWorkspace() {
         aria-label="Selected conversation"
         className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
       >
-        <ConversationPage
-          key={selectedId}
-          conversationId={selectedId}
-          data={
-            feed.data
-              ? {
-                  conversations: feed.data,
-                }
-              : undefined
-          }
-          onRead={markRead}
-          pendingArchiveUpdate={pendingArchiveUpdates.find(
-            (update) => update.conversationId === selectedId,
-          )}
-        />
+        <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
+          <ConversationPage
+            conversationId={selectedId}
+            data={
+              feed.data
+                ? {
+                    conversations: feed.data,
+                  }
+                : undefined
+            }
+            onRead={markRead}
+            pendingArchiveUpdate={pendingArchiveUpdates.find(
+              (update) => update.conversationId === selectedId,
+            )}
+          />
+        </UnsentAnswersProvider>
       </section>
     </div>
   );

@@ -1,5 +1,12 @@
 import { ArrowRight } from "lucide-react";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   buttonUserInputField,
   isEmptyUserInputAnswer,
@@ -155,10 +162,12 @@ function TextField(props: {
  * answer. Choices with descriptions stack as rows, so each description stays
  * with its choice. Other requests show a form that the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
- * Dismiss, sit after the answer controls.
+ * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
+ * the form has picks or text that the reader has not sent.
  */
 export function UserInputForm(props: {
   onSubmit(answer: UserInputAnswer): Promise<void>;
+  onUnsentChange?(unsent: boolean): void;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
@@ -204,6 +213,13 @@ export function UserInputForm(props: {
   const normalized = normalizeUserInputAnswer(props.request, answer);
   const answeredCount = Object.keys(normalized.values).length;
   const fieldCount = props.request.fields.length;
+  // A button answer sends on click, so only the form can hold unsent input.
+  const unsent =
+    !buttonField && !sending && !isEmptyUserInputAnswer(normalized);
+  const onUnsentChange = props.onUnsentChange;
+  useEffect(() => {
+    onUnsentChange?.(unsent);
+  }, [onUnsentChange, unsent]);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!isEmptyUserInputAnswer(normalized)) {
