@@ -257,12 +257,15 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A stop request can outlive the run that it stopped and wake the child
-  // again. The stopped agent invocation handles that wake.
+  // A child Conversation never runs on a root worker. A wake after its last
+  // agent invocation ended, such as a late stop request, goes to that agent
+  // invocation, which only repeats its idempotent finish. A paused Turn of an
+  // ended agent invocation can have an event Source, and a root worker would
+  // try to resume it.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.status === "stopped" ? latest.invocationId : undefined;
+  return latest?.invocationId;
 }
 
 /**
@@ -396,12 +399,15 @@ async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
 ): Promise<void> {
   const turnId = getAgentInvocationTurnId(terminal.invocationId);
-  if (terminal.status === "stopped") {
-    // A child stopped between slices has a paused Turn record. Nothing may
+  if (terminal.status !== "completed") {
+    // A child that ends between slices has a paused Turn record. Nothing may
     // resume it.
     await abandonTurnRecord({
       conversationId: terminal.childConversationId,
-      errorMessage: "Turn cancelled",
+      errorMessage:
+        terminal.status === "stopped"
+          ? "Turn cancelled"
+          : terminal.errorMessage,
       turnId,
     });
   }
@@ -787,10 +793,9 @@ export function createAgentInvocationWorker(
           }),
       );
     } catch (error) {
-      if (!(error instanceof AgentRunError)) {
-        throw error;
-      }
-      const runError = error.cause;
+      // A save error has no AgentRunError wrapper. On the final attempt it
+      // must also fail the agent invocation, or the child stays open.
+      const runError = error instanceof AgentRunError ? error.cause : error;
       if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
@@ -867,25 +872,5 @@ export function createAgentInvocationWorker(
     }
     await acknowledge();
     return { status: "completed" };
-  };
-}
-
-/** Route invocation-backed work before falling through to existing consumers. */
-export function routeAgentInvocationWork(options: {
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-  invocationWorker: (
-    context: ConversationWorkerContext,
-    invocationId: string,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const invocationId = await resolveAgentInvocationId(context);
-    return invocationId
-      ? await options.invocationWorker(context, invocationId)
-      : await options.fallbackWorker(context);
   };
 }

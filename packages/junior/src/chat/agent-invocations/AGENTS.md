@@ -31,6 +31,10 @@ reads. Terms are in `TERMINOLOGY.md`.
   no boundary is left, fail it now. Do not throw and requeue forever.
 - The parent gets one report for the child's work. A finished invocation is
   `replaced` while the child still has open work.
+- Pick the child worker from the stored `parentConversationId`. Never pick it
+  from the Turn Source: a child watch-event Turn has an event Source. All
+  child work goes to the child worker and never falls through to a root
+  worker.
 
 ## Authority and privacy
 

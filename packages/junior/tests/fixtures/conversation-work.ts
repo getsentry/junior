@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -152,6 +153,19 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       throw new Error("Expected queued conversation work payload");
     }
     return entry.message;
+  }
+
+  /** Deliver the next payload for one Conversation and keep the others queued. */
+  takeMessageFor(conversationId: string): ConversationQueueMessage {
+    const index = this.#queuedMessages.findIndex(
+      (entry) => entry.message.conversationId === conversationId,
+    );
+    if (index === -1) {
+      throw new Error(
+        `Expected queued conversation work for ${conversationId}`,
+      );
+    }
+    return this.#queuedMessages.splice(index, 1)[0]!.message;
   }
 
   /** Honor queue delays when running evals against the real clock. */
@@ -436,6 +450,48 @@ export type ConversationWorkSlackHarness = {
 };
 
 /**
+ * Compose production conversation work once for one test. `process` runs one
+ * queue wake through the production worker, as the Vercel queue callback does.
+ * Pass `services` only to fake a model boundary that the work does not own.
+ */
+export async function createConversationWorkHarness(
+  agentRunner: AgentRunner,
+  options: { services?: JuniorRuntimeServiceOverrides } = {},
+) {
+  const state = getStateAdapter();
+  await state.connect();
+  const queue = createConversationWorkQueueTestAdapter();
+  const adapter = createSlackAdapterFixture();
+  const conversationStore = getConversationStore();
+  const work = createConversationWork({
+    agentRunner,
+    conversationStore,
+    getSlackAdapter: () => adapter,
+    queue,
+    ...(options.services ? { services: options.services } : undefined),
+    state,
+  });
+  return {
+    adapter,
+    process: async (
+      message: ConversationQueueMessage,
+      processOptions: { softYieldAfterMs?: number } = {},
+    ) =>
+      await processConversationQueueMessage(message, {
+        conversationStore,
+        queue,
+        run: work.run,
+        state,
+        ...processOptions,
+      }),
+    queue,
+    run: work.run,
+    runtime: work.runtime,
+    state,
+  };
+}
+
+/**
  * Compose the production Slack ingress → durable queue → worker → agent path.
  * Fake only model generation at the executeAgentRun stream boundary and Slack
  * HTTP at the adapter boundary.
@@ -446,19 +502,11 @@ export async function createConversationWorkSlackHarness(
     modelStream?: StreamFn;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
-  const state = getStateAdapter();
-  await state.connect();
-  const wakes = createConversationWorkQueueTestAdapter();
-  const adapter = createSlackAdapterFixture();
   const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
-  const work = createConversationWork({
-    agentRunner,
-    conversationStore: getConversationStore(),
-    getSlackAdapter: () => adapter,
-    queue: wakes,
+  const work = await createConversationWorkHarness(agentRunner, {
     services: {
       agentRunner,
       subscribedReplyPolicy: {
@@ -470,8 +518,9 @@ export async function createConversationWorkSlackHarness(
         listThreadReplies: async () => [],
       },
     },
-    state,
   });
+  const { adapter, state } = work;
+  const wakes = work.queue;
 
   const services = {
     getSlackAdapter: () => adapter,
@@ -490,23 +539,14 @@ export async function createConversationWorkSlackHarness(
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
-      const process = async () =>
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
+      const process = async () => await work.process(wakes.takeMessage());
       return requestStartedAtMs === undefined
         ? await process()
         : await runWithTurnRequestDeadline(process, requestStartedAtMs);
     },
     drain: async () => {
       for (let i = 0; i < 12 && wakes.hasQueuedMessages(); i += 1) {
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
+        await work.process(wakes.takeMessage());
       }
       if (wakes.hasQueuedMessages()) {
         throw new Error("queue still has work after drain");

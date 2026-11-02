@@ -17,12 +17,8 @@ import {
   resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
 import {
-  createAgentInvocationWorker,
-  resolveAgentInvocationId,
-} from "@/chat/agent-invocations/work";
-import {
+  createChildConversationWorker,
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildInput,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { botConfig } from "@/chat/config";
@@ -143,13 +139,15 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const invocationWorker = createAgentInvocationWorker(options.agentRunner, {
+  const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult: async (invocation) =>
       await enqueueAgentInvocationResult(invocation, {
         queue: options.queue,
         state: options.state,
       }),
     maxAgentDepth: botConfig.maxAgentDepth,
+    queue: options.queue,
+    state: options.state,
   });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
@@ -158,8 +156,8 @@ export function createConversationWork(
       state: options.state,
     }),
   );
-  // A Slack Destination uses the Slack worker. All other work must have been
-  // selected above this function.
+  // A Slack Destination uses the Slack worker. All other root work must have
+  // been selected above this function.
   const destinationWorker = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
@@ -184,15 +182,13 @@ export function createConversationWork(
     if (skipped) {
       return skipped;
     }
-    // Mailbox input for a child Conversation (a result, a message, or a watch
-    // event) starts an agent invocation on that child. The same input for a
-    // root Conversation runs as an Event Turn below.
-    const childInput = await startAgentInvocationsForChildInput(context, {
-      queue: options.queue,
-      state: options.state,
+    // The stored parent decides the kind of Conversation, so child work never
+    // reaches a root worker. A child Turn can have any Source.
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
     });
-    if (childInput) {
-      return childInput;
+    if (conversation?.parentConversationId) {
+      return await childWorker(context);
     }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
@@ -200,10 +196,6 @@ export function createConversationWork(
         context,
         await withAgentInvocationResultActors(mailboxTurn),
       );
-    }
-    const invocationId = await resolveAgentInvocationId(context);
-    if (invocationId) {
-      return await invocationWorker(context, invocationId);
     }
     const dispatchId = await resolveAgentDispatchId(context);
     if (dispatchId) {

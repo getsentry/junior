@@ -8,7 +8,10 @@ import {
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+} from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -21,7 +24,6 @@ import { createModelStream } from "../fixtures/model-stream";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -41,7 +43,7 @@ describe("agent dispatch recovery", () => {
 
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const firstRun = await createAgentDispatchWorkHarness(
+    const firstRun = await createConversationWorkHarness(
       createModelAgentRunner(
         createModelStream([
           {
@@ -74,7 +76,7 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
-    const replay = await createAgentDispatchWorkHarness(neverRunAgentRunner());
+    const replay = await createConversationWorkHarness(neverRunAgentRunner());
     await enqueueAgentDispatch(dispatch, {
       queue: replay.queue,
       state: replay.state,
@@ -142,7 +144,7 @@ describe("agent dispatch recovery", () => {
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     let deliveries = 0;

@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
-import {
-  enqueueAgentInvocationResult,
-  startAgentInvocationsForChildInput,
-} from "@/chat/agent-invocations/result";
+import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
   createAgentInvocation,
@@ -17,18 +14,15 @@ import type {
   CreateAgentInvocationInput,
   TerminalAgentInvocation,
 } from "@/chat/agent-invocations/types";
-import {
-  createAgentInvocationWorker,
-  createAndEnqueueAgentInvocation,
-  routeAgentInvocationWork,
-} from "@/chat/agent-invocations/work";
+import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { stopConversationTurn } from "@/chat/conversations/stop";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
   hasConversationStop,
 } from "@/chat/task-execution/store";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
@@ -39,7 +33,7 @@ import {
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
 import {
-  createConversationWorkQueueTestAdapter,
+  createConversationWorkHarness,
   deferred,
 } from "../fixtures/conversation-work";
 
@@ -74,36 +68,24 @@ async function waitForAbort(run: AgentRun): Promise<never> {
   throw signal.reason;
 }
 
-async function createHarness() {
+/**
+ * Compose production conversation work for a local parent. Each test runs
+ * child work from the queue, as the queue callback does.
+ */
+async function createHarness(agentRunner: AgentRunner) {
   const { conversationStore, fixture } = await prepareParentConversation();
-  const state = getStateAdapter();
-  await state.connect();
-  const queue = createConversationWorkQueueTestAdapter();
-  const mailbox = async (conversationId: string) =>
-    (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
+  const work = await createConversationWorkHarness(agentRunner);
+  const { queue, state } = work;
   return {
     close: async () => await fixture.close(),
-    /** Build the worker context for the child's queued input. */
-    async context(
-      conversationId: string,
-      signal?: AbortSignal,
-    ): Promise<ConversationWorkerContext> {
-      const messages = await mailbox(conversationId);
-      return {
-        attempt: {
-          ack: async () => undefined,
-          conversationId,
-          drain: async () => [],
-          isFinalAttempt: false,
-          messages,
-        },
-        checkIn: async () => true,
-        conversationId,
-        shouldYield: () => false,
-        ...(signal ? { stopSignal: () => signal } : undefined),
-      };
-    },
-    mailbox,
+    conversationStore,
+    mailbox: async (conversationId: string) =>
+      (await getConversationWorkState({ conversationId, state }))?.messages ??
+      [],
+    process: work.process,
+    /** Run the next queued wake of one Conversation. */
+    processNext: async (conversationId: string) =>
+      await work.process(queue.takeMessageFor(conversationId)),
     queue,
     spawn: async (
       overrides: Partial<CreateAgentInvocationInput> & {
@@ -115,11 +97,27 @@ async function createHarness() {
         { conversationStore, queue, state },
       ),
     state,
-    worker: (agentRunner: AgentRunner) =>
-      createAgentInvocationWorker(agentRunner, {
-        enqueueResult: async (invocation) =>
-          await enqueueAgentInvocationResult(invocation, { queue, state }),
-      }),
+  };
+}
+
+/** Run each child until a stop aborts it, and report when it starts. */
+function abortableAgentRunner() {
+  let started = deferred<void>();
+  const runs: AgentRun[] = [];
+  return {
+    agentRunner: {
+      run: async (run: AgentRun) => {
+        runs.push(run);
+        started.resolve(undefined);
+        return await waitForAbort(run);
+      },
+    } satisfies AgentRunner,
+    runs,
+    /** Wait for the next run to start. */
+    started: async () => {
+      await started.promise;
+      started = deferred<void>();
+    },
   };
 }
 
@@ -130,26 +128,16 @@ describe("stopping child agents", () => {
   });
 
   it("stops a running child without a result and lets a message start new work", async () => {
-    const harness = await createHarness();
+    const runner = abortableAgentRunner();
+    const harness = await createHarness(runner.agentRunner);
     try {
       const running = await harness.spawn({
         agentName: "researcher",
         idempotencyKey: "stop-running",
         input: "long task",
       });
-      const started = deferred<void>();
-      // Stands in for the worker's poll of the Conversation stop request.
-      const stopRequest = new AbortController();
-      const processing = harness.worker({
-        run: async (run) => {
-          started.resolve(undefined);
-          return await waitForAbort(run);
-        },
-      })(
-        await harness.context(running.childConversationId, stopRequest.signal),
-        running.invocationId,
-      );
-      await started.promise;
+      const processing = harness.processNext(running.childConversationId);
+      await runner.started();
 
       await expect(stopAgent(running.childConversationId)).resolves.toEqual({
         conversation_id: running.childConversationId,
@@ -166,8 +154,8 @@ describe("stopping child agents", () => {
           state: harness.state,
         }),
       ).resolves.toBe(true);
-      stopRequest.abort(new Error("Conversation work stopped"));
-      await expect(processing).resolves.toEqual({ status: "completed" });
+      // The worker sees the stop request and aborts the run.
+      await expect(processing).resolves.toMatchObject({ status: "completed" });
 
       await expect(
         getAgentInvocation(running.invocationId),
@@ -237,12 +225,8 @@ describe("stopping child agents", () => {
   });
 
   it("never runs a stopped pending child and reports other stops to the parent", async () => {
-    const harness = await createHarness();
-    const neverRun: AgentRunner = {
-      run: async () => {
-        throw new Error("A stopped child must not run");
-      },
-    };
+    const runner = abortableAgentRunner();
+    const harness = await createHarness(runner.agentRunner);
     try {
       const pending = await harness.spawn({
         idempotencyKey: "stop-pending",
@@ -255,32 +239,19 @@ describe("stopping child agents", () => {
         conversation_id: pending.childConversationId,
         stopped: true,
       });
-      await expect(
-        harness.worker(neverRun)(
-          await harness.context(pending.childConversationId),
-          pending.invocationId,
-        ),
-      ).resolves.toEqual({ status: "completed" });
+      // The stopped child takes its wake without a run. A redelivery finds
+      // no work.
+      const wake = harness.queue.takeMessageFor(pending.childConversationId);
+      await expect(harness.process(wake)).resolves.toMatchObject({
+        status: "completed",
+      });
+      await expect(harness.process(wake)).resolves.toMatchObject({
+        status: "no_work",
+      });
+      expect(runner.runs).toEqual([]);
       await expect(
         getAgentInvocation(pending.invocationId),
       ).resolves.toMatchObject({ status: "stopped" });
-
-      // A stop request can outlive its run. The stopped agent invocation
-      // handles the next empty wake.
-      const invocationWorker = vi.fn(async () => ({
-        status: "completed" as const,
-      }));
-      const wake = await harness.context(pending.childConversationId);
-      await routeAgentInvocationWork({
-        fallbackWorker: async () => {
-          throw new Error("Child work reached the fallback worker");
-        },
-        invocationWorker,
-      })({ ...wake, attempt: { ...wake.attempt, messages: [] } });
-      expect(invocationWorker).toHaveBeenCalledWith(
-        expect.anything(),
-        pending.invocationId,
-      );
 
       // A stop that does not come from stopAgent still reaches the parent,
       // and it also stops the child agents of the child.
@@ -293,17 +264,17 @@ describe("stopping child agents", () => {
         idempotencyKey: "stop-external-helper",
         parentConversationId: external.childConversationId,
       });
-      const stopRequest = new AbortController();
-      stopRequest.abort(new Error("Conversation work stopped"));
+      const processing = harness.processNext(external.childConversationId);
+      await runner.started();
       await expect(
-        harness.worker({ run: waitForAbort })(
-          await harness.context(
-            external.childConversationId,
-            stopRequest.signal,
-          ),
-          external.invocationId,
-        ),
-      ).resolves.toEqual({ status: "completed" });
+        stopConversationTurn({
+          conversationId: external.childConversationId,
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        }),
+      ).resolves.toMatchObject({ status: "requested" });
+      await expect(processing).resolves.toMatchObject({ status: "completed" });
       await expect(
         getAgentInvocation(external.invocationId),
       ).resolves.toMatchObject({
@@ -341,7 +312,7 @@ describe("stopping child agents", () => {
   });
 
   it("stops every child agent below the child and drops their results", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness(neverRunAgentRunner());
     try {
       const child = await createAgentInvocation({
         ...invocationInput,
@@ -402,14 +373,12 @@ describe("stopping child agents", () => {
         status: "completed",
       });
       // The child already had the result in its mailbox. It starts no work.
-      const childContext = await harness.context(child.childConversationId);
-      expect(childContext.attempt.messages).toHaveLength(1);
       await expect(
-        startAgentInvocationsForChildInput(childContext, {
-          queue: harness.queue,
-          state: harness.state,
-        }),
-      ).resolves.toEqual({ status: "completed" });
+        harness.mailbox(child.childConversationId),
+      ).resolves.toHaveLength(1);
+      await expect(
+        harness.processNext(child.childConversationId),
+      ).resolves.toMatchObject({ status: "completed" });
       await expect(
         getAgentInvocation(
           getAgentInvocationIdForResult(doneHelper.invocationId),
