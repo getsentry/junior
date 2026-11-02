@@ -214,8 +214,9 @@ describe("user approval for child agents", () => {
     const state = getStateAdapter();
     await state.connect();
     try {
-      // Slack ingress saves the Slack Identity with its verified email, which
-      // links it to the User of that email.
+      // Webhook ingress saves the Slack Identity without an email. The Slack
+      // Turn then saves it again with the users.info profile email, which
+      // links it to the User of that email. This is that Turn write.
       await resolveActorIdentityId(getSqlExecutor(), {
         ...user,
         email: "maya@example.com",
