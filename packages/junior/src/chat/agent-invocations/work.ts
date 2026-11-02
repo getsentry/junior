@@ -422,6 +422,7 @@ async function persistTerminalLifecycle(
 /** Stop an invocation whose worker died, or project its terminal turn result. */
 async function projectTerminalTurn(
   invocation: AgentInvocation,
+  options: { reportNow?: boolean } = {},
 ): Promise<AgentInvocation | undefined> {
   let turn = await getTurnRecord(
     invocation.childConversationId,
@@ -456,6 +457,7 @@ async function projectTerminalTurn(
       ? undefined
       : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
   return await completeAgentInvocation({
+    ...options,
     invocationId: invocation.invocationId,
     ...(failed
       ? {
@@ -483,19 +485,16 @@ async function projectTerminalTurn(
 async function endOtherActiveAgentInvocation(
   invocation: AgentInvocation,
 ): Promise<AgentInvocation | undefined> {
-  const terminal =
-    (await projectTerminalTurn(invocation)) ??
+  return (
+    (await projectTerminalTurn(invocation, { reportNow: true })) ??
     (await completeAgentInvocation({
       invocationId: invocation.invocationId,
       errorMessage:
         "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
+      reportNow: true,
       status: "failed",
-    }));
-  return terminal &&
-    isTerminalAgentInvocation(terminal) &&
-    terminal.parentMailboxStatus === "replaced"
-    ? await reportReplacedAgentInvocation(terminal.invocationId)
-    : terminal;
+    }))
+  );
 }
 
 /** Classify authorization failures that terminally block background work. */

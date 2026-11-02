@@ -764,9 +764,8 @@ export async function listPendingAgentInvocationResults(
 }
 
 /**
- * Send a `replaced` result to the parent now, when no later agent invocation
- * sends the report. A stop ended the open work of the child, or newer work of
- * the child ended this agent invocation and does not continue its task.
+ * Send a `replaced` result to the parent now. A stop ended the open work of
+ * the child, so no later agent invocation sends the report.
  */
 export async function reportReplacedAgentInvocation(
   invocationId: string,
@@ -860,21 +859,22 @@ export async function markAgentInvocationPaused(
  * result. The same write marks the result for the parent mailbox. If the
  * child still has open work, the result is `replaced`: the parent gets one
  * report, from the agent invocation that finishes the child's work.
+ * `reportNow` sends the result even then, when that open work does not
+ * continue this task.
  */
 export async function completeAgentInvocation(
-  args:
+  args: (
     | {
         invocationId: string;
         result: string;
         status: "completed";
-        nowMs?: number;
       }
     | {
         errorMessage: string;
         invocationId: string;
         status: "blocked" | "failed" | "stopped";
-        nowMs?: number;
-      },
+      }
+  ) & { nowMs?: number; reportNow?: boolean },
 ): Promise<AgentInvocation | undefined> {
   const nowMs = args.nowMs ?? Date.now();
   const current = await getAgentInvocation(args.invocationId);
@@ -885,7 +885,9 @@ export async function completeAgentInvocation(
   // each `replaced` result has open work that starts a later invocation. A
   // stop is always reported, because the stop also stops that open work.
   const parentMailboxStatus =
-    args.status !== "stopped" && (await hasOpenChildWork(current))
+    !args.reportNow &&
+    args.status !== "stopped" &&
+    (await hasOpenChildWork(current))
       ? "replaced"
       : "pending";
   await getSqlExecutor()
