@@ -4,11 +4,15 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
+  createAgentInvocation,
+  createAgentInvocationForMessage,
   getActiveAgentInvocationForConversation,
   getAgentInvocation,
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+  markAgentInvocationPaused,
+  markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -20,7 +24,10 @@ import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  createAndEnqueueAgentInvocation,
+  enqueueAgentInvocation,
+} from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -633,6 +640,92 @@ describe("agent invocation conversation work", () => {
             (event) => event.data.type === "guardian_action_reviewed",
           ),
         ).toEqual([]);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  // A child with an active invocation left over from earlier work gets new
+  // mailbox input. Only the new invocation may be active when it runs.
+  it.each([{ state: "running" as const }, { state: "paused" as const }])(
+    "ends a leftover $state child invocation before new mailbox input runs",
+    async ({ state: orphanState }) => {
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const activeAtRun: unknown[] = [];
+      const { process, queue, state } = await createConversationWorkHarness({
+        run: async (run) => {
+          activeAtRun.push(
+            await getActiveAgentInvocationForConversation(run.conversationId),
+          );
+          throw new Error("stop after reading the run");
+        },
+      });
+      try {
+        const orphan = await createAgentInvocation({
+          ...invocationInput,
+          agentName: "researcher",
+          idempotencyKey: "orphan-1",
+          parentToolCallId: "call-spawn",
+        });
+        const { childConversationId } = orphan;
+        await markAgentInvocationRunning(orphan.invocationId);
+        if (orphanState === "paused") {
+          await markAgentInvocationPaused(orphan.invocationId);
+        }
+        const orphanTurnId = getAgentInvocationTurnId(orphan.invocationId);
+        await upsertTurnRecord({
+          actor: invocationInput.actor,
+          conversationId: childConversationId,
+          piMessages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: invocationInput.input }],
+            },
+          ] as PiMessage[],
+          sliceId: 1,
+          source: { kind: "agent_invocation" },
+          state: orphanState,
+          surface: "internal",
+          turnId: orphanTurnId,
+          turnStartMessageIndex: 0,
+          ...(orphanState === "paused"
+            ? { resumeReason: "yield" as const }
+            : undefined),
+        });
+        const { invocation: queued } = await createAgentInvocationForMessage({
+          actor: invocationInput.actor,
+          childConversationId,
+          destination,
+          idempotencyKey: "parent-turn:call-message",
+          input: "Also check the retry path.",
+          parentConversationId,
+          parentToolCallId: "call-message",
+        });
+        await enqueueAgentInvocation(queued, {
+          conversationStore,
+          queue,
+          state,
+        });
+
+        await process(queue.takeMessageFor(childConversationId));
+
+        expect(activeAtRun).toEqual([
+          expect.objectContaining({
+            invocationId: queued.invocationId,
+            status: "running",
+          }),
+        ]);
+        // The queued work reports for both.
+        await expect(
+          getAgentInvocation(orphan.invocationId),
+        ).resolves.toMatchObject({
+          parentMailboxStatus: "replaced",
+          status: "failed",
+        });
+        await expect(
+          getTurnRecord(childConversationId, orphanTurnId),
+        ).resolves.not.toMatchObject({ state: orphanState });
       } finally {
         await fixture.close();
       }

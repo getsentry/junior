@@ -7,11 +7,11 @@ import type {
 } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { findChildAgentConversationId } from "./bindings";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import {
   createAgentInvocationForMessage,
-  findChildAgentConversationId,
   getActiveAgentInvocationForConversation,
 } from "./store";
 import { PARENT_AGENT_TARGET } from "./types";

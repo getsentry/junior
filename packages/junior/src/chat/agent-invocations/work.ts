@@ -76,6 +76,7 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
+  listActiveAgentInvocationsForConversation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -473,6 +474,24 @@ async function projectTerminalTurn(
   });
 }
 
+/**
+ * End an agent invocation that is still running or paused while other work
+ * of its child starts. A saved finished Turn gives its result. Otherwise it
+ * fails.
+ */
+async function endOtherActiveAgentInvocation(
+  invocation: AgentInvocation,
+): Promise<AgentInvocation | undefined> {
+  return (
+    (await projectTerminalTurn(invocation)) ??
+    (await completeAgentInvocation({
+      invocationId: invocation.invocationId,
+      errorMessage: "Agent invocation was not resumed before newer work",
+      status: "failed",
+    }))
+  );
+}
+
 /** Classify authorization failures that terminally block background work. */
 function blockingInvocationError(
   error: unknown,
@@ -689,6 +708,15 @@ export function createAgentInvocationWorker(
         await finish(projected);
         await acknowledge();
         return { status: "completed" };
+      }
+      // A child has at most one running or paused agent invocation. End any
+      // other active one first, so this one reports for both.
+      for (const active of await listActiveAgentInvocationsForConversation(
+        invocation.childConversationId,
+      )) {
+        if (active.invocationId !== invocation.invocationId) {
+          await finish(await endOtherActiveAgentInvocation(active));
+        }
       }
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??

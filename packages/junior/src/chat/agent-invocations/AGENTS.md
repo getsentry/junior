@@ -9,5 +9,7 @@
   id, so retries and repairs never add a second Turn, invocation, or row.
 - Pick the child worker from the stored `parentConversationId`, never from the
   Turn Source (a child watch-event Turn has an event Source).
+- A child has at most one `running` or `paused` agent invocation. Before the
+  worker starts one, it ends every other active one of that child.
 - An Agent type (`agent-types.ts`) is data. Read its fields, never its name.
   Types do not limit tools.
