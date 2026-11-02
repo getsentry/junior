@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -13,10 +14,7 @@ import {
   isOnlyAssignee,
   reviewItemReaderForUser,
 } from "./access";
-import {
-  matchReplyToReviewItems,
-  type ReviewItemReplyDecision,
-} from "./reply-match";
+import { matchReplyToReviewItems } from "./reply-match";
 import {
   closeReviewItem,
   getReviewItem,
@@ -262,7 +260,6 @@ export async function closeReviewItemsAnsweredByReply(args: {
    */
   canAnswer?: () => Promise<boolean>;
   conversationId: string;
-  decide: ReviewItemReplyDecision;
   delivery: ReviewItemDelivery;
   nowMs?: number;
   resolveUser: () => Promise<User | undefined>;
@@ -275,15 +272,22 @@ export async function closeReviewItemsAnsweredByReply(args: {
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
   const answered = items.filter((candidate) => replyAnswers(candidate, user));
-  const open = answered.filter((candidate) => candidate.status === "open");
-  const matched = open.length
-    ? await matchReplyToReviewItems({
-        conversationId: args.conversationId,
-        decide: args.decide,
-        items: open,
-        text: args.text,
-      })
-    : new Set<string>();
+  let matched: Set<string>;
+  try {
+    matched = await matchReplyToReviewItems({
+      conversationId: args.conversationId,
+      items: answered.filter((candidate) => candidate.status === "open"),
+      text: args.text,
+    });
+  } catch (error) {
+    // The reply is already saved, so the agent still gets it.
+    logWarn("review_item.reply_match.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "gen_ai.conversation.id": args.conversationId,
+    });
+    matched = new Set();
+  }
   // A retry of a reply still delivers the items that it closed.
   const toDeliver = answered.filter(
     (candidate) => candidate.status !== "open" || matched.has(candidate.id),

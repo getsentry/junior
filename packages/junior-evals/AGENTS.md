@@ -14,8 +14,9 @@ rules, and the scenario limits. This file adds the harness rules.
   `ToolActionProposal` objects and assert only `allow` / `ask` / `deny`. Set
   `tool` to the agent tool name, so `proposal()` builds it with the production
   builder (`src/guardian-tools.ts`).
-- `evals/router/**`: `describeEval()` with `routerEvals`. Assert the exact
-  model profile and reasoning level.
+- `evals/router/**`: `describeEval()` with `routerEvals` (exact model profile
+  and reasoning level) or `reviewItemReplyEvals` (exact Review items that a
+  reply answers).
 - Slack HTTP payload contracts and isolated logic belong in
   `packages/junior/tests/`, not here. `pnpm lint` enforces this.
 

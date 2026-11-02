@@ -1,40 +1,18 @@
 import { botConfig } from "@/chat/config";
-import { logWarn } from "@/chat/logging";
+import { completeDecision } from "@/chat/pi/client";
 import type { ReviewItem } from "./store";
-
-/** One answer that the decision model can give for an open item. */
-type ReplyMatch = "answers" | "unrelated";
-
-/** The decision question for one open item. */
-interface ReplyMatchQuestion {
-  type: "choice";
-  instructions: string;
-  criteria: Record<ReplyMatch, string>;
-}
-
-/**
- * Answer decision questions with a decision model. Production uses
- * `completeDecision` from `@/chat/pi/client`; tests give a fixed answer.
- */
-export type ReviewItemReplyDecision = (args: {
-  metadata: Record<string, string>;
-  modelId: string;
-  promptName: string;
-  questions: Record<string, ReplyMatchQuestion>;
-  signal: AbortSignal;
-  state: string;
-}) => Promise<{
-  answers: Record<
-    string,
-    { choice: string; probabilities?: Record<string, number> }
-  >;
-}>;
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
 /** A slow decision keeps the items open instead of delaying the close. */
 const MATCH_TIMEOUT_MS = 10_000;
 
-function describeItem(item: ReviewItem): string {
+/** The parts of a Review item that the decision model reads. */
+export type ReplyMatchItem = Pick<
+  ReviewItem,
+  "body" | "id" | "request" | "title"
+>;
+
+function describeItem(item: ReplyMatchItem): string {
   const fields = (item.request?.fields ?? []).map((field) =>
     "options" in field
       ? `- ${field.label}: ${field.options.map((option) => option.label).join(" / ")}`
@@ -48,9 +26,9 @@ function describeItem(item: ReviewItem): string {
   ].join("\n");
 }
 
-function matchQuestion(item: ReviewItem): ReplyMatchQuestion {
+function matchQuestion(item: ReplyMatchItem) {
   return {
-    type: "choice",
+    type: "choice" as const,
     instructions: [
       "A person typed the reply in a thread where an assistant asked one or more questions. Decide if the reply answers the question below.",
       "Judge only this question. The thread can have other open questions, and the reply can answer one of those instead.",
@@ -71,40 +49,29 @@ function matchQuestion(item: ReviewItem): ReplyMatchQuestion {
 /**
  * Return the ids of the open items that a person's reply answers. One
  * decision call judges each item on its own, so a reply can answer one item,
- * several items, or none. The reply is already saved, so a failed decision
- * keeps every item open and the agent still gets the reply.
+ * several items, or none. A failed decision throws.
  */
 export async function matchReplyToReviewItems(args: {
   conversationId: string;
-  decide: ReviewItemReplyDecision;
-  items: ReviewItem[];
+  items: ReplyMatchItem[];
   text: string;
 }): Promise<Set<string>> {
-  if (!args.text.trim()) return new Set();
+  const text = args.text.trim();
+  if (!text || args.items.length === 0) return new Set();
   const keys = args.items.map((_, index) => `item_${index}`);
-  let result: Awaited<ReturnType<ReviewItemReplyDecision>>;
-  try {
-    result = await args.decide({
-      metadata: {
-        conversationId: args.conversationId,
-        modelId: botConfig.decisionModelId,
-      },
+  const result = await completeDecision({
+    metadata: {
+      conversationId: args.conversationId,
       modelId: botConfig.decisionModelId,
-      promptName: "junior.review_item_reply_match",
-      questions: Object.fromEntries(
-        args.items.map((item, index) => [keys[index]!, matchQuestion(item)]),
-      ),
-      signal: AbortSignal.timeout(MATCH_TIMEOUT_MS),
-      state: [">>> REPLY START", args.text.trim(), ">>> REPLY END"].join("\n"),
-    });
-  } catch (error) {
-    logWarn("review_item.reply_match.failed", {
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
-      "gen_ai.conversation.id": args.conversationId,
-    });
-    return new Set();
-  }
+    },
+    modelId: botConfig.decisionModelId,
+    promptName: "junior.review_item_reply_match",
+    questions: Object.fromEntries(
+      args.items.map((item, index) => [keys[index]!, matchQuestion(item)]),
+    ),
+    signal: AbortSignal.timeout(MATCH_TIMEOUT_MS),
+    state: [">>> REPLY START", text, ">>> REPLY END"].join("\n"),
+  });
   const matched = new Set<string>();
   args.items.forEach((item, index) => {
     const answer = result.answers[keys[index]!];

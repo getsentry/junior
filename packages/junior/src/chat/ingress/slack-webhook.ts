@@ -70,9 +70,7 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { completeDecision } from "@/chat/pi/client";
 import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
-import type { ReviewItemReplyDecision } from "@/chat/review-items/reply-match";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -142,8 +140,6 @@ export interface SlackWebhookServices {
   allowedDomains?: readonly string[];
   /** Slack user IDs of bots that may start a Turn without an email domain. */
   allowedBotUserIds?: readonly string[];
-  /** Decision model that matches a reply to open Review items. */
-  decideReviewItemReply?: ReviewItemReplyDecision;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -482,8 +478,7 @@ async function routeParsedMessage(args: {
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
-  decideReviewItemReply: ReviewItemReplyDecision;
-  /** Run work after the caller releases the thread's ingress lock. */
+  /** Run the task after the caller releases the thread's ingress lock. */
   runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
 }): Promise<void> {
@@ -632,7 +627,6 @@ async function routeParsedMessage(args: {
         ? { canAnswer: isAuthorDomainAllowed }
         : undefined),
       conversationId,
-      decide: args.decideReviewItemReply,
       delivery: {
         queue: args.queue,
         show: createSlackReviewItemShow(() => args.adapter),
@@ -788,33 +782,29 @@ async function handleSlackEvent(args: {
           });
           if (!member) return;
           const message = adapter.parseMessage(event);
-          const afterUnlock: Array<() => Promise<void>> = [];
-          let routed: Awaited<ReturnType<typeof withLock<void>>>;
-          try {
-            routed = await withLock(
-              state,
-              `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
-              () =>
-                routeParsedMessage({
-                  adapter,
-                  event,
-                  installation,
-                  message,
-                  conversationStore: args.services.conversationStore,
-                  queue: args.services.queue,
-                  receivedAtMs,
-                  allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-                  allowedDomains: args.services.allowedDomains ?? [],
-                  decideReviewItemReply:
-                    args.services.decideReviewItemReply ?? completeDecision,
-                  runAfterUnlock: (task) => afterUnlock.push(task),
-                  state,
-                }),
-              { keepAlive: true, waitMs: 10_000 },
-            );
-          } finally {
-            for (const task of afterUnlock) await task();
-          }
+          let afterUnlock: (() => Promise<void>) | undefined;
+          // The task runs after the lock is released, also when routing throws.
+          const routed = await withLock(
+            state,
+            `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
+            () =>
+              routeParsedMessage({
+                adapter,
+                event,
+                installation,
+                message,
+                conversationStore: args.services.conversationStore,
+                queue: args.services.queue,
+                receivedAtMs,
+                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+                allowedDomains: args.services.allowedDomains ?? [],
+                runAfterUnlock: (task) => {
+                  afterUnlock = task;
+                },
+                state,
+              }),
+            { keepAlive: true, waitMs: 10_000 },
+          ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
           }
