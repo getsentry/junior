@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
-import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
+import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SegmentedNav } from "../../components/SegmentedNav";
 
 const settingsNavigationItems = [
   { end: true, label: "General", to: "/settings" },
@@ -12,8 +13,9 @@ const settingsNavigationItems = [
 ];
 
 /**
- * Place the Settings navigation and page header above one Settings page.
- * The header and forms share one readable width.
+ * Place one Settings section under the Settings heading and its page links.
+ * Settings opens from the profile menu, not the app navigation, so its page
+ * links sit in the page instead of the header chrome.
  */
 export function SettingsPageLayout(props: {
   children: ReactNode;
@@ -21,16 +23,23 @@ export function SettingsPageLayout(props: {
   title: string;
 }) {
   return (
-    <SecondaryNavigation
-      ariaLabel="Settings navigation"
-      items={settingsNavigationItems}
-    >
-      <PageLayout>
-        <div className="grid w-full max-w-3xl min-w-0 gap-6">
-          <PageHeader description={props.description} title={props.title} />
+    <PageLayout>
+      <div className="grid w-full max-w-3xl min-w-0 gap-8">
+        <PageHeader
+          documentTitle={props.title}
+          navigation={
+            <SegmentedNav
+              ariaLabel="Settings navigation"
+              items={settingsNavigationItems}
+            />
+          }
+          title="Settings"
+        />
+        <section className="grid min-w-0 gap-5">
+          <SectionIntro description={props.description} title={props.title} />
           {props.children}
-        </div>
-      </PageLayout>
-    </SecondaryNavigation>
+        </section>
+      </div>
+    </PageLayout>
   );
 }

@@ -61,7 +61,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout
       description="Manage your profile and preferences."
-      title="Settings"
+      title="General"
     >
       <form onSubmit={submit}>
         <Card className="mb-0" padding="md" variant="raised">

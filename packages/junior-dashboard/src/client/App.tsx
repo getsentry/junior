@@ -94,9 +94,9 @@ const settingsRoutes: {
 }[] = [
   {
     loading: {
-      description: "Manage your Junior profile and preferences.",
+      description: "Manage your profile and preferences.",
       label: "Loading settings",
-      title: "Settings",
+      title: "General",
     },
     path: "/settings",
     render: (data) => <SettingsPage identity={data.me} />,
