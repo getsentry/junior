@@ -52,7 +52,7 @@ describe("Slack Turn Steering", () => {
     ]);
   });
 
-  test("when other people mention Junior during a turn, each person gets a follow-up turn, even with !!", async ({
+  test("when other people mention Junior during a turn, each person gets a follow-up turn unless they override with !!", async ({
     run,
   }) => {
     // Only routing is asserted, so the inputs are manufactured and short.
@@ -72,10 +72,9 @@ describe("Slack Turn Steering", () => {
       },
     );
 
-    // Sam's turn, then Rio, Kai, Rio again, and Alex in arrival order. The
-    // running turn uses Sam's credentials, so !! does not let Alex join it.
+    // Sam's turn, then Rio, Kai, and Rio again in arrival order. Alex's !!
+    // mention joins Sam's running turn.
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
-      "succeeded",
       "succeeded",
       "succeeded",
       "succeeded",
