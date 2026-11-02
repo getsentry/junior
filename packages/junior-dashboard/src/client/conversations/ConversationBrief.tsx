@@ -40,9 +40,7 @@ export function ConversationBrief(props: {
   if (props.variant === "summary") {
     return (
       <div className="grid min-w-0 gap-4">
-        <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-          <DisplayText inline mentions={mentions} text={content.summary} />
-        </p>
+        <DisplayText mentions={mentions} text={content.summary} />
         {content.openDecisions.length > 0 ? (
           <div className="grid gap-2">
             <h4 className="m-0 text-sm font-medium text-dashboard-text">
@@ -71,20 +69,14 @@ export function ConversationBrief(props: {
           })}
         </span>
       </div>
-      <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-        <DisplayText inline mentions={mentions} text={content.summary} />
-      </p>
+      <DisplayText mentions={mentions} text={content.summary} />
       <BriefSection title="Intent & outcome">
         <DetailList>
           <Detail label="Intent">
-            <DisplayText inline mentions={mentions} text={content.intent} />
+            <DisplayText mentions={mentions} text={content.intent} />
           </Detail>
           <Detail label="Outcome">
-            <DisplayText
-              inline
-              mentions={mentions}
-              text={content.outcome.text}
-            />
+            <DisplayText mentions={mentions} text={content.outcome.text} />
           </Detail>
         </DetailList>
       </BriefSection>

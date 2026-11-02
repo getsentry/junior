@@ -34,12 +34,8 @@ export function TranscriptStructuredEventView(props: {
               </div>
             )}
             {detail.description ? (
-              <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
-                <DisplayText
-                  inline
-                  mentions={mentions}
-                  text={detail.description}
-                />
+              <div className="mt-1">
+                <DisplayText mentions={mentions} text={detail.description} />
               </div>
             ) : null}
             {detail.content ? (
