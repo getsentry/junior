@@ -24,7 +24,7 @@ import {
 } from "@/chat/guardian/gate";
 import type { ScriptCallStatus } from "@/chat/guardian/proposal";
 import * as Sentry from "@/chat/sentry";
-import { TurnToolCallLimitExceededError } from "@/chat/services/turn-limit";
+import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type {
   ScriptToolCallOutcome,
@@ -404,11 +404,10 @@ export async function runCodeModeScript(
         fail(call, host.id, "error", `${host.name} is not a script tool.`);
         continue;
       }
+      // Past the limit, the call gets the wrap-up message of a blocked
+      // direct call, so the model replies with its progress.
       if (run.countToolCall() > botConfig.maxToolCallsPerTurn) {
-        const limit = new TurnToolCallLimitExceededError(
-          botConfig.maxToolCallsPerTurn,
-        );
-        fail(call, host.id, "error", limit.message);
+        fail(call, host.id, "error", TURN_LIMIT_WRAP_UP_MESSAGE);
         continue;
       }
       accepted.push({ call, host, tool });

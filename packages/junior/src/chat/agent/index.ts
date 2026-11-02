@@ -116,13 +116,12 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  TURN_LIMIT_DISABLED_REASON,
+  TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
   createTurnLimitGate,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
-import { disabledToolMessage } from "@/chat/tools/definition";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1184,7 +1183,7 @@ async function executeAgentRunInPrivacyContext(
         ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage, toolCall }) => {
+      beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -1223,13 +1222,7 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return {
-            block: true,
-            reason: disabledToolMessage(
-              toolCall.name,
-              TURN_LIMIT_DISABLED_REASON,
-            ),
-          };
+          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =

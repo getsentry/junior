@@ -50,4 +50,25 @@ describe("Code Mode Scripts", () => {
     );
     expect(conversation.replies).toHaveLength(1);
   });
+
+  test("when a script reaches the turn limit, the turn wraps up instead of failing", async ({
+    agent,
+  }) => {
+    // The codemode call and two nested calls use the whole budget.
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 3 } });
+    const conversation = await run(
+      slackMention(
+        "Use the codemode tool once: in one script, call systemTime five times, one after another, and count the calls that return a time. Then tell me that count.",
+      ),
+    );
+
+    expect(scriptResults(conversation)).toContainEqual(
+      expect.stringMatching(
+        /systemTime: failed\n {3}This Turn used its execution budget/,
+      ),
+    );
+    expect(conversation.turns).toHaveLength(1);
+    expect(conversation.turns[0]?.status).toBe("succeeded");
+    expect(conversation.replies).toHaveLength(1);
+  });
 });
