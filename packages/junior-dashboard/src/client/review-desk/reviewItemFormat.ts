@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type {
+  ConversationReportEvent,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
@@ -58,4 +61,29 @@ export function reviewItemIdFromToolCall(call: {
       : call.name;
   if (toolName !== ADD_REVIEW_ITEM_TOOL_NAME) return undefined;
   return addedItemId(call.output);
+}
+
+/** Return the id of the last Review item that a tool call in the events added. */
+export function latestReviewItemId(
+  events: readonly ConversationReportEvent[] | undefined,
+): string | undefined {
+  for (let index = (events?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const data = events![index]!.data;
+    if (data.type !== "tool_calls") continue;
+    for (let call = data.calls.length - 1; call >= 0; call -= 1) {
+      const id = reviewItemIdFromToolCall(data.calls[call]!);
+      if (id) return id;
+    }
+  }
+  return undefined;
+}
+
+/** True when an open item asks a question that the viewer can answer. */
+export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    Boolean(item.request) &&
+    item.canAct
+  );
 }

@@ -579,7 +579,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`shows the start of a new tall review item card (${view.name})`, async ({
+  test(`leads the reader to a new review item question (${view.name})`, async ({
     page,
     dashboard,
   }) => {
@@ -653,6 +653,8 @@ for (const view of [desktop, mobile]) {
         },
       },
     ];
+    // Junior asked and ended its Turn, so it waits for the answer.
+    report.status = "completed";
     await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
@@ -666,8 +668,30 @@ for (const view of [desktop, mobile]) {
     await expect(
       card.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
+    // The question replaces the message box, so the reader does not type the
+    // answer as a new message.
+    const prompt = page.getByRole("region", {
+      name: "Junior is waiting for your answer",
+    });
+    const composer = page.getByLabel("Continue this conversation");
+    await expect(prompt).toBeVisible();
+    await expect(composer).toBeHidden();
     await screenshot(page, "conversation-review-item-card", {
       view: view.name,
     });
+
+    await page.locator("[data-chat-scroll]").hover();
+    await page.mouse.wheel(0, -10_000);
+    await expect(
+      card.getByRole("heading", { name: item.title }),
+    ).not.toBeInViewport();
+    await prompt.getByRole("button", { name: "Show question" }).click();
+    await expect(
+      card.getByRole("heading", { name: item.title }),
+    ).toBeInViewport();
+
+    await prompt.getByRole("button", { name: "Write a message" }).click();
+    await expect(composer).toBeVisible();
+    await expect(prompt).toBeHidden();
   });
 }

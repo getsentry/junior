@@ -89,6 +89,13 @@ import {
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { ConversationReviewBar } from "../review-desk/ConversationReviewBar";
+import { ReviewItemPrompt } from "../review-desk/ReviewItemPrompt";
+import { useReviewItemData } from "../review-desk/queries";
+import {
+  latestReviewItemId,
+  reviewItemWaitsForAnswer,
+} from "../review-desk/reviewItemFormat";
+import { showTranscriptPinStart } from "./transcriptBottomPinning";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -190,6 +197,10 @@ export function ConversationPage(props: {
   // reuse events via structural sharing, so the footer keeps a stable id list.
   const mailboxCommittedIds = useMemo(
     () => committedMessageIds(detail.data?.events),
+    [detail.data?.events],
+  );
+  const reviewItemId = useMemo(
+    () => latestReviewItemId(detail.data?.events),
     [detail.data?.events],
   );
   // Cancel needs the latest mailbox watermark, but not as a render prop. Live
@@ -475,6 +486,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              reviewItemId={reviewItemId}
               // Without live history, an inline send would never leave the
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
@@ -568,6 +580,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** The last Review item that Junior added in the transcript. */
+  reviewItemId?: string;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -586,6 +600,20 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
+  // While Junior waits for an answer, the question replaces the message box,
+  // so the reader does not type the answer as a new message. The reader can
+  // still choose to write one for this item.
+  const reviewItem = useReviewItemData(props.reviewItemId).data;
+  const [writeForReviewItemId, setWriteForReviewItemId] = useState<string>();
+  const question =
+    reviewItem &&
+    !props.stoppable &&
+    reviewItemWaitsForAnswer(reviewItem) &&
+    writeForReviewItemId !== reviewItem.id
+      ? reviewItem
+      : undefined;
+  const questionIdRef = useRef(question?.id);
+  questionIdRef.current = question?.id;
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -687,6 +715,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
+      // The edit puts the message back in the message box, so show it.
+      if (questionIdRef.current) setWriteForReviewItemId(questionIdRef.current);
       const inboundMessageId = message.inboundMessageId;
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
@@ -797,21 +827,29 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         </>
       }
     >
-      <ConversationComposer
-        draftId={props.conversationId}
-        error={
-          queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
-        }
-        ref={composerRef}
-        label="Continue this conversation"
-        submitLabel="Send"
-        onFocus={onComposerFocus}
-        onStop={props.stoppable ? onStop : undefined}
-        stopPending={stopTurn.isPending}
-        onSubmitStart={onSubmitStart}
-        onSubmit={onSubmit}
-      />
+      {question ? (
+        <ReviewItemPrompt
+          item={question}
+          onShowQuestion={() => showTranscriptPinStart(question.id)}
+          onWriteMessage={() => setWriteForReviewItemId(question.id)}
+        />
+      ) : (
+        <ConversationComposer
+          draftId={props.conversationId}
+          error={
+            queueActionError ??
+            (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          }
+          ref={composerRef}
+          label="Continue this conversation"
+          submitLabel="Send"
+          onFocus={onComposerFocus}
+          onStop={props.stoppable ? onStop : undefined}
+          stopPending={stopTurn.isPending}
+          onSubmitStart={onSubmitStart}
+          onSubmit={onSubmit}
+        />
+      )}
     </ComposerDock>
   );
 });
