@@ -102,7 +102,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
-  // Take and Dismiss are quiet, so the answer or Done stays the main action.
+  // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
       {item.canTake ? (
@@ -149,15 +149,6 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {item.kind === "notice" ? (
-            <Button
-              disabled={action.isPending}
-              onClick={() => void run({ action: "complete" }).catch(() => {})}
-              variant="primary"
-            >
-              Done
-            </Button>
-          ) : null}
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>

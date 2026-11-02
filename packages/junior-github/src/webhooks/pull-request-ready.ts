@@ -137,7 +137,7 @@ async function syncOne(
         if (ready) {
           await items.upsert({
             assigneeIdentityIds: [opener.identityId],
-            body: `**${state.title}** is approved, and GitHub says that it can merge. Merge it, or say why not: ${state.url}`,
+            body: `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`,
             dedupeKey,
             subject: { id: state.url, title: name, url: state.url },
             title: `Ready to merge: ${name}`,

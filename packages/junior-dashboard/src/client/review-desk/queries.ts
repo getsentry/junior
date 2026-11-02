@@ -137,7 +137,7 @@ export function useBlockedAutomationsData(enabled: boolean) {
   });
 }
 
-/** Take, submit, complete, or dismiss one Review item. */
+/** Take, submit, or dismiss one Review item. */
 export function useReviewItemAction() {
   const queryClient = useQueryClient();
   return useMutation({

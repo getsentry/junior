@@ -283,10 +283,6 @@ export async function handleSlackReviewItemClick(args: {
     services,
     target,
   };
-  if (click.kind === "done") {
-    await act({ ...common, action: "complete" });
-    return;
-  }
   if (click.kind === "dismiss") {
     await act({ ...common, action: "dismiss" });
     return;
