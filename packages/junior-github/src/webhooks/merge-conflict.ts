@@ -28,6 +28,7 @@ const CLOSED_EVENT_TYPES = new Set([
 /** The pull request fields that tell if it has a conflict. */
 const pullRequestSchema = z.object({
   base: z.object({ ref: z.string().min(1) }),
+  number: z.number().int().positive().optional(),
   head: z.object({ sha: z.string().min(1) }),
   html_url: z.string().min(1).optional(),
   mergeable: z.boolean().nullable().optional(),
@@ -107,11 +108,31 @@ async function hasMatch(
 }
 
 /**
+ * Return the pull request from a `pull_request` webhook payload when it is
+ * `ref` and GitHub already knows its mergeability. Other webhooks, such as
+ * reviews, comments, and check results, do not send mergeability.
+ */
+function deliveredPullRequest(
+  payload: unknown,
+  ref: GitHubPullRequestRef,
+): z.infer<typeof pullRequestSchema> | undefined {
+  const parsed = z
+    .object({ pull_request: pullRequestSchema })
+    .safeParse(payload);
+  const pullRequest = parsed.success ? parsed.data.pull_request : undefined;
+  return pullRequest?.number === ref.number &&
+    typeof pullRequest.mergeable === "boolean"
+    ? pullRequest
+    : undefined;
+}
+
+/**
  * Return `pull_request.merge_conflict` events for the open pull requests that
  * these events are about, when a Watch or event automation wants them and
- * GitHub reports a conflict. Reading a pull request makes GitHub calculate
- * its mergeability. When GitHub does not know it yet, a later event reads it
- * again.
+ * GitHub reports a conflict. A `pull_request` webhook payload gives the
+ * mergeability when GitHub knows it. Otherwise the check reads the pull
+ * request, which also makes GitHub calculate its mergeability. When GitHub
+ * does not know it yet, a later event reads it again.
  */
 export async function loadGitHubMergeConflictEvents(args: {
   deliveryId: string;
@@ -119,6 +140,8 @@ export async function loadGitHubMergeConflictEvents(args: {
   hasMatch: EventPublisher["hasMatch"];
   loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
   log?: Pick<PluginLogger, "error">;
+  /** The body of a `pull_request` webhook. */
+  pullRequestPayload?: unknown;
 }): Promise<EventInput[]> {
   const { hasMatch: hasMatchEvent, loadPullRequest } = args;
   if (!hasMatchEvent || !loadPullRequest) return [];
@@ -126,7 +149,9 @@ export async function loadGitHubMergeConflictEvents(args: {
   for (const ref of pullRequestRefs(args.events)) {
     if (!(await hasMatch(hasMatchEvent, ref))) continue;
     try {
-      const loaded = pullRequestSchema.parse(await loadPullRequest(ref));
+      const loaded =
+        deliveredPullRequest(args.pullRequestPayload, ref) ??
+        pullRequestSchema.parse(await loadPullRequest(ref));
       if (
         loaded.state !== "open" ||
         loaded.mergeable !== false ||

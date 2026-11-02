@@ -21,30 +21,43 @@ function pullRequestResponse(input: {
   };
 }
 
-/** A signed conversation comment on pull request 946. */
-function commentRequest(deliveryId: string): Request {
-  const body = JSON.stringify({
-    action: "created",
-    installation: { id: 456 },
-    repository: { full_name: "getsentry/junior" },
-    issue: {
-      number: 946,
-      pull_request: {
-        url: "https://api.github.com/repos/getsentry/junior/pulls/946",
-      },
-    },
-    comment: { body: "Any update?", id: 4001, user: { login: "jane" } },
-  });
+/** A signed GitHub webhook delivery. */
+function signedRequest(input: {
+  body: unknown;
+  deliveryId: string;
+  eventName: string;
+}): Request {
+  const body = JSON.stringify(input.body);
   return new Request("https://example.test/api/webhooks/github", {
     method: "POST",
     headers: {
-      "x-github-delivery": deliveryId,
-      "x-github-event": "issue_comment",
+      "x-github-delivery": input.deliveryId,
+      "x-github-event": input.eventName,
       "x-hub-signature-256": `sha256=${createHmac("sha256", "test-secret")
         .update(body)
         .digest("hex")}`,
     },
     body,
+  });
+}
+
+/** A signed conversation comment on pull request 946. */
+function commentRequest(deliveryId: string): Request {
+  return signedRequest({
+    deliveryId,
+    eventName: "issue_comment",
+    body: {
+      action: "created",
+      installation: { id: 456 },
+      repository: { full_name: "getsentry/junior" },
+      issue: {
+        number: 946,
+        pull_request: {
+          url: "https://api.github.com/repos/getsentry/junior/pulls/946",
+        },
+      },
+      comment: { body: "Any update?", id: 4001, user: { login: "jane" } },
+    },
   });
 }
 
@@ -55,7 +68,10 @@ describe("merge conflict check on webhook events", () => {
   let pullRequest: ReturnType<typeof pullRequestResponse>;
   let watchesConflicts: boolean;
 
-  async function deliver(deliveryId: string): Promise<void> {
+  async function deliver(
+    deliveryId: string,
+    request: Request = commentRequest(deliveryId),
+  ): Promise<void> {
     const [route] = githubPlugin().hooks!.routes!({
       annotations: {
         forConversation() {
@@ -99,7 +115,7 @@ describe("merge conflict check on webhook events", () => {
         },
       },
     });
-    const response = await route!.handler(commentRequest(deliveryId));
+    const response = await route!.handler(request);
     expect(response.status).toBe(202);
   }
 
@@ -213,5 +229,35 @@ describe("merge conflict check on webhook events", () => {
     await deliver("delivery-1");
     expect(pullRequestReads).toBe(0);
     expect(conflicts()).toEqual([]);
+  });
+
+  it("uses the mergeability in a pull request webhook without reading the pull request", async () => {
+    await deliver(
+      "delivery-1",
+      signedRequest({
+        deliveryId: "delivery-1",
+        eventName: "pull_request",
+        body: {
+          action: "ready_for_review",
+          installation: { id: 456 },
+          repository: { full_name: "getsentry/junior" },
+          pull_request: {
+            ...pullRequestResponse({
+              headSha: "3333333333333333333333333333333333333333",
+              mergeable: false,
+              mergeableState: "dirty",
+            }),
+            draft: false,
+            number: 946,
+            user: { login: "jane" },
+          },
+        },
+      }),
+    );
+    expect(pullRequestReads).toBe(0);
+    expect(conflicts().map((event) => event.eventKey)).toEqual([
+      expect.stringContaining(":3333333333333333333333333333333333333333"),
+      expect.stringContaining(":3333333333333333333333333333333333333333"),
+    ]);
   });
 });

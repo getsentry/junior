@@ -401,6 +401,7 @@ export function createGitHubWebhookRoute(args: {
           hasMatch,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
+          pullRequestPayload: eventName === "pull_request" ? body : undefined,
         })),
       );
       const feedbackTarget = pullRequestFeedbackTarget(events);

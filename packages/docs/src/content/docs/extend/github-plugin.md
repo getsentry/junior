@@ -521,8 +521,10 @@ The pull request closed without merging.
 The pull request has merge conflicts with its base branch. GitHub sends no
 webhook for this. When a webhook delivers another event for an open pull
 request, such as a comment, a review, or a check result, and a watch or event
-automation wants this event, Junior reads the pull request. If GitHub reports a
-conflict, Junior publishes this event. Each head commit publishes once. GitHub
+automation wants this event, Junior checks its mergeability. A `pull_request`
+webhook includes mergeability, so Junior uses it when GitHub knows it. Review,
+comment, and check webhooks do not include it, so Junior reads the pull
+request. If GitHub reports a conflict, Junior publishes this event. Each head commit publishes once. GitHub
 calculates mergeability only when someone reads the pull request, so the first
 read can be unknown, and a later event reads it again. A pull request that gets
 no other events is not checked. Trusted data includes `baseBranch`, `headSha`,
