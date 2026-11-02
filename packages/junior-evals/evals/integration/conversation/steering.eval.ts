@@ -80,6 +80,10 @@ describe("Slack Turn Steering", () => {
       "succeeded",
       "succeeded",
     ]);
+    // Each person whose mention got its own turn joins the conversation.
+    expect(conversation.participantSlackUserIds).toEqual(
+      expect.arrayContaining(["U0SAM", "U0RIO", "U0KAI"]),
+    );
   });
 
   test("when cross-actor steering is configured, another person's mention joins the running turn", async ({

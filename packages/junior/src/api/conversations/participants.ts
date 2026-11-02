@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   identityAvatarUrl,
   readUserAvatarUrls,
@@ -6,6 +6,7 @@ import {
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
+  juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
   juniorUsers,
@@ -96,14 +97,26 @@ export async function readConversationParticipants(
         eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          inArray(juniorConversationEvents.conversationId, [
-            ...conversationIds,
-          ]),
-          // System Messages, such as events, carry the system Identity.
-          ne(juniorIdentities.kind, "system"),
+      .innerJoin(
+        juniorConversations,
+        eq(
+          juniorConversations.conversationId,
+          juniorConversationEvents.conversationId,
         ),
+      )
+      // Message authors show only when they joined by starting a Turn.
+      .innerJoin(
+        juniorConversationParticipants,
+        and(
+          eq(juniorConversationParticipants.userId, juniorIdentities.userId),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+          ),
+        ),
+      )
+      .where(
+        inArray(juniorConversationEvents.conversationId, [...conversationIds]),
       )
       .orderBy(
         asc(juniorConversationEvents.conversationId),

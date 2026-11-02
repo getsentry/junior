@@ -938,21 +938,37 @@ describe("conversation list API", () => {
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 
-      const participantRows = await fixture.sql
-        .db()
-        .select({
-          userId: juniorConversationParticipants.userId,
-        })
-        .from(juniorConversationParticipants)
-        .where(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            "slack:C1:dashboard-author",
-          ),
-        );
-      expect(participantRows.map((row) => row.userId)).toContain(
-        participantUserId,
-      );
+      const readParticipantUserIds = async () =>
+        (
+          await fixture.sql
+            .db()
+            .select({
+              userId: juniorConversationParticipants.userId,
+            })
+            .from(juniorConversationParticipants)
+            .where(
+              eq(
+                juniorConversationParticipants.rootConversationId,
+                "slack:C1:dashboard-author",
+              ),
+            )
+        ).map((row) => row.userId);
+      // A message that does not start a Turn is context, not membership.
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
+
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_600,
+          data: {
+            inputMessageIds: ["dashboard-msg-1"],
+            surface: "api",
+            turnId: "turn-dashboard-msg-1",
+            type: "turn_started",
+          },
+          idempotencyKey: "turn:turn-dashboard-msg-1:started",
+        },
+      ]);
+      expect(await readParticipantUserIds()).toContain(participantUserId);
 
       const feed = await readConversationFeedFromSql({
         viewer: {
