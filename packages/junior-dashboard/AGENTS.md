@@ -1,69 +1,31 @@
 # Dashboard
 
-## Intent
-
-- The dashboard is an authenticated reporting surface over Junior
-  conversation read models. It does not take part in agent execution.
-- It never changes conversation state, except that signed-in users can change
-  their own profile fields.
-- Junior conversation storage is the reporting authority. The package stays
-  stateless apart from auth sessions and profile settings.
-- `src/api/` schemas own the client/server boundary.
-
-## Auth and privacy
-
-- Core owns the Better Auth session. Routes fail closed when identity or
-  required configuration is missing.
+- The dashboard changes no conversation state. Signed-in users can change
+  only their own profile fields.
+- Store no state except auth sessions and profile settings.
 - Check access to private conversations on the server. Hidden client routes
-  are not authorization.
-- The server turns runtime events into privacy-safe reporting events. Follow
-  `policies/data-redaction.md`.
-- Mock reporting data is for local UI work only. It must never be a
-  production fallback.
-- The installable shell is static. Do not add a service worker or an offline
-  cache.
-
-## Conversation detail
-
-- Detail and mailbox share one TanStack Query snapshot. Read the mailbox
-  first, then history, and publish both in one render. Workers commit input
-  before they acknowledge it, so input never disappears between queue and
-  transcript.
+  are not authorization. Check access before a detail `304`.
+- The server turns runtime events into privacy-safe reporting events before
+  they reach the client.
+- Routes fail closed when identity or required configuration is missing.
+- Mock reporting data is for local UI work only, never a production fallback.
+- No service worker or offline cache.
+- Read the mailbox before history and publish both in one render. Workers
+  commit input before they acknowledge it, so input never disappears.
 - A local send stays visible until a server snapshot has its Message id. The
   browser and web ingress share one Message id function.
 - Only Turn lifecycle events turn on the thinking indicator. Queued work is
   not thinking.
 - Paginated event reads never write into the cache of another resource.
-- Detail ETags save transfer and parsing only. Check access before a `304`.
-
-## Display text
-
-- Display text keeps Markdown and Slack tokens such as `<@U123>`,
-  `<url|label>`, and `:smile:`. The API returns `mentions` beside the owning
-  object. Do not resolve names in the dashboard, and do not rewrite tokens
-  into links on the server.
-- Render display text only with `client/display-text/DisplayText`. Use
-  `inline` for one-line previews, headings, and text in buttons. Use
-  `displayPlainText` where markup cannot go. Do not show it as a raw string
-  or add a Markdown, mention, link, or emoji helper for one surface.
-- `oxlint/display-text.ts` and `no-restricted-imports` enforce this. Do not
-  name a local field `text`, `body`, or `summary` when it is not display text.
-
-## Browser assets
-
-- Load Shiki grammars and the theme on demand from `client/code-languages.ts`.
-  Do not import the full Shiki bundle.
-- Cache content-hashed chunks privately. Keep the entry uncached.
-- If highlighting cannot load, show plain text without a reload.
-
-## Tests
-
-- One Playwright spec per user-facing page in `e2e/`. Import `test` from
+- Display text keeps Markdown and Slack tokens. Do not resolve names in the
+  dashboard (the API returns `mentions`) or rewrite tokens on the server.
+- `oxlint/display-text.ts` matches on field names. Do not name a field `text`,
+  `body`, or `summary` when it is not display text.
+- Import Shiki grammars on demand through `client/code-languages.ts`, never
+  the full bundle.
+- Do not call cache input shares a cache hit or failure rate.
+- Each user-facing page has one `e2e/` spec. Specs import `test` from
   `./test` and call `screenshot(page, name)` after load.
-- Browser tests cover navigation, interaction, accessibility state, request
-  contracts, and failure recovery. Use visual QA for layout and style. Do not
-  assert pixel geometry, computed style, or fixed delays.
 - Mocks and browser tests use one fixed time, `NOW`.
 
-UI rules: `src/client/components/AGENTS.md` and
-`policies/frontend-components.md`.
+UI rules: `src/client/components/AGENTS.md`.
