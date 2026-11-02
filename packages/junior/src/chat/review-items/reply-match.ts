@@ -21,6 +21,7 @@ export type ReviewItemReplyDecision = (args: {
   modelId: string;
   promptName: string;
   questions: Record<string, ReplyMatchQuestion>;
+  signal: AbortSignal;
   state: string;
 }) => Promise<{
   answers: Record<
@@ -30,6 +31,8 @@ export type ReviewItemReplyDecision = (args: {
 }>;
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
+/** A slow decision keeps the items open instead of delaying the close. */
+const MATCH_TIMEOUT_MS = 10_000;
 
 function describeItem(item: ReviewItem): string {
   const fields = (item.request?.fields ?? []).map((field) =>
@@ -91,6 +94,7 @@ export async function matchReplyToReviewItems(args: {
       questions: Object.fromEntries(
         args.items.map((item, index) => [keys[index]!, matchQuestion(item)]),
       ),
+      signal: AbortSignal.timeout(MATCH_TIMEOUT_MS),
       state: [">>> REPLY START", args.text.trim(), ">>> REPLY END"].join("\n"),
     });
   } catch (error) {
