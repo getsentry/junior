@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ActivityChartTooltip,
@@ -21,10 +21,7 @@ import {
   formatCacheShare,
   summarizeCacheInput,
 } from "../src/client/components/charts/cache-input";
-import {
-  formatActivityChartAverage,
-  setDashboardTimeZone,
-} from "../src/client/format";
+import { formatActivityChartAverage } from "../src/client/format";
 
 describe("ChartAxisHtmlLabel", () => {
   it("renders html axis labels for non-svg charts", () => {
@@ -59,26 +56,30 @@ describe("ChartHeader", () => {
 });
 
 describe("formatActivityDate", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("formats day buckets as short UTC dates", () => {
     expect(formatActivityDate("2026-05-01")).toContain("May");
   });
 
-  it("formats hour buckets in the dashboard display timezone", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+  it("formats hour buckets in the viewer's browser timezone", () => {
+    vi.stubEnv("TZ", "America/Los_Angeles");
     // 15:00 UTC is 8:00 AM PDT.
     expect(formatActivityDate("2026-05-01T15")).toMatch(/8/);
     expect(formatActivityDate("2026-05-01T15")).not.toMatch(/\b3\b|\b15\b/);
   });
 
   it("includes the local date on hour-bucket tooltips", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/May/);
     expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/8/);
     expect(formatActivityTooltipDate("2026-05-01")).toContain("May");
   });
 
   it("formats day/hour category labels and leaves other labels alone", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     expect(formatActivityCategoryLabel("2026-05-01")).toContain("May");
     expect(formatActivityCategoryLabel("2026-05-01T15")).toMatch(/8/);
     expect(formatActivityCategoryLabel("30d")).toBe("30d");
@@ -87,7 +88,7 @@ describe("formatActivityDate", () => {
   });
 
   it("owns tooltip date formatting for activity buckets", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     const html = renderToStaticMarkup(
       <ActivityChartTooltip
         content="details"

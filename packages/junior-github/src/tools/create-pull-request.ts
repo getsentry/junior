@@ -353,11 +353,13 @@ async function recordOpener(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   state: { createdAtMs: number; number: number },
-  identityId: string | undefined,
+  requester: { conversationId: string; identityId: string | undefined },
 ): Promise<void> {
+  const { conversationId, identityId } = requester;
   if (!identityId) return;
   const repo = parseRepo(input.repo);
   await recordGitHubPullRequestOpener(ctx.db as GitHubDb, {
+    conversationId,
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
@@ -531,12 +533,10 @@ export function createGitHubPullRequestTool(
             const completedInput = state.input ?? parsedInput;
             // The call can stop after it saves this state but before it saves
             // the opener, so a retry saves the opener again.
-            await recordOpener(
-              ctx,
-              completedInput,
-              state,
-              (await resolveGitHubRequester(ctx))?.identity?.id,
-            );
+            await recordOpener(ctx, completedInput, state, {
+              conversationId,
+              identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
+            });
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -610,7 +610,10 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
-          await recordOpener(ctx, parsedInput, completedState, identityId);
+          await recordOpener(ctx, parsedInput, completedState, {
+            conversationId,
+            identityId,
+          });
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
           return await gitHubPullRequestStructuredResult(
             ctx,

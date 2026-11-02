@@ -1,9 +1,13 @@
 import { Hono } from "hono";
-import { jsonResponse } from "../http";
+import { readAvatarImage } from "@/chat/identities/avatar";
+import { getDb } from "@/chat/db";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  avatarParamsSchema,
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
@@ -21,6 +25,31 @@ import { createPersonalSpendReader } from "./spend";
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
   const readPersonalSpend = createPersonalSpendReader();
+
+  // Serve profile photos from Junior, so browsers never load them from
+  // Slack or Google. The browser keeps each photo for a day.
+  app.get(
+    "/avatars/:identityId",
+    requireViewer,
+    validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { identityId } = context.req.valid("param");
+      const image = await readAvatarImage(
+        getDb(),
+        getStateAdapter(),
+        identityId,
+      );
+      if (!image) throwApiError(404, "Avatar not found.");
+      return new Response(Buffer.from(image.data, "base64"), {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-security-policy": "default-src 'none'; sandbox",
+          "content-type": image.contentType,
+          "x-content-type-options": "nosniff",
+        },
+      });
+    },
+  );
 
   app.get("/me/spend", requireViewer, async (context) => {
     const viewer = context.get("viewer");

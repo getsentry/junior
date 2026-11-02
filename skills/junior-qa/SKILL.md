@@ -7,8 +7,8 @@ Use the local Junior CLI to exercise behavior the test suite does not prove well
 The goal is to run the same app-facing path a developer or operator would use
 from `apps/example`, inspect the result, and report concrete evidence.
 
-Start by reading `packages/junior/src/chat/local/README.md`. Read the owning
-package or module README when the changed behavior belongs elsewhere.
+Start by reading `packages/junior/src/chat/local/AGENTS.md`. Read the owning
+package or module `AGENTS.md` when the changed behavior belongs elsewhere.
 
 ## Running the Local CLI
 
@@ -29,7 +29,7 @@ For host or plugin CLI behavior, call the command directly through the same
 wrapper:
 
 ```sh
-pnpm cli -- memory search --scope personal --scope-key local:local-cli --limit 5
+pnpm cli -- memory search --scope private --scope-key local:local-cli --limit 5
 ```
 
 Use example app discovery probes when the change touches skill or plugin

@@ -272,7 +272,7 @@ function main() {
     ...check.lines.map((line) => `  ${line}`),
   ]);
   errors.push(
-    "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See packages/junior-dashboard/src/client/components/README.md.",
+    "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See packages/junior-dashboard/src/client/components/AGENTS.md.",
   );
   console.error(["Dashboard style check failed:", ...errors].join("\n"));
   process.exitCode = 1;

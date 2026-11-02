@@ -53,7 +53,7 @@ const automationSummaryBaseSchema = z.object({
   credentialMode: z.enum(["creator", "system"]),
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
-  createdByAvatarUrl: z.string().url().optional(),
+  createdByAvatarUrl: z.string().optional(),
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),

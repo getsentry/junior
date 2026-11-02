@@ -769,7 +769,7 @@ describe("Slack conversation work execution", () => {
     const runNextPausedTurn = vi.fn(
       async (
         _conversationId: string,
-        options: { shouldYield: () => boolean },
+        options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
       ) => {
         expect(options.shouldYield()).toBe(false);
         calls.push("resume");
@@ -823,6 +823,8 @@ describe("Slack conversation work execution", () => {
     expect(runNextPausedTurn).toHaveBeenCalledOnce();
     expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
       shouldYield: expect.any(Function),
+      // The resumed Run must observe a stop like a first Run does.
+      stopSignal: expect.any(AbortSignal),
     });
     expect(calls).toEqual([
       expect.stringContaining("follow-up"),

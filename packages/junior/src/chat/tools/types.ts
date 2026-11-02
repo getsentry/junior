@@ -24,13 +24,11 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type {
-  ModelProfile,
-  ModelProfileConfig,
-} from "@/chat/model-profile";
+import type { ModelProfile, ModelProfileConfig } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
@@ -102,6 +100,8 @@ interface BaseToolRuntimeContext {
     /** True when a successful run sends a message to stored Destinations. */
     sendsMessage: boolean;
   };
+  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  conversationWorkQueue?: ConversationWorkQueue;
   handoff?: HandoffControl;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;

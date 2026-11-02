@@ -85,6 +85,10 @@ export function createGitHubResolvePullRequestReviewThreadTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
+    // No action review: the tool checks in code that the bot authored the pull
+    // request, and it changes only the thread's resolved state, which is
+    // reversible.
+    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

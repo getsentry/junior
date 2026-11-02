@@ -8,6 +8,7 @@ import type { AutomationEditFields } from "./edit-schema";
 import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
+import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
   deleteEventAutomation,
@@ -393,15 +394,31 @@ export async function deleteViewerTask(user: User, id: string): Promise<void> {
 
 /**
  * Delete one Automation that the caller may manage. The row stays for
- * history. Returns undefined when it was already deleted.
+ * history. No run can act on its open Review items after the delete, so the
+ * same transaction dismisses them. Returns undefined when it was already
+ * deleted.
  */
 export async function deleteAutomation(
   current: TaskCandidate,
 ): Promise<TaskCandidate | undefined> {
-  if (current.kind === "event") {
-    const task = await deleteEventAutomation(getDb(), current.task.id);
-    return task ? { ...current, task } : undefined;
-  }
-  const task = await deleteScheduledAutomation(getDb(), current.task.id);
-  return task ? { ...current, task } : undefined;
+  return await getDb().transaction(async (tx) => {
+    // The delete takes the lock of the Automation. It holds until this
+    // transaction ends, so the dismiss runs under it.
+    const dismissItems = () =>
+      dismissOpenReviewItems(tx, {
+        automationId: current.task.id,
+        nowMs: Date.now(),
+        reason: "Automation deleted",
+      });
+    if (current.kind === "event") {
+      const task = await deleteEventAutomation(tx, current.task.id);
+      if (!task) return undefined;
+      await dismissItems();
+      return { ...current, task };
+    }
+    const task = await deleteScheduledAutomation(tx, current.task.id);
+    if (!task) return undefined;
+    await dismissItems();
+    return { ...current, task };
+  });
 }

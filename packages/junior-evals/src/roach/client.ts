@@ -1,5 +1,5 @@
 /**
- * The client of the Roach service. See `README.md` in this directory.
+ * The client of the Roach service. See `AGENTS.md` in this directory.
  *
  * `startRemoteRun()` starts a run on a Roach service. It
  * returns `env`, the variables that send the traffic of a process through

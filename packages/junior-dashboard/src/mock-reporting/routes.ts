@@ -303,7 +303,7 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(reviewItemListSchema, { items: [] }),
   );
   app.get("/review-items/count", () =>
-    jsonResponse(reviewItemCountSchema, { mine: 0 }),
+    jsonResponse(reviewItemCountSchema, { needsViewer: 0 }),
   );
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, { conversationIds: [] }),

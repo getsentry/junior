@@ -28,7 +28,6 @@ import {
   parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
-  setDashboardTimeZone,
   summarizeMessages,
   summarizeModelUsage,
   summarizeToolCalls,
@@ -39,7 +38,7 @@ import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
   vi.useRealTimers();
-  setDashboardTimeZone("America/Los_Angeles");
+  vi.unstubAllEnvs();
 });
 
 function event(
@@ -166,7 +165,7 @@ describe("dashboard conversation formatting", () => {
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     const details = formatTranscriptTimestampDetails(
       Date.parse("2026-08-10T16:00:00.000Z"),
     );
@@ -174,15 +173,15 @@ describe("dashboard conversation formatting", () => {
     expect(details.utc).toContain("4:00:00 PM");
   });
 
-  it("formats absolute timestamps in the configured dashboard timezone", () => {
+  it("formats absolute timestamps in the viewer's browser timezone", () => {
     const value = "2026-08-10T16:00:00.000Z";
     const options: Intl.DateTimeFormatOptions = {
       dateStyle: "medium",
       timeStyle: "short",
     };
-    setDashboardTimeZone("UTC");
+    vi.stubEnv("TZ", "UTC");
     expect(formatTime(value, options)).toContain("4:00 PM");
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     expect(formatTime(value, options)).toContain("9:00 AM");
   });
 

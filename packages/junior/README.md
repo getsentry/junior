@@ -34,15 +34,8 @@ const app = await createApp({
 export default app;
 ```
 
-Named repository Workspace recipes are stored in the Junior SQL database.
-
-Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
-
-Use `defineJuniorPlugins([...])` in a runtime-safe plugin module, then point
-`juniorNitro({ plugins: "./plugins" })` at that module and pass the same set to
-`createApp({ plugins })`. Manifest-only packages use package-name strings;
-factories such as `githubPlugin()` register their manifest and in-process hooks
-together.
+Run `junior init my-bot` to scaffold a complete project, including
+`vercel.json` for Vercel deployment.
 
 ## Full docs
 

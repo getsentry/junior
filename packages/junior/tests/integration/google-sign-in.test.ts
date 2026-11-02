@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
-import { closeDb } from "@/chat/db";
+import { closeDb, getDb } from "@/chat/db";
 import { createSignInAuth } from "@/chat/sign-in/auth";
+import { juniorIdentities } from "@/db/schema";
 import { mswServer } from "../msw/server";
 
 const BASE_URL = "https://junior.example.com";
@@ -29,7 +31,9 @@ function useGoogleIdToken(idToken: string) {
 }
 
 // Unsigned Google ID token with these claims.
-function googleIdToken(claims: { email: string; hd?: string }): string {
+type GoogleTestClaims = { email: string; hd?: string; picture?: string };
+
+function googleIdToken(claims: GoogleTestClaims): string {
   const payload = Buffer.from(
     JSON.stringify({
       aud: "google-client",
@@ -42,7 +46,7 @@ function googleIdToken(claims: { email: string; hd?: string }): string {
   return `e30.${payload}.sig`;
 }
 
-function useGoogleAccount(claims: { email: string; hd?: string }) {
+function useGoogleAccount(claims: GoogleTestClaims) {
   useGoogleIdToken(googleIdToken(claims));
 }
 
@@ -111,12 +115,37 @@ describe("Google sign-in", () => {
     const malformed = await signIn(auth);
     expect(malformed.location).toContain("error=unable_to_get_user_info");
 
-    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    const picture = "https://lh3.googleusercontent.com/a/person=s96-c";
+    useGoogleAccount({
+      email: "person@example.org",
+      hd: "example.org",
+      picture,
+    });
     const accepted = await signIn(auth);
     expect(accepted.location).toBe(`${BASE_URL}/`);
     expect(await auth.getSession(accepted.session)).toMatchObject({
       user: { email: "person@example.org", emailVerified: true },
     });
+    // Each sign-in saves the current Google photo on the Google identity.
+    const savedPhoto = async () =>
+      await getDb()
+        .select({ avatarUrl: juniorIdentities.avatarUrl })
+        .from(juniorIdentities)
+        .where(
+          eq(juniorIdentities.providerSubjectId, "google-person@example.org"),
+        );
+    expect(await savedPhoto()).toEqual([{ avatarUrl: picture }]);
+    const newPicture = "https://lh3.googleusercontent.com/a/new=s96-c";
+    useGoogleAccount({
+      email: "person@example.org",
+      hd: "example.org",
+      picture: newPicture,
+    });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: newPicture }]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: null }]);
 
     // Direct ID-token sign-in is off, so a client cannot submit its own
     // token, even with claims on an allowed domain.

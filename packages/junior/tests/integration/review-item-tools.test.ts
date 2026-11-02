@@ -13,6 +13,7 @@ import {
   createSearchReviewItemsTool,
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -28,11 +29,13 @@ async function execute(tool: any, input: unknown): Promise<any> {
 
 const queue = createConversationWorkQueueTestAdapter();
 
+const services = createSlackReviewItemToolServices(() => queue);
+
 function tools(context: Context) {
   return {
-    add: createAddReviewItemTool(context),
-    search: createSearchReviewItemsTool(context),
-    update: createUpdateReviewItemTool(context, () => queue),
+    add: createAddReviewItemTool(context, services),
+    search: createSearchReviewItemsTool(context, services),
+    update: createUpdateReviewItemTool(context, services),
   };
 }
 

@@ -18,6 +18,7 @@ import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
@@ -47,6 +48,27 @@ function initials(name: string | null | undefined, email: string): string {
       .toUpperCase();
   }
   return email.slice(0, 1).toUpperCase();
+}
+
+/** Show the viewer's photo, with initials while it loads or when there is none. */
+function ProfileAvatar({
+  className,
+  user,
+}: {
+  className?: string;
+  user: Identity["user"];
+}) {
+  return (
+    <Avatar
+      aria-hidden="true"
+      className={cn("border-0 shadow-black/40", className)}
+    >
+      <AvatarImage alt="User avatar" src={user.avatarUrl} />
+      <AvatarFallback className="font-bold tracking-wide">
+        {initials(user.name, user.email!)}
+      </AvatarFallback>
+    </Avatar>
+  );
 }
 
 const SPEND_COUNT_UP_MS = 700;
@@ -129,19 +151,10 @@ export function ProfileMenu({
     (page) => page.navigation === "profile",
   );
 
-  const avatar = (
-    <span
-      aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-    >
-      {initials(identity.user.name, email)}
-    </span>
-  );
-
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        {avatar}
+        <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
             {name}
@@ -310,12 +323,7 @@ export function ProfileMenu({
         aria-label={`Signed in as ${name}`}
         className="flex min-w-0 items-center gap-2.5 px-1"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        <ProfileAvatar user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
             {name}
@@ -376,12 +384,7 @@ export function ProfileMenu({
             </span>
           </span>
         </span>
-        <span
-          aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        <ProfileAvatar user={identity.user} />
         <ChevronDown
           aria-hidden="true"
           className={cn(

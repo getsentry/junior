@@ -1,7 +1,7 @@
 id: no-vercel-queue-sdk-outside-vercel-module
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/queue/vercel.ts may import @vercel/queue. Other code uses the provider-neutral queue functions and types. See packages/junior/src/chat/queue/README.md.
+message: Only packages/junior/src/chat/queue/vercel.ts may import @vercel/queue. Other code uses the provider-neutral queue functions and types. See packages/junior/src/chat/queue/AGENTS.md.
 files:
   - packages/junior/src/**/*.ts
   - packages/junior/src/**/*.tsx

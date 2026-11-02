@@ -4,6 +4,7 @@ import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
   type ConversationWorkQueue,
@@ -300,11 +301,6 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
-function dashboardTimeZone(): string | undefined {
-  return process.env.JUNIOR_TIMEZONE || undefined;
-}
-
 function pluginRoutePrefix(pluginName: string): string {
   return `/api/plugins/${pluginName}`;
 }
@@ -565,15 +561,21 @@ export function createDashboardApp(
       authPath,
       basePath,
       sentryConversationLinks: hasSentryConversationLinks(),
-      timeZone: dashboardTimeZone(),
       version: JUNIOR_VERSION,
     });
   });
-  app.get("/api/me", (c) => {
+  // Mock reporting has no SQL identities, so it has no profile photos.
+  const viewerAvatarUrl = async (userId: string | undefined) =>
+    userId && !options.mockConversations
+      ? await readViewerAvatarUrl(userId)
+      : undefined;
+  app.get("/api/me", async (c) => {
     const session = c.get("authSession");
     const viewer = c.get("viewer");
+    const avatarUrl = await viewerAvatarUrl(viewer?.id);
     return jsonResponse(dashboardIdentitySchema, {
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: viewer?.isAdmin === true,
@@ -632,8 +634,10 @@ export function createDashboardApp(
         { status: 404 },
       );
     }
+    const avatarUrl = await viewerAvatarUrl(updated.id);
     return jsonResponse(dashboardIdentitySchema, {
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: updated.isAdmin === true,

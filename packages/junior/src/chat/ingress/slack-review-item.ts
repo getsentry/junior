@@ -14,9 +14,10 @@ import {
   type ReviewItemAction,
 } from "@/chat/review-items/actions";
 import {
-  renderReviewItemMessage,
-  sendReviewItemMessages,
-} from "@/chat/review-items/messages";
+  deliverReviewItemChange,
+  type ReviewItemDelivery,
+} from "@/chat/review-items/changes";
+import { renderReviewItemMessage } from "@/chat/review-items/messages";
 import type { ReviewItem } from "@/chat/review-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import {
@@ -29,6 +30,7 @@ import {
   type SlackReviewItemClick,
 } from "@/chat/slack/review-item-card";
 import {
+  createSlackReviewItemShow,
   readSlackReviewItemCardConversationId,
   syncReviewItemSlackCards,
 } from "@/chat/slack/review-item-card-sync";
@@ -151,6 +153,10 @@ async function act(args: {
       ...target,
       itemId: args.itemId,
     })) ?? `slack:${target.channelId}:${target.threadTs}`;
+  const delivery: ReviewItemDelivery = {
+    queue: services.queue,
+    show: createSlackReviewItemShow(() => services.adapter),
+  };
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
@@ -160,9 +166,8 @@ async function act(args: {
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn.
       firstCloseOnly: true,
-      getSlackAdapter: () => services.adapter,
+      delivery,
       id: current.id,
-      queue: services.queue,
       user: actor.user,
       ...(args.answer ? { answer: args.answer(current) } : undefined),
     });
@@ -194,11 +199,11 @@ async function act(args: {
     logException(error, "review_item.slack_input.persist.failed", {
       "app.review_item.id": item.id,
     });
-    await sendReviewItemMessages({
+    await deliverReviewItemChange({
       change,
+      delivery,
       item,
       nowMs: Date.now(),
-      queue: services.queue,
     });
   }
 }

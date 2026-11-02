@@ -1,7 +1,12 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
-import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import {
+  slackMention,
+  slackThreadMessage,
+  reply,
+  webMessage,
+} from "@junior-evals/fixture/inputs";
 import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
@@ -111,6 +116,25 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
+  test("when the final reply puts the context over the compaction limit, reply once without compacting", async ({
+    agent,
+  }) => {
+    // An 8,000 token context window sets the compaction limit at 7,200 tokens.
+    // The message history is small, so the turn starts without compaction.
+    // The measured usage of the reply also counts the system prompt and tools,
+    // which puts it over the limit. No model request follows the reply.
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+  });
+
   test("when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between", async ({
     agent,
   }) => {
@@ -182,6 +206,57 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.replies).toHaveLength(1);
     expect(sentWhilePaused).toBe(true);
     expect(conversation.replies[0]!.text).toContain("Owner: Dana");
+  });
+
+  test("when a person says stop while a continued turn runs, stop the turn without a reply", async ({
+    agent,
+  }) => {
+    // The release push stalls past the turn deadline, so the turn pauses and
+    // continues in a new worker run. The person says `stop` during the first
+    // model request of that run. The worker checks for a stop every 500 ms,
+    // and a replayed response returns at once, so the hook holds the request
+    // for three checks. The run must see the stop before any later step.
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([evalOperation]),
+      limits: {
+        turnTimeoutMs:
+          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+      },
+    });
+    let paused = false;
+    let sentStop = false;
+    const conversation = await run(
+      slackMention(
+        "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
+      ),
+      {
+        onProgress: async (progress, { send }) => {
+          if (progress.type === "paused") {
+            paused = true;
+            return;
+          }
+          if (progress.type === "model_request" && paused && !sentStop) {
+            sentStop = true;
+            await send(slackThreadMessage("stop"));
+            await new Promise((resolve) => setTimeout(resolve, 1_500));
+          }
+        },
+      },
+    );
+
+    expect(sentStop).toBe(true);
+    // The only post is the stop acknowledgement. Without the fix, the
+    // continued run ignores the stop, succeeds, and posts the release status.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("stay out of this thread"),
+    ]);
+    expect(
+      completedMcpToolCalls(
+        "mcp__eval-operation__release-status",
+        conversation,
+      ),
+    ).toHaveLength(0);
   });
 
   test("when the model provider rejects a request, Junior posts a safe failure reply and answers the next message", async ({

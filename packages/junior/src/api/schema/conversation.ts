@@ -122,6 +122,11 @@ export const acceptedConversationMessageSchema = z
 
 export const actorIdentitySchema = z
   .object({
+    /**
+     * Junior API path of the profile photo: the person's Slack photo, then
+     * their Google photo.
+     */
+    avatarUrl: z.string().optional(),
     email: z.string().optional(),
     fullName: z.string().optional(),
     slackUserId: z.string().optional(),

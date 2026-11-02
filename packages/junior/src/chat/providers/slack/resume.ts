@@ -173,6 +173,8 @@ interface ResumeSlackTurnArgs {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
+  /** Close durable Turn state after `run.signal` stops the Run. */
+  onStop?: () => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<ResumePreparedTurn | false | void>;
 }
@@ -197,6 +199,8 @@ interface ResumePreparedTurn {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
+  /** Close durable Turn state after `run.signal` stops the Run. */
+  onStop?: () => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
@@ -283,6 +287,19 @@ async function handleResumeFailure(args: {
     createdAtMs: Date.now(),
     failureCode: args.failureCode,
     eventId,
+  });
+}
+
+/** Record a stopped resume as a cancelled Turn without a visible reply. */
+async function completeStoppedResume(
+  resume: ResumeSlackTurnArgs,
+): Promise<void> {
+  await resume.onStop?.();
+  await getTurnLifecycle().complete({
+    conversationId: resume.conversationId,
+    createdAtMs: Date.now(),
+    outcome: "cancelled",
+    turnId: resume.turnId,
   });
 }
 
@@ -386,6 +403,7 @@ async function resumeSlackTurnInContext(
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
+  let stopped = false;
   let runResultHandled = false;
   let assistantMessageDelivered = false;
   let shouldScheduleCompletedPluginTasks = false;
@@ -613,6 +631,7 @@ async function resumeSlackTurnInContext(
       });
     }
     const outcome = await runArgs.executeTurn(run, async (result) => {
+      run.signal?.throwIfAborted();
       const finalized = finalizeFailedTurnReplyWithEvent({
         reply: result,
         logException,
@@ -694,7 +713,9 @@ async function resumeSlackTurnInContext(
       await status.clear();
       const onAuthPause = runArgs.onAuthPause;
       const onSuspend = runArgs.onSuspend;
-      if (outcome.status === "awaiting_auth" && onAuthPause) {
+      if (run.signal?.aborted) {
+        stopped = true;
+      } else if (outcome.status === "awaiting_auth" && onAuthPause) {
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
@@ -771,7 +792,10 @@ async function resumeSlackTurnInContext(
       throw runError;
     }
 
-    if (runResultHandled) {
+    if (!runResultHandled && runArgs.run?.signal?.aborted) {
+      // A stop is not a failure. Close the Turn without a visible notice.
+      stopped = true;
+    } else if (runResultHandled) {
       postDeliveryCommitError = error;
       try {
         await runArgs.onPostDeliveryCommitFailure?.(error);
@@ -812,6 +836,11 @@ async function resumeSlackTurnInContext(
       ...(eventId ? { eventId } : undefined),
     });
     throw postDeliveryCommitError;
+  }
+
+  if (stopped) {
+    await completeStoppedResume(runArgs);
+    return true;
   }
 
   if (deferredPauseHandler) {

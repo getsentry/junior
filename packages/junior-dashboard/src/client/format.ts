@@ -19,29 +19,13 @@ import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
-/** Detect the viewer's own local timezone as the default display timezone. */
-function browserTimeZone(): string {
+/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return "UTC";
   }
-}
-
-let dashboardTimeZone = browserTimeZone();
-
-/** Apply an operator-configured timezone override from the config API, if any. Otherwise the viewer's own browser timezone is used. */
-export function setDashboardTimeZone(timeZone: string | undefined): void {
-  dashboardTimeZone = timeZone || browserTimeZone();
-}
-
-/** Read the dashboard display timezone used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  return dashboardTimeZone;
-}
-
-function displayTimeZone(): string {
-  return dashboardTimeZone;
 }
 
 function isActiveSummary(summary: ConversationSummaryReport): boolean {
@@ -69,7 +53,7 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps in the configured display timezone. */
+/** Format absolute dashboard timestamps in the viewer's browser timezone. */
 export function formatTime(
   value: string | undefined,
   options?: Intl.DateTimeFormatOptions,
@@ -78,7 +62,7 @@ export function formatTime(
   if (time == null) return "none";
   return new Date(time).toLocaleString(undefined, {
     ...options,
-    timeZone: displayTimeZone(),
+    timeZone: getDashboardTimeZone(),
   });
 }
 
@@ -166,10 +150,10 @@ export function formatMessageTimestamp(
     ? date.toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "medium",
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       })
     : date.toLocaleTimeString(undefined, {
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       });
 }
 
@@ -210,7 +194,7 @@ export function formatTranscriptTimestampDetails(value: number): {
   return {
     local: date.toLocaleString(undefined, {
       ...options,
-      timeZone: displayTimeZone(),
+      timeZone: getDashboardTimeZone(),
     }),
     utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
   };

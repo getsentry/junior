@@ -87,6 +87,17 @@ export async function resolveActorIdentityId(
   return key ? (await upsertIdentity(executor, key, nowMs)).id : undefined;
 }
 
+/** Save the profile photo on the Identity of one Slack Actor. Null clears it. */
+export async function saveActorAvatar(
+  executor: JuniorSqlDatabase,
+  actor: SlackActor,
+  avatarUrl: string | null,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const key = identityKey(actor);
+  if (key) await upsertIdentity(executor, { ...key, avatarUrl }, nowMs);
+}
+
 /** Find the stored Identity id for one Actor without writing. */
 export async function findActorIdentityId(
   db: JuniorDatabase,

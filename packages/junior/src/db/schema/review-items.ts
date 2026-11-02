@@ -20,7 +20,7 @@ import { juniorUsers } from "./users";
 
 /**
  * One Review item: something that needs a person. See
- * `chat/review-items/README.md`. An action item stores its `request`, and
+ * `chat/review-items/AGENTS.md`. An action item stores its `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
  * and `dismissed`. `closed_by_user_id` is null when an agent closed it.
  */
@@ -47,7 +47,11 @@ export const juniorReviewItems = pgTable(
     subjectTitle: text("subject_title"),
     subjectUrl: text("subject_url"),
     /** Conversation of the agent that added the item. */
-    addedByConversationId: text("added_by_conversation_id").notNull(),
+    addedByConversationId: text("added_by_conversation_id")
+      .notNull()
+      .references(() => juniorConversations.conversationId, {
+        onDelete: "cascade",
+      }),
     /**
      * Provider tenant, such as a Slack workspace, of the Conversation that
      * added the item. A public item is visible only inside it.
@@ -58,7 +62,9 @@ export const juniorReviewItems = pgTable(
       onDelete: "set null",
     }),
     closedAt: timestamptz("closed_at"),
-    closedByUserId: text("closed_by_user_id").references(() => juniorUsers.id),
+    closedByUserId: text("closed_by_user_id").references(() => juniorUsers.id, {
+      onDelete: "set null",
+    }),
     closeReason: text("close_reason"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
@@ -150,7 +156,11 @@ export const juniorReviewItemSlackCards = pgTable(
     itemId: text("item_id")
       .notNull()
       .references(() => juniorReviewItems.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id").notNull(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => juniorConversations.conversationId, {
+        onDelete: "cascade",
+      }),
     teamId: text("team_id").notNull(),
     channelId: text("channel_id").notNull(),
     messageTs: text("message_ts").notNull(),
