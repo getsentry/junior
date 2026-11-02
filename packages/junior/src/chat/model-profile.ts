@@ -61,12 +61,25 @@ export function formatModelProfiles(
     .join("\n");
 }
 
-/** Identify durable profile bindings that the current host cannot resolve. */
+/** Identify a profile name that the current host does not configure. */
 export class ModelProfileNotConfiguredError extends Error {
   constructor(profile: ModelProfile) {
     super(`Model profile "${profile}" is not configured`);
     this.name = "ModelProfileNotConfiguredError";
   }
+}
+
+/**
+ * Resolve a durable profile binding against the configured profiles.
+ * A binding to a profile that the host removed uses the default profile.
+ */
+export function boundProfile(
+  config: BotConfig,
+  profile: ModelProfile,
+): ModelProfile {
+  return Object.hasOwn(config.profiles, profile)
+    ? profile
+    : config.defaultProfile;
 }
 
 /** Resolve a model id from a configured profile. */
