@@ -70,7 +70,9 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { completeDecision } from "@/chat/pi/client";
 import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import type { ReviewItemReplyDecision } from "@/chat/review-items/reply-match";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -140,6 +142,8 @@ export interface SlackWebhookServices {
   allowedDomains?: readonly string[];
   /** Slack user IDs of bots that may start a Turn without an email domain. */
   allowedBotUserIds?: readonly string[];
+  /** Decision model that matches a reply to open Review items. */
+  decideReviewItemReply?: ReviewItemReplyDecision;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -478,6 +482,7 @@ async function routeParsedMessage(args: {
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
+  decideReviewItemReply: ReviewItemReplyDecision;
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -625,6 +630,7 @@ async function routeParsedMessage(args: {
         ? { canAnswer: isAuthorDomainAllowed }
         : undefined),
       conversationId,
+      decide: args.decideReviewItemReply,
       delivery: {
         queue: args.queue,
         show: createSlackReviewItemShow(() => args.adapter),
@@ -792,6 +798,8 @@ async function handleSlackEvent(args: {
                 receivedAtMs,
                 allowedBotUserIds: args.services.allowedBotUserIds ?? [],
                 allowedDomains: args.services.allowedDomains ?? [],
+                decideReviewItemReply:
+                  args.services.decideReviewItemReply ?? completeDecision,
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },

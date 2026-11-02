@@ -59,8 +59,9 @@ the tools (`chat/tools/review-items.ts`), or the review desk API
   so the reply always reaches the agent.
 - A reply closes only an open action item that this Conversation added and
   that the person may act on. Items assigned to Everyone stay open.
-- A reply closes at most one item. When the person can answer more than one
-  open item, the reply cannot show which one it answers, so all stay open.
+- A decision model (`reply-match.ts`) judges each open item on its own, so a
+  reply closes only the items that it answers. When the decision fails, all
+  items stay open. The agent still gets the reply.
 
 ## Purge And Delete
 

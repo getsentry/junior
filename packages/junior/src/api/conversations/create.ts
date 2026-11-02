@@ -14,7 +14,9 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
+import { completeDecision } from "@/chat/pi/client";
 import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import type { ReviewItemReplyDecision } from "@/chat/review-items/reply-match";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
@@ -48,6 +50,8 @@ function actorFromViewer(viewer: User): WebActor {
 /** Services that accept web input into the conversation work queue. */
 export interface WebInputServices {
   attachmentStorage: AttachmentStorage;
+  /** Decision model that matches a message to open Review items. */
+  decideReviewItemReply?: ReviewItemReplyDecision;
   queue: ConversationWorkQueue;
 }
 
@@ -126,6 +130,7 @@ export async function appendConversationMessageForViewer(
   const closeAnswered = () =>
     closeReviewItemsAnsweredByReply({
       conversationId,
+      decide: services.decideReviewItemReply ?? completeDecision,
       delivery: {
         queue: services.queue,
         show: createSlackReviewItemShow(getProductionSlackAdapter),

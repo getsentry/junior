@@ -10,6 +10,7 @@ import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
+import type { ReviewItemReplyDecision } from "@/chat/review-items/reply-match";
 import { getReviewItem } from "@/chat/review-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -128,6 +129,29 @@ async function addItem(
   };
 }
 
+/**
+ * A fixed decision model: a reply answers an item when it names the release
+ * in the item title, such as "1.2.3".
+ */
+const decideReviewItemReply: ReviewItemReplyDecision = async ({
+  questions,
+  state,
+}) => ({
+  answers: Object.fromEntries(
+    Object.entries(questions).map(([key, question]) => {
+      const release = question.instructions.match(
+        /release (\d+\.\d+\.\d+)/,
+      )?.[1];
+      return [
+        key,
+        {
+          choice: release && state.includes(release) ? "answers" : "unrelated",
+        },
+      ];
+    }),
+  ),
+});
+
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
   const blocks = call?.params.blocks;
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
@@ -212,16 +236,18 @@ describe("Slack webhook: Review item cards", () => {
      * A message from a person in the card thread. Without a mention, it is a
      * reply in a thread that Junior follows.
      */
-    async function reply(userId: string, ts: string, { mention = true } = {}) {
+    async function reply(
+      userId: string,
+      ts: string,
+      { mention = true, text = "Hold 1.2.3, the tests are red" } = {},
+    ) {
       const waitUntil = client.waitUntil();
       const response = await handleSlackWebhook({
         request: client.event({
           ...slackEventsApiEnvelope({
             eventType: mention ? "app_mention" : "message",
             channel: "C123",
-            text: mention
-              ? `<@${SLACK_BOT_USER_ID}> Hold, the tests are red`
-              : "Hold, the tests are red",
+            text: mention ? `<@${SLACK_BOT_USER_ID}> ${text}` : text,
             threadTs: "1712345.0001",
             ts,
             user: userId,
@@ -231,6 +257,7 @@ describe("Slack webhook: Review item cards", () => {
         waitUntil: waitUntil.fn,
         services: {
           ...options,
+          decideReviewItemReply,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),
@@ -251,6 +278,7 @@ describe("Slack webhook: Review item cards", () => {
         "/api/conversations",
         createConversationRoutes({
           attachmentStorage: createMemoryAttachmentStorage(),
+          decideReviewItemReply,
           queue,
         }),
       );
@@ -261,7 +289,7 @@ describe("Slack webhook: Review item cards", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             idempotencyKey: "dashboard-reply",
-            message: "Hold, the tests are red.",
+            message: "Hold 1.2.3, the tests are red.",
           }),
         },
       );
@@ -603,7 +631,7 @@ describe("Slack webhook: Review item cards", () => {
     await reply("U123", "1712345.0004", { mention: false });
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
       // The item saves the message text without the mention of Junior.
-      answer: { other: "Hold, the tests are red", values: {} },
+      answer: { other: "Hold 1.2.3, the tests are red", values: {} },
       closeReason: "Replied in thread",
       closedBy: { email: "ana@example.com" },
       status: "done",
@@ -673,8 +701,8 @@ describe("Slack webhook: Review item cards", () => {
       "open",
     );
 
-    // Ana can now answer two open questions. A reply cannot show which one
-    // it answers, so both stay open for their cards or the review desk.
+    // Ana can now answer two open questions. Her reply closes only the
+    // question that it answers, and the other one stays open.
     const second = await addItem(ana, {
       kind: "action",
       title: "Ship release 1.2.5",
@@ -682,10 +710,17 @@ describe("Slack webhook: Review item cards", () => {
       dedupe_key: "release:1.2.5",
       request: SHIP_REQUEST,
     });
-    await reply("U123", "1712345.0007", { mention: false });
-    for (const id of [unassigned.item.id, second.item.id]) {
-      expect((await getReviewItem(getDb(), id))?.status).toBe("open");
-    }
+    await reply("U123", "1712345.0007", {
+      mention: false,
+      text: "Ship 1.2.5",
+    });
+    expect(await getReviewItem(getDb(), second.item.id)).toMatchObject({
+      answer: { other: "Ship 1.2.5" },
+      status: "done",
+    });
+    expect((await getReviewItem(getDb(), unassigned.item.id))?.status).toBe(
+      "open",
+    );
   });
 
   it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {
@@ -705,7 +740,7 @@ describe("Slack webhook: Review item cards", () => {
     // The dashboard shows an error, but the mailbox already saved the reply.
     expect((await postInDashboard(ana)).status).toBe(500);
     expect(await getReviewItem(getDb(), item.id)).toMatchObject({
-      answer: { other: "Hold, the tests are red." },
+      answer: { other: "Hold 1.2.3, the tests are red." },
       closeReason: "Replied in thread",
       status: "done",
     });
