@@ -259,7 +259,8 @@ export function ConversationPage(props: {
   }, [loadLinkedEvent, oldestLoadedSeq]);
   // Load earlier pages until the linked Turn starts or history ends. Then
   // replace the Turn link with a link to its first event, or drop it when
-  // history has no such event.
+  // history has no such event. A history error keeps the link, so a retry
+  // or reload can still find the Turn.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
     : undefined;
@@ -274,8 +275,8 @@ export function ConversationPage(props: {
     !detail.historyError;
   const linkedTurnNotFound =
     linkedTurnMissing &&
-    !detail.isLoadingPreviousPage &&
-    (!detail.hasPreviousPage || Boolean(detail.historyError));
+    !detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage;
   useEffect(() => {
     if (loadLinkedTurn) loadPreviousPageRef.current();
   }, [loadLinkedTurn, oldestLoadedSeq]);
@@ -288,8 +289,7 @@ export function ConversationPage(props: {
     eventOpen &&
     !selectedEvent &&
     (detail.isPending ||
-      (linkedTurnId !== undefined && !linkedTurnNotFound) ||
-      (linkedEventMissing &&
+      ((linkedEventMissing || linkedTurnMissing) &&
         (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
         !detail.historyError));
   const showEvent = Boolean(selectedEvent) || eventLoading;
