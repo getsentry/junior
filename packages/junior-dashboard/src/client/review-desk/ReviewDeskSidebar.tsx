@@ -12,10 +12,10 @@ import { ConversationSectionHeading } from "../conversations/ConversationSection
 import { automationPath, formatRelativeTime } from "../format";
 import { pathWithSearch } from "../searchParams";
 import { cn } from "../styles";
-import { reviewItemPath } from "./reviewItemFormat";
+import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
 
 /** A sidebar group key. The page owns which groups are collapsed. */
-export type InboxGroupKey = "archived" | "blocked" | "fyi" | "needs-you";
+export type InboxGroupKey = "blocked" | "fyi" | "needs-you";
 
 type Dot = "accent" | "muted" | "warning" | "closed";
 
@@ -120,11 +120,11 @@ function InboxRowsLoading() {
 }
 
 /**
- * List the inbox: open items that need the viewer, notices, blocked
- * Automations, and archived items, each in a group that collapses.
+ * List the inbox: open items that need the viewer, notices, and blocked
+ * Automations, each in a group that collapses. A search shows one list of
+ * open and archived matches instead.
  */
 export function ReviewDeskSidebar(props: {
-  archived: ReviewItemPayload[];
   blocked: AutomationSummary[];
   collapsed: ReadonlySet<InboxGroupKey>;
   /** Shown under the groups, such as an empty state or load more. */
@@ -135,6 +135,8 @@ export function ReviewDeskSidebar(props: {
   needsYou: ReviewItemPayload[];
   onSearchChange(value: string): void;
   onToggle(key: InboxGroupKey): void;
+  /** Search matches in API order. Set while a search is active. */
+  results?: ReviewItemPayload[];
   search: string;
   searchParams: URLSearchParams;
   selectedId?: string;
@@ -153,16 +155,19 @@ export function ReviewDeskSidebar(props: {
   ];
   const firstKey = (index: number) =>
     shown.slice(0, index).every((count) => count === 0);
-  const itemRow = (item: ReviewItemPayload, dot: Dot) => {
+  const itemRow = (item: ReviewItemPayload) => {
+    const open = item.status === "open";
     const source = item.automationId ? "Automation" : props.sourceTitle(item);
-    const age = formatRelativeTime(
-      item.status === "open" ? item.createdAt : item.closedAt,
-    );
+    const meta = [
+      open ? undefined : reviewItemStatusLabel(item),
+      source,
+      formatRelativeTime(open ? item.createdAt : item.closedAt),
+    ];
     return (
       <InboxRow
-        dot={dot}
+        dot={open ? (item.kind === "action" ? "accent" : "muted") : "closed"}
         key={item.id}
-        meta={source ? `${source} · ${age}` : age}
+        meta={meta.filter(Boolean).join(" · ")}
         selected={
           item.id !== props.selectedId
             ? undefined
@@ -202,6 +207,18 @@ export function ReviewDeskSidebar(props: {
           </InlineError>
         ) : props.loading ? (
           <InboxRowsLoading />
+        ) : props.results ? (
+          <>
+            {props.results.length > 0 ? (
+              <ul
+                aria-label="Search results"
+                className="m-0 grid list-none gap-0.5 p-0 pt-1"
+              >
+                {props.results.map(itemRow)}
+              </ul>
+            ) : null}
+            {props.footer}
+          </>
         ) : (
           <>
             {groups.map((group, index) => (
@@ -213,9 +230,7 @@ export function ReviewDeskSidebar(props: {
                 label={group.label}
                 onToggle={() => props.onToggle(group.key)}
               >
-                {group.items.map((item) =>
-                  itemRow(item, item.kind === "action" ? "accent" : "muted"),
-                )}
+                {group.items.map(itemRow)}
               </InboxGroup>
             ))}
             <InboxGroup
@@ -234,15 +249,6 @@ export function ReviewDeskSidebar(props: {
                   to={automationPath(automation.id)}
                 />
               ))}
-            </InboxGroup>
-            <InboxGroup
-              collapsed={props.collapsed.has("archived")}
-              count={props.archived.length}
-              first={firstKey(3)}
-              label="Archived"
-              onToggle={() => props.onToggle("archived")}
-            >
-              {props.archived.map((item) => itemRow(item, "closed"))}
             </InboxGroup>
             {props.footer}
           </>
