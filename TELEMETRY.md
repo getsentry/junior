@@ -161,6 +161,7 @@ attributes. Nested logs and spans inherit them.
 | Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                        |
 | No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`                |
 | Timeout, empty answer, bad reasoning | `agent.turn.*`, `guardian.action_review.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare` |
+| Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool`         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`             |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
@@ -189,6 +190,9 @@ attributes. Nested logs and spans inherit them.
   block event.
 - To find the sandbox cost of a turn, add only the top-level `sandbox.*` spans
   under its `chat.turn`.
+- A `guardian.action_review` span covers the review of one batch of tool
+  actions. `app.guardian.batch.size` counts each action in the batch, also
+  actions that need no review. Its `gen_ai.chat` children are the reviews.
 - `db.query.text` keeps placeholders. It never has parameter values or SQL
   comments.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
