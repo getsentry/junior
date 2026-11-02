@@ -86,11 +86,11 @@ export function Transcript(props: {
 
   // Read positions follow the transcript rows, not the event log. Search
   // results skip rows, so they do not move the read position.
-  const reportsRead = view === "rich" && search.trim().length === 0;
   useTranscriptReadReporter({
     content: bottomPinning.contentElement,
     lastReadSeq: props.lastReadSeq,
-    onRead: reportsRead ? props.onRead : undefined,
+    onRead: props.onRead,
+    paused: view !== "rich" || search.trim().length > 0,
   });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
   const previousPageRef = useAutoLoadPreviousPage({

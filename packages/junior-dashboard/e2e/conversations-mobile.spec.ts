@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
@@ -729,11 +731,11 @@ test("keeps the message in view while earlier history and late content load", as
   await expect(reading).toBeInViewport({ ratio: 1 });
 });
 
-test("opens where the reader left off and reports what they read", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize(mobile);
+/** Mock one completed Conversation whose server read position moves forward. */
+async function mockReadPositionConversation(
+  page: Page,
+  input: { eventCount: number; lastReadSeq: number },
+) {
   const generatedAt = "2026-08-07T11:00:00.000Z";
   const conversationId = "read-position";
   const conversation = {
@@ -747,7 +749,14 @@ test("opens where the reader left off and reports what they read", async ({
     status: "completed",
     surface: "internal",
   };
-  const reported: number[] = [];
+  const state = {
+    conversationId,
+    eventCount: input.eventCount,
+    /** Holds detail responses until it resolves. */
+    detailGate: Promise.resolve(),
+    reported: [] as number[],
+  };
+  let stored = input.lastReadSeq;
 
   await page.route("**/api/conversations", async (route) => {
     if (new URL(route.request().url()).pathname !== "/api/conversations") {
@@ -776,16 +785,18 @@ test("opens where the reader left off and reports what they read", async ({
       const { lastReadSeq } = route.request().postDataJSON() as {
         lastReadSeq: number;
       };
-      reported.push(lastReadSeq);
-      await route.fulfill({ json: { lastReadSeq } });
+      state.reported.push(lastReadSeq);
+      stored = Math.max(stored, lastReadSeq);
+      await route.fulfill({ json: { lastReadSeq: stored } });
     },
   );
   await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+    await state.detailGate;
     await route.fulfill({
       json: {
         ...conversation,
         eventHistory: { status: "available" },
-        events: Array.from({ length: 60 }, (_, seq) => ({
+        events: Array.from({ length: state.eventCount }, (_, seq) => ({
           createdAt: new Date(
             Date.parse(generatedAt) + seq * 1_000,
           ).toISOString(),
@@ -798,12 +809,25 @@ test("opens where the reader left off and reports what they read", async ({
           seq,
         })),
         generatedAt,
-        readPosition: { lastReadSeq: 20 },
+        readPosition: { lastReadSeq: stored },
       },
     });
   });
+  return state;
+}
 
-  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+test("opens where the reader left off and reports what they read", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 60,
+    lastReadSeq: 20,
+  });
+  const { reported } = mock;
+
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
@@ -823,7 +847,52 @@ test("opens where the reader left off and reports what they read", async ({
   // Readers who prefer the latest message open there, below the marker.
   await page.goto(`${dashboard.baseURL}/settings`);
   await page.getByRole("radio", { name: /Latest message/ }).click();
-  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   await expect(latest).toBeInViewport();
   await expect(marker).not.toBeInViewport();
+});
+
+test("opens at new messages after a cached reopen and keeps a quick exit", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 40,
+    lastReadSeq: 39,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const marker = transcript.getByRole("separator", { name: "New messages" });
+  await expect(transcript.getByText("Transcript message 39 ")).toBeInViewport();
+  await expect(marker).toHaveCount(0);
+
+  // New messages arrive while the reader is away. The reopen shows the cached
+  // copy first, then the fetch brings the new messages and the marker.
+  await page.getByRole("link", { name: "Back to conversations" }).click();
+  mock.eventCount = 60;
+  let releaseDetail = () => {};
+  mock.detailGate = new Promise((resolve) => {
+    releaseDetail = resolve;
+  });
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .click();
+  await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
+  await expect(marker).toHaveCount(0);
+  releaseDetail();
+  await expect(marker).toBeInViewport();
+  await expect(transcript.getByText("Transcript message 40 ")).toBeInViewport();
+  await expect(
+    transcript.getByText("Transcript message 59 "),
+  ).not.toBeInViewport();
+
+  // Leaving right after a scroll still saves the place.
+  const reportCount = mock.reported.length;
+  await transcript.getByText("Transcript message 52 ").scrollIntoViewIfNeeded();
+  await page.getByRole("link", { name: "Back to conversations" }).click();
+  await expect
+    .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
+    .toBeGreaterThanOrEqual(52);
 });

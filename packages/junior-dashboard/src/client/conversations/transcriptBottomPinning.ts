@@ -351,10 +351,14 @@ export function usePinnedTranscriptBottom(input: {
     if (!input.enabled) setHasPendingUpdate(false);
   }, [input.enabled]);
 
+  // The transcript opened at the latest message, but the reader prefers the
+  // "New" marker. The marker can appear when a fetch replaces a cached detail.
+  const awaitingUnreadMarkerRef = useRef(false);
   const setFollowingIntent = useCallback((value: boolean) => {
     followingRef.current = value;
     setFollowing(value);
     if (value) setOpenedAtUnread(false);
+    else awaitingUnreadMarkerRef.current = false;
   }, []);
 
   const rememberPlace = useCallback(() => {
@@ -490,6 +494,32 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
+  /** Scroll to the "New" marker, if the transcript has one. */
+  const openAtUnreadMarker = useCallback((): boolean => {
+    const content = contentElementRef.current;
+    const root = scrollRootFor(content);
+    const marker = content?.querySelector("[data-transcript-unread-marker]");
+    if (!root || !marker) return false;
+    awaitingUnreadMarkerRef.current = false;
+    const offset =
+      marker.getBoundingClientRect().top - viewportBounds(root).top;
+    setScrollTop(
+      root,
+      Math.max(
+        0,
+        scrollSnapshot(root).scrollTop + offset - UNREAD_START_OFFSET_PX,
+      ),
+    );
+    const snapshot = scrollSnapshot(root);
+    previousScrollTopRef.current = snapshot.scrollTop;
+    // Unread rows that fit above the bottom leave the reader at the latest.
+    const atBottom = isNearScrollBottom(snapshot);
+    setFollowingIntent(atBottom);
+    setOpenedAtUnread(!atBottom);
+    rememberPlace();
+    return true;
+  }, [rememberPlace, setFollowingIntent]);
+
   useBrowserLayoutEffect(() => {
     if (!contentElement || !input.conversationId) return;
     if (initializedConversationRef.current === input.conversationId) return;
@@ -499,28 +529,7 @@ export function usePinnedTranscriptBottom(input: {
 
     initializedConversationRef.current = input.conversationId;
     setHasPendingUpdate(false);
-    const marker = input.startAtUnread
-      ? contentElement.querySelector("[data-transcript-unread-marker]")
-      : null;
-    if (marker) {
-      const offset =
-        marker.getBoundingClientRect().top - viewportBounds(root).top;
-      setScrollTop(
-        root,
-        Math.max(
-          0,
-          scrollSnapshot(root).scrollTop + offset - UNREAD_START_OFFSET_PX,
-        ),
-      );
-      const snapshot = scrollSnapshot(root);
-      previousScrollTopRef.current = snapshot.scrollTop;
-      // Unread rows that fit above the bottom leave the reader at the latest.
-      const atBottom = isNearScrollBottom(snapshot);
-      setFollowingIntent(atBottom);
-      setOpenedAtUnread(!atBottom);
-      rememberPlace();
-      return;
-    }
+    if (input.startAtUnread && openAtUnreadMarker()) return;
 
     setScrollTop(root, scrollSnapshot(root).scrollHeight);
     previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
@@ -528,23 +537,31 @@ export function usePinnedTranscriptBottom(input: {
     // the reader scrolls up so late content and footer layout cannot expose
     // stale space below the transcript.
     setFollowingIntent(true);
+    awaitingUnreadMarkerRef.current = Boolean(input.startAtUnread);
   }, [
     contentElement,
     input.conversationId,
     input.startAtUnread,
-    rememberPlace,
+    openAtUnreadMarker,
     setFollowingIntent,
   ]);
 
+  // Follow the latest message, unless the "New" marker appeared before the
+  // reader moved. Then open at the marker, as if it was there at the start.
+  const followLatest = useCallback(() => {
+    if (awaitingUnreadMarkerRef.current && openAtUnreadMarker()) return;
+    scrollToBottom("auto");
+  }, [openAtUnreadMarker, scrollToBottom]);
+
   const syncAfterLayoutChange = useCallback(() => {
     if (followingRef.current) {
-      scrollToBottom("auto");
+      followLatest();
       return;
     }
 
     restorePlace();
     measurePosition("measure");
-  }, [measurePosition, restorePlace, scrollToBottom]);
+  }, [followLatest, measurePosition, restorePlace]);
 
   // An earlier page renders above the reader. Hold their place before paint;
   // a reader at the bottom stays at the latest message.
@@ -585,7 +602,7 @@ export function usePinnedTranscriptBottom(input: {
         following: followingRef.current,
       })
     ) {
-      scrollToBottom("auto");
+      followLatest();
       setHasPendingUpdate(false);
       return;
     }
@@ -598,7 +615,7 @@ export function usePinnedTranscriptBottom(input: {
     input.view,
     input.versions.rich,
     input.versions.raw,
-    scrollToBottom,
+    followLatest,
     setFollowingIntent,
   ]);
 
@@ -672,6 +689,7 @@ export function usePinnedTranscriptBottom(input: {
   }, [contentElement, syncAfterLayoutChange]);
 
   const jumpToBottom = useCallback(() => {
+    awaitingUnreadMarkerRef.current = false;
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom(preferredExplicitScrollBehavior());

@@ -68,8 +68,12 @@ export function readConversationStartPosition(): ConversationStartPosition {
 }
 
 /**
- * Keep the read state from the first loaded detail. The Conversation page is
- * keyed by Conversation, so this is the state when the reader opened it.
+ * Keep the read state from when the reader opened the Conversation. The page
+ * is keyed by Conversation, so this runs once for each visit.
+ *
+ * The read position comes from the first detail, which can be a cached copy.
+ * The last unread row waits for the first detail fetched in this visit, so a
+ * stale cache cannot hide messages that arrived while the reader was away.
  */
 export function useReadPositionAtOpen(
   detail:
@@ -78,23 +82,31 @@ export function useReadPositionAtOpen(
         readPosition?: ConversationReadPosition;
       }
     | undefined,
+  /** The detail was fetched in this visit, not only read from the cache. */
+  fresh: boolean,
 ): ReadPositionAtOpen {
-  const [opened, setOpened] = useState<ReadPositionAtOpen>();
-  if (opened) return opened;
-  if (!detail) return {};
-  const next = readPositionAtOpen(detail);
   // Store derived state during render so the first transcript render has it.
-  setOpened(next);
-  return next;
+  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [freshEnd, setFreshEnd] = useState<{ throughSeq?: number }>();
+  const read =
+    opened ??
+    (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
+  if (!opened && read) setOpened(read);
+  const end =
+    freshEnd ??
+    (detail && fresh ? { throughSeq: detail.events.at(-1)?.seq } : undefined);
+  if (!freshEnd && end) setFreshEnd(end);
+  return readPositionAtOpen(
+    read?.lastReadSeq,
+    end ? end.throughSeq : detail?.events.at(-1)?.seq,
+  );
 }
 
-/** Find the rows that were unread in the first loaded detail. */
-export function readPositionAtOpen(detail: {
-  events: readonly { seq: number }[];
-  readPosition?: ConversationReadPosition;
-}): ReadPositionAtOpen {
-  const lastReadSeq = detail.readPosition?.lastReadSeq;
-  const throughSeq = detail.events.at(-1)?.seq;
+/** Find the rows after the read position, through the last row at open. */
+function readPositionAtOpen(
+  lastReadSeq: number | undefined,
+  throughSeq: number | undefined,
+): ReadPositionAtOpen {
   if (lastReadSeq === undefined) return {};
   if (throughSeq === undefined || throughSeq <= lastReadSeq) {
     return { lastReadSeq };
@@ -147,17 +159,27 @@ export function lastSeenRowIndex(
 /**
  * Report the last transcript row that the reader saw.
  *
- * Reports wait a short time after scrolling and layout changes, and only
- * move forward. A hidden page does not report.
+ * Each scroll or layout change measures the row. Reports wait a short time
+ * and only move forward. A hidden or paused page does not measure. Leaving
+ * the page or hiding it sends the measured row at once, so a quick exit keeps
+ * progress.
  */
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
   /** The stored position when the Conversation opened. */
   lastReadSeq?: number;
   onRead?: (seq: number) => void;
+  /**
+   * Stop measuring while the rows are not in reading order, such as search
+   * results. This is read when a measure runs, so the render that changes
+   * the rows also stops their measure.
+   */
+  paused?: boolean;
 }): void {
   const onReadRef = useRef(input.onRead);
   onReadRef.current = input.onRead;
+  const pausedRef = useRef(input.paused);
+  pausedRef.current = input.paused;
   const reportedRef = useRef(input.lastReadSeq ?? -1);
   const enabled = Boolean(input.onRead);
 
@@ -167,16 +189,25 @@ export function useTranscriptReadReporter(input: {
     if (!enabled || !content || !root) return;
 
     let timer: number | undefined;
-    const report = () => {
+    let seenSeq: number | null = null;
+    const send = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
-      if (document.visibilityState !== "visible") return;
-      const seq = lastSeenTranscriptSeq(content, viewportBounds(root));
+      const seq = seenSeq;
+      seenSeq = null;
       if (seq === null || seq <= reportedRef.current) return;
       reportedRef.current = seq;
       onReadRef.current?.(seq);
     };
     const schedule = () => {
-      timer ??= window.setTimeout(report, READ_REPORT_DELAY_MS);
+      if (pausedRef.current || document.visibilityState !== "visible") return;
+      const seq = lastSeenTranscriptSeq(content, viewportBounds(root));
+      if (seq !== null) seenSeq = seq;
+      timer ??= window.setTimeout(send, READ_REPORT_DELAY_MS);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") schedule();
+      else send();
     };
 
     const observer =
@@ -185,13 +216,13 @@ export function useTranscriptReadReporter(input: {
         : new ResizeObserver(schedule);
     observer?.observe(content);
     root.addEventListener("scroll", schedule, { passive: true });
-    document.addEventListener("visibilitychange", schedule);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     schedule();
     return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
+      send();
       observer?.disconnect();
       root.removeEventListener("scroll", schedule);
-      document.removeEventListener("visibilitychange", schedule);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, input.content]);
 }

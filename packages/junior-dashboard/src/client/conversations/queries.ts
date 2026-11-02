@@ -721,14 +721,17 @@ export function useConversationData(conversationId: string | undefined) {
     0,
     ...awaitingRows.map((message) => Date.parse(message.createdAt)),
   );
-  const detail = useQuery(
-    conversationDetailQueryOptions(conversationId, {
+  const detail = useQuery({
+    ...conversationDetailQueryOptions(conversationId, {
       awaitingMessage: awaitingRows.length > 0,
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
     }),
-  );
+    // A reopened Conversation shows the cached copy at once, but it can miss
+    // messages that arrived while the reader was away. Fetch it each visit.
+    refetchOnMount: "always",
+  });
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -910,6 +913,11 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The shown detail was fetched in this visit, not only read from cache. */
+    isFresh:
+      detail.isFetchedAfterMount &&
+      !detail.isFetching &&
+      detailData === detail.data,
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,
