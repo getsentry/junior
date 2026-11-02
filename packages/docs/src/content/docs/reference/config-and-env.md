@@ -24,7 +24,6 @@ related:
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
-| `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
 | `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
@@ -81,11 +80,6 @@ deployed bundle. Give the queue its own Redis URL. If two dev servers share one
 Redis, each one can take the other's jobs.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
-
-`JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
-for its own turn. Set it to `steer` to preserve collaborative steering across
-actors. In `follow_up` mode, a user can start one message with `!!` to steer the
-active turn explicitly.
 
 Model profile names are durable conversation bindings. Each later turn resolves
 the stored name through current configuration; the exact model ID recorded when

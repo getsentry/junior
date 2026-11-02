@@ -57,11 +57,7 @@ import {
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import {
-  botConfig,
-  getChatConfig,
-  type CrossActorMidRunMode,
-} from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -455,7 +451,6 @@ interface SlackInboxTurnRuntime {
 }
 
 export interface CreateSlackConversationWorkerOptions {
-  crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
     teamId: string,
@@ -655,8 +650,6 @@ function getPendingRecords(
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
-  const crossActorMidRunMode =
-    options.crossActorMidRunMode ?? botConfig.crossActorMidRunMode;
   return async (context) => {
     const adapter = options.getSlackAdapter();
     const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
@@ -766,9 +759,11 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit Slack interruptions enter the active turn. Deferred
-        // work and steered messages from other sources, such as the
-        // dashboard, stay pending for their own turn.
+        // Only explicit Slack interruptions from the active author enter the
+        // active turn. The turn runs with that author's credentials, so another
+        // person's message always waits for its own turn. Deferred work and
+        // steered messages from other sources, such as the dashboard, stay
+        // pending for their own turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -786,9 +781,7 @@ export function createSlackConversationWorker(
               }))
               .filter(
                 (candidate) =>
-                  crossActorMidRunMode === "steer" ||
-                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
-                  hasSteeringOverride(candidate.message.text),
+                  requireSlackAuthorId(candidate.message) === activeAuthorId,
               );
             return candidates.length > 0 ? await accept(candidates) : [];
           });

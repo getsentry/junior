@@ -82,13 +82,11 @@ describe("createApp profiles", () => {
       },
       slack: {
         completedReactionEmoji: "jr-done",
-        crossActorMidRunMode: "steer",
       },
       plugins: defineJuniorPlugins([]),
     });
     expect(botConfig).toMatchObject({
       contextWindowTokens: 2_000,
-      crossActorMidRunMode: "steer",
       defaultProfile: "gpt-5",
       eventAutomationRunWindowMs: 60 * 60 * 1000,
       maxEventAutomationRuns: 2,
@@ -99,7 +97,6 @@ describe("createApp profiles", () => {
 
     expect(botConfig).toMatchObject({
       contextWindowTokens: originalBotConfig.contextWindowTokens,
-      crossActorMidRunMode: originalBotConfig.crossActorMidRunMode,
       defaultProfile: originalBotConfig.defaultProfile,
       fastModelId: originalBotConfig.fastModelId,
       eventAutomationRunWindowMs: originalBotConfig.eventAutomationRunWindowMs,
