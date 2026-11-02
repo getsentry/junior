@@ -26,7 +26,7 @@ function ConfigBlock(props: { label: string; value: string }) {
         <h2 className="m-0 text-sm font-semibold">{props.label}</h2>
         <CopyButton getText={() => props.value} label={`Copy ${props.label}`} />
       </div>
-      <pre className="mt-2 mb-0 overflow-x-auto rounded-md bg-dashboard-ink p-3 font-mono text-xs text-dashboard-text">
+      <pre className="mt-2 mb-0 whitespace-pre-wrap break-words rounded-md border border-dashboard-border-emphasis bg-dashboard-ink p-3 font-mono text-xs text-dashboard-text">
         {props.value}
       </pre>
     </div>
