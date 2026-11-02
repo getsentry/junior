@@ -1,9 +1,10 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { eventCatalogEntry, type EventCatalog } from "@/chat/events/catalog";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 export const teamId = `TEVENT${Date.now()}`;
@@ -117,11 +118,12 @@ export async function createTask(
   taskContext = context(),
 ) {
   return (await execute(
-    createEventAutomationTool(taskContext, EVENT_CATALOG),
+    createAutomationTool(automationToolContext(taskContext), EVENT_CATALOG),
     {
       instruction,
       outcomes: [],
       trigger: {
+        type: "event",
         namespace: "github",
         identifier: "getsentry/junior#1174",
         resourceType: "pull_request",

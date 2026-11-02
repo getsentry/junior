@@ -456,6 +456,48 @@
       "when": 1793326683095,
       "tag": "0064_any_resource_event_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793403789105,
+      "tag": "0065_user_customization",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793412416681,
+      "tag": "0066_review_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793414511193,
+      "tag": "0067_review_item_dedupe_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793414566801,
+      "tag": "0068_review_item_slack_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793461988634,
+      "tag": "0069_system_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1793561992655,
+      "tag": "0070_review_item_foreign_keys",
+      "breakpoints": true
     }
   ]
 }

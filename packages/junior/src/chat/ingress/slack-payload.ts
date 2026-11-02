@@ -134,21 +134,57 @@ export const slackEventEnvelopeSchema = z.object({
 export type SlackEventEnvelope = z.output<typeof slackEventEnvelopeSchema>;
 export type SlackInboundEvent = z.output<typeof slackEventSchema>;
 
+// Keep these fields loose. Each handler validates the fields it needs, so
+// one unusual payload shape does not reject unrelated interactions.
+// https://docs.slack.dev/reference/interaction-payloads/block_actions-payload
+// https://docs.slack.dev/reference/interaction-payloads/view-interactions-payload
+const slackViewStateValueSchema = z.object({
+  selected_option: z.object({ value: z.string().optional() }).nullish(),
+  selected_options: z
+    .array(z.object({ value: z.string().optional() }))
+    .nullish(),
+  value: z.string().nullish(),
+});
+
 export const slackInteractivePayloadSchema = z.object({
   actions: z
     .array(
       z.object({
         action_id: z.string().optional(),
+        action_ts: z.string().optional(),
         selected_option: z.object({ value: z.string().optional() }).optional(),
         value: z.string().optional(),
       }),
     )
     .optional(),
+  channel: z.object({ id: z.string().optional() }).nullish(),
+  message: z
+    .object({
+      thread_ts: z.string().optional(),
+      ts: z.string().optional(),
+    })
+    .nullish(),
   team: z.object({ id: z.string().optional() }).nullish(),
+  trigger_id: z.string().optional(),
   type: z.string(),
   user: z
     .object({ id: z.string().optional(), team_id: z.string().optional() })
     .optional(),
+  view: z
+    .object({
+      callback_id: z.string().optional(),
+      id: z.string().optional(),
+      private_metadata: z.string().optional(),
+      state: z
+        .object({
+          values: z.record(
+            z.string(),
+            z.record(z.string(), slackViewStateValueSchema),
+          ),
+        })
+        .optional(),
+    })
+    .nullish(),
 });
 
 export type SlackInteractivePayload = z.output<

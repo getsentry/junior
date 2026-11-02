@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSlackOutputMessage,
   fitsSlackInlineBudget,
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
@@ -201,43 +200,6 @@ describe("normalizeSlackReplyMarkdown", () => {
         "    Indented text outside a list.",
       ].join("\n"),
     );
-  });
-});
-
-describe("buildSlackOutputMessage", () => {
-  it("returns inline markdown for short content", () => {
-    const message = buildSlackOutputMessage("hello\nworld");
-
-    expect(typeof message).toBe("object");
-    expect("markdown" in (message as object)).toBe(true);
-    expect((message as { markdown: string }).markdown).toBe("hello\n\nworld");
-    expect((message as { files?: unknown[] }).files).toBeUndefined();
-  });
-
-  it("keeps long content inline by default", () => {
-    const longText = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 8 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n");
-    const expectedText = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 8 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n\n");
-    const message = buildSlackOutputMessage(longText) as {
-      markdown: string;
-      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
-    };
-
-    expect(message.markdown).toBe(expectedText);
-    expect(message.files).toBeUndefined();
-  });
-
-  it("normalizes whitespace and line endings", () => {
-    const message = buildSlackOutputMessage("one\r\n\r\n\r\n\r\ntwo   \n") as {
-      markdown: string;
-    };
-
-    expect(message.markdown).toBe("one\n\ntwo");
   });
 });
 

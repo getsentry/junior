@@ -20,6 +20,12 @@ import { juniorStats } from "./schema/stats";
 import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
+import {
+  juniorReviewItemAssignees,
+  juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
+  juniorReviewItems,
+} from "./schema/review-items";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -42,6 +48,10 @@ export {
   juniorLocationConfigurations,
   juniorDestinations,
   juniorIdentities,
+  juniorReviewItemAssignees,
+  juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
+  juniorReviewItems,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,
@@ -70,6 +80,10 @@ export const juniorSqlSchema = {
   juniorLocationConfigurations,
   juniorDestinations,
   juniorIdentities,
+  juniorReviewItemAssignees,
+  juniorReviewItemConversations,
+  juniorReviewItemSlackCards,
+  juniorReviewItems,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,

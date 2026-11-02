@@ -5,7 +5,8 @@
  */
 import type { MessageCard } from "@/chat/conversations/cards";
 import { renderSlackCard, type SlackCard } from "./cards";
-import type { ReplyAttribution } from "@sentry/junior-plugin-api";
+import type { ReplyAttribution, Source } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
@@ -14,6 +15,40 @@ import {
 import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { splitSlackReplyText } from "@/chat/slack/output";
+
+/** Slack channel and optional thread where a Turn posts. */
+export interface SlackReplyTarget {
+  channelId: string;
+  threadTs?: string;
+}
+
+/**
+ * Resolve where a Turn posts in Slack.
+ *
+ * The channel is always the Destination channel. The thread comes from the
+ * Turn Source, then the Conversation Location, then the Destination, and each
+ * one counts only when it names that channel. Do not derive the target from
+ * the Conversation id: an Automation or Watch Conversation can own a Slack
+ * thread, and its id is not a Slack thread id.
+ */
+export function resolveSlackReplyTarget(args: {
+  destination: SlackReplyTarget;
+  location?: Location;
+  source?: Source;
+}): SlackReplyTarget {
+  const { channelId } = args.destination;
+  const sourceThreadTs =
+    args.source?.kind === "slack" && args.source.channelId === channelId
+      ? args.source.threadTs
+      : undefined;
+  const locationThreadTs =
+    args.location?.provider === "slack" && args.location.channelId === channelId
+      ? args.location.threadTs
+      : undefined;
+  const threadTs =
+    sourceThreadTs ?? locationThreadTs ?? args.destination.threadTs;
+  return { channelId, ...(threadTs ? { threadTs } : undefined) };
+}
 
 /**
  * Send one destination-visible Slack reply.

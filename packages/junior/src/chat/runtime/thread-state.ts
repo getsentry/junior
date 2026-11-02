@@ -1,4 +1,3 @@
-import type { Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { toOptionalString } from "@/chat/coerce";
 import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
@@ -83,41 +82,13 @@ export function getPersistedSandboxState(
   };
 }
 
-/** Persist a thread-state patch for a Chat thread handle. */
-export async function persistThreadState(
-  thread: Thread,
-  patch: ThreadStatePatch,
-): Promise<void> {
-  // The visible transcript is durable in SQL, keyed by the conversation id —
-  // which is the thread's own id here (its thread-state key), the same way
-  // persistThreadStateById treats its thread id. Sync it at this persist
-  // boundary so scratch and transcript stay symmetric with the id-based
-  // boundary and never diverge.
-  if (patch.conversation) {
-    await persistConversationMessages({
-      conversation: patch.conversation,
-      conversationId:
-        toOptionalString(thread.id) ??
-        toOptionalString((thread as { runId?: unknown }).runId),
-    });
-  }
-
-  await persistThreadRuntimeState(thread, patch);
-}
-
 /** Persist only the Redis-backed runtime scratch in a thread-state patch. */
 export async function persistThreadRuntimeState(
-  thread: Thread,
+  conversationId: string,
   patch: ThreadStatePatch,
 ): Promise<void> {
-  const threadId =
-    toOptionalString(thread.id) ??
-    toOptionalString((thread as { runId?: unknown }).runId);
-  if (!threadId) {
-    throw new Error("thread id is required to persist runtime scratch");
-  }
   await mergePersistedState(
-    threadStateKey(threadId),
+    threadStateKey(conversationId),
     buildThreadStatePayload(patch),
   );
 }

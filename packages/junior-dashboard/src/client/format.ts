@@ -19,29 +19,13 @@ import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
-/** Detect the viewer's own local timezone as the default display timezone. */
-function browserTimeZone(): string {
+/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return "UTC";
   }
-}
-
-let dashboardTimeZone = browserTimeZone();
-
-/** Apply an operator-configured timezone override from the config API, if any. Otherwise the viewer's own browser timezone is used. */
-export function setDashboardTimeZone(timeZone: string | undefined): void {
-  dashboardTimeZone = timeZone || browserTimeZone();
-}
-
-/** Read the dashboard display timezone used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  return dashboardTimeZone;
-}
-
-function displayTimeZone(): string {
-  return dashboardTimeZone;
 }
 
 function isActiveSummary(summary: ConversationSummaryReport): boolean {
@@ -69,7 +53,7 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps in the configured display timezone. */
+/** Format absolute dashboard timestamps in the viewer's browser timezone. */
 export function formatTime(
   value: string | undefined,
   options?: Intl.DateTimeFormatOptions,
@@ -78,7 +62,7 @@ export function formatTime(
   if (time == null) return "none";
   return new Date(time).toLocaleString(undefined, {
     ...options,
-    timeZone: displayTimeZone(),
+    timeZone: getDashboardTimeZone(),
   });
 }
 
@@ -166,10 +150,10 @@ export function formatMessageTimestamp(
     ? date.toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "medium",
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       })
     : date.toLocaleTimeString(undefined, {
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       });
 }
 
@@ -210,7 +194,7 @@ export function formatTranscriptTimestampDetails(value: number): {
   return {
     local: date.toLocaleString(undefined, {
       ...options,
-      timeZone: displayTimeZone(),
+      timeZone: getDashboardTimeZone(),
     }),
     utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
   };
@@ -360,6 +344,21 @@ export type MessageSummary = {
   total: number;
 };
 
+/**
+ * Return the person who wrote one transcript user message. Child agent input
+ * has no person. Other messages fall back to the conversation actor.
+ */
+export function transcriptMessageActor(
+  conversation: ConversationTranscript,
+  message: TranscriptViewMessage,
+): ActorIdentity | undefined {
+  if (transcriptRoleKind(message.role) !== "user") return undefined;
+  if (message.agentInvocationId) return undefined;
+  if (actorLabel(message.actorIdentity)) return message.actorIdentity;
+  if (actorLabel(conversation.actorIdentity)) return conversation.actorIdentity;
+  return undefined;
+}
+
 /** Return the best available actor label for one transcript message. */
 export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
@@ -371,11 +370,7 @@ export function transcriptMessageActorLabel(
     // The conversation actor started the child agent but did not write its
     // input, so do not fall back to that actor here.
     if (message.agentInvocationId) return "Agent invocation";
-    return (
-      actorLabel(message.actorIdentity) ??
-      actorLabel(conversation.actorIdentity) ??
-      "User"
-    );
+    return actorLabel(transcriptMessageActor(conversation, message)) ?? "User";
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -784,6 +779,11 @@ export function unavailableTranscriptLabel(
 /** Build the canonical actor profile route for a trusted email address. */
 export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;
+}
+
+/** Build the dashboard route for one memory's details. */
+export function memoryPath(memoryId: string): string {
+  return `/memories/${encodeURIComponent(memoryId)}`;
 }
 
 /** Build the canonical detail route for a persisted public location. */

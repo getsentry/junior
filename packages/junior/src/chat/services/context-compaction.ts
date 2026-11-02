@@ -34,7 +34,11 @@ import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
-import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
+import {
+  boundProfile,
+  modelIdForProfile,
+  type ModelProfile,
+} from "@/chat/model-profile";
 import {
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
@@ -612,6 +616,10 @@ async function writeCompactedThreadContext(
   const sourceProjection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
+  const compactedProfile = boundProfile(
+    botConfig,
+    sourceProjection.modelProfile,
+  );
   const retained = selectRetainedUserMessageEntries(
     trimTrailingAssistantMessages(sourceProjection.messages),
   );
@@ -634,8 +642,8 @@ async function writeCompactedThreadContext(
     createdAtMs: Date.now(),
     data: {
       type: "compaction",
-      modelProfile: sourceProjection.modelProfile,
-      modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
+      modelProfile: compactedProfile,
+      modelId: modelIdForProfile(botConfig, compactedProfile),
       details: {
         reason: "capacity",
         estimatedInputTokens: context.estimatedTokens,

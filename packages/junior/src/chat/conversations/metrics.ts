@@ -10,6 +10,7 @@ import {
   agentTurnTotalTokens,
   type AgentTurnUsage,
 } from "@/chat/usage";
+import type { ConversationRunMetrics } from "./store";
 
 function finite(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value >= 0
@@ -32,6 +33,56 @@ export function conversationMetricValues(args: {
     cache_creation_tokens: finite(usage?.cacheCreationTokens),
     reasoning_tokens: finite(usage?.reasoningTokens),
     cost_usd: agentTurnCostUsd(usage),
+  };
+}
+
+/**
+ * Read one Run's stored totals from its metric rows.
+ *
+ * Returns undefined when the Run has no rows. Cost keeps only its total.
+ */
+export async function readConversationRunMetrics(
+  executor: JuniorSqlDatabase,
+  args: { conversationId: string; runId: string },
+): Promise<ConversationRunMetrics | undefined> {
+  const rows = await executor
+    .db()
+    .select({
+      metric: juniorConversationMetrics.metric,
+      value: juniorConversationMetrics.value,
+    })
+    .from(juniorConversationMetrics)
+    .where(
+      and(
+        eq(juniorConversationMetrics.conversationId, args.conversationId),
+        eq(juniorConversationMetrics.runId, args.runId),
+      ),
+    );
+  const values = new Map(rows.map((row) => [row.metric, row.value]));
+  const durationMs = values.get("duration_ms");
+  if (durationMs === undefined) return undefined;
+  const components = {
+    inputTokens: values.get("input_tokens"),
+    outputTokens: values.get("output_tokens"),
+    cachedInputTokens: values.get("cached_input_tokens"),
+    cacheCreationTokens: values.get("cache_creation_tokens"),
+  };
+  const hasComponents = Object.values(components).some(
+    (value) => value !== undefined,
+  );
+  const costUsd = values.get("cost_usd");
+  const usage = Object.fromEntries(
+    Object.entries({
+      ...components,
+      reasoningTokens: values.get("reasoning_tokens"),
+      // `total_tokens` repeats the component sum when components exist.
+      totalTokens: hasComponents ? undefined : values.get("total_tokens"),
+      cost: costUsd === undefined ? undefined : { total: costUsd },
+    }).filter(([, value]) => value !== undefined),
+  ) as AgentTurnUsage;
+  return {
+    durationMs,
+    ...(Object.keys(usage).length > 0 ? { usage } : undefined),
   };
 }
 

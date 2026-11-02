@@ -25,6 +25,7 @@ vi.mock("@/chat/config", () => ({
 vi.mock("@/chat/pi/client", () => ({
   completeObject,
   embedTexts,
+  GEN_AI_PROVIDER_NAME: "test-provider",
 }));
 
 describe("createPluginModel", () => {

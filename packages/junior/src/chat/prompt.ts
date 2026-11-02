@@ -615,6 +615,24 @@ function buildConversationNotesSection(
 }
 
 /**
+ * Context message, `<user-customization>`: the text the current actor saved to
+ * change how Junior replies to them. It is added on each Turn of that actor,
+ * so each person in a shared thread gets their own text. Rules about its
+ * authority live in `<context-trust>`, not here.
+ */
+function buildUserCustomizationSection(
+  customization: string | undefined,
+): string | null {
+  if (!customization) {
+    return null;
+  }
+  return renderTagBlock(
+    REQUEST_CONTEXT_SECTION_TAG.userCustomization,
+    escapeXml(customization),
+  );
+}
+
+/**
  * Block 9, `<plugin-system-context>`: static guidance from plugin
  * `systemPrompt` hooks, under a core-owned wrapper. It comes after all core
  * rules and must be the same text on each Turn.
@@ -647,6 +665,8 @@ type TurnContextPromptInput = {
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   toolGuidance?: ToolPromptContext[];
+  /** Text the current actor saved to change how Junior replies to them. */
+  userCustomization?: string;
   runtime?: {
     conversationId?: string;
     slackConversation?: SlackConversationContext;
@@ -720,6 +740,9 @@ export function buildTurnContextPrompt(
     params.conversationNotes,
   );
   const disabledTools = buildDisabledToolsSection(params.disabledTools);
+  const userCustomization = buildUserCustomizationSection(
+    params.userCustomization,
+  );
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
   // carry only the user's input and request-scoped context.
@@ -727,7 +750,8 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !disabledTools
+    !disabledTools &&
+    !userCustomization
   ) {
     return null;
   }
@@ -747,6 +771,7 @@ export function buildTurnContextPrompt(
     pluginPromptContributions,
     conversationNotes,
     disabledTools,
+    userCustomization,
     includeSessionContext
       ? buildContextSection({
           actor: params.actor,

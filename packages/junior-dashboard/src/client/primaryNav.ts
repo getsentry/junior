@@ -9,6 +9,7 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/memories",
   "/settings",
   "/plugins/",
+  "/review",
 ] as const;
 
 /** True when the path is only available to a signed-in viewer. */
@@ -24,6 +25,8 @@ export function buildPrimaryNavItems(input: {
   loggedIn: boolean;
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
+  /** Open Review items assigned to the viewer. */
+  reviewCount?: number;
   userPagesPending: boolean;
 }): DashboardHeaderNavItem[] {
   const memoryNavPage = input.primaryUserPages.find(
@@ -32,8 +35,8 @@ export function buildPrimaryNavItems(input: {
   const otherPrimaryUserPages = input.primaryUserPages.filter(
     (page) => !(page.pluginName === "memory" && page.id === "memories"),
   );
-  // Auth-only routes already imply the signed-in primary nav. Hold Tasks and
-  // Memories slots while core/user-pages catch up so the header does not jump.
+  // Auth-only routes already imply the signed-in primary nav. Hold Review
+  // desk, Tasks, and Memories slots while core/user-pages catch up so the header does not jump.
   const reserveAuthPrimaryNav =
     input.loading && isAuthPrimaryNavPath(input.pathname);
   const showTasksNav = input.loggedIn || reserveAuthPrimaryNav;
@@ -43,6 +46,16 @@ export function buildPrimaryNavItems(input: {
     (input.loggedIn && input.userPagesPending);
 
   return [
+    ...(showTasksNav
+      ? [
+          {
+            count: input.reviewCount,
+            key: "review",
+            label: "Review desk",
+            to: "/review",
+          },
+        ]
+      : []),
     { key: "code", label: "Code", to: "/code" },
     ...(showTasksNav
       ? [{ key: "automations", label: "Automations", to: "/automations" }]

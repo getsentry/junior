@@ -5,6 +5,17 @@ export {
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export { webMessageId } from "../chat/conversations/web-message-id";
+export {
+  buttonUserInputField,
+  isEmptyUserInputAnswer,
+  normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
+} from "../chat/tools/runtime/user-input-request";
+export type {
+  UserInputAnswer,
+  UserInputField,
+  UserInputRequest,
+} from "../chat/tools/runtime/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export {
@@ -185,6 +196,10 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
+  USER_CUSTOMIZATION_MAX_CHARS,
+  userCustomizationSchema,
+} from "./schema/user-customization";
+export {
   baselineSnapshotSchema,
   deleteWorkspaceResponseSchema,
   workspaceBodySchema,
@@ -266,3 +281,14 @@ export type {
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
+export {
+  reviewItemActionSchema,
+  reviewItemCountSchema,
+  reviewItemListSchema,
+  reviewItemSchema,
+  reviewItemWaitingConversationsSchema,
+} from "./schema/review-item";
+export type {
+  ReviewItemActionBody,
+  ReviewItemPayload,
+} from "./schema/review-item";

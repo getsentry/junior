@@ -898,6 +898,8 @@ CREATE TABLE junior_conversations (
         },
         lastActivityAtMs: Date.now(),
         metrics: null,
+        // A human Turn on a system root does not replace the root Identity.
+        actor: { email: "person@example.com", fullName: "Person" },
         source: "scheduler",
         updatedAtMs: Date.now(),
       });
@@ -916,11 +918,11 @@ CREATE TABLE junior_conversations (
         surface: "scheduler",
       });
 
-      await expect(
-        store.get({
-          conversationId: "agent-dispatch:dispatch_scheduler_run",
-        }),
-      ).resolves.toMatchObject({
+      const conversation = await store.get({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+      });
+      expect(conversation).not.toHaveProperty("actor");
+      expect(conversation).toMatchObject({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         destination: {
           platform: "slack",

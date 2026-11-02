@@ -48,6 +48,8 @@ export interface ConversationMessageMeta {
 
 export interface ConversationMessage {
   author?: ConversationAuthor;
+  /** Identity of the author, resolved at ingress. Assistant output has none. */
+  authorIdentityId?: string;
   createdAtMs: number;
   id: string;
   meta?: ConversationMessageMeta;

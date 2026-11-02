@@ -10,6 +10,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import {
+  boundProfile,
   defaultModelId,
   modelIdForProfile,
   type ModelProfile,
@@ -26,8 +27,7 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import { sendSlackReply } from "@/chat/slack/reply";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
@@ -63,7 +63,7 @@ import {
 } from "@/chat/slack/message/content";
 import {
   persistThreadRuntimeState,
-  persistThreadState,
+  persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -99,6 +99,7 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
+import { saveSlackActorAvatar } from "@/chat/slack/avatar";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type Actor } from "@/chat/actor";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
@@ -152,6 +153,7 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   finishedRunReply,
+  postsRunNotices,
   runDispatchOutcome,
   deliversFinalText,
 } from "@/chat/automation-result";
@@ -174,10 +176,12 @@ import {
  * completion has succeeded.
  */
 async function persistThreadRuntimeStateWithRetry(
-  thread: Thread,
-  patch: Parameters<typeof persistThreadState>[1],
+  conversationId: string,
+  patch: Parameters<typeof persistThreadRuntimeState>[1],
 ): Promise<void> {
-  await persistWithRetry(() => persistThreadRuntimeState(thread, patch));
+  await persistWithRetry(() =>
+    persistThreadRuntimeState(conversationId, patch),
+  );
 }
 
 interface LoadedPiMessagesForTurn {
@@ -330,6 +334,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             visibility: destinationVisibility,
           })) ?? "private",
       });
+    const replyTarget = resolveSlackReplyTarget({ destination, source });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
     const conversationId = options.conversationId ?? threadId ?? runId;
@@ -392,14 +397,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           executionActor = options.execution.dispatch.actor;
           credentialContext = options.execution.credentialContext;
         } else {
-          executionActor = await ensureSlackMessageActorIdentity(
+          const slackActor = await ensureSlackMessageActorIdentity(
             message,
             teamId,
             lookupSlackUser,
           );
-          if (executionActor) {
-            credentialContext = credentialContextForActor(executionActor);
-          }
+          await saveSlackActorAvatar(slackActor);
+          executionActor = slackActor;
+          credentialContext = credentialContextForActor(slackActor);
         }
         if (!executionActor || !credentialContext) {
           throw new Error("Slack reply execution requires an actor");
@@ -420,6 +425,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             destination,
             locationConfiguration: options.execution?.locationConfiguration,
             context: {
+              conversationId,
               threadId,
               actorId: slackActorId,
               channelId,
@@ -446,6 +452,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (!actor) {
             throw new Error("Slack auth pause notice requires an actor");
           }
+          if (!postsRunNotices(options.execution?.dispatch)) {
+            return;
+          }
           const text = buildAuthPauseResponse(
             actor.userId,
             providerDisplayName,
@@ -453,17 +462,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (channelId && threadTs) {
-              await sendSlackReply({
-                channelId,
-                conversationId,
-                replyAttribution: options.execution?.dispatch?.replyAttribution,
-                text,
-                threadTs,
-              });
-            } else {
-              await thread.post(buildSlackOutputMessage(text));
-            }
+            await sendSlackReply({
+              ...replyTarget,
+              conversationId,
+              replyAttribution: options.execution?.dispatch?.replyAttribution,
+              text,
+            });
           } catch (error) {
             logException(error, "slack.auth_pause.notice_post.failed", {
               "app.slack.reply_stage": "thread_reply_auth_pause_notice",
@@ -551,7 +555,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             );
           options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
           options.onTurnOutcome?.({ outcome: "completed" });
-          await persistThreadState(thread, {
+          await persistThreadStateById(conversationId, {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
@@ -585,7 +589,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               throw error;
             }
 
-            await persistThreadState(thread, {
+            await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
             await options.onTurnStatePersisted?.();
@@ -636,7 +640,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          await thread.post(buildSlackOutputMessage(configReply.text));
+          await sendSlackReply({
+            ...replyTarget,
+            conversationId,
+            text: configReply.text,
+          });
           markConversationMessage(
             preparedState.conversation,
             preparedState.userMessageId,
@@ -659,7 +667,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               source: "slack",
             },
           });
-          await persistThreadState(thread, {
+          await persistThreadStateById(conversationId, {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
@@ -718,7 +726,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
           });
         }
-        await persistThreadState(thread, {
+        await persistThreadStateById(conversationId, {
           conversation: preparedState.conversation,
         });
         await options.onTurnStatePersisted?.();
@@ -850,17 +858,16 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               }
             } else {
               slackMessageTs = await sendSlackReply({
+                ...replyTarget,
                 cards,
-                channelId: destination.channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
-                ...(threadTs ? { threadTs } : undefined),
               });
               messageDestinations.push(
                 ...slackMessageTs.map((messageId) => ({
                   destination,
-                  messageId: threadTs ?? messageId,
+                  messageId: replyTarget.threadTs ?? messageId,
                 })),
               );
             }
@@ -982,12 +989,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               piMessages,
               modelId: modelIdForProfile(
                 botConfig,
-                loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
+                boundProfile(
+                  botConfig,
+                  loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
+                ),
               ),
             });
             if (compaction.compacted) {
               piMessages = compaction.piMessages;
-              await persistThreadState(thread, {
+              await persistThreadStateById(conversationId, {
                 conversation: preparedState.conversation,
               });
             }
@@ -1163,13 +1173,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               drainSteeringMessages,
               shouldYield: options.shouldYield,
               onSandboxRefChanged: async (sandboxRef) => {
-                await persistThreadState(thread, {
+                await persistThreadStateById(conversationId, {
                   sandboxRef,
                 });
               },
               recordPendingAuth: async (pendingAuth) => {
                 preparedState.conversation.processing.pendingAuth = pendingAuth;
-                await persistThreadState(thread, {
+                await persistThreadStateById(conversationId, {
                   conversation: preparedState.conversation,
                 });
               },
@@ -1271,7 +1281,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   conversationId,
                 }),
               );
-              await persistThreadRuntimeStateWithRetry(thread, completedState);
+              await persistThreadRuntimeStateWithRetry(
+                conversationId,
+                completedState,
+              );
               const automatedTurnLimit =
                 await recordFinishedTurnForAutomatedLimit({
                   conversationId,
@@ -1281,7 +1294,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               await maybePostAutomatedTurnLimitNotice({
                 conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                threadTs,
+                source,
                 update: automatedTurnLimit,
               });
             } catch (saveError) {
@@ -1341,7 +1354,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 nowMs: Date.now(),
                 sessionId: turnId,
               });
-              await persistThreadState(thread, {
+              await persistThreadStateById(conversationId, {
                 conversation: preparedState.conversation,
               });
               if (conversationId) {
@@ -1367,7 +1380,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               conversation: preparedState.conversation,
               sessionId: turnId,
             });
-            await persistThreadState(thread, {
+            await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
             persistedAtLeastOnce = true;
@@ -1505,7 +1518,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               nowMs: Date.now(),
               sessionId: turnId,
             });
-            await persistThreadState(thread, {
+            await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
             await turnLifecycle.complete({
@@ -1591,7 +1604,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 );
               }
             }
-            await persistThreadState(thread, {
+            await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
             if (shouldEmitDevAgentTrace()) {

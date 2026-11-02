@@ -22,7 +22,6 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { cosineDistance } from "drizzle-orm/sql/functions";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
@@ -33,9 +32,18 @@ import {
   juniorMemoryMemories,
   juniorMemorySignals,
 } from "./db/schema";
+import {
+  EMBEDDING_METRIC,
+  embeddingDistance,
+  embeddingWithinDistance,
+  hashEmbeddedContent,
+  parseEmbeddingBatch,
+  sameEmbeddingModel,
+  type MemoryEmbedding,
+  type MemoryEmbeddingProvider,
+} from "./embedding";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
-  MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
@@ -77,7 +85,6 @@ const LEXICAL_RANK_WINDOW_MULTIPLIER = 4;
 /** Bound query text before embedding / FTS construction. */
 const MAX_RETRIEVAL_QUERY_CHARS = 1_500;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
-const EMBEDDING_METRIC = "cosine";
 /**
  * Cosine distance cutoff for automatic recall only (not explicit search).
  * Tuned for text-embedding-3-small; retune if the embedding model changes.
@@ -87,12 +94,6 @@ const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
-
-interface MemoryEmbedding {
-  model: string;
-  provider: string;
-  vector: number[];
-}
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryContentSchema = z
@@ -227,18 +228,6 @@ const memoryRecordSchema = z
     kind: z.enum(MEMORY_KINDS),
   })
   .strict();
-const embeddingVectorSchema = z
-  .array(numberSchema)
-  .length(MEMORY_EMBEDDING_DIMENSIONS);
-const embeddingResultSchema = z
-  .object({
-    costUsd: z.number().finite().nonnegative().optional(),
-    dimensions: z.literal(MEMORY_EMBEDDING_DIMENSIONS),
-    model: nonEmptyStringSchema,
-    provider: nonEmptyStringSchema,
-    vectors: z.array(embeddingVectorSchema),
-  })
-  .strict();
 const memorySupersessionCandidateSchema = z
   .object({
     content: z.string().min(1),
@@ -322,16 +311,7 @@ export interface ArchiveExpiredMemoriesResult {
   archivedCount: number;
 }
 
-export interface MemoryEmbeddingProvider {
-  /** Embed normalized memory text for derived vector retrieval. */
-  embedTexts(input: { texts: string[] }): Promise<{
-    costUsd?: number;
-    dimensions: number;
-    model: string;
-    provider: string;
-    vectors: number[][];
-  }>;
-}
+export type { MemoryEmbeddingProvider } from "./embedding";
 
 export type MemorySupersessionInput = z.output<
   typeof memorySupersessionInputSchema
@@ -379,12 +359,9 @@ export interface MemoryStore {
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
 }
 
-function normalizeContent(content: string): string {
+/** Collapse whitespace the same way for stored, embedded, and searched text. */
+export function normalizeContent(content: string): string {
   return content.replace(/\s+/g, " ").trim();
-}
-
-function hashEmbeddedContent(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 function idempotencyAliasId(args: {
@@ -651,16 +628,18 @@ function withDenseRanks<T>(
 async function embedOne(
   embedder: MemoryEmbeddingProvider,
   text: string,
+  inputType: "document" | "query",
 ): Promise<MemoryEmbedding> {
   const normalized = normalizeContent(text);
   if (!normalized) {
     throw new Error("Embedding text is required.");
   }
-  const result = embeddingResultSchema.parse(
-    await embedder.embedTexts({ texts: [normalized] }),
+  const result = parseEmbeddingBatch(
+    await embedder.embedTexts({ inputType, texts: [normalized] }),
+    1,
   );
   const [vector] = result.vectors;
-  if (result.vectors.length !== 1 || !vector) {
+  if (!vector) {
     throw new Error("Embedding provider returned an unexpected vector count.");
   }
   return {
@@ -679,14 +658,21 @@ async function storeEmbedding(args: {
   memoryId: string;
   nowMs: number;
 }): Promise<void> {
-  if (!args.embedder && !args.embedding) {
+  const target = args.embedding ?? args.embedder;
+  if (!target) {
     return;
   }
   try {
     const existing = await args.db
       .select({ memoryId: juniorMemoryEmbeddings.memoryId })
       .from(juniorMemoryEmbeddings)
-      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
+      .where(
+        and(
+          eq(juniorMemoryEmbeddings.memoryId, args.memoryId),
+          eq(juniorMemoryEmbeddings.provider, target.provider),
+          eq(juniorMemoryEmbeddings.model, target.model),
+        ),
+      )
       .limit(1);
     if (existing[0]) {
       return;
@@ -703,7 +689,7 @@ async function storeEmbedding(args: {
       return;
     }
     try {
-      embedding = await embedOne(embedder, args.content);
+      embedding = await embedOne(embedder, args.content, "document");
     } catch {
       return;
     }
@@ -714,7 +700,7 @@ async function storeEmbedding(args: {
       .values({
         contentHash: hashEmbeddedContent(args.content),
         createdAtMs: args.nowMs,
-        dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+        dimensions: embedding.vector.length,
         embedding: embedding.vector,
         memoryId: args.memoryId,
         metric: EMBEDDING_METRIC,
@@ -900,10 +886,7 @@ async function listVectorAdjudicationCandidates(args: {
   scope: ResolvedMemoryScope;
   subject: ResolvedMemorySubject;
 }): Promise<MemoryRecord[]> {
-  const distance = cosineDistance(
-    juniorMemoryEmbeddings.embedding,
-    args.embedding.vector,
-  );
+  const distance = embeddingDistance(args.embedding);
   const rows = await args.db
     .select({
       contentHash: juniorMemoryEmbeddings.contentHash,
@@ -918,10 +901,7 @@ async function listVectorAdjudicationCandidates(args: {
     .where(
       and(
         activeScopedSubjectPredicate(args),
-        eq(juniorMemoryEmbeddings.provider, args.embedding.provider),
-        eq(juniorMemoryEmbeddings.model, args.embedding.model),
-        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
-        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+        sameEmbeddingModel(args.embedding),
       ),
     )
     .orderBy(
@@ -1133,15 +1113,12 @@ async function searchVisibleVectorMemories(args: {
     return [];
   }
   const embedding = args.embedding;
-  const distance = cosineDistance(
-    juniorMemoryEmbeddings.embedding,
-    embedding.vector,
-  );
+  const distance = embeddingDistance(embedding);
   // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
   const distancePredicate =
     args.maxDistance === undefined
       ? undefined
-      : sql`${distance} <= ${args.maxDistance}`;
+      : embeddingWithinDistance(embedding, args.maxDistance);
   const rows = await args.db
     .select({
       contentHash: juniorMemoryEmbeddings.contentHash,
@@ -1156,10 +1133,7 @@ async function searchVisibleVectorMemories(args: {
     .where(
       and(
         predicate,
-        eq(juniorMemoryEmbeddings.provider, embedding.provider),
-        eq(juniorMemoryEmbeddings.model, embedding.model),
-        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
-        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+        sameEmbeddingModel(embedding),
         ...(distancePredicate ? [distancePredicate] : []),
       ),
     )
@@ -1315,7 +1289,7 @@ export function createMemoryStore(
     let candidateEmbedding: MemoryEmbedding | undefined;
     if (embedder) {
       try {
-        candidateEmbedding = await embedOne(embedder, content);
+        candidateEmbedding = await embedOne(embedder, content, "document");
       } catch {
         candidateEmbedding = undefined;
       }
@@ -1495,7 +1469,7 @@ export function createMemoryStore(
     let queryEmbedding: MemoryEmbedding | undefined;
     if (embedder && query) {
       try {
-        queryEmbedding = await embedOne(embedder, query);
+        queryEmbedding = await embedOne(embedder, query, "query");
       } catch {
         queryEmbedding = undefined;
       }

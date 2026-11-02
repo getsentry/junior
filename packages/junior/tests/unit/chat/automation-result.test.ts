@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   finishedRunReply,
+  postsRunNotices,
   remindMissingAutomationResult,
   runDispatchOutcome,
   type AutomationResult,
@@ -187,6 +188,10 @@ describe("automation run result", () => {
 
     expect(finishedRunReply(failed, undefined)).toBe(failed.text);
     expect(finishedRunReply(failed, { declaresResult: true })).toBeUndefined();
+    // Failure replies and notices outside the finished run follow the rule.
+    expect(postsRunNotices(undefined)).toBe(true);
+    expect(postsRunNotices({ declaresResult: true })).toBe(false);
+    expect(postsRunNotices({ outcomes: [] })).toBe(false);
   });
 });
 

@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
@@ -18,6 +18,7 @@ import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
@@ -49,6 +50,83 @@ function initials(name: string | null | undefined, email: string): string {
   return email.slice(0, 1).toUpperCase();
 }
 
+/** Show the viewer's photo, with initials while it loads or when there is none. */
+function ProfileAvatar({
+  className,
+  user,
+}: {
+  className?: string;
+  user: Identity["user"];
+}) {
+  return (
+    <Avatar
+      aria-hidden="true"
+      className={cn("border-0 shadow-black/40", className)}
+    >
+      <AvatarImage alt="User avatar" src={user.avatarUrl} />
+      <AvatarFallback className="font-bold tracking-wide">
+        {initials(user.name, user.email!)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+const SPEND_COUNT_UP_MS = 700;
+
+/**
+ * Show one spend total. When the total changes, count up from the last shown
+ * value and tint the figure until the count ends.
+ */
+function SpendAmount({ value }: { value?: number }) {
+  const [shown, setShown] = useState(value);
+  const [counting, setCounting] = useState(false);
+  const shownRef = useRef(value);
+
+  useEffect(() => {
+    const from = shownRef.current;
+    if (
+      value === undefined ||
+      from === undefined ||
+      from === value ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      shownRef.current = value;
+      setShown(value);
+      setCounting(false);
+      return;
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+    const step = (time: number) => {
+      const progress = Math.min(1, (time - startedAt) / SPEND_COUNT_UP_MS);
+      const eased = 1 - (1 - progress) ** 3;
+      const next = progress < 1 ? from + (value - from) * eased : value;
+      shownRef.current = next;
+      setShown(next);
+      if (progress < 1) {
+        frame = requestAnimationFrame(step);
+      } else {
+        setCounting(false);
+      }
+    };
+    setCounting(true);
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return (
+    <span
+      className={cn(
+        "transition-colors duration-700 motion-reduce:transition-none",
+        counting && "text-dashboard-accent-text",
+      )}
+    >
+      {shown === undefined ? "—" : formatCostSummary({ total: shown })}
+    </span>
+  );
+}
+
 const profileLinkClass =
   "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none";
 
@@ -73,19 +151,10 @@ export function ProfileMenu({
     (page) => page.navigation === "profile",
   );
 
-  const avatar = (
-    <span
-      aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-    >
-      {initials(identity.user.name, email)}
-    </span>
-  );
-
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        {avatar}
+        <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
             {name}
@@ -101,13 +170,13 @@ export function ProfileMenu({
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span>
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
@@ -186,13 +255,13 @@ export function ProfileMenu({
         <span className="whitespace-nowrap">
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span className="whitespace-nowrap">
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
@@ -254,12 +323,7 @@ export function ProfileMenu({
         aria-label={`Signed in as ${name}`}
         className="flex min-w-0 items-center gap-2.5 px-1"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        <ProfileAvatar user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
             {name}
@@ -304,7 +368,7 @@ export function ProfileMenu({
               7d
             </span>
             <span className="text-xs font-semibold text-dashboard-text">
-              {sevenDaySpend}
+              <SpendAmount value={spend?.sevenDaysUsd} />
             </span>
           </span>
           <span
@@ -316,16 +380,11 @@ export function ProfileMenu({
               30d
             </span>
             <span className="text-xs font-semibold text-dashboard-text">
-              {thirtyDaySpend}
+              <SpendAmount value={spend?.thirtyDaysUsd} />
             </span>
           </span>
         </span>
-        <span
-          aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        <ProfileAvatar user={identity.user} />
         <ChevronDown
           aria-hidden="true"
           className={cn(

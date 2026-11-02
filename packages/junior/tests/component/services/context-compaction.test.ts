@@ -295,7 +295,7 @@ describe("context compaction projection reset", () => {
       availableSkills: [],
       includeSessionContext: false,
       disabledTools: [
-        { name: "createEventAutomation", reason: "No person started it." },
+        { name: "createAutomation", reason: "No person started it." },
       ],
       pluginPromptContributions: [
         { pluginName: "memory", id: "userPrompt:0", text: "Earlier memory." },
@@ -389,7 +389,7 @@ describe("context compaction projection reset", () => {
     const context = textOf(result.piMessages![0]!);
     expect(context).toContain(`- gen_ai.conversation.id: ${conversationId}`);
     expect(context).not.toContain("firstTurnTool");
-    expect(context).not.toContain("createEventAutomation");
+    expect(context).not.toContain("createAutomation");
     expect(context).not.toContain("Earlier memory.");
     expect(context).toContain("Use the repository formatter.");
     expect(context).toContain("Keep the API stable.");

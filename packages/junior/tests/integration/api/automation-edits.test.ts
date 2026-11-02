@@ -1,26 +1,15 @@
-import {
-  claimDueScheduledRun,
-  advanceScheduledAutomationAfterRun,
-  markScheduledRunFailed,
-} from "@/chat/scheduled-automations/runs";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { Hono } from "hono";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import type { JuniorApiEnv } from "@/api/route";
 import {
   automationEditSchema,
   automationEventCatalogSchema,
   automationListSchema,
   automationVersionListSchema,
 } from "@/api/schema/automation";
-import { getDb, getConversationStore } from "@/chat/db";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { getDb } from "@/chat/db";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
-  createEventAutomation,
   getEventAutomation,
   saveEventAutomation,
 } from "@/chat/event-automations/store";
@@ -29,298 +18,24 @@ import {
   readScheduledAutomation,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
-import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { automationToolContext } from "@/chat/automations/tool-access";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import {
   execute,
   context as eventContext,
 } from "../../fixtures/event-automations";
-import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
-
-const destination = {
-  platform: "slack" as const,
-  channelId: "C123",
-  teamId: "T123",
-};
-const originalInstruction = "Post the weekly issue digest.";
-
-async function setup(kind: "scheduled" | "event") {
-  const fixture = createConfiguredJuniorSqlFixture();
-  await migrateSchema(fixture.sql);
-  for (const [slackUserId, email, teamId] of [
-    ["U123", "creator@example.com", "T123"],
-    ["U456", "reader@example.com", "T123"],
-    ["U123", "foreign@example.com", "TFOREIGN"],
-  ] as const) {
-    await getConversationStore().recordActivity({
-      conversationId: `slack:${teamId}:${slackUserId}:edit`,
-      actor: { platform: "slack", slackUserId, email, teamId },
-      destination: { ...destination, teamId },
-      channelName: "automations",
-      visibility: "public",
-    });
-  }
-  const user = await resolveViewerUser("creator@example.com");
-  if (!user) throw new Error("Missing creator");
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    const viewer = await resolveViewerUser(
-      context.req.header("test-viewer") ?? user.email,
-    );
-    if (!viewer) throw new Error("Missing viewer");
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  const id = `${kind}_edit_api`;
-  const common = {
-    id,
-    createdAtMs: Date.now(),
-    createdBy: { slackUserId: "U123" },
-    credentialMode: "creator" as const,
-    destination,
-    task: { text: originalInstruction },
-    title: "My custom title",
-    // Keep an existing Destination that the new editor cannot create.
-    outcomes: [
-      {
-        action: "send_message" as const,
-        destination: { ...destination, channelId: "DRETAINED" },
-      },
-    ],
-  };
-  if (kind === "scheduled") {
-    await saveScheduledAutomation(getDb(), {
-      ...common,
-      creatorIdentityId: user.identities.find(
-        (identity) => identity.provider === "slack",
-      )!.id,
-      conversationAccess: { audience: "channel", visibility: "public" },
-      updatedAtMs: Date.now(),
-      status: "blocked",
-      statusReason: "Missing credentials",
-      nextRunAtMs: Date.now() + 86400000,
-      schedule: {
-        kind: "recurring",
-        timezone: "UTC",
-        description: "Every day",
-        recurrence: {
-          frequency: "daily",
-          interval: 1,
-          time: { hour: 9, minute: 0 },
-          startDate: "2026-01-01",
-        },
-      },
-    });
-  } else {
-    await createEventAutomation(getDb(), {
-      ...common,
-      creatorIdentityId: user.identities.find(
-        (identity) => identity.provider === "slack",
-      )!.id,
-      destinationVisibility: "public",
-      trigger: {
-        namespace: "unavailable",
-        resourceType: "issue",
-        identifier: "issue-42",
-        label: "Old issue",
-        events: ["issue.closed"],
-        match: { retainedCondition: ["one", "two"] },
-      },
-    });
-  }
-  const url = `/api/automations/${id}`;
-  const read = async () => {
-    const response = await app.request(`${url}/edit`);
-    expect(response.status).toBe(200);
-    return automationEditSchema.parse(await response.json());
-  };
-  const patch = (body: unknown, viewer = user.email) =>
-    app.request(url, {
-      method: "PATCH",
-      headers: { "content-type": "application/json", "test-viewer": viewer },
-      body: JSON.stringify(body),
-    });
-  const lifecycle = async (
-    action: "pause" | "resume",
-    revision?: string,
-    viewer = user.email,
-  ) =>
-    app.request(`${url}/lifecycle`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "test-viewer": viewer },
-      body: JSON.stringify({
-        action,
-        revision: revision ?? (await read()).revision,
-      }),
-    });
-  return { app, fixture, id, url, read, patch, lifecycle, user };
-}
+import {
+  destination,
+  originalInstruction,
+  setupAutomationEditApi as setup,
+} from "../../fixtures/automation-edit-api";
 
 describe("Automation edit API", () => {
   afterEach(() => {
     setPlugins([]);
     vi.unstubAllEnvs();
-  });
-
-  test.each(["scheduled", "event"] as const)(
-    "pauses and resumes %s work without changing authority or history",
-    async (kind) => {
-      const { app, fixture, id, url, read, patch, lifecycle } =
-        await setup(kind);
-      try {
-        if (kind === "scheduled") {
-          const task = (await readScheduledAutomation(getDb(), id))!;
-          await saveScheduledAutomation(getDb(), {
-            ...task,
-            status: "active",
-            statusReason: undefined,
-            nextRunAtMs: Date.now() - 1000,
-          });
-        }
-        await recordAutomationExecution(id, {
-          executionId: "past-failure",
-          status: "failed",
-          nowMs: Date.now() - 5000,
-        });
-        const initial = await read();
-        expect(
-          (await lifecycle("pause", initial.revision, "reader@example.com"))
-            .status,
-        ).toBe(404);
-        expect(
-          (await lifecycle("pause", initial.revision, "foreign@example.com"))
-            .status,
-        ).toBe(404);
-        expect((await lifecycle("pause", initial.revision)).status).toBe(200);
-        const paused = await read();
-        expect(paused).toMatchObject({
-          status: "paused",
-          credentialMode: "creator",
-          outcomes: initial.outcomes,
-        });
-        expect(
-          (
-            await patch({
-              kind,
-              revision: initial.revision,
-              instruction: "Stale edit",
-            })
-          ).status,
-        ).toBe(409);
-        const listed = await app.request("/api/automations?state=paused");
-        expect(await listed.json()).toMatchObject({
-          total: 1,
-          automations: [{ id, status: "paused" }],
-        });
-        expect(
-          await (await app.request("/api/automations?scope=attention")).json(),
-        ).toMatchObject({ total: 0 });
-        expect(
-          await (await app.request(`${url}/executions`)).json(),
-        ).toMatchObject({
-          executions: [{ executionId: "past-failure", status: "failed" }],
-        });
-        expect(
-          (await lifecycle("resume", (await read()).revision)).status,
-        ).toBe(200);
-        const resumed = await read();
-        expect(resumed).toMatchObject({
-          status: "active",
-          credentialMode: initial.credentialMode,
-          outcomes: initial.outcomes,
-          id,
-        });
-        // Lifecycle changes are not definition changes.
-        expect(
-          await (await app.request(`${url}/versions`)).json(),
-        ).toMatchObject({ versions: [{ version: 1 }] });
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
-
-  test("resumes future schedule times without restarting completed work", async () => {
-    const { fixture, id, read, lifecycle } = await setup("scheduled");
-    try {
-      const task = (await readScheduledAutomation(getDb(), id))!;
-      await saveScheduledAutomation(getDb(), {
-        ...task,
-        status: "active",
-        statusReason: undefined,
-        nextRunAtMs: Date.now() - 1000,
-      });
-      // Use a real claim to cover work that started before pause.
-      const run = (await claimDueScheduledRun(getDb(), { nowMs: Date.now() }))!;
-      expect(run).toMatchObject({ taskId: id });
-      expect((await lifecycle("pause")).status).toBe(200);
-      expect(
-        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
-      ).toBeUndefined();
-      await markScheduledRunFailed(getDb(), {
-        runId: run.id,
-        completedAtMs: Date.now(),
-        errorMessage: "Run failed after pause",
-      });
-      await advanceScheduledAutomationAfterRun(getDb(), {
-        nowMs: Date.now(),
-        status: "failed",
-        run,
-      });
-      expect((await read()).status).toBe("paused");
-      expect((await lifecycle("resume")).status).toBe(200);
-      const resumed = (await readScheduledAutomation(getDb(), id))!;
-      expect(resumed.nextRunAtMs).toBeGreaterThan(Date.now());
-      expect(
-        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
-      ).toBeUndefined();
-      expect(
-        await claimDueScheduledRun(getDb(), { nowMs: resumed.nextRunAtMs! }),
-      ).toMatchObject({ taskId: id });
-      await saveScheduledAutomation(getDb(), {
-        ...resumed,
-        status: "completed",
-        nextRunAtMs: undefined,
-      });
-      expect((await lifecycle("resume")).status).toBe(400);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  test("keeps blocked requirements through pause and refuses to replay a missed one-off", async () => {
-    const { fixture, id, read, lifecycle } = await setup("scheduled");
-    try {
-      expect((await lifecycle("pause")).status).toBe(200);
-      expect((await lifecycle("resume")).status).toBe(200);
-      expect(await readScheduledAutomation(getDb(), id)).toMatchObject({
-        status: "blocked",
-        statusReason: "Missing credentials",
-      });
-      expect((await lifecycle("resume")).status).toBe(200);
-      const task = (await readScheduledAutomation(getDb(), id))!;
-      await saveScheduledAutomation(getDb(), {
-        ...task,
-        status: "paused",
-        nextRunAtMs: Date.now() - 1000,
-        schedule: {
-          kind: "one_off",
-          description: "Yesterday",
-          timezone: "UTC",
-        },
-      });
-      const result = await lifecycle("resume");
-      expect(result.status).toBe(400);
-      expect(await result.json()).toMatchObject({
-        fields: { schedule: expect.any(Array) },
-      });
-      expect((await read()).status).toBe("paused");
-    } finally {
-      await fixture.close();
-    }
   });
 
   test("previews schedules without saving and exposes only durable Event choices", async () => {
@@ -411,69 +126,28 @@ describe("Automation edit API", () => {
         expect(saved.revision).not.toBe(initial.revision);
 
         // Slack and web use the same edit rules; neither regenerates a saved title.
-        if (kind === "scheduled") {
-          await execute(
-            createSlackScheduleUpdateAutomationTool({
-              actor: { platform: "slack", teamId: "T123", userId: "U123" },
-              source: createSlackSource({
-                ...destination,
-                visibility: "public",
-              }),
-              conversationId: "slack:T123:U123:edit",
-              users: {
-                resolveActor: async () => ({
-                  user,
-                  identity: user.identities[0]!,
-                }),
-              },
+        const slackToolContext = () =>
+          automationToolContext({
+            ...eventContext("U123", "C123", "public", undefined, "T123"),
+            conversationId: "slack:T123:U123:edit",
+            resolveActorIdentity: async () => ({
+              user,
+              identity: user.identities[0]!,
             }),
+          });
+        for (const instruction of [
+          "Edited from Slack.",
+          "Edited again from Slack.",
+        ]) {
+          await execute(
+            createUpdateAutomationTool(slackToolContext(), getEventCatalog()),
             {
               automationId: id,
-              instruction: "Edited from Slack.",
-              title: "Title from Slack",
+              instruction,
+              ...(instruction === "Edited from Slack."
+                ? { title: "Title from Slack" }
+                : undefined),
             },
-          );
-          await execute(
-            createSlackScheduleUpdateAutomationTool({
-              actor: { platform: "slack", teamId: "T123", userId: "U123" },
-              source: createSlackSource({
-                ...destination,
-                visibility: "public",
-              }),
-              conversationId: "slack:T123:U123:edit",
-              users: {
-                resolveActor: async () => ({
-                  user,
-                  identity: user.identities[0]!,
-                }),
-              },
-            }),
-            { automationId: id, instruction: "Edited again from Slack." },
-          );
-        } else {
-          await execute(
-            createUpdateEventAutomationTool(
-              {
-                ...eventContext("U123", "C123", "public", undefined, "T123"),
-                conversationId: "slack:T123:U123:edit",
-              },
-              getEventCatalog(),
-            ),
-            {
-              automationId: id,
-              instruction: "Edited from Slack.",
-              title: "Title from Slack",
-            },
-          );
-          await execute(
-            createUpdateEventAutomationTool(
-              {
-                ...eventContext("U123", "C123", "public", undefined, "T123"),
-                conversationId: "slack:T123:U123:edit",
-              },
-              getEventCatalog(),
-            ),
-            { automationId: id, instruction: "Edited again from Slack." },
           );
         }
         const stale = await patch({

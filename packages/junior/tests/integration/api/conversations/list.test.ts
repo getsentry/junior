@@ -14,6 +14,7 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
@@ -234,6 +235,21 @@ describe("conversation list API", () => {
             schemaVersion: 1,
             seq: 0,
             type: "user_message",
+          },
+          // An event Message has the system Identity as its author.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            schemaVersion: 1,
+            seq: 1,
+            type: "message",
           },
         ]);
       setPlugins([
@@ -683,6 +699,7 @@ describe("conversation list API", () => {
         .insert(juniorIdentities)
         .values({
           id: "identity-participant-slack",
+          avatarUrl: "https://avatars.slack-edge.com/participant_512.jpg",
           createdAt: new Date(1_000),
           email: "participant@example.com",
           emailNormalized: "participant@example.com",
@@ -694,10 +711,49 @@ describe("conversation list API", () => {
           updatedAt: new Date(1_000),
           userId: participantUserId!,
         });
+      // Photos: the participant has Slack and Google photos, and the owner has
+      // only a Google photo. The Slack photo wins, and Google is the fallback.
+      const [owner] = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "owner@example.com"));
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values(
+          [
+            { subject: "google-participant", userId: participantUserId! },
+            { subject: "google-owner", userId: owner!.id },
+          ].map(({ subject, userId }) => ({
+            id: `identity-${subject}`,
+            avatarUrl: `https://lh3.googleusercontent.com/a/${subject}`,
+            createdAt: new Date(2_000),
+            kind: "user" as const,
+            provider: "google",
+            providerSubjectId: subject,
+            updatedAt: new Date(2_000),
+            userId,
+          })),
+        );
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
         .values([
+          // An event Message author is not a participant.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_300),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            seq: 2,
+            type: "message",
+          },
           {
             actorIdentityId: "identity-participant-slack",
             conversationId: "slack:C1:shared-thread",
@@ -775,10 +831,12 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
+            avatarUrl: "/api/people/avatars/identity-google-owner",
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
+            avatarUrl: "/api/people/avatars/identity-participant-slack",
             email: "participant@example.com",
             fullName: "Participant",
             slackUserId: "UPARTICIPANT1",

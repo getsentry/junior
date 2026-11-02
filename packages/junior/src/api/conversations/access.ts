@@ -18,7 +18,15 @@ const rootIdentity = alias(juniorIdentities, "access_root_identity");
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
   isParticipant: boolean;
+  /** Provider tenant of the root Location, such as a Slack workspace. */
+  tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
+}
+
+/** A provider tenant, such as one Slack workspace. */
+export interface ProviderTenant {
+  provider: string;
+  providerTenantId: string;
 }
 
 /** Resolve viewer access for a bounded set of persisted conversations. */
@@ -39,6 +47,8 @@ export async function readConversationAccessFromSql(
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
       visibility: rootDestination.visibility,
+      provider: rootDestination.provider,
+      providerTenantId: rootDestination.providerTenantId,
       rootEmailNormalized: rootIdentity.emailNormalized,
       rootEmailVerified: rootIdentity.emailVerified,
       rootUserId: rootIdentity.userId,
@@ -115,6 +125,16 @@ export async function readConversationAccessFromSql(
           canViewPrivateContent,
           isParticipant,
           visibility,
+          ...(validRootConversationId !== undefined &&
+          row.provider !== null &&
+          row.providerTenantId
+            ? {
+                tenant: {
+                  provider: row.provider,
+                  providerTenantId: row.providerTenantId,
+                },
+              }
+            : undefined),
         },
       ];
     }),

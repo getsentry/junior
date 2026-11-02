@@ -1,8 +1,8 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { parseActorUserId } from "@/chat/actor";
+import { isSlackUserId, parseActorUserId } from "@/chat/actor";
 import { parseSessionSource } from "@/chat/source";
-import type { IdentityUpsert } from "@/chat/identities/identity";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { logWarn } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -10,8 +10,6 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import type { ConversationEventData } from "../history";
-
-const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -172,8 +170,8 @@ async function findJuniorIdentityIdByDashboardAuthorId(
 
 /**
  * Resolve the durable actor identity for one event payload.
- * Human user messages get an identity when author data is enough; other events
- * keep a null actor.
+ * Ingress sets `authorIdentityId` on new user Messages. Legacy writes without
+ * it still guess the author from its data, and a new Message logs the guess.
  */
 export async function resolveEventActorIdentityId(
   executor: JuniorSqlDatabase,
@@ -193,6 +191,12 @@ export async function resolveEventActorIdentityId(
   if (data.role !== "user") {
     return undefined;
   }
+  if (data.type === "message") {
+    // TODO(dcramer): Remove the guess after every ingress sets the author.
+    logWarn("conversation.message.author_identity.missing", {
+      "app.message.id": data.messageId,
+    });
+  }
 
   const author = readAuthor(data.meta);
   if (author.isBot === true) {
@@ -203,57 +207,50 @@ export async function resolveEventActorIdentityId(
     return undefined;
   }
 
-  if (SLACK_USER_ID_PATTERN.test(userId)) {
+  if (isSlackUserId(userId)) {
     const tenantId = await loadConversationSlackTenantId(
       executor,
       args.conversationId,
     );
-    const observation: IdentityUpsert = {
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: userId,
-      ...(tenantId ? { providerTenantId: tenantId } : undefined),
-      ...(author.fullName ? { displayName: author.fullName } : undefined),
-      ...(author.userName ? { handle: author.userName } : undefined),
-      ...(author.email
-        ? { email: author.email, emailVerified: true }
-        : undefined),
-    };
-    // Prefer an exact tenant match when known; otherwise create/update without
-    // inventing a tenant for multi-workspace Slack subjects.
-    if (tenantId) {
-      const stored = await upsertIdentity(executor, observation, args.nowMs);
-      return stored.id;
-    }
-    return (
-      (await findIdentityIdByProviderSubject(executor, {
+    // Prefer an exact tenant match when known; otherwise only find an existing
+    // identity, so a multi-workspace Slack subject does not get a tenant.
+    if (!tenantId) {
+      return await findIdentityIdByProviderSubject(executor, {
         provider: "slack",
         providerSubjectId: userId,
-      })) ?? undefined
+      });
+    }
+    return await resolveActorIdentityId(
+      executor,
+      {
+        platform: "slack",
+        teamId: tenantId,
+        userId,
+        ...(author.email ? { email: author.email } : undefined),
+        ...(author.fullName ? { fullName: author.fullName } : undefined),
+        ...(author.userName ? { userName: author.userName } : undefined),
+      },
+      args.nowMs,
     );
   }
 
   const email =
     typeof author.email === "string" && author.email.includes("@")
-      ? author.email.trim().toLowerCase()
+      ? author.email
       : userId.includes("@")
-        ? userId.trim().toLowerCase()
+        ? userId
         : undefined;
   if (email) {
-    const stored = await upsertIdentity(
+    return await resolveActorIdentityId(
       executor,
       {
-        kind: "user",
-        provider: "junior",
-        providerSubjectId: email,
+        platform: "web",
+        userId,
         email,
-        emailVerified: true,
-        ...(author.fullName ? { displayName: author.fullName } : undefined),
-        metadata: { platform: "web" },
+        ...(author.fullName ? { fullName: author.fullName } : undefined),
       },
       args.nowMs,
     );
-    return stored.id;
   }
 
   // Dashboard authors store dashboard:<hash> without email in meta. Junior

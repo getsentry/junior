@@ -237,7 +237,7 @@ async function readInvitedEvent(
  *
  * Anyone who can edit an event can attach any Doc, so the tool reads only
  * attached Docs that the organizer owns and that were made for this meeting.
- * The package README explains how Google shares the records.
+ * The package AGENTS.md has the transcript rules.
  */
 export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
   return definePluginTool({

@@ -9,6 +9,7 @@ import { memo, type ReactNode } from "react";
 
 import {
   formatMessageTimestamp,
+  transcriptMessageActor,
   transcriptMessageActorLabel,
   transcriptRoleKind,
 } from "../format";
@@ -20,7 +21,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
-import { TranscriptText } from "./TranscriptText";
+import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { showsSlackSourceIcon } from "./transcriptSource";
@@ -32,7 +33,8 @@ export const TranscriptMessageView = memo(
     conversation: ConversationTranscript;
   }) {
     const rawText = messageRawText(props.message);
-    const role = props.message.role;
+    const roleKind = transcriptRoleKind(props.message.role);
+    const chatText = roleKind === "assistant" || roleKind === "user";
 
     return (
       <TranscriptMessageShell
@@ -57,10 +59,10 @@ export const TranscriptMessageView = memo(
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
           {props.message.parts.map((part, index) =>
             part.type === "text" ? (
-              <TranscriptText
+              <DisplayText
+                chat={chatText}
                 key={index}
-                mentions={props.message.mentions ?? []}
-                role={role}
+                mentions={props.message.mentions}
                 text={part.text ?? ""}
               />
             ) : null,
@@ -130,8 +132,10 @@ function messageAction(
   if (message.role === "user" && message.contexts?.length) {
     return (
       <TranscriptTurnContextView
+        actor={transcriptMessageActor(conversation, message)}
         contexts={message.contexts}
         messageId={message.messageId}
+        timestamp={message.timestamp}
       />
     );
   }

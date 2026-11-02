@@ -22,6 +22,7 @@ const DEFAULT_WINDOW_MS = 7 * DAY_MS;
 const clockTimeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
 const inputSchema = z
   .object({
@@ -60,6 +61,13 @@ const inputSchema = z
       .default("17:00")
       .describe(
         "Latest local end, 24-hour HH:MM, in each attendee's own calendar time zone.",
+      ),
+    weekdays: z
+      .array(z.enum(WEEKDAYS))
+      .min(1)
+      .optional()
+      .describe(
+        "Only return slots on these days, in the timeZone of the slot labels. Omit to search every weekday.",
       ),
     maxResults: z.number().int().min(1).max(20).default(3),
   })
@@ -148,6 +156,21 @@ function clockMinutes(value: string): number {
   return hours * 60 + minutes;
 }
 
+/**
+ * Length of a window on the clock of `timeZone`, so a daylight-saving change
+ * inside it does not add or remove an hour.
+ */
+function wallClockMs(startMs: number, endMs: number, timeZone: string): number {
+  const format = localFormat(timeZone);
+  const start = localParts(startMs, format);
+  const end = localParts(endMs, format);
+  return (
+    Date.parse(`${end.date}T00:00:00Z`) -
+    Date.parse(`${start.date}T00:00:00Z`) +
+    (end.minutes - start.minutes) * 60_000
+  );
+}
+
 interface Interval {
   endMs: number;
   startMs: number;
@@ -226,7 +249,8 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
  *
  * Optional attendees who are busy or outside their hours do not block a slot.
  * Slots without such conflicts come first. Options are spread across the days
- * of `timeZone` and across each day.
+ * of `timeZone` and across each day. With `weekdays`, only those days of
+ * `timeZone` are searched.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
@@ -238,6 +262,7 @@ export function findFreeSlots(input: {
   timeMaxMs: number;
   timeMinMs: number;
   timeZone: string;
+  weekdays?: readonly string[];
   workdayEnd: string;
   workdayStart: string;
 }): Array<Interval & { optionalConflicts: string[] }> {
@@ -277,9 +302,13 @@ export function findFreeSlots(input: {
   let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
   while (startMs + durationMs <= input.timeMaxMs) {
     const endMs = startMs + durationMs;
-    if (required.every((attendee) => available(attendee, startMs, endMs))) {
+    const local = partsIn(startMs, input.timeZone);
+    if (
+      (!input.weekdays || input.weekdays.includes(local.weekday)) &&
+      required.every((attendee) => available(attendee, startMs, endMs))
+    ) {
       candidates.push({
-        date: partsIn(startMs, input.timeZone).date,
+        date: local.date,
         endMs,
         optionalConflicts: optional
           .filter((attendee) => !available(attendee, startMs, endMs))
@@ -370,7 +399,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "timeMax must be after timeMin and now.",
         );
       }
-      if (timeMaxMs - timeMinMs > MAX_WINDOW_MS) {
+      if (wallClockMs(timeMinMs, timeMaxMs, timeZone) > MAX_WINDOW_MS) {
         throw new PluginToolInputError("Search at most 14 days at a time.");
       }
       if (clockMinutes(input.workdayEnd) <= clockMinutes(input.workdayStart)) {
@@ -443,6 +472,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             timeMaxMs,
             timeMinMs,
             timeZone,
+            weekdays: input.weekdays,
             workdayEnd: input.workdayEnd,
             workdayStart: input.workdayStart,
           });

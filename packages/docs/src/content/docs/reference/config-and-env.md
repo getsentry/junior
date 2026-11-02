@@ -32,7 +32,7 @@ related:
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
 | `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
-| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
+| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
 | `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
@@ -190,6 +190,10 @@ const app = await createApp({
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
     "operator-tools": true,
+    // Per-user customization text, edited on the dashboard Settings page or
+    // with the updateUserCustomization tool. Junior adds it to each Turn of
+    // that user as <user-customization>.
+    "user-customization": true,
   },
 });
 ```

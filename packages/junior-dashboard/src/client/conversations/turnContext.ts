@@ -33,3 +33,18 @@ export function memoryRecallContent(context: TranscriptViewTurnContext) {
   const parsed = memoryRecallContentSchema.safeParse(context.content);
   return parsed.success ? parsed.data : undefined;
 }
+
+const userCustomizationContentSchema = z.object({ text: z.string() }).strict();
+
+/** Parse the saved user customization that the runtime added to one Turn. */
+export function userCustomizationContent(context: TranscriptViewTurnContext) {
+  if (
+    context.pluginName !== "junior" ||
+    context.kind !== "user_customization" ||
+    context.version !== 1
+  ) {
+    return undefined;
+  }
+  const parsed = userCustomizationContentSchema.safeParse(context.content);
+  return parsed.success ? parsed.data : undefined;
+}

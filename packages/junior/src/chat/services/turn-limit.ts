@@ -1,3 +1,4 @@
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { buildTurnFailureResponse } from "@/chat/logging";
 
 /** Terminal failure when one turn uses too many execution slices. */
@@ -41,13 +42,15 @@ export function isTurnExecutionLimitExceededError(error: unknown): boolean {
 }
 
 /**
- * Why tools are disabled once a turn is out of budget. Junior blocks the call
- * with the same message as a tool that `disableTools` disabled. The tool list
- * stays the same, so the provider cache stays valid.
+ * The result of a tool call that Junior blocks once a turn is out of budget,
+ * as a direct call or as a call in a script. It names no single tool: the
+ * model can reach a tool directly or through a script, so the message closes
+ * both paths. The tool list stays the same, so the provider cache stays valid.
  */
-export const TURN_LIMIT_DISABLED_REASON =
-  "This Turn used its execution budget, so all tools are disabled. Reply " +
-  "now with what you finished, what is left, and how to continue.";
+export const TURN_LIMIT_WRAP_UP_MESSAGE =
+  "This Turn used its execution budget, so all tools are disabled, also " +
+  `in ${CODEMODE_TOOL_NAME} scripts. Do not call a tool again in this Turn. ` +
+  "Reply now with what you finished, what is left, and how to continue.";
 
 /**
  * Check tool calls against the turn limits for one slice.

@@ -33,8 +33,8 @@ Maintenance: [SPEC.md](SPEC.md). Provenance: [SOURCES.md](SOURCES.md).
 2. Inspect:
 
 - Inspect nearby `SKILL.md` files, `plugin.yaml` manifests, app docs, and package metadata.
-- In this repo, treat `packages/junior-plugin-api/README.md`,
-  `packages/junior/src/chat/plugins/README.md`, exported types, and validators as
+- In this repo, treat `packages/junior-plugin-api/AGENTS.md`,
+  `packages/junior/src/chat/plugins/AGENTS.md`, exported types, and validators as
   authoritative.
 - Preserve: placement, manifest authority, credential secrecy, validation, discovery.
 

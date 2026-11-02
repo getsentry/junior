@@ -24,7 +24,6 @@ import {
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
-  setDashboardTimeZone,
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
@@ -66,6 +65,8 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
+import { ReviewDeskPage } from "./review-desk/ReviewDeskPage";
+import { useReviewItemCountData } from "./review-desk/queries";
 import type { DashboardCoreData } from "./types";
 
 const dashboardNoise = {
@@ -82,9 +83,6 @@ export function DashboardShell() {
   const data = query.data;
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
-  if (data) {
-    setDashboardTimeZone(data.config.timeZone);
-  }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
@@ -111,11 +109,13 @@ export function DashboardShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
+  const reviewCountQuery = useReviewItemCountData(loggedIn);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
     loggedIn,
     pathname: location.pathname,
     primaryUserPages,
+    reviewCount: reviewCountQuery.data?.needsViewer,
     userPagesPending: userPagesQuery.isPending,
   });
 
@@ -124,10 +124,20 @@ export function DashboardShell() {
   }, [location.pathname]);
 
   async function signOut() {
-    await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
-      credentials: "same-origin",
-      method: "POST",
-    });
+    // Better Auth rejects a request body without a JSON content type. On
+    // Vercel, a bodiless POST still arrives with an empty body.
+    const response = await fetch(
+      `${data?.config.authPath ?? "/api/auth"}/sign-out`,
+      {
+        body: "{}",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Sign-out returned ${response.status}`);
+    }
     window.location.assign(data?.config.basePath ?? "/");
   }
 
@@ -361,6 +371,22 @@ export function DashboardShell() {
               )
             }
             path="/"
+          />
+          <Route
+            element={
+              loading ? (
+                <PageRouteLoading
+                  description="Items that need a person, and who can act on them."
+                  label="Loading review desk"
+                  title="Review desk"
+                />
+              ) : loggedIn ? (
+                <ReviewDeskPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/review"
           />
           <Route element={<CodePage />} path="/code" />
           {codeRepositoryTabs.map((tab) => (

@@ -84,7 +84,6 @@ describe("Watches", () => {
       rubric({
         pass: [
           "The reply confirms the exact deployment target will be monitored through event-based updates.",
-          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not claim a polling task or recurring schedule was created.",
@@ -108,7 +107,7 @@ describe("Watches", () => {
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 
@@ -125,7 +124,6 @@ describe("Watches", () => {
       rubric({
         pass: [
           "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
-          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not ask the user to monitor GitHub manually.",
@@ -162,7 +160,7 @@ describe("Watches", () => {
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 

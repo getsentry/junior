@@ -3,7 +3,11 @@ import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
-import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
+import {
+  formatMessageTimestamp,
+  transcriptMessageActor,
+  transcriptMessageActorLabel,
+} from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -61,8 +65,13 @@ export function TranscriptMessageContextView(props: {
           {!props.redacted && props.message.contexts?.length ? (
             <div className="mt-2">
               <TranscriptTurnContextView
+                actor={transcriptMessageActor(
+                  props.conversation,
+                  props.message,
+                )}
                 contexts={props.message.contexts}
                 messageId={props.message.messageId}
+                timestamp={props.message.timestamp}
               />
             </div>
           ) : null}
@@ -93,8 +102,10 @@ export function TranscriptMessageContextView(props: {
         {!props.redacted && props.message.contexts?.length ? (
           <div className="mt-2">
             <TranscriptTurnContextView
+              actor={transcriptMessageActor(props.conversation, props.message)}
               contexts={props.message.contexts}
               messageId={props.message.messageId}
+              timestamp={props.message.timestamp}
             />
           </div>
         ) : null}

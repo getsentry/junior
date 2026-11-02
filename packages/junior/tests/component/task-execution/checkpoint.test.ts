@@ -68,6 +68,7 @@ function failingConversationStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
@@ -455,6 +456,61 @@ describe("turn checkpoint", () => {
     });
   });
 
+  it("keeps an older turn's metrics and the newer turn's status after a newer turn writes metrics", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { abandonTurnRecord, getTurnRecordForResume, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const conversationStore = getConversationStore();
+    const conversationId = "local:metrics-older-turn";
+
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+      piMessages: [userMessage("needs auth")],
+      resumeReason: "auth",
+      turnId: "turn-paused",
+      sliceId: 1,
+      state: "paused",
+    });
+    const paused = await getTurnRecordForResume(conversationId, "turn-paused");
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 500,
+      cumulativeUsage: { inputTokens: 3, cost: { total: 0.03 } },
+      piMessages: [...paused!.piMessages, userMessage("newer message")],
+      turnId: "turn-newer",
+      sliceId: 1,
+      state: "running",
+    });
+
+    // A resume of the older Turn continues from its own totals.
+    await expect(
+      getTurnRecordForResume(conversationId, "turn-paused"),
+    ).resolves.toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+
+    await abandonTurnRecord({ conversationId, turnId: "turn-paused" });
+
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      execution: { runId: "turn-newer", status: "running" },
+      executionMetrics: { durationMs: 500, runId: "turn-newer" },
+    });
+    await expect(
+      conversationStore.getRunMetrics({
+        conversationId,
+        runId: "turn-paused",
+      }),
+    ).resolves.toEqual({
+      durationMs: 1_500,
+      usage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+  });
+
   it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertTurnRecord } =
@@ -537,6 +593,7 @@ describe("turn checkpoint", () => {
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
+      getRunMetrics: vi.fn(async () => undefined),
       findSlackDestinationByName: vi.fn(async () => undefined),
       recordActivity: vi.fn(async () => undefined),
       recordExecution: vi.fn(async () => undefined),
@@ -611,9 +668,10 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("requires v2 and ignores unknown fields in stored turn cursors", async () => {
+  it("requires v2, keeps the Actor Identity id, and ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:cursor-unknown-fields";
@@ -641,6 +699,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
+        actorIdentityId: "identity-1",
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -669,9 +728,28 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
+      actorIdentityId: "identity-1",
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
+
+    // A resume slice rewrites the cursor and keeps the id that a newer worker
+    // saved, even though this caller does not pass it.
+    await upsertTurnRecord({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      piMessages: [userMessage("resume")],
+      turnId,
+      sliceId: 2,
+      source: SLACK_SOURCE,
+      state: "running",
+    });
+    await expect(
+      stateAdapter.get(turnCursorKey(conversationId, turnId)),
+    ).resolves.toMatchObject({
+      actorIdentityId: "identity-1",
+      sliceId: 2,
+    });
   });
 
   it("fails before storing a turn-session record when SQL metadata fails", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.266.0",
+  "version": "0.269.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -75,6 +75,7 @@
     "@chat-adapter/state-redis": "4.29.0",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-codemode": "1.4.0",
     "@hono/zod-validator": "^0.9.0",
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.32.0",

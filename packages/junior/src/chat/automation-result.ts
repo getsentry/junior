@@ -56,6 +56,18 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
 }
 
 /**
+ * Return whether the runtime may post a failure reply or a status notice,
+ * such as an auth prompt, for a run outside `finishedRunReply`. The rule is
+ * the same as for final text. A chat Turn may post, also in a thread that an
+ * Automation Conversation owns. A dispatch with no outcomes posts nothing. An
+ * Automation run posts only a declared message; its failed execution shows on
+ * the Automation.
+ */
+export function postsRunNotices(dispatch: RunDispatch): boolean {
+  return deliversFinalText(dispatch);
+}
+
+/**
  * Return the text to post after a run ends, if any. A chat Turn already
  * delivered a successful reply, so it posts only its failure reply. An
  * Automation run posts only a declared message. It never posts a failure

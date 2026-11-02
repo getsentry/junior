@@ -1,6 +1,8 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
@@ -39,7 +41,11 @@ import type {
   ChildAgent,
   TerminalAgentInvocation,
 } from "./types";
-import { enqueueAgentInvocation } from "./work";
+import {
+  createAgentInvocationWorker,
+  enqueueAgentInvocation,
+  resolveAgentInvocationId,
+} from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
@@ -102,7 +108,7 @@ const RESULT_NEXT_STEP = {
   completed:
     "Use this result to continue the work in this conversation. Do not repeat work that the child agent already did.",
   blocked:
-    "The child agent did not finish its task because something is missing. If you can give it, send it to the child agent with messageAgent. If it needs user approval, your own text cannot give it: ask the user one focused question that names the exact action. After the user answers in this conversation, tell the child agent with messageAgent to try again. The runtime shows the user's own messages to the child's action review. Otherwise tell the user what is missing.",
+    "The child agent did not finish its task because something is missing. If you can give it, send it to the child agent with messageAgent. If only a person can give it, such as user approval, your own text cannot give it. Do not ask in plain text: add one action item with `addReviewItem` that names the exact action. Make its `dedupe_key` from the child conversation and the blocked action, so a repeat block updates the same item. After the user answers in this conversation, tell the child agent with messageAgent to try again. The runtime shows the user's own messages to the child's action review. Otherwise tell the user what is missing.",
   failed:
     "The child agent did not finish its task. If you still need this work, use messageAgent to ask the same child agent to try again, or tell the user what is blocked.",
   stopped:
@@ -185,6 +191,8 @@ function buildResultInboundMessage(
     ),
     input: {
       authorId: resultAuthorId(invocation.actor),
+      // An agent wrote the result, so the system Identity is its author.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
       text: renderResultInput(invocation, summary, openSiblings),
     },
@@ -293,6 +301,7 @@ export async function enqueueAgentMessageToParent(args: {
       inboundMessageId,
       input: {
         authorId: resultAuthorId(args.sender.actor),
+        authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: renderMessageInput(args.sender, summary, args.text),
       },
@@ -356,7 +365,7 @@ async function getChildAgentInputInvocation(
  * reports to the child's parent. Returns undefined for work that is not
  * mailbox input for a child Conversation.
  */
-export async function startAgentInvocationsForChildInput(
+async function startAgentInvocationsForChildInput(
   context: ConversationWorkerContext,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {
@@ -437,6 +446,39 @@ export async function startAgentInvocationsForChildInput(
   }
   await context.attempt.ack();
   return { status: "completed" };
+}
+
+/**
+ * Build the worker for all work of a child Conversation. The caller selects
+ * it from the stored parent of the Conversation, never from a Turn Source. It
+ * starts agent invocations for child input, then runs the agent invocation
+ * that owns the work. Work that no agent invocation owns is an error.
+ */
+export function createChildConversationWorker(
+  agentRunner: AgentRunner,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
+    queue: ConversationWorkQueue;
+    state?: StateAdapter;
+  },
+) {
+  const invocationWorker = createAgentInvocationWorker(agentRunner, options);
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const started = await startAgentInvocationsForChildInput(context, options);
+    if (started) {
+      return started;
+    }
+    const invocationId = await resolveAgentInvocationId(context);
+    if (!invocationId) {
+      throw new Error(
+        `Child conversation ${context.conversationId} has no agent invocation for this work`,
+      );
+    }
+    return await invocationWorker(context, invocationId);
+  };
 }
 
 /**

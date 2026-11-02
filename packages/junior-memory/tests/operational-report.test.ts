@@ -29,6 +29,8 @@ function localContext() {
 
 function testEmbedder() {
   return {
+    model: "test-model",
+    provider: "test-provider",
     async embedTexts(input: { texts: string[] }) {
       return {
         dimensions: 1536,

@@ -132,6 +132,9 @@ export function dashboardPagePaths(
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
     {
+      path: basePath === "/" ? "/review" : `${basePath}/review`,
+    },
+    {
       nested: true,
       path: basePath === "/" ? "/people" : `${basePath}/people`,
     },

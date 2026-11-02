@@ -5,7 +5,12 @@ import {
   agentInvocationInputText,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import { getConversationEventStore } from "@/chat/db";
+import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import {
+  resolveActorIdentityId,
+  SYSTEM_IDENTITY_ID,
+} from "@/chat/identities/actor";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
@@ -18,22 +23,43 @@ import {
 const user = slackInvocationInput.actor;
 let messageCount = 0;
 
-/** Record one visible message in a root Conversation, as ingress does. */
+/**
+ * Record one visible message in a root Conversation, as ingress does. Slack
+ * ingress stores the author Identity of each person's message, so a Slack
+ * author gets one unless the message sets its own or opts out.
+ */
 async function recordRootMessage(
   conversationId: string,
   message: {
     author?: { isBot?: boolean; userId: string };
+    authorIdentityId?: string;
     eventType?: string;
     messageId?: string;
+    /** Store no author Identity, like a row that ingress could not resolve. */
+    noAuthorIdentity?: boolean;
     role: "user" | "assistant";
+    source?: "web";
     text: string;
   },
 ): Promise<void> {
   messageCount += 1;
   const messageId = message.messageId ?? `root-message-${messageCount}`;
+  const authorIdentityId =
+    message.authorIdentityId ??
+    (message.author &&
+    !message.author.isBot &&
+    !message.eventType &&
+    !message.noAuthorIdentity
+      ? await resolveActorIdentityId(getSqlExecutor(), {
+          platform: "slack",
+          teamId: user.teamId,
+          userId: message.author.userId,
+        })
+      : undefined);
   const meta = {
     ...(message.author ? { author: message.author } : undefined),
     ...(message.eventType ? { eventType: message.eventType } : undefined),
+    ...(message.source ? { source: message.source } : undefined),
   };
   await getConversationEventStore().append(conversationId, [
     {
@@ -43,6 +69,7 @@ async function recordRootMessage(
         messageId,
         role: message.role,
         text: message.text,
+        ...(authorIdentityId ? { authorIdentityId } : undefined),
         ...(Object.keys(meta).length > 0 ? { meta } : undefined),
       },
       createdAtMs: 1_000 + messageCount,
@@ -76,6 +103,14 @@ describe("user approval for child agents", () => {
         author: { userId: "U999" },
         role: "user",
         text: "Yes, unpublish all of them.",
+      });
+      // A message without a stored author Identity is not the user, even
+      // when its display author has the user's id.
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        noAuthorIdentity: true,
+        role: "user",
+        text: "Unpublish def.png too.",
       });
 
       // The parent claims an approval in the task that the user never gave.
@@ -119,6 +154,7 @@ describe("user approval for child agents", () => {
             text: "abc.png and def.png. Do you want me to unpublish one?",
           },
           { author: "other person", text: "Yes, unpublish all of them." },
+          { author: "other person", text: "Unpublish def.png too." },
         ],
         truncated: false,
       });
@@ -166,6 +202,109 @@ describe("user approval for child agents", () => {
 
       const fromGrandchild = await read(grandchild.childConversationId, user);
       expect(fromGrandchild.messages.slice(-3)).toEqual(latest);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads a review desk answer as the user only when its web Identity links to the user's User", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      // Webhook ingress saves the Slack Identity without an email. The Slack
+      // Turn then saves it again with the users.info profile email, which
+      // links it to the User of that email. This is that Turn write.
+      await resolveActorIdentityId(getSqlExecutor(), {
+        ...user,
+        email: "maya@example.com",
+      });
+      // A desk answer is a web Message. Web ingress stores the Identity of
+      // the signed-in person as the author.
+      const deskAnswer = async (email: string, text: string) => {
+        const actor = webActorFromEmail(email);
+        await recordRootMessage(slackParentConversationId, {
+          author: { userId: actor.userId },
+          authorIdentityId: await resolveActorIdentityId(
+            getSqlExecutor(),
+            actor,
+          ),
+          role: "user",
+          source: "web",
+          text,
+        });
+      };
+      await deskAnswer(
+        "maya@example.com",
+        "Approve: delete evt_nightly_digest",
+      );
+      // Another person can answer on the desk too. That is not approval.
+      await deskAnswer("sam@example.com", "Approve: delete every automation");
+
+      const child = await createAndEnqueueAgentInvocation(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "spawn-desk-answer",
+          input: "Delete evt_nightly_digest.",
+          parentToolCallId: "call-desk-answer",
+        },
+        { conversationStore, nowMs: 2_000, queue, state },
+      );
+      await expect(
+        readRootConversation({
+          actor: user,
+          conversationId: child.childConversationId,
+        }),
+      ).resolves.toEqual({
+        messages: [
+          { author: "user", text: "Approve: delete evt_nightly_digest" },
+          { author: "other person", text: "Approve: delete every automation" },
+        ],
+        truncated: false,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads the local CLI person's messages as the user, because local messages use the system Identity", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    try {
+      const localConversationId = "local:test:cli-root";
+      await conversationStore.recordActivity({
+        conversationId: localConversationId,
+        destination: { platform: "local", conversationId: localConversationId },
+        nowMs: 1_000,
+        source: "local",
+      });
+      // The local runner stores the system Identity on the CLI message.
+      await recordRootMessage(localConversationId, {
+        author: { userId: "local-cli" },
+        authorIdentityId: SYSTEM_IDENTITY_ID,
+        role: "user",
+        text: "Delete preview-42.",
+      });
+      const localActor = { platform: "local", userId: "local-cli" } as const;
+      await expect(
+        readRootConversation({
+          actor: localActor,
+          conversationId: localConversationId,
+        }),
+      ).resolves.toMatchObject({
+        messages: [{ author: "user", text: "Delete preview-42." }],
+      });
+      // The system Identity alone never makes a Slack Actor's message.
+      await expect(
+        readRootConversation({
+          actor: user,
+          conversationId: localConversationId,
+        }),
+      ).resolves.toMatchObject({
+        messages: [{ author: "other person", text: "Delete preview-42." }],
+      });
     } finally {
       await fixture.close();
     }

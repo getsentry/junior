@@ -63,6 +63,19 @@ export interface AuthenticatedRoute {
 
 const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
+/**
+ * Return true when the dashboard requires Google sign-in. Core passes this
+ * value to the dashboard app, so features that need a signed-in user use the
+ * same rule as the dashboard.
+ */
+export function dashboardRequiresSignIn(
+  dashboard: JuniorDashboardOptions | undefined,
+): boolean {
+  if (!dashboard || dashboard.disabled) return false;
+  if (dashboard.authRequired !== undefined) return dashboard.authRequired;
+  return process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED?.trim() !== "false";
+}
+
 /** Mount the dashboard app on the dashboard-owned host paths. */
 export async function createDashboardRouteRegistrations(args: {
   allowedDomains: string[];
@@ -170,6 +183,7 @@ function dashboardHostRoutePaths(
     `${conversationsPath}/*`,
     pagePath("locations"),
     `${pagePath("locations")}/*`,
+    pagePath("review"),
     peoplePath,
     `${peoplePath}/*`,
     pagePath("automations"),
@@ -204,6 +218,8 @@ function dashboardHostRoutePaths(
     "/api/plugin-reports",
     "/api/user-pages",
     "/api/user-pages/*",
+    "/api/user-customization",
+    "/api/user-customization/*",
     "/api/automations",
     "/api/automations/*",
     "/api/skills",
@@ -218,6 +234,8 @@ function dashboardHostRoutePaths(
     "/api/locations/*",
     "/api/people",
     "/api/people/*",
+    "/api/review-items",
+    "/api/review-items/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
     "/api/service-accounts",
@@ -321,6 +339,7 @@ function dashboardRouteRegistrations(args: {
       ...args.dashboard,
       agentName: botConfig.userName,
       allowedDomains: args.allowedDomains,
+      authRequired: dashboardRequiresSignIn(args.dashboard),
       ...(args.auth ? { auth: args.auth } : undefined),
       authenticatedRoutes: args.authenticatedRoutes,
       conversationWorkQueue: args.conversationWorkQueue,
@@ -341,9 +360,14 @@ function dashboardRouteRegistrations(args: {
   );
 }
 
-/** Reject plugin routes that would shadow dashboard or auth paths. */
+/**
+ * Reject plugin routes that would shadow dashboard or auth paths, or other
+ * core routes that need the dashboard, such as the MCP routes.
+ */
 export function validateDashboardRouteOwnership(args: {
   authenticatedRoutes?: readonly AuthenticatedRoute[];
+  /** Core host paths that mount before plugin routes. */
+  coreRoutePaths?: readonly string[];
   dashboard: JuniorDashboardOptions | undefined;
   routes: PluginRouteRegistration[];
 }): void {
@@ -356,6 +380,9 @@ export function validateDashboardRouteOwnership(args: {
         route.path,
         args.dashboard,
         args.authenticatedRoutes,
+      ) ||
+      (args.coreRoutePaths ?? []).some((path) =>
+        routePatternOverlaps(path, route.path),
       )
     ) {
       throw new Error(

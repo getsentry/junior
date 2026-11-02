@@ -12,13 +12,8 @@ import type { AcpErrorContext, ReportAcpError } from "./errors";
 import type { AcpConversations } from "./conversations";
 import { acpInboundMessageSchema } from "./schema";
 import { sleep } from "./sleep";
-import {
-  fenceLock,
-  MUTATION_LOCK_TTL_MS,
-  withLock,
-  type AcpLock,
-  type AcpState,
-} from "./state";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import type { AcpLock, AcpState } from "./state";
 
 // Transport records can expire because the Conversation log owns durable history.
 export const ACP_STATE_TTL_MS = 24 * 60 * 60 * 1000;

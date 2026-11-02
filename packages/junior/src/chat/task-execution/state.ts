@@ -86,6 +86,8 @@ const agentInputSchema = z
   .object({
     attachments: z.array(z.unknown()).optional(),
     authorId: z.string().min(1).optional(),
+    /** Identity of the input author, resolved at ingress. */
+    authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     text: z.string(),
   })

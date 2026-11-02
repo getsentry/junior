@@ -49,10 +49,21 @@ import {
   SEARCH_TOOLS_NAME,
 } from "@/chat/tools/search-tools";
 import {
-  reviewToolAction,
+  reviewToolActions,
   ToolActionRejectedError,
+  type ToolAction,
   type ToolActionReview,
+  type ToolActionReviewResult,
 } from "@/chat/guardian/gate";
+import {
+  getToolActionRejectionMarker,
+  type ToolActionRejectionMarker,
+} from "@/chat/guardian/history";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import {
+  createCodeModeTool,
+  type CodeModeToolOptions,
+} from "@/chat/codemode/tool";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**
@@ -94,37 +105,96 @@ async function untilPreempted<T>(
   }
 }
 
-/** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
-export function createPiAgentTools(
-  tools: Record<string, AnyToolDefinition>,
-  sandbox: SkillSandbox,
-  spanContext: LogContext,
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
-  sandboxTools?: SandboxTools,
-  pluginAuthOrchestration?: PluginAuthOrchestration,
+type NormalizedToolResult = ReturnType<typeof normalizeToolResult>;
+
+/** Services that every tool call uses, for direct, catalog, and script calls. */
+export interface ToolPipelineOptions {
+  /** Tools that `executeTool` may run. */
+  catalogTools: Record<string, AnyToolDefinition>;
+  sandbox: SkillSandbox;
+  spanContext: LogContext;
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  sandboxTools?: SandboxTools;
+  pluginAuthOrchestration?: PluginAuthOrchestration;
   onToolCall?: (
     toolCallId: string,
     toolName: string,
     params: Record<string, unknown>,
-  ) => void | Promise<void>,
-  agentHooks?: PluginHookRunner,
-  conversationPrivacy?: ConversationPrivacy,
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
-  actionReview?: ToolActionReview,
-): AgentTool[] {
-  const plannedTools = planToolExposure(tools);
-  const visibleTools: Record<string, AnyToolDefinition> = {
-    ...plannedTools.directTools,
-  };
-  if (visibleTools[SEARCH_TOOLS_NAME] || visibleTools[EXECUTE_TOOL_NAME]) {
-    throw new Error(
-      `${SEARCH_TOOLS_NAME} and ${EXECUTE_TOOL_NAME} are reserved for tool catalog discovery`,
-    );
-  }
-  visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
-    plannedTools.catalogTools,
-  );
-  visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
+  ) => void | Promise<void>;
+  agentHooks?: PluginHookRunner;
+  conversationPrivacy?: ConversationPrivacy;
+  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
+  actionReview?: ToolActionReview;
+}
+
+/** One tool call that a Code Mode script made. */
+export interface ScriptToolCall {
+  /** `<codemode call id>/c<n>`. */
+  toolCallId: string;
+  toolName: string;
+  tool: AnyToolDefinition;
+  /** What the script passed, after a JSON round trip. */
+  input: unknown;
+  signal: AbortSignal;
+  /**
+   * Return the action review result for the validated, hook-adjusted action.
+   * The caller reviews the calls of one VM drain as one batch, and may hold
+   * the call here until it can run.
+   */
+  review(action: ToolAction): Promise<ToolActionReviewResult>;
+}
+
+/**
+ * Outcome of one script tool call. `preempted` means the host aborted the
+ * call, so whether it ran is unknown. An authorization pause throws.
+ */
+export type ScriptToolCallOutcome =
+  | { status: "ok"; result: NormalizedToolResult }
+  | { status: "preempted" }
+  | {
+      status: "rejected";
+      error: ToolActionRejectedError;
+      marker?: ToolActionRejectionMarker;
+    }
+  | { status: "error"; error: Error };
+
+/** Result of one traced tool call. Other failures throw. */
+type TracedToolCall =
+  | { kind: "completed"; result: NormalizedToolResult }
+  | { kind: "preempted"; result: NormalizedToolResult & { isError: false } }
+  | { kind: "rejected"; error: ToolActionRejectedError };
+
+/** The tool and input that a traced call runs, after dispatch resolves it. */
+interface ToolCallTarget {
+  toolName: string;
+  params: Record<string, unknown>;
+}
+
+/** A tool call after checks and plugin hooks, ready for action review. */
+interface PreparedToolCall {
+  action: ToolAction;
+  /** Tool input with hook-injected env. Execution only; review never sees it. */
+  executionInput: Record<string, unknown>;
+}
+
+/**
+ * Create the path every tool call takes: argument checks, plugin hooks,
+ * action review, credentials and auth handling, then the executor, under one
+ * `gen_ai.execute_tool` span.
+ */
+export function createToolPipeline(options: ToolPipelineOptions) {
+  const {
+    sandbox,
+    spanContext,
+    onStatus,
+    sandboxTools,
+    pluginAuthOrchestration,
+    onToolCall,
+    agentHooks,
+    conversationPrivacy,
+    onToolResult,
+    actionReview,
+  } = options;
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
   const serializeToolPayload = (
@@ -166,16 +236,13 @@ export function createPiAgentTools(
     }
     return normalized.details;
   };
-  const executeDefinition = async (args: {
+  const prepareCall = async (args: {
     toolCallId: string;
     params: Record<string, unknown>;
-    signal: AbortSignal | undefined;
-    setSpanAttributes: SetSpanAttributes;
     toolDef: AnyToolDefinition;
     toolName: string;
-  }) => {
-    const { toolCallId, params, signal, setSpanAttributes, toolDef, toolName } =
-      args;
+  }): Promise<PreparedToolCall> => {
+    const { toolCallId, params, toolDef, toolName } = args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
@@ -210,23 +277,27 @@ export function createPiAgentTools(
         : undefined),
     };
     await onToolCall?.(toolCallId, toolName, toolInput);
-    try {
-      const assessment = await reviewToolAction(
-        toolCallId,
-        toolName,
-        toolDef,
-        toolInput,
-        actionReview,
-        signal,
-      );
-      if (assessment) {
-        setSpanAttributes({
-          "app.guardian.decision": assessment.decision,
-          "app.guardian.risk_level": assessment.riskLevel,
-          "app.guardian.user_authorization": assessment.userAuthorization,
-        });
-      }
-    } catch (error) {
+    return {
+      action: { toolCallId, toolName, tool: toolDef, input: toolInput },
+      executionInput,
+    };
+  };
+  const executeReviewed = async (args: {
+    prepared: PreparedToolCall;
+    review: ToolActionReviewResult;
+    signal: AbortSignal | undefined;
+    setSpanAttributes: SetSpanAttributes;
+  }) => {
+    const { prepared, review, signal, setSpanAttributes } = args;
+    const { executionInput } = prepared;
+    const {
+      toolCallId,
+      toolName,
+      tool: toolDef,
+      input: toolInput,
+    } = prepared.action;
+    if (!review.allowed) {
+      const { error } = review;
       if (error instanceof ToolActionRejectedError) {
         setSpanAttributes({
           "app.guardian.decision": error.decision,
@@ -242,6 +313,13 @@ export function createPiAgentTools(
       }
       throw error;
     }
+    if (review.decision) {
+      setSpanAttributes({
+        "app.guardian.decision": review.decision.decision,
+        "app.guardian.risk_level": review.decision.riskLevel,
+        "app.guardian.user_authorization": review.decision.userAuthorization,
+      });
+    }
     const sandboxInput = buildSandboxInput(toolName, executionInput);
     const isSandbox = Boolean(sandboxTools?.supports(toolName));
     const result = await untilPreempted(
@@ -255,7 +333,8 @@ export function createPiAgentTools(
               : undefined),
           })
         : Promise.resolve(
-            toolDef.execute(executionInput, {
+            // `prepareCall` checked that the executor exists.
+            toolDef.execute!(executionInput, {
               experimental_context: sandbox,
               ...(signal ? { signal } : undefined),
               conversationPrivacy: effectiveConversationPrivacy,
@@ -332,6 +411,27 @@ export function createPiAgentTools(
     });
     return normalized;
   };
+  const executeDefinition = async (args: {
+    toolCallId: string;
+    params: Record<string, unknown>;
+    signal: AbortSignal | undefined;
+    setSpanAttributes: SetSpanAttributes;
+    toolDef: AnyToolDefinition;
+    toolName: string;
+  }) => {
+    const prepared = await prepareCall(args);
+    const reviews = await reviewToolActions(
+      [prepared.action],
+      actionReview,
+      args.signal,
+    );
+    return await executeReviewed({
+      prepared,
+      review: reviews.get(args.toolCallId)!,
+      signal: args.signal,
+      setSpanAttributes: args.setSpanAttributes,
+    });
+  };
   const reportStatus = async (
     executionToolName: string,
     params: Record<string, unknown>,
@@ -346,12 +446,341 @@ export function createPiAgentTools(
       await onStatus?.(status);
     }
   };
+  /**
+   * Run one call under its `gen_ai.execute_tool` span. `body` resolves the
+   * target, and updates it when a dispatcher names another tool.
+   */
+  const traceCall = async (
+    call: {
+      attributes?: Record<string, unknown>;
+      description: string;
+      params: unknown;
+      signal: AbortSignal | undefined;
+      toolCallId: string;
+      toolName: string;
+    },
+    body: (
+      setSpanAttributes: SetSpanAttributes,
+      target: ToolCallTarget,
+    ) => Promise<NormalizedToolResult>,
+  ): Promise<TracedToolCall> => {
+    const { params, signal, toolCallId, toolName } = call;
+    // Intentional OTel deviation: private traces put Junior's safe metadata
+    // here, with flattened gen_ai.tool.call.arguments.* extension attributes.
+    const toolArgumentsAttribute = serializeToolPayload(params, {
+      privateMetadata: true,
+    });
+    const toolArgumentsMetadata = toGenAiPayloadTraceAttributes(
+      "gen_ai.tool.call.arguments",
+      params,
+    );
+    return await withSpan(
+      `execute_tool ${toolName}`,
+      "gen_ai.execute_tool",
+      spanContext,
+      async (setSpanAttributes): Promise<TracedToolCall> => {
+        const target: ToolCallTarget = {
+          toolName,
+          params: params as Record<string, unknown>,
+        };
+
+        try {
+          return {
+            kind: "completed",
+            result: await body(setSpanAttributes, target),
+          };
+        } catch (error) {
+          if (
+            signal?.aborted &&
+            !(
+              error instanceof AuthorizationPauseError ||
+              error instanceof AuthorizationFlowDisabledError ||
+              error instanceof ToolActionRejectedError
+            )
+          ) {
+            // The host preempted this attempt, so its outcome is unknown.
+            // Report the same fact bash reports for a command timeout
+            // instead of a failure the model would retry.
+            const preempted = makeStructuredToolOutput({
+              aborted: true as const,
+              target: target.toolName,
+            });
+            await notifyToolResult({
+              ok: true,
+              params: target.params,
+              result: preempted.details,
+              toolCallId,
+              toolName: target.toolName,
+            });
+            return {
+              kind: "preempted",
+              result: { ...preempted, isError: false },
+            };
+          }
+          await notifyToolResult({
+            error: error instanceof Error ? error.message : String(error),
+            ok: false,
+            params: target.params,
+            toolCallId,
+            toolName: target.toolName,
+          });
+          if (
+            error instanceof AuthorizationPauseError ||
+            error instanceof AuthorizationFlowDisabledError
+          ) {
+            throw error;
+          }
+          if (error instanceof ToolActionRejectedError) {
+            return { kind: "rejected", error };
+          }
+          handleToolExecutionError(
+            error,
+            target.toolName,
+            toolCallId,
+            shouldTrace,
+            effectiveConversationPrivacy,
+            setSpanAttributes,
+          );
+        }
+      },
+      {
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": toolName,
+        "gen_ai.tool.description": call.description,
+        "gen_ai.tool.type": "function",
+        ...toolArgumentsMetadata,
+        "gen_ai.tool.call.id": toolCallId,
+        ...(toolArgumentsAttribute
+          ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
+          : undefined),
+        ...call.attributes,
+      },
+    );
+  };
+
+  return {
+    /** Run a call that the model made, directly or through `executeTool`. */
+    async callFromModel(call: {
+      params: unknown;
+      signal: AbortSignal | undefined;
+      toolCallId: string;
+      toolDef: AnyToolDefinition;
+      toolName: string;
+    }) {
+      const { signal, toolCallId, toolDef, toolName } = call;
+      const traced = await traceCall(
+        {
+          description: toolDef.description,
+          params: call.params,
+          signal,
+          toolCallId,
+          toolName,
+        },
+        async (setSpanAttributes, target) => {
+          const parsed = target.params;
+          if (toolName === EXECUTE_TOOL_NAME) {
+            const resolvedCatalogCall = resolveCatalogToolCall(
+              parsed,
+              options.catalogTools,
+            );
+            target.toolName = resolvedCatalogCall.toolName;
+            target.params = resolvedCatalogCall.arguments;
+            setSpanAttributes({
+              "gen_ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
+              "gen_ai.tool.description":
+                resolvedCatalogCall.definition.description,
+              "gen_ai.tool.name": resolvedCatalogCall.toolName,
+            });
+            const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
+            target.params = catalogCall.arguments;
+            await reportStatus(target.toolName, target.params);
+            return await executeDefinition({
+              toolCallId,
+              params: catalogCall.arguments,
+              signal,
+              setSpanAttributes,
+              toolDef: catalogCall.definition,
+              toolName: catalogCall.toolName,
+            });
+          }
+
+          await reportStatus(target.toolName, target.params);
+          return await executeDefinition({
+            toolCallId,
+            params: parsed,
+            signal,
+            setSpanAttributes,
+            toolDef,
+            toolName,
+          });
+        },
+      );
+      if (traced.kind === "rejected") {
+        throw traced.error;
+      }
+      return traced.result;
+    },
+
+    /**
+     * Review the calls of one script VM drain as one batch. The gate owns
+     * the batch limit.
+     */
+    async reviewScriptCalls(
+      actions: readonly ToolAction[],
+      signal: AbortSignal | undefined,
+    ) {
+      return await reviewToolActions(actions, actionReview, signal);
+    },
+
+    /**
+     * Run a call that a Code Mode script made. It takes the same path as a
+     * direct call, and `call.review` supplies the batch review result.
+     */
+    async callFromScript(call: ScriptToolCall): Promise<ScriptToolCallOutcome> {
+      const { signal, tool, toolCallId, toolName } = call;
+      let traced: TracedToolCall;
+      try {
+        traced = await traceCall(
+          {
+            attributes: { "gen_ai.tool.dispatcher.name": CODEMODE_TOOL_NAME },
+            description: tool.description,
+            params: call.input,
+            signal,
+            toolCallId,
+            toolName,
+          },
+          async (setSpanAttributes) => {
+            const input = call.input ?? {};
+            if (typeof input !== "object" || Array.isArray(input)) {
+              throw new ToolInputError(
+                `${CODEMODE_TOOL_NAME} arguments for ${toolName} must be an object.`,
+              );
+            }
+            const { arguments: params } = prepareCatalogToolCall(
+              {
+                arguments: input as Record<string, unknown>,
+                definition: tool,
+                toolName,
+              },
+              CODEMODE_TOOL_NAME,
+            );
+            await reportStatus(toolName, params);
+            const prepared = await prepareCall({
+              toolCallId,
+              params,
+              toolDef: tool,
+              toolName,
+            });
+            return await executeReviewed({
+              prepared,
+              review: await call.review(prepared.action),
+              signal,
+              setSpanAttributes,
+            });
+          },
+        );
+      } catch (error) {
+        if (
+          error instanceof AuthorizationPauseError ||
+          error instanceof AuthorizationFlowDisabledError
+        ) {
+          throw error;
+        }
+        return {
+          status: "error",
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+      if (traced.kind === "completed") {
+        return { status: "ok", result: traced.result };
+      }
+      if (traced.kind === "preempted") {
+        return { status: "preempted" };
+      }
+      // Take the gate's marker now, so the script result can carry it.
+      const projected = actionReview?.projectToolResult(toolCallId, {
+        details: {},
+        isError: true,
+      });
+      return {
+        status: "rejected",
+        error: traced.error,
+        marker: getToolActionRejectionMarker(projected),
+      };
+    },
+  };
+}
+
+/** A pipeline for one Run's tools. */
+export type ToolPipeline = ReturnType<typeof createToolPipeline>;
+
+/**
+ * Wrap tool definitions into Pi Agent tool objects with logging, validation,
+ * and sandbox execution. With `codeMode`, the model also gets the `codemode`
+ * tool, which runs scripts over this pipeline.
+ */
+export function createPiAgentTools(
+  tools: Record<string, AnyToolDefinition>,
+  sandbox: SkillSandbox,
+  spanContext: LogContext,
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
+  sandboxTools?: SandboxTools,
+  pluginAuthOrchestration?: PluginAuthOrchestration,
+  onToolCall?: (
+    toolCallId: string,
+    toolName: string,
+    params: Record<string, unknown>,
+  ) => void | Promise<void>,
+  agentHooks?: PluginHookRunner,
+  conversationPrivacy?: ConversationPrivacy,
+  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
+  actionReview?: ToolActionReview,
+  codeMode?: Pick<CodeModeToolOptions, "countToolCall" | "workspace">,
+): AgentTool[] {
+  const plannedTools = planToolExposure(tools);
+  const visibleTools: Record<string, AnyToolDefinition> = {
+    ...plannedTools.directTools,
+  };
+  if (visibleTools[SEARCH_TOOLS_NAME] || visibleTools[EXECUTE_TOOL_NAME]) {
+    throw new Error(
+      `${SEARCH_TOOLS_NAME} and ${EXECUTE_TOOL_NAME} are reserved for tool catalog discovery`,
+    );
+  }
+  if (visibleTools[CODEMODE_TOOL_NAME]) {
+    throw new Error(`${CODEMODE_TOOL_NAME} is reserved for Code Mode`);
+  }
+  visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
+    plannedTools.catalogTools,
+  );
+  visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
+  const pipeline = createToolPipeline({
+    catalogTools: plannedTools.catalogTools,
+    sandbox,
+    spanContext,
+    onStatus,
+    sandboxTools,
+    pluginAuthOrchestration,
+    onToolCall,
+    agentHooks,
+    conversationPrivacy,
+    onToolResult,
+    actionReview,
+  });
+  if (codeMode) {
+    visibleTools[CODEMODE_TOOL_NAME] = createCodeModeTool({
+      ...codeMode,
+      pipeline,
+      scriptTools: plannedTools.scriptTools,
+    });
+  }
   return Object.entries(visibleTools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
     description: toolDef.description,
     parameters: toolDef.inputSchema as AgentTool["parameters"],
     prepareArguments: toolDef.prepareArguments,
+    // A direct call is reviewed alone, so a tool that may need review runs
+    // one at a time. Code Mode reviews a drain as one batch instead.
     executionMode:
       toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
         ? "sequential"
@@ -364,127 +793,13 @@ export function createPiAgentTools(
       if (typeof toolCallId !== "string" || toolCallId.length === 0) {
         throw new Error("Pi tool execution requires a non-empty tool call id.");
       }
-      // Intentional OTel deviation: private traces put Junior's safe metadata
-      // here, with flattened gen_ai.tool.call.arguments.* extension attributes.
-      const toolArgumentsAttribute = serializeToolPayload(params, {
-        privateMetadata: true,
-      });
-      const toolArgumentsMetadata = toGenAiPayloadTraceAttributes(
-        "gen_ai.tool.call.arguments",
+      return await pipeline.callFromModel({
         params,
-      );
-      const result = await withSpan(
-        `execute_tool ${toolName}`,
-        "gen_ai.execute_tool",
-        spanContext,
-        async (setSpanAttributes) => {
-          const parsed = params as Record<string, unknown>;
-          let executionToolName = toolName;
-          let executionParams = parsed;
-
-          try {
-            if (toolName === EXECUTE_TOOL_NAME) {
-              const resolvedCatalogCall = resolveCatalogToolCall(
-                parsed,
-                plannedTools.catalogTools,
-              );
-              executionToolName = resolvedCatalogCall.toolName;
-              executionParams = resolvedCatalogCall.arguments;
-              setSpanAttributes({
-                "gen_ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
-                "gen_ai.tool.description":
-                  resolvedCatalogCall.definition.description,
-                "gen_ai.tool.name": resolvedCatalogCall.toolName,
-              });
-              const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
-              executionParams = catalogCall.arguments;
-              await reportStatus(executionToolName, executionParams);
-              return await executeDefinition({
-                toolCallId,
-                params: catalogCall.arguments,
-                signal,
-                setSpanAttributes,
-                toolDef: catalogCall.definition,
-                toolName: catalogCall.toolName,
-              });
-            }
-
-            await reportStatus(executionToolName, executionParams);
-            return await executeDefinition({
-              toolCallId,
-              params: parsed,
-              signal,
-              setSpanAttributes,
-              toolDef,
-              toolName,
-            });
-          } catch (error) {
-            if (
-              signal?.aborted &&
-              !(
-                error instanceof AuthorizationPauseError ||
-                error instanceof AuthorizationFlowDisabledError ||
-                error instanceof ToolActionRejectedError
-              )
-            ) {
-              // The host preempted this attempt, so its outcome is unknown.
-              // Report the same fact bash reports for a command timeout
-              // instead of a failure the model would retry.
-              const preempted = makeStructuredToolOutput({
-                aborted: true as const,
-                target: executionToolName,
-              });
-              await notifyToolResult({
-                ok: true,
-                params: executionParams,
-                result: preempted.details,
-                toolCallId,
-                toolName: executionToolName,
-              });
-              return { ...preempted, isError: false };
-            }
-            await notifyToolResult({
-              error: error instanceof Error ? error.message : String(error),
-              ok: false,
-              params: executionParams,
-              toolCallId,
-              toolName: executionToolName,
-            });
-            if (
-              error instanceof AuthorizationPauseError ||
-              error instanceof AuthorizationFlowDisabledError
-            ) {
-              throw error;
-            }
-            if (error instanceof ToolActionRejectedError) {
-              return error;
-            }
-            handleToolExecutionError(
-              error,
-              executionToolName,
-              toolCallId,
-              shouldTrace,
-              effectiveConversationPrivacy,
-              setSpanAttributes,
-            );
-          }
-        },
-        {
-          "gen_ai.operation.name": "execute_tool",
-          "gen_ai.tool.name": toolName,
-          "gen_ai.tool.description": toolDef.description,
-          "gen_ai.tool.type": "function",
-          ...toolArgumentsMetadata,
-          "gen_ai.tool.call.id": toolCallId,
-          ...(toolArgumentsAttribute
-            ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
-            : undefined),
-        },
-      );
-      if (result instanceof ToolActionRejectedError) {
-        throw result;
-      }
-      return result;
+        signal,
+        toolCallId,
+        toolDef,
+        toolName,
+      });
     },
   }));
 }

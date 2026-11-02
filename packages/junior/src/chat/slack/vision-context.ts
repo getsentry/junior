@@ -273,7 +273,7 @@ function createImageAttachmentProcessingError(attachment: {
 }): ImageAttachmentProcessingError {
   const label = attachment.filename ? `"${attachment.filename}"` : "this image";
   return new ImageAttachmentProcessingError(
-    `Image attachment ${label} could not be analyzed`,
+    `Image attachment ${label} arrived, but the vision model could not read it`,
   );
 }
 

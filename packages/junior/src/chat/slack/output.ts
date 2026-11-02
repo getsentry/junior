@@ -1,4 +1,3 @@
-import type { PostableMessage } from "chat";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
@@ -319,21 +318,6 @@ export function getSlackContinuationBudget(): {
   maxLines: number;
 } {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
-}
-
-/** Normalize text for Slack and wrap it as a PostableMessage. */
-export function buildSlackOutputMessage(text: string): PostableMessage {
-  const normalized = normalizeSlackReplyMarkdown(text);
-
-  if (!normalized) {
-    throw new Error(
-      `Slack output normalized to empty content: original_length=${text.length} parsed_length=${normalized.length}`,
-    );
-  }
-
-  return {
-    markdown: normalized,
-  };
 }
 
 export const slackOutputPolicy = {

@@ -226,6 +226,34 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       ...(permissionDenied ? { permissionDenied } : undefined),
     };
   };
+  // Egress auth and permission signals belong to the egress session, not to
+  // one command, and the proxy cannot tell which command made a request. So
+  // the bash commands of one Run run one at a time, also when a Code Mode
+  // script starts them together. Each command then reads only its own signals.
+  let bashTail: Promise<void> = Promise.resolve();
+  let bashTurns = 0;
+  /**
+   * Wait for the earlier bash commands of this Run. `waited` is true when an
+   * earlier command held the turn, so the Sandbox may have changed since.
+   */
+  const takeBashTurn = async () => {
+    const waited = bashTurns > 0;
+    bashTurns += 1;
+    const earlier = bashTail;
+    let done!: () => void;
+    const turn = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    bashTail = earlier.then(() => turn);
+    await earlier;
+    return {
+      waited,
+      release() {
+        bashTurns -= 1;
+        done();
+      },
+    };
+  };
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
@@ -362,70 +390,82 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
-    const { bash: executeBash, sessionId: activeSessionId } =
-      await runtime.tools(context.signal);
-    await clearEgressSignals(activeSessionId);
-    const result = await withSandboxToolSpan(
-      "bash",
-      "process.exec",
-      {
-        "process.executable.name": "bash",
-      },
-      async () => {
-        const response = await executeBash({
-          command,
-          cwd,
-          ...(env ? { env } : undefined),
-          ...(timeoutMs ? { timeoutMs } : undefined),
-          ...(context.signal ? { signal: context.signal } : undefined),
-        });
-        setSpanAttributes({
-          "process.exit.code": response.exitCode,
-          "app.sandbox.stdout_bytes": Buffer.byteLength(
-            response.stdout ?? "",
-            "utf8",
-          ),
-          "app.sandbox.stderr_bytes": Buffer.byteLength(
-            response.stderr ?? "",
-            "utf8",
-          ),
-          ...(response.aborted
-            ? { "error.type": "outcome_unknown" }
-            : response.exitCode !== 0
-              ? { "error.type": "nonzero_exit" }
-              : {}),
-        });
-        setSpanStatus(response.exitCode === 0 ? "ok" : "error");
-        return response;
-      },
-    );
-    // Always consume egress auth/permission signals regardless of exit code.
-    // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
-    // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
-    // preventing the signal from ever being read. The egress signal is a
-    // side-channel from the network layer — not a property of shell exit status —
-    // and the signal store is cleared before each execution to prevent
-    // cross-command leakage.
-    const { authRequired, permissionDenied } =
-      await consumeEgressSignals(activeSessionId);
+    // Resolve before the turn so concurrent calls share one acquisition.
+    let tools = await runtime.tools(context.signal);
+    const bashTurn = await takeBashTurn();
+    try {
+      context.signal?.throwIfAborted();
+      // A switch or reacquire can replace the Sandbox while this command
+      // waits. Run it on the current one and use that session's signals.
+      if (bashTurn.waited) {
+        tools = await runtime.tools(context.signal);
+      }
+      const { bash: executeBash, sessionId: activeSessionId } = tools;
+      await clearEgressSignals(activeSessionId);
+      const result = await withSandboxToolSpan(
+        "bash",
+        "process.exec",
+        {
+          "process.executable.name": "bash",
+        },
+        async () => {
+          const response = await executeBash({
+            command,
+            cwd,
+            ...(env ? { env } : undefined),
+            ...(timeoutMs ? { timeoutMs } : undefined),
+            ...(context.signal ? { signal: context.signal } : undefined),
+          });
+          setSpanAttributes({
+            "process.exit.code": response.exitCode,
+            "app.sandbox.stdout_bytes": Buffer.byteLength(
+              response.stdout ?? "",
+              "utf8",
+            ),
+            "app.sandbox.stderr_bytes": Buffer.byteLength(
+              response.stderr ?? "",
+              "utf8",
+            ),
+            ...(response.aborted
+              ? { "error.type": "outcome_unknown" }
+              : response.exitCode !== 0
+                ? { "error.type": "nonzero_exit" }
+                : {}),
+          });
+          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+          return response;
+        },
+      );
+      // Always consume egress auth/permission signals regardless of exit code.
+      // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
+      // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
+      // preventing the signal from ever being read. The egress signal is a
+      // side-channel from the network layer — not a property of shell exit status —
+      // and the signal store is cleared before each execution to prevent
+      // cross-command leakage.
+      const { authRequired, permissionDenied } =
+        await consumeEgressSignals(activeSessionId);
 
-    return formatSandboxCommandResult({
-      ok: result.exitCode === 0,
-      command,
-      cwd,
-      exit_code: result.exitCode,
-      signal: null,
-      timed_out: Boolean(result.timedOut),
-      aborted: Boolean(result.aborted),
-      stdout: result.stdout,
-      stderr: result.stderr,
-      stdout_truncated: result.stdoutTruncated,
-      stderr_truncated: result.stderrTruncated,
-      ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied
-        ? { permission_denied: permissionDenied }
-        : undefined),
-    }) as T;
+      return formatSandboxCommandResult({
+        ok: result.exitCode === 0,
+        command,
+        cwd,
+        exit_code: result.exitCode,
+        signal: null,
+        timed_out: Boolean(result.timedOut),
+        aborted: Boolean(result.aborted),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        stdout_truncated: result.stdoutTruncated,
+        stderr_truncated: result.stderrTruncated,
+        ...(authRequired ? { auth_required: authRequired } : undefined),
+        ...(permissionDenied
+          ? { permission_denied: permissionDenied }
+          : undefined),
+      }) as T;
+    } finally {
+      bashTurn.release();
+    }
   };
 
   const executeReadFileTool = async <T>(
@@ -837,14 +877,27 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           )
           .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
         [];
-      const directories =
-        workspaceDirectories.length > 0
-          ? workspaceDirectories
-          : await listRepositoryDirectories(fs);
-      return await resolveRepositoryInstructionsForDirectories({
-        directories,
-        fs,
-      });
+      return await withSandboxSpan(
+        "sandbox.repository_instructions.read",
+        "sandbox.repository_instructions.read",
+        {},
+        async (setSpanAttributes) => {
+          const directories =
+            workspaceDirectories.length > 0
+              ? workspaceDirectories
+              : await listRepositoryDirectories(fs);
+          const instructions =
+            await resolveRepositoryInstructionsForDirectories({
+              directories,
+              fs,
+            });
+          setSpanAttributes({
+            "app.repository_instructions.repo_count": directories.length,
+            "app.repository_instructions.found": Boolean(instructions),
+          });
+          return instructions;
+        },
+      );
     },
     workspace,
     async switchWorkspace(recipe, signal) {

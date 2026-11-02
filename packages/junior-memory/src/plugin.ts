@@ -12,6 +12,7 @@ import {
   type MemoryToolContext,
 } from "./tools";
 import { processMemorySession } from "./process-session";
+import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
 import {
@@ -23,6 +24,10 @@ import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
+const HEARTBEAT_REEMBED_BATCH_SIZE = 100;
+// The host stops waiting for a plugin heartbeat after 25s. Leave time for the
+// batch that is in progress when this budget ends.
+const HEARTBEAT_REEMBED_BUDGET_MS = 15_000;
 
 export interface MemoryPluginOptions {
   /** Disable automatic prompt recall while keeping explicit memory tools available. */
@@ -117,6 +122,15 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         },
     userPages: [createMemoryUserPage()],
     hooks: {
+      async heartbeat(ctx) {
+        // Embedding spans show progress. The host logs failures.
+        await reembedMemories({
+          batchSize: HEARTBEAT_REEMBED_BATCH_SIZE,
+          db: ctx.db as MemoryDb,
+          deadlineMs: Date.now() + HEARTBEAT_REEMBED_BUDGET_MS,
+          embedder: ctx.embedder,
+        });
+      },
       async operationalReport(ctx) {
         const extractionDays = await ctx.eventStats.costsByDay({
           days: 90,

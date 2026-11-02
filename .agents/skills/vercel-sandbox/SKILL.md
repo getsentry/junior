@@ -71,7 +71,7 @@ For repo-local debugging in Junior, inspect:
    - `packages/junior/src/chat/sandbox/session.ts` (reports each new ref through `onSandboxRefChanged`)
    - `packages/junior/src/chat/providers/slack/turn.ts` and `packages/junior/src/chat/task-execution/conversation-turn.ts` (save it to thread state)
 5. whether consumer-specific snapshots are being confused with Vercel product persistence:
-   - `packages/junior/src/chat/sandbox/README.md`
+   - `packages/junior/src/chat/sandbox/AGENTS.md`
 
 ## Step 6: Recommend the smallest correct fix
 

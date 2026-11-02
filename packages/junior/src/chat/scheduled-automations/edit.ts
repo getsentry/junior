@@ -1,8 +1,10 @@
 /** Shared scheduled Automation edits for Slack and the web API. */
 import { scheduledAutomationEditSchema } from "@/chat/automations/edit-schema";
+import { isDeepStrictEqual } from "node:util";
 import {
   AutomationEditError,
   editAutomationFields,
+  requireCredentialStart,
 } from "@/chat/automations/edit-rules";
 import { compileScheduleIntent, ScheduleIntentError } from "./schedule-intent";
 import { defaultTimezone } from "@/chat/identities/timezone";
@@ -49,16 +51,23 @@ export async function editScheduledAutomation(
     );
   }
   const status = input.status ?? current.status;
+  // A new Schedule changes when creator credentials are used.
   const changesExecution =
-    input.instruction !== undefined && input.instruction !== current.task.text;
+    (input.instruction !== undefined &&
+      input.instruction !== current.task.text) ||
+    (compiled !== undefined &&
+      !isDeepStrictEqual(compiled.schedule, current.schedule));
+  const fields = await editAutomationFields(
+    current,
+    input,
+    isCreator,
+    changesExecution,
+  );
+  if (status === "active" && current.status !== "active")
+    requireCredentialStart({ ...current, ...fields }, isCreator);
   return {
     ...current,
-    ...(await editAutomationFields(
-      current,
-      input,
-      isCreator,
-      changesExecution,
-    )),
+    ...fields,
     updatedAtMs: nowMs,
     schedule: compiled?.schedule ?? current.schedule,
     nextRunAtMs,

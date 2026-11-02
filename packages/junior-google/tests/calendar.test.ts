@@ -125,19 +125,19 @@ describe("Google Calendar tools", () => {
     vi.unstubAllEnvs();
   });
 
-  it("checks the requester and attendees in their own time zones, and reports people it could not check", async () => {
+  it("checks the requester and attendees in their own time zones on the requested days, and reports people it could not check", async () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
-          // The requester says this all-day block is only a hold.
+          // The requester says this block over the whole search is a hold.
           [REQUESTER]: {
             busy: [
-              { start: "2026-10-12T16:00:00Z", end: "2026-10-13T00:00:00Z" },
+              { start: "2026-10-26T16:00:00Z", end: "2026-11-09T17:00:00Z" },
             ],
           },
           "bob@example.com": {
             busy: [
-              { start: "2026-10-12T16:00:00Z", end: "2026-10-12T17:00:00Z" },
+              { start: "2026-10-27T13:00:00Z", end: "2026-10-27T17:00:00Z" },
             ],
           },
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
@@ -153,9 +153,13 @@ describe("Google Calendar tools", () => {
         attendees: ["Bob@example.com", "carol@example.com"],
         maxResults: 1,
         optionalAttendees: [REQUESTER],
-        timeMax: "2026-10-13T00:00:00Z",
-        timeMin: "2026-10-12T16:00:00Z",
+        // 14 days on the Los Angeles clock, from Monday 09:00 PDT to Monday
+        // 09:00 PST. Daylight saving ends inside it, so it is 14 days and
+        // one hour long.
+        timeMax: "2026-11-09T17:00:00Z",
+        timeMin: "2026-10-26T16:00:00Z",
         timeZone: LA,
+        weekdays: ["Tue"],
       }),
       { toolCallId: "call-1" },
     );
@@ -180,13 +184,14 @@ describe("Google Calendar tools", () => {
         { email: "bob@example.com", timeZone: "America/New_York" },
         { email: REQUESTER, timeZone: LA },
       ],
-      // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York. The
-      // requester listed themselves as optional, so the hold does not block it.
+      // Tuesday 10:00 in Los Angeles, after Bob's 09:00-13:00 in New York.
+      // The requester listed themselves as optional, so the hold does not
+      // block it. Monday is open earlier, but only Tuesdays were asked for.
       slots: [
         {
           optionalConflicts: [REQUESTER],
-          otherTimeZoneLabels: ["Mon, Oct 12, 13:00 – 13:30 EDT"],
-          start: "2026-10-12T17:00:00.000Z",
+          otherTimeZoneLabels: ["Tue, Oct 27, 13:00 – 13:30 EDT"],
+          start: "2026-10-27T17:00:00.000Z",
         },
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],

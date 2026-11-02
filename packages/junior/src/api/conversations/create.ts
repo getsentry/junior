@@ -4,12 +4,19 @@ import type { InputImage } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
+  acceptsWebMessages,
   webActorFromEmail,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
+import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getProductionSlackAdapter } from "@/chat/app/production";
+import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
@@ -84,12 +91,7 @@ export async function appendConversationMessageForViewer(
   if (!conversation) {
     throwApiError(404, "Conversation not found.");
   }
-  const destinationPlatform = conversation.destination?.platform;
-  const acceptsWebMessages =
-    (destinationPlatform === "local" &&
-      conversationId.startsWith("local:web:")) ||
-    destinationPlatform === "slack";
-  if (!acceptsWebMessages) {
+  if (!acceptsWebMessages(conversationId, conversation.destination)) {
     throwApiError(409, "Conversation does not accept web messages.");
   }
 
@@ -103,10 +105,11 @@ export async function appendConversationMessageForViewer(
   }
 
   const images = parseImages(body.images);
-  try {
-    return await appendAndEnqueueWebMessage(
+  const actor = actorFromViewer(viewer);
+  const append = () =>
+    appendAndEnqueueWebMessage(
       {
-        actor: actorFromViewer(viewer),
+        actor,
         conversationId,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
@@ -118,6 +121,38 @@ export async function appendConversationMessageForViewer(
         queue: services.queue,
       },
     );
+  // A dashboard message answers the open questions that the agent asked in
+  // this Conversation, like a typed Slack reply.
+  const closeAnswered = () =>
+    closeReviewItemsAnsweredByReply({
+      conversationId,
+      delivery: {
+        queue: services.queue,
+        show: createSlackReviewItemShow(getProductionSlackAdapter),
+      },
+      resolveUser: async () => viewer,
+      text: body.message,
+    });
+  try {
+    let accepted: AcceptedConversationMessage;
+    try {
+      accepted = await append();
+    } catch (error) {
+      // A failed queue send can follow a saved append. The message still
+      // answers then.
+      const state = getStateAdapter();
+      await state.connect();
+      const [messageId, work] = await Promise.all([
+        webMessageId({ conversationId, idempotencyKey: body.idempotencyKey }),
+        getConversationWorkState({ conversationId, state }),
+      ]);
+      if (work?.execution.inboundMessageIds.includes(messageId)) {
+        await closeAnswered();
+      }
+      throw error;
+    }
+    await closeAnswered();
+    return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);
   }

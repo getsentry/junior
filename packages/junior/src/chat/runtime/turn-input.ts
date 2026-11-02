@@ -5,6 +5,11 @@ import type { LocationConfigurationService } from "@/chat/configuration/types";
 export interface TurnContext {
   channelId?: string;
   actorId?: string;
+  /**
+   * Durable Conversation that owns the Turn. It differs from `threadId` when
+   * a Slack thread belongs to another Conversation, such as a task post.
+   */
+  conversationId?: string;
   threadId?: string;
   runId?: string;
 }

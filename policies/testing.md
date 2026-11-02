@@ -2,100 +2,83 @@
 
 ## Intent
 
-Tests should protect product contracts. They should not prevent safe changes to internal code.
-Prefer higher-fidelity behavior coverage when it is stable enough. Routine
-refactors should not churn brittle unit tests.
+Tests protect product contracts. They must not block safe internal changes.
+Prefer high-fidelity behavior coverage when it is stable.
 
 ## Policy
 
-- Prefer integration tests for product and runtime behavior when the contract
-  can be proven through real wiring with only Slack and LLM fakes.
-- Prefer evals for agent-facing behavior that depends on model reading,
-  continuity, routing, or reply quality. Assert through normalized session,
-  tool, and artifact surfaces. Fixed persistence belongs in integration tests.
-- Test tool implementations outside the agent flow when their contract is fixed.
-  For Slack tools, use integration tests with outbound mocks for API payloads,
-  target coordinates, and attachment serialization. Use evals only for whether
-  the agent picks the right tool, target, and reply strategy.
-- Use unit tests only for tightly local fixed logic where integration or eval
-  coverage would be much slower, less stable, or less diagnostic.
-- Before adding coverage, search unit, component, integration, and eval suites
-  for the behavior's primary owning scenario. Extend that scenario. Do not add
-  nearby coverage around the changed implementation.
-- A source change does not automatically need a new test. Existing coverage is
-  enough when an equal- or higher-fidelity test exercises the changed contract
-  and would fail for the regression being blocked.
-- Give each behavior contract one primary owning layer. Add cross-layer coverage
-  only for a distinct contract or a clearly different failure edge, not as
-  duplicate confidence.
-- Do not add one test per implementation branch. Use representative cases for
-  product behavior. Reserve exhaustive tables for local fixed rules where the
-  full input matrix is itself the contract.
-- Keep coverage proportional: one representative happy path and one realistic
-  failure per distinct product outcome, safety rule, or irreversible delivery,
-  persistence, or recovery edge. Merge examples of the same rule and
-  interchangeable mock failure sources.
-- Do not write automated tests for migrations or migration SQL. Validate
-  migration metadata and generated schemas with the repository checks. Test the
-  resulting product behavior through its primary owning scenario.
-- Test defensive branches only when the state is reachable through untrusted
-  input or migration, protects a schema-enforced or documented stored rule, or
-  has production history.
-- Mock one edge per test, and only the edge allowed for that test layer. Do not
-  stack mocks across persistence, runtime, delivery, and reply execution to fake
-  a product workflow.
-- Integration tests must not mock Junior-owned modules. Compose real Junior
-  wiring. Fake only Slack and LLMs, and only through the shared harnesses (Slack
-  MSW/outbox fixtures and model-stream). Do not mock other external edges such
-  as `@vercel/sandbox`, provider SDKs, or other live infrastructure the product
-  calls. Put those fakes in component tests when the contract needs them.
-- Prefer existing harnesses, shared fixtures, memory adapters, MSW handlers, and
+### Layers
+
+- Integration tests own product and runtime behavior. Use real Junior wiring.
+  Fake only Slack and LLMs, through the shared harnesses (Slack MSW/outbox
+  fixtures and model-stream). Do not mock Junior-owned modules or other
+  external edges such as `@vercel/sandbox` or provider SDKs; put those fakes
+  in component tests.
+- Evals own agent-facing behavior: model reading, continuity, routing, reply
+  quality, and tool choice. See `evals.md`.
+- Test fixed tool contracts outside the agent. For Slack tools, assert API
+  payloads, targets, and attachment serialization in integration tests.
+- Unit tests are only for local fixed logic where other layers are much
+  slower, less stable, or less diagnostic.
+- Fixture and adapter shape: `test-adapters.md`.
+
+### Scope
+
+- Before you add coverage, search every suite for the primary owning scenario
+  and extend it.
+- A source change does not always need a new test. Existing equal- or
+  higher-fidelity coverage that would fail for the regression is enough.
+- Give each contract one primary layer. Add another layer only for a distinct
+  contract or failure edge.
+- Do not add one test per branch. Use one happy path and one realistic failure
+  per distinct outcome, safety rule, or irreversible delivery, persistence, or
+  recovery edge. Use exhaustive tables only when the input matrix is the
+  contract.
+- Do not test migrations or migration SQL. Use the schema checks and test the
+  resulting behavior.
+- Test defensive branches only when untrusted input or migration can reach
+  them, they protect a documented stored rule, or they have production
+  history.
+- Before you finish, prune touched tests that duplicate higher-fidelity
+  coverage, mirror branches, or test unreachable cases.
+
+### Mocks and fixtures
+
+- Mock one edge per test, and only the edge the layer allows.
+- Prefer shared harnesses, fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
-- Database tests must use `tests/fixtures/sql`. Normal tests use
-  `createJuniorSqlFixture`, which uses the migrated worker database that shared
-  setup truncates before each test. Only migration contract tests use an explicit
-  empty fixture. Do not import Postgres fixture internals from a test.
-- Assert user-visible outcomes and external contracts before implementation
-  details. Logs, spans, and status telemetry are not behavior contracts unless
-  the test is explicitly about instrumentation.
-- Prefer `toMatchInlineSnapshot` for multi-line generated agent inputs or other
-  rendered text contracts. Keep the full expected output next to the assertion.
-- Do not assert that static strings are present in normal system or turn-context
-  prompts. Assert generated values only, such as dispatch input built from task
-  data or other rendered outputs under test.
-- Browser E2E tests protect critical user journeys that need a real browser.
-  Keep one representative path for navigation, interaction, accessibility
-  state, request contracts, and realistic failure recovery. Do not use browser
-  E2E as a catalog of every visible state or implementation branch.
-- Assert the outcome named by the browser journey. Do not fail a journey because
-  the browser emitted unrelated console or page errors. Test an error only when
-  it is the user-visible outcome or external contract that the journey owns.
-- Do not assert CSS utility strings, raw DOM tag counts, generated markup,
-  pixel geometry, element size, or computed style to prove visual styling.
-  Test semantic state and interaction behavior with component or browser
-  coverage, and validate layout and styling through visual QA.
-- Do not add fixed sleeps to browser E2E tests. Wait for the user-visible state,
-  URL, request, or response that proves the behavior.
-- Most visual changes need no new automated test. Layout, styling, spacing,
-  theme, copy presentation, and other look-and-feel work should be manually
-  QA'd. Include the visual evidence in the change. Do not add unit, component,
-  snapshot, browser E2E, or other regression tests just because a UI file
-  changed.
-- UI changes do not require browser E2E coverage when they only change layout,
-  styling, copy, or already-covered presentation. Use visual QA instead.
-- Add automated UI coverage only when the change owns a product behavior
-  contract such as navigation, interaction, accessibility state, request or
-  response shape, auth gating, or a realistic failure path. Extend the primary
-  owning scenario. Do not invent a nearby case for confidence.
-- Before you finish a non-trivial change, prune touched tests that equal- or
-  higher-fidelity coverage already covers, only mirror implementation branches
-  without a distinct contract, or exercise equivalent or unreachable cases.
+- Database tests use `tests/fixtures/sql` and `createJuniorSqlFixture`. Only
+  migration contract tests use an empty fixture. Do not import Postgres
+  fixture internals.
+
+### Assertions
+
+- Assert user-visible outcomes and external contracts first. Telemetry is not
+  a contract outside instrumentation tests.
+- Use `toMatchInlineSnapshot` for multi-line rendered text.
+- Do not assert static strings in system or turn-context prompts. Assert only
+  generated values.
+
+### UI and browser
+
+- Most visual changes need no automated test. QA them manually and attach
+  visual evidence.
+- Add UI coverage only for a behavior contract: navigation, interaction,
+  accessibility state, request or response shape, auth gating, or a realistic
+  failure path.
+- Browser E2E covers critical journeys only, one representative path each.
+  It is not a catalog of states.
+- Assert the outcome the journey names. Do not fail on unrelated console or
+  page errors.
+- Do not assert CSS classes, DOM tag counts, markup, pixel geometry, size, or
+  computed style.
+- No fixed sleeps. Wait for the visible state, URL, request, or response.
 
 ## Exceptions
 
-- A unit test is right for pure parsing, normalization, retry math, scoring,
-  small fixed transforms, and local algorithmic rules.
-- A component test is right for fixed service or runtime contracts that cross
-  modules but do not need full product wiring.
-- Very low-level contract tests may inspect implementation-shaped payloads when
-  the payload shape itself is the external contract.
+- Unit tests fit pure parsing, normalization, retry math, scoring, and small
+  fixed transforms.
+- Component tests fit fixed cross-module contracts that do not need full
+  product wiring.
+- Low-level contract tests may inspect payloads when the payload shape is the
+  external contract.

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.266.0",
+  "version": "0.269.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -45,8 +45,11 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",
+    "react-markdown": "^10.1.0",
     "react-router": "^7.18.2",
     "recharts": "3.8.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "shiki": "4.1.0",
     "zod": "catalog:"
   },
@@ -62,6 +65,7 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "4.1.12",
+    "emojibase-data": "^18.0.0",
     "eslint": "^10.8.0",
     "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",

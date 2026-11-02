@@ -43,11 +43,12 @@ describe("web fetch tool", () => {
       }),
     );
     extractWebFetchResponseMock.mockResolvedValue({
-      url: safeUrl.toString(),
-      content: "hello",
+      result: { url: safeUrl.toString(), content: "hello", truncated: false },
+      fullContent: "hello",
     });
+    const sandbox = { writeFiles: vi.fn() };
 
-    const tool = createWebFetchTool({});
+    const tool = createWebFetchTool({}, { sandbox });
     const execute = tool.execute!;
     const result = await execute(
       { url: "https://example.com/article", max_chars: 1200 },
@@ -57,7 +58,10 @@ describe("web fetch tool", () => {
     expect(result).toEqual({
       url: safeUrl.toString(),
       content: "hello",
+      truncated: false,
     });
+    // A page that fits does not start the sandbox.
+    expect(sandbox.writeFiles).not.toHaveBeenCalled();
     expect(assertPublicUrlMock).toHaveBeenCalledTimes(1);
     expect(fetchTextWithRedirectsMock).toHaveBeenCalledTimes(1);
     expect(extractWebFetchResponseMock).toHaveBeenCalledTimes(1);
@@ -66,6 +70,56 @@ describe("web fetch tool", () => {
       expect.any(Response),
       1200,
     );
+  });
+
+  it("saves all text of a truncated page to a sandbox file", async () => {
+    const safeUrl = new URL("https://docs.example.com/platforms/python/");
+    assertPublicUrlMock.mockResolvedValue(safeUrl);
+    fetchTextWithRedirectsMock.mockImplementation(
+      async () =>
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    extractWebFetchResponseMock.mockResolvedValue({
+      result: {
+        url: safeUrl.toString(),
+        content: "start...",
+        extracted_chars: 16,
+        truncated: true,
+      },
+      fullContent: "start middle end",
+    });
+    const sandbox = { writeFiles: vi.fn(async () => {}) };
+    const execute = createWebFetchTool({}, { sandbox }).execute!;
+
+    const result = await execute({ url: safeUrl.toString() }, {} as never);
+
+    const path = (result as { full_content_path: string }).full_content_path;
+    expect(path).toMatch(
+      /\/\.junior\/web-fetch\/docs\.example\.com_platforms_python-[0-9a-f]{8}\.md$/,
+    );
+    expect(sandbox.writeFiles).toHaveBeenCalledWith([
+      { content: "start middle end", path },
+    ]);
+    expect(result).toMatchObject({
+      content: "start...",
+      truncated: true,
+      full_content_note: expect.stringContaining("untrusted"),
+    });
+
+    // A failed write keeps the fetch result and says the text was not saved.
+    sandbox.writeFiles.mockRejectedValueOnce(new Error("sandbox unavailable"));
+    await expect(
+      execute({ url: safeUrl.toString() }, {} as never),
+    ).resolves.toEqual({
+      url: safeUrl.toString(),
+      content: "start...",
+      extracted_chars: 16,
+      truncated: true,
+      full_content_note: expect.stringContaining("not saved"),
+    });
   });
 
   it("writes fetched images to generated artifact paths", async () => {

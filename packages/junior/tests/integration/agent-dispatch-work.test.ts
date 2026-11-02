@@ -10,6 +10,9 @@ import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
@@ -28,8 +31,8 @@ import {
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -67,7 +70,7 @@ describe("agent dispatch conversation work", () => {
       input,
     );
     const modelStream = vi.fn(createModelStream([sendMessage("Done")]));
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(modelStream),
     );
 
@@ -145,7 +148,7 @@ describe("agent dispatch conversation work", () => {
       queue,
       run: runWork,
       state,
-    } = await createAgentDispatchWorkHarness(agentRunner);
+    } = await createConversationWorkHarness(agentRunner);
 
     const titleRequests: TitleModelRequest[] = [];
     mockTitleModel("Weekly digest for the platform team", {
@@ -234,7 +237,7 @@ describe("agent dispatch conversation work", () => {
       ],
       { ...destination, threadTs: "1700000000.000200" },
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(
         createModelStream([sendMessage("Scheduled digest")]),
       ),
@@ -272,7 +275,7 @@ describe("agent dispatch conversation work", () => {
         },
       ],
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
 
@@ -288,9 +291,17 @@ describe("agent dispatch conversation work", () => {
     ).toEqual(["D123", "C456"]);
   });
 
-  it("completes work with no outcomes without posting the model result", async () => {
+  it("posts nothing for work with no outcomes, also when the run fails", async () => {
     const dispatch = await createDispatch(
       "no-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      [],
+    );
+    const lostDispatch = await createDispatch(
+      "no-outcomes-lost-worker",
       undefined,
       undefined,
       undefined,
@@ -304,18 +315,22 @@ describe("agent dispatch conversation work", () => {
           name: "finishAutomationRun",
           arguments: { result: "no_action", reason: "Maintenance complete" },
         },
+        { type: "toolCall", name: "systemTime", arguments: {} },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
+    const processNext = async (softYieldAfterMs?: number) =>
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        softYieldAfterMs,
+        state,
+      });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
+    await processNext();
 
     expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
@@ -324,6 +339,34 @@ describe("agent dispatch conversation work", () => {
     });
     expect(runAgent).toHaveBeenCalledOnce();
     expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+
+    // The second run pauses, and its resumed worker dies before it saves.
+    // Recovery fails the run, and the failure still posts nothing.
+    await enqueueAgentDispatch(lostDispatch, { queue, state });
+    await processNext(0);
+    const conversationId = getDispatchConversationId(lostDispatch);
+    const turnId = getDispatchTurnId(lostDispatch.id);
+    const paused = await getTurnRecord(conversationId, turnId);
+    if (paused?.state !== "paused") throw new Error("expected paused turn");
+    await saveTurnCheckpoint({
+      conversationId,
+      errorMessage: LOST_WORKER_RESUME_MESSAGE,
+      lostWorkerResumeCount: 1,
+      messages: paused.piMessages,
+      mode: "paused",
+      reason: "retry",
+      sliceId: paused.sliceId,
+      turnId,
+    });
+    await processNext();
+
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+    });
+    await expect(getDispatchRecord(lostDispatch.id)).resolves.toMatchObject({
+      status: "failed",
+    });
+    expect(slackApiOutbox.messages()).toEqual([]);
   });
 
   it("projects a previously delivered reply without running the agent again", async () => {
@@ -353,7 +396,7 @@ describe("agent dispatch conversation work", () => {
       },
     );
     await persistConversationMessages({ conversation, conversationId });
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       neverRunAgentRunner(),
     );
 

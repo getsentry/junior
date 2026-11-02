@@ -1,5 +1,6 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { z } from "zod";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import {
   RISK_LEVELS,
   USER_AUTHORIZATION_LEVELS,
@@ -73,6 +74,26 @@ export function getToolActionRejectionMarker(
 }
 
 /**
+ * Read the markers of the nested calls in one `codemode` tool result, in
+ * call order. The bridge copies each marker from the gate.
+ */
+function getCodeModeRejectionMarkers(
+  message: Record<string, unknown>,
+): ToolActionRejectionMarker[] {
+  if (
+    message.toolName !== CODEMODE_TOOL_NAME ||
+    !isRecord(message.details) ||
+    !Array.isArray(message.details.calls)
+  ) {
+    return [];
+  }
+  return message.details.calls.flatMap((call) => {
+    const marker = getToolActionRejectionMarker({ details: call });
+    return marker ? [marker] : [];
+  });
+}
+
+/**
  * Consume and project one core-owned rejection into Pi's durable tool result.
  *
  * The marker field is reserved: tool-supplied values are stripped so only
@@ -142,7 +163,15 @@ export function restoreToolActionRejections(
   for (const message of messages) {
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const record = message as Record<string, unknown>;
-    if (record.role !== "toolResult" || record.isError !== true) {
+    if (record.role !== "toolResult") {
+      continue;
+    }
+    // A script can finish after a nested call was rejected, so its result
+    // need not be an error.
+    for (const rejection of getCodeModeRejectionMarkers(record)) {
+      addPriorRejection(priorRejections, rejection.priorRejection);
+    }
+    if (record.isError !== true) {
       continue;
     }
     const rejection = getToolActionRejectionMarker(record);

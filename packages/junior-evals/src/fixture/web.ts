@@ -7,8 +7,8 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`. A test can answer the pages of
- * some sites itself with `mockWebSites()`.
+ * replays them. See `src/recording-rules.ts`. A test can answer some pages
+ * itself with `mockWebPages()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
@@ -16,22 +16,24 @@ import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
-let mockedSites: Record<string, string> = {};
+let mockedPages: Record<string, string> = {};
 
-/** The host of a URL without `www.`, so both forms are the same site. */
-function siteHost(url: URL): string {
-  return url.hostname.replace(/^www\./, "");
+/** The URL without `www.`, so both forms match. */
+function pageKey(url: URL): string {
+  return `${url.protocol}//${url.host.replace(/^www\./, "")}${url.pathname}${url.search}`;
 }
 
 /**
- * Answer every `webFetch` read on each host with its HTML in this test, for
- * any path, with or without `www.`. Give each host one real page. Other hosts
- * still go to Roach.
+ * Answer the `webFetch` reads of these exact URLs with their HTML in this
+ * test, with or without `www.`. Other URLs, also on the same hosts, still go
+ * to Roach.
  */
-export function mockWebSites(pages: Record<string, string>): void {
-  mockedSites = pages;
+export function mockWebPages(pages: Record<string, string>): void {
+  mockedPages = Object.fromEntries(
+    Object.entries(pages).map(([url, html]) => [pageKey(new URL(url)), html]),
+  );
   onTestFinished(() => {
-    mockedSites = {};
+    mockedPages = {};
   });
 }
 
@@ -41,7 +43,7 @@ export function installWebReplay(): void {
     http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
-      const page = mockedSites[siteHost(new URL(request.url))];
+      const page = mockedPages[pageKey(new URL(request.url))];
       if (page !== undefined) {
         return new Response(page, {
           headers: { "content-type": "text/html; charset=utf-8" },

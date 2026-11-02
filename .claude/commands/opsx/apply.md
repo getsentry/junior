@@ -117,7 +117,7 @@ Working on task 4/7: <task description>
 ...
 
 All tasks complete! Move any durable explanation into code, tests, policies, or
-the owning README, then delete the completed change directory.
+the owning AGENTS.md, then delete the completed change directory.
 ```
 
 **Output On Pause (Issue Encountered)**

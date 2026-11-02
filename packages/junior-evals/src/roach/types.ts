@@ -1,6 +1,6 @@
 /**
  * The public types of Roach: rules, modes, runs, and the results of a run.
- * See `README.md` in this directory.
+ * See `AGENTS.md` in this directory.
  */
 import type { ValuePatterns } from "./values.ts";
 

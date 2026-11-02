@@ -48,7 +48,7 @@ describe("Automations API", () => {
     expect(response.status).toBe(401);
   });
 
-  test("lists owned and public automations but only deletes viewer-owned tasks", async () => {
+  test("lists owned and public automations and denies private deletes", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -113,7 +113,7 @@ describe("Automations API", () => {
       await fixture.sql
         .db()
         .update(juniorIdentities)
-        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .set({ avatarUrl: "https://avatars.slack-edge.com/aisha_512.png" })
         .where(eq(juniorIdentities.id, otherIdentity!.id));
 
       // Keep fixture times inside the trailing 7-day stats window.
@@ -375,7 +375,7 @@ describe("Automations API", () => {
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -388,7 +388,7 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -471,7 +471,7 @@ describe("Automations API", () => {
           (automation) => automation.id === "event_public_tasks_api",
         );
       expect(unverifiedCreator?.createdByAvatarUrl).toBe(
-        "https://example.com/aisha.png",
+        `/api/people/avatars/${otherIdentity!.id}`,
       );
       expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 
@@ -783,12 +783,12 @@ describe("Automations API", () => {
         true,
       );
 
-      const deniedPublicDelete = await authenticatedApi(
+      const deniedPrivateDelete = await authenticatedApi(
         "viewer@example.com",
       ).request("http://localhost/api/automations/event_public_tasks_api", {
         method: "DELETE",
       });
-      expect(deniedPublicDelete.status).toBe(404);
+      expect(deniedPrivateDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",

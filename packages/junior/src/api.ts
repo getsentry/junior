@@ -11,6 +11,8 @@ import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
+import { createUserCustomizationRoutes } from "./api/user-customization/routes";
+import { createReviewItemRoutes } from "./api/review-items/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -23,7 +25,9 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
+import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
+import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import {
@@ -35,7 +39,9 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
+export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
+  readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
@@ -76,11 +82,22 @@ export function createJuniorApi(
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
 
+  const queue =
+    options.conversationWorkQueue ?? getVercelConversationWorkQueue();
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
-      queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+      queue,
+    }),
+  );
+  app.route(
+    "/api/review-items",
+    createReviewItemRoutes({
+      delivery: {
+        queue,
+        show: createSlackReviewItemShow(getProductionSlackAdapter),
+      },
     }),
   );
   app.route("/api/code", createCodeRoutes());
@@ -90,6 +107,7 @@ export function createJuniorApi(
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
+  app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
   app.notFound(() =>

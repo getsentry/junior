@@ -16,8 +16,10 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
+import { attentionFirst } from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
+import { useWaitingConversationIds } from "../../review-desk/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
@@ -32,6 +34,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const search = useDebouncedValue(query.trim());
   const feed = useCodeRepositoryConversationsData(props.repositoryId, search);
   const conversations = buildConversations(feed.data?.conversations ?? []);
+  const waitingConversationIds = useWaitingConversationIds();
   useEffect(() => {
     setPage(1);
   }, [search]);
@@ -50,7 +53,11 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
         </EmptyTelemetry>
       ) : (
         <ConversationHomeList
-          conversations={pageItems(conversations, page, PAGE_SIZE)}
+          conversations={pageItems(
+            attentionFirst(conversations, waitingConversationIds),
+            page,
+            PAGE_SIZE,
+          )}
           emptyLabel={
             search
               ? "No conversations match this search."
@@ -59,6 +66,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
           finishedConversationIds={noFinishedConversations}
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
+          waitingConversationIds={waitingConversationIds}
         />
       )}
       <PagePagination

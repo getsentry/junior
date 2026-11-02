@@ -15,10 +15,21 @@ import {
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type DashboardHeaderNavItem = {
+  /** Shown beside the label when it is above zero. */
+  count?: number;
   key: string;
   label: string;
   to: string;
 };
+
+function NavCount(props: { count?: number }) {
+  if (!props.count) return null;
+  return (
+    <span className="ml-1.5 rounded-full bg-violet-300/20 px-1.5 py-0.5 text-xs text-violet-200">
+      {props.count.toLocaleString("en-US")}
+    </span>
+  );
+}
 
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
@@ -151,6 +162,7 @@ export function DashboardHeader(props: {
           {props.navItems.map((item) => (
             <NavLink className={navLinkClass} key={item.key} to={item.to}>
               {item.label}
+              <NavCount count={item.count} />
             </NavLink>
           ))}
         </nav>
@@ -204,6 +216,7 @@ export function DashboardHeader(props: {
                     to={item.to}
                   >
                     {item.label}
+                    <NavCount count={item.count} />
                   </NavLink>
                 ))}
               </nav>

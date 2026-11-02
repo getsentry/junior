@@ -135,8 +135,7 @@ export function AutomationEditor(props: {
   const dropsCreatorCredentials =
     !owned &&
     original.credentialMode === "creator" &&
-    (changes.instruction !== undefined ||
-      (original.kind === "event" && changes.trigger !== undefined));
+    (changes.instruction !== undefined || changes[triggerField] !== undefined);
   const triggerError = fieldError(triggerField);
   const inputState = (key: string) => ({
     "aria-invalid": Boolean(fieldError(key)) || undefined,
@@ -426,8 +425,8 @@ export function AutomationEditor(props: {
             {dropsCreatorCredentials ? (
               <FormNotice title="Saving switches this automation to system credentials.">
                 Only {creator} can let a changed instruction
-                {original.kind === "event" ? " or trigger" : ""} use their
-                connected accounts.
+                {original.kind === "event" ? " or trigger" : " or schedule"} use
+                their connected accounts.
               </FormNotice>
             ) : null}
             {fieldError("credentialMode") ? (

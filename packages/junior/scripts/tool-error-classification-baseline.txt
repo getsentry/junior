@@ -24,6 +24,9 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubError(listPayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubError(deletePayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubError(createPayload)}`, );
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error(message);
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error("GitHub comment did not name its issue or pull request.");
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubError(pullPayload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
@@ -32,7 +35,7 @@ packages/junior-vercel/src/tools/actions.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
-packages/junior/src/chat/tools/create-event-automation.ts	throw new Error("Event automation creation requires a tool-call identity.");
+packages/junior/src/chat/automations/tools/create.ts	throw new Error("Automation creation requires a tool-call identity.");
 packages/junior/src/chat/tools/index.ts	throw new Error("spawnAgent is missing its configured model profiles");
 packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
@@ -55,4 +58,4 @@ packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack u
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");
 packages/junior/src/chat/tools/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( parseImageGenerationError(response.status, text, model), );
-packages/junior/src/chat/tools/web/image-generate.ts	throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
+packages/junior/src/chat/tools/user-customization.ts	throw new Error("User customization target user was not found.");

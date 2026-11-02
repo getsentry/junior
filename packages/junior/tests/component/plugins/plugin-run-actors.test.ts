@@ -3,7 +3,7 @@ import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 /**
  * Proves the `run.actors` runtime threading contract from
- * `packages/junior/src/chat/README.md`: the live actors getter passed into the plugin
+ * `packages/junior/src/chat/AGENTS.md`: the live actors getter passed into the plugin
  * hook runner is seeded from the run actor and grows as steering messages
  * with a resolvable actor drain into the run, without ever including an
  * unattributable steering message.

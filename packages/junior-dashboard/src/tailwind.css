@@ -4,7 +4,7 @@
 @import "shadcn/tailwind.css";
 
 /*
- * Dashboard design tokens. components/README.md explains each role.
+ * Dashboard design tokens. components/AGENTS.md has the token rules.
  * Keep structural UI colors here so a second theme can redefine them.
  * Prefer roles over opacity ladders. Status accents stay as Tailwind palette utilities.
  */

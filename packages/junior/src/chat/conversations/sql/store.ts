@@ -3,9 +3,11 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { recordConversationParticipant } from "./participants";
-import { replaceConversationMetrics } from "../metrics";
+import {
+  readConversationRunMetrics,
+  replaceConversationMetrics,
+} from "../metrics";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,
@@ -16,6 +18,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
   ConversationExecution,
+  ConversationRunMetrics,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -27,7 +30,6 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
-import type { AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
@@ -40,7 +42,7 @@ import {
 } from "./bindings";
 import {
   actorFromIdentityRow,
-  actorIdentityForConversation,
+  resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
 import {
@@ -410,6 +412,13 @@ export class SqlStore implements ConversationStore {
     return conversationFromRow(row);
   }
 
+  async getRunMetrics(args: {
+    conversationId: string;
+    runId: string;
+  }): Promise<ConversationRunMetrics | undefined> {
+    return await readConversationRunMetrics(this.executor, args);
+  }
+
   async recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
@@ -479,10 +488,7 @@ export class SqlStore implements ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    metrics: {
-      durationMs: number;
-      usage?: AgentTurnUsage;
-    } | null;
+    metrics: ConversationRunMetrics | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
@@ -506,7 +512,23 @@ export class SqlStore implements ConversationStore {
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
         existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
-      const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
+      const latestMetricRunId = existing?.executionMetrics?.runId;
+      // A Run with metric rows that no longer owns the latest metrics is older
+      // than the latest Run. Its terminal status must not replace the status
+      // of that newer Run.
+      const olderRunFinished =
+        args.metrics !== null &&
+        args.execution.runId !== undefined &&
+        latestMetricRunId !== undefined &&
+        latestMetricRunId !== args.execution.runId &&
+        (args.execution.status === "idle" ||
+          args.execution.status === "failed") &&
+        (await readConversationRunMetrics(this.executor, {
+          conversationId: args.conversationId,
+          runId: args.execution.runId,
+        })) !== undefined;
+      const incomingIsFresh =
+        !olderRunFinished && incomingExecutionAt >= existingExecutionAt;
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
@@ -746,14 +768,10 @@ export class SqlStore implements ConversationStore {
       location: conversation.location,
       sessionSource: conversation.sessionSource,
     });
-    const actorIdentityObservation = actorIdentityForConversation(conversation);
-    const actorIdentity = actorIdentityObservation
-      ? await upsertIdentity(
-          this.executor,
-          actorIdentityObservation,
-          conversation.updatedAtMs,
-        )
-      : undefined;
+    const actorIdentityId = await resolveConversationActorIdentityId(
+      this.executor,
+      conversation,
+    );
     const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
@@ -772,7 +790,7 @@ export class SqlStore implements ConversationStore {
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
-        actorIdentityId: actorIdentity?.id ?? null,
+        actorIdentityId: actorIdentityId ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
         actor: null,
@@ -806,7 +824,8 @@ export class SqlStore implements ConversationStore {
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
-          actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
+          // Keep the stored Identity. A human reply cannot replace a system root.
+          actorIdentityId: sql`coalesce(${juniorConversations.actorIdentityId}, excluded.actor_identity_id)`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,

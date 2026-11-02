@@ -15,7 +15,6 @@ import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
   type GatewayCredential,
 } from "@/chat/pi/gateway-auth";
@@ -199,6 +198,9 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "openai/text-embedding-ada-002": 0.1,
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
+  "voyage/voyage-4": 0.06,
+  "voyage/voyage-4-large": 0.12,
+  "voyage/voyage-4-lite": 0.02,
 };
 // Decision models bill input tokens only.
 const DECISION_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -269,8 +271,8 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
-  const apiKey = credential?.token;
-  const authMode = credential?.mode ?? "api_key";
+  const apiKey = credential.token;
+  const authMode = credential.mode;
   const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
@@ -335,7 +337,7 @@ export async function completeText(params: {
             messages: params.messages,
           },
           {
-            ...(apiKey ? { apiKey } : undefined),
+            apiKey,
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
@@ -492,9 +494,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;
   try {
     result = await withSpan(
@@ -535,7 +535,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
@@ -578,9 +578,7 @@ export async function completeDecision<
   costUsd?: number;
 }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -618,7 +616,7 @@ export async function completeDecision<
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {
@@ -637,8 +635,20 @@ export async function completeDecision<
   }
 }
 
+/** Map the input type to the provider option for models that embed queries and documents differently. */
+function embeddingProviderOptions(
+  modelId: string,
+  inputType: "document" | "query" | undefined,
+): { voyage: { inputType: "document" | "query" } } | undefined {
+  if (inputType === undefined || !modelId.startsWith("voyage/")) {
+    return undefined;
+  }
+  return { voyage: { inputType } };
+}
+
 /** Generate text embeddings through the host-owned AI Gateway provider. */
 export async function embedTexts(params: {
+  inputType?: "document" | "query";
   modelId: string;
   texts: string[];
   signal?: AbortSignal;
@@ -655,8 +665,10 @@ export async function embedTexts(params: {
     throw new Error("Embedding text is required.");
   }
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  const providerOptions = embeddingProviderOptions(
+    params.modelId,
+    params.inputType,
   );
   try {
     const result = await withSpan(
@@ -667,6 +679,7 @@ export async function embedTexts(params: {
         const result = await embedMany({
           model: provider.embeddingModel(params.modelId),
           values: texts,
+          ...(providerOptions !== undefined ? { providerOptions } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
@@ -705,7 +718,7 @@ export async function embedTexts(params: {
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {

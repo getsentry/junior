@@ -13,7 +13,8 @@ type ParticipantAvatarStackProps = {
   size: "detail" | "list";
 };
 
-function participantName(participant: ActorIdentity): string {
+/** Name an actor for display: full name first, then handle, email, or ID. */
+export function participantName(participant: ActorIdentity): string {
   return (
     participant.fullName?.trim() ||
     participant.slackUserName?.trim() ||
@@ -70,6 +71,7 @@ export function ParticipantAvatar(props: {
             tabIndex={0}
           >
             <ActorAvatar
+              imageUrl={props.participant.avatarUrl}
               name={participantName(props.participant)}
               size={props.size}
             />

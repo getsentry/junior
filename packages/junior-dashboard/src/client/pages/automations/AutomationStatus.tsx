@@ -140,8 +140,8 @@ export function AutomationAttention({
         <p className="m-0 break-words">
           {automation.statusReason ??
             "Check the last run to see what needs fixing."}{" "}
-          {!automation.ownedByViewer
-            ? `Ask ${automation.createdBy} to resume after this is fixed.`
+          {!automation.ownedByViewer && automation.credentialMode === "creator"
+            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to Junior's credentials first.`
             : null}
         </p>
       ) : null}

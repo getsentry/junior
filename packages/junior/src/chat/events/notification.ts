@@ -22,6 +22,7 @@ import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -326,6 +327,8 @@ export function createEventInboundMessage(input: {
     input: {
       text: input.text,
       authorId: EVENT_AUTHOR_ID,
+      // TODO(dcramer): Use the event author Identity when plugins report it.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
     },
   };

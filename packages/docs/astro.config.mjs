@@ -160,6 +160,7 @@ export default defineConfig({
               link: "/operate/security-hardening/",
             },
             { label: "Dashboard", link: "/operate/dashboard/" },
+            { label: "MCP Server", link: "/operate/mcp-server/" },
             {
               label: "Sandbox Snapshots",
               link: "/operate/sandbox-snapshots/",

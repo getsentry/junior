@@ -17,16 +17,18 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
-import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
-import { MentionText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
+import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
@@ -35,7 +37,10 @@ export function ConversationHomeList(props: {
   finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   timeZone: string;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
+  const { collapsedKeys, toggle: toggleSection } =
+    useCollapsedConversationSections();
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<{
@@ -82,6 +87,10 @@ export function ConversationHomeList(props: {
   }
 
   const sections = buildConversationSections(props.conversations, {
+    attentionIds: attentionConversationIds(
+      props.waitingConversationIds,
+      props.finishedConversationIds,
+    ),
     nowMs: Date.now(),
     timeZone: props.timeZone,
   });
@@ -90,10 +99,13 @@ export function ConversationHomeList(props: {
       <div aria-label="Your conversations" className="grid gap-5" role="list">
         {sections.map((section) => (
           <ConversationCardSection
+            collapsed={collapsedKeys.has(section.key)}
             finishedConversationIds={props.finishedConversationIds}
             key={section.key}
             onArchiveError={handleArchiveError}
             onArchived={handleArchived}
+            onToggle={() => toggleSection(section.key)}
+            waitingConversationIds={props.waitingConversationIds}
             section={section}
           />
         ))}
@@ -165,32 +177,42 @@ function ConversationCardLoading(props: { index: number }) {
 }
 
 function ConversationCardSection(props: {
+  collapsed: boolean;
   finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onToggle(): void;
   section: ConversationSection;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
-      <h3
-        className="mb-2 mt-0 px-1 font-sans text-xs font-medium text-dashboard-text-muted"
+      <ConversationSectionHeading
+        className={cn("px-1", !props.collapsed && "mb-2")}
+        collapsed={props.collapsed}
+        count={props.section.conversations.length}
         id={`conversation-section-${props.section.key}`}
-      >
-        {props.section.label}
-      </h3>
-      <div className="grid gap-2">
-        {props.section.conversations.map((conversation) => (
-          <ConversationCard
-            conversation={conversation}
-            finishedSinceSeen={props.finishedConversationIds.has(
-              conversation.id,
-            )}
-            key={conversation.id}
-            onArchiveError={props.onArchiveError}
-            onArchived={props.onArchived}
-          />
-        ))}
-      </div>
+        label={props.section.label}
+        onToggle={props.onToggle}
+      />
+      {props.collapsed ? null : (
+        <div className="grid gap-2">
+          {props.section.conversations.map((conversation) => (
+            <ConversationCard
+              conversation={conversation}
+              finishedSinceSeen={props.finishedConversationIds.has(
+                conversation.id,
+              )}
+              key={conversation.id}
+              onArchiveError={props.onArchiveError}
+              onArchived={props.onArchived}
+              waitingOnViewer={props.waitingConversationIds.has(
+                conversation.id,
+              )}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -200,6 +222,7 @@ function ConversationCard(props: {
   finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  waitingOnViewer: boolean;
 }) {
   const conversation = props.conversation;
   const archive = useArchiveConversation(conversation.id, {
@@ -231,6 +254,7 @@ function ConversationCard(props: {
               finishedSinceSeen={props.finishedSinceSeen}
               isPrivate={isPrivate}
               status={status}
+              waitingOnViewer={props.waitingOnViewer}
             />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
@@ -266,11 +290,10 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          <MentionText
-            mentions={conversation.activityPreview.mentions ?? []}
-            text={formatConversationActivityPreview(
-              conversation.activityPreview.text,
-            )}
+          <DisplayText
+            inline
+            mentions={conversation.activityPreview.mentions}
+            text={conversation.activityPreview.text}
           />
         </p>
       ) : (

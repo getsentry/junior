@@ -245,6 +245,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         );
         await this.prepareNextTurn?.({
           context: { messages: this.state.messages },
+          toolResults: [toolResult],
         });
         // The compaction checkpoint is the resume point if this slice stops.
         compactionState.checkpointTurnStartMessageIndex = (
@@ -334,6 +335,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         try {
           await this.prepareNextTurn?.({
             context: { messages: this.state.messages },
+            toolResults: [],
           });
         } catch (error) {
           this.recordRunFailure(error);
@@ -364,6 +366,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         try {
           await this.prepareNextTurn?.({
             context: { messages: this.state.messages },
+            toolResults: [],
           });
         } catch (error) {
           this.recordRunFailure(error);

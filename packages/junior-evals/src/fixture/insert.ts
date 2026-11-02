@@ -18,6 +18,10 @@ import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
+import {
+  insertReviewItem as insertStoredReviewItem,
+  type ReviewItemContent,
+} from "@/chat/review-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -108,9 +112,12 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
  * runs do not record channel visibility, so without it their Conversations in
  * the channel are private.
  */
-async function insertCreationThread(destination: SlackChannel) {
+async function insertCreationThread(
+  destination: SlackChannel,
+): Promise<string> {
+  const conversationId = `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`;
   await getConversationStore().recordActivity({
-    conversationId: `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`,
+    conversationId,
     destination,
     sessionSource: createSlackSource({
       channelId: destination.channelId,
@@ -121,6 +128,7 @@ async function insertCreationThread(destination: SlackChannel) {
     source: "slack",
     visibility: "public",
   });
+  return conversationId;
 }
 
 /**
@@ -223,6 +231,47 @@ export async function insertEventAutomation(args: {
     trigger: args.trigger,
   });
   return { id };
+}
+
+/**
+ * Store an open Review item that an earlier run added in a public thread of
+ * `destination`. It is assigned to the Slack person `assignee`. With
+ * `automationId`, later runs of that Automation can see and change it.
+ */
+export async function insertReviewItem(args: {
+  assignee?: SlackAuthor;
+  automationId?: string;
+  body: string;
+  dedupeKey: string;
+  destination: SlackChannel;
+  kind: ReviewItemContent["kind"];
+  request?: ReviewItemContent["request"];
+  subject?: ReviewItemContent["subject"];
+  title: string;
+}): Promise<{ id: string }> {
+  const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
+  if (!identity.userId) {
+    throw new Error("insertReviewItem() needs an assignee with a Junior user");
+  }
+  const conversationId = await insertCreationThread(args.destination);
+  const item = await insertStoredReviewItem(getDb(), {
+    addedByConversationId: conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: [identity.userId],
+    body: args.body,
+    conversationIds: [conversationId],
+    dedupeKey: args.dedupeKey,
+    kind: args.kind,
+    nowMs: Date.now() - 60_000,
+    tenant: { provider: "slack", providerTenantId: args.destination.teamId },
+    title: args.title,
+    visibility: "public",
+    ...(args.automationId ? { automationId: args.automationId } : undefined),
+    ...(args.request ? { request: args.request } : undefined),
+    ...(args.subject ? { subject: args.subject } : undefined),
+  });
+  if (!item) throw new Error(`Review item ${args.dedupeKey} is already open`);
+  return { id: item.id };
 }
 
 /**

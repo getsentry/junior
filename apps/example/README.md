@@ -1,13 +1,8 @@
 # Junior Example App
 
-This app is the canonical Junior consumer app in this repo. Use it as the main demo and test bed for end-to-end runtime behavior.
-
-It demonstrates:
-
-- one local skill (`$example-local`)
-- one plugin-bundled skill (`$example-bundle-help`)
-- one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-datadog`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-memory`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
+The reference Junior host app in this repo. Use it to demo and test runtime
+behavior from end to end. It has a local skill, a plugin-bundled skill, a
+bundle-only plugin, and the installed plugin packages in `plugins.ts`.
 
 ## Run
 
@@ -19,29 +14,17 @@ pnpm cli -- upgrade
 pnpm dev
 ```
 
-## Required env
-
-Copy `.env.example`. The local database setting is:
-
-- `DATABASE_URL`
-
-The default value points at the repository's Docker Postgres service on a
-nonstandard local port. Root `pnpm cli -- ...` and `pnpm dev` load
-`apps/example/.env`, so run `pnpm cli -- upgrade` after starting the local
-services so Junior and enabled plugins have their SQL schemas before local chat,
-heartbeat, or server paths use them.
-
-Local attachments and published images use the `s3` service. The `JUNIOR_S3_*`
-defaults point at it, and compose creates the `junior-attachments` bucket when
-the service starts. If `s3` is not running, `sendFiles`, `publishImage`, and
-web messages with images fail. To use the shared dev Vercel Blob store from
-`pnpm dev:env` instead, set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=vercel-blob` in
-`apps/example/.env`. Attachments stored with one provider are not visible after
-you change to the other.
+- `DATABASE_URL` points at the repo Docker Postgres. Run `pnpm cli -- upgrade`
+  after the services start, so Junior and plugins have their SQL schemas.
+- Attachments and published images use the compose `s3` service. Without it,
+  `sendFiles`, `publishImage`, and web messages with images fail. To use the
+  dev Vercel Blob store, set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=vercel-blob`.
+  Files stored with one provider are not visible from the other.
+- Root `pnpm dev` calls `/api/internal/heartbeat` every minute, as the
+  production cron does.
 
 ## Wiring
 
-- `plugins.ts` is the single source of truth for installed plugin registrations and runtime hook plugins in this app
-- `nitro.config.ts` points `juniorNitro()` at `./plugins` so plugin content is copied into the build output and exposed to runtime through the virtual config module
-- `server.ts` imports the same plugin set and passes it to `createApp({ plugins })` so local dev and built bundles load identical runtime plugins
-- root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for plugin heartbeats and stale dispatch recovery
+- `plugins.ts` is the one list of plugin registrations.
+- `nitro.config.ts` and `server.ts` both use that list, so dev and built
+  bundles load the same plugins.

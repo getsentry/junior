@@ -10,6 +10,7 @@ import {
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
@@ -23,11 +24,13 @@ export function createAgentRunner(
     attachmentStorage?: AttachmentStorage;
     bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
+  const conversationWorkQueue = options?.conversationWorkQueue;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
@@ -53,6 +56,8 @@ export function createAgentRunner(
           ...run.environment,
           attachmentStorage:
             run.environment?.attachmentStorage ?? attachmentStorage,
+          conversationWorkQueue:
+            run.environment?.conversationWorkQueue ?? conversationWorkQueue,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
         },

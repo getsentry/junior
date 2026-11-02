@@ -17,13 +17,19 @@ export async function acquireActiveLock(
 
 type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
 
+/** State operations that `withLock` and `fenceLock` need. */
+export type LockState = Pick<
+  StateAdapter,
+  "acquireLock" | "extendLock" | "releaseLock"
+>;
+
 /**
  * Run work under one lock, optionally waiting for the current owner.
  * `keepAlive` is for multi-store mutations that must retain ownership until all
  * side effects finish; callers should still fence each blind write.
  */
 export async function withLock<T>(
-  state: StateAdapter,
+  state: LockState,
   key: string,
   run: (lock: Lock) => Promise<T>,
   options: {
@@ -33,22 +39,21 @@ export async function withLock<T>(
     waitMs?: number;
   } = {},
 ): Promise<LockAttempt<T>> {
+  const ttlMs = options.ttlMs ?? ACTIVE_LOCK_TTL_MS;
   const startedAtMs = Date.now();
   let lock: Lock | null;
   while (true) {
-    lock = await state.acquireLock(key, options.ttlMs ?? ACTIVE_LOCK_TTL_MS);
+    lock = await state.acquireLock(key, ttlMs);
     if (lock) break;
     if (Date.now() - startedAtMs >= (options.waitMs ?? 0)) {
       return { acquired: false };
     }
     await sleep(options.retryMs ?? 25, undefined, { ref: false });
   }
-  const ttlMs = options.ttlMs ?? ACTIVE_LOCK_TTL_MS;
   const heartbeat = options.keepAlive
     ? setInterval(
-        () => {
-          void state.extendLock(lock, ttlMs);
-        },
+        // A failed extend is caught by the next fenceLock before any write.
+        () => void state.extendLock(lock, ttlMs).catch(() => undefined),
         Math.max(1, Math.floor(ttlMs / 3)),
       )
     : undefined;
@@ -68,7 +73,7 @@ export async function withLock<T>(
  * state committed by a newer owner.
  */
 export async function fenceLock(
-  state: StateAdapter,
+  state: LockState,
   lock: Lock,
   ttlMs = MUTATION_LOCK_TTL_MS,
 ): Promise<void> {

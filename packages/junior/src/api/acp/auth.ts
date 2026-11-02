@@ -8,12 +8,9 @@ import {
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import {
-  fenceLock,
-  MUTATION_LOCK_TTL_MS,
-  withLock,
-  type AcpState,
-} from "./state";
+import { resolvePublicOrigin } from "@/api/public-origin";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import type { AcpState } from "./state";
 import {
   ACP_STATE_TTL_MS,
   bindAcpConnectionUser,
@@ -145,25 +142,13 @@ export function hasAcpConnectionCredential(
 
 /** Resolve a trusted browser origin, with request fallback only on loopback. */
 function authorizationBaseURL(request: Request, configured?: string): URL {
-  const value = configured?.trim();
-  let origin: string;
-  if (value) {
-    origin = /^https?:\/\//.test(value) ? value : `https://${value}`;
-  } else {
-    const requestURL = new URL(request.url);
-    const hostname = requestURL.hostname.replace(/^\[|\]$/g, "");
-    if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
-      throw acp.RequestError.internalError(
-        undefined,
-        "Junior ACP sign-in requires a configured public base URL",
-      );
-    }
-    origin = requestURL.origin;
+  const url = resolvePublicOrigin(request, configured);
+  if (!url) {
+    throw acp.RequestError.internalError(
+      undefined,
+      "Junior ACP sign-in requires a configured public base URL",
+    );
   }
-  const url = new URL(origin);
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
   return url;
 }
 

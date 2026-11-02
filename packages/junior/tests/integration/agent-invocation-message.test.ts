@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import {
-  startAgentInvocationsForChildInput,
-  withAgentInvocationResultActors,
-} from "@/chat/agent-invocations/result";
-import {
   completeAgentInvocation,
   createAgentInvocation,
   getAgentInvocation,
@@ -14,18 +10,17 @@ import {
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
-import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -75,21 +70,20 @@ async function eventMessages(
   return work?.messages.filter((message) => message.source === "event") ?? [];
 }
 
-function context(
-  conversationId: string,
-  messages: InboundMessage[],
-): ConversationWorkerContext {
+/**
+ * Integration tests do not run the agent. This runner reads each run and
+ * stops it, so the work retries.
+ */
+function readRunsAgentRunner() {
+  const runs: AgentRun[] = [];
   return {
-    attempt: {
-      ack: async () => undefined,
-      conversationId,
-      drain: async () => [],
-      isFinalAttempt: false,
-      messages,
+    agentRunner: {
+      run: async (run: AgentRun): Promise<never> => {
+        runs.push(run);
+        throw new Error("stop after reading the run");
+      },
     },
-    checkIn: async () => true,
-    conversationId,
-    shouldYield: () => false,
+    runs,
   };
 }
 
@@ -101,9 +95,9 @@ describe("messageAgent", () => {
 
   it("gives a busy child more work and lets a child message its parent", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const parent = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(parent.agentRunner);
+    const { queue, state } = harness;
     const mailbox = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
@@ -188,15 +182,13 @@ describe("messageAgent", () => {
       expect(parentMessages[0]!.input.text).toContain(
         "Found the bug in the retry path.",
       );
-      const turn = await withAgentInvocationResultActors(
-        (await resolveMailboxTurnWork(
-          context(slackParentConversationId, parentMessages),
-        ))!,
-      );
-      expect(turn).toMatchObject({
-        batch: [{ actor: parentActor }],
-        kind: "mailbox",
-      });
+      // The parent Turn runs after the Event burst window.
+      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+      await harness.process(queue.takeMessageFor(slackParentConversationId));
+      vi.mocked(Date.now).mockRestore();
+      expect(parent.runs).toEqual([
+        expect.objectContaining({ actor: parentActor }),
+      ]);
 
       // The first work finishes. The queued message reports for both.
       await expect(
@@ -226,9 +218,9 @@ describe("messageAgent", () => {
 
   it("starts a new agent invocation when a grandchild messages a child, even after a stop", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const { queue, state } = harness;
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -256,25 +248,20 @@ describe("messageAgent", () => {
         childConversationId: helper.childConversationId,
         parentConversationId: child.childConversationId,
       });
-      // A retried delivery starts the same agent invocation.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await expect(
-          startAgentInvocationsForChildInput(
-            context(child.childConversationId, messages),
-            { queue, state },
-          ),
-        ).resolves.toEqual({ status: "completed" });
-      }
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
-        ),
-      ).resolves.toMatchObject({
+      // The message starts and runs a new agent invocation on the child.
+      await harness.process(queue.takeMessageFor(child.childConversationId));
+      const started = await getAgentInvocation(
+        getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
+      );
+      expect(started).toMatchObject({
         childConversationId: child.childConversationId,
         input: expect.stringContaining("Halfway there."),
         parentConversationId: slackParentConversationId,
-        status: "pending",
+        status: "running",
       });
+      expect(runner.runs).toEqual([
+        expect.objectContaining({ runId: started!.invocationId }),
+      ]);
     } finally {
       await fixture.close();
     }
@@ -282,9 +269,8 @@ describe("messageAgent", () => {
 
   it("drops a grandchild message when the tree of its parent is stopped", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const harness = await createConversationWorkHarness(neverRunAgentRunner());
+    const { queue, state } = harness;
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -327,11 +313,8 @@ describe("messageAgent", () => {
       const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(
-        startAgentInvocationsForChildInput(
-          context(child.childConversationId, messages),
-          { queue, state },
-        ),
-      ).resolves.toEqual({ status: "completed" });
+        harness.process(queue.takeMessageFor(child.childConversationId)),
+      ).resolves.toMatchObject({ status: "completed" });
       await expect(
         getAgentInvocation(
           getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),

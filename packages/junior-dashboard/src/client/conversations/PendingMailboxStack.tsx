@@ -38,6 +38,8 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
+import { DisplayText } from "../display-text/DisplayText";
+import { displayPlainText } from "../display-text/plainText";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -306,6 +308,7 @@ function PendingRow(props: {
   steerPending: boolean;
 }) {
   const text = props.message.text ?? "";
+  const mentions = props.message.mentions ?? [];
   const redacted = Boolean(props.message.redacted);
   const showSlack = props.message.source === "slack";
   const canRetry =
@@ -334,9 +337,9 @@ function PendingRow(props: {
               // One line keeps the queue short. The title shows the full text.
               <p
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
-                title={text}
+                title={displayPlainText(text, mentions)}
               >
-                {text}
+                <DisplayText inline mentions={mentions} text={text} />
               </p>
             ) : null}
           </>

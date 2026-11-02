@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConversationSections } from "../src/client/conversations/conversationSections";
+import {
+  attentionFirst,
+  buildConversationSections,
+} from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
 function conversation(
@@ -78,5 +81,49 @@ describe("conversation activity sections", () => {
       { conversations: ["three-weeks"], label: "3 weeks ago" },
       { conversations: ["older"], label: "Older" },
     ]);
+  });
+
+  it("puts attention conversations first, ahead of Priority", () => {
+    const sections = buildConversationSections(
+      [
+        conversation("priority", "2026-08-03T11:00:00-07:00", {
+          isPriority: true,
+        }),
+        conversation("waiting-priority", "2026-08-03T10:00:00-07:00", {
+          isPriority: true,
+        }),
+        conversation("finished-unseen", "2026-08-02T12:00:00-07:00"),
+        conversation("today", "2026-08-03T09:00:00-07:00"),
+      ],
+      {
+        attentionIds: new Set(["waiting-priority", "finished-unseen"]),
+        nowMs: Date.parse("2026-08-03T12:00:00-07:00"),
+        timeZone: "America/Los_Angeles",
+      },
+    );
+
+    expect(
+      sections.map((section) => ({
+        conversations: section.conversations.map((item) => item.id),
+        label: section.label,
+      })),
+    ).toEqual([
+      {
+        conversations: ["waiting-priority", "finished-unseen"],
+        label: "Needs attention",
+      },
+      { conversations: ["priority"], label: "Priority" },
+      { conversations: ["today"], label: "Today" },
+    ]);
+  });
+
+  it("moves attention conversations before paging and keeps feed order", () => {
+    const feed = ["a", "b", "c", "d", "e"].map((id) =>
+      conversation(id, "2026-08-03T12:00:00-07:00"),
+    );
+
+    expect(
+      attentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
+    ).toEqual(["b", "d", "a", "c", "e"]);
   });
 });

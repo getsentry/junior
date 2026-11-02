@@ -39,9 +39,19 @@ import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import {
+  bindMessageAuthorIdentityId,
+  ensureSlackMessageActorIdentity,
+  getMessageAuthorIdentityId,
+} from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
+import {
+  createSlackActor,
+  parseActorUserId,
+  type SlackActorProfile,
+} from "@/chat/actor";
+import { getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   createSlackDestination,
   requireSlackDestination,
@@ -453,7 +463,7 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean },
+    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -552,6 +562,7 @@ function restoreMessage(args: {
     args.adapter.rehydrateAttachment(attachment),
   );
   rehydrateAttachmentFetchers(message);
+  bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
   return message;
 }
 
@@ -581,6 +592,17 @@ async function bindSlackActorIdentities(args: {
           ),
         ),
       );
+      if (profile && messages.some(getMessageAuthorIdentityId)) {
+        // Ingress resolved the Identity without a profile lookup. Save the
+        // profile names on it. Message writes never saved the email.
+        await resolveActorIdentityId(
+          getSqlExecutor(),
+          createSlackActor(args.teamId, authorId, {
+            fullName: profile.fullName,
+            userName: profile.userName,
+          }),
+        );
+      }
     }),
   );
 }
@@ -657,6 +679,7 @@ export function createSlackConversationWorker(
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
               shouldYield: context.shouldYield,
+              stopSignal: context.stopSignal?.(),
             });
           },
         });
@@ -843,6 +866,7 @@ export function buildSlackInboundMessage(args: {
   thread: ThreadImpl;
 }): InboundMessage {
   const authorId = requireSlackAuthorId(args.message);
+  const authorIdentityId = getMessageAuthorIdentityId(args.message);
   const destination = createSlackDestination({
     channelId: args.thread.channelId,
     teamId: args.installation?.teamId,
@@ -868,6 +892,7 @@ export function buildSlackInboundMessage(args: {
     input: {
       text: args.message.text || " ",
       authorId,
+      ...(authorIdentityId ? { authorIdentityId } : undefined),
       attachments: args.message.attachments,
       metadata: {
         platform: "slack",
