@@ -66,7 +66,7 @@ function fakeGuardian() {
 
 function pipelineFor(
   review: ReturnType<typeof fakeGuardian>,
-  options: { onToolCall?: (toolCallId: string) => void } = {},
+  options: { onToolCall?: () => void | Promise<void> } = {},
 ) {
   const actionReview = createToolActionReview({
     context: {
@@ -403,5 +403,44 @@ describe("Code Mode bridge", () => {
       ],
     });
     expect(secondCall).not.toHaveBeenCalled();
+  });
+
+  it("does not wait long for a call that ignores the abort before it runs", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const controller = new AbortController();
+    const entered = deferred();
+    const execute = vi.fn();
+    // A hook before action review that never returns.
+    const onToolCall = () => {
+      entered.resolve();
+      return new Promise<void>(() => undefined);
+    };
+
+    const run = runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      pipeline: pipelineFor(fakeGuardian(), { onToolCall }),
+      signal: controller.signal,
+      source: `await tools.lookup({});`,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: {
+        lookup: tool({
+          description: "Look up a record.",
+          inputSchema: Type.Object({}),
+          execute,
+        }) as AnyToolDefinition,
+      },
+    });
+    await entered.promise;
+    controller.abort(new Error("Run yielded"));
+    // Past the bridge's short settle grace, far below the script deadline.
+    await vi.advanceTimersByTimeAsync(5_000);
+    const result = await run;
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { kind: "aborted" },
+      calls: [{ toolName: "lookup", status: "not_started" }],
+    });
+    expect(execute).not.toHaveBeenCalled();
   });
 });

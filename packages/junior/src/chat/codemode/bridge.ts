@@ -46,6 +46,14 @@ export const CODE_MODE_SCRIPT_TIMEOUT_MS = 120_000;
  */
 const MAX_OUTPUT_CHARS = 10_000 * 4;
 const MAX_CALL_ERROR_CHARS = 2_000;
+
+/**
+ * How long a script that ended waits for its nested calls. It is longer than
+ * the adapter's 2s executor grace, so a preempted executor still reports, and
+ * shorter than the agent's 5s abort settle grace. A call that ignores the
+ * abort before its executor (in a plugin hook, for example) is detached.
+ */
+const CALL_SETTLE_GRACE_MS = 3_000;
 const TRUNCATED = "\n[truncated]";
 
 /** One nested call while the script runs. */
@@ -77,6 +85,27 @@ function deferred<T>() {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+/**
+ * Wait for the nested calls of an ended script, at most
+ * `CALL_SETTLE_GRACE_MS`. A drain that is still starting can add calls.
+ */
+async function settleCalls(pending: Set<Promise<void>>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const grace = new Promise<void>((done) => {
+    timer = setTimeout(done, CALL_SETTLE_GRACE_MS);
+  });
+  const settled = (async () => {
+    while (pending.size > 0) {
+      await Promise.allSettled(pending);
+    }
+  })();
+  try {
+    await Promise.race([settled, grace]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function cut(text: string, maxChars: number): string {
@@ -490,11 +519,19 @@ export async function runCodeModeScript(
         }
       },
     });
-    const vmResult = await vm.result;
+    let vmResult: CodemodeResult;
+    try {
+      vmResult = await vm.result;
+    } finally {
+      controller.abort();
+    }
     const settledAt = performance.now();
-    controller.abort();
-    while (pending.size > 0) {
-      await Promise.allSettled(pending);
+    await settleCalls(pending);
+    // A started call with no outcome yet was cut off, or is detached.
+    for (const call of calls) {
+      if (call.status === "not_started" && call.started) {
+        call.status = "interrupted";
+      }
     }
     // Calls of the last drain never reached an idle, so they did not start.
     for (const host of drain) {
