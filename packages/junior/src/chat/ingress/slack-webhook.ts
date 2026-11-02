@@ -478,6 +478,8 @@ async function routeParsedMessage(args: {
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
+  /** Run the task after the caller releases the thread's ingress lock. */
+  runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -642,16 +644,18 @@ async function routeParsedMessage(args: {
       }),
     });
   };
+  // The close can call the decision model, so it runs after the ingress
+  // lock is released and does not block later messages in the thread.
   try {
     await persist();
   } catch (error) {
     // A failed queue wake can follow a saved reply. The reply still answers.
     if (error instanceof SlackEventPersistenceError && error.saved) {
-      await closeAnswered();
+      args.runAfterUnlock(closeAnswered);
     }
     throw error;
   }
-  await closeAnswered();
+  args.runAfterUnlock(closeAnswered);
 }
 
 async function handleSlackEvent(args: {
@@ -778,6 +782,8 @@ async function handleSlackEvent(args: {
           });
           if (!member) return;
           const message = adapter.parseMessage(event);
+          let afterUnlock: (() => Promise<void>) | undefined;
+          // The task runs after the lock is released, also when routing throws.
           const routed = await withLock(
             state,
             `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
@@ -792,10 +798,13 @@ async function handleSlackEvent(args: {
                 receivedAtMs,
                 allowedBotUserIds: args.services.allowedBotUserIds ?? [],
                 allowedDomains: args.services.allowedDomains ?? [],
+                runAfterUnlock: (task) => {
+                  afterUnlock = task;
+                },
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
-          );
+          ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
           }

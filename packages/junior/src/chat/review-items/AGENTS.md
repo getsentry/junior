@@ -57,8 +57,13 @@ the tools (`chat/tools/review-items.ts`), or the review desk API
 
 - `closeReviewItemsAnsweredByReply` saves the message before it closes items,
   so the reply always reaches the agent.
-- A reply closes only open action items that this Conversation added and that
-  the person may act on. Items assigned to Everyone stay open.
+- A reply closes only an open action item that this Conversation added and
+  that the person may act on. Items assigned to Everyone stay open.
+- A decision model (`reply-match.ts`) judges each open item on its own, so a
+  reply closes only the items that it answers. When the decision fails, all
+  items stay open. The agent still gets the reply.
+- Tests have no decision model. The classifier eval
+  `review-item-replies.eval.ts` checks which items a reply answers.
 
 ## Purge And Delete
 
