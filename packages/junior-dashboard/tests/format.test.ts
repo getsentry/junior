@@ -222,12 +222,11 @@ describe("dashboard conversation formatting", () => {
     expect(formatConversationDuration(conversation!)).toBe("none");
   });
 
-  it("reads each message author from the conversation participants", () => {
+  it("reads each message author from the conversation authors", () => {
     const owner = {
-      avatarUrl: "/api/people/identities/identity-web/avatar?v=1",
+      avatarUrl: "/api/people/avatars/identity-web?v=1",
       email: "owner@example.com",
       fullName: "Owner Person",
-      identityIds: ["identity-slack", "identity-web"],
     };
     const conversation = transcript(
       [
@@ -236,13 +235,13 @@ describe("dashboard conversation formatting", () => {
           messageId: "web",
           role: "user",
           text: "ship it",
-          authorIdentityId: "identity-web",
+          actorIdentityId: "identity-web",
           actorIdentity: { fullName: "Saved Name" },
         }),
       ],
       {
         actorIdentity: { fullName: "Alice" },
-        participants: [{ fullName: "Alice" }, owner],
+        authors: { "identity-slack": owner, "identity-web": owner },
       },
     );
 
@@ -251,17 +250,17 @@ describe("dashboard conversation formatting", () => {
     ]);
     expect(
       transcriptMessageActor(conversation, {
-        authorIdentityId: "identity-slack",
+        actorIdentityId: "identity-slack",
         parts: [],
         role: "user",
         sourceSeq: 1,
       }),
     ).toBe(owner);
-    // An author who is not a participant yet keeps the saved identity.
+    // An author who is not in the Conversation yet keeps the saved identity.
     expect(
       transcriptMessageActor(conversation, {
         actorIdentity: { fullName: "New Person" },
-        authorIdentityId: "identity-new",
+        actorIdentityId: "identity-new",
         parts: [],
         role: "user",
         sourceSeq: 2,

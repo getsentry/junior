@@ -9,11 +9,8 @@ import {
   lt,
   sql,
 } from "drizzle-orm";
-import {
-  decodeStoredConversationEvent,
-  type ConversationEvent,
-} from "@/chat/conversations/history";
-import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import type { ConversationEvent } from "@/chat/conversations/history";
+import { eventFromRow } from "@/chat/conversations/sql/history";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationReportEvent } from "../schema/conversation";
@@ -91,22 +88,6 @@ async function readConversationEventRows(
     .limit(args.limit);
 }
 
-function decodeConversationEventRow(
-  row: ConversationEventRow,
-): ConversationEvent {
-  return decodeStoredConversationEvent({
-    schemaVersion: row.schemaVersion,
-    seq: row.seq,
-    historyVersion: row.historyVersion,
-    ...(row.idempotencyKey
-      ? { idempotencyKey: row.idempotencyKey }
-      : undefined),
-    createdAtMs: row.createdAt.getTime(),
-    type: row.type,
-    payload: row.payload,
-  });
-}
-
 /** Project stored rows and resolve entity starts that precede the page. */
 async function projectConversationEventRows(
   executor: JuniorSqlDatabase,
@@ -117,7 +98,7 @@ async function projectConversationEventRows(
   },
 ): Promise<ConversationReportEvent[]> {
   const events = args.rows
-    .map(decodeConversationEventRow)
+    .map(eventFromRow)
     .sort((left, right) => left.seq - right.seq);
   // Resolve context before the scanned page, not from today's model config.
   // Keep the last route boundary and actual call so pages have the same model.
@@ -187,33 +168,9 @@ async function projectConversationEventRows(
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
     events,
-    subagentStartEvents: subagentStartRows.map(decodeConversationEventRow),
-    toolStartEvents: toolStartRows.map(decodeConversationEventRow),
-    modelContextEvents: modelContextRows.map(decodeConversationEventRow),
-  });
-}
-
-// Name the Identity that wrote each user Message. The client reads the name
-// and photo of that Identity from the Conversation participants.
-function attachMessageAuthorIdentityIds(
-  rows: readonly ConversationEventRow[],
-  events: ConversationReportEvent[],
-): ConversationReportEvent[] {
-  const identityIdBySeq = new Map(
-    rows.flatMap((row) =>
-      row.actorIdentityId && row.actorIdentityId !== SYSTEM_IDENTITY_ID
-        ? [[row.seq, row.actorIdentityId] as const]
-        : [],
-    ),
-  );
-  return events.map((event) => {
-    if (event.data.type !== "message" || event.data.role !== "user") {
-      return event;
-    }
-    const authorIdentityId = identityIdBySeq.get(event.seq);
-    return authorIdentityId
-      ? { ...event, data: { ...event.data, authorIdentityId } }
-      : event;
+    subagentStartEvents: subagentStartRows.map(eventFromRow),
+    toolStartEvents: toolStartRows.map(eventFromRow),
+    modelContextEvents: modelContextRows.map(eventFromRow),
   });
 }
 
@@ -260,10 +217,7 @@ export async function readConversationEventPage(
     beforeSeq = batch.at(-1)!.seq;
   }
 
-  const page = projected.slice(-args.limit);
-  const events = args.canExposePayload
-    ? attachMessageAuthorIdentityIds(rows, page)
-    : page;
+  const events = projected.slice(-args.limit);
   return {
     events,
     ...(projected.length > events.length && events[0]

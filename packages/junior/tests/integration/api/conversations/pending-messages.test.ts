@@ -39,7 +39,7 @@ describe("conversation pending messages API", () => {
       { conversationStore, queue, state },
     );
     // The row names its author, so the client can read the author photo from
-    // the Conversation participants before the Message reaches history.
+    // the Conversation authors before the Message reaches history.
     const [author] = await getDb()
       .select({ id: juniorIdentities.id })
       .from(juniorIdentities)
@@ -67,7 +67,7 @@ describe("conversation pending messages API", () => {
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
-        authorIdentityId: author!.id,
+        actorIdentityId: author!.id,
         createdAt: expect.any(String),
         delivery: "defer",
         inboundMessageId: accepted.messageId,

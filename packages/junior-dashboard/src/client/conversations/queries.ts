@@ -1,7 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
-  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useMutationState,
@@ -9,7 +8,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
-  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -30,7 +28,6 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
-import type { DashboardCoreData } from "../types";
 import {
   DashboardApiError,
   del,
@@ -40,16 +37,17 @@ import {
   readDashboardResponse,
 } from "../http";
 import {
-  attachMailboxAuthorAvatars,
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
   isInlineOutboxMessage,
   mergeConversationMailboxMessages,
+  outboxActorIdentity,
   acceptConversationOutboxMessage,
   reuseConversationMailboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
+  withMailboxAuthorPhotos,
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
@@ -195,21 +193,6 @@ export function conversationDetailQueryOptions(
           : 10_000,
     retry: false,
   });
-}
-
-function outboxActorIdentity(
-  queryClient: QueryClient,
-): ActorIdentity | undefined {
-  const user = queryClient.getQueryData<DashboardCoreData>([
-    "dashboard",
-    "core",
-  ])?.me.user;
-  if (!user?.email) return undefined;
-  return {
-    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
-    email: user.email,
-    fullName: user.name || undefined,
-  };
 }
 
 /** Create one dashboard conversation and refresh the personal feed. */
@@ -724,6 +707,7 @@ export function useConversationData(conversationId: string | undefined) {
       ? deferredDetail
       : detail.data;
   const mailbox = detailData?.mailbox;
+  const authors = detailData?.authors;
   // Accept is not visibility. Keep a local row until either server resource
   // contains its real Message id. History and mailbox arrive in one render.
   useEffect(() => {
@@ -821,10 +805,7 @@ export function useConversationData(conversationId: string | undefined) {
     // Hide stopped rows from both sources, or the outbox copy of a stopped
     // send would look unseen and come back.
     const stopped = stoppedMessageIds.data;
-    const authored = attachMailboxAuthorAvatars(
-      mailbox?.messages,
-      detailData?.participants,
-    );
+    const authored = withMailboxAuthorPhotos(mailbox?.messages, authors);
     const server = stopped.length
       ? authored?.filter(
           (message) => !stopped.includes(message.inboundMessageId),
@@ -849,12 +830,7 @@ export function useConversationData(conversationId: string | undefined) {
     pendingMessagesRef.current = queued;
     inlineMessagesRef.current = inline;
     return { inlineMessages: inline, pendingMessages: queued };
-  }, [
-    outbox.data,
-    mailbox?.messages,
-    detailData?.participants,
-    stoppedMessageIds.data,
-  ]);
+  }, [outbox.data, mailbox?.messages, authors, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detailData &&

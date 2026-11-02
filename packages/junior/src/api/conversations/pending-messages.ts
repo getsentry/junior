@@ -240,10 +240,10 @@ export async function readConversationPendingMessages(
     conversationId,
     projectedMessages.flatMap((message, index) => {
       if (!message) return [];
-      const authorIdentityId = pendingMessages[index]!.input.authorIdentityId;
+      const actorIdentityId = pendingMessages[index]!.input.authorIdentityId;
       return [
-        canExposePayload && authorIdentityId
-          ? { ...message, authorIdentityId }
+        canExposePayload && actorIdentityId
+          ? { ...message, actorIdentityId }
           : message,
       ];
     }),

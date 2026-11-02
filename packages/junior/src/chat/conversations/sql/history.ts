@@ -114,7 +114,7 @@ function insertFromEvent(
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
-function eventFromRow(row: ConversationEventRow): ConversationEvent {
+export function eventFromRow(row: ConversationEventRow): ConversationEvent {
   const payload =
     row.actorIdentityId &&
     typeof row.payload === "object" &&

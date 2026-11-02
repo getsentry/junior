@@ -121,8 +121,8 @@ export type TranscriptViewMessage = {
   actorIdentity?: ActorIdentity;
   /** Agent invocation whose input this is. An agent wrote it, not a person. */
   agentInvocationId?: string;
-  /** Identity id of the author. Conversation participants list it. */
-  authorIdentityId?: string;
+  /** Identity id of the author. Conversation `authors` maps it to the person. */
+  actorIdentityId?: string;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";

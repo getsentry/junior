@@ -356,7 +356,19 @@ describe("conversation detail API", () => {
           eq(juniorIdentities.providerSubjectId, "UOWNER1"),
         ),
       )
-      .returning({ id: juniorIdentities.id });
+      .returning({ id: juniorIdentities.id, userId: juniorIdentities.userId });
+    // The same person can send next from the web before history has it.
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        id: "identity-owner-google",
+        createdAt: new Date(1_000),
+        kind: "user",
+        provider: "google",
+        providerSubjectId: "google-owner",
+        updatedAt: new Date(1_000),
+        userId: owner!.userId,
+      });
     await getConversationEventStore().append(conversationId, [
       {
         createdAtMs: 2,
@@ -374,21 +386,21 @@ describe("conversation detail API", () => {
     const detail = await readConversationDetail(conversationId, {
       viewer: testViewer("owner@example.com"),
     });
-    // Messages name their author. The participant carries the photo once.
+    // Messages name their author. The detail carries each author once.
     expect(detail?.events[0]?.data).toMatchObject({
-      authorIdentityId: owner!.id,
+      actorIdentityId: owner!.id,
     });
     expect(detail?.events[0]?.data).not.toHaveProperty(
       "actorIdentity.avatarUrl",
     );
-    expect(detail?.participants).toEqual([
-      expect.objectContaining({
-        avatarUrl: avatarPath(owner!.id),
-        fullName: "Owner Person",
-        identityIds: [owner!.id],
-        slackUserId: "UOWNER1",
-      }),
-    ]);
+    expect(detail?.authors?.[owner!.id]).toMatchObject({
+      avatarUrl: avatarPath(owner!.id),
+      fullName: "Owner Person",
+      slackUserId: "UOWNER1",
+    });
+    expect(detail?.authors?.["identity-owner-google"]).toEqual(
+      detail?.authors?.[owner!.id],
+    );
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

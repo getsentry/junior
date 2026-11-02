@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attachMailboxAuthorAvatars,
   conversationOutboxMessageForSubmit,
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
+  withMailboxAuthorPhotos,
 } from "../src/client/conversations/conversationOutbox";
 
 describe("conversation outbox", () => {
-  it("adds the participant photo to a queued row by author Identity id", () => {
+  it("adds the author photo to a queued row by its Identity id", () => {
     const row = {
       actorIdentity: { email: "owner@example.com" },
-      authorIdentityId: "identity-web",
+      actorIdentityId: "identity-web",
       createdAt: "2026-01-01T00:00:00.000Z",
       delivery: "defer" as const,
       inboundMessageId: "inbound-1",
@@ -25,10 +25,9 @@ describe("conversation outbox", () => {
     };
 
     expect(
-      attachMailboxAuthorAvatars(
-        [row],
-        [{ avatarUrl: "/avatar?v=1", identityIds: ["identity-web"] }],
-      ),
+      withMailboxAuthorPhotos([row], {
+        "identity-web": { avatarUrl: "/avatar?v=1" },
+      }),
     ).toEqual([
       {
         ...row,

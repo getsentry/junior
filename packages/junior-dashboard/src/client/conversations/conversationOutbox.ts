@@ -1,9 +1,11 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
+  ConversationDetailReport,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
-import { conversationParticipant } from "../format";
+import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
@@ -30,22 +32,37 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
 
 /**
  * Give each server mailbox row the photo of its author. The row names its
- * author by Identity id, and the Conversation participants carry the photo.
+ * author by Identity id, and the Conversation `authors` carry the photo.
  */
-export function attachMailboxAuthorAvatars(
+export function withMailboxAuthorPhotos(
   messages: readonly ConversationPendingMessage[] | undefined,
-  participants: readonly ActorIdentity[] | undefined,
+  authors: ConversationDetailReport["authors"],
 ): readonly ConversationPendingMessage[] | undefined {
-  if (!messages || !participants?.length) return messages;
+  if (!messages || !authors) return messages;
   return messages.map((message) => {
-    const avatarUrl = conversationParticipant(
-      participants,
-      message.authorIdentityId,
-    )?.avatarUrl;
+    const avatarUrl = message.actorIdentityId
+      ? authors[message.actorIdentityId]?.avatarUrl
+      : undefined;
     return avatarUrl && message.actorIdentity
       ? { ...message, actorIdentity: { ...message.actorIdentity, avatarUrl } }
       : message;
   });
+}
+
+/** Identity of the viewer, for the outbox rows that they send. */
+export function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
+    email: user.email,
+    fullName: user.name || undefined,
+  };
 }
 
 /** Stable React Query key for one conversation's local send outbox. */

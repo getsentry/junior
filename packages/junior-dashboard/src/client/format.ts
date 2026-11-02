@@ -344,17 +344,6 @@ export type MessageSummary = {
   total: number;
 };
 
-/** Return the Conversation participant who owns one Identity id. */
-export function conversationParticipant(
-  participants: readonly ActorIdentity[] | undefined,
-  identityId: string | undefined,
-): ActorIdentity | undefined {
-  if (!identityId) return undefined;
-  return participants?.find((participant) =>
-    participant.identityIds?.includes(identityId),
-  );
-}
-
 /**
  * Return the person who wrote one transcript user message. Child agent input
  * has no person. Other messages fall back to the conversation actor.
@@ -365,10 +354,9 @@ export function transcriptMessageActor(
 ): ActorIdentity | undefined {
   if (transcriptRoleKind(message.role) !== "user") return undefined;
   if (message.agentInvocationId) return undefined;
-  const author = conversationParticipant(
-    conversation.participants,
-    message.authorIdentityId,
-  );
+  const author = message.actorIdentityId
+    ? conversation.authors?.[message.actorIdentityId]
+    : undefined;
   if (author) return author;
   if (actorLabel(message.actorIdentity)) return message.actorIdentity;
   if (actorLabel(conversation.actorIdentity)) return conversation.actorIdentity;
