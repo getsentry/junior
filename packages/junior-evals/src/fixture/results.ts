@@ -13,7 +13,7 @@ import {
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
-import { joinSlackReplyPosts } from "@/chat/slack/output";
+import { getSlackContinuationMarker } from "@/chat/slack/output";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -352,10 +352,13 @@ export function readCallEvents(args: {
 
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
- * changes formatting and links references, such as `owner/repo#1`.
+ * changes formatting and links references, such as `owner/repo#1`. Remove
+ * code fence lines: a split inside a code block closes the block at the end of
+ * a post and opens it again in the next post.
  */
 function comparableText(text: string): string {
   return text
+    .replace(/^[ \t]*(`{3,}|~{3,}).*$/gm, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/<[^|>]+\|([^>]*)>/g, "$1")
     .replace(/<(https?:\/\/[^>]+)>/g, "$1")
@@ -363,6 +366,9 @@ function comparableText(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/** The marker that ends each post of a long reply except the last. */
+const CONTINUED_MARKER = getSlackContinuationMarker().trim();
 
 /**
  * Use Slack thread posts as the replies of a Slack call. Delivery splits a
@@ -376,15 +382,20 @@ export function slackCallReplies(args: {
   posts: SlackPost[];
 }): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
   const unmatched = [...args.durable.replies];
-  const postTexts = args.posts.map(({ text }) => text);
+  const postTexts = args.posts.map(({ text }) =>
+    comparableText(
+      text.endsWith(CONTINUED_MARKER)
+        ? text.slice(0, -CONTINUED_MARKER.length)
+        : text,
+    ),
+  );
   // The number of posts from `start` that make up the stored reply.
   const postCount = (start: number, reply: Reply): number => {
     const target = comparableText(reply.text);
-    if (!comparableText(postTexts[start] ?? "")) return 0;
+    if (!postTexts[start]) return 0;
+    let joined = "";
     for (let end = start; end < postTexts.length; end += 1) {
-      const joined = comparableText(
-        joinSlackReplyPosts(postTexts.slice(start, end + 1)),
-      );
+      joined = joined ? `${joined} ${postTexts[end]}` : postTexts[end]!;
       if (joined === target) return end - start + 1;
       if (!target.startsWith(joined)) return 0;
     }

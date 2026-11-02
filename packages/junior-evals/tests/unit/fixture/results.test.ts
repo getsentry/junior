@@ -66,6 +66,30 @@ describe("slackCallReplies", () => {
     expect(visibleMessages).toEqual([]);
   });
 
+  it("keeps the fences of two code blocks split between them", () => {
+    const block = (step: number) => [
+      "```ts",
+      ...Array.from(
+        { length: 40 },
+        (_, line) => `console.log("step ${step} line ${line + 1}");`,
+      ),
+      "```",
+    ];
+    const code = [...block(1), ...block(2)].join("\n");
+    const posts = splitSlackReplyText(code);
+    // The cut is between the blocks, so it has the same fence close and
+    // reopen as a split inside one block.
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toMatch(/^```ts\nconsole\.log\("step 2 line 1"\)/);
+
+    const { replies, visibleMessages } = read(posts, code);
+
+    expect(replies).toEqual([
+      expect.objectContaining({ messageId: "message-1" }),
+    ]);
+    expect(visibleMessages).toEqual([]);
+  });
+
   it("reads a repeated post of the reply as another reply", () => {
     const { replies, visibleMessages } = read([answer, answer]);
 
