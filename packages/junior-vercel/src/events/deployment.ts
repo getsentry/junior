@@ -100,6 +100,13 @@ export function vercelDeploymentSubscribable(input: {
   if (input.commitSha && !input.target) return undefined;
   return {
     ...vercelDeploymentResource(input),
+    match: {
+      projectId: input.projectId,
+      ...(input.target ? { target: input.target } : undefined),
+      ...(input.commitSha
+        ? { commitSha: input.commitSha.toLowerCase() }
+        : undefined),
+    },
     suggestedEvents: VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
     supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
     type: "deployment",

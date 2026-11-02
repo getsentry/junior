@@ -143,6 +143,7 @@ describe("getRelease", () => {
       tag: "0.129.0",
       subscribable: {
         identifier: "release-source:getsentry/junior:0.129.0",
+        match: { repo: "getsentry/junior", tag: "0.129.0" },
       },
     });
   });

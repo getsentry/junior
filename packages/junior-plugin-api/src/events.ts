@@ -514,6 +514,12 @@ export const subscribableResourceSchema = z
   .object({
     identifier: z.string().min(1),
     label: z.string().min(1),
+    /**
+     * Filters that select the events of this resource in an event automation
+     * trigger, such as `{ repo, pullRequest }`. A Watch uses `identifier`.
+     * Missing when event automations cannot use this resource.
+     */
+    match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
     suggestedEvents: z.array(eventTypeSchema).optional(),
     supportedEvents: z.array(eventTypeSchema),

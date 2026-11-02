@@ -2474,8 +2474,6 @@ describe("Scheduled automation tool wiring via createTools", () => {
           trigger: {
             type: "event",
             namespace: "slack",
-            identifier: "C123",
-            resourceType: "channel",
             label: "#general",
             events: ["message.posted"],
           },

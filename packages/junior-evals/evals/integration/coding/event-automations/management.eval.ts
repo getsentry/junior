@@ -106,9 +106,8 @@ describe("Event automation management", () => {
       trigger: {
         type: "event",
         namespace: "github",
-        identifier: "getsentry/junior#691",
-        resourceType: "pull_request",
         events: ["pull_request.review.changes_requested"],
+        match: { repo: "getsentry/junior", pullRequest: 691 },
       },
     });
     const names = conversation.toolCalls.map((call) => call.name);
@@ -143,8 +142,7 @@ describe("Event automation management", () => {
       trigger: {
         type: "event",
         namespace: "github",
-        identifier: "getsentry/junior#208",
-        resourceType: "issue",
+        match: { repo: "getsentry/junior", issue: 208 },
       },
     });
     expect(new Set(triggerEvents(creates[0]!))).toEqual(
@@ -180,13 +178,18 @@ describe("Event automation management", () => {
     const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
-      trigger: {
-        type: "event",
-        namespace: "github",
-        identifier: "getsentry/junior",
-        resourceType: "repository",
-      },
+      trigger: { type: "event", namespace: "github" },
     });
+    expect(toolOutput(creates[0]!)).toMatchObject({
+      automation: { trigger: { match: { repo: "getsentry/junior" } } },
+    });
+    expect(
+      (
+        toolOutput(creates[0]!) as {
+          automation: { trigger: { match: object } };
+        }
+      ).automation.trigger.match,
+    ).not.toHaveProperty("issue");
     expect(new Set(triggerEvents(creates[0]!))).toEqual(
       new Set(["issue.closed", "issue.reopened"]),
     );
@@ -272,7 +275,7 @@ describe("Event automation management", () => {
       automationId: id,
       trigger: { type: "event", events: ["issue.reopened"] },
     });
-    // The update can omit identifier and resourceType to keep the saved ones.
+    // A saved trigger with an identifier keeps it when the tools edit it.
     expect(toolOutput(updates[0]!)).toMatchObject({
       automation: {
         id,
