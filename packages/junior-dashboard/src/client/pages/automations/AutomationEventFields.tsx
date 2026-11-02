@@ -36,11 +36,12 @@ import { FormNotice } from "../../components/FormNotice";
 import { TriggerFilters } from "./TriggerFilters";
 import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
+import {
+  automationTriggerEdit,
+  type AutomationTriggerEdit,
+} from "./automationDraft";
 
-type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
-
-// Select value for a trigger with no identifier, which runs for any resource.
-const ANY_RESOURCE = "*";
+type SavedTrigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
 
 const NO_SOURCE: EventTriggerSource = {
   resourceTypes: [],
@@ -49,8 +50,8 @@ const NO_SOURCE: EventTriggerSource = {
 };
 
 /**
- * Say which filter an event needs when a trigger has no identifier, with the
- * filter descriptions, such as "needs a filter: lowercase repository".
+ * Say which filter an event needs, with the filter descriptions, such as
+ * "needs a filter: lowercase repository".
  */
 function reachText(
   source: EventTriggerSource,
@@ -66,15 +67,23 @@ function reachText(
     : `needs one of these filters: ${filters.join("; or ")}`;
 }
 
-/** Render registered Event choices without discarding unsupported saved selectors. */
+/**
+ * Render registered Event choices without discarding unsupported saved
+ * selectors. A saved trigger with an identifier can only be kept or replaced
+ * whole: editing its events or filters without the identifier would make it
+ * broader.
+ */
 export function AutomationEventFields(props: {
-  value: Trigger;
-  original: Trigger;
+  value: AutomationTriggerEdit;
+  original: SavedTrigger;
   /** Base UI checkboxes do not inherit a native fieldset's disabled state. */
   disabled?: boolean;
-  onChange(value: Trigger): void;
+  onChange(value: AutomationTriggerEdit): void;
 }) {
-  const [replacement, setReplacement] = useState<Trigger>();
+  const [replacement, setReplacement] = useState<AutomationTriggerEdit>();
+  const saved = automationTriggerEdit(props.original);
+  const kept = JSON.stringify(props.value) === JSON.stringify(saved);
+  const legacy = kept && props.original.identifier !== undefined;
   const catalog = useQuery({
     queryKey: ["dashboard", "automation-event-catalog"],
     queryFn: ({ signal }) =>
@@ -90,8 +99,9 @@ export function AutomationEventFields(props: {
   );
   const source: EventTriggerSource = entry ?? NO_SOURCE;
   const displayName = entry?.displayName ?? props.value.namespace;
-  const anyResource = props.value.resourceType === undefined;
-  const choices = eventTriggerChoices(source, props.value);
+  // A trigger in an edit has no resource type, so it gets the filters of
+  // every resource type.
+  const choices = eventTriggerChoices(source, {});
   const problems = catalog.data
     ? eventTriggerProblems(source, props.value)
     : [];
@@ -100,6 +110,7 @@ export function AutomationEventFields(props: {
   // trigger was saved.
   const unsupported =
     !choices ||
+    legacy ||
     problems.some(
       (problem) =>
         problem.reason !== "field_not_set" &&
@@ -115,7 +126,7 @@ export function AutomationEventFields(props: {
   );
   const setMatch = (
     key: string,
-    value: NonNullable<Trigger["match"]>[string] | undefined,
+    value: NonNullable<AutomationTriggerEdit["match"]>[string] | undefined,
   ) => {
     const match = { ...props.value.match };
     if (value === undefined) delete match[key];
@@ -134,66 +145,36 @@ export function AutomationEventFields(props: {
       ) : null}
       {unsupported && catalog.data ? (
         <FormNotice title="Saved trigger · Kept unchanged">
-          Some saved values are not in the current catalog. You can edit other
-          fields, or select a new resource type to replace the trigger.
-          <SavedTrigger
+          {legacy
+            ? "This trigger names one resource. An upgrade turns it into filters. Until then, you can edit other fields, or select a source to replace the trigger."
+            : "Some saved values are not in the current catalog. You can edit other fields, or select a source to replace the trigger."}
+          <SavedTriggerSummary
             displayName={displayName}
             source={source}
-            trigger={props.value}
+            trigger={kept ? props.original : props.value}
           />
         </FormNotice>
       ) : null}
       <Field>
-        <FieldLabel htmlFor="trigger-resource">
-          {unsupported ? "Replace trigger" : "Resource type"}
+        <FieldLabel htmlFor="trigger-source">
+          {unsupported ? "Replace trigger" : "Source"}
         </FieldLabel>
         <NativeSelect
-          id="trigger-resource"
-          value={
-            unsupported
-              ? ""
-              : `${props.value.namespace}:${props.value.resourceType ?? ANY_RESOURCE}`
-          }
+          id="trigger-source"
+          value={unsupported ? "" : props.value.namespace}
           onChange={(e) => {
-            const [namespace, type] = e.target.value.split(":");
-            if (type === ANY_RESOURCE && namespace) {
-              setReplacement({ namespace, label: "", events: [] });
-              return;
-            }
-            const next = catalog.data
-              ?.find((item) => item.namespace === namespace)
-              ?.resourceTypes.find((item) => item.type === type);
-            if (!namespace || !next) return;
-            setReplacement({
-              namespace,
-              resourceType: next.type,
-              identifier: "",
-              label: "",
-              events: [],
-            });
+            const namespace = e.target.value;
+            if (namespace) setReplacement({ namespace, label: "", events: [] });
           }}
         >
           <option value="" disabled>
             Keep saved trigger
           </option>
           {anyResourceSources.map((item) => (
-            <option
-              key={`${item.namespace}:${ANY_RESOURCE}`}
-              value={`${item.namespace}:${ANY_RESOURCE}`}
-            >
-              {item.displayName} · any resource
+            <option key={item.namespace} value={item.namespace}>
+              {item.displayName}
             </option>
           ))}
-          {catalog.data?.flatMap((item) =>
-            item.resourceTypes.map((resourceType) => (
-              <option
-                key={`${item.namespace}:${resourceType.type}`}
-                value={`${item.namespace}:${resourceType.type}`}
-              >
-                {item.displayName} · {resourceType.type.replaceAll("_", " ")}
-              </option>
-            )),
-          )}
         </NativeSelect>
       </Field>
       <AlertDialog
@@ -205,7 +186,7 @@ export function AutomationEventFields(props: {
         <AlertDialogContent>
           <AlertDialogTitle>Replace the saved trigger?</AlertDialogTitle>
           <AlertDialogDescription>
-            Its resource, events, and filters will be cleared.
+            Its events and filters will be cleared.
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -224,9 +205,7 @@ export function AutomationEventFields(props: {
       {!unsupported && choices ? (
         <>
           <Field>
-            <FieldLabel htmlFor="trigger-label">
-              {anyResource ? "Trigger name" : "Resource name"}
-            </FieldLabel>
+            <FieldLabel htmlFor="trigger-label">Trigger name</FieldLabel>
             <Input
               size="comfortable"
               id="trigger-label"
@@ -236,32 +215,9 @@ export function AutomationEventFields(props: {
               }
             />
           </Field>
-          {anyResource ? (
-            <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
-              Runs for every resource that the filters match.
-            </p>
-          ) : (
-            <Field>
-              <FieldLabel htmlFor="trigger-identifier">
-                Resource identifier
-              </FieldLabel>
-              <Input
-                size="comfortable"
-                id="trigger-identifier"
-                value={props.value.identifier ?? ""}
-                onChange={(e) =>
-                  props.onChange({
-                    ...props.value,
-                    identifier: e.target.value,
-                  })
-                }
-              />
-              <FieldDescription id="trigger-identifier-help">
-                Use the exact provider resource identifier, not its display
-                name.
-              </FieldDescription>
-            </Field>
-          )}
+          <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
+            Runs for every resource that the filters match.
+          </p>
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">
               Run on these events
@@ -287,7 +243,7 @@ export function AutomationEventFields(props: {
                   />
                   <span className="min-w-0 break-words">
                     {eventTypeText(event)}
-                    {anyResource && reachText(source, event) ? (
+                    {reachText(source, event) ? (
                       <span className="text-dashboard-text-muted">
                         {" "}
                         · {reachText(source, event)}
@@ -379,11 +335,8 @@ export function AutomationEventFields(props: {
           ) : null}
         </>
       ) : null}
-      {JSON.stringify(props.value) !== JSON.stringify(props.original) ? (
-        <Button
-          className="w-fit"
-          onClick={() => props.onChange(props.original)}
-        >
+      {!kept ? (
+        <Button className="w-fit" onClick={() => props.onChange(saved)}>
           Keep saved trigger
         </Button>
       ) : null}
@@ -392,11 +345,12 @@ export function AutomationEventFields(props: {
 }
 
 /** Show the saved trigger and its problems in the same words as the details. */
-function SavedTrigger(props: {
+function SavedTriggerSummary(props: {
   displayName: string;
   source: EventTriggerSource;
-  trigger: Trigger;
+  trigger: SavedTrigger;
 }) {
+  const { resourceType, identifier } = props.trigger;
   const description = describeEventTrigger(props.source, props.trigger);
   return (
     <>
@@ -408,8 +362,8 @@ function SavedTrigger(props: {
       <div className="text-xs">
         <p className="m-0 break-words">
           {props.displayName} ·{" "}
-          {props.trigger.resourceType?.replaceAll("_", " ") ?? "any resource"}
-          {props.trigger.identifier ? ` · ${props.trigger.identifier}` : null}
+          {resourceType?.replaceAll("_", " ") ?? "any resource"}
+          {identifier ? ` · ${identifier}` : null}
         </p>
         <p className="m-0 mt-1 break-words text-dashboard-text-muted">
           {description.events.join(", ")}

@@ -21,13 +21,33 @@ export type AutomationScheduleDraft =
       timing: { type: "at"; date: string; time: string };
     };
 
+/** A trigger as edits send it: no identifier, so its filters select resources. */
+export type AutomationTriggerEdit = NonNullable<
+  Extract<AutomationUpdate, { kind: "event" }>["trigger"]
+>;
+
+/**
+ * Drop the identifier of a saved trigger for the edit form. A saved trigger
+ * can still have one until the upgrade converts it.
+ */
+export function automationTriggerEdit(
+  trigger: Extract<AutomationEdit, { kind: "event" }>["trigger"],
+): AutomationTriggerEdit {
+  const {
+    identifier: _identifier,
+    resourceType: _resourceType,
+    ...edit
+  } = trigger;
+  return edit;
+}
+
 export type AutomationDraft = {
   title: string;
   instruction: string;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
   schedule?: AutomationScheduleDraft;
-  trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"];
+  trigger?: AutomationTriggerEdit;
 };
 
 /** Keep stored values intact until a user edits that field. */
@@ -37,7 +57,8 @@ export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
     instruction: value.instruction,
     credentialMode: value.credentialMode,
     outcomes: value.outcomes,
-    trigger: value.kind === "event" ? value.trigger : undefined,
+    trigger:
+      value.kind === "event" ? automationTriggerEdit(value.trigger) : undefined,
   };
 }
 
@@ -103,7 +124,8 @@ export function automationDraftChanges(
     changes.schedule = draft.schedule;
   if (
     original.kind === "event" &&
-    JSON.stringify(draft.trigger) !== JSON.stringify(original.trigger)
+    JSON.stringify(draft.trigger) !==
+      JSON.stringify(automationTriggerEdit(original.trigger))
   )
     changes.trigger = draft.trigger;
   return changes;

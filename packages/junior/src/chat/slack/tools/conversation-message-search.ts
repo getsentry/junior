@@ -6,10 +6,7 @@ import type {
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import {
-  parseSlackTeamId,
-  type SlackTeamId,
-} from "@/chat/slack/ids";
+import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
@@ -83,11 +80,7 @@ async function resolveSearchFilters(input: {
     channelId = target.channelId;
   }
 
-  if (
-    afterMs !== undefined &&
-    beforeMs !== undefined &&
-    afterMs >= beforeMs
-  ) {
+  if (afterMs !== undefined && beforeMs !== undefined && afterMs >= beforeMs) {
     throw new ToolInputError("`after` must be earlier than `before`");
   }
   if (!query && !channelId && !annotation) {
@@ -205,7 +198,9 @@ export function createSlackConversationMessageSearchTool(
             message_timestamp: new Date(match.messageCreatedAtMs).toISOString(),
             excerpt: match.excerpt,
             channel_id: match.providerDestinationId,
-            ...(match.channelName ? { channel_name: match.channelName } : undefined),
+            ...(match.channelName
+              ? { channel_name: match.channelName }
+              : undefined),
             ...(permalink ? { permalink } : undefined),
           };
         }),
@@ -215,7 +210,9 @@ export function createSlackConversationMessageSearchTool(
         ...(filters.afterMs !== undefined
           ? { after: new Date(filters.afterMs).toISOString() }
           : undefined),
-        ...(filters.annotation ? { annotation: filters.annotation } : undefined),
+        ...(filters.annotation
+          ? { annotation: filters.annotation }
+          : undefined),
         ...(filters.beforeMs !== undefined
           ? { before: new Date(filters.beforeMs).toISOString() }
           : undefined),

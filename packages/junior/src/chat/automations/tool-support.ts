@@ -40,20 +40,23 @@ export const automationSearchResultSchema = juniorToolOutputSchema
   })
   .strict();
 
+/** Schedule trigger input of the create and update tools. */
+export const scheduleTriggerSchema = z
+  .object({
+    type: z.literal("schedule"),
+    schedule: scheduleIntentSchema.describe(
+      "When the automation runs. The scheduler computes the exact next run from this intent and the server clock.",
+    ),
+  })
+  .strict();
+
 /**
- * Build the trigger input of the create and update tools: a schedule, or the
- * events of an enabled plugin.
+ * Build the trigger input of the create tool: a schedule, or the events of an
+ * enabled plugin.
  */
 export function automationTriggerSchema(catalog: EventCatalog) {
   return z.discriminatedUnion("type", [
-    z
-      .object({
-        type: z.literal("schedule"),
-        schedule: scheduleIntentSchema.describe(
-          "When the automation runs. The scheduler computes the exact next run from this intent and the server clock.",
-        ),
-      })
-      .strict(),
+    scheduleTriggerSchema,
     registeredEventAutomationTriggerSchema(catalog).extend({
       type: z.literal("event"),
     }),
@@ -66,9 +69,9 @@ export type AutomationTriggerInput = z.output<
 >;
 
 /** Return the Automation kind of a trigger input. */
-export function triggerKind(
-  trigger: AutomationTriggerInput,
-): TaskCandidate["kind"] {
+export function triggerKind(trigger: {
+  type: AutomationTriggerInput["type"];
+}): TaskCandidate["kind"] {
   return trigger.type === "schedule" ? "scheduled" : "event";
 }
 

@@ -8,17 +8,13 @@ import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import type { StoredEventAutomation } from "@/chat/event-automations/store";
-import {
-  EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
-  type EventAutomation,
-} from "@/chat/event-automations/types";
+import type { EventAutomation } from "@/chat/event-automations/types";
 import {
   eventNamespaceSchema,
   automationEventCatalog,
   describeRegisteredEventTrigger,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
-  registeredResourceTypeSchema,
   requireEventIdentifier,
   requireValidEventTrigger,
   type EventCatalog,
@@ -82,28 +78,16 @@ export const compactEventAutomationResultSchema = z
   })
   .strict();
 
-/** Build the validated event trigger accepted by event-automation tools. */
+/**
+ * Build the validated event trigger accepted by automation tools. A trigger
+ * names a namespace, events, and filters. It has no identifier: the filters
+ * select the resources.
+ */
 export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
   const plugins = automationEventCatalog(catalog);
   return z
     .object({
       namespace: eventNamespaceSchema(plugins),
-      identifier: z
-        .string()
-        .trim()
-        .min(1)
-        .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
-        .nullable()
-        .describe(
-          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier.',
-        )
-        .optional(),
-      resourceType: registeredResourceTypeSchema(plugins)
-        .nullable()
-        .describe(
-          "Resource type of the identifier. Use null when identifier is null. When updating, omit it to keep the saved resource type.",
-        )
-        .optional(),
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(plugins)).min(1),
       match: registeredEventMatchSchema(),
@@ -112,27 +96,28 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
 }
 
 /**
- * Check a new event-automation trigger with the enabled plugins and return
- * it as it is saved. It names a resource type and an identifier, or neither.
- * The identifier gets its plugin's convention. Events and list values lose
+ * Check an event-automation trigger with the enabled plugins and return it
+ * as it is saved. Tools and the dashboard send triggers with no identifier.
+ * Only a restored version can still have one, because it was saved before
+ * identifiers left the write paths. Then it names a resource type too, and
+ * the identifier gets its plugin's convention. Events and list values lose
  * repeats.
  */
 export function requireEventAutomationTrigger(
   catalog: EventCatalog,
   input: {
     events: readonly string[];
-    identifier?: string | null;
+    identifier?: string;
     label: string;
     match?: EventAutomation["trigger"]["match"];
     namespace: string;
-    resourceType?: string | null;
+    resourceType?: string;
   },
 ): EventAutomation["trigger"] {
-  const identifier = input.identifier ?? undefined;
-  const resourceType = input.resourceType ?? undefined;
+  const { identifier, resourceType } = input;
   if ((identifier === undefined) !== (resourceType === undefined)) {
     throw new ToolInputError(
-      "Set both resourceType and identifier for one resource, or leave out both to run for every resource.",
+      "A restored trigger must set both a resource type and an identifier, or neither.",
     );
   }
   const events = [...new Set(input.events)];

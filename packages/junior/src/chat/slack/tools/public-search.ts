@@ -31,9 +31,7 @@ function optionalUnixTimestampParam(description: string) {
 }
 
 /** Normalize an optional bound after input parse (or raw test execute paths). */
-function normalizeOptionalUnixTimestamp(
-  value: unknown,
-): number | undefined {
+function normalizeOptionalUnixTimestamp(value: unknown): number | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -51,7 +49,10 @@ const searchMessageSchema = z.object({
   channel_name: z.string().min(1).optional().describe("Channel name."),
   message_ts: z.string().min(1).describe("Message timestamp."),
   content: z.string().describe("Message text."),
-  is_author_bot: z.boolean().optional().describe("Whether the author is a bot."),
+  is_author_bot: z
+    .boolean()
+    .optional()
+    .describe("Whether the author is a bot."),
   permalink: z.string().url().describe("Message permalink."),
 });
 
@@ -77,7 +78,10 @@ const searchFileSchema = z.object({
 const searchChannelSchema = z.object({
   channel_id: z.string().min(1).describe("Channel ID."),
   channel_name: z.string().min(1).optional().describe("Channel name."),
-  is_private: z.boolean().optional().describe("Whether the channel is private."),
+  is_private: z
+    .boolean()
+    .optional()
+    .describe("Whether the channel is private."),
   is_member: z.boolean().optional().describe("Whether the bot is a member."),
   topic: z.string().min(1).optional().describe("Channel topic."),
   purpose: z.string().min(1).optional().describe("Channel purpose."),
@@ -172,7 +176,9 @@ const slackSearchMessageWireSchema = z
       ...(value.author_user_id
         ? { author_user_id: value.author_user_id }
         : undefined),
-      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+      ...(value.channel_name
+        ? { channel_name: value.channel_name }
+        : undefined),
       ...(value.is_author_bot !== undefined
         ? { is_author_bot: value.is_author_bot }
         : undefined),
@@ -217,7 +223,9 @@ const slackSearchFileWireSchema = z
         ? { user_name: value.user_name ?? value.username }
         : undefined),
       ...(value.channel_id ? { channel_id: value.channel_id } : undefined),
-      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+      ...(value.channel_name
+        ? { channel_name: value.channel_name }
+        : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
       ...((value.content ?? value.preview)
         ? { content: value.content ?? value.preview }
@@ -251,7 +259,9 @@ const slackSearchChannelWireSchema = z
       ...(value.is_private !== undefined
         ? { is_private: value.is_private }
         : undefined),
-      ...(value.is_member !== undefined ? { is_member: value.is_member } : undefined),
+      ...(value.is_member !== undefined
+        ? { is_member: value.is_member }
+        : undefined),
       ...(value.topic ? { topic: value.topic } : undefined),
       ...(value.purpose ? { purpose: value.purpose } : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
@@ -282,7 +292,9 @@ const slackSearchUserWireSchema = z
         ? { user_name: value.user_name ?? value.name ?? value.username }
         : undefined),
       ...(value.real_name ? { real_name: value.real_name } : undefined),
-      ...(value.display_name ? { display_name: value.display_name } : undefined),
+      ...(value.display_name
+        ? { display_name: value.display_name }
+        : undefined),
       ...(value.title ? { title: value.title } : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
     };
@@ -358,12 +370,7 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      query: z
-        .string()
-        .trim()
-        .min(1)
-        .max(500)
-        .describe("Slack search query."),
+      query: z.string().trim().min(1).max(500).describe("Slack search query."),
       content_types: z
         .array(z.enum(CONTENT_TYPES))
         .min(1)

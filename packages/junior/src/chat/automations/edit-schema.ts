@@ -1,9 +1,9 @@
 import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
 import {
-  eventAutomationTriggerSchema,
-  EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
-} from "@/chat/event-automations/types";
-import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
+  eventMatchSchema,
+  eventTypeSchema,
+  taskOutcomeSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 
@@ -40,18 +40,20 @@ export const scheduledAutomationEditSchema = automationEditFieldsSchema
   })
   .strict();
 
-export const eventAutomationEditSchema = automationEditFieldsSchema
-  .extend({
-    trigger: eventAutomationTriggerSchema
-      .safeExtend({
-        identifier: z
-          .string()
-          .trim()
-          .min(1)
-          .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
-          .optional(),
-        label: z.string().trim().min(1).max(500),
-      })
-      .optional(),
+/**
+ * A trigger in an edit. It has no identifier: its filters select the
+ * resources. A saved trigger can still have an identifier until the upgrade
+ * converts it, so read schemas keep that field.
+ */
+export const eventAutomationTriggerEditSchema = z
+  .object({
+    namespace: z.string().min(1),
+    label: z.string().trim().min(1).max(500),
+    events: z.array(eventTypeSchema).min(1),
+    match: eventMatchSchema.optional(),
   })
+  .strict();
+
+export const eventAutomationEditSchema = automationEditFieldsSchema
+  .extend({ trigger: eventAutomationTriggerEditSchema.optional() })
   .strict();

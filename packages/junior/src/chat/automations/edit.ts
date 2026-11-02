@@ -45,6 +45,8 @@ import {
 type RestoredValues = {
   title: string | undefined;
   schedule?: ScheduledAutomation["schedule"];
+  /** A saved trigger, which can still have an identifier. Edits cannot send one. */
+  trigger?: EventAutomation["trigger"];
 };
 
 type OwnedAutomation =
@@ -170,7 +172,7 @@ async function saveViewerEdit(
   if (input.kind === "event" && current.kind === "event") {
     const next = await editEventAutomation(
       current.task,
-      input,
+      restored?.trigger ? { ...input, trigger: restored.trigger } : input,
       isCreator,
       getEventCatalog(),
     );
@@ -304,9 +306,10 @@ export async function activateViewerAutomationVersion(
       revision: input.revision,
       ...fields,
     };
+    const restored: RestoredValues = { title };
     if (!sameDefinitionValue(saved.definition.trigger, current.task.trigger))
-      update.trigger = saved.definition.trigger;
-    return saveViewerEdit(user, current, update, { title });
+      restored.trigger = saved.definition.trigger;
+    return saveViewerEdit(user, current, update, restored);
   }
   throw new ViewerTaskNotFoundError();
 }

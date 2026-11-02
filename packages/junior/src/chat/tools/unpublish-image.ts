@@ -31,9 +31,7 @@ export function createUnpublishImageTool(args: {
         ref: z
           .string()
           .min(1)
-          .describe(
-            "Public artifact URL or artifact filename (`<id>.<ext>`).",
-          ),
+          .describe("Public artifact URL or artifact filename (`<id>.<ext>`)."),
       })
       .strict(),
     outputSchema,

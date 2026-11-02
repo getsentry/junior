@@ -127,12 +127,9 @@ function draftValueLabel(
     case "trigger": {
       const trigger = draft.trigger;
       if (!trigger) return "Not set";
-      const resource = trigger.identifier
-        ? `${trigger.label} · ${trigger.identifier}`
-        : `Any ${trigger.label}`;
       const filters = Object.keys(trigger.match ?? {}).length;
       return [
-        resource,
+        trigger.label,
         trigger.events.join(", "),
         filters ? `${filters} ${filters === 1 ? "filter" : "filters"}` : "",
       ]

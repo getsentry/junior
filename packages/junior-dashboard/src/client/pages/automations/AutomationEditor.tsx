@@ -26,6 +26,7 @@ import {
 } from "./AutomationOutcomeFields";
 import {
   automationDraftChanges,
+  automationTriggerEdit,
   createAutomationDraft,
   scheduleDraft,
   type AutomationDraft,
@@ -327,7 +328,9 @@ export function AutomationEditor(props: {
                 />
               ) : (
                 <AutomationEventFields
-                  value={draft.trigger ?? original.trigger}
+                  value={
+                    draft.trigger ?? automationTriggerEdit(original.trigger)
+                  }
                   original={original.trigger}
                   disabled={save.isPending}
                   onChange={(trigger) => change({ trigger })}

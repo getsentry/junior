@@ -1,8 +1,5 @@
 import { getConversationStore } from "@/chat/db";
-import {
-  getConversationInfo,
-  joinPublicChannel,
-} from "@/chat/slack/channel";
+import { getConversationInfo, joinPublicChannel } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 
@@ -81,7 +78,9 @@ export async function checkSlackChannelReadAccess(args: {
       allowed: true,
       isPublic: true,
       ...(info.name ? { channelName: info.name } : undefined),
-      ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : undefined),
+      ...(typeof info.isMember === "boolean"
+        ? { isMember: info.isMember }
+        : undefined),
     };
   } catch (error) {
     if (error instanceof SlackActionError) {
