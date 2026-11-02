@@ -126,15 +126,26 @@ describe("Google sign-in", () => {
     expect(await auth.getSession(accepted.session)).toMatchObject({
       user: { email: "person@example.org", emailVerified: true },
     });
-    // The sign-in saves the Google photo on the Google identity.
-    expect(
+    // Each sign-in saves the current Google photo on the Google identity.
+    const savedPhoto = async () =>
       await getDb()
         .select({ avatarUrl: juniorIdentities.avatarUrl })
         .from(juniorIdentities)
         .where(
           eq(juniorIdentities.providerSubjectId, "google-person@example.org"),
-        ),
-    ).toEqual([{ avatarUrl: picture }]);
+        );
+    expect(await savedPhoto()).toEqual([{ avatarUrl: picture }]);
+    const newPicture = "https://lh3.googleusercontent.com/a/new=s96-c";
+    useGoogleAccount({
+      email: "person@example.org",
+      hd: "example.org",
+      picture: newPicture,
+    });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: newPicture }]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: null }]);
 
     // Direct ID-token sign-in is off, so a client cannot submit its own
     // token, even with claims on an allowed domain.
