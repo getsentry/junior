@@ -1,17 +1,15 @@
 # Scheduled automations
 
-This module owns one-time and recurring Scheduled automations. The core
-heartbeat claims due rows before plugin heartbeat hooks run.
-
-Shared access, edit, credential, and run rules are in
-`chat/automations/AGENTS.md`.
+One-time and recurring Scheduled automations. Shared access, edit,
+credential, and run rules are in `chat/automations/AGENTS.md`.
 
 ## Dispatch
 
-- Scheduled runs use the core Conversation work queue.
+- The core heartbeat claims due rows before plugin heartbeat hooks run.
+  Scheduled runs use the core Conversation work queue.
 - Keep `scheduler` as the dispatch label. It is also the signed task
-  credential binding label. A change breaks existing task credentials.
-- The heartbeat limits claims for each invocation. It reconciles incomplete
+  credential binding label, so a change breaks existing task credentials.
+- The heartbeat limits claims per invocation. It reconciles incomplete
   dispatches before it claims new work.
 - A recurring Automation advances only after its current run ends.
 - A successful last run makes the Automation `completed`. A failed or skipped
@@ -23,7 +21,7 @@ Shared access, edit, credential, and run rules are in
   `junior_users.timezone`, then `JUNIOR_TIMEZONE`.
 - Edits keep the Schedule timezone unless the user asks to change it.
 - Do not put the timezone on the Actor. The Actor is stored with each
-  Message, and a timezone is a user preference that can change.
+  Message, and a timezone is a preference that can change.
 
 ## Destination
 
