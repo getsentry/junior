@@ -40,7 +40,8 @@ Run. For child agent approval, see `agent-invocations/AGENTS.md`.
   Guardian again. Three rejections in a row tell the agent to stop and
   explain. They do not end the execution slice.
 - Only the gate writes the rejection marker. `projectToolResult` removes a
-  marker that a tool supplied.
+  marker that a tool supplied. A `codemode` result carries the gate's marker
+  for each rejected nested call, and history restores those markers too.
 - The rejection marker is a durable format with `version: 1`. A change to its
   shape needs a new version or a migration.
 
