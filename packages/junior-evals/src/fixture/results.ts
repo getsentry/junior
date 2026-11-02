@@ -156,6 +156,13 @@ export async function readConversationDetail(
   return conversationDetailReportSchema.parse(await response.json());
 }
 
+/** Slack user ids of the participants that the dashboard lists. */
+export function participantSlackUserIds(detail: ConversationDetail): string[] {
+  return (detail.participants ?? []).flatMap((participant) =>
+    participant.slackUserId ? [participant.slackUserId] : [],
+  );
+}
+
 type CallTranscriptSource = {
   conversationId: string;
   viewerEmail: string;
