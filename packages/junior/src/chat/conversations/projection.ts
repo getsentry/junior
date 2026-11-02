@@ -9,6 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
+  sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type {
@@ -151,13 +152,26 @@ function countMatchingDeepPrefix(
   return limit;
 }
 
+function sameProvenance(
+  left: ConversationMessageProvenance,
+  right: ConversationMessageProvenance,
+): boolean {
+  return (
+    left.authority === right.authority &&
+    ((!left.actor && !right.actor) ||
+      sameActorIdentity(left.actor, right.actor))
+  );
+}
+
 /**
  * Resolve the aligned provenance to persist for `nextMessages`.
  *
  * Explicit per-message provenance always wins; otherwise the unchanged prefix
  * reuses its committed provenance, new messages default to unauthored context,
  * and any new-user-message default (the turn author's instruction) attaches to
- * the last new user message — the current turn's input.
+ * the last new user message — the current turn's input. A replay can
+ * re-commit trailing input that is already durable, so its trailing
+ * provenance must match the committed provenance.
  */
 function resolveCommitProvenance(args: {
   existing: Pick<PiConversationProjection, "messages" | "provenance">;
@@ -200,15 +214,16 @@ function resolveCommitProvenance(args: {
         "trailing commit provenance cannot exceed committed messages",
       );
     }
-    const newMessageCount = args.nextMessages.length - matchingPrefix;
-    if (args.trailingMessageProvenance.length > newMessageCount) {
-      throw new Error(
-        "trailing commit provenance must align to newly committed messages",
-      );
-    }
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
-      provenance[start + offset] = entry;
+      const index = start + offset;
+      if (index >= matchingPrefix) {
+        provenance[index] = entry;
+      } else if (!sameProvenance(provenance[index]!, entry)) {
+        throw new Error(
+          "trailing commit provenance must match durable message provenance",
+        );
+      }
     });
   }
   return provenance;
@@ -322,7 +337,10 @@ export async function commitMessages(args: {
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
-  /** Explicit provenance for the trailing newly committed messages. */
+  /**
+   * Explicit provenance for the trailing messages. Entries for messages that
+   * are already durable must match their committed provenance.
+   */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */
   newMessageProvenance?: ConversationMessageProvenance;

@@ -1131,6 +1131,18 @@ describe("turn checkpoint", () => {
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
+    // A replay of durable input cannot change who wrote it.
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-multi-actor",
+        turnId: "turn-multi-actor",
+        sliceId: 2,
+        messages: [aliceMessage, bobMessage],
+        actor: alice,
+        trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
+      }),
+    ).resolves.toBeUndefined();
 
     // getTurnRecord re-materializes from the stored record and the
     // committed provenance, so this is also the continuation/materialization
