@@ -11,6 +11,10 @@ import {
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
 import { VersionDriftBanner } from "./components/VersionDriftBanner";
+import {
+  PageContentSkeleton,
+  type PageContentSkeletonVariant,
+} from "./components/PageContentSkeleton";
 import { PageRouteLoading } from "./components/PageRouteLoading";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
@@ -77,7 +81,12 @@ const dashboardNoise = {
 };
 
 const settingsRoutes: {
-  loading: Parameters<typeof PageRouteLoading>[0];
+  loading: {
+    description: string;
+    label: string;
+    title: string;
+    variant?: PageContentSkeletonVariant;
+  };
   path: string;
   render(data: DashboardCoreData): ReactNode;
 }[] = [
@@ -94,7 +103,7 @@ const settingsRoutes: {
     loading: {
       description: "Create and revoke personal API tokens.",
       label: "Loading API tokens",
-      title: "API tokens",
+      title: "API Tokens",
       variant: "list",
     },
     path: "/settings/api-tokens",
@@ -103,8 +112,8 @@ const settingsRoutes: {
   {
     loading: {
       description: "Connect and disconnect your accounts.",
-      label: "Loading connected accounts",
-      title: "Connected accounts",
+      label: "Loading identities",
+      title: "Identities",
       variant: "list",
     },
     path: "/settings/connections",
@@ -574,11 +583,17 @@ export function DashboardShell() {
             <Route
               element={
                 loading ? (
-                  <SettingsPageLayout>
-                    <PageRouteLoading {...route.loading} />
+                  <SettingsPageLayout
+                    description={route.loading.description}
+                    title={route.loading.title}
+                  >
+                    <PageContentSkeleton
+                      label={route.loading.label}
+                      variant={route.loading.variant}
+                    />
                   </SettingsPageLayout>
                 ) : loggedIn ? (
-                  <SettingsPageLayout>{route.render(data!)}</SettingsPageLayout>
+                  route.render(data!)
                 ) : (
                   <Navigate replace to="/" />
                 )

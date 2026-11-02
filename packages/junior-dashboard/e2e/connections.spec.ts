@@ -52,9 +52,7 @@ test("connects and disconnects a plugin account from settings", async ({
   });
 
   await page.goto(`${dashboard.baseURL}/settings/connections`);
-  await expect(
-    page.getByRole("heading", { name: "Connected accounts" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Identities" })).toBeVisible();
   await expect(page.getByRole("link", { name: "octocat" })).toBeVisible();
   await screenshot(page, "settings-connections");
 

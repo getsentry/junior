@@ -1,11 +1,8 @@
 import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
 import { Card } from "../../components/layout/Card";
-import { useDocumentTitle } from "../../documentTitle";
-import {
-  dashboardContainerClass,
-  dashboardInlineLinkClass,
-} from "../../styles";
+import { dashboardInlineLinkClass } from "../../styles";
+import { SettingsPageLayout } from "./SettingsPageLayout";
 
 const MCP_DOCS_URL = "https://junior.sentry.dev/operate/mcp-server/";
 
@@ -35,7 +32,6 @@ function ConfigBlock(props: { label: string; value: string }) {
 
 /** Show the MCP server URL and client config for this deployment. */
 export function McpSettingsPage() {
-  useDocumentTitle("MCP");
   // The dashboard redirects to its canonical origin, which also serves MCP.
   const url = new URL("/api/mcp", window.location.origin).toString();
   const name = mcpServerName();
@@ -46,37 +42,37 @@ export function McpSettingsPage() {
   );
 
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto w-full max-w-3xl">
-        <h1 className="m-0 text-2xl font-bold">MCP</h1>
-        <p className="mt-2 mb-0 max-w-2xl text-sm text-dashboard-text-muted">
+    <SettingsPageLayout
+      description={
+        <>
           Connect Claude Code or another MCP client to list your{" "}
           {getDashboardAgentName()} conversations. The client signs in through
           this dashboard. Personal API tokens do not work here.
-        </p>
+        </>
+      }
+      title="MCP"
+    >
+      <Card className="mb-0" padding="md" variant="raised">
+        <ConfigBlock label="Server URL" value={url} />
+        <ConfigBlock
+          label="Claude Code"
+          value={`claude mcp add --transport http ${name} ${url}`}
+        />
+        <ConfigBlock label="JSON config" value={jsonConfig} />
+      </Card>
 
-        <Card className="mb-0 mt-6" padding="md" variant="raised">
-          <ConfigBlock label="Server URL" value={url} />
-          <ConfigBlock
-            label="Claude Code"
-            value={`claude mcp add --transport http ${name} ${url}`}
-          />
-          <ConfigBlock label="JSON config" value={jsonConfig} />
-        </Card>
-
-        <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
-          The client must support OAuth with Client ID Metadata Documents.{" "}
-          <a
-            className={dashboardInlineLinkClass}
-            href={MCP_DOCS_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Read the MCP server docs
-          </a>
-          .
-        </p>
-      </section>
-    </div>
+      <p className="m-0 text-sm text-dashboard-text-muted">
+        The client must support OAuth with Client ID Metadata Documents.{" "}
+        <a
+          className={dashboardInlineLinkClass}
+          href={MCP_DOCS_URL}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Read the MCP server docs
+        </a>
+        .
+      </p>
+    </SettingsPageLayout>
   );
 }
