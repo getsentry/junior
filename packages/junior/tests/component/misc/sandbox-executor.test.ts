@@ -2088,6 +2088,63 @@ describe("createTestSandbox", () => {
     expect(secondResult.result.details.auth_required).toBeUndefined();
   });
 
+  it("runs a queued bash command on the sandbox that replaced the one it saw", async () => {
+    const initialSandbox = makeSandbox("sbx_queued_initial");
+    const nextSandbox = makeSandbox("sbx_queued_next");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(nextSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    let releaseFirst!: () => void;
+    const firstHolds = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    initialSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("first")) {
+        firstEntered();
+        await firstHolds;
+      }
+      return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+    });
+    const workspace = (id: string) => ({
+      id,
+      name: id,
+      setupScript: "",
+      vcpus: null,
+      snapshot: null,
+      repos: [],
+    });
+    const sandbox = createSandbox({
+      workspace: workspace("workspace-initial"),
+      skills: [],
+      referenceFiles: [],
+    });
+    const bash = (command: string) =>
+      sandbox.tools.execute({ toolName: "bash", input: { command } });
+
+    const first = bash("echo first");
+    await firstStarted;
+    // Queued behind the first command, with the initial sandbox resolved.
+    const second = bash("echo second");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sandbox.switchWorkspace(workspace("workspace-next"));
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    const ranOn = (target: MockSandbox) =>
+      target.runCommand.mock.calls.some(([input]) =>
+        String(input.args?.[1]).includes("echo second"),
+      );
+    expect(ranOn(nextSandbox)).toBe(true);
+    expect(ranOn(initialSandbox)).toBe(false);
+  });
+
   it("attaches sandbox egress auth signals to bash results with exit code 0 (pipe-masked failures)", async () => {
     // Regression test: piped bash commands (e.g. `cmd | head`) mask the
     // underlying CLI exit code with 0 from the pipe tail. The auth signal must

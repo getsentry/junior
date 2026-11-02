@@ -231,16 +231,28 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   // the bash commands of one Run run one at a time, also when a Code Mode
   // script starts them together. Each command then reads only its own signals.
   let bashTail: Promise<void> = Promise.resolve();
-  /** Wait for the earlier bash commands of this Run; return a release. */
-  const takeBashTurn = async (): Promise<() => void> => {
+  let bashTurns = 0;
+  /**
+   * Wait for the earlier bash commands of this Run. `waited` is true when an
+   * earlier command held the turn, so the Sandbox may have changed since.
+   */
+  const takeBashTurn = async () => {
+    const waited = bashTurns > 0;
+    bashTurns += 1;
     const earlier = bashTail;
-    let release!: () => void;
-    const done = new Promise<void>((resolve) => {
-      release = resolve;
+    let done!: () => void;
+    const turn = new Promise<void>((resolve) => {
+      done = resolve;
     });
-    bashTail = earlier.then(() => done);
+    bashTail = earlier.then(() => turn);
     await earlier;
-    return release;
+    return {
+      waited,
+      release() {
+        bashTurns -= 1;
+        done();
+      },
+    };
   };
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
@@ -378,11 +390,17 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
-    const { bash: executeBash, sessionId: activeSessionId } =
-      await runtime.tools(context.signal);
-    const releaseBashTurn = await takeBashTurn();
+    // Resolve before the turn so concurrent calls share one acquisition.
+    let tools = await runtime.tools(context.signal);
+    const bashTurn = await takeBashTurn();
     try {
       context.signal?.throwIfAborted();
+      // A switch or reacquire can replace the Sandbox while this command
+      // waits. Run it on the current one and use that session's signals.
+      if (bashTurn.waited) {
+        tools = await runtime.tools(context.signal);
+      }
+      const { bash: executeBash, sessionId: activeSessionId } = tools;
       await clearEgressSignals(activeSessionId);
       const result = await withSandboxToolSpan(
         "bash",
@@ -446,7 +464,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           : undefined),
       }) as T;
     } finally {
-      releaseBashTurn();
+      bashTurn.release();
     }
   };
 
