@@ -7,7 +7,7 @@
  * It only embeds memories that have no current vector for the model, and it
  * commits each batch on its own, so it is safe to run again or at the same time.
  */
-import { and, asc, eq, gt, isNull, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import {
   EMBEDDING_METRIC,
@@ -23,6 +23,7 @@ async function listMissingVectors(args: {
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider;
   limit: number;
+  nowMs: number;
 }): Promise<Array<{ content: string; id: string }>> {
   // Same hash as hashEmbeddedContent(): sha256 hex of the UTF-8 content.
   const currentVector = args.db
@@ -50,6 +51,10 @@ async function listMissingVectors(args: {
         isNull(juniorMemoryMemories.archivedAtMs),
         isNull(juniorMemoryMemories.supersededAtMs),
         isNull(juniorMemoryMemories.supersededById),
+        or(
+          isNull(juniorMemoryMemories.expiresAtMs),
+          gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+        ),
         args.afterId === undefined
           ? undefined
           : gt(juniorMemoryMemories.id, args.afterId),
@@ -84,6 +89,7 @@ export async function reembedMemories(args: {
       db: args.db,
       embedder: args.embedder,
       limit: args.batchSize,
+      nowMs: now(),
     });
     const last = missing.at(-1);
     if (!last) {

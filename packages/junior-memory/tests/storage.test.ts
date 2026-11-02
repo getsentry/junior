@@ -3052,12 +3052,14 @@ WHERE id = '${superseded.memory.id}'
       const reactMemory = "Uses React hooks for UI state.";
       const mangoMemory = "Favorite CLI QA snack is mango chips.";
       const oldMemory = "Prefers superseded memories to keep old vectors.";
+      const expiredMemory = "Prefers expired memories to keep old vectors.";
       const query = "client rendering library";
       const oldStore = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder: createTestEmbedder({
           [reactMemory]: unitEmbedding(1),
           [mangoMemory]: unitEmbedding(2),
           [oldMemory]: unitEmbedding(3),
+          [expiredMemory]: unitEmbedding(4),
         }),
         now: () => TEST_NOW_MS,
       });
@@ -3076,10 +3078,20 @@ WHERE id = '${superseded.memory.id}'
         kind: "preference",
         idempotencyKey: "memory-test:reembed-superseded",
       });
+      const expired = await oldStore.createMemory({
+        content: expiredMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-expired",
+      });
       await fixture.execute(`
 UPDATE junior_memory_memories
 SET superseded_at_ms = ${TEST_NOW_MS + 1}
 WHERE id = '${superseded.memory.id}'
+`);
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET expires_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${expired.memory.id}'
 `);
 
       const newEmbedder = createTestEmbedder(
@@ -3127,6 +3139,7 @@ WHERE id = '${superseded.memory.id}'
           `${mango.memory.id}:test-embedding-model:1536`,
           `${mango.memory.id}:new-model:1024`,
           `${superseded.memory.id}:test-embedding-model:1536`,
+          `${expired.memory.id}:test-embedding-model:1536`,
         ].sort(),
       );
 
