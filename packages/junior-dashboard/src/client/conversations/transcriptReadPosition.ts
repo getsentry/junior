@@ -24,7 +24,8 @@ import { conversationDetailQueryKey } from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
-const ROW_SELECTOR = "[data-transcript-seq]";
+const SEQ_ATTRIBUTE = "data-transcript-seq";
+const ROW_SELECTOR = `[${SEQ_ATTRIBUTE}]`;
 const START_POSITION_STORAGE_KEY = "junior:conversation:start-position";
 
 /** Where a Conversation opens: at the first unread row or at the latest. */
@@ -234,14 +235,26 @@ export function useTranscriptReadReporter(input: {
         visibleRows.delete(row);
       }
     };
-    // Rows mount and unmount as history loads and replies arrive.
+    // Rows mount and unmount as history loads and replies arrive. An
+    // activity group row keeps its node and raises its seq as tools arrive.
     const mutations = new MutationObserver((records) => {
+      let seqChanged = false;
       for (const record of records) {
         record.addedNodes.forEach(observeRows);
         record.removedNodes.forEach(forgetRows);
+        if (record.type === "attributes") {
+          const row = record.target as HTMLElement;
+          intersections.observe(row);
+          seqChanged ||= visibleRows.has(row);
+        }
       }
+      if (seqChanged) schedule();
     });
-    mutations.observe(content, { childList: true, subtree: true });
+    mutations.observe(content, {
+      attributeFilter: [SEQ_ATTRIBUTE],
+      childList: true,
+      subtree: true,
+    });
     observeRows(content);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
