@@ -1,10 +1,7 @@
 # Memory plugin
 
-## Intent
-
-- The plugin stores durable facts, recalls relevant facts into prompts, and
-  learns candidates from completed sessions.
-- SQL schemas, exported types, tools, and tests are authoritative.
+The plugin stores durable facts, recalls relevant facts into prompts, and
+learns candidates from completed sessions.
 
 ## Visibility
 
@@ -18,8 +15,8 @@
 
 ## Privacy
 
-- Never log or trace memory content, embeddings, source excerpts, or review
-  prompts. Follow `policies/data-redaction.md`.
+- Do not log or trace memory content, embeddings, source excerpts, or review
+  prompts.
 - Administrative reads need explicit selectors and safe output defaults.
 
 ## Storage
@@ -28,16 +25,16 @@
 - Embeddings are derived indexes, not memory authority.
 - Embedding distance only selects candidates. Exact content and model review
   decide duplicates. Only user preferences can supersede old memories.
-- Writes are idempotent where a session or tool retry can repeat.
-- Removal and supersession keep enough lifecycle data so that deleted facts
-  are not recalled or recreated.
+- Writes that a session or tool retry can repeat are idempotent.
+- Removal and supersession keep enough lifecycle data that deleted facts are
+  not recalled or recreated.
 
 ## Learning and recall
 
 - Explicit remember and forget requests win over passive learning.
-- Passive extraction keeps only durable, reusable facts. Never store tasks,
-  summaries, secrets, or guesses.
-- Search fuses vector and full-text ranks with reciprocal rank fusion. Never
+- Passive extraction keeps only durable, reusable facts: no tasks, summaries,
+  secrets, or guesses.
+- Search fuses vector and full-text ranks with reciprocal rank fusion. Do not
   add provider raw scores together.
 - Recall also searches private memory on its own, so newer public memory does
   not hide it.

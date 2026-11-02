@@ -4,10 +4,10 @@
 
 - The dashboard is an authenticated reporting surface over Junior
   conversation read models. It does not take part in agent execution.
-- It never changes conversation state, except that signed-in users can change
-  their own profile fields.
-- Junior conversation storage is the reporting authority. The package stays
-  stateless apart from auth sessions and profile settings.
+- It changes no conversation state. Signed-in users can change only their own
+  profile fields.
+- Junior conversation storage is the reporting authority. The package keeps
+  no state except auth sessions and profile settings.
 - `src/api/` schemas own the client/server boundary.
 
 ## Auth and privacy
@@ -16,19 +16,16 @@
   required configuration is missing.
 - Check access to private conversations on the server. Hidden client routes
   are not authorization.
-- The server turns runtime events into privacy-safe reporting events. Follow
-  `policies/data-redaction.md`.
-- Mock reporting data is for local UI work only. It must never be a
-  production fallback.
-- The installable shell is static. Do not add a service worker or an offline
-  cache.
+- The server turns runtime events into privacy-safe reporting events
+  (`policies/data-redaction.md`).
+- Mock reporting data is for local UI work only, never a production fallback.
+- The installable shell is static. No service worker or offline cache.
 
 ## Conversation detail
 
 - Detail and mailbox share one TanStack Query snapshot. Read the mailbox
   first, then history, and publish both in one render. Workers commit input
-  before they acknowledge it, so input never disappears between queue and
-  transcript.
+  before they acknowledge it, so input never disappears in between.
 - A local send stays visible until a server snapshot has its Message id. The
   browser and web ingress share one Message id function.
 - Only Turn lifecycle events turn on the thinking indicator. Queued work is
@@ -40,12 +37,11 @@
 
 - Display text keeps Markdown and Slack tokens such as `<@U123>`,
   `<url|label>`, and `:smile:`. The API returns `mentions` beside the owning
-  object. Do not resolve names in the dashboard, and do not rewrite tokens
-  into links on the server.
-- Render display text only with `client/display-text/DisplayText`. Use
-  `inline` for one-line previews, headings, and text in buttons. Use
-  `displayPlainText` where markup cannot go. Do not show it as a raw string
-  or add a Markdown, mention, link, or emoji helper for one surface.
+  object. Do not resolve names in the dashboard or rewrite tokens on the
+  server.
+- Render display text only with `client/display-text/DisplayText` (`inline`
+  for previews, headings, and buttons). Use `displayPlainText` where markup
+  cannot go. Do not add a Markdown, mention, link, or emoji helper.
 - `oxlint/display-text.ts` and `no-restricted-imports` enforce this. Do not
   name a local field `text`, `body`, or `summary` when it is not display text.
 

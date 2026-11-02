@@ -1,11 +1,8 @@
 # GitHub plugin
 
-## Intent
-
-- The plugin owns all GitHub behavior: credentials, egress policy, tools,
-  signed webhooks, events, and pull request and issue outcomes.
-- Core owns only delivery of published events to matching subscriptions.
-  Do not add GitHub routes, fields, or decisions to core.
+The plugin owns credentials, egress policy, tools, signed webhooks, events,
+and pull request and issue outcomes. Core only delivers published events to
+matching subscriptions.
 
 ## Credentials and egress
 
@@ -26,9 +23,9 @@
 
 - Junior is author and committer. Credit human actors once with
   `Co-Authored-By` trailers.
-- Junior sets `core.hooksPath` in the command env for every sandbox command.
-  Its hooks pass all other client hooks to the repository hooks. A failing
-  repository hook must stop the commit or push.
+- Junior sets `core.hooksPath` for every sandbox command. Its hooks pass all
+  other client hooks to the repository hooks. A failing repository hook stops
+  the commit or push.
 
 ## Pull requests
 
@@ -36,13 +33,13 @@
   fail the tool. A retry returns the saved pull request and does not create
   or reassign.
 - `junior_github_pull_request_requesters` stores only the core identity id
-  and, for the opener, the Conversation. Do not copy logins or user data.
-  The first row is the opener. Later rows never replace it.
+  and, for the opener, the Conversation. No logins or user data. The first
+  row is the opener, and later rows never replace it.
 - Read the GitHub login through `ctx.users.readIdentity()` at webhook time.
 - When the opener is unknown, leave the opener fields out. Never use the bot
   in its place.
 - Webhooks never read the pull request body.
-- Load only filter values before the match. Load other values only after an
+- Before the match, load only filter values. Load other values only after an
   event matches. A failed load leaves the value out.
 
 ## Ready-to-merge notice
@@ -51,6 +48,6 @@
   `mergeable_state` is `clean`.
 - One webhook at a time checks a pull request (`ready_sync_id`,
   `ready_sync_requests`). Hold no database connection during GitHub calls.
-- Change `ready_to_merge_at` only after the review item changes, so the next
-  webhook retries a failure. A notice failure must not fail the webhook.
+- Change `ready_to_merge_at` only after the Review item changes, so the next
+  webhook retries a failure. A notice failure does not fail the webhook.
 - Close the notice when the pull request merges, closes, or stops being ready.

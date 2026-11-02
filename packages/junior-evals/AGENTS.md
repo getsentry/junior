@@ -1,43 +1,42 @@
 # Evals
 
-Evals test agent-facing behavior through the real runtime. `policies/evals.md`
-owns the suites, the rubric rules, and the scenario limits. This file adds the
-harness rules.
+`policies/evals.md` owns the suites, rubric rules, and scenario limits. This
+file adds the harness rules.
 
-## Layer Boundaries
+## Layers
 
 - `evals/integration/**`: full-runtime cases that must never regress. Hard
   pass/fail. Prefer fixed assertions.
-- `evals/<area>/` (`conversation`, `agent`, or a feature or suite directory):
+- `evals/<area>/` (`conversation`, `agent`, or a feature directory):
   behavioral cases. Score-gated in CI.
 - `evals/guardian/**`: `describeEval()` with `guardianEvals`. Send exact
   `ToolActionProposal` objects and assert only `allow` / `ask` / `deny`. Set
-  `tool` to the agent tool name, so `proposal()` builds it with the production
-  builder (`src/guardian-tools.ts`).
-- `evals/router/**`: `describeEval()` with `routerEvals`. Assert the exact
-  model profile and reasoning level.
-- `evals/classifiers/**`: `describeEval()` with one harness per classifier,
-  such as `reviewItemReplyEvals`. Assert the exact choice.
+  `tool` to the agent tool name, so `proposal()` uses the production builder
+  (`src/guardian-tools.ts`).
+- `evals/router/**`: `routerEvals`. Assert the exact model profile and
+  reasoning level.
+- `evals/classifiers/**`: one harness per classifier, such as
+  `reviewItemReplyEvals`. Assert the exact choice.
 - Slack HTTP payload contracts and isolated logic belong in
-  `packages/junior/tests/`, not here. `pnpm lint` enforces this.
+  `packages/junior/tests/`. `pnpm lint` enforces this.
 
-## Agent Test Fixture
+## Agent fixture
 
-Cases that run the agent use `src/fixture/`. Issue #2001 has the full contract.
+Cases that run the agent use `src/fixture/` (contract: issue #2001).
+`scripts/check-test-architecture.mjs` enforces these rules. Lower a baseline
+entry when you fix a file. Do not add entries.
 
 - The agent is one unit. Do not mock the model or any Junior-owned module.
 - A test touches the product in three places only:
-  1. Inputs through app routes (`src/fixture/inputs.ts`): Slack events, web
-     messages, heartbeat, GitHub webhooks, App Home clicks, and OAuth callbacks.
-  2. Mocked third-party APIs through MSW.
-  3. Call results from Junior's reporting API and the Slack mock: replies,
-     tool calls, reactions, statuses, thread titles, files, and turn states.
+  1. Inputs through app routes (`src/fixture/inputs.ts`).
+  2. Third-party APIs mocked with MSW.
+  3. Results from Junior's reporting API and the Slack mock.
 - `run()` starts a Conversation, `continue()` sends the next input, and
-  `fork()` calls the forks route. A call returns when the agent is idle and
+  `fork()` calls the forks route. Each returns when the agent is idle and
   fails after 60 seconds.
 - `agent(options)` takes `createApp()` options and replaces suite defaults key
-  by key. Tests may import the public `@sentry/junior` API and plugin
-  packages, not runtime internals under `@/`.
+  by key. Import the public `@sentry/junior` API and plugin packages, not
+  runtime internals under `@/`.
 - The default agent has no experimental feature. A test turns on what it needs.
 - A suite (`src/suites/*.ts`) is a Vitest project with default agent options
   and host environment. Put a case that needs a plugin in the suite that has
@@ -45,58 +44,49 @@ Cases that run the agent use `src/fixture/`. Issue #2001 has the full contract.
 - `history` loads earlier turns as stored data and never runs the agent.
   `src/fixture/history.eval.ts` checks that it writes the same rows as real
   turns.
-- Setup data goes through `src/fixture/insert.ts`, which uses product store
-  functions. Add an insert function for a new kind of setup data.
-- Put an input, read, or assertion that many evals need in `src/fixture/`.
-- Assert facts that do not depend on wording (reply counts, turn states, tool
-  calls, reactions) directly, not stored rows or runtime objects. Judge
-  wording with `toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
-- `scripts/check-test-architecture.mjs` enforces these rules. Lower a baseline
-  entry when you fix a file. Do not add entries.
+- Setup data goes through product store functions in `src/fixture/insert.ts`.
+  Put an input, read, or assertion that many evals need in `src/fixture/`.
+- Assert wording-independent facts (reply counts, turn states, tool calls,
+  reactions) directly, not stored rows or runtime objects. Judge wording with
+  `toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
 
-## Authoring Rules
+## Authoring
 
 - One primary behavior per case. `describe()` owns the area. Name cases
   `when <trigger>, <outcome>`.
 - Keep `pass` and `fail` as short lists of observable conditions. Add `fail`
   only for a real regression or unsafe side effect.
-- Use fake external targets. Do not mutate real provider resources.
-- `webSearch` is always mocked and finds nothing by default. Use
+- Use fake external targets. Do not change real provider resources.
+- `webSearch` is mocked and finds nothing by default. Use
   `mockWebSearchResults()` and `mockWebPages()` from `src/fixture/web.ts`.
   Other URLs go through Roach.
 - File names are short behavior nouns. Shared setup goes in `helpers.ts`.
-- Do not, in eval files:
-  - import `@/chat/slack/*` or use the MSW Slack helpers
-  - check raw Slack Web API payloads
-  - invent transcript, event-log, or tool-call schemas; improve the fixture
-  - check internals, such as sandbox ids, unless they are the behavior
+- In eval files, do not import `@/chat/slack/*`, use the MSW Slack helpers,
+  check raw Slack Web API payloads, invent transcript or tool-call schemas
+  (improve the fixture), or check internals that are not the behavior.
 
 ## Recordings
 
-- Evals replay model calls and web pages from Roach, the shared recording
-  service at `https://roach-proxy.getsentry.net`
-  ([`getsentry/roach`](https://github.com/getsentry/roach)). Recordings are in
+- Evals replay model calls and web pages from Roach
+  (`https://roach-proxy.getsentry.net`,
+  [`getsentry/roach`](https://github.com/getsentry/roach)). Recordings live in
   its GCS bucket, not in git. `src/roach/` is a copy of its client.
-- `src/recording-rules.ts` lists the recorded traffic and the only origins
-  that evals can reach. To record more, reach a new site, or add a value
-  pattern, edit only that file.
-- All eval HTTP traffic must go through the proxy. In CI,
-  `scripts/network-jail.sh` rejects other connections. If a request fails with
-  a refused connection, send it through the proxy. Do not allow its host in the
-  firewall.
-- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and records
-  new requests, which go live once. Without it, a run can only `replay`, and
-  requests without a recording fail. CI passes the token to eval runs. Only
-  global setup reads it.
+- `src/recording-rules.ts` is the only place to list recorded traffic,
+  reachable origins, and value patterns.
+- All eval HTTP traffic goes through the proxy. In CI,
+  `scripts/network-jail.sh` rejects other connections. Fix a refused
+  connection by routing it through the proxy, not by allowing its host.
+- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and
+  records new requests once. Without it, a run can only `replay`, and requests
+  without a recording fail. Only global setup reads it.
 - Each run prints `[evals] Recordings: ...` and the first miss of each test.
   Fix the first miss; later misses usually follow from it.
 - Fix a value that changes on each run for all tests, in the fixture or in
-  `values` of the rule, not in one test. For ids and times that only the
-  product makes, add a pattern to `values`. The proxy keys the request without
-  the value and gives a replayed response the value of the current run. Avoid
-  slow patterns, such as `(a+)+`.
+  the rule's `values`, not in one test. For ids and times that only the
+  product makes, add a `values` pattern; the proxy keys without it and replays
+  the current run's value. Avoid slow patterns, such as `(a+)+`.
 - Add a new CI credential to `SECRET_ENV` in `src/recording-rules.ts`.
-  Recordings are public to anyone who can make the same request. Do not record
+  Anyone who can make the same request can read a recording, so do not record
   private responses.
 - `src/stable-setup.ts`, `src/eval-clock.ts`, and `src/fixture/ids.ts` keep
   time, random values, and ids stable. Read them before you add a new fix.
@@ -115,6 +105,6 @@ Pass paths, `-t`, and `--shard` directly after the script. Do not use
 | Harness tests       | `pnpm --filter @sentry/junior-evals test`                                    |
 
 - Do not bind env vars manually. The eval config loads repo env files.
-- Behavioral and integration need Vercel Sandbox and a Quick Tunnel. Guardian
+- Behavioral and integration need Vercel Sandbox and a Quick Tunnel. Guardian,
   router, and classifiers need only AI Gateway access.
 - CI setup and labels: `evals/github-actions.md`.

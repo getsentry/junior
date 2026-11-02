@@ -3,7 +3,7 @@
 ## Boundaries
 
 - Core owns validation, edit access, creator-only rules, revision checks,
-  Schedule previews, and the Event catalog. The page shows core errors. It
+  Schedule previews, and the Event catalog. The page shows core errors and
   does not repeat these rules.
 - Preview requests never save or run work.
 - Completed scheduled Automations are read-only.

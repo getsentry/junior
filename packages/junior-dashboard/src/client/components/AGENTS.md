@@ -1,7 +1,6 @@
 # Dashboard UI kit
 
-Shared dashboard components live here. Feature pages compose them instead of
-copying Tailwind blocks. Follow `policies/frontend-components.md`.
+Feature pages compose these components instead of copying Tailwind blocks.
 `pnpm dashboard-style:check` enforces the token rules.
 
 ## shadcn/ui
@@ -10,21 +9,21 @@ copying Tailwind blocks. Follow `policies/frontend-components.md`.
   `pnpm --filter @sentry/junior-dashboard exec shadcn add <component>`. They go
   to `ui/`.
 - `ui/` files are shadcn source on dashboard tokens. Remove unused exports.
-  Change a `ui/` file when every caller needs the same style.
-- Use `ui/` components directly. Add an app component only when it adds
-  structure or behavior, not to rename a `ui/` component or its props.
+  Change a `ui/` file only when every caller needs the same style.
+- Use `ui/` components directly. Add an app component only for new structure
+  or behavior, not to rename a `ui/` component or its props.
 - Do not apply the CLI's global border or body resets. Keep the Tailwind
   radius scale.
 
 ## Component rules
 
-- Use `ui/alert-dialog` for every confirmation. Never use `window.confirm`.
-- Use `ui/dialog` for a short task form. Never put a form in a `Drawer` or
-  `DetailsPanel`. Use `useSheet` for each dialog and mount it only while open.
-- Use `ui/trace` for transcript activity rows. Put only inline elements in
-  the row button.
-- Give an icon-only control a label with `TooltipContent size="compact"`.
-  Never use the native `title` attribute.
+- Confirmations use `ui/alert-dialog`, not `window.confirm`.
+- Short task forms use `ui/dialog`, never a `Drawer` or `DetailsPanel`. Use
+  `useSheet` for each dialog and mount it only while open.
+- Transcript activity rows use `ui/trace`. Put only inline elements in the
+  row button.
+- Label icon-only controls with `TooltipContent size="compact"`, not the
+  native `title` attribute.
 - Set `focusableWhenDisabled` on a `ui/button` tooltip trigger that can be
   disabled.
 - Build form fields from `ui/field`. Use the ids `<control id>-error` and
@@ -41,13 +40,13 @@ copying Tailwind blocks. Follow `policies/frontend-components.md`.
 
 - Keep every color in a token in `src/tailwind.css`, so each theme can
   redefine it. Use `light:` only for values that no token covers.
-- Use `var(--color-*)` for chart series. Never use hex values.
-- Do not use `white/*` or `black/*` fills, borders, or rings, or hex surface
+- Chart series use `var(--color-*)`, not hex values.
+- No `white/*` or `black/*` fills, borders, or rings, and no hex surface
   colors. Shadows may use black.
 - Use `outline-dashboard-focus` for keyboard focus only.
 - Use the named type scale. Keep `text-2xs` for compact badges and chart
   annotations.
-- Labels use sentence case. Do not use uppercase or letter spacing.
+- Labels use sentence case, with no uppercase or letter spacing.
 
 ## Navigation
 
@@ -56,10 +55,10 @@ copying Tailwind blocks. Follow `policies/frontend-components.md`.
 
 ## Ownership
 
-- Conversation mobile geometry has hard owners: `layout/VisualViewportShell`,
-  `conversations/ChatLayout`, and `conversations/ComposerDock`. Pages pass
-  children only. Do not add viewport, offset, or safe-area math in pages.
-- Home and create must not use `ComposerDock`.
-- Feature surfaces stay under `conversations/` or `pages/` until two real
-  callers share them. Add a named component on the second real use.
+- `layout/VisualViewportShell`, `conversations/ChatLayout`, and
+  `conversations/ComposerDock` own conversation mobile geometry. Pages pass
+  children only, with no viewport, offset, or safe-area math.
+- Home and create do not use `ComposerDock`.
+- Feature surfaces stay under `conversations/` or `pages/` until a second
+  real caller needs them.
 - Keep Tailwind classes on the owning component.
