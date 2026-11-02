@@ -79,4 +79,38 @@ describe("conversation activity sections", () => {
       { conversations: ["older"], label: "Older" },
     ]);
   });
+
+  it("puts attention conversations first, ahead of Priority", () => {
+    const sections = buildConversationSections(
+      [
+        conversation("priority", "2026-08-03T11:00:00-07:00", {
+          isPriority: true,
+        }),
+        conversation("waiting-priority", "2026-08-03T10:00:00-07:00", {
+          isPriority: true,
+        }),
+        conversation("finished-unseen", "2026-08-02T12:00:00-07:00"),
+        conversation("today", "2026-08-03T09:00:00-07:00"),
+      ],
+      {
+        attentionIds: new Set(["waiting-priority", "finished-unseen"]),
+        nowMs: Date.parse("2026-08-03T12:00:00-07:00"),
+        timeZone: "America/Los_Angeles",
+      },
+    );
+
+    expect(
+      sections.map((section) => ({
+        conversations: section.conversations.map((item) => item.id),
+        label: section.label,
+      })),
+    ).toEqual([
+      {
+        conversations: ["waiting-priority", "finished-unseen"],
+        label: "Needs your attention",
+      },
+      { conversations: ["priority"], label: "Priority" },
+      { conversations: ["today"], label: "Today" },
+    ]);
+  });
 });

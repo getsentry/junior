@@ -14,9 +14,12 @@ import type { Conversation } from "../types";
 import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
+import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
@@ -30,7 +33,15 @@ import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 
 type ConversationSidebarEntry =
-  | { first: boolean; key: string; kind: "section"; label: string }
+  | {
+      collapsed: boolean;
+      count: number;
+      first: boolean;
+      key: string;
+      kind: "section";
+      label: string;
+      sectionKey: string;
+    }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
 // Tracks the attempted direction alongside the conversation so a failed
@@ -78,17 +89,30 @@ export function ConversationSidebar(props: {
     );
     setArchivedConversation(conversation);
   }, []);
-  // Rebuild section rows only when the feed or timezone changes. Avoid fresh
-  // Date.now() arrays on unrelated parent renders while the reader is scrolling.
+  const { collapsedKeys, toggle: toggleSection } =
+    useCollapsedConversationSections();
+  // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
+  // arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
     () =>
       conversationSidebarEntries(
         buildConversationSections(props.conversations, {
+          attentionIds: attentionConversationIds(
+            props.waitingConversationIds,
+            props.finishedConversationIds,
+          ),
           nowMs: Date.now(),
           timeZone: props.timeZone,
         }),
+        collapsedKeys,
       ),
-    [props.conversations, props.timeZone],
+    [
+      collapsedKeys,
+      props.conversations,
+      props.finishedConversationIds,
+      props.timeZone,
+      props.waitingConversationIds,
+    ],
   );
   return (
     <aside
@@ -170,14 +194,13 @@ export function ConversationSidebar(props: {
             items={entries}
             renderItem={(entry) =>
               entry.kind === "section" ? (
-                <h3
-                  className={cn(
-                    "m-0 px-3 pb-1 font-sans text-xs font-medium text-dashboard-text-muted",
-                    entry.first ? "pt-1" : "pt-3",
-                  )}
-                >
-                  {entry.label}
-                </h3>
+                <ConversationSectionHeading
+                  className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                  collapsed={entry.collapsed}
+                  count={entry.count}
+                  label={entry.label}
+                  onToggle={() => toggleSection(entry.sectionKey)}
+                />
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
@@ -253,20 +276,27 @@ function ConversationRowsLoading() {
 
 function conversationSidebarEntries(
   sections: ConversationSection[],
+  collapsedKeys: ReadonlySet<string>,
 ): ConversationSidebarEntry[] {
-  return sections.flatMap((section, index) => [
-    {
-      first: index === 0,
-      key: `section-${section.key}`,
-      kind: "section" as const,
-      label: section.label,
-    },
-    ...section.conversations.map((conversation) => ({
-      conversation,
-      key: `conversation-${conversation.id}`,
-      kind: "conversation" as const,
-    })),
-  ]);
+  return sections.flatMap((section, index) => {
+    const collapsed = collapsedKeys.has(section.key);
+    return [
+      {
+        collapsed,
+        count: section.conversations.length,
+        first: index === 0,
+        key: `section-${section.key}`,
+        kind: "section" as const,
+        label: section.label,
+        sectionKey: section.key,
+      },
+      ...(collapsed ? [] : section.conversations).map((conversation) => ({
+        conversation,
+        key: `conversation-${conversation.id}`,
+        kind: "conversation" as const,
+      })),
+    ];
+  });
 }
 
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {

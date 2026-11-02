@@ -8,6 +8,7 @@ export type ConversationSection = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SECTION_ORDER = [
+  "attention",
   "priority",
   "today",
   "yesterday",
@@ -17,10 +18,18 @@ const SECTION_ORDER = [
   "older",
 ] as const;
 
-/** Group conversations into progressively broader activity sections. */
+/**
+ * Group conversations into progressively broader activity sections.
+ *
+ * Conversations in `attentionIds` go to the first section, before Priority.
+ */
 export function buildConversationSections(
   conversations: Conversation[],
-  options: { nowMs: number; timeZone: string },
+  options: {
+    attentionIds?: ReadonlySet<string>;
+    nowMs: number;
+    timeZone: string;
+  },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
   const sections = new Map<string, ConversationSection>();
@@ -30,12 +39,9 @@ export function buildConversationSections(
 
   for (const conversation of sorted) {
     const time = activityTime(conversation);
-    const section = conversationSection(
-      conversation,
-      time,
-      nowDay,
-      options.timeZone,
-    );
+    const section = options.attentionIds?.has(conversation.id)
+      ? { key: "attention", label: "Needs your attention" }
+      : conversationSection(conversation, time, nowDay, options.timeZone);
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -47,6 +53,30 @@ export function buildConversationSections(
   return [...sections.values()].sort(
     (left, right) => sectionRank(left.key) - sectionRank(right.key),
   );
+}
+
+/** Join the conversations that wait on the viewer or finished unseen. */
+export function attentionConversationIds(
+  waitingConversationIds: ReadonlySet<string>,
+  finishedConversationIds: ReadonlySet<string>,
+): ReadonlySet<string> {
+  return new Set([...waitingConversationIds, ...finishedConversationIds]);
+}
+
+/** Move attention conversations to the front and keep the order otherwise. */
+export function attentionFirst(
+  conversations: Conversation[],
+  attentionIds: ReadonlySet<string>,
+): Conversation[] {
+  if (attentionIds.size === 0) return conversations;
+  return [
+    ...conversations.filter((conversation) =>
+      attentionIds.has(conversation.id),
+    ),
+    ...conversations.filter(
+      (conversation) => !attentionIds.has(conversation.id),
+    ),
+  ];
 }
 
 function activityTime(conversation: Conversation): number {

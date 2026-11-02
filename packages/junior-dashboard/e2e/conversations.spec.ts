@@ -234,6 +234,42 @@ test("shows the repo name for one annotation scope on mobile", async ({
   ).toBeVisible();
 });
 
+test("puts waiting conversations first and collapses sections", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/review-items/waiting-conversations", (route) =>
+    route.fulfill({
+      json: { conversationIds: ["slack:CQA123:1770000000.000100"] },
+    }),
+  );
+  await page.goto(dashboard.baseURL);
+
+  const list = page.getByRole("list", { name: "Your conversations" });
+  const attention = list.getByRole("button", {
+    name: "Needs your attention",
+  });
+  const waitingCard = list.getByRole("listitem").filter({
+    has: page.getByRole("heading", { name: "Checkout latency triage" }),
+  });
+  await expect(list.getByRole("button").first()).toHaveText(
+    "Needs your attention",
+  );
+  await expect(attention).toHaveAttribute("aria-expanded", "true");
+  await expect(waitingCard).toBeVisible();
+
+  await attention.click();
+  await expect(attention).toHaveAttribute("aria-expanded", "false");
+  await expect(waitingCard).toHaveCount(0);
+
+  await page.reload();
+  await expect(attention).toHaveAttribute("aria-expanded", "false");
+  await expect(waitingCard).toHaveCount(0);
+
+  await attention.click();
+  await expect(waitingCard).toBeVisible();
+});
+
 test("collapses long pending message stacks", async ({ page, dashboard }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.setViewportSize({ height: 900, width: 1600 });
