@@ -45,7 +45,10 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-import { usersInfoOk } from "../fixtures/slack/factories/api";
+import {
+  conversationsInfoOk,
+  usersInfoOk,
+} from "../fixtures/slack/factories/api";
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -1113,18 +1116,41 @@ describe("Scheduled automation tools", () => {
     ).resolves.toMatchObject({
       automations: [{ id: automationId, isCreator: false }],
     });
-    await expect(
-      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
-        automationId,
-        destination: "current_conversation",
-      }),
-    ).rejects.toThrow("Only the automation creator can move this automation.");
     // Only the creator can start work with the creator's credentials.
     await expect(
       executeTool(createRunAutomationNowTool(readerElsewhere, NO_EVENTS), {
         automationId,
       }),
     ).rejects.toThrow("Only the creator can resume it or run it now.");
+    // A reader can move it to a public channel that they name. Junior joins
+    // the channel, and the move drops the creator's credentials.
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "CPRIVATE", isPrivate: true }),
+    });
+    await expect(
+      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
+        automationId,
+        destination: "<#CPRIVATE>",
+      }),
+    ).rejects.toThrow("Only a public channel can be named as a destination.");
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: false }),
+    });
+    await expect(
+      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
+        automationId,
+        destination: "<#CPUBLIC|security-alerts>",
+      }),
+    ).resolves.toMatchObject({
+      automation: {
+        credentialMode: "system",
+        destination: { channel: "CPUBLIC" },
+        conversationAccess: { audience: "channel", visibility: "public" },
+      },
+    });
+    expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
+      { params: { channel: "CPUBLIC" } },
+    ]);
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
         automationId,
@@ -1245,14 +1271,23 @@ describe("Scheduled automation tools", () => {
       },
     });
 
+    // Another actor can change where results go. The change drops the
+    // creator's credentials.
     await expect(
       executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
         automationId: created.automation.id,
-        outcomes: [],
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
       }),
-    ).rejects.toThrow(
-      "Only the scheduled automation creator can change message destinations.",
-    );
+    ).resolves.toMatchObject({
+      automation: {
+        credentialMode: "system",
+        outcomes: [
+          { action: "send_message", destination: { channel: "C123" } },
+        ],
+      },
+    });
 
     const updated = await executeTool(
       createUpdateAutomationTool(otherActor, NO_EVENTS),

@@ -311,7 +311,9 @@ test("opens scheduled and event automations in the native Automations view", asy
     name: "Automation status",
   });
   await expect(
-    publicRail.getByText(/Only Avery Chen can change where results go/),
+    publicRail.getByText(
+      /Only Avery Chen can turn on their connected accounts/,
+    ),
   ).toBeVisible();
   const creatorLink = publicRail.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
