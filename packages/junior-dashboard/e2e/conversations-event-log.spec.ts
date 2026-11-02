@@ -625,6 +625,10 @@ for (const view of [desktop, mobile]) {
     await page.route(`**/api/review-items/${item.id}`, (route) =>
       route.fulfill({ json: item }),
     );
+    // The Conversation also lists the item above the message box.
+    await page.route(`**/api/review-items?*`, (route) =>
+      route.fulfill({ json: { items: [item] } }),
+    );
     report.events = [
       ...Array.from({ length: 20 }, (_, seq) => ({
         seq,
@@ -693,5 +697,8 @@ for (const view of [desktop, mobile]) {
     await prompt.getByRole("button", { name: "Write a message" }).click();
     await expect(composer).toBeFocused();
     await expect(prompt).toBeHidden();
+    await screenshot(page, "conversation-review-item-message", {
+      view: view.name,
+    });
   });
 }
