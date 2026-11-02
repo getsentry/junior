@@ -1,4 +1,29 @@
 # Changelog
+## 0.271.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Move API tokens and identities under Settings by @dcramer with @sentry-junior in [#2551](https://github.com/getsentry/junior/pull/2551)
+- Show the inbox as one decision at a time by @dcramer with @sentry-junior in [#2550](https://github.com/getsentry/junior/pull/2550)
+
+#### Other
+
+- (review-desk) Link Review items to the Turn that added them by @dcramer with @sentry-junior in [#2548](https://github.com/getsentry/junior/pull/2548)
+- (review-items) Mark the recommended option of a question by @dcramer with @sentry-junior in [#2549](https://github.com/getsentry/junior/pull/2549)
+- (slack) Optionally auto-join new public channels by @dcramer with @sentry-junior in [#2560](https://github.com/getsentry/junior/pull/2560)
+
+### Bug Fixes 🐛
+
+- (artifacts) Publish images without Guardian review by @dcramer with @sentry-junior in [#2552](https://github.com/getsentry/junior/pull/2552)
+- (review-items) Assign plugin notices only to people in their Conversation by @dcramer with @sentry-junior in [#2546](https://github.com/getsentry/junior/pull/2546)
+- (slack) Drop the [Continued below] marker and split replies at 4,000 chars by @dcramer with @sentry-junior in [#2555](https://github.com/getsentry/junior/pull/2555)
+
+### Documentation 📚
+
+- (agents) Compress the root AGENTS.md and add "Don't state the obvious" by @dcramer with @sentry-junior in [#2547](https://github.com/getsentry/junior/pull/2547)
+
 ## 0.270.0
 
 ### New Features ✨
