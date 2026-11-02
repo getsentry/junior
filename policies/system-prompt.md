@@ -39,8 +39,9 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
-   `<slack-actions>`, `<failure-reporting>`, `<output>`. A short answer that
-   says what is not known is complete; that is not a blocked task.
+   `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` states
+   intent: precise and concise. No length targets or per-reply content lists.
+   Put guidance for one situation in that tool result or input.
 7. **Personality.** The consumer's `SOUL.md`: voice and tone only.
 8. **World.** The consumer's `WORLD.md`: operator facts and workflow rules.
 9. **Plugin guidance.** `<plugin-system-context>` from plugin `systemPrompt`
