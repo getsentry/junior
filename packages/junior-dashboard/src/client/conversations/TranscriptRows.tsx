@@ -17,11 +17,16 @@ export function TranscriptRows({
 
 /** Leave room for control outlines inside the mobile row's paint bounds. */
 export function TranscriptRow(props: {
+  /** Stable row id that holds the reader's place while layout changes. */
+  anchorKey?: string;
   children: ReactNode;
   indent?: boolean;
 }) {
   return (
-    <div className="mobile-transcript-row -mx-2 px-2 py-1.5">
+    <div
+      className="mobile-transcript-row -mx-2 px-2 py-1.5"
+      data-scroll-anchor={props.anchorKey}
+    >
       {props.indent ? (
         <div className="pl-11">{props.children}</div>
       ) : (

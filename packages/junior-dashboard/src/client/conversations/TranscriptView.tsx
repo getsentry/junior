@@ -63,7 +63,6 @@ export function Transcript(props: {
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
-    loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
     view,
     versions: {
@@ -72,10 +71,7 @@ export function Transcript(props: {
     },
   });
 
-  const loadPreviousPage = () => {
-    bottomPinning.preserveViewportForPrepend();
-    props.onLoadPreviousPage?.();
-  };
+  const loadPreviousPage = () => props.onLoadPreviousPage?.();
   const previousPageRef = useAutoLoadPreviousPage({
     enabled: Boolean(
       props.onLoadPreviousPage &&
@@ -97,7 +93,11 @@ export function Transcript(props: {
 
   return (
     <TranscriptSearchProvider query={search}>
-      <div className="grid min-w-0" ref={bottomPinning.contentRef}>
+      {/* The pinning hook holds the reader's place; browser anchoring would fight it. */}
+      <div
+        className="grid min-w-0 [overflow-anchor:none]"
+        ref={bottomPinning.contentRef}
+      >
         {redacted ? (
           <div className="mb-2 min-w-0 break-words text-sm leading-relaxed text-dashboard-text-muted">
             Hidden because this conversation is not public.
