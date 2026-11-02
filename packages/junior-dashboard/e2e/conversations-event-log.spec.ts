@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 import { mockDashboardApis } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -578,12 +578,12 @@ for (const width of [1440, 390]) {
   });
 }
 
-for (const width of [1440, 390]) {
-  test(`shows the start of a new tall review item card (${width}px)`, async ({
+for (const view of [desktop, mobile]) {
+  test(`shows the start of a new tall review item card (${view.name})`, async ({
     page,
     dashboard,
   }) => {
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize(view);
     const conversationId = "slack:CQA123:1770003600.000200";
     const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
     const response = await page.request.get(`${dashboard.baseURL}${api}`);
@@ -666,5 +666,8 @@ for (const width of [1440, 390]) {
     await expect(
       card.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
+    await screenshot(page, "conversation-review-item-card", {
+      view: view.name,
+    });
   });
 }
