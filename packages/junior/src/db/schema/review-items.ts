@@ -20,7 +20,7 @@ import { juniorUsers } from "./users";
 
 /**
  * One Review item: something that needs a person. See
- * `chat/review-items/README.md`. An action item stores its `request`, and
+ * `chat/review-items/AGENTS.md`. An action item stores its `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
  * and `dismissed`. `closed_by_user_id` is null when an agent closed it.
  */

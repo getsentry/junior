@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
@@ -20,6 +22,7 @@ import {
 } from "@/chat/task-execution/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
+import { getConversationEventStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -33,7 +36,12 @@ import {
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import { createEventSource } from "@sentry/junior-plugin-api";
+import {
+  createEventSource,
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   destination,
@@ -451,11 +459,47 @@ describe("agent invocation conversation work", () => {
       watchEvent,
     }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const markDone = vi.fn((_input: { itemId: string }) => ({}));
+      await createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "upkeep",
+              displayName: "Upkeep",
+              description: "Upkeep test tools",
+            },
+            hooks: {
+              tools: () => ({
+                markDone: definePluginTool({
+                  // The tool checks in code that its effect is safe, so action
+                  // review does not run, also in a child agent.
+                  approvalMode: "approve",
+                  exposure: "direct",
+                  annotations: {
+                    destructiveHint: true,
+                    idempotentHint: true,
+                    openWorldHint: true,
+                    readOnlyHint: false,
+                  },
+                  description: "Mark one item done.",
+                  inputSchema: z.object({ itemId: z.string() }),
+                  outputSchema: pluginToolOutputSchema,
+                  execute: markDone,
+                }),
+              }),
+            },
+          }),
+        ]),
+      });
       const { conversationStore, fixture } = await prepareParentConversation();
       const agentRunner = createModelAgentRunner(
         createModelStream([
           ...(watchEvent ? [{ type: "text" as const, text: "Watching" }] : []),
-          { type: "toolCall", name: "systemTime", arguments: {} },
+          {
+            type: "toolCall",
+            name: "upkeep_markDone",
+            arguments: { itemId: "item-7" },
+          },
           { type: "text", text: "Resumed child result" },
         ]),
       );
@@ -525,7 +569,7 @@ describe("agent invocation conversation work", () => {
           piMessages: expect.arrayContaining([
             expect.objectContaining({
               role: "toolResult",
-              toolName: "systemTime",
+              toolName: "upkeep_markDone",
             }),
           ]),
         });
@@ -576,9 +620,19 @@ describe("agent invocation conversation work", () => {
           projection.filter(
             (message) =>
               message.role === "toolResult" &&
-              message.toolName === "systemTime",
+              message.toolName === "upkeep_markDone",
           ),
         ).toHaveLength(1);
+        // The approve tool skips action review, also in a child, and runs
+        // once across the pause and the pick-up.
+        expect(markDone).toHaveBeenCalledOnce();
+        const events =
+          await getConversationEventStore().loadHistory(childConversationId);
+        expect(
+          events.filter(
+            (event) => event.data.type === "guardian_action_reviewed",
+          ),
+        ).toEqual([]);
       } finally {
         await fixture.close();
       }

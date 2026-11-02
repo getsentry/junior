@@ -1,7 +1,7 @@
 id: no-sandbox-provider-module-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/**/*.ts
   - packages/junior/src/**/*.tsx
@@ -19,7 +19,7 @@ rule:
 id: no-sandbox-provider-module-sibling-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/chat/sandbox/*.ts
 ignores:
@@ -37,7 +37,7 @@ rule:
 id: no-sandbox-provider-module-parent-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/chat/sandbox/*/**/*.ts
 ignores:
@@ -54,7 +54,7 @@ rule:
 id: no-docker-sandbox-provider-module-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/**/*.ts
   - packages/junior/src/**/*.tsx
@@ -72,7 +72,7 @@ rule:
 id: no-docker-sandbox-provider-module-sibling-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/chat/sandbox/*.ts
 ignores:
@@ -90,7 +90,7 @@ rule:
 id: no-docker-sandbox-provider-module-parent-imports
 language: TypeScript
 severity: error
-message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/README.md.
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider(). See packages/junior/src/chat/sandbox/AGENTS.md.
 files:
   - packages/junior/src/chat/sandbox/*/**/*.ts
 ignores:

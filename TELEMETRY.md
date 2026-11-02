@@ -1,42 +1,36 @@
 # Telemetry
 
-## Goal
-
-Use this when investigating Junior production incidents. Start with a Slack
-thread/message, Sentry event, trace ID, event name, or model/tool symptom, then
-use the query recipes below to find the failing turn and next query.
-
-## Where To Query
-
-- Slack thread/footer: query Sentry Logs and Spans by
-  `gen_ai.conversation.id` or `messaging.message.conversation_id`, then run the
-  conversation recipes.
-- Sentry `event_id`: open the Sentry event, copy `trace_id`, then query the
-  trace and matching logs.
-- `trace_id` / `span_id`: open Sentry Traces/Spans first; use logs only to
-  inspect event names and exception fields around that trace.
-- Stable `event.name`: query Sentry Logs, then use the matching domain below for
-  the next pivot.
-- Tool/model symptom: query spans/logs by `gen_ai.tool.name`,
-  `gen_ai.request.model`, or `gen_ai.operation.name`.
+Stable telemetry names and the pivots for a Junior incident investigation.
+`policies/observability.md` owns the naming rules, emission, and data safety.
+The code that emits a signal owns its full attribute list.
 
 ## Investigation Pivots
 
-| Pivot                               | Meaning                       | Found In                  | First Query           |
-| ----------------------------------- | ----------------------------- | ------------------------- | --------------------- |
-| `event_id`                          | captured Sentry error         | failed Slack reply        | open event            |
-| `gen_ai.conversation.id`            | Slack thread/run conversation | Slack footer, logs, spans | query trace/logs      |
-| `trace_id`                          | end-to-end trace              | errors, logs, spans       | open trace            |
-| `span_id`                           | one span in a trace           | logs, spans               | inspect span          |
-| `messaging.message.conversation_id` | Slack thread                  | logs, spans               | thread logs           |
-| `messaging.message.id`              | Slack message timestamp       | logs, spans               | message logs          |
-| `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
-| `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
-| `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
-| `user.id`                           | accountable person            | logs, spans, errors       | person's actions      |
-| `app.task.id`                       | scheduled/event automation id | task lifecycle logs       | task timeline         |
-| `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
-| `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
+Start from what you have. Query Sentry Logs and Spans with the pivot, then
+move to the domain below.
+
+| Pivot                               | Meaning                      | Found in                    |
+| ----------------------------------- | ---------------------------- | --------------------------- |
+| `event_id`                          | captured Sentry error        | failure notice in Slack     |
+| `trace_id` / `span_id`              | one trace / one span         | errors, logs, spans         |
+| `gen_ai.conversation.id`            | Conversation                 | Slack footer, logs, spans   |
+| `messaging.message.conversation_id` | Slack thread                 | logs, spans                 |
+| `messaging.message.id`              | Slack message ts or queue id | logs, spans                 |
+| `messaging.destination.name`        | Slack channel or queue topic | logs, spans                 |
+| `event.name`                        | one stable event structure   | logs                        |
+| `gen_ai.tool.name`                  | tool                         | `gen_ai.execute_tool` spans |
+| `gen_ai.request.model`              | model                        | `gen_ai.chat` spans         |
+| `user.id`                           | accountable person           | logs, spans, errors         |
+| `app.credential.provider`           | auth provider                | auth logs                   |
+| `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
+| `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
+| `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+
+- A fire Conversation uses `agent-dispatch:<dispatch_id>` as
+  `gen_ai.conversation.id`.
+- Production keeps only audit info events (`app.log.audit:true`), such as
+  `sandbox.egress.upstream.requested` for write grants. Outside production,
+  that event is logged for every forwarded request.
 
 ## Query Recipes
 
@@ -148,472 +142,57 @@ sort=-timestamp
 
 ## Identity
 
-Runs, resumes, and the sandbox egress proxy bind the same identity attributes.
-Nested logs and spans inherit them.
+Runs, resumes, and the sandbox egress proxy bind the same identity
+attributes. Nested logs and spans inherit them.
 
-- `user.id`, `user.name`, `user.email`, `user.full_name`: the accountable
-  person. For a user Actor, this is that user. For a system Actor, this is the
-  owner of delegated credentials, such as the Automation creator. It is empty
-  when a system run has no delegated credentials. Sentry also uses `user.id`
-  for its user features.
-- `app.actor.type`, `app.actor.id`: who acted. The type is `user` or `system`.
+- `user.*`: the accountable person. For a system Actor, this is the owner of
+  delegated credentials, such as the Automation creator. It is empty when a
+  system run has no delegated credentials.
+- `app.actor.type` (`user` or `system`), `app.actor.id`: who acted.
 - `app.credential.allowed_when`, `app.task.id`: why delegated credentials were
   allowed, and for which Automation.
-
-Do not add app-specific keys under `user.*`. Put facts about the request in
-`app.*`.
+- Do not add app-specific keys under `user.*`. Put request facts in `app.*`.
 
 ## Domains
 
-### Database Queries
-
-PostgreSQL queries that are slow, frequent, or failing.
-
-Spans: Sentry's automatic `pg` and Neon spans (`sentry.op` `db`, origin
-`auto.db.postgres` or `auto.db.neon`). Node Postgres also adds `pg-pool.connect`
-and `pg.connect` spans.
-
-Attributes: `db.system.name`, `db.namespace`, `db.user`, `db.query.summary`,
-`db.query.text`, `server.address`, `server.port`, `error.type`
-
-`db.query.text` keeps parameter placeholders and never includes parameter values.
-The SDK replaces inline SQL literals with `?` and removes SQL comments.
-Group by `db.query.text` to identify one query shape. Group by
-`db.query.summary` for a lower-cardinality operation and target view.
-
-### Webhook Ingress
-
-Slack or Vercel webhook delivery/routing failures.
-
-Events: `webhook.response.unsuccessful`, `webhook.handler.failed`,
-`slack.event.persist.failed`, `slack.event.routing.failed`,
-`slack.event.enqueue.failed`
-
-Spans: Sentry's automatic `http.server` span, `slack.message.ingress`
-
-Attributes: `http.request.method`, `http.response.status_code`, `url.path`.
-Webhook logs carry `app.request.id`.
-
-Signed Slack message and mention events get a `slack.message.ingress` span
-before membership checks. It carries conversation, channel, and message IDs,
-plus these fields:
-
-- `app.slack.user_id`, `app.slack.bot_id`: sender IDs from the event.
-- `app.slack.team_id`, `app.slack.enterprise_id`: installation envelope IDs.
-- `app.slack.user_team`, `app.slack.source_team`, `app.slack.event_team`:
-  separate Slack fields, not interchangeable membership evidence.
-- `app.slack.event_id`, `app.slack.event_type`, `app.slack.event_subtype`:
-  event correlation and kind.
-- `app.slack.is_ext_shared_channel`: envelope sharing flag, not membership.
-- `app.slack.membership`: `verified`, `unverified`, or `not_checked`.
-  `unverified` includes missing identity data, not just external authors.
-  `not_checked` includes ignored events and failures before the check completes.
-
-Identity fields record `missing` or `invalid` instead of absent or malformed
-values. They do not contain message text, names, emails, or raw payloads.
-A verified author does not imply the message was queued or received a reply.
-These attributes belong to ingress; do not expect them on later worker spans.
-
-```text
-dataset=spans query='span.op:slack.message.ingress gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,app.slack.user_id,app.slack.team_id,app.slack.user_team,app.slack.source_team,app.slack.event_team,app.slack.membership
-sort=timestamp
-```
-
-### Conversation Work
-
-A message was queued, but the worker started late, ran again, or did no work.
-
-Events: `conversation.queue.message.rejected`,
-`conversation.work.processing.disabled`
-
-Spans: `conversation.work.publish` (`queue.publish`),
-`conversation.work.process` (`queue.process`)
-
-Attributes: `gen_ai.conversation.id`, `messaging.system`,
-`messaging.destination.name`, `messaging.message.id`,
-`messaging.message.body.size`, `messaging.message.receive.latency`,
-`messaging.message.retry.count`, `app.worker.outcome`,
-`app.worker.pending_count`
-
-These spans use the [Sentry queue span conventions](https://develop.sentry.dev/sdk/telemetry/traces/modules/queues/),
-so they show in the Sentry Queues view. Each conversation work queue send gets
-one `queue.publish` span. Each queue message that the worker processes gets one
-`queue.process` span. The process span starts a new trace. A Slack `chat.turn`
-span links to it. See Slack Delivery.
-
-On these spans, the `messaging.*` attributes describe the queue, not Slack:
-
-- `messaging.system`: `vercel_queue`.
-- `messaging.destination.name`: the queue topic, such as
-  `junior_conversation_work`.
-- `messaging.message.id`: the Vercel Queue message ID. The publish span does
-  not have it when Vercel Queue accepts the send without an ID.
-- `messaging.message.body.size`: on the publish span, the JSON payload size in
-  bytes.
-- `messaging.message.receive.latency`: on the process span, the milliseconds
-  from queue send to worker start.
-- `messaging.message.retry.count`: on the process span, `0` on the first
-  delivery. Higher values are redeliveries.
-- `app.worker.outcome`: the worker result, such as `completed`, `active`,
-  `no_work`, `yielded`, `lost_lease`, `pending_requeued`, or `failed`.
-  `active` means another worker holds the lease. A rejected message records
-  the reject reason, such as `invalid_record`.
-- `app.worker.pending_count`: pending mailbox messages when the worker read
-  the Conversation state.
-
-```text
-dataset=spans query='span.op:[queue.publish,queue.process] gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,span.op,span.duration,messaging.message.id,messaging.message.receive.latency,messaging.message.retry.count,app.worker.outcome,app.worker.pending_count
-sort=timestamp
-```
-
-### Slack Delivery
-
-Slack accepted the request but no final reply appeared.
-
-Events: `agent.turn.started`, `agent.turn.completed`, `agent.turn.failed`,
-`slack.thread.post.failed`, `assistant.status.update.failed`,
-`slack.action.failed`, `slack.action.retrying`
-
-Spans: `chat.turn`, `chat.reply`, `chat.app_home_opened`,
-`chat.app_home_disconnect`
-
-Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
-`messaging.message.conversation_id`, `messaging.destination.name`,
-`app.slack.reply_stage`, `app.slack.error_code`, `app.slack.api_error`,
-`app.turn.input_count`, `app.turn.delivery_lag_ms`, `app.turn.wait_ms`
-
-A Slack `chat.turn` span records mailbox timing for its input messages:
-
-- `app.turn.input_count`: input messages in the batch that started the turn.
-- `app.turn.delivery_lag_ms`: Slack send time to webhook receipt for the
-  oldest input message.
-- `app.turn.wait_ms`: webhook receipt of the oldest input message to the start
-  of the `chat.turn` span. It includes queue wait and worker setup.
-
-For the oldest input message, delivery lag, wait, and the `chat.turn` duration
-are contiguous.
-
-A Slack `chat.turn` span is in the trace of a Slack webhook request:
-
-- Ingress stores the `sentry-trace` and `baggage` headers of its
-  `slack.message.ingress` span on the mailbox entry.
-- `chat.turn` continues the trace of the oldest input message that has these
-  headers. Its parent is that `slack.message.ingress` span. The trace keeps the
-  sampling decision of the ingress request.
-- `chat.turn` has a span link to the `slack.message.ingress` span of each other
-  input message, and a span link to the `queue.process` span of the worker.
-- Without stored headers, `chat.turn` is a child of the `queue.process` span.
-  Headers that are not valid start a new trace.
-
-A Turn that yields, times out, or waits for auth continues in a resumed slice.
-Each resumed slice has its own `chat.turn` span in the trace of the first slice:
-
-- The first save of the Turn cursor stores the active `sentry-trace` and
-  `baggage` headers. Later saves keep them.
-- A resumed `chat.turn` continues that trace. Its parent is the span that was
-  active at the first save. It has a span link to the `queue.process` span of
-  the worker.
-
-The timing attributes are absent when the value is negative. A negative value
-is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
-spans do not record these attributes.
-
-```text
-dataset=spans query='span.op:chat.turn has:app.turn.wait_ms'
-fields=timestamp,trace,span.duration,app.turn.input_count,app.turn.delivery_lag_ms,app.turn.wait_ms
-sort=-app.turn.wait_ms
-```
-
-First feedback is the earliest `http.client` span for
-`POST slack.com/api/reactions.add` or
-`POST slack.com/api/assistant.threads.setStatus` in the turn's trace. For a
-mention, ingress adds the processing reaction before the worker runs. Use the
-ingress `reactions.add` span for a mention. It is in the same trace as the
-turn.
-
-A mention turn also calls `reactions.add` again, and Slack returns an
-`already_reacted` error. This is a known double reaction. #2318 tracks it.
-
-Each reply post attempt has an `http.client` span named
-`POST slack.com/api/chat.postMessage` under `chat.turn`. It carries
-`messaging.message.id` when Slack accepts the post.
-
-#### Turn latency
-
-Use these spans to split the time of one Slack turn into phases. Most phases
-are not direct children of `chat.turn`. `chat.reply` and
-`gen_ai.invoke_agent` sit between them, so walk the whole tree.
-
-- Delivery and queue wait: `app.turn.delivery_lag_ms` and `app.turn.wait_ms`
-  on `chat.turn`.
-- Setup before the agent starts, under `chat.reply`:
-  `chat.route_execution_profile` (router), `plugin.hook` with
-  `app.plugin.hook:userPrompt` (memory recall and other prompt context), and
-  `sandbox.acquire` plus `sandbox.repository_instructions.read` when the
-  Conversation already has a sandbox.
-- Each model call: `gen_ai.chat` under `gen_ai.invoke_agent`.
-- Each tool call: `gen_ai.execute_tool`. For sandbox tools, compare it with the
-  nested `bash` or `sandbox.*` span to find overhead around the operation.
-- Work between model calls: `agent.step.prepare`. Pi waits for it before each
-  later model call. It contains `agent.repository_instructions.refresh`,
-  steering reads, and context compaction.
-- Progress saves: `turn.checkpoint.save` with `app.turn.checkpoint.mode`.
-  The agent loop waits for a `running` save after each step that had tool
-  results.
-- Visible output: `POST slack.com/api/chat.postMessage` spans.
-
-Time between `gen_ai.chat` spans that no span covers is still unlabeled.
-
-```text
-dataset=spans query='span.op:[agent.step.prepare,agent.repository_instructions.refresh,turn.checkpoint.save,plugin.hook]'
-fields=span.op,app.repository_instructions.outcome,app.plugin.hook,app.plugin.name,count(),p50(span.duration),p90(span.duration),sum(span.duration)
-sort=-sum(span.duration)
-```
-
-### Agent And Model
-
-The turn timed out, returned no useful answer, or used unexpected reasoning.
-
-Events: `agent.message.received`, `agent.message.generated`,
-`agent.turn.timed_out`,
-`agent.turn.provider_error`, `agent.turn.execution.failed`,
-`agent.turn.empty_output.retrying`,
-`agent.turn.empty_output.exhausted`, `agent.turn.automation_result.reminded`,
-`assistant.reply.generation.failed`,
-`guardian.action_review.retrying`, `guardian.action_review.exhausted`
-
-`guardian.action_review.exhausted` is a tool-boundary Sentry capture after three
-consecutive action-review denials. The agent still receives a normal tool
-rejection that says not to keep retrying.
-
-Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`,
-`agent.step.prepare`, `agent.repository_instructions.refresh`,
-`turn.checkpoint.save`
-
-Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
-`gen_ai.response.finish_reasons`, `app.ai.outcome`, `app.automation.result`,
-`app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
-`gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
-`gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
-`app.ai.empty_output.attempt`, `app.ai.provider_error.kind`,
-`app.ai.provider_error.summary`, `app.ai.provider_error.retry_attempt`,
-`app.guardian.review_attempt`,
-`app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
-`app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
-`app.ai.cost.total_usd`, `app.ai.time_to_first_byte_ms`,
-`gen_ai.response.time_to_first_chunk`, `app.ai.first_token_type`,
-`gen_ai.response.streaming`, `app.repository_instructions.outcome`,
-`app.turn.checkpoint.mode`
-
-Each `gen_ai.chat` span records how long the model took to start its reply.
-Both times start just before the model request:
-
-- `app.ai.time_to_first_byte_ms`: milliseconds to the first stream event of
-  any type. This is almost always Pi's `start` event, which Pi sends when the
-  HTTP response arrives.
-- `gen_ai.response.time_to_first_chunk`: seconds to the first event with model
-  content. This is the time to first token. The OTel GenAI and Sentry
-  conventions use this name and unit for the first content chunk.
-- `app.ai.first_token_type`: the type of that first content event. Content
-  events are the content block events: `text_*`, `thinking_*`, and
-  `toolcall_*`. Block `*_start` events count, because the model has started
-  the block and a tool call start already has the tool name. `start`, `done`,
-  and `error` do not count.
-- `gen_ai.response.streaming`: `true` when any event arrived. `false` when the
-  call failed or was aborted before any event. A terminal `error` event is not
-  a response event. A call that fails after `start` but before content has a
-  time to first byte and no time to first token.
-
-```text
-dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,gen_ai.request.model,app.ai.time_to_first_byte_ms,gen_ai.response.time_to_first_chunk,app.ai.first_token_type,gen_ai.response.streaming,span.duration
-sort=timestamp
-```
-
-When a Conversation has a sandbox, `agent.repository_instructions.refresh`
-reads the repository `AGENTS.md` files and repo skill list again before each
-later model call. `app.repository_instructions.outcome` tells what the model
-saw:
-
-- `unchanged`: the instructions were the same as the visible ones.
-- `added`: instructions appeared for the first time.
-- `updated`: the visible instructions changed.
-- `removed`: the visible instructions no longer apply.
-- `none`: no instructions were found and none were visible.
-
-`turn.checkpoint.save` records `app.turn.checkpoint.mode`: `running`,
-`paused`, `completed`, or `failed`.
-
-### Tools, MCP, And Sandbox
-
-A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
-
-Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
-`mcp.tool_annotations.missing`, `plugin.tool_annotations.missing`,
-`mcp.tool_manager.close.failed`, `sandbox.boot.requested`,
-`sandbox.network_policy_restore.failed`
-
-Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
-`sandbox.snapshot.resolve`, `sandbox.sync_skills`, `sandbox.docker.ensure`,
-`sandbox.repository_instructions.read`, `bash`
-
-Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
-`gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
-`process.executable.name`, `process.exit.code`, `app.sandbox.source`,
-`app.sandbox.acquire.outcome`, `app.sandbox.sync.skipped`,
-`app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
-`app.sandbox.search.parsed_records`,
-`app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
-`app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
-`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`,
-`app.repository_instructions.repo_count`, `app.repository_instructions.found`
-
-`app.sandbox.acquire.outcome` on `sandbox.acquire` tells which path returned
-the sandbox:
-
-- `memory`: the runtime already held the sandbox.
-- `resumed`: `sandbox.get` reopened the stored sandbox.
-- `created`: `sandbox.create` booted a new sandbox. Its
-  `app.sandbox.source` and `app.sandbox.snapshot.*` attributes tell how.
-
-`app.sandbox.sync.skipped` on `sandbox.sync_skills` is `true` when the sandbox
-already had the current skill files, so no files were copied.
-
-`sandbox.docker.ensure` starts the Docker daemon when a sandbox is prepared.
-
-`sandbox.repository_instructions.read` reads the repository instructions from
-the sandbox. It runs at turn start and inside each
-`agent.repository_instructions.refresh`.
-`app.repository_instructions.repo_count` is the number of repository folders
-checked. `app.repository_instructions.found` is `true` when an `AGENTS.md` was
-found. The span does not record paths or file contents.
-
-Workspace switches create their sandbox outside `sandbox.acquire`. To find the
-sandbox cost of one turn, add the durations of the top-level `sandbox.*` spans
-under its `chat.turn` span. Do not add nested `sandbox.*` spans again.
-
-```text
-dataset=spans query='span.op:sandbox.acquire'
-fields=timestamp,trace,span.duration,app.sandbox.acquire.outcome
-sort=-span.duration
-```
-
-Sandbox egress events: `sandbox.egress.upstream.requested` is logged for every
-forwarded request outside production. In production, it is logged only for
-write grants, as an audit event. Attributes: `app.provider.name`,
-`app.grant.name`, `app.grant.access`, `app.log.audit`, and the identity
-attributes below. The proxy binds them from the signed credential token.
-
-### Scheduled automations
-
-A scheduled automation was created, claimed, dispatched, completed, or failed
-without an obvious Slack error.
-
-Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claimed`,
-`scheduled_automation.run.dispatched`, `scheduled_automation.run.completed`,
-`scheduled_automation.run.failed`, `scheduled_automation.run.blocked`,
-`scheduled_automation.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
-skips), `scheduled_automations.heartbeat.dispatched`,
-`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`,
-`automation.blocked_notice.failed` (the creator notice for a blocked
-Scheduled automation or Event automation did not send)
-
-Spans: create-turn `gen_ai.execute_tool` for `createAutomation`; fire
-path `POST /api/internal/agent/continue` for the dispatch conversation
-
-Attributes: `app.task.id`, `app.task.type`, `app.task.status`,
-`app.task.schedule.kind`, `app.task.schedule.timezone`,
-`app.task.credential_mode`, `app.task.destination.channel_id`,
-`app.task.destination.team_id`, `app.task.destination.visibility`,
-`app.task.destination.audience`, `app.task.next_run_at`, `app.task.run.id`,
-`app.task.run.status`, `app.task.run.scheduled_for`,
-`app.task.result_message_ts`, `app.dispatch.id`,
-`messaging.destination.name`
-
-Pivot from create confirmation or Tasks page with `app.task.id`. From a fire
-conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
-`gen_ai.conversation.id`.
-
-### Review items
-
-A Review item change did not reach a linked Conversation, or a Slack card did
-not change.
-
-Spans: `review_item.deliver` wraps the work after each change: the surfaces
-show the new state, then the linked Conversations get their messages. Parent
-spans are the agent tool call (`gen_ai.execute_tool` for `addReviewItem` or
-`updateReviewItem`), the review desk API request,
-`chat.slack_review_item_click` / `chat.slack_review_item_submit`, or the
-Slack event or dashboard message request of a reply in the thread.
-
-Events: `review_item.message.failed` (one linked Conversation did not get the
-message; the change call fails and a retry sends only missing messages),
-`review_item.slack_card.sync.failed` (cards did not change; the next
-delivery of the item shows its latest state),
-`review_item.slack_input.persist.failed` (the Slack thread of a card click
-got a message instead of Slack input)
-
-Attributes: `app.review_item.id`, `app.review_item.change` (`content` for an
-agent content change, else `taken`, `submitted`, `completed`, `dismissed`,
-`replied`, or `closed`), `app.review_item.kind`, `app.review_item.status`,
-`app.review_item.visibility`, `app.review_item.conversation_count`,
-`gen_ai.conversation.id` (the Conversation that missed a message)
-
-Pivot from a review desk item with `app.review_item.id`.
-
-### Auth And Resume
-
-A turn parked for auth, resumed late, or failed after callback.
-
-Events: `sandbox.egress.credential.needed`,
-`sandbox.egress.credential.unavailable`, `sandbox.egress.upstream_auth.rejected`,
-`sandbox.egress.upstream_auth.retrying`, `plugin.credential.rejected`,
-`subscribed_message.authorization.required`, `agent.continue.schedule.failed`,
-`agent.continue.lock.busy`, `agent.continue.lock.retrying`,
-`oauth.callback.resume.completed`, `oauth.callback.resume.busy`,
-`mcp.oauth_callback.failed`
-
-Spans: resumed `chat.turn`, `chat.reply`
-
-Attributes: `app.credential.provider`, `app.credential.delivery`,
-`app.ai.retryable_reason`, `app.ai.session_id`,
-`app.ai.resume_session_version`
-
-### Skills And Plugins
-
-A skill/tool is missing, plugin discovery failed, or capability activation looks wrong.
-
-Events: `startup.discovery.completed`, `plugin.loaded`,
-`skill.directory.read.failed`, `skill.frontmatter.invalid`,
-`skill.load.stat.failed`, `plugin.root.read.failed`
-
-Spans: `plugin.hook`; active turn spans carry plugin/skill attributes
-
-Attributes: `app.skill.name`, `app.skill.count`, `app.plugin.name`,
-`app.plugin.count`, `app.plugin.has_mcp`, `app.capability.names`,
-`file.directory`, `app.file.skill_directory`, `app.plugin.hook`
-
-A `plugin.hook` span times one plugin hook call. `app.plugin.hook` is
-`userPrompt`, `sandboxPrepare`, or `beforeToolExecute`. `app.plugin.name` names
-the plugin. Memory recall runs in the memory plugin's `userPrompt` hook.
-
-### Attachments And Web Search
-
-Screenshots, file attachments, image context, or web search failed.
-
-Events: `attachment.resolution.failed`, `attachment.size_limit.skipped`,
-`image.attachment.processing.failed`, `conversation.image.context.hydrated`,
-`conversation.image.vision.failed`, `web.search.failed`
-
-Spans: model/tool spans around vision or search calls
-
-Attributes: `app.message.attachment_count`,
-`app.message.prompt_attachment_count`, `app.conversation_image.analyzed`,
-`app.web_search.query`, `app.web_search.retryable`, `app.web_search.timeout`,
-`file.name`, `file.size`, `app.file.id`, `app.file.mime_type`
+| Symptom                              | Events and spans                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Webhook not routed                   | `webhook.*`, `slack.event.*`, span `slack.message.ingress`                                                   |
+| Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                        |
+| No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`                |
+| Timeout, empty answer, bad reasoning | `agent.turn.*`, `guardian.action_review.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare` |
+| Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`             |
+| Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
+| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
+| Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
+| Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
+| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
+
+## Invariants
+
+- `slack.message.ingress` records sender, team, and `app.slack.membership`
+  (`verified`, `unverified`, `not_checked`) before membership checks. Identity
+  fields record `missing` or `invalid`, never message text, names, or emails.
+  These attributes are only on ingress spans.
+- On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
+  They follow the Sentry queue span conventions. `queue.process` starts a new
+  trace.
+- `chat.turn` continues the trace of the oldest input `slack.message.ingress`
+  span and links to the other inputs and to `queue.process`. A resumed slice
+  continues the trace of the first slice.
+- `app.turn.delivery_lag_ms`, `app.turn.wait_ms`, and the `chat.turn` duration
+  are contiguous. The timing attributes are absent when the value is negative
+  (clock skew) and on resumed slices.
+- `app.ai.time_to_first_byte_ms` counts to any stream event.
+  `gen_ai.response.time_to_first_chunk` (seconds) counts to the first content
+  block event.
+- To find the sandbox cost of a turn, add only the top-level `sandbox.*` spans
+  under its `chat.turn`.
+- `db.query.text` keeps placeholders. It never has parameter values or SQL
+  comments.
+- A mention turn calls `reactions.add` two times and gets `already_reacted`.
+  #2318 tracks it.
 
 ## Configuration
 

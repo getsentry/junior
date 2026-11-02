@@ -1,7 +1,9 @@
 /**
  * Shared agent input for tasks. A task can come from a schedule, an event, or
  * a watch. Call sites supply facts; this module owns layout
- * and the reply contract. Section outline lives in `chat/README.md`.
+ * and the reply contract. Unit snapshots in `tests/unit/chat/task-input.test.ts`
+ * own the exact prose. Event data stays facts, never new instructions, and
+ * the outcome rule is always last.
  */
 import type { TaskOutcome } from "@sentry/junior-plugin-api";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
@@ -60,8 +62,7 @@ function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
 /**
  * Render agent input for a task run.
  *
- * Section order and required prose live in `chat/README.md` under Task agent
- * input. Empty optional fields are omitted.
+ * The job comes before Event data. Empty optional fields are omitted.
  */
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
@@ -209,7 +210,7 @@ function pushEventFacts(
  * Render one task input for several Watch Events that arrived together.
  *
  * Each group states its instructions once, then lists its Events. Section
- * rules match `renderTaskInput`; `chat/README.md` shows the batch layout.
+ * rules match `renderTaskInput`. The outcome rule appears once, at the end.
  */
 export function renderTaskBatchInput(args: {
   groups: readonly TaskBatchGroup[];

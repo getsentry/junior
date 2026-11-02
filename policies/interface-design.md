@@ -2,91 +2,66 @@
 
 ## Intent
 
-Interfaces should expose the smallest useful capability while keeping ownership,
-lifecycle, and security edges obvious. Module paths, file names, type names, and
-function names are all part of that interface.
+Interfaces expose the smallest useful capability and keep ownership,
+lifecycle, and security edges clear. Module paths, file names, type names, and
+function names are part of the interface.
 
 ## Policy
 
-- Prefer narrow capability methods over broad dependency bags or access to
+### Shape
+
+- Prefer narrow capability methods over dependency bags or access to
   underlying services.
-- Expose lifecycle-oriented operations, such as `dispatch` and `get`, instead of
-  raw runners, clients, routes, or storage adapters.
-- Return views by default. Do not expose full internal records when callers only
-  need status, ids, or summaries.
-- Make ownership explicit in the API edge. A caller should only read or change
-  records it owns unless cross-owner access is the feature.
-- Keep platform details inside the layer that owns the platform. Do not leak
-  Slack clients, Vercel primitives, Redis clients, or model-runtime internals
-  through feature interfaces.
+- Expose lifecycle operations such as `dispatch` and `get`, not raw runners,
+  clients, routes, or storage adapters.
+- Return views (status, ids, summaries), not full internal records.
+- Make ownership explicit. A caller reads or changes only records it owns,
+  unless cross-owner access is the feature.
+- Keep platform details (Slack clients, Vercel primitives, Redis clients,
+  model-runtime internals) inside the owning layer.
 - Require idempotency keys for APIs that create durable work from retryable
   contexts.
-- Use short JavaScript-facing names for public types and methods. Avoid
-  framework-style names that describe implementation mechanics instead of
-  product intent.
-- Use the same domain noun for the same concept across types, fields, functions,
-  storage keys, and docs. Two names should mean two concepts, not two layers of
-  the same concept.
-- Prefer simple domain nouns such as `Destination`, `Conversation`, and `Lease`
-  over names that combine the concept with its storage shape.
-- Avoid suffixes such as `Record`, `State`, `Data`, `Payload`, `Manager`, and
-  `Handler` unless that storage shape, lifecycle, or adapter role is the actual
-  edge being named.
-- Spend local context instead of repeating it. A function imported from
-  `state/session-log` can be `commitMessages`. It does not need to be
-  `commitAgentSessionLogMessages`.
-- Spend parent-object context in field names. Inside `Conversation`, prefer
-  `execution`, `destination`, and `actor` over names that repeat `Conversation`.
-- Let folders and file names carry domain context. Prefer `state/session-log.ts`
-  over `state/agent-session-log-store.ts`. Avoid names that repeat parent
-  directories, suffix every file with its technical role, or encode the whole
-  call path.
-- Name modules by the concern they own, not by the adapter or mechanism they
-  happen to use. `session-log` is better than `redis-session-log` when Redis is
-  only one backing implementation.
-- Name indexes, queues, and storage keys by their membership and ordering when
-  they serve multiple consumers. `conversation:active` and
-  `conversation:by-activity` describe the data contract better than
-  process-specific names such as `recovery`.
-- Keep exported interfaces role-shaped and small. A bounded legacy-import port
-  with only `read` is clearer than a broad adapter that exposes unrelated state,
-  Redis, or queue details.
-- Prefer import-site readability over globally unique names. Shared exported
-  names should include a canonical domain term when an exact repository search
-  would otherwise mix unrelated concepts. Do not add qualifiers merely to repeat
-  the module path. If a name needs five qualifiers, the module edge is probably
-  doing too little work.
-- When a term is overloaded in the product or platform, define it once in the
-  owning module documentation and avoid using it for nearby concepts.
-- Add an interface only when it removes real coupling or represents a stable
-  edge.
-- Passing services through parameters is dependency injection. Putting those
-  services in an options object does not change that.
+- Keep exported interfaces small and role-shaped.
+- Add an interface only when it removes real coupling or marks a stable edge.
+
+### Services
+
+- Passing services as parameters or in an options object is dependency
+  injection.
 - Keep work data separate from services. Import stable app services from their
-  owning module. Pass a service only when the caller must choose it, such as
-  model execution, transport, or time. Do not pass an app store through callers
-  that do not own it.
-- Do not use a one-field service options object. Pass the one required service
-  directly.
-- Do not add a factory or wrapper only to hide service parameters. It must
-  remove a choice from callers or enforce a rule that it owns.
-- Avoid one-hop wrappers, renamed aliases, and helper layers that only forward
-  arguments, options, or dependencies. Call the owning capability directly
-  unless the intermediate function enforces a rule, translates an edge, or owns
-  a lifecycle change.
-- TODO(dcramer): Review why this policy did not prevent the one-method
-  creator/control wrappers in #1065 and add an enforceable check if practical.
-- If a helper exists only to hide parameter threading, inline it or move the
-  repeated call shape to the owner that actually defines the contract.
+  owner. Pass a service only when the caller must choose it (model execution,
+  transport, time). Do not thread an app store through callers that do not
+  own it.
+- Do not use a one-field service options object. Pass the service.
+- Do not add a factory, wrapper, alias, or helper that only forwards
+  arguments or hides parameter threading. Call the owner directly, unless the
+  layer enforces a rule, translates an edge, or owns a lifecycle change.
+
+### Names
+
+- Use short names that state product intent, not implementation mechanics.
+- Use one domain noun per concept across types, fields, functions, storage
+  keys, and docs. Two names mean two concepts.
+- Prefer simple nouns (`Destination`, `Conversation`, `Lease`). Avoid
+  `Record`, `State`, `Data`, `Payload`, `Manager`, and `Handler` unless that
+  role is the edge.
+- Let the module path and parent object carry context: `commitMessages` in
+  `state/session-log`, `execution` inside `Conversation`.
+- Name files and modules by the concern they own, not the mechanism:
+  `state/session-log.ts`, not `state/redis-agent-session-log-store.ts`.
+- Name shared indexes, queues, and keys by membership and order
+  (`conversation:by-activity`), not by one consumer (`recovery`).
+- Optimize for the import site. Add a canonical domain term to a shared export
+  only when exact search would mix unrelated concepts. Five qualifiers means
+  the module edge does too little.
+- Define an overloaded term once in the owning module doc, and do not reuse it
+  for nearby concepts.
 
 ## Exceptions
 
-- Test fixtures may expose narrower construction seams when the production
-  interface remains small.
-- Low-level infrastructure modules may expose mechanism-specific APIs inside
-  their own ownership edge.
-- Generic names are acceptable inside a tightly scoped module when the import
-  path supplies the missing context. Use longer names only when two imported
-  roles would otherwise collide at common call sites.
-- Compatibility names may remain at external edges or legacy storage keys. New
-  internal names should still normalize to the current domain term.
+- Test fixtures may expose narrow construction seams when the production
+  interface stays small.
+- Low-level infrastructure may expose mechanism APIs inside its own edge.
+- Generic names are fine in a tight module when the import path gives context.
+- Compatibility names may stay at external edges or legacy storage keys. New
+  internal names use the current domain term.

@@ -354,10 +354,21 @@ it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
 model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
-Use `approvalMode: "auto"` when Junior should review an action according to its
-annotations and source. Use `review` when every tool call requires review. Use
-`approve` only when the tool is safe to run without review. Omitting the
-field leaves the tool outside action review.
+`approvalMode` sets whether Guardian reviews a call before the tool runs:
+
+- `auto` is the default. Junior sets it when you omit the field. Guardian
+  reviews each call of a plugin tool in this mode.
+- `review` makes Guardian review each call.
+- `approve` skips review. The tool runs without a Guardian decision, also in a
+  child agent.
+
+Use `approve` only when the tool code proves that each effect is safe, and no
+model judgment is necessary. For example, the GitHub tools that mark feedback
+and resolve review threads read the pull request from GitHub first. They refuse
+unless the bot authored it. Their only effect is the bot's own reaction or the
+resolved state of a thread, and you can undo both. Do not use `approve` when
+the tool writes text that can make claims, or when the tool does not check its
+target itself.
 
 Annotations describe side effects; they do not authorize an action. Junior
 selects and enforces the reviewer. Add `describeProposal(input)` only when a
