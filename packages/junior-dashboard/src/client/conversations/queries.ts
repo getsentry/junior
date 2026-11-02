@@ -178,9 +178,12 @@ export function conversationDetailQueryOptions(
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
-      return reuseConversationEventReferences(
+      return keepLatestReadPosition(
         previous as ConversationSnapshot,
-        next as ConversationSnapshot,
+        reuseConversationEventReferences(
+          previous as ConversationSnapshot,
+          next as ConversationSnapshot,
+        ),
       );
     },
     refetchInterval: (query) =>
@@ -194,6 +197,20 @@ export function conversationDetailQueryOptions(
           : 10_000,
     retry: false,
   });
+}
+
+/**
+ * Read positions only move forward. A poll that started before a read report
+ * finished must not put an older position back in the cache.
+ */
+function keepLatestReadPosition(
+  previous: ConversationSnapshot,
+  next: ConversationSnapshot,
+): ConversationSnapshot {
+  const kept = previous.readPosition;
+  if (!kept) return next;
+  if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
+  return { ...next, readPosition: kept };
 }
 
 function outboxActorIdentity(
@@ -704,14 +721,17 @@ export function useConversationData(conversationId: string | undefined) {
     0,
     ...awaitingRows.map((message) => Date.parse(message.createdAt)),
   );
-  const detail = useQuery(
-    conversationDetailQueryOptions(conversationId, {
+  const detail = useQuery({
+    ...conversationDetailQueryOptions(conversationId, {
       awaitingMessage: awaitingRows.length > 0,
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
     }),
-  );
+    // A reopened Conversation shows the cached copy at once, but it can miss
+    // messages that arrived while the reader was away. Fetch it each visit.
+    refetchOnMount: "always",
+  });
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -893,6 +913,11 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The latest detail after a fetch in this visit, before it is deferred. */
+    fetchedDetail:
+      detail.isFetchedAfterMount && !detail.isFetching
+        ? detail.data
+        : undefined,
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,

@@ -33,6 +33,7 @@ import { readConversationArchivedAt } from "./archive";
 import { readConversationParticipants } from "./participants";
 import { readConversationForks } from "./fork";
 import { readConversationAgentTree } from "./agent-tree";
+import { readConversationReadPosition } from "./read-position";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -237,13 +238,17 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const [forks, agentTree] = await Promise.all([
+  const [forks, agentTree, readPosition] = await Promise.all([
     readConversationForks(conversationId, options.viewer),
     readConversationAgentTree(conversationId, options.viewer),
+    options.viewer
+      ? readConversationReadPosition(options.viewer, conversationId)
+      : undefined,
   ]);
   return conversationDetailReportSchema.parse({
     ...report,
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
+    ...(readPosition ? { readPosition } : undefined),
   });
 }
