@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   completedToolCalls,
+  toolCallsOf,
   toolOutput,
   type ToolCall,
 } from "@junior-evals/fixture/results";
@@ -62,7 +63,11 @@ describe("Code Mode Scripts", () => {
       ),
     );
 
-    expect(scriptResults(conversation)).toContainEqual(
+    // The script may stop at the first refused call, so it can fail.
+    const results = toolCallsOf("codemode", conversation).map((call) =>
+      String(toolOutput(call)),
+    );
+    expect(results).toContainEqual(
       expect.stringMatching(
         /systemTime: failed\n {3}This Turn used its execution budget/,
       ),
