@@ -308,7 +308,7 @@ describe("plugin prompt hook composition", () => {
       }),
     ).rejects.toBeInstanceOf(TurnInputCommitLostError);
 
-    // The redelivery sees its prompt in durable history and must still ack.
+    // The retry finds its prompt already saved and must still confirm it.
     let acknowledgements = 0;
     await executeAgentRun({
       ...request,

@@ -153,14 +153,16 @@ function countMatchingDeepPrefix(
 }
 
 function sameProvenance(
-  left: ConversationMessageProvenance,
-  right: ConversationMessageProvenance,
+  saved: ConversationMessageProvenance,
+  incoming: ConversationMessageProvenance,
 ): boolean {
-  return (
-    left.authority === right.authority &&
-    ((!left.actor && !right.actor) ||
-      sameActorIdentity(left.actor, right.actor))
-  );
+  if (saved.authority !== incoming.authority) {
+    return false;
+  }
+  if (!saved.actor && !incoming.actor) {
+    return true;
+  }
+  return sameActorIdentity(saved.actor, incoming.actor);
 }
 
 /**
@@ -169,9 +171,7 @@ function sameProvenance(
  * Explicit per-message provenance always wins; otherwise the unchanged prefix
  * reuses its committed provenance, new messages default to unauthored context,
  * and any new-user-message default (the turn author's instruction) attaches to
- * the last new user message — the current turn's input. A replay can
- * re-commit trailing input that is already durable, so its trailing
- * provenance must match the committed provenance.
+ * the last new user message — the current turn's input.
  */
 function resolveCommitProvenance(args: {
   existing: Pick<PiConversationProjection, "messages" | "provenance">;
@@ -217,13 +217,17 @@ function resolveCommitProvenance(args: {
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
       const index = start + offset;
-      if (index >= matchingPrefix) {
-        provenance[index] = entry;
-      } else if (!sameProvenance(provenance[index]!, entry)) {
-        throw new Error(
-          "trailing commit provenance must match durable message provenance",
-        );
+      // A retried turn can send a message that is already saved. Keep the
+      // saved provenance, but reject a retry that names a different actor.
+      if (index < matchingPrefix) {
+        if (!sameProvenance(provenance[index]!, entry)) {
+          throw new Error(
+            "retried message provenance must match saved message",
+          );
+        }
+        return;
       }
+      provenance[index] = entry;
     });
   }
   return provenance;
@@ -338,8 +342,8 @@ export async function commitMessages(args: {
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
   /**
-   * Explicit provenance for the trailing messages. Entries for messages that
-   * are already durable must match their committed provenance.
+   * Explicit provenance for the last messages. For messages that are already
+   * saved, it must match the saved provenance.
    */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */

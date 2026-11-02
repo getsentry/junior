@@ -1134,8 +1134,8 @@ describe("turn checkpoint", () => {
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
-    // A replay of durable input is a no-op and cannot change who wrote it.
-    const replay = {
+    // A retry can resend saved messages, but it cannot change their actor.
+    const retry = {
       conversationId: "conversation-multi-actor",
       turnId: "turn-multi-actor",
       sliceId: 2,
@@ -1145,18 +1145,16 @@ describe("turn checkpoint", () => {
     };
     await expect(
       upsertTurnRecord({
-        ...replay,
+        ...retry,
         trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
       }),
     ).resolves.toBeDefined();
     await expect(
       upsertTurnRecord({
-        ...replay,
+        ...retry,
         trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
       }),
-    ).rejects.toThrow(
-      "trailing commit provenance must match durable message provenance",
-    );
+    ).rejects.toThrow("retried message provenance must match saved message");
     const projection = await loadConversationProjection({
       conversationId: "conversation-multi-actor",
     });
