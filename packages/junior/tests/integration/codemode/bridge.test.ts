@@ -6,9 +6,11 @@ import {
   CODE_MODE_SCRIPT_TIMEOUT_MS,
   runCodeModeScript,
 } from "@/chat/codemode/bridge";
+import { botConfig } from "@/chat/config";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
@@ -333,6 +335,48 @@ describe("Code Mode bridge", () => {
     expect(review).not.toHaveBeenCalled();
     expect(onToolCall).not.toHaveBeenCalled();
     expect(posts).toEqual([]);
+  });
+
+  it("asks the model to wrap up when a script reaches the turn limit", async () => {
+    const resume = turnCount();
+    // Earlier calls and the codemode call leave one call in the budget.
+    for (let n = 1; n < botConfig.maxToolCallsPerTurn; n += 1) {
+      resume.countToolCall();
+    }
+    let ran = 0;
+    const check = tool({
+      description: "Check something.",
+      inputSchema: Type.Object({}),
+      execute: async () => {
+        ran += 1;
+        return { checked: true };
+      },
+    }) as AnyToolDefinition;
+
+    const { result } = await runCodeModeScript({
+      countToolCall: resume.countToolCall,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `
+        for (let n = 0; n < 3; n++) {
+          await tools.check({}).catch(() => {});
+        }
+      `,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: { check },
+    });
+
+    // Past the limit, a call gets the same wrap-up message as a blocked
+    // direct call, not a terminal error.
+    expect(ran).toBe(1);
+    expect(result.calls).toEqual([
+      { id: `${CODEMODE_CALL_ID}/c1`, toolName: "check", status: "ok" },
+      ...[2, 3].map((n) => ({
+        id: `${CODEMODE_CALL_ID}/c${n}`,
+        toolName: "check",
+        status: "error",
+        error: TURN_LIMIT_WRAP_UP_MESSAGE,
+      })),
+    ]);
   });
 
   it("ends a script at the deadline and reports the call it cut off", async () => {

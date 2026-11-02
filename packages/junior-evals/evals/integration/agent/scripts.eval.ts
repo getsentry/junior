@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   completedToolCalls,
+  toolCallsOf,
   toolOutput,
   type ToolCall,
 } from "@junior-evals/fixture/results";
@@ -48,6 +49,31 @@ describe("Code Mode Scripts", () => {
         /The output was cut\. The full text is in \S+\/\.junior\/codemode\/\S+\.txt\./,
       ),
     );
+    expect(conversation.replies).toHaveLength(1);
+  });
+
+  test("when a script reaches the turn limit, the turn wraps up instead of failing", async ({
+    agent,
+  }) => {
+    // The codemode call and two nested calls use the whole budget.
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 3 } });
+    const conversation = await run(
+      slackMention(
+        "Use the codemode tool once: in one script, call systemTime five times, one after another, and count the calls that return a time. Then tell me that count.",
+      ),
+    );
+
+    // The script may stop at the first refused call, so it can fail.
+    const results = toolCallsOf("codemode", conversation).map((call) =>
+      String(toolOutput(call)),
+    );
+    expect(results).toContainEqual(
+      expect.stringMatching(
+        /systemTime: failed\n {3}This Turn used its execution budget/,
+      ),
+    );
+    expect(conversation.turns).toHaveLength(1);
+    expect(conversation.turns[0]?.status).toBe("succeeded");
     expect(conversation.replies).toHaveLength(1);
   });
 });
