@@ -14,7 +14,7 @@ const MAX_MESSAGE_TEXT_CHARS = 4_000;
 const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 // Reasoning tokens count against this budget. At 2,500, long Briefs stopped
-// mid-JSON. Normal Briefs stop well below the cap.
+// mid-JSON.
 const MAX_OUTPUT_TOKENS = 8_000;
 
 const SIZE_CAPS = {

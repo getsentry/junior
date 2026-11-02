@@ -375,9 +375,7 @@ describe("completeText", () => {
       usage: { inputTokens: 16_000, outputTokens: 2_500 },
     });
     mocks.generateObject.mockRejectedValue(sdkError);
-    mocks.noObjectGeneratedErrorIsInstance
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(true);
+    mocks.noObjectGeneratedErrorIsInstance.mockReturnValue(true);
 
     const { completeObject } = await import("@/chat/pi/client");
 
