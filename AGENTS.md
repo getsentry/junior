@@ -58,32 +58,30 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 
 ## Reference
 
-Vocabulary and names:
-
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
-
-Policies in `policies/`:
-
-- `correctness-complexity.md`: how much design a fix needs.
-- `interface-design.md`: function and module shape.
-- `error-handling.md`: where failures are caught or retried.
-- `runtime-boundary-schemas.md`: validating data at runtime edges.
-- `provider-boundaries.md`: what belongs in core vs. a plugin.
-- `context-bound-systems.md`: passing authority, destination, and scope.
-- `security.md`: credentials, sandbox, and model access.
-- `data-redaction.md`: conversation privacy and redaction.
-- `serverless-background-work.md`: work that must survive request edges.
-- `observability.md`: telemetry for diagnosis.
-- `system-prompt.md`, `agent-steering.md`, `agentic-semantics.md`: prompt
-  text and agent behavior.
-- `tool-design.md`: model-facing tool contracts.
-- `testing.md`, `test-adapters.md`, `evals.md`: what to test and where.
-- `frontend-components.md`: dashboard UI ownership and styling.
-- `code-comments.md`, `documentation.md`: comments and internal docs.
-
-Package rules:
-
+- `policies/correctness-complexity.md`: how much design a fix needs.
+- `policies/interface-design.md`: function and module shape.
+- `policies/error-handling.md`: where failures are caught or retried.
+- `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
+- `policies/provider-boundaries.md`: what belongs in core vs. a plugin.
+- `policies/context-bound-systems.md`: passing authority, destination, and
+  scope.
+- `policies/security.md`: credentials, sandbox, and model access.
+- `policies/data-redaction.md`: conversation privacy and redaction.
+- `policies/serverless-background-work.md`: work that must survive request
+  edges.
+- `policies/observability.md`: telemetry for diagnosis.
+- `policies/system-prompt.md`: system prompt blocks.
+- `policies/agent-steering.md`: steering agent behavior.
+- `policies/agentic-semantics.md`: choices that depend on meaning or intent.
+- `policies/tool-design.md`: model-facing tool contracts.
+- `policies/testing.md`: what to test and where.
+- `policies/test-adapters.md`: shared test adapters.
+- `policies/evals.md`: agent-facing evals.
+- `policies/frontend-components.md`: dashboard UI ownership and styling.
+- `policies/code-comments.md`: when and how to comment.
+- `policies/documentation.md`: internal docs.
 - `packages/junior/src/chat/AGENTS.md`: chat runtime.
 - `packages/junior/tests/AGENTS.md`: test layout and fixtures.
 - `packages/junior/migrations/AGENTS.md`: database migrations.
