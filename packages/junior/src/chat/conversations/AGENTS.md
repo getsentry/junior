@@ -9,6 +9,8 @@
   message JSON as-is. Do not rebuild it from a field list.
 - Only `compaction` and `handoff` replace active agent history.
   `messages_summarized` does not.
+- Every write for one Conversation takes its advisory lock
+  (`withConversationEventLock`). A new write path must take it too.
 - `Conversation.location` is the only Location field for new code. Privacy is
   in `Conversation.visibility`, which children, Agent invocations, and plugin
   projections inherit.
