@@ -4,7 +4,7 @@
  * normalization; plugins only configure subcommands under their namespace.
  */
 import type { Command } from "commander";
-import type { PluginContext, PluginEmbedder } from "./context";
+import type { PluginContext } from "./context";
 
 export interface PluginCliIo {
   writeError(text: string): Promise<void> | void;
@@ -22,8 +22,6 @@ export interface PluginCliActionContext extends Pick<
   "db" | "log" | "plugin"
 > {
   command: PluginCliActionCommand;
-  /** Host embedder bound to the configured embedding model. */
-  embedder: PluginEmbedder;
   io: PluginCliIo;
 }
 

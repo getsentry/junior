@@ -14,7 +14,6 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder } from "@/chat/plugins/model";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins, validatePlugins } from "@/chat/plugins/agent-hooks";
 import {
@@ -112,7 +111,6 @@ function createPluginCliHost(args: {
               name: args.command.name,
               summary: args.command.summary,
             },
-            embedder: createPluginEmbedder(pluginName),
             io: args.io,
             log: createPluginLogger(pluginName),
             plugin: { name: pluginName },

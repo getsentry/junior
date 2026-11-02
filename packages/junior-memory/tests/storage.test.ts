@@ -7,7 +7,6 @@ import {
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
   type HeartbeatHookContext,
-  type PluginCliActionContext,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
@@ -100,11 +99,7 @@ function memoryDb(fixture: MemoryFixture): MemoryDb {
   return fixture.db();
 }
 
-async function runMemoryCli(
-  fixture: MemoryFixture,
-  argv: string[],
-  embedder: PluginCliActionContext["embedder"] = createTestEmbedder(),
-) {
+async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const definition = createMemoryCliCommand();
@@ -149,7 +144,6 @@ async function runMemoryCli(
               summary: definition.summary,
             },
             db: memoryDb(fixture),
-            embedder,
             io,
             log: noopLogger,
             plugin: { name: "memory" },
@@ -3151,25 +3145,18 @@ WHERE id = '${expired.memory.id}'
       expect(top).toEqual(expect.objectContaining({ id: react.memory.id }));
       expect(newEmbedder.inputTypes.at(-1)).toBe("query");
 
-      const rerun = await runMemoryCli(fixture, ["reembed"], newEmbedder);
-      expect(rerun).toMatchObject({ exitCode: 0, stderr: "" });
-      expect(rerun.stdout).toContain(
-        "Done: embedded 0 memories with test-embedding-provider new-model.",
-      );
+      // A rerun finds nothing to embed.
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls).toHaveLength(2);
 
+      // A vector whose content hash went stale is embedded again.
       await fixture.execute(`
 UPDATE junior_memory_embeddings
 SET content_hash = 'stale'
 WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
 `);
-      const repair = await runMemoryCli(
-        fixture,
-        ["reembed", "--batch-size", "1"],
-        newEmbedder,
-      );
-      expect(repair.stdout).toContain(
-        "Done: embedded 1 memory with test-embedding-provider new-model.",
-      );
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls.at(-1)).toEqual([reactMemory]);
     } finally {
       await fixture.close();
     }

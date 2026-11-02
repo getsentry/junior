@@ -109,25 +109,6 @@
             "m": 16,
             "ef_construction": 64
           }
-        },
-        "junior_memory_embeddings_embedding_1536_hnsw_idx": {
-          "name": "junior_memory_embeddings_embedding_1536_hnsw_idx",
-          "columns": [
-            {
-              "expression": "(\"embedding\"::vector(1536)) vector_cosine_ops",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_memory_embeddings\".\"dimensions\" = 1536",
-          "concurrently": false,
-          "method": "hnsw",
-          "with": {
-            "m": 16,
-            "ef_construction": 64
-          }
         }
       },
       "foreignKeys": {

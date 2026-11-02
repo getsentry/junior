@@ -3,9 +3,9 @@
  *
  * The memory heartbeat runs it every minute with a time limit, so a model
  * change backfills itself after deploy, and vectors that a failed or skipped
- * write left out are repaired. The `reembed` CLI command runs it to the end.
- * It only embeds memories that have no current vector for the model, and it
- * commits each batch on its own, so it is safe to run again or at the same time.
+ * write left out are repaired. It only embeds memories that have no current
+ * vector for the model, and it commits each batch on its own, so it is safe to
+ * run again or at the same time.
  */
 import { and, asc, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
@@ -73,7 +73,6 @@ export async function reembedMemories(args: {
   deadlineMs?: number;
   embedder: MemoryEmbeddingProvider;
   now?: () => number;
-  onBatch?: (embedded: number) => Promise<void> | void;
 }): Promise<number> {
   const now = args.now ?? Date.now;
   // Paging by id makes sure that each run ends, even if a row stays missing.
@@ -141,6 +140,5 @@ export async function reembedMemories(args: {
         },
       });
     embedded += missing.length;
-    await args.onBatch?.(embedded);
   }
 }

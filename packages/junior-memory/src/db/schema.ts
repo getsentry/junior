@@ -150,17 +150,15 @@ export const juniorMemoryEmbeddings = pgTable(
       table.dimensions,
       table.metric,
     ),
-    // Cosine ANN for vector recall/search, one index per vector size. Queries
-    // must use the same cast and a literal dimensions filter to use it.
-    ...MEMORY_EMBEDDING_DIMENSIONS.map((dimensions) =>
-      index(`junior_memory_embeddings_embedding_${dimensions}_hnsw_idx`)
-        .using(
-          "hnsw",
-          sql`(${table.embedding}::vector(${sql.raw(String(dimensions))})) vector_cosine_ops`,
-        )
-        .with({ m: 16, ef_construction: 64 })
-        .where(sql`${table.dimensions} = ${sql.raw(String(dimensions))}`),
-    ),
+    // Cosine ANN for 1024-dimensional vectors. Queries must use the same cast
+    // and a literal dimensions filter to use it. 1536-dimensional vectors have
+    // no ANN index: one can only be built after the embedding column becomes
+    // untyped, and building it over existing rows in that migration would
+    // lock the table for too long. Add it with a CONCURRENTLY prebuild later.
+    index("junior_memory_embeddings_embedding_1024_hnsw_idx")
+      .using("hnsw", sql`(${table.embedding}::vector(1024)) vector_cosine_ops`)
+      .with({ m: 16, ef_construction: 64 })
+      .where(sql`${table.dimensions} = 1024`),
     check(
       "junior_memory_embeddings_metric_check",
       sql`${table.metric} IN ('cosine')`,
