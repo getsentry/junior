@@ -36,6 +36,12 @@ interface AvatarImage {
   data: string;
 }
 
+/** A saved photo and the version of its provider URL. */
+interface AvatarRead {
+  image: AvatarImage;
+  version: string;
+}
+
 type AvatarIdentityRow = {
   avatarUrl: string | null;
   identityId: string;
@@ -64,9 +70,20 @@ export function parseAvatarUrl(
     : undefined;
 }
 
+// A new photo has a new provider URL, so the hash of the URL names the photo.
+function avatarUrlHash(url: string): string {
+  return createHash("sha256").update(url).digest("hex");
+}
+
+// The version names one photo of an Identity. It changes with the photo, so
+// browsers can keep a versioned photo path for a long time.
+function avatarVersion(url: string): string {
+  return avatarUrlHash(url).slice(0, 16);
+}
+
 // The Junior API path that serves the photo of one Identity.
-function avatarPath(identityId: string): string {
-  return `/api/people/avatars/${encodeURIComponent(identityId)}`;
+function avatarPath(identityId: string, avatarUrl: string): string {
+  return `/api/people/avatars/${encodeURIComponent(identityId)}?v=${avatarVersion(avatarUrl)}`;
 }
 
 /**
@@ -80,6 +97,7 @@ export async function readUserAvatarUrls(
   if (userIds.length === 0) return new Map();
   const rows = await db
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       identityId: juniorIdentities.id,
       provider: juniorIdentities.provider,
       updatedAt: juniorIdentities.updatedAt,
@@ -103,8 +121,8 @@ export async function readUserAvatarUrls(
   );
   const avatars = new Map<string, string>();
   for (const row of rows) {
-    if (row.userId && !avatars.has(row.userId)) {
-      avatars.set(row.userId, avatarPath(row.identityId));
+    if (row.userId && row.avatarUrl && !avatars.has(row.userId)) {
+      avatars.set(row.userId, avatarPath(row.identityId, row.avatarUrl));
     }
   }
   return avatars;
@@ -119,7 +137,7 @@ export function identityAvatarUrl(
   userAvatarUrls: ReadonlyMap<string, string>,
 ): string | undefined {
   if (row.userId) return userAvatarUrls.get(row.userId);
-  return row.avatarUrl ? avatarPath(row.identityId) : undefined;
+  return row.avatarUrl ? avatarPath(row.identityId, row.avatarUrl) : undefined;
 }
 
 // Read at most `maxBytes` of the body. Return undefined when it is larger.
@@ -213,15 +231,16 @@ async function fetchAvatarImage(
 }
 
 /**
- * Read the saved photo of one Identity. Junior fetches it from the provider
- * once and keeps it in the state cache for a day. Return undefined when the
- * Identity has no photo or the provider does not return one.
+ * Read the saved photo of one Identity and its version. Junior fetches it
+ * from the provider once and keeps it in the state cache for a day. Return
+ * undefined when the Identity has no photo or the provider does not return
+ * one.
  */
 export async function readAvatarImage(
   db: JuniorDatabase,
   state: StateAdapter,
   identityId: string,
-): Promise<AvatarImage | undefined> {
+): Promise<AvatarRead | undefined> {
   const [row] = await db
     .select({
       avatarUrl: juniorIdentities.avatarUrl,
@@ -236,9 +255,8 @@ export async function readAvatarImage(
     )
     .limit(1);
   const url = row ? parseAvatarUrl(row.avatarUrl, row.provider) : undefined;
-  if (!row || !url) return undefined;
-  // A new photo has a new URL, so the key changes with the photo.
-  const key = `avatar:${createHash("sha256").update(url).digest("hex")}`;
+  if (!row?.avatarUrl || !url) return undefined;
+  const key = `avatar:${avatarUrlHash(url)}`;
   const image = await createCache(state, "core").getOrLoad(key, async () => {
     const loaded = await fetchAvatarImage(url, row.provider);
     return {
@@ -246,5 +264,5 @@ export async function readAvatarImage(
       ttlMs: loaded ? AVATAR_CACHE_TTL_MS : AVATAR_FAILURE_TTL_MS,
     };
   });
-  return image ?? undefined;
+  return image ? { image, version: avatarVersion(row.avatarUrl) } : undefined;
 }

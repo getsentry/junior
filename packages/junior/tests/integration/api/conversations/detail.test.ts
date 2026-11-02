@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
@@ -375,7 +376,7 @@ describe("conversation detail API", () => {
     });
     expect(detail?.events[0]?.data).toMatchObject({
       actorIdentity: {
-        avatarUrl: `/api/people/avatars/${owner!.id}`,
+        avatarUrl: avatarPath(owner!.id),
         fullName: "Owner Person",
         slackUserId: "UOWNER1",
       },

@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, test } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { identityAvatarUrl } from "@/chat/identities/avatar";
 import { juniorIdentities } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { testViewer } from "../../../fixtures/user";
@@ -94,15 +95,39 @@ describe("profile photo API", () => {
       expect(signedOut.status).toBe(401);
 
       const app = signedInApi();
-      for (let request = 0; request < 2; request += 1) {
-        const response = await app.request(
-          "http://localhost/api/people/avatars/U-PHOTO",
-        );
+      // APIs return the versioned path. The browser keeps that photo, and it
+      // checks a path without the current version with the ETag.
+      const versionedPath = identityAvatarUrl(
+        {
+          avatarUrl: "https://avatars.slack-edge.com/photo.png",
+          identityId: "U-PHOTO",
+          userId: null,
+        },
+        new Map(),
+      );
+      const unversioned = "/api/people/avatars/U-PHOTO";
+      const responses = [];
+      for (const path of [versionedPath, unversioned]) {
+        const response = await app.request(`http://localhost${path}`);
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toBe("image/png");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
         expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG);
+        responses.push(response);
       }
+      expect(responses[0]!.headers.get("cache-control")).toBe(
+        "private, max-age=31536000, immutable",
+      );
+      expect(responses[1]!.headers.get("cache-control")).toBe(
+        "private, no-cache",
+      );
+      const etag = responses[1]!.headers.get("etag");
+      expect(etag).toBe(responses[0]!.headers.get("etag"));
+      const revalidated = await app.request(`http://localhost${unversioned}`, {
+        headers: { "if-none-match": etag! },
+      });
+      expect(revalidated.status).toBe(304);
+      expect(await revalidated.text()).toBe("");
 
       const google = await app.request(
         "http://localhost/api/people/avatars/G-PHOTO",

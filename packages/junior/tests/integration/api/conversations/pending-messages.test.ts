@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { avatarPath } from "../../../fixtures/avatar";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
@@ -75,7 +76,7 @@ describe("conversation pending messages API", () => {
     expect(report.messages).toEqual([
       {
         actorIdentity: {
-          avatarUrl: "/api/people/avatars/identity-google-author",
+          avatarUrl: avatarPath("identity-google-author"),
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
