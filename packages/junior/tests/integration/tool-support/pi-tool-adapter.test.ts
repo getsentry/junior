@@ -201,7 +201,7 @@ describe("Pi tool adapter integration", () => {
     }
   });
 
-  it("keeps direct tools native-visible and executable through executeTool", async () => {
+  it("lists and runs each tool only for its exposure", async () => {
     const definitions: Record<string, AnyToolDefinition> = {
       directDemo: tool({
         description: "Direct demo",
@@ -220,13 +220,39 @@ describe("Pi tool adapter integration", () => {
         inputSchema: Type.Object({}),
         execute: async () => ({ tool: "catalogOnlyDemo" }),
       }),
+      modelOnlyDemo: tool({
+        description: "Model-only demo",
+        exposure: "modelOnly",
+        inputSchema: Type.Object({}),
+        execute: async () => ({ tool: "modelOnlyDemo" }),
+      }),
+      codemodeDemo: tool({
+        description: "Code Mode demo",
+        exposure: "codemode",
+        inputSchema: Type.Object({}),
+        execute: async () => ({ tool: "codemodeDemo" }),
+      }),
     };
     const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
     const executeTool = agentTool(tools, "executeTool");
 
-    expect(tools.map((candidate) => candidate.name)).toEqual(
-      expect.arrayContaining(["directDemo", "searchTools", "executeTool"]),
-    );
+    expect(tools.map((candidate) => candidate.name).sort()).toEqual([
+      "directDemo",
+      "executeTool",
+      "modelOnlyDemo",
+      "searchTools",
+    ]);
+    await expect(
+      agentTool(tools, "modelOnlyDemo").execute("tool-model-only", {}),
+    ).resolves.toMatchObject({ details: { tool: "modelOnlyDemo" } });
+    for (const toolName of ["modelOnlyDemo", "codemodeDemo"]) {
+      await expect(
+        executeTool.execute(`tool-${toolName}`, {
+          tool_name: toolName,
+          arguments: {},
+        }),
+      ).rejects.toThrow("can only call catalog tools");
+    }
     await expect(
       executeTool.execute("tool-direct", {
         tool_name: "directDemo",

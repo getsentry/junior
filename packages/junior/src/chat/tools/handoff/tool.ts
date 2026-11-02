@@ -53,6 +53,7 @@ export function createHandoffTool(
       `Available profiles:\n${profileList}`,
     ].join(" "),
     executionMode: "sequential",
+    exposure: "modelOnly",
     inputSchema: z
       .object({
         profile: profileSchema.describe(
