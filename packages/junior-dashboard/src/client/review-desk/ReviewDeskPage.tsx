@@ -195,6 +195,7 @@ export function ReviewDeskPage() {
           search={search}
           searchParams={listParams}
           selectedId={selected?.id}
+          selectedShown={Boolean(itemParam)}
           sourceTitle={sourceTitle}
         />
       </div>

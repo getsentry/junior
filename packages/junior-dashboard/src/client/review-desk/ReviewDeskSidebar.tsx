@@ -32,7 +32,7 @@ const rowClass =
 function InboxRow(props: {
   dot: Dot;
   meta: ReactNode;
-  selected?: boolean;
+  selected?: "always" | "wide";
   title: string;
   to: string;
 }) {
@@ -42,7 +42,8 @@ function InboxRow(props: {
         aria-current={props.selected ? "page" : undefined}
         className={cn(
           rowClass,
-          props.selected && "bg-dashboard-surface-active",
+          props.selected === "always" && "bg-dashboard-surface-active",
+          props.selected === "wide" && "md:bg-dashboard-surface-active",
         )}
         to={props.to}
       >
@@ -137,6 +138,8 @@ export function ReviewDeskSidebar(props: {
   search: string;
   searchParams: URLSearchParams;
   selectedId?: string;
+  /** False while small screens show the list instead of the selected item. */
+  selectedShown: boolean;
   /** The title of the Conversation that added an item, when it is known. */
   sourceTitle(item: ReviewItemPayload): string | undefined;
 }) {
@@ -160,7 +163,13 @@ export function ReviewDeskSidebar(props: {
         dot={dot}
         key={item.id}
         meta={source ? `${source} · ${age}` : age}
-        selected={item.id === props.selectedId}
+        selected={
+          item.id !== props.selectedId
+            ? undefined
+            : props.selectedShown
+              ? "always"
+              : "wide"
+        }
         title={item.title}
         to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
       />
