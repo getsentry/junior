@@ -10,7 +10,11 @@ import { DisplayText } from "../display-text/DisplayText";
 import { automationPath, formatRelativeTime } from "../format";
 import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
-import { assigneeLabel, reviewItemStatusLabel } from "./reviewItemFormat";
+import {
+  assigneeLabel,
+  reviewItemStatusLabel,
+  reviewItemSubjectHref,
+} from "./reviewItemFormat";
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (
@@ -33,6 +37,9 @@ export function ReviewItemDetails(props: {
 }) {
   const { item } = props;
   const subject = item.subject;
+  const subjectHref = subject?.url
+    ? reviewItemSubjectHref(subject.url)
+    : undefined;
   const [addedByTitle, ...linkedTitles] = useLinkedConversationTitles([
     item.addedByConversationId,
     ...item.conversationIds,
@@ -97,14 +104,14 @@ export function ReviewItemDetails(props: {
         {subject ? (
           <DetailsCard title="Subject">
             <span className="text-sm">
-              {subject.url ? (
+              {subjectHref ? (
                 <a
                   className={dashboardInlineLinkClass}
-                  href={subject.url}
+                  href={subjectHref}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  {subject.title ?? subject.url}
+                  {subject.title ?? subjectHref}
                 </a>
               ) : (
                 (subject.title ?? subject.id)

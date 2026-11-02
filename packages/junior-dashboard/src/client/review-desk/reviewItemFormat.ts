@@ -9,6 +9,19 @@ export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
 }
 
+/**
+ * Return the subject URL when it is safe to link. Agents and plugins supply
+ * it, and URL validation also accepts `javascript:` and `data:` URLs.
+ */
+export function reviewItemSubjectHref(url: string): string | undefined {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Name the state of an item: what it needs while open, or how it closed. */
 export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   if (item.status === "open") {
