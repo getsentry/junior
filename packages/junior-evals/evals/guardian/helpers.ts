@@ -14,6 +14,7 @@ import {
   type ToolActionDecision,
   type ToolActionEvidence,
   type ToolActionProposal,
+  type ToolActionScript,
 } from "@/chat/guardian/proposal";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
 import { agentToolSpec } from "../../src/guardian-tools";
@@ -144,6 +145,8 @@ export async function proposal(input: {
    * person's root Run, it is built from the evidence when not given.
    */
   root?: RootConversationMessage[];
+  /** The Code Mode script that made the call, as core bounds it. */
+  script?: ToolActionScript;
   tool: SnapshotTool;
 }): Promise<ToolActionProposal> {
   // Core reads the root section for a child and for a person's root Run. A
@@ -165,6 +168,7 @@ export async function proposal(input: {
     input: input.input,
     ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
     ...(root ? { rootConversation: { messages: root, truncated: false } } : {}),
+    ...(input.script ? { script: input.script } : {}),
     tool: await resolveTool(input.tool, input.input),
   };
 }

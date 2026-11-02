@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import {
   createToolActionReview,
-  reviewToolAction,
+  MAX_TOOL_ACTION_BATCH,
+  reviewToolActions,
   ToolActionReviewUnavailableError,
+  type ToolAction,
   type ToolActionReview,
   type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
-import type { ToolActionReviewer } from "@/chat/guardian/proposal";
+import type {
+  ToolActionReviewDecision,
+  ToolActionReviewer,
+} from "@/chat/guardian/proposal";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -63,6 +68,25 @@ function reviewContext(
     onFatal: vi.fn(),
     reviewer,
   });
+}
+
+/** Review a batch of one action, as the tool adapter does. */
+async function reviewToolAction(
+  toolCallId: string,
+  toolName: string,
+  tool: AnyToolDefinition,
+  input: Record<string, unknown>,
+  review: ToolActionReview | undefined,
+): Promise<ToolActionReviewDecision | undefined> {
+  const results = await reviewToolActions(
+    [{ toolCallId, toolName, tool, input }],
+    review,
+  );
+  const result = results.get(toolCallId)!;
+  if (!result.allowed) {
+    throw result.error;
+  }
+  return result.decision;
 }
 
 function definition(
@@ -437,5 +461,155 @@ describe("tool action review", () => {
       cause: failure,
       name: "ToolActionReviewUnavailableError",
     });
+  });
+
+  it("rejects a batch over the limit before any review", async () => {
+    const reviewer = { review: vi.fn() };
+    // Actions that need no review count toward the limit.
+    const actions: ToolAction[] = Array.from(
+      { length: MAX_TOOL_ACTION_BATCH + 1 },
+      (_, index) => ({
+        toolCallId: `call-${index}`,
+        toolName: "generateReport",
+        tool: definition(index === 0 ? { approvalMode: "review" } : {}),
+        input: {},
+      }),
+    );
+
+    const results = await reviewToolActions(actions, reviewContext(reviewer));
+
+    expect(results.size).toBe(actions.length);
+    for (const result of results.values()) {
+      expect(result).toMatchObject({
+        allowed: false,
+        error: {
+          name: "ToolInputError",
+          message: expect.stringContaining(
+            `at most ${MAX_TOOL_ACTION_BATCH} calls at once; issue fewer`,
+          ),
+        },
+      });
+    }
+    expect(reviewer.review).not.toHaveBeenCalled();
+  });
+
+  it("reviews a batch against one rejection snapshot and counts rejections in batch order", async () => {
+    const onDecision = vi.fn(async () => undefined);
+    // The first action finishes last, so completion order differs from
+    // batch order.
+    const review = vi.fn<ToolActionReviewer["review"]>(async (proposal) => {
+      if (proposal.input.slow) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return {
+        decision: "deny",
+        reason: `Rejected ${String(proposal.input.target)}.`,
+        riskLevel: "high",
+        userAuthorization: "low",
+      };
+    });
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Clean up the preview workspaces.",
+      },
+      onDecision,
+      onFatal: vi.fn(),
+      reviewer: { review },
+    });
+    const reviewed = definition({ approvalMode: "review" });
+
+    const results = await reviewToolActions(
+      [
+        {
+          toolCallId: "a",
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { slow: true, target: "a" },
+        },
+        {
+          toolCallId: "core",
+          toolName: "generateReport",
+          tool: definition(),
+          input: {},
+        },
+        {
+          toolCallId: "b",
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { target: "b" },
+        },
+        {
+          toolCallId: "c",
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { target: "c" },
+        },
+      ],
+      actionReview,
+    );
+
+    expect(results.get("core")).toEqual({ allowed: true });
+    for (const id of ["a", "b", "c"]) {
+      expect(results.get(id)).toMatchObject({
+        allowed: false,
+        error: { decision: "deny", reason: `Rejected ${id}.` },
+      });
+    }
+    // The third rejection in batch order reaches the limit, also though the
+    // first action finished last.
+    const exhausted = "rejected three consecutive tool execution attempts";
+    expect(results.get("a")).toMatchObject({
+      error: { message: expect.not.stringContaining(exhausted) },
+    });
+    expect(results.get("c")).toMatchObject({
+      error: { message: expect.stringContaining(exhausted) },
+    });
+    for (const [proposal] of review.mock.calls) {
+      expect(proposal.priorRejectedActions).toBeUndefined();
+    }
+    expect(onDecision).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds script provenance in the proposal", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Matches the request.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+    const calls = Array.from({ length: 25 }, (_, index) => ({
+      input: { index, text: "x".repeat(2_000) },
+      status: "completed" as const,
+      toolName: "readFile",
+    }));
+
+    await reviewToolActions(
+      [
+        {
+          toolCallId: "script-call",
+          toolName: "generateReport",
+          tool: definition({ approvalMode: "review" }),
+          input: { reportId: "weekly" },
+          script: { calls, source: "y".repeat(40_000) },
+        },
+      ],
+      reviewContext({ review }),
+    );
+
+    const script = review.mock.calls[0]![0].script!;
+    expect(script.omittedCalls).toBe(5);
+    expect(script.calls).toHaveLength(20);
+    expect(script.calls[0]).toMatchObject({
+      input: expect.stringContaining('{"index":5,'),
+      status: "completed",
+      toolName: "readFile",
+    });
+    expect(script.calls[0]!.input.length).toBeLessThan(600);
+    expect(script.source.length).toBeLessThan(17_000);
+    expect(script.source).toContain("[truncated]");
   });
 });

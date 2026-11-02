@@ -49,7 +49,7 @@ import {
   SEARCH_TOOLS_NAME,
 } from "@/chat/tools/search-tools";
 import {
-  reviewToolAction,
+  reviewToolActions,
   ToolActionRejectedError,
   type ToolActionReview,
 } from "@/chat/guardian/gate";
@@ -210,23 +210,14 @@ export function createPiAgentTools(
         : undefined),
     };
     await onToolCall?.(toolCallId, toolName, toolInput);
-    try {
-      const assessment = await reviewToolAction(
-        toolCallId,
-        toolName,
-        toolDef,
-        toolInput,
-        actionReview,
-        signal,
-      );
-      if (assessment) {
-        setSpanAttributes({
-          "app.guardian.decision": assessment.decision,
-          "app.guardian.risk_level": assessment.riskLevel,
-          "app.guardian.user_authorization": assessment.userAuthorization,
-        });
-      }
-    } catch (error) {
+    const reviews = await reviewToolActions(
+      [{ toolCallId, toolName, tool: toolDef, input: toolInput }],
+      actionReview,
+      signal,
+    );
+    const review = reviews.get(toolCallId)!;
+    if (!review.allowed) {
+      const { error } = review;
       if (error instanceof ToolActionRejectedError) {
         setSpanAttributes({
           "app.guardian.decision": error.decision,
@@ -241,6 +232,13 @@ export function createPiAgentTools(
         });
       }
       throw error;
+    }
+    if (review.decision) {
+      setSpanAttributes({
+        "app.guardian.decision": review.decision.decision,
+        "app.guardian.risk_level": review.decision.riskLevel,
+        "app.guardian.user_authorization": review.decision.userAuthorization,
+      });
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);
     const isSandbox = Boolean(sandboxTools?.supports(toolName));

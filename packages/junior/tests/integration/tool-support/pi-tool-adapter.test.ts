@@ -11,6 +11,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import type { ToolActionReview } from "@/chat/guardian/gate";
 import {
   disableTools,
   tool,
@@ -56,12 +57,23 @@ describe("Pi tool adapter integration", () => {
     const onToolCall = vi.fn();
     const actionReview = {
       projectToolResult: <T>(_: string, result: T) => result,
-      review: vi.fn(async () => ({
-        decision: "allow" as const,
-        reason: "Read-only lookup requested by the user.",
-        riskLevel: "low" as const,
-        userAuthorization: "high" as const,
-      })),
+      review: vi.fn<ToolActionReview["review"]>(
+        async (actions) =>
+          new Map(
+            actions.map((action) => [
+              action.toolCallId,
+              {
+                allowed: true,
+                decision: {
+                  decision: "allow",
+                  reason: "Read-only lookup requested by the user.",
+                  riskLevel: "low",
+                  userAuthorization: "high",
+                },
+              },
+            ]),
+          ),
+      ),
     };
     const previousPlugins = setPlugins([
       defineJuniorPlugin({
@@ -190,10 +202,14 @@ describe("Pi tool adapter integration", () => {
         },
       );
       expect(actionReview.review).toHaveBeenCalledWith(
-        "tool-execute",
-        "agentDemo_lookupCustomer",
-        registry.agentDemo_lookupCustomer,
-        { customerId: "C123" },
+        [
+          {
+            toolCallId: "tool-execute",
+            toolName: "agentDemo_lookupCustomer",
+            tool: registry.agentDemo_lookupCustomer,
+            input: { customerId: "C123" },
+          },
+        ],
         undefined,
       );
     } finally {
