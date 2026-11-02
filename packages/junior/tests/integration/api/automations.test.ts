@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { avatarPath } from "../../fixtures/avatar";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
@@ -375,7 +376,7 @@ describe("Automations API", () => {
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -388,7 +389,7 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: `/api/people/avatars/${otherIdentity!.id}`,
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -470,8 +471,8 @@ describe("Automations API", () => {
         .automations.find(
           (automation) => automation.id === "event_public_tasks_api",
         );
-      expect(unverifiedCreator?.createdByAvatarUrl).toBe(
-        `/api/people/avatars/${otherIdentity!.id}`,
+      expect(unverifiedCreator?.createdByAvatarUrl).toEqual(
+        avatarPath(otherIdentity!.id),
       );
       expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 

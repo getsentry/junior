@@ -522,6 +522,7 @@ export function ConversationPage(props: {
           // runs without interactive auth, so it has no approval to show.
           view === "rich" && detail.data?.isParticipant && !agentTree ? (
             <ConversationReplyFooter
+              authors={detail.data.authors}
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
               // too large to re-enter the footer on every live poll while typing.
@@ -620,6 +621,7 @@ export function ConversationPage(props: {
  * footer tree. Fast chat UIs isolate the composer the same way.
  */
 const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
+  authors?: ConversationDetailReport["authors"];
   committedMessageIds: readonly string[];
   conversationId: string;
   onPinRequest: () => void;
@@ -874,6 +876,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           >
             <ConversationReviewBar conversationId={props.conversationId} />
             <PendingMailboxStack
+              authors={props.authors}
               cancelError={cancelError}
               cancelPending={cancelPendingMessages.isPending}
               cancelTargetInboundMessageId={cancelTargetInboundMessageId}

@@ -9,7 +9,9 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
@@ -36,6 +38,18 @@ describe("conversation pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
+    // The row names its author, so the client can read the author photo from
+    // the Conversation authors before the Message reaches history.
+    const [author] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.emailNormalized, actor.email.toLowerCase()),
+          isNotNull(juniorIdentities.userId),
+        ),
+      )
+      .limit(1);
 
     const app = createJuniorApi();
     const response = await app.request(
@@ -53,6 +67,7 @@ describe("conversation pending messages API", () => {
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
+        actorIdentityId: author!.id,
         createdAt: expect.any(String),
         delivery: "defer",
         inboundMessageId: accepted.messageId,

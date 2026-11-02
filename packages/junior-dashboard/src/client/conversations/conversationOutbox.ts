@@ -1,8 +1,10 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
+import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
@@ -26,6 +28,22 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
+
+/** Identity of the viewer, for the outbox rows that they send. */
+export function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
 
 /** Stable React Query key for one conversation's local send outbox. */
 export function conversationOutboxQueryKey(conversationId: string | undefined) {
@@ -163,6 +181,7 @@ function sameActorIdentity(
   if (left === right) return true;
   if (!left || !right) return false;
   return (
+    left.avatarUrl === right.avatarUrl &&
     left.email === right.email &&
     left.fullName === right.fullName &&
     left.slackUserId === right.slackUserId &&

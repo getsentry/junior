@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { avatarPath } from "../../../fixtures/avatar";
 import { describe, expect, test } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { testViewer } from "../../../fixtures/user";
@@ -831,12 +832,12 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
-            avatarUrl: "/api/people/avatars/identity-google-owner",
+            avatarUrl: avatarPath("identity-google-owner"),
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
-            avatarUrl: "/api/people/avatars/identity-participant-slack",
+            avatarUrl: avatarPath("identity-participant-slack"),
             email: "participant@example.com",
             fullName: "Participant",
             slackUserId: "UPARTICIPANT1",

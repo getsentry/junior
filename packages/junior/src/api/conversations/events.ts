@@ -3,6 +3,7 @@ import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
@@ -357,6 +358,12 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        ...(args.canExposePayload &&
+        data.role === "user" &&
+        data.authorIdentityId &&
+        data.authorIdentityId !== SYSTEM_IDENTITY_ID
+          ? { actorIdentityId: data.authorIdentityId }
+          : undefined),
         ...(typeof data.meta?.agentInvocationId === "string"
           ? { agentInvocationId: data.meta.agentInvocationId }
           : undefined),
