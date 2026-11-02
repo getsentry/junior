@@ -226,6 +226,22 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       ...(permissionDenied ? { permissionDenied } : undefined),
     };
   };
+  // Egress auth and permission signals belong to the egress session, not to
+  // one command, and the proxy cannot tell which command made a request. So
+  // the bash commands of one Run run one at a time, also when a Code Mode
+  // script starts them together. Each command then reads only its own signals.
+  let bashTail: Promise<void> = Promise.resolve();
+  /** Wait for the earlier bash commands of this Run; return a release. */
+  const takeBashTurn = async (): Promise<() => void> => {
+    const earlier = bashTail;
+    let release!: () => void;
+    const done = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    bashTail = earlier.then(() => done);
+    await earlier;
+    return release;
+  };
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
@@ -364,68 +380,74 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     const { bash: executeBash, sessionId: activeSessionId } =
       await runtime.tools(context.signal);
-    await clearEgressSignals(activeSessionId);
-    const result = await withSandboxToolSpan(
-      "bash",
-      "process.exec",
-      {
-        "process.executable.name": "bash",
-      },
-      async () => {
-        const response = await executeBash({
-          command,
-          cwd,
-          ...(env ? { env } : undefined),
-          ...(timeoutMs ? { timeoutMs } : undefined),
-          ...(context.signal ? { signal: context.signal } : undefined),
-        });
-        setSpanAttributes({
-          "process.exit.code": response.exitCode,
-          "app.sandbox.stdout_bytes": Buffer.byteLength(
-            response.stdout ?? "",
-            "utf8",
-          ),
-          "app.sandbox.stderr_bytes": Buffer.byteLength(
-            response.stderr ?? "",
-            "utf8",
-          ),
-          ...(response.aborted
-            ? { "error.type": "outcome_unknown" }
-            : response.exitCode !== 0
-              ? { "error.type": "nonzero_exit" }
-              : {}),
-        });
-        setSpanStatus(response.exitCode === 0 ? "ok" : "error");
-        return response;
-      },
-    );
-    // Always consume egress auth/permission signals regardless of exit code.
-    // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
-    // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
-    // preventing the signal from ever being read. The egress signal is a
-    // side-channel from the network layer — not a property of shell exit status —
-    // and the signal store is cleared before each execution to prevent
-    // cross-command leakage.
-    const { authRequired, permissionDenied } =
-      await consumeEgressSignals(activeSessionId);
+    const releaseBashTurn = await takeBashTurn();
+    try {
+      context.signal?.throwIfAborted();
+      await clearEgressSignals(activeSessionId);
+      const result = await withSandboxToolSpan(
+        "bash",
+        "process.exec",
+        {
+          "process.executable.name": "bash",
+        },
+        async () => {
+          const response = await executeBash({
+            command,
+            cwd,
+            ...(env ? { env } : undefined),
+            ...(timeoutMs ? { timeoutMs } : undefined),
+            ...(context.signal ? { signal: context.signal } : undefined),
+          });
+          setSpanAttributes({
+            "process.exit.code": response.exitCode,
+            "app.sandbox.stdout_bytes": Buffer.byteLength(
+              response.stdout ?? "",
+              "utf8",
+            ),
+            "app.sandbox.stderr_bytes": Buffer.byteLength(
+              response.stderr ?? "",
+              "utf8",
+            ),
+            ...(response.aborted
+              ? { "error.type": "outcome_unknown" }
+              : response.exitCode !== 0
+                ? { "error.type": "nonzero_exit" }
+                : {}),
+          });
+          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+          return response;
+        },
+      );
+      // Always consume egress auth/permission signals regardless of exit code.
+      // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
+      // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
+      // preventing the signal from ever being read. The egress signal is a
+      // side-channel from the network layer — not a property of shell exit status —
+      // and the signal store is cleared before each execution to prevent
+      // cross-command leakage.
+      const { authRequired, permissionDenied } =
+        await consumeEgressSignals(activeSessionId);
 
-    return formatSandboxCommandResult({
-      ok: result.exitCode === 0,
-      command,
-      cwd,
-      exit_code: result.exitCode,
-      signal: null,
-      timed_out: Boolean(result.timedOut),
-      aborted: Boolean(result.aborted),
-      stdout: result.stdout,
-      stderr: result.stderr,
-      stdout_truncated: result.stdoutTruncated,
-      stderr_truncated: result.stderrTruncated,
-      ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied
-        ? { permission_denied: permissionDenied }
-        : undefined),
-    }) as T;
+      return formatSandboxCommandResult({
+        ok: result.exitCode === 0,
+        command,
+        cwd,
+        exit_code: result.exitCode,
+        signal: null,
+        timed_out: Boolean(result.timedOut),
+        aborted: Boolean(result.aborted),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        stdout_truncated: result.stdoutTruncated,
+        stderr_truncated: result.stderrTruncated,
+        ...(authRequired ? { auth_required: authRequired } : undefined),
+        ...(permissionDenied
+          ? { permission_denied: permissionDenied }
+          : undefined),
+      }) as T;
+    } finally {
+      releaseBashTurn();
+    }
   };
 
   const executeReadFileTool = async <T>(

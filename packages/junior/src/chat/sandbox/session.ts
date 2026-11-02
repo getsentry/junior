@@ -887,7 +887,6 @@ export function createSandboxRuntime(
         await getOrAcquireSandbox(signal);
       }
 
-      const previous = activeSandbox;
       // The new sandbox outlives this call. Its requests follow the call
       // signal only until the switch is done.
       signal?.throwIfAborted();
@@ -913,6 +912,10 @@ export function createSandboxRuntime(
         signal?.removeEventListener("abort", stopSwitching);
       }
 
+      // Read the active Sandbox only now. Another switch or a normal
+      // acquisition can replace it while the candidate is prepared, and the
+      // Sandbox it replaced must stop too.
+      const previous = activeSandbox;
       if (keepAliveTimer) {
         clearTimeout(keepAliveTimer);
         keepAliveTimer = undefined;
