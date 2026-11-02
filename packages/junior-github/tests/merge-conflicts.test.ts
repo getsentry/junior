@@ -66,7 +66,9 @@ describe("merge conflict check on webhook events", () => {
   let published: EventInput[];
   let pullRequestReads: number;
   let pullRequest: ReturnType<typeof pullRequestResponse>;
+  let watchesComments: boolean;
   let watchesConflicts: boolean;
+  let reactions: number;
 
   async function deliver(
     deliveryId: string,
@@ -99,8 +101,9 @@ describe("merge conflict check on webhook events", () => {
         async hasMatch(event) {
           return (
             event.identifier === "getsentry/junior#946" &&
-            (event.eventType !== "pull_request.merge_conflict" ||
-              watchesConflicts)
+            (event.eventType === "pull_request.merge_conflict"
+              ? watchesConflicts
+              : watchesComments)
           );
         },
         async publish(event) {
@@ -128,7 +131,9 @@ describe("merge conflict check on webhook events", () => {
     fixture = await createGitHubFixture();
     published = [];
     pullRequestReads = 0;
+    watchesComments = true;
     watchesConflicts = true;
+    reactions = 0;
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: false,
@@ -155,6 +160,13 @@ describe("merge conflict check on webhook events", () => {
         () => {
           pullRequestReads += 1;
           return HttpResponse.json(pullRequest);
+        },
+      ),
+      http.post(
+        "https://api.github.com/repos/getsentry/junior/issues/comments/4001/reactions",
+        () => {
+          reactions += 1;
+          return HttpResponse.json({ id: 1 });
         },
       ),
       http.get(
@@ -229,6 +241,13 @@ describe("merge conflict check on webhook events", () => {
     await deliver("delivery-1");
     expect(pullRequestReads).toBe(0);
     expect(conflicts()).toEqual([]);
+  });
+
+  it("does not mark a comment when only conflicts are watched", async () => {
+    watchesComments = false;
+    await deliver("delivery-1");
+    expect(reactions).toBe(0);
+    expect(conflicts()).toHaveLength(2);
   });
 
   it("uses the mergeability in a pull request webhook without reading the pull request", async () => {

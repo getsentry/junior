@@ -398,18 +398,6 @@ export function createGitHubWebhookRoute(args: {
           : undefined),
         log: args.log,
       });
-      // GitHub sends no webhook for a new conflict, so check on every other
-      // event for a watched pull request.
-      events.push(
-        ...(await loadGitHubMergeConflictEvents({
-          deliveryId,
-          events,
-          hasMatch,
-          loadPullRequest: args.loadPullRequest,
-          log: args.log,
-          pullRequestPayload: eventName === "pull_request" ? body : undefined,
-        })),
-      );
       const feedbackTarget = pullRequestFeedbackTarget(events);
       const feedbackHasMatch =
         feedbackTarget && hasMatch
@@ -429,6 +417,19 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
+      // GitHub sends no webhook for a new conflict, so check on every other
+      // event for a watched pull request. Add these after the feedback
+      // reaction, so a Watch that wants only conflicts does not mark a comment.
+      events.push(
+        ...(await loadGitHubMergeConflictEvents({
+          deliveryId,
+          events,
+          hasMatch,
+          loadPullRequest: args.loadPullRequest,
+          log: args.log,
+          pullRequestPayload: eventName === "pull_request" ? body : undefined,
+        })),
+      );
       for (const event of events) {
         await args.events.publish({
           ...event,
