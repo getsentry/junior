@@ -10,6 +10,7 @@ import {
 } from "@/chat/credentials/subject";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -100,6 +101,7 @@ export function createHeartbeatContext(args: {
     cache: createPluginCache(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
+    embedder: createPluginEmbedder(pluginName),
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {

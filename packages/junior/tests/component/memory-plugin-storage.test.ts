@@ -75,6 +75,7 @@ vi.mock("@/chat/pi/client", () => ({
     provider: "test-provider",
     vectors: texts.map(() => [1]),
   })),
+  GEN_AI_PROVIDER_NAME: "test-provider",
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
 

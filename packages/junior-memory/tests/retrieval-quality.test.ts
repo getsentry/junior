@@ -16,6 +16,8 @@ function testEmbedder(
   vectors: Record<string, number[]>,
 ): MemoryEmbeddingProvider {
   return {
+    model: "retrieval-quality-model",
+    provider: "retrieval-quality-provider",
     async embedTexts({ texts }) {
       return {
         dimensions: EMBEDDING_DIMENSIONS,
