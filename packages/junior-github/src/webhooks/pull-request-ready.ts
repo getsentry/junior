@@ -3,10 +3,10 @@
  *
  * A pull request is ready to merge when it is open, not a draft, approved,
  * and GitHub's merge state is `clean`. Each webhook that can change one of
- * these facts reads them again from GitHub. The notice goes to the person
- * who asked Junior to open the pull request, in the Conversation where they
- * asked. It closes when the pull request merges, closes, or is no longer
- * ready.
+ * these facts reads them again from GitHub. The notice goes to the
+ * Conversation where a person asked Junior to open the pull request. It is
+ * assigned to that person only when they are in that Conversation. It closes
+ * when the pull request merges, closes, or is no longer ready.
  */
 import type {
   PluginConversationReviewItems,

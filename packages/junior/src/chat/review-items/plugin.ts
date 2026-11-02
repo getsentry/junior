@@ -17,31 +17,23 @@ import {
 } from "./store";
 
 /**
- * Resolve the Users to assign. An Identity without a User has no one to
- * assign. A private item goes only to people in its Conversation, the same
- * rule that `requireReviewItemAssignees` applies to agents.
+ * Resolve the Users to assign. A plugin notice goes only to people in its
+ * Conversation, public or private. Junior leaves out an Identity without a
+ * User and a User who is not in the Conversation.
  */
 async function assigneeUserIds(
   db: JuniorDatabase,
   identityIds: readonly string[],
   conversationId: string,
-  isPrivate: boolean,
 ): Promise<string[]> {
   const userIds: string[] = [];
   for (const identityId of new Set(identityIds)) {
     const user = (await readIdentityByIdFromSql(db, identityId))?.user;
     if (!user) continue;
-    if (
-      isPrivate &&
-      !(await readConversationAccessFromSql(db, [conversationId], user)).get(
-        conversationId,
-      )?.isParticipant
-    ) {
-      throw new Error(
-        "A private review item can be assigned only to people in its Conversation",
-      );
-    }
-    userIds.push(user.id);
+    const access = (
+      await readConversationAccessFromSql(db, [conversationId], user)
+    ).get(conversationId);
+    if (access?.isParticipant) userIds.push(user.id);
   }
   return userIds;
 }
@@ -95,7 +87,6 @@ export function createPluginReviewItems(args: {
           db,
           notice.assigneeIdentityIds,
           conversationId,
-          isPrivate,
         ),
         body: notice.body,
         conversationIds: [

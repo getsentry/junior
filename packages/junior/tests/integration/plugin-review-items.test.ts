@@ -62,6 +62,20 @@ async function person(
   return { identityId, user };
 }
 
+/** Add a User as a person in a root Conversation. */
+async function participant(
+  rootConversationId: string,
+  user: User,
+): Promise<void> {
+  await getDb()
+    .insert(juniorConversationParticipants)
+    .values({
+      lastMessageAt: new Date(1),
+      rootConversationId,
+      userId: user.id,
+    });
+}
+
 const NOTICE = {
   body: "**Fix the thing** is approved, and GitHub says that it can merge. Merge it, or say why not.",
   dedupeKey: "pull-request-ready:getsentry/junior#946",
@@ -82,6 +96,7 @@ describe("plugin review items", () => {
   it("keeps one open notice per plugin key and closes it", async () => {
     await conversation("slack:C1:1.000001", "public");
     const ana = await person("ana@example.com");
+    await participant("slack:C1:1.000001", ana.user);
     const items = createPluginReviewItems({
       conversationId: "slack:C1:1.000001",
       plugin: "github",
@@ -185,36 +200,34 @@ describe("plugin review items", () => {
     ).toMatchObject({ assignees: [], status: "open" });
   });
 
-  it("assigns a private notice only to people in its Conversation", async () => {
-    await conversation("slack:D1:1.000001", "private");
-    const ana = await person("ana@example.com");
-    const ben = await person("ben@example.com");
-    await getDb()
-      .insert(juniorConversationParticipants)
-      .values({
-        lastMessageAt: new Date(1),
-        rootConversationId: "slack:D1:1.000001",
-        userId: ana.user.id,
+  it.each(["public", "private"] as const)(
+    "assigns a %s notice only to people in its Conversation",
+    async (visibility) => {
+      await conversation("slack:D1:1.000001", visibility);
+      const ana = await person("ana@example.com");
+      const ben = await person("ben@example.com");
+      await participant("slack:D1:1.000001", ana.user);
+      const items = createPluginReviewItems({
+        conversationId: "slack:D1:1.000001",
+        plugin: "github",
+        show,
       });
-    const items = createPluginReviewItems({
-      conversationId: "slack:D1:1.000001",
-      plugin: "github",
-      show,
-    });
 
-    await expect(
-      items.upsert({ ...NOTICE, assigneeIdentityIds: [ben.identityId] }),
-    ).rejects.toThrow("only to people in its Conversation");
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
-    expect(
-      await getOpenReviewItemByDedupeKey(
-        getDb(),
-        `plugin:github:${NOTICE.dedupeKey}`,
-        TENANT,
-      ),
-    ).toMatchObject({
-      assignees: [{ userId: ana.user.id }],
-      visibility: "private",
-    });
-  });
+      // Ben is not in the Conversation, so the notice leaves him out.
+      await items.upsert({
+        ...NOTICE,
+        assigneeIdentityIds: [ben.identityId, ana.identityId],
+      });
+      expect(
+        await getOpenReviewItemByDedupeKey(
+          getDb(),
+          `plugin:github:${NOTICE.dedupeKey}`,
+          TENANT,
+        ),
+      ).toMatchObject({
+        assignees: [{ userId: ana.user.id }],
+        visibility,
+      });
+    },
+  );
 });
