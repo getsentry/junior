@@ -176,6 +176,9 @@ describe("scheduled automation heartbeat", () => {
           kind: "one_off",
           timezone: "UTC",
         },
+        task: {
+          text: "Post a digest for the Automation creator. Summarize the latest state.",
+        },
       }),
     );
 
@@ -201,8 +204,9 @@ describe("scheduled automation heartbeat", () => {
     expect(dispatchRecord?.input).toContain("[task]");
     expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
     expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
+    // The run gets the creator mention, not the stored phrase.
     expect(dispatchRecord?.input).toContain(
-      "Instructions: Post a digest. Summarize the latest state.",
+      "Instructions: Post a digest for <@U039RR91S>. Summarize the latest state.",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");

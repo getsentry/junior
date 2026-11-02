@@ -30,6 +30,16 @@ function clip(value: string, maxLength: number | undefined): string {
   return maxLength === undefined ? value : value.slice(0, maxLength);
 }
 
+const CREATOR_REFERENCE = /\bthe Automation creator\b/gi;
+
+/**
+ * Write the creator mention where the instructions say "the Automation
+ * creator", so the run does not have to swap it in.
+ */
+function mentionCreator(instructions: string, creator: string): string {
+  return instructions.replace(CREATOR_REFERENCE, () => creator);
+}
+
 /** The linked person who did what an Event describes. */
 export interface EventDoneBy {
   /** Slack mention of the person. */
@@ -71,7 +81,7 @@ export function renderTaskInput(args: {
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
-  /** Mention of the Automation creator, so "me" and "the Automation creator" are exact. */
+  /** Mention of the Automation creator. It replaces "the Automation creator" in the instructions. */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: readonly string[];
@@ -112,7 +122,7 @@ export function renderTaskInput(args: {
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
     ...(args.doneBy ? [doneByLine(args.doneBy, people)] : []),
-    `Instructions: ${instructions}`,
+    `Instructions: ${creator ? mentionCreator(instructions, oneLine(creator)) : instructions}`,
   ];
 
   const guidance = args.guidance?.trim();

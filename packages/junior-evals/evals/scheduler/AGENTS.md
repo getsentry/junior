@@ -1,9 +1,12 @@
 # Scheduler Evals
 
-- This folder owns behavioral quality of due-occurrence delivery: what a due
-  scheduled automation posts, to whom, and when it posts nothing.
+- This folder owns model choice for scheduled automations: what a create
+  writes in the instruction, and what a due occurrence posts, to whom, and
+  when it posts nothing. This includes whether a post mentions the creator.
 - Hard-fail scheduler contracts (create, credential mode, reschedule,
-  management, delivery to the creator) live in `evals/integration/scheduler/`.
+  management, delivery threads) live in `evals/integration/scheduler/`.
+  Runtime wiring, such as the creator mention in the run input, is checked in
+  `packages/junior/tests/`.
 - Write authorization for scheduled work lives in Guardian
   (`evals/guardian/scheduled-work.eval.ts`), not here. Keep notification
   defaults and write authorization in separate cases.
