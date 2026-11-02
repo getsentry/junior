@@ -602,9 +602,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // While Junior waits for an answer, hide the message box and the queued
-  // messages, so the reader answers in the question and does not type the
-  // answer as a new message.
+  // While Junior waits for an answer, hide the message box, the review bar,
+  // and the queued messages, so the reader answers in the question and does
+  // not type the answer as a new message.
   // Dismiss on the question closes the item and shows the message box again.
   // The message box stays mounted, so its text and images stay, and it does
   // not hide while it has focus.
@@ -620,8 +620,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     composerShownForItemId !== reviewItem.id
       ? reviewItem
       : undefined;
-  // The message box can show only because it has focus. Using the queued
-  // messages moves focus out of it, so keep both shown for this item.
+  // The message box can show only because it has focus. Using the review bar
+  // or queued messages moves focus out of it, so keep them shown for this item.
   const keepComposerShown = () => {
     if (composerFocused && reviewItem && reviewItemWaitsForAnswer(reviewItem)) {
       setComposerShownForItemId(reviewItem.id);
@@ -818,14 +818,14 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           {props.pendingAuthorization ? (
             <PendingAuthorization authorization={props.pendingAuthorization} />
           ) : null}
-          <ConversationReviewBar conversationId={props.conversationId} />
-          {/* Queued messages hide with the message box, so the question is
-              the last thing above the dock. */}
+          {/* The review bar and queued messages hide with the message box, so
+              the question is the last thing above the dock. */}
           <div
             hidden={Boolean(question)}
             onFocus={keepComposerShown}
             onPointerDown={keepComposerShown}
           >
+            <ConversationReviewBar conversationId={props.conversationId} />
             <PendingMailboxStack
               cancelError={cancelError}
               cancelPending={cancelPendingMessages.isPending}
