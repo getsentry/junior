@@ -55,6 +55,3 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | File length            | `pnpm file-length:check` (code max 1,000 lines, core docs max 120)               |
 
 Split long files at a feature boundary. Do not compress formatting to pass.
-
-Use `/commit` for commits, `/pr-writer` for pull requests, and
-`/skill-writer` for skill changes.
