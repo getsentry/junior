@@ -602,8 +602,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // While Junior waits for an answer, hide the message box, so the reader
-  // answers in the question and does not type the answer as a new message.
+  // While Junior waits for an answer, hide the message box and the queued
+  // messages, so the reader answers in the question and does not type the
+  // answer as a new message.
   // Dismiss on the question closes the item and shows the message box again.
   // The message box stays mounted, so its text and images stay, and it does
   // not hide while it has focus.
@@ -619,8 +620,13 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     composerShownForItemId !== reviewItem.id
       ? reviewItem
       : undefined;
-  const questionIdRef = useRef(question?.id);
-  questionIdRef.current = question?.id;
+  // The message box can show only because it has focus. Using the queued
+  // messages moves focus out of it, so keep both shown for this item.
+  const keepComposerShown = () => {
+    if (composerFocused && reviewItem && reviewItemWaitsForAnswer(reviewItem)) {
+      setComposerShownForItemId(reviewItem.id);
+    }
+  };
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -722,9 +728,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
-      // The edit puts the message back in the message box, so show it.
-      if (questionIdRef.current)
-        setComposerShownForItemId(questionIdRef.current);
       const inboundMessageId = message.inboundMessageId;
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
@@ -816,22 +819,30 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             <PendingAuthorization authorization={props.pendingAuthorization} />
           ) : null}
           <ConversationReviewBar conversationId={props.conversationId} />
-          <PendingMailboxStack
-            cancelError={cancelError}
-            cancelPending={cancelPendingMessages.isPending}
-            cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-            committedMessageIds={props.committedMessageIds}
-            conversationId={props.conversationId}
-            editTargetInboundMessageId={editTargetInboundMessageId}
-            messages={props.pendingMessages}
-            onCancelMessage={onCancelMessage}
-            onEditMessage={onEditMessage}
-            onLayoutChange={onMailboxLayoutChange}
-            onRetry={onRetry}
-            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
-            steerTargetInboundMessageId={steerTargetInboundMessageId}
-            viewerEmail={viewerEmail}
-          />
+          {/* Queued messages hide with the message box, so the question is
+              the last thing above the dock. */}
+          <div
+            hidden={Boolean(question)}
+            onFocus={keepComposerShown}
+            onPointerDown={keepComposerShown}
+          >
+            <PendingMailboxStack
+              cancelError={cancelError}
+              cancelPending={cancelPendingMessages.isPending}
+              cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+              committedMessageIds={props.committedMessageIds}
+              conversationId={props.conversationId}
+              editTargetInboundMessageId={editTargetInboundMessageId}
+              messages={props.pendingMessages}
+              onCancelMessage={onCancelMessage}
+              onEditMessage={onEditMessage}
+              onLayoutChange={onMailboxLayoutChange}
+              onRetry={onRetry}
+              onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+              steerTargetInboundMessageId={steerTargetInboundMessageId}
+              viewerEmail={viewerEmail}
+            />
+          </div>
           {unsentAnswers.dialog}
         </>
       }

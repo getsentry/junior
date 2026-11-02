@@ -681,17 +681,20 @@ for (const view of [desktop, mobile]) {
     await expect(
       card.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
-    // The message box hides while Junior waits, so the reader answers in the
-    // question and does not type the answer as a new message.
+    // The message box and queued messages hide while Junior waits, so the
+    // question is last and the reader does not type the answer as a new message.
     const composer = page.getByLabel("Continue this conversation");
+    const queue = page.getByRole("button", { name: /queued messages/ });
     await expect(composer).toBeHidden();
+    await expect(queue).toBeHidden();
     await screenshot(page, "conversation-review-item-card", {
       view: view.name,
     });
 
-    // Dismiss closes the item and shows the message box again.
+    // Dismiss closes the item and shows the message box and queue again.
     await card.getByRole("button", { name: "Dismiss" }).click();
     await expect(composer).toBeVisible();
+    await expect(queue).toBeVisible();
     await screenshot(page, "conversation-review-item-dismissed", {
       view: view.name,
     });
