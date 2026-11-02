@@ -160,10 +160,16 @@ test("each review item gets a fresh answer form", async ({
     detail.getByRole("heading", { name: license.title }),
   ).toBeVisible();
   await detail.getByRole("radio", { name: "Reject" }).click();
+  await expect(detail.getByText("1 of 2 answered")).toBeVisible();
+  // The note goes with the picked answer. It must not replace it.
+  await detail.getByLabel("Anything else?").fill("Ask legal first.");
   await detail.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => actions.length).toBe(2);
   expect(actions[1]).toMatchObject({
-    body: { action: "submit", answer: { values: { decision: ["Reject"] } } },
+    body: {
+      action: "submit",
+      answer: { other: "Ask legal first.", values: { decision: ["Reject"] } },
+    },
     id: license.id,
   });
 });

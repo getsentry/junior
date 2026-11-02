@@ -4,6 +4,7 @@ import {
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
   type UserInputAnswer,
   type UserInputField,
   type UserInputRequest,
@@ -48,9 +49,13 @@ function ChoiceField(props: {
 }) {
   const id = useId();
   const { field } = props;
+  // Say how many choices count, so a reader knows when a field is done.
   const legend = (
     <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
       {field.label}
+      <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
+        {field.kind === "choice" ? "Pick one" : "Pick any"}
+      </span>
     </legend>
   );
   const description = field.description ? (
@@ -196,11 +201,12 @@ export function UserInputForm(props: {
     requestId: props.requestId,
     values,
   };
+  const normalized = normalizeUserInputAnswer(props.request, answer);
+  const answeredCount = Object.keys(normalized.values).length;
+  const fieldCount = props.request.fields.length;
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      !isEmptyUserInputAnswer(normalizeUserInputAnswer(props.request, answer))
-    ) {
+    if (!isEmptyUserInputAnswer(normalized)) {
       void send(answer);
     }
   }
@@ -302,9 +308,9 @@ export function UserInputForm(props: {
           )}
           <TextField
             className="min-h-16"
-            description="Optional. Anything else, or an answer that is not listed."
+            description={USER_INPUT_NOTE.description}
             disabled={sending}
-            label="Other"
+            label={USER_INPUT_NOTE.label}
             onChange={setOther}
             value={other}
           />
@@ -312,6 +318,14 @@ export function UserInputForm(props: {
             <Button disabled={sending} type="submit" variant="primary">
               Send
             </Button>
+            {fieldCount > 1 ? (
+              <span
+                aria-live="polite"
+                className="text-xs text-dashboard-text-muted"
+              >
+                {answeredCount} of {fieldCount} answered
+              </span>
+            ) : null}
             {secondary}
           </div>
         </form>
