@@ -29,7 +29,7 @@ For host or plugin CLI behavior, call the command directly through the same
 wrapper:
 
 ```sh
-pnpm cli -- memory search --scope personal --scope-key local:local-cli --limit 5
+pnpm cli -- memory search --scope private --scope-key local:local-cli --limit 5
 ```
 
 Use example app discovery probes when the change touches skill or plugin
