@@ -64,6 +64,10 @@ reads. Terms are in `TERMINOLOGY.md`.
 - The automated-turn limit does not drop child results.
 - A blocked child is not a failure. Read `reportBlocked` only from the
   messages of the current Turn.
+- When Guardian blocks a child action, the parent adds one action item with
+  `addReviewItem`, not a plain-text question. The item names the exact action.
+  Its dedupe key comes from the child Conversation and the action, so a repeat
+  block updates the same item.
 - A stop writes `junior_conversations.stopped_at` for each Conversation in the
   tree. The worker drops wakes received at or before that time. A stop that
   the parent asked for gives the parent no result Turn.
