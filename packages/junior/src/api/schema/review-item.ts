@@ -28,7 +28,7 @@ export const reviewItemSchema = z
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
-    /** True when the viewer can take, submit, complete, or dismiss it. */
+    /** True when the viewer can take, submit, or dismiss it. */
     canAct: z.boolean(),
     /** True when the viewer can act and is not already the only assignee. */
     canTake: z.boolean(),
@@ -114,7 +114,6 @@ export const reviewItemParamsSchema = z
 /** One person action on a Review item. */
 export const reviewItemActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("take") }).strict(),
-  z.object({ action: z.literal("complete") }).strict(),
   z.object({ action: z.literal("dismiss") }).strict(),
   z
     .object({

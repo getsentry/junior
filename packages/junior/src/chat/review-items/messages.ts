@@ -22,7 +22,6 @@ import type { ReviewItem } from "./store";
 /** One change to a Review item that linked Conversations learn about. */
 export type ReviewItemChange =
   | { kind: "submitted"; user: User }
-  | { kind: "completed"; user: User }
   | { kind: "dismissed"; user: User }
   | { kind: "taken"; user: User }
   | { kind: "replied"; who: string }
@@ -51,11 +50,6 @@ export function renderReviewItemMessage(
         item.request && item.answer
           ? formatUserInputAnswer(item.request, item.answer)
           : "(no answer)",
-      ].join("\n");
-    case "completed":
-      return [
-        `${personName(change.user)} marked ${label} done.`,
-        ...question,
       ].join("\n");
     case "dismissed":
       return [

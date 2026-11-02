@@ -151,11 +151,8 @@ describe("review item actions API", () => {
       [],
     );
     expect(
-      (await api(fixture, cal).act(id, { action: "complete" })).status,
+      (await api(fixture, cal).act(id, { action: "dismiss" })).status,
     ).toBe(403);
-    expect(
-      (await api(fixture, ana).act(id, { action: "complete" })).status,
-    ).toBe(400);
 
     const submitted = await api(fixture, ana).act(id, {
       action: "submit",
