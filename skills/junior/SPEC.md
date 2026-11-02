@@ -39,7 +39,6 @@ Do not use for: existing provider usage, generic code review, docs-only edits.
 Authoritative:
 
 - `packages/junior-plugin-api/README.md`
-- `packages/junior/src/chat/plugins/AGENTS.md`
 - `packages/junior/src/chat/credentials/AGENTS.md`
 - `packages/docs/src/content/docs/extend/index.md`
 - `packages/docs/src/content/docs/cli/check.md`

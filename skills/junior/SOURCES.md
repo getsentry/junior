@@ -8,7 +8,6 @@ Last updated: 2026-05-07
 | --------------------------------------------------------------- | ------------------------------------------------- |
 | `AGENTS.md`                                                     | repo validation and contribution rules            |
 | `packages/junior-plugin-api/AGENTS.md`                          | plugin registration and public extension contract |
-| `packages/junior/src/chat/plugins/AGENTS.md`                    | host discovery and runtime ownership              |
 | `packages/junior/src/chat/credentials/AGENTS.md`                | actor-bound provider credential injection         |
 | `packages/docs/src/content/docs/extend/index.md`                | public plugin setup                               |
 | `packages/docs/src/content/docs/concepts/skills-and-plugins.md` | mental model                                      |

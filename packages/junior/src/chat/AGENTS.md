@@ -96,3 +96,8 @@ messages.
   tools, and Delivery read that field, not the Source.
 - An Automation run has no Delivery. It ends with `finishAutomationRun`. A
   failed run posts nothing to its outcomes.
+
+## Replies
+
+- Progress uses the status surface, never an assistant reply. `no_reply`
+  needs an intentional no-reply. Missing text is not silence.
