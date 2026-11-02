@@ -333,15 +333,14 @@ function TranscriptEntryList(props: {
   const claimedActivityKeys = new Set<string>();
   const rows: ReactNode[] = [];
   // Search results are not a reading order, so they get no marker.
-  const unread = search.active ? undefined : props.unread;
-  let unreadMarkerPending = unread !== undefined;
-  const isUnread = (seq: number | undefined) =>
-    unread !== undefined &&
-    seq !== undefined &&
-    seq > unread.afterSeq &&
-    seq <= unread.throughSeq;
-  const pushRow = (unreadRow: boolean, row: ReactNode) => {
-    if (unreadMarkerPending && unreadRow) {
+  const markerSeq = search.active
+    ? undefined
+    : unreadMarkerSeq(props.entries, props.unread);
+  let unreadMarkerPending = markerSeq !== undefined;
+  // Entries are in seq order, so the first row that reaches the marker seq
+  // gets the marker.
+  const pushRow = (seq: number | undefined, row: ReactNode) => {
+    if (unreadMarkerPending && seq !== undefined && seq >= markerSeq!) {
       unreadMarkerPending = false;
       rows.push(<TranscriptUnreadMarker key="unread-marker" />);
     }
@@ -390,7 +389,7 @@ function TranscriptEntryList(props: {
         const lastSeq = lastEntrySeq(activityEntries);
         // The marker goes before the group when any of it is unread.
         pushRow(
-          activityEntries.some((candidate) => isUnread(candidate.seq)),
+          lastSeq,
           <TranscriptRow
             anchorKey={activityKey}
             indent
@@ -410,7 +409,7 @@ function TranscriptEntryList(props: {
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       const rowKey = `${props.keyPrefix}:${entry.key}`;
       pushRow(
-        isUnread(entry.seq),
+        entry.seq,
         <TranscriptRow anchorKey={rowKey} key={rowKey} seq={entry.seq}>
           {renderEntry(entry)}
         </TranscriptRow>,
@@ -426,6 +425,22 @@ function TranscriptEntryList(props: {
   // Let rows participate in the parent transcript stack so messages, tool
   // groups, and the thinking indicator share one vertical gap.
   return rows;
+}
+
+/**
+ * Find the seq of the first unread row. Entries are in seq order, so this is
+ * the first seq after the read position. Rows after the range arrived after
+ * open, so they get no marker.
+ */
+function unreadMarkerSeq(
+  entries: readonly TranscriptEntry[],
+  unread: TranscriptUnreadRange | undefined,
+): number | undefined {
+  if (!unread) return undefined;
+  const seq = entries.find(
+    (entry) => entry.seq !== undefined && entry.seq > unread.afterSeq,
+  )?.seq;
+  return seq !== undefined && seq <= unread.throughSeq ? seq : undefined;
 }
 
 function lastEntrySeq(
