@@ -76,6 +76,7 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
+  listActiveAgentInvocationsForConversation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -421,6 +422,7 @@ async function persistTerminalLifecycle(
 /** Stop an invocation whose worker died, or project its terminal turn result. */
 async function projectTerminalTurn(
   invocation: AgentInvocation,
+  options: { reportNow?: boolean } = {},
 ): Promise<AgentInvocation | undefined> {
   let turn = await getTurnRecord(
     invocation.childConversationId,
@@ -455,6 +457,7 @@ async function projectTerminalTurn(
       ? undefined
       : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
   return await completeAgentInvocation({
+    ...options,
     invocationId: invocation.invocationId,
     ...(failed
       ? {
@@ -471,6 +474,27 @@ async function projectTerminalTurn(
             status: "completed" as const,
           }),
   });
+}
+
+/**
+ * End an agent invocation that is still running or paused while other work
+ * of its child starts. A saved finished Turn gives its result. Otherwise it
+ * fails. The newer work does not continue this task, so the result goes to
+ * the parent on its own.
+ */
+async function endOtherActiveAgentInvocation(
+  invocation: AgentInvocation,
+): Promise<AgentInvocation | undefined> {
+  return (
+    (await projectTerminalTurn(invocation, { reportNow: true })) ??
+    (await completeAgentInvocation({
+      invocationId: invocation.invocationId,
+      errorMessage:
+        "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
+      reportNow: true,
+      status: "failed",
+    }))
+  );
 }
 
 /** Classify authorization failures that terminally block background work. */
@@ -689,6 +713,15 @@ export function createAgentInvocationWorker(
         await finish(projected);
         await acknowledge();
         return { status: "completed" };
+      }
+      // A child has at most one running or paused agent invocation. End any
+      // other active one first. Each one reports its own result.
+      for (const active of await listActiveAgentInvocationsForConversation(
+        invocation.childConversationId,
+      )) {
+        if (active.invocationId !== invocation.invocationId) {
+          await finish(await endOtherActiveAgentInvocation(active));
+        }
       }
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??

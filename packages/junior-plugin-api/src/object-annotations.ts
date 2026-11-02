@@ -11,7 +11,8 @@ import { objectTypeSchema } from "./object-presentation";
  * selects the fields it needs; preview rules must not remove saved facts.
  *
  * Keep raw responses, diffs, logs, credentials, and comments out of this schema.
- * See "Object annotations and Message cards" in packages/junior/src/chat/conversations/AGENTS.md.
+ * Return only facts that the Conversation audience may see. An annotation
+ * never grants provider access.
  */
 export const objectAnnotationSchema = z
   .object({

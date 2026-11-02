@@ -128,9 +128,8 @@ async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
-      // A search or the inbox also finds archived items, after the open ones.
-      const withArchived = q || url.searchParams.get("include") === "archived";
-      const list = withArchived ? [...open, ...archived] : open;
+      // A search also finds archived items, after the open ones.
+      const list = q ? [...open, ...archived] : open;
       return route.fulfill({
         json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
       });
@@ -233,7 +232,8 @@ test("the inbox shows an item in its conversation", async ({
   await expect(
     list.getByRole("link", { name: new RegExp(license.title) }),
   ).toHaveAttribute("aria-current", "page");
-  // Archived items stay collapsed until the reader asks.
+  // Archived items show only in a search.
+  await expect(page.getByRole("region", { name: "Archived" })).toHaveCount(0);
   await expect(
     list.getByRole("link", { name: new RegExp(answered.title) }),
   ).toHaveCount(0);
@@ -289,35 +289,39 @@ test("on mobile the list opens one item at a time", async ({
   await expect(list).toBeVisible();
 });
 
-test("a search finds open and archived items", async ({ dashboard, page }) => {
+test("a search lists open and archived items together", async ({
+  dashboard,
+  page,
+}) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   await page.getByLabel("Search review items").fill("license");
   await expect(page).toHaveURL(/[?&]q=license/);
-  const archivedGroup = page.getByRole("region", { name: "Archived" });
-  await archivedGroup
-    .getByRole("link", { name: new RegExp(answered.title) })
-    .click();
+  const results = page.getByRole("list", { name: "Search results" });
+  await expect(results.getByRole("link")).toHaveCount(3);
+  await expect(page.getByRole("region", { name: "Needs you" })).toHaveCount(0);
+  await expect(
+    results.getByRole("link", { name: new RegExp(answered.title) }),
+  ).toContainText("Done");
+  await screenshot(page, "review-desk-search", { view: "desktop" });
+  await results.getByRole("link", { name: new RegExp(answered.title) }).click();
   await expect(
     detail.getByRole("heading", { name: answered.title }),
   ).toBeVisible();
   await expect(detail.getByText(/closed this/)).toBeVisible();
 });
 
-test("an empty inbox links to archived items", async ({ dashboard, page }) => {
+test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await mockReviewItems(page, { open: [] });
   await mockNoBlockedAutomations(page);
   await page.goto(`${dashboard.baseURL}/review`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   await expect(detail.getByText("Nothing needs you")).toBeVisible();
-  await screenshot(page, "review-desk-empty", { view: "desktop" });
-  await detail.getByRole("button", { name: "See archived items" }).click();
   await expect(
-    page
-      .getByRole("region", { name: "Archived" })
-      .getByRole("link", { name: new RegExp(answered.title) }),
-  ).toBeVisible();
+    page.getByRole("link", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
+  await screenshot(page, "review-desk-empty", { view: "desktop" });
 });
 
 test("a message asks before it drops unsent picks", async ({

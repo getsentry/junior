@@ -192,6 +192,8 @@ export async function dispatchScheduledAutomation(args: {
     };
   };
 }) {
+  // Also the signed credential binding label. A rename breaks existing task
+  // credentials.
   const plugin = "scheduler";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });

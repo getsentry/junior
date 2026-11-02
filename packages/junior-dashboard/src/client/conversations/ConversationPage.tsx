@@ -98,6 +98,11 @@ import {
 } from "../review-desk/reviewItemFormat";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { Transcript } from "./TranscriptView";
+import {
+  readConversationStartPosition,
+  useMarkConversationRead,
+  useReadPositionAtOpen,
+} from "./transcriptReadPosition";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
@@ -166,6 +171,8 @@ export function ConversationPage(props: {
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
+  const markRead = useMarkConversationRead(conversationId);
+  const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -484,9 +491,11 @@ export function ConversationPage(props: {
                     hasPreviousPage={detail.hasPreviousPage}
                     historyError={detail.historyError}
                     historyVersion={detail.historyVersion}
+                    lastReadSeq={readAtOpen.lastReadSeq}
                     live={live}
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
+                    onRead={markRead}
                     onSelectedEventSeqChange={setSelectedEventSeq}
                     pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
@@ -497,8 +506,10 @@ export function ConversationPage(props: {
                     search={search}
                     onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
+                    startAtUnread={readConversationStartPosition() === "unread"}
                     transcript={transcript}
                     turnContextPanel={turnContextPanel}
+                    unread={readAtOpen.unread}
                     view={view}
                   />
                 </>

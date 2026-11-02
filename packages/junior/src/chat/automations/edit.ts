@@ -1,6 +1,6 @@
 /**
  * Web edits and lifecycle actions. Anyone who can read an Automation can
- * manage it. Creator-only fields and credential rules still apply.
+ * manage it. Creator credential rules still apply.
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError, requireCredentialStart } from "./edit-rules";
@@ -230,11 +230,7 @@ async function restorableOutcomes(
       });
       continue;
     }
-    // Only the creator can change outcomes, so skip the Slack lookup for others.
-    if (
-      current.ownedByViewer &&
-      !task.outcomes.some((stored) => sameDefinitionValue(stored, outcome))
-    ) {
+    if (!task.outcomes.some((stored) => sameDefinitionValue(stored, outcome))) {
       creatorDm ??= (
         await resolveTaskOutcomes(
           [{ action: "send_message", destination: "task_creator" }],

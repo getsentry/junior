@@ -578,13 +578,18 @@ describe("Slack webhook: Review item cards", () => {
       dedupe_key: "deploy-key",
     });
 
+    const posts = slackApiOutbox.messages();
+    expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    // A notice has nothing to answer, so its only control is Dismiss.
     expect(
-      slackApiOutbox.messages().map((post) => post.params.channel),
-    ).toEqual(["C123"]);
+      blocksOf(posts[0])
+        .find((block) => block.type === "actions")
+        ?.elements?.map((element) => element.action_id),
+    ).toEqual(["junior_review_item:dismiss"]);
 
     // Only an assignee can act. Ben gets an ephemeral note.
     await click({
-      actionId: "junior_review_item:done",
+      actionId: "junior_review_item:dismiss",
       actionTs: "1712345.0003",
       itemId: item.id,
       userId: "U456",
@@ -594,7 +599,7 @@ describe("Slack webhook: Review item cards", () => {
     );
 
     await click({
-      actionId: "junior_review_item:done",
+      actionId: "junior_review_item:dismiss",
       actionTs: "1712345.0004",
       itemId: item.id,
       userId: "U123",
@@ -602,7 +607,7 @@ describe("Slack webhook: Review item cards", () => {
     const updates = slackApiOutbox.calls("chat.update");
     expect(updates).toHaveLength(1);
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
-      "ana@example.com marked this done",
+      "ana@example.com dismissed this",
     );
   });
 

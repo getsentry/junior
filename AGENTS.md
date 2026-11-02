@@ -1,8 +1,6 @@
 # Agent Instructions
 
-Before you change code in a directory, read each `AGENTS.md` on the path from
-the repo root. Read the reference files at the end when your work touches
-their area.
+Read the reference files at the end when your work touches their area.
 
 ## Rules
 
@@ -23,7 +21,9 @@ their area.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
-- Change an `AGENTS.md` or `README.md` only when intent, an invariant, or a
+- This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
+  a code comment next to the code that it governs.
+- Change this file or a `README.md` only when intent, an invariant, or a
   boundary changes. Delete completed plans. Plans in `openspec/changes/`
   cannot override policy.
 
@@ -82,9 +82,3 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/frontend-components.md`: dashboard UI ownership and styling.
 - `policies/code-comments.md`: when and how to comment.
 - `policies/documentation.md`: internal docs.
-- `packages/junior/src/chat/AGENTS.md`: chat runtime.
-- `packages/junior/tests/AGENTS.md`: test layout and fixtures.
-- `packages/junior/migrations/AGENTS.md`: database migrations.
-- `packages/junior-evals/AGENTS.md`: evals and recordings.
-- `packages/junior-dashboard/AGENTS.md`: dashboard.
-- `packages/junior-plugin-api/AGENTS.md`: plugin contracts.

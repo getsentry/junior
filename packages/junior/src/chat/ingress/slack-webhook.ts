@@ -7,6 +7,10 @@ import {
   type SlackInboundEvent,
 } from "./slack-payload";
 import { handleSlackForm } from "./slack-form";
+import {
+  joinCreatedSlackChannel,
+  slackChannelCreatedEnvelopeSchema,
+} from "./slack-channel-created";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
@@ -140,6 +144,8 @@ export interface SlackWebhookServices {
   allowedDomains?: readonly string[];
   /** Slack user IDs of bots that may start a Turn without an email domain. */
   allowedBotUserIds?: readonly string[];
+  /** Join each public channel created after this is on. Defaults to off. */
+  autoJoinNewChannels?: boolean;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -167,7 +173,10 @@ function parseJson(body: string): unknown {
 }
 
 function installationFromEnvelope(
-  body: SlackEventEnvelope,
+  body: Pick<
+    SlackEventEnvelope,
+    "enterprise_id" | "is_enterprise_install" | "team_id"
+  >,
 ): SlackInstallationContext {
   return {
     teamId: body.team_id,
@@ -899,7 +908,29 @@ export async function handleSlackWebhook(args: {
     });
   }
 
-  const result = slackEventEnvelopeSchema.safeParse(parseJson(body));
+  const json = parseJson(body);
+  const channelCreated = slackChannelCreatedEnvelopeSchema.safeParse(json);
+  if (channelCreated.success) {
+    if (args.services.autoJoinNewChannels) {
+      const channelId = channelCreated.data.event.channel.id;
+      enqueue(
+        args.waitUntil,
+        withLogContext({ platform: "slack", destinationName: channelId }, () =>
+          joinCreatedSlackChannel({
+            adapter,
+            channelId,
+            installation: installationFromEnvelope(channelCreated.data),
+            state: args.services.state ?? getStateAdapter(),
+          }).catch((error) => {
+            logException(error, "slack.channel.auto_join.failed");
+          }),
+        ),
+      );
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  const result = slackEventEnvelopeSchema.safeParse(json);
   if (!result.success) {
     return new Response("Invalid JSON", { status: 400 });
   }

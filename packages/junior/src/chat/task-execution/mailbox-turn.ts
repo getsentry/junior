@@ -14,6 +14,7 @@ import type {
 import {
   getTurnRecord,
   listTurnSummaries,
+  type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
 import {
   isEventConversationMessage,
@@ -151,12 +152,14 @@ export async function getActiveConversationTurnId(
     : undefined;
 }
 
-/** Return the active web or event mailbox Turn. */
-async function getActiveMailboxTurnId(
+/** Return the web and event mailbox Turns that are paused or running. */
+export async function listActiveMailboxTurns(
   conversationId: string,
-): Promise<string | undefined> {
+): Promise<TurnRecord[]> {
   const summaries = await listTurnSummaries(conversationId);
-  const active = (
+  // TODO(dcramer): Remove the legacy surface and Actor checks after deployed
+  // Turn cursors all store Source.kind.
+  return (
     await Promise.all(
       summaries
         .filter(
@@ -167,8 +170,8 @@ async function getActiveMailboxTurnId(
         .map((summary) => getTurnRecord(conversationId, summary.turnId)),
     )
   ).filter(
-    (record) =>
-      record &&
+    (record): record is TurnRecord =>
+      record !== undefined &&
       !record.dispatchId &&
       (record.source?.kind === "web" ||
         record.source?.kind === "event" ||
@@ -176,13 +179,18 @@ async function getActiveMailboxTurnId(
           (record.surface === "api" || hasEventActor(record.actors)))) &&
       (record.state === "paused" || record.state === "running"),
   );
+}
+
+/** Return the active web or event mailbox Turn. */
+async function getActiveMailboxTurnId(
+  conversationId: string,
+): Promise<string | undefined> {
+  const active = await listActiveMailboxTurns(conversationId);
   if (active.length > 1) {
     throw new Error(
       `Conversation ${conversationId} has multiple active mailbox Turns`,
     );
   }
-  // TODO(dcramer): Remove the legacy surface and Actor checks after deployed
-  // Turn cursors all store Source.kind.
   return active[0]?.turnId;
 }
 

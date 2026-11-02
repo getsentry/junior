@@ -33,7 +33,13 @@ export function requireCredentialStart(
   );
 }
 
-/** Apply shared title, instruction, outcome, and creator credential rules. */
+/**
+ * Apply shared title, instruction, outcome, and creator credential rules.
+ * Anyone who can manage the Automation can change any field except turning on
+ * creator credentials. A non-creator change to execution or outcomes switches
+ * it to system credentials, so creator credential output stays where the
+ * creator approved.
+ */
 export async function editAutomationFields(
   current: EventAutomation | ScheduledAutomation,
   input: AutomationEditFields,
@@ -45,12 +51,6 @@ export async function editAutomationFields(
     throw new AutomationEditError(
       `Only the ${kind} automation creator can enable creator credential use.`,
       "credentialMode",
-    );
-  }
-  if (input.outcomes !== undefined && !isCreator) {
-    throw new AutomationEditError(
-      `Only the ${kind} automation creator can change message destinations.`,
-      "outcomes",
     );
   }
   let outcomes = current.outcomes;
@@ -85,11 +85,12 @@ export async function editAutomationFields(
       }
     }
   }
+  const changesOutcomes = !isDeepStrictEqual(outcomes, current.outcomes);
   return {
     title: input.title ?? current.title,
     task: { text: input.instruction ?? current.task.text },
     credentialMode:
-      changesExecution && !isCreator
+      (changesExecution || changesOutcomes) && !isCreator
         ? ("system" as const)
         : (input.credentialMode ?? current.credentialMode),
     outcomes,

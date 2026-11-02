@@ -415,8 +415,8 @@ test("groups the signed-in profile and session actions in the header", async ({
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "API tokens" }),
-  ).toHaveAttribute("href", "/settings/api-tokens");
+    popover.getByRole("link", { name: "Settings", exact: true }),
+  ).toHaveAttribute("href", "/settings");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");

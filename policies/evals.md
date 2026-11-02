@@ -3,7 +3,7 @@
 ## Intent
 
 Evals are integration tests for agent-facing behavior through the real
-runtime. Harness mechanics live in `packages/junior-evals/AGENTS.md`.
+runtime. Harness mechanics live in `packages/junior-evals/src/`.
 
 ## Policy
 

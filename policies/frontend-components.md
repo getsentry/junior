@@ -13,7 +13,7 @@ consistent.
 - Put repeated surfaces (charts, drawers, tables, secondary nav, time-range
   controls, `Field`, `Input`, `StatusChip`, `Section`, `Toolbar`,
   `EmptyState`) in shared components. Dashboard home:
-  `packages/junior-dashboard/src/client/components/`. See its `AGENTS.md`.
+  `packages/junior-dashboard/src/client/components/`.
 - Extract on the second real use, or when a third use is certain. Not on taste.
 - Keep pages thin: compose shared components and wire data.
 - Own page filters and secondary nav in one shared layout control. Sections

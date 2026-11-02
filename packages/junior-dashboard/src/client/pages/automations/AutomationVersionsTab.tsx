@@ -223,7 +223,7 @@ function AutomationVersionsView(props: {
             Junior saves these settings as a new version. Future runs use them.
             {automation.ownedByViewer
               ? null
-              : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`}
+              : ` Only ${automation.createdBy} can turn on their connected accounts.`}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
