@@ -25,7 +25,7 @@ export function registerGetAutomationTool(
       title: "Get automation",
       description: `Get one automation and its ${RECENT_RUN_LIMIT} newest runs.`,
       inputSchema: {
-        id: z.string().min(1).describe("Automation id from listAutomations."),
+        id: z.string().min(1).describe("Automation id from searchAutomations."),
       },
       outputSchema: {
         automation: mcpAutomationSchema,

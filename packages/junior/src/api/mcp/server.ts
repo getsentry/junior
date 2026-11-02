@@ -15,10 +15,10 @@ import { registerArchiveConversationTool } from "./tools/archive-conversation";
 import { registerGetAutomationTool } from "./tools/get-automation";
 import { registerGetConversationTool } from "./tools/get-conversation";
 import { registerGetReviewItemTool } from "./tools/get-review-item";
-import { registerListAutomationsTool } from "./tools/list-automations";
+import { registerSearchAutomationsTool } from "./tools/search-automations";
 import { registerListConversationMessagesTool } from "./tools/list-conversation-messages";
-import { registerListConversationsTool } from "./tools/list-conversations";
-import { registerListReviewItemsTool } from "./tools/list-review-items";
+import { registerSearchConversationsTool } from "./tools/search-conversations";
+import { registerSearchReviewItemsTool } from "./tools/search-review-items";
 import { registerStopConversationTool } from "./tools/stop-conversation";
 
 type RegisterTool = (server: McpServer, context: McpToolContext) => void;
@@ -26,7 +26,7 @@ type RegisterTool = (server: McpServer, context: McpToolContext) => void;
 /** The tools that each scope unlocks. A client sees only its granted tools. */
 const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
   "conversations:read": [
-    registerListConversationsTool,
+    registerSearchConversationsTool,
     registerGetConversationTool,
     registerListConversationMessagesTool,
   ],
@@ -34,8 +34,14 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
     registerArchiveConversationTool,
     registerStopConversationTool,
   ],
-  "review_items:read": [registerListReviewItemsTool, registerGetReviewItemTool],
-  "automations:read": [registerListAutomationsTool, registerGetAutomationTool],
+  "review_items:read": [
+    registerSearchReviewItemsTool,
+    registerGetReviewItemTool,
+  ],
+  "automations:read": [
+    registerSearchAutomationsTool,
+    registerGetAutomationTool,
+  ],
 };
 
 const INSTRUCTIONS =

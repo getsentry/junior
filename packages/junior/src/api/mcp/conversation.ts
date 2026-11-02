@@ -48,7 +48,7 @@ export function mcpConversation(
 export const mcpConversationIdSchema = z
   .string()
   .min(1)
-  .describe("Conversation id from listConversations.");
+  .describe("Conversation id from searchConversations.");
 
 /** MCP view of one user or assistant Message. */
 export const mcpMessageSchema = z

@@ -47,7 +47,7 @@ Ask Claude Code to list your Junior Conversations:
 Use the junior MCP server to list my conversations.
 ```
 
-Claude Code calls the `listConversations` tool. The result shows up to 50 Conversations, newest activity first. Each one has its title, status, location, timestamps, and a dashboard link when the dashboard URL is known.
+Claude Code calls the `searchConversations` tool. The result shows up to 50 Conversations, newest activity first. Each one has its title, status, location, timestamps, and a dashboard link when the dashboard URL is known.
 
 Then ask for one Conversation:
 
@@ -70,12 +70,12 @@ The first request returns `401` with a `WWW-Authenticate` header. The second req
 
 A client gets only the tools of the scopes that you allow. A client that does not ask for a scope asks for all of them.
 
-| Scope                  | Tools                                                              | Effect                                                     |
-| ---------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `conversations:read`   | `listConversations`, `getConversation`, `listConversationMessages` | Read the Conversations that you started or take part in.   |
-| `conversations:manage` | `archiveConversation`, `stopConversation`                          | Archive a Conversation for you, or stop its running Turn.  |
-| `review_items:read`    | `listReviewItems`, `getReviewItem`                                 | Read the Review items that you can see on the Review desk. |
-| `automations:read`     | `listAutomations`, `getAutomation`                                 | Read the Automations that you can see, and their runs.     |
+| Scope                  | Tools                                                                | Effect                                                     |
+| ---------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `conversations:read`   | `searchConversations`, `getConversation`, `listConversationMessages` | Read the Conversations that you started or take part in.   |
+| `conversations:manage` | `archiveConversation`, `stopConversation`                            | Archive a Conversation for you, or stop its running Turn.  |
+| `review_items:read`    | `searchReviewItems`, `getReviewItem`                                 | Read the Review items that you can see on the Review desk. |
+| `automations:read`     | `searchAutomations`, `getAutomation`                                 | Read the Automations that you can see, and their runs.     |
 
 `getConversation` returns metadata, the Brief, and the last assistant reply. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
 

@@ -5,19 +5,19 @@ import { readViewerAutomations } from "@/chat/automations/read";
 import { mcpAutomation, mcpAutomationSchema } from "../automation";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
 
-/** Register `listAutomations`, which lists the Automations the user can see. */
-export function registerListAutomationsTool(
+/** Register `searchAutomations`, which searches the Automations the user can see. */
+export function registerSearchAutomationsTool(
   server: McpServer,
   { user }: McpToolContext,
 ): void {
   // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is the Zod object API.
   const listQuery = automationListQuerySchema.shape;
   server.registerTool(
-    "listAutomations",
+    "searchAutomations",
     {
-      title: "List automations",
+      title: "Search automations",
       description:
-        "List the automations that you can see, newest first. An automation is a saved instruction that runs on a schedule or on events.",
+        "Search the automations that you can see, newest first. An automation is a saved instruction that runs on a schedule or on events.",
       inputSchema: {
         q: listQuery.q.describe(
           "Text to search for in titles and instructions.",

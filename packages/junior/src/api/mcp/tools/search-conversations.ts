@@ -5,23 +5,23 @@ import { conversationFeedQuerySchema } from "@/api/schema/conversation";
 import { mcpConversation, mcpConversationSchema } from "../conversation";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
 
-/** Register `listConversations`, which lists the Conversations of the user. */
-export function registerListConversationsTool(
+/** Register `searchConversations`, which searches the Conversations of the user. */
+export function registerSearchConversationsTool(
   server: McpServer,
   { user }: McpToolContext,
 ): void {
   // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is the Zod object API.
   const feedQuery = conversationFeedQuerySchema.shape;
   server.registerTool(
-    "listConversations",
+    "searchConversations",
     {
-      title: "List conversations",
+      title: "Search conversations",
       description:
-        "List up to 50 of your conversations, newest activity first. Only conversations that you started or take part in are listed.",
+        "Search your conversations and return up to 50, newest activity first. Only conversations that you started or take part in match.",
       inputSchema: {
         q: feedQuery.q.describe("Text to search for in titles and Briefs."),
         status: feedQuery.status.describe(
-          "List conversations that you have not archived (default) or that you archived. A search ignores this filter.",
+          "Return conversations that you have not archived (default) or that you archived. A search ignores this filter.",
         ),
       },
       // The SDK checks `structuredContent` against this schema.

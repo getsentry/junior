@@ -6,17 +6,17 @@ import { searchReviewItems } from "@/chat/review-items/store";
 import { mcpReviewItem, mcpReviewItemSchema } from "../review-item";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
 
-/** Register `listReviewItems`, which lists open Review items for the user. */
-export function registerListReviewItemsTool(
+/** Register `searchReviewItems`, which searches open Review items for the user. */
+export function registerSearchReviewItemsTool(
   server: McpServer,
   { user }: McpToolContext,
 ): void {
   server.registerTool(
-    "listReviewItems",
+    "searchReviewItems",
     {
-      title: "List review items",
+      title: "Search review items",
       description:
-        "List open review items that you can see, newest change first. A review item is a question or notice that waits for a person.",
+        "Search the open review items that you can see, newest change first. A review item is a question or notice that waits for a person.",
       inputSchema: {
         q: z
           .string()
@@ -29,7 +29,7 @@ export function registerListReviewItemsTool(
           .string()
           .min(1)
           .optional()
-          .describe("List only the items linked to this conversation."),
+          .describe("Return only the items linked to this conversation."),
         limit: z
           .number()
           .int()

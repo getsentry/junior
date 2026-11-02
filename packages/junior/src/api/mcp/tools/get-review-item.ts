@@ -22,7 +22,10 @@ export function registerGetReviewItemTool(
       title: "Get review item",
       description: "Get one review item, open or closed.",
       inputSchema: {
-        id: z.string().min(1).describe("Review item id from listReviewItems."),
+        id: z
+          .string()
+          .min(1)
+          .describe("Review item id from searchReviewItems."),
       },
       outputSchema: { item: mcpReviewItemSchema },
       annotations: {

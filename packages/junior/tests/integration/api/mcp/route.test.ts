@@ -278,7 +278,7 @@ describe("remote MCP HTTP", () => {
     });
     const tokens = (await issued.json()) as TokenBody;
     const listed = await withMcpClient(app, tokens.access_token, (client) =>
-      client.callTool({ name: "listConversations", arguments: {} }),
+      client.callTool({ name: "searchConversations", arguments: {} }),
     );
     const rotated = await refresh(app, tokens.refresh_token);
     const rotatedTokens = (await rotated.json()) as TokenBody;
@@ -287,7 +287,7 @@ describe("remote MCP HTTP", () => {
       rotatedTokens.access_token,
       (client) =>
         client.callTool({
-          name: "listConversations",
+          name: "searchConversations",
           arguments: { q: "roadmap" },
         }),
     );
@@ -506,16 +506,16 @@ describe("remote MCP HTTP", () => {
       "getAutomation",
       "getConversation",
       "getReviewItem",
-      "listAutomations",
       "listConversationMessages",
-      "listConversations",
-      "listReviewItems",
+      "searchAutomations",
+      "searchConversations",
+      "searchReviewItems",
       "stopConversation",
     ]);
     expect(await toolNames(readOnly)).toEqual([
       "getConversation",
       "listConversationMessages",
-      "listConversations",
+      "searchConversations",
     ]);
     expect(
       new URL(invalidScope.headers.get("location") ?? "").searchParams.get(
@@ -667,11 +667,11 @@ describe("remote MCP HTTP", () => {
     const theirs = await addItem(other!.id, "Approve the budget");
     const token = await connect(app, VIEWER);
 
-    const listed = await callTool(app, token, "listReviewItems");
+    const listed = await callTool(app, token, "searchReviewItems");
     const hidden = await callTool(app, token, "getReviewItem", {
       id: theirs.id,
     });
-    const automations = await callTool(app, token, "listAutomations");
+    const automations = await callTool(app, token, "searchAutomations");
     const missingAutomation = await callTool(app, token, "getAutomation", {
       id: "missing",
     });

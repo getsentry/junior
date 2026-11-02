@@ -29,7 +29,7 @@ export function registerArchiveConversationTool(
           .string()
           .datetime()
           .describe(
-            "`lastSeenAt` from listConversations or getConversation. The archive fails when the conversation has newer activity.",
+            "`lastSeenAt` from searchConversations or getConversation. The archive fails when the conversation has newer activity.",
           ),
       },
       outputSchema: { archivedAt: z.string().nullable() },

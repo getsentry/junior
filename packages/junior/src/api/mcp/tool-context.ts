@@ -44,7 +44,7 @@ export function apiToolError(error: unknown): CallToolResult {
 /**
  * Return whether `user` started or takes part in a Conversation. MCP tools
  * read and change only these Conversations, the same set that
- * `listConversations` shows.
+ * `searchConversations` shows.
  */
 export async function isConversationParticipant(
   user: User,
