@@ -6,14 +6,14 @@ import {
   personalTokenListSchema,
   type PersonalTokenMetadata,
 } from "@sentry/junior/api/schema";
-import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
-import { dashboardContainerClass } from "../styles";
-import { getDashboardAgentName } from "../agentName";
-import { useDocumentTitle } from "../documentTitle";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { InlineError } from "../components/InlineError";
-import { Card } from "../components/layout/Card";
+import { deleteDashboardResource, fetchDashboardJson, post } from "../../http";
+import { dashboardContainerClass } from "../../styles";
+import { getDashboardAgentName } from "../../agentName";
+import { useDocumentTitle } from "../../documentTitle";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { InlineError } from "../../components/InlineError";
+import { Card } from "../../components/layout/Card";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 

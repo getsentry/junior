@@ -1,9 +1,7 @@
 import {
   Boxes,
   ChevronDown,
-  KeyRound,
   LogOut,
-  Plug,
   Settings,
   ShieldCheck,
   UserRound,
@@ -197,22 +195,6 @@ export function ProfileMenu({
         <Settings aria-hidden="true" size={16} strokeWidth={2} />
         Settings
       </Link>
-      <Link
-        className={profileLinkClass}
-        onClick={close}
-        to="/settings/api-tokens"
-      >
-        <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
-        API tokens
-      </Link>
-      <Link
-        className={profileLinkClass}
-        onClick={close}
-        to="/settings/connections"
-      >
-        <Plug aria-hidden="true" size={16} strokeWidth={2} />
-        Connected accounts
-      </Link>
       {identity.user.isAdmin ? (
         <Link className={profileLinkClass} onClick={close} to="/admin">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
@@ -281,12 +263,6 @@ export function ProfileMenu({
         </Link>
         <Link className={sheetItemClass} to="/settings">
           Settings
-        </Link>
-        <Link className={sheetItemClass} to="/settings/api-tokens">
-          API tokens
-        </Link>
-        <Link className={sheetItemClass} to="/settings/connections">
-          Connected accounts
         </Link>
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">

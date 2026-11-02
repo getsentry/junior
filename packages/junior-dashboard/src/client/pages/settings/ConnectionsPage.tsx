@@ -7,13 +7,13 @@ import {
   startConnectionResponseSchema,
   type connectionSchema,
 } from "@sentry/junior/api/schema";
-import { del, fetchDashboardJson, post } from "../http";
-import { dashboardContainerClass } from "../styles";
-import { getDashboardAgentName } from "../agentName";
-import { useDocumentTitle } from "../documentTitle";
-import { Button } from "../components/ui/button";
-import { InlineError } from "../components/InlineError";
-import { Card } from "../components/layout/Card";
+import { del, fetchDashboardJson, post } from "../../http";
+import { dashboardContainerClass } from "../../styles";
+import { getDashboardAgentName } from "../../agentName";
+import { useDocumentTitle } from "../../documentTitle";
+import { Button } from "../../components/ui/button";
+import { InlineError } from "../../components/InlineError";
+import { Card } from "../../components/layout/Card";
 
 type Connection = z.infer<typeof connectionSchema>;
 

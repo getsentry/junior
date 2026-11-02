@@ -8,17 +8,17 @@ import {
 import {
   dashboardIdentitySchema,
   type DashboardIdentity,
-} from "../../api/schema";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
-import { InlineError } from "../components/InlineError";
-import { Card } from "../components/layout/Card";
-import { useDocumentTitle } from "../documentTitle";
-import { DashboardApiError, fetchDashboardJson, patch, put } from "../http";
-import { dashboardContainerClass } from "../styles";
-import type { DashboardCoreData } from "../types";
+} from "../../../api/schema";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import { InlineError } from "../../components/InlineError";
+import { Card } from "../../components/layout/Card";
+import { useDocumentTitle } from "../../documentTitle";
+import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
+import { dashboardContainerClass } from "../../styles";
+import type { DashboardCoreData } from "../../types";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
 const userCustomizationQueryKey = ["dashboard", "user-customization"] as const;
