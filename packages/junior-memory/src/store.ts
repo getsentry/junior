@@ -35,6 +35,7 @@ import {
 import {
   EMBEDDING_METRIC,
   embeddingDistance,
+  embeddingWithinDistance,
   hashEmbeddedContent,
   parseEmbeddingBatch,
   sameEmbeddingModel,
@@ -1117,7 +1118,7 @@ async function searchVisibleVectorMemories(args: {
   const distancePredicate =
     args.maxDistance === undefined
       ? undefined
-      : sql`${distance} <= ${args.maxDistance}`;
+      : embeddingWithinDistance(embedding, args.maxDistance);
   const rows = await args.db
     .select({
       contentHash: juniorMemoryEmbeddings.contentHash,
