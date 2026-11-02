@@ -207,7 +207,8 @@ describe("event automations", () => {
                   key: "trigger",
                   label: "When",
                   type: "string",
-                  value: "Review feedback · pull request review commented",
+                  value:
+                    "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
                   long: true,
                 },
               ],
