@@ -8,7 +8,7 @@ import {
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
-import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
+import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
@@ -126,7 +126,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
       {item.kind === "action" && item.request ? (
         <div className="text-sm">
           <div className="font-medium">
-            <TranscriptMarkdown text={item.request.question} />
+            <DisplayText text={item.request.question} />
           </div>
           <UserInputForm
             onSubmit={(answer) =>

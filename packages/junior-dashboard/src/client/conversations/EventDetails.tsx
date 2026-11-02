@@ -13,7 +13,7 @@ import { dashboardDisclosureChevronClass } from "../styles";
 
 import { RedactedMarker } from "./TranscriptRedacted";
 import { DetailsCard } from "./DetailsList";
-import { TranscriptText } from "./TranscriptText";
+import { DisplayText } from "../display-text/DisplayText";
 import { eventLogModel } from "./eventLog";
 import { formatCostBreakdown } from "../format";
 import { EventUsage } from "./EventUsage";
@@ -68,7 +68,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           ) : null}
           {summary ? (
             <DetailSection title="Continuation summary">
-              <TranscriptText mentions={mentions} text={summary} />
+              <DisplayText mentions={mentions} text={summary} />
             </DetailSection>
           ) : null}
         </>
@@ -86,7 +86,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
             {redacted ? (
               <RedactedMarker />
             ) : (
-              <TranscriptText mentions={mentions} text={text ?? ""} />
+              <DisplayText mentions={mentions} text={text ?? ""} />
             )}
           </DetailSection>
         </>
@@ -128,7 +128,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           {part.redacted ? (
             <RedactedMarker />
           ) : (
-            <TranscriptText mentions={mentions} text={part.text ?? ""} />
+            <DisplayText mentions={mentions} text={part.text ?? ""} />
           )}
         </DetailSection>
       ));
@@ -142,15 +142,12 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           </DetailSection>
           <DetailSection title={presentation.title}>
             {presentation.preview ? (
-              <TranscriptText mentions={mentions} text={presentation.preview} />
+              <DisplayText mentions={mentions} text={presentation.preview} />
             ) : null}
             {presentation.details?.map((detail, index) => (
               <DetailSubsection key={index} title={detail.title}>
                 {detail.description ? (
-                  <TranscriptText
-                    mentions={mentions}
-                    text={detail.description}
-                  />
+                  <DisplayText mentions={mentions} text={detail.description} />
                 ) : null}
                 {detail.content ? <DetailValue value={detail.content} /> : null}
                 {detail.metadata ? (

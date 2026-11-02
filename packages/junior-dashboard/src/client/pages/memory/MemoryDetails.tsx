@@ -18,15 +18,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../../components/ui/tooltip";
-import { TranscriptText } from "../../conversations/TranscriptText";
+import { DisplayText } from "../../display-text/DisplayText";
 import type {
   PluginUserPageRecord,
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
-
-// The memory plugin API does not resolve mentions yet, so memory text shows
-// Slack ids instead of names.
-const NO_MEMORY_MENTIONS: readonly [] = [];
 
 // The heading, origin, and scope rows already show these values.
 const SUMMARIZED_METADATA = new Set([
@@ -81,15 +77,11 @@ export function MemoryDetails(props: {
           {record ? (
             <>
               <div className="grid gap-3 text-sm leading-relaxed">
-                <TranscriptText
-                  mentions={NO_MEMORY_MENTIONS}
-                  text={record.title}
-                />
+                {/* The memory plugin API does not resolve mentions yet, so
+                    memory text shows Slack ids instead of names. */}
+                <DisplayText text={record.title} />
                 {record.description ? (
-                  <TranscriptText
-                    mentions={NO_MEMORY_MENTIONS}
-                    text={record.description}
-                  />
+                  <DisplayText text={record.description} />
                 ) : null}
               </div>
               <MemoryFacts record={record} />

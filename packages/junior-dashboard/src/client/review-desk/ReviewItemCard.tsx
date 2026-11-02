@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../components/StatusChip";
-import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
+import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { useReviewItemData } from "./queries";
@@ -57,7 +57,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
         </div>
       </header>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        <TranscriptMarkdown text={item.body} />
+        <DisplayText text={item.body} />
         <div className="border-t border-dashboard-border pt-4">
           <ReviewItemActions item={item} />
         </div>

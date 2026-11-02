@@ -36,6 +36,17 @@
 - Paginated event reads never write into the cache of another resource.
 - Detail ETags save transfer and parsing only. Check access before a `304`.
 
+## Display text
+
+- Display text keeps Markdown and Slack tokens such as `<@U123>`,
+  `<url|label>`, and `:smile:`. The API returns `mentions` beside the owning
+  object. Do not resolve names in the dashboard, and do not rewrite tokens
+  into links on the server.
+- Render display text only with `client/display-text/DisplayText`. Use
+  `inline` for one-line previews, headings, and text in buttons. Use
+  `displayPlainText` where markup cannot go. Do not show it as a raw string
+  or add a Markdown, mention, link, or emoji helper for one surface.
+
 ## Browser assets
 
 - Load Shiki grammars and the theme on demand from `client/code-languages.ts`.

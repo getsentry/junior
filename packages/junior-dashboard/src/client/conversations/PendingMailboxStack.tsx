@@ -38,7 +38,8 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
-import { MentionText, mentionPlainText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
+import { displayPlainText } from "../display-text/plainText";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -336,9 +337,9 @@ function PendingRow(props: {
               // One line keeps the queue short. The title shows the full text.
               <p
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
-                title={mentionPlainText(text, mentions)}
+                title={displayPlainText(text, mentions)}
               >
-                <MentionText mentions={mentions} text={text} />
+                <DisplayText inline mentions={mentions} text={text} />
               </p>
             ) : null}
           </>

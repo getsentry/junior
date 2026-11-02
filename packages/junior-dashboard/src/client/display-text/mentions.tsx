@@ -2,13 +2,13 @@ import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
+import { HighlightText } from "../conversations/transcriptSearch";
 import { peoplePath } from "../format";
 import { cn } from "../styles";
-import { replaceSlackEmoji } from "./transcriptEmoji";
-import { TRANSCRIPT_ANCHOR_CLASS } from "./transcriptMarkdownLinks";
-import { HighlightText } from "./transcriptSearch";
+import { replaceSlackEmoji } from "./emoji";
+import { ANCHOR_CLASS } from "./links";
 
-type TranscriptMention = {
+type Mention = {
   end: number;
   id: string;
   label?: string;
@@ -16,55 +16,40 @@ type TranscriptMention = {
   start: number;
 };
 
+type MentionContext = {
+  links: boolean;
+  people: ReadonlyMap<string, ActorIdentity>;
+};
+
 // Matches the user and channel tokens that core keeps in message text.
 const SLACK_MENTION_RE = /<([@#])([A-Z0-9]+)(?:\|([^<>]*))?>/g;
 
-const TranscriptMentionPeople = createContext<
-  ReadonlyMap<string, ActorIdentity>
->(new Map());
+const MentionPeople = createContext<MentionContext>({
+  links: true,
+  people: new Map(),
+});
 
-/**
- * Share the people that the API resolved for one block of display text.
- * Use `TranscriptText` or `MentionText`, which require the API mentions.
- */
+/** Share the people that the API resolved for one display text. */
 export function MentionPeopleProvider(props: {
   children: ReactNode;
+  links: boolean;
   mentions: readonly ActorIdentity[];
 }) {
   return (
-    <TranscriptMentionPeople.Provider value={mentionPeople(props.mentions)}>
+    <MentionPeople.Provider
+      value={{ links: props.links, people: mentionPeople(props.mentions) }}
+    >
       {props.children}
-    </TranscriptMentionPeople.Provider>
-  );
-}
-
-/** Render one line of display text with the people the API resolved for it. */
-export function MentionText(props: {
-  /**
-   * Link people to their page. Set false inside a button, which cannot hold
-   * a link.
-   */
-  links?: boolean;
-  mentions: readonly ActorIdentity[];
-  text: string;
-}) {
-  return (
-    <MentionPeopleProvider mentions={props.mentions}>
-      {renderMentionText(props.text, "mention-text", props.links)}
-    </MentionPeopleProvider>
+    </MentionPeople.Provider>
   );
 }
 
 /**
- * Render text with Slack `<@U123>` and `<#C123|name>` tokens as readable
- * mentions and Slack `:name:` codes as emoji. It reads people from the
- * nearest `MentionPeopleProvider`.
+ * Render one text run with Slack `<@U123>` and `<#C123|name>` tokens as
+ * readable mentions, Slack `:name:` codes as emoji, and search matches
+ * highlighted. It reads people from the nearest `MentionPeopleProvider`.
  */
-export function renderMentionText(
-  text: string,
-  keyBase: string,
-  links = true,
-): ReactNode[] {
+export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = 0;
   for (const mention of findMentions(text)) {
@@ -77,11 +62,7 @@ export function renderMentionText(
       );
     }
     nodes.push(
-      <MentionView
-        key={`${keyBase}-m-${mention.start}`}
-        links={links}
-        mention={mention}
-      />,
+      <MentionView key={`${keyBase}-m-${mention.start}`} mention={mention} />,
     );
     cursor = mention.end;
   }
@@ -96,11 +77,8 @@ export function renderMentionText(
   return nodes;
 }
 
-/**
- * Return display text as one plain string, with the same names and emoji
- * that `MentionText` shows. Use it where markup cannot go, such as a title.
- */
-export function mentionPlainText(
+/** Return one text run as a string, with the names and emoji it renders. */
+export function plainTextTokens(
   text: string,
   mentions: readonly ActorIdentity[],
 ): string {
@@ -126,7 +104,7 @@ function mentionPeople(
 }
 
 function mentionLabel(
-  mention: TranscriptMention,
+  mention: Mention,
   people: ReadonlyMap<string, ActorIdentity>,
 ): string {
   const { id, label, sigil } = mention;
@@ -135,7 +113,7 @@ function mentionLabel(
   return `${sigil}${name.replace(/^[@#]/, "")}`;
 }
 
-function findMentions(text: string): TranscriptMention[] {
+function findMentions(text: string): Mention[] {
   return [...text.matchAll(SLACK_MENTION_RE)].map((match) => ({
     end: match.index + match[0].length,
     id: match[2]!,
@@ -145,16 +123,16 @@ function findMentions(text: string): TranscriptMention[] {
   }));
 }
 
-function MentionView(props: { links: boolean; mention: TranscriptMention }) {
-  const people = useContext(TranscriptMentionPeople);
+function MentionView(props: { mention: Mention }) {
+  const { links, people } = useContext(MentionPeople);
   const { id, sigil } = props.mention;
   const person = sigil === "@" ? people.get(id) : undefined;
   const text = <HighlightText text={mentionLabel(props.mention, people)} />;
-  if (props.links && person?.email) {
+  if (links && person?.email) {
     return (
       <Link
         // Previews sit in cards that disable pointer events on their text.
-        className={cn("pointer-events-auto", TRANSCRIPT_ANCHOR_CLASS)}
+        className={cn("pointer-events-auto", ANCHOR_CLASS)}
         title={id}
         to={peoplePath(person.email)}
       >
