@@ -1,6 +1,5 @@
 import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
-import { Card } from "../../components/layout/Card";
 import { dashboardInlineLinkClass } from "../../styles";
 import { SettingsPageLayout } from "./SettingsPageLayout";
 
@@ -18,7 +17,7 @@ function mcpServerName(): string {
 
 function ConfigBlock(props: { label: string; value: string }) {
   return (
-    <div className="mt-5 first:mt-0">
+    <div>
       <div className="flex items-center justify-between gap-3">
         <h2 className="m-0 text-sm font-semibold">{props.label}</h2>
         <CopyButton getText={() => props.value} label={`Copy ${props.label}`} />
@@ -52,14 +51,14 @@ export function McpSettingsPage() {
       }
       title="MCP"
     >
-      <Card className="mb-0" padding="md" variant="raised">
+      <div className="grid gap-5">
         <ConfigBlock label="Server URL" value={url} />
         <ConfigBlock
           label="Claude Code"
           value={`claude mcp add --transport http ${name} ${url}`}
         />
         <ConfigBlock label="JSON config" value={jsonConfig} />
-      </Card>
+      </div>
 
       <p className="m-0 text-sm text-dashboard-text-muted">
         The client must support OAuth with Client ID Metadata Documents.{" "}

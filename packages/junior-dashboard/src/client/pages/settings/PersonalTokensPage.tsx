@@ -107,94 +107,98 @@ export function PersonalTokensPage() {
       }
       title="API Tokens"
     >
-      <Card className="mb-0" padding="md" variant="raised">
-        {createdToken ? (
-          <div className="mt-5 rounded-md border border-emerald-400/40 bg-emerald-400/5 p-3">
-            <p className="mt-0 mb-2 text-sm font-semibold">
-              Copy this token now. It won't be shown again.
-            </p>
-            <code className="block overflow-x-auto rounded-md bg-dashboard-ink p-2 text-xs text-emerald-300">
-              {createdToken.token}
-            </code>
-            <Button
-              className="mt-3"
-              onClick={() => {
-                createTokenMutation.reset();
-                setName("Local agent");
-              }}
-            >
-              Create another token
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-5 flex gap-2">
-            <Input
-              aria-label="Token name"
-              className="min-w-0 flex-1"
-              maxLength={80}
-              onChange={(event) => setName(event.target.value)}
-              value={name}
-            />
-            <Button
-              disabled={loading || busy || !name.trim()}
-              onClick={() => {
-                if (createTokenStarted.current) return;
-                revokeTokenMutation.reset();
-                createTokenStarted.current = true;
-                createTokenMutation.mutate(name);
-              }}
-            >
-              Create token
-            </Button>
-          </div>
-        )}
+      <Card className="mb-0" variant="raised">
+        <div className="p-5">
+          {createdToken ? (
+            <div className="rounded-md border border-emerald-400/40 bg-emerald-400/5 p-3">
+              <p className="mt-0 mb-2 text-sm font-semibold">
+                Copy this token now. It won't be shown again.
+              </p>
+              <code className="block overflow-x-auto rounded-md bg-dashboard-ink p-2 text-xs text-emerald-300">
+                {createdToken.token}
+              </code>
+              <Button
+                className="mt-3"
+                onClick={() => {
+                  createTokenMutation.reset();
+                  setName("Local agent");
+                }}
+              >
+                Create another token
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                aria-label="Token name"
+                className="min-w-0 flex-1"
+                maxLength={80}
+                onChange={(event) => setName(event.target.value)}
+                value={name}
+              />
+              <Button
+                disabled={loading || busy || !name.trim()}
+                onClick={() => {
+                  if (createTokenStarted.current) return;
+                  revokeTokenMutation.reset();
+                  createTokenStarted.current = true;
+                  createTokenMutation.mutate(name);
+                }}
+              >
+                Create token
+              </Button>
+            </div>
+          )}
 
-        {displayedError ? (
-          <InlineError className="mt-4">{displayedError}</InlineError>
-        ) : null}
+          {displayedError ? (
+            <InlineError className="mt-4">{displayedError}</InlineError>
+          ) : null}
+        </div>
 
-        <div className="mt-5 space-y-2">
+        <div className="border-t border-dashboard-border-subtle">
           {loading ? (
-            <p className="text-sm text-dashboard-text-muted">
+            <p className="m-0 p-5 text-sm text-dashboard-text-muted">
               Loading API tokens…
             </p>
           ) : tokens.length === 0 ? (
-            <p className="text-sm text-dashboard-text-muted">
+            <p className="m-0 p-5 text-sm text-dashboard-text-muted">
               No active API tokens.
             </p>
           ) : (
-            tokens.map((token) => (
-              <div
-                className="flex items-center gap-3 rounded-md border border-dashboard-border-strong p-3"
-                key={token.id}
-              >
-                <KeyRound className="text-dashboard-accent" size={16} />
-                <div className="min-w-0 flex-1">
-                  <p className="m-0 truncate text-sm font-semibold">
-                    {token.name}
-                  </p>
-                  <p className="mt-1 mb-0 text-xs text-dashboard-text-muted">
-                    Ends in {token.tokenSuffix} · Expires{" "}
-                    {new Date(token.expiresAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <Button
-                  aria-label={`Revoke ${token.name}`}
-                  disabled={busy}
-                  onClick={() => {
-                    if (createTokenMutation.isError) {
-                      createTokenMutation.reset();
-                    }
-                    revokeTokenMutation.mutate(token);
-                  }}
-                  size="icon"
-                  variant="danger"
-                  type="button"
+            <ul className="m-0 list-none divide-y divide-dashboard-border-subtle p-0">
+              {tokens.map((token) => (
+                <li
+                  className="flex items-center gap-3 px-5 py-4"
+                  key={token.id}
                 >
-                  <Trash2 size={16} />
-                </Button>
-              </div>
-            ))
+                  <KeyRound className="text-dashboard-accent" size={16} />
+                  <div className="min-w-0 flex-1">
+                    <p className="m-0 truncate text-sm font-semibold">
+                      {token.name}
+                    </p>
+                    <p className="mt-1 mb-0 text-xs text-dashboard-text-muted">
+                      Ends in {token.tokenSuffix} · Expires{" "}
+                      {new Date(token.expiresAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    aria-label={`Revoke ${token.name}`}
+                    disabled={busy}
+                    onClick={() => {
+                      if (createTokenMutation.isError) {
+                        createTokenMutation.reset();
+                      }
+                      revokeTokenMutation.mutate(token);
+                    }}
+                    size="icon"
+                    variant="danger"
+                    type="button"
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </Card>

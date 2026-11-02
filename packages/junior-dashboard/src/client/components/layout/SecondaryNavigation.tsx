@@ -5,11 +5,7 @@ import {
   SiblingPageLink,
   type SegmentedNavItem,
 } from "../SegmentedNav";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { SecondaryNavigationPortal } from "./DashboardChrome";
 
 export type SecondaryNavigationItem = SegmentedNavItem;
@@ -38,7 +34,7 @@ export function SecondaryNavigation(props: {
     <div className={cn("min-w-0", props.className)}>
       <SecondaryNavigationPortal
         desktop={
-          <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>
+          <div className="min-w-0 px-7">
             <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
           </div>
         }

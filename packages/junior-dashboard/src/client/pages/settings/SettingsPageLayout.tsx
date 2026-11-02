@@ -13,7 +13,7 @@ const settingsNavigationItems = [
 
 /**
  * Place the Settings navigation and page header above one Settings page.
- * Forms keep a readable width under the header.
+ * The header and forms share one readable width.
  */
 export function SettingsPageLayout(props: {
   children: ReactNode;
@@ -26,8 +26,8 @@ export function SettingsPageLayout(props: {
       items={settingsNavigationItems}
     >
       <PageLayout>
-        <PageHeader description={props.description} title={props.title} />
         <div className="grid w-full max-w-3xl min-w-0 gap-6">
+          <PageHeader description={props.description} title={props.title} />
           {props.children}
         </div>
       </PageLayout>

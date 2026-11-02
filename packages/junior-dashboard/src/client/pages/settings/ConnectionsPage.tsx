@@ -102,26 +102,22 @@ export function ConnectionsPage() {
       }
       title="Identities"
     >
-      <Card className="mb-0" padding="md" variant="raised">
-        {displayedError ? (
-          <InlineError className={listFailed ? undefined : "mb-4"}>
-            {displayedError}
-          </InlineError>
-        ) : null}
-        {listFailed ? null : (
-          <div className="space-y-2">
-            {connectionsQuery.isPending ? (
-              <p className="m-0 text-sm text-dashboard-text-muted">
-                Loading identities…
-              </p>
-            ) : connections.length === 0 ? (
-              <p className="m-0 text-sm text-dashboard-text-muted">
-                No installed plugins support account connections.
-              </p>
-            ) : (
-              connections.map((connection) => (
-                <div
-                  className="flex items-center gap-3 rounded-md border border-dashboard-border-strong p-3"
+      {displayedError ? <InlineError>{displayedError}</InlineError> : null}
+      {listFailed ? null : (
+        <Card className="mb-0" variant="raised">
+          {connectionsQuery.isPending ? (
+            <p className="m-0 p-5 text-sm text-dashboard-text-muted">
+              Loading identities…
+            </p>
+          ) : connections.length === 0 ? (
+            <p className="m-0 p-5 text-sm text-dashboard-text-muted">
+              No installed plugins support account connections.
+            </p>
+          ) : (
+            <ul className="m-0 list-none divide-y divide-dashboard-border-subtle p-0">
+              {connections.map((connection) => (
+                <li
+                  className="flex items-center gap-3 px-5 py-4"
                   key={connection.provider}
                 >
                   <Plug className="shrink-0 text-dashboard-accent" size={16} />
@@ -191,12 +187,12 @@ export function ConnectionsPage() {
                         : "Connect"}
                     </Button>
                   )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </Card>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </SettingsPageLayout>
   );
 }
