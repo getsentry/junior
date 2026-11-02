@@ -54,8 +54,9 @@ own product storage, artifact delivery, or credential issue.
 - Workspace builds run as resumable background job slices. `switchWorkspace`
   does not wait. It returns `building` with a Watch for
   `workspace_snapshot.ready` and `workspace_snapshot.failed`.
-- Deleting the builder Sandbox deletes its snapshot. Delete it only after the
-  ready row is discarded.
+- A ready snapshot keeps its builder Sandbox, because deleting the builder
+  deletes the snapshot. Delete the builder only after the ready row is
+  discarded.
 - Snapshot state and Sandbox commands never get real provider credentials.
   Setup scripts run after Junior removes the credential route.
 
