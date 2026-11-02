@@ -9,6 +9,19 @@ export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
 }
 
+/**
+ * Return the subject URL when it is safe to link. Agents and plugins supply
+ * it, and URL validation also accepts `javascript:` and `data:` URLs.
+ */
+export function reviewItemSubjectHref(url: string): string | undefined {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Name the state of an item: what it needs while open, or how it closed. */
 export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   if (item.status === "open") {
@@ -85,5 +98,46 @@ export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
     item.kind === "action" &&
     Boolean(item.request) &&
     item.canAct
+  );
+}
+
+/** The Review items of the inbox, in the groups and order the list shows. */
+export type InboxGroups = {
+  archived: ReviewItemPayload[];
+  fyi: ReviewItemPayload[];
+  needsYou: ReviewItemPayload[];
+};
+
+/** Inbox order: action items first, then the oldest, then the item id. */
+function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
+  if (a.kind !== b.kind) return a.kind === "action" ? -1 : 1;
+  const age = Date.parse(a.createdAt) - Date.parse(b.createdAt);
+  if (age !== 0) return age;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * Split items into inbox groups. Open items show oldest first, so the item
+ * that waited longest is at the top. Archived items keep the API order.
+ */
+export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
+  const open = items.filter((item) => item.status === "open");
+  return {
+    archived: items.filter((item) => item.status !== "open"),
+    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
+    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
+  };
+}
+
+/**
+ * The open item that follows `current` in inbox order. `current` can be an
+ * item that closed and left the open groups.
+ */
+export function nextInboxItem(
+  groups: InboxGroups,
+  current: ReviewItemPayload,
+): ReviewItemPayload | undefined {
+  return [...groups.needsYou, ...groups.fyi].find(
+    (item) => inboxOrder(current, item) < 0,
   );
 }

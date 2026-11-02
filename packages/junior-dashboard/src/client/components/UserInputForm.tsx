@@ -77,13 +77,15 @@ function ChoiceField(props: {
 }) {
   const id = useId();
   const { field } = props;
-  // Say how many choices count, so a reader knows when a field is done.
+  // Radios already say that one choice counts. Say it for checkboxes only.
   const legend = (
     <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
       {field.label}
-      <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
-        {field.kind === "choice" ? "Pick one" : "Pick any"}
-      </span>
+      {field.kind === "multi_choice" ? (
+        <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
+          Pick any
+        </span>
+      ) : null}
     </legend>
   );
   const description = field.description ? (

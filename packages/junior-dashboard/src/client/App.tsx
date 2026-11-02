@@ -65,7 +65,10 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
-import { ReviewDeskPage } from "./review-desk/ReviewDeskPage";
+import {
+  ReviewDeskLoading,
+  ReviewDeskPage,
+} from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
 import type { DashboardCoreData } from "./types";
 
@@ -147,6 +150,7 @@ export function DashboardShell() {
         className="bg-dashboard-bg"
         enabled={
           workspace ||
+          location.pathname === "/review" ||
           hasAutomationDetailsFrame(location.pathname) ||
           isMemoryLibraryPath(location.pathname)
         }
@@ -375,11 +379,7 @@ export function DashboardShell() {
           <Route
             element={
               loading ? (
-                <PageRouteLoading
-                  description="Items that need a person, and who can act on them."
-                  label="Loading review desk"
-                  title="Review desk"
-                />
+                <ReviewDeskLoading />
               ) : loggedIn ? (
                 <ReviewDeskPage />
               ) : (

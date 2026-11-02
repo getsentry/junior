@@ -22,9 +22,15 @@ const base = {
   visibility: "public" as const,
 };
 
+const conversationId = "slack:CQA123:1770003600.000200";
+
+// Added between messages of the mock Conversation, so the inbox shows the
+// messages before it and a new one after it.
 const rollout = {
   ...base,
+  addedByConversationId: conversationId,
   body: "Canary error rate is flat.",
+  createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
   request: {
     question: "Roll out payments-v42?",
@@ -61,6 +67,7 @@ const license = {
 
 const audit = {
   ...license,
+  createdAt: "2026-08-07T09:10:00.000Z",
   id: "item-audit",
   title: "Review the globex license entry",
 };
@@ -85,14 +92,13 @@ const answered = {
     values: { decision: ["Approve"], reason: ["MIT license, no change."] },
   },
   body: "The initech entry changed its license.",
-  closedAt: "2026-08-07T09:00:00.000Z",
+  closedAt: "2026-08-07T09:40:00.000Z",
+  createdAt: "2026-08-07T09:30:00.000Z",
   closedBy: viewer,
   id: "item-initech",
   status: "done" as const,
   title: "Review the initech license entry",
 };
-
-const conversationId = "slack:CQA123:1770003600.000200";
 
 // The agent added this item in the Conversation, so a message there closes it.
 const migration = {
@@ -100,13 +106,20 @@ const migration = {
   addedByConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
+  createdAt: "2026-08-07T10:20:00.000Z",
   id: "item-migration",
   title: "Pick the billing migration window",
 };
 
-async function mockReviewItems(page: Page) {
+async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
   const actions: { body: unknown; id: string }[] = [];
-  const open = [rollout, license, audit, prReady, migration];
+  const open = (options.open ?? [
+    rollout,
+    license,
+    audit,
+    prReady,
+    migration,
+  ]) as (typeof license)[];
   const archived = [answered];
   const items = [...open, ...archived];
   await page.route("**/api/review-items**", async (route) => {
@@ -115,8 +128,9 @@ async function mockReviewItems(page: Page) {
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
-      // A search also finds archived items, after the open ones.
-      const list = q ? [...open, ...archived] : open;
+      // A search or the inbox also finds archived items, after the open ones.
+      const withArchived = q || url.searchParams.get("include") === "archived";
+      const list = withArchived ? [...open, ...archived] : open;
       return route.fulfill({
         json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
       });
@@ -137,13 +151,31 @@ async function mockReviewItems(page: Page) {
   return actions;
 }
 
+/** Show no blocked Automations, so an empty inbox is empty. */
+async function mockNoBlockedAutomations(page: Page) {
+  await page.route(
+    (url) =>
+      url.pathname.endsWith("/api/automations") &&
+      url.searchParams.get("state") === "blocked",
+    async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...body, automations: [], total: 0 },
+      });
+    },
+  );
+}
+
 test("each review item gets a fresh answer form", async ({
   dashboard,
   page,
 }) => {
   const actions = await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
-  const detail = page.getByRole("article");
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  const list = page.getByRole("navigation", { name: "Review items" });
   await expect(
     detail.getByRole("heading", { name: license.title }),
   ).toBeVisible();
@@ -151,7 +183,7 @@ test("each review item gets a fresh answer form", async ({
   // A choice on one item must not carry over to the next item.
   await detail.getByRole("radio", { name: "Approve" }).click();
   await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
-  await page.getByRole("link", { name: new RegExp(audit.title) }).click();
+  await list.getByRole("link", { name: new RegExp(audit.title) }).click();
   await expect(
     detail.getByRole("heading", { name: audit.title }),
   ).toBeVisible();
@@ -160,14 +192,14 @@ test("each review item gets a fresh answer form", async ({
   ).not.toBeChecked();
 
   // A sent answer must not lock the form of the next item.
-  await page.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
   await detail.getByRole("button", { name: "Roll out" }).click();
   await expect.poll(() => actions.length).toBe(1);
   expect(actions[0]).toMatchObject({
     body: { action: "submit", answer: { values: { go: ["Roll out"] } } },
     id: rollout.id,
   });
-  await page.getByRole("link", { name: new RegExp(license.title) }).click();
+  await list.getByRole("link", { name: new RegExp(license.title) }).click();
   await expect(
     detail.getByRole("heading", { name: license.title }),
   ).toBeVisible();
@@ -186,22 +218,81 @@ test("each review item gets a fresh answer form", async ({
   });
 });
 
-test("a search finds open and archived items", async ({ dashboard, page }) => {
+test("the inbox shows an item in its conversation", async ({
+  dashboard,
+  page,
+}) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review`);
-  const detail = page.getByRole("article");
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  const list = page.getByRole("navigation", { name: "Review items" });
+  // The item that waited longest opens first.
+  await expect(
+    detail.getByRole("heading", { name: license.title }),
+  ).toBeVisible();
+  await expect(
+    list.getByRole("link", { name: new RegExp(license.title) }),
+  ).toHaveAttribute("aria-current", "page");
+  // Archived items stay collapsed until the reader asks.
+  await expect(
+    list.getByRole("link", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
+
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  await expect(detail.getByText("New since Junior asked")).toBeVisible();
+  await expect(
+    detail.getByText("Find the slow checkout requests"),
+  ).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Roll out" })).toBeVisible();
+  const details = page.getByRole("complementary", {
+    name: "Review item details",
+  });
+  await expect(details.getByText(rollout.body)).toBeVisible();
+  await screenshot(page, "review-desk", { lightTheme: true, view: "desktop" });
+
+  await detail.getByRole("link", { name: `Next: ${prReady.title}` }).click();
+  await expect(
+    detail.getByRole("heading", { name: prReady.title }),
+  ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: prReady.subject.title }),
+  ).toBeVisible();
+
+  // A closed item links to the open item after it, not to the oldest one.
+  await page.goto(`${dashboard.baseURL}/review?item=${answered.id}`);
+  await expect(
+    detail.getByRole("link", { name: `Next: ${migration.title}` }),
+  ).toBeVisible();
+});
+
+test("on mobile the list opens one item at a time", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`${dashboard.baseURL}/review`);
+  const list = page.getByRole("navigation", { name: "Review items" });
+  await expect(
+    page.getByRole("region", { name: "Selected review item" }),
+  ).toBeHidden();
+  await screenshot(page, "review-desk-list", { view: "mobile" });
+
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
   await expect(
     detail.getByRole("heading", { name: rollout.title }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: new RegExp(prReady.title) }),
-  ).toBeVisible();
-  // Without a search, the list has only open items.
-  await expect(
-    page.getByRole("link", { name: new RegExp(answered.title) }),
-  ).toHaveCount(0);
-  await screenshot(page, "review-desk", { lightTheme: true });
+  await expect(list).toBeHidden();
+  await screenshot(page, "review-desk-item", { view: "mobile" });
+  await detail.getByRole("link", { name: "Inbox" }).click();
+  await expect(list).toBeVisible();
+});
 
+test("a search finds open and archived items", async ({ dashboard, page }) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
   await page.getByLabel("Search review items").fill("license");
   await expect(page).toHaveURL(/[?&]q=license/);
   const archivedGroup = page.getByRole("region", { name: "Archived" });
@@ -211,8 +302,22 @@ test("a search finds open and archived items", async ({ dashboard, page }) => {
   await expect(
     detail.getByRole("heading", { name: answered.title }),
   ).toBeVisible();
-  await expect(detail.getByText("Archived · Done")).toBeVisible();
-  await screenshot(page, "review-desk-search", { lightTheme: true });
+  await expect(detail.getByText(/closed this/)).toBeVisible();
+});
+
+test("an empty inbox links to archived items", async ({ dashboard, page }) => {
+  await mockReviewItems(page, { open: [] });
+  await mockNoBlockedAutomations(page);
+  await page.goto(`${dashboard.baseURL}/review`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(detail.getByText("Nothing needs you")).toBeVisible();
+  await screenshot(page, "review-desk-empty", { view: "desktop" });
+  await detail.getByRole("button", { name: "See archived items" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Archived" })
+      .getByRole("link", { name: new RegExp(answered.title) }),
+  ).toBeVisible();
 });
 
 test("a message asks before it drops unsent picks", async ({
