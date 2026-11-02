@@ -131,9 +131,16 @@ export function useMarkConversationRead(conversationId: string) {
         { lastReadSeq },
       ),
     onSuccess: (readPosition) => {
+      // Reports can finish out of order. Keep the higher position.
       queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
-        (detail) => (detail ? { ...detail, readPosition } : detail),
+        (detail) => {
+          const cached = detail?.readPosition?.lastReadSeq;
+          if (!detail || (cached ?? -1) >= readPosition.lastReadSeq) {
+            return detail;
+          }
+          return { ...detail, readPosition };
+        },
       );
     },
   });
