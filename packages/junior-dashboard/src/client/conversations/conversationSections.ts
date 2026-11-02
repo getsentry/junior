@@ -40,7 +40,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const time = activityTime(conversation);
     const section = options.attentionIds?.has(conversation.id)
-      ? { key: "attention", label: "Needs your attention" }
+      ? { key: "attention", label: "Needs attention" }
       : conversationSection(conversation, time, nowDay, options.timeZone);
     const existing = sections.get(section.key);
     if (existing) {
@@ -63,20 +63,18 @@ export function attentionConversationIds(
   return new Set([...waitingConversationIds, ...finishedConversationIds]);
 }
 
-/** Move attention conversations to the front and keep the order otherwise. */
+/**
+ * Sort attention conversations to the front. The sort is stable, so each group
+ * keeps the feed order. Paginated lists call this before paging, so page 1
+ * holds every attention conversation.
+ */
 export function attentionFirst(
   conversations: Conversation[],
   attentionIds: ReadonlySet<string>,
 ): Conversation[] {
-  if (attentionIds.size === 0) return conversations;
-  return [
-    ...conversations.filter((conversation) =>
-      attentionIds.has(conversation.id),
-    ),
-    ...conversations.filter(
-      (conversation) => !attentionIds.has(conversation.id),
-    ),
-  ];
+  const rank = (conversation: Conversation) =>
+    attentionIds.has(conversation.id) ? 0 : 1;
+  return [...conversations].sort((left, right) => rank(left) - rank(right));
 }
 
 function activityTime(conversation: Conversation): number {

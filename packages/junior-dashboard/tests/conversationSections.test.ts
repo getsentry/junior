@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConversationSections } from "../src/client/conversations/conversationSections";
+import {
+  attentionFirst,
+  buildConversationSections,
+} from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
 function conversation(
@@ -107,10 +110,20 @@ describe("conversation activity sections", () => {
     ).toEqual([
       {
         conversations: ["waiting-priority", "finished-unseen"],
-        label: "Needs your attention",
+        label: "Needs attention",
       },
       { conversations: ["priority"], label: "Priority" },
       { conversations: ["today"], label: "Today" },
     ]);
+  });
+
+  it("moves attention conversations before paging and keeps feed order", () => {
+    const feed = ["a", "b", "c", "d", "e"].map((id) =>
+      conversation(id, "2026-08-03T12:00:00-07:00"),
+    );
+
+    expect(
+      attentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
+    ).toEqual(["b", "d", "a", "c", "e"]);
   });
 });

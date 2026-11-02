@@ -66,7 +66,6 @@ export function ConversationWorkspace() {
     );
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  // Page after the attention sort, so page 1 holds every attention row.
   const pagedConversations = useMemo(
     () =>
       pageItems(
