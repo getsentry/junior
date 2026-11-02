@@ -8,7 +8,7 @@ const answer = Array.from(
   (_, step) => `${step + 1}. Take a **heap snapshot** and compare it.`,
 ).join("\n");
 
-function read(texts: string[]) {
+function read(texts: string[], text = answer) {
   return slackCallReplies({
     conversationId: "conversation",
     durable: {
@@ -16,7 +16,7 @@ function read(texts: string[]) {
         {
           conversationId: "conversation",
           messageId: "message-1",
-          text: answer,
+          text,
         },
       ],
       visibleMessages: [],
@@ -35,6 +35,30 @@ describe("slackCallReplies", () => {
     expect(posts).toHaveLength(3);
 
     const { replies, visibleMessages } = read(posts);
+
+    expect(replies).toEqual([
+      expect.objectContaining({ messageId: "message-1" }),
+    ]);
+    expect(visibleMessages).toEqual([]);
+  });
+
+  it("reads a split inside a code block as one reply", () => {
+    const code = [
+      "Run this script:",
+      "```ts",
+      ...Array.from(
+        { length: 120 },
+        (_, line) => `console.log("heap step ${line + 1}");`,
+      ),
+      "```",
+    ].join("\n");
+    const posts = splitSlackReplyText(code);
+    // Delivery closes the block at the end of a post and opens it again in
+    // the next post.
+    expect(posts.length).toBeGreaterThan(1);
+    expect(posts[1]).toMatch(/^```ts\n/);
+
+    const { replies, visibleMessages } = read(posts, code);
 
     expect(replies).toEqual([
       expect.objectContaining({ messageId: "message-1" }),

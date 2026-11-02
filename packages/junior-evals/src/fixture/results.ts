@@ -13,7 +13,7 @@ import {
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
-import { getSlackContinuationMarker } from "@/chat/slack/output";
+import { joinSlackReplyPosts } from "@/chat/slack/output";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -364,9 +364,6 @@ function comparableText(text: string): string {
     .trim();
 }
 
-/** The marker that ends each post of a long reply except the last. */
-const CONTINUED_MARKER = getSlackContinuationMarker().trim();
-
 /**
  * Use Slack thread posts as the replies of a Slack call. Delivery splits a
  * long reply into several posts; consecutive posts that make up one stored
@@ -379,20 +376,15 @@ export function slackCallReplies(args: {
   posts: SlackPost[];
 }): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
   const unmatched = [...args.durable.replies];
-  const postTexts = args.posts.map(({ text }) =>
-    comparableText(
-      text.endsWith(CONTINUED_MARKER)
-        ? text.slice(0, -CONTINUED_MARKER.length)
-        : text,
-    ),
-  );
+  const postTexts = args.posts.map(({ text }) => text);
   // The number of posts from `start` that make up the stored reply.
   const postCount = (start: number, reply: Reply): number => {
     const target = comparableText(reply.text);
-    if (!postTexts[start]) return 0;
-    let joined = "";
+    if (!comparableText(postTexts[start] ?? "")) return 0;
     for (let end = start; end < postTexts.length; end += 1) {
-      joined = joined ? `${joined} ${postTexts[end]}` : postTexts[end]!;
+      const joined = comparableText(
+        joinSlackReplyPosts(postTexts.slice(start, end + 1)),
+      );
       if (joined === target) return end - start + 1;
       if (!target.startsWith(joined)) return 0;
     }
