@@ -138,10 +138,13 @@ describe("review item actions API", () => {
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
     const calList = await (await api(fixture, cal).get("")).json();
-    expect(calList.items).toMatchObject([
-      { kind: "notice" },
-      { id, canAct: false },
-    ]);
+    expect(calList.items).toHaveLength(2);
+    expect(calList.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "notice" }),
+        expect.objectContaining({ id, canAct: false }),
+      ]),
+    );
     // A person outside the Slack workspace does not see the public item.
     const outsider = { ...cal, identities: [] };
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
@@ -199,6 +202,12 @@ describe("review item actions API", () => {
     // A search still finds the closed item.
     const found = await (await api(fixture, ben).get("?q=acme")).json();
     expect(found.items).toMatchObject([{ id, status: "done" }]);
+    // The inbox asks for archived items without a search.
+    const all = await (await api(fixture, ben).get("?include=archived")).json();
+    expect(all.items).toMatchObject([
+      { kind: "notice" },
+      { id, status: "done" },
+    ]);
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {
@@ -224,6 +233,8 @@ describe("review item actions API", () => {
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
     ).toEqual({ conversationIds: [] });
 
+    // The next item is created later, so the list order is fixed.
+    await new Promise((resolve) => setTimeout(resolve, 2));
     const otherId = await addItem({
       kind: "notice",
       title: "Another pull request needs review",
@@ -232,23 +243,17 @@ describe("review item actions API", () => {
       dedupe_key: "pr:8",
     });
 
-    // The list pages the open items, newest change first. A cursor reads
-    // the next page of the same list only.
+    // The list pages the open items, oldest first. A cursor reads the next
+    // page of the same list only.
     const first = await (await api(fixture, cal).get("?limit=1")).json();
-    expect(first.items).toHaveLength(1);
+    expect(first.items).toMatchObject([{ id, canAct: true, canTake: true }]);
     expect(first.nextCursor).toEqual(expect.any(String));
     const cursor = encodeURIComponent(first.nextCursor);
     const second = await (
       await api(fixture, cal).get(`?limit=1&cursor=${cursor}`)
     ).json();
+    expect(second.items).toMatchObject([{ id: otherId }]);
     expect(second.nextCursor).toBeUndefined();
-    const listed = [...first.items, ...second.items];
-    expect(listed.map((item: { id: string }) => item.id).sort()).toEqual(
-      [id, otherId].sort(),
-    );
-    expect(listed).toContainEqual(
-      expect.objectContaining({ id, canAct: true, canTake: true }),
-    );
     expect(
       (await api(fixture, cal).get(`?q=pull&limit=1&cursor=${cursor}`)).status,
     ).toBe(400);

@@ -60,8 +60,8 @@ export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 
 /**
  * Review desk list filters. The list has the open items that the viewer can
- * see, one page at a time. A search also finds done and dismissed items,
- * after the open ones.
+ * see, one page at a time. A search or `include=archived` also finds done and
+ * dismissed items, after the open ones.
  */
 export const reviewItemListQuerySchema = z
   .object({
@@ -70,13 +70,16 @@ export const reviewItemListQuerySchema = z
     cursor: z.string().min(1).max(1_000).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
+    /** Also list the newest done and dismissed items, with the first page. */
+    include: z.enum(["archived"]).optional(),
     q: z.string().trim().max(200).optional(),
   })
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, newest change
- * first. The first page of a search also has the newest archived matches.
+ * One page of the review desk list. Open items come first, oldest first.
+ * The first page of a search, or of a list that includes archived items,
+ * also has the newest archived matches.
  */
 export const reviewItemListSchema = z
   .object({

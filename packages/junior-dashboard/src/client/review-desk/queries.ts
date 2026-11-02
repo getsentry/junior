@@ -25,17 +25,19 @@ const COUNT_REFRESH_MS = 60_000;
 
 /**
  * List the open Review items that the viewer can see, one page at a time.
- * A search also finds archived items, with the first page. `items` holds
- * the items of every loaded page, and `query` loads more.
+ * A search or `includeArchived` also finds archived items, with the first
+ * page. `items` holds the items of every loaded page, and `query` loads more.
  */
 export function useReviewItemsData(filters: {
   conversationId?: string;
+  includeArchived?: boolean;
   q?: string;
 }) {
   const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
   }
+  if (filters.includeArchived) params.set("include", "archived");
   if (filters.q) params.set("q", filters.q);
   const search = params.toString();
   const query = useInfiniteQuery({

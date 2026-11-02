@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
+  gt,
   ilike,
   inArray,
   isNull,
-  lt,
   or,
   type SQL,
 } from "drizzle-orm";
@@ -489,19 +490,20 @@ export async function takeReviewItem(
 }
 
 /**
- * A position in the search order: the last item of a page. Search returns
- * the items after it.
+ * A position in the oldest-first order: the last item of a page. Search
+ * returns the items after it.
  */
 export interface ReviewItemPosition {
+  createdAt: Date;
   id: string;
-  updatedAt: Date;
 }
 
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /**
-   * Return only the items after this position. Use it with one status
-   * group, such as only open items, because open items sort first.
+   * Return only the items after this position. Use it with `order: "oldest"`
+   * and one status group, such as only open items, because open items sort
+   * first.
    */
   after?: ReviewItemPosition;
   /** One assigned User, or Everyone. */
@@ -511,6 +513,11 @@ export interface ReviewItemFilters {
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
+  /**
+   * `oldest` sorts by creation, oldest first. By default the newest change
+   * comes first.
+   */
+  order?: "oldest";
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -526,10 +533,10 @@ function searchConditions(
   if (filters.after) {
     conditions.push(
       or(
-        lt(juniorReviewItems.updatedAt, filters.after.updatedAt),
+        gt(juniorReviewItems.createdAt, filters.after.createdAt),
         and(
-          eq(juniorReviewItems.updatedAt, filters.after.updatedAt),
-          lt(juniorReviewItems.id, filters.after.id),
+          eq(juniorReviewItems.createdAt, filters.after.createdAt),
+          gt(juniorReviewItems.id, filters.after.id),
         ),
       )!,
     );
@@ -577,8 +584,9 @@ export async function countReviewItemsNeedingUser(
 /**
  * Find the Review items that a reader can see. Open items come first, so
  * the limit never drops an open item for a closed one. Then the newest
- * change comes first: `updated_at`, then `id`, both descending. `after`
- * pages through that order.
+ * change comes first: `updated_at`, then `id`, both descending. With
+ * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
+ * both ascending. `after` pages through that order.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -591,8 +599,9 @@ export async function searchReviewItems(
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
-      desc(juniorReviewItems.updatedAt),
-      desc(juniorReviewItems.id),
+      ...(filters.order === "oldest"
+        ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
+        : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
   return await hydrate(db, rows);
