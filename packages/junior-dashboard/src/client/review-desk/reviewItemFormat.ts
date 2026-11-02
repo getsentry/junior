@@ -87,3 +87,27 @@ export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
     item.canAct
   );
 }
+
+/** The Review items of the inbox, in the groups and order the list shows. */
+export type InboxGroups = {
+  archived: ReviewItemPayload[];
+  fyi: ReviewItemPayload[];
+  needsYou: ReviewItemPayload[];
+};
+
+function oldestFirst(a: ReviewItemPayload, b: ReviewItemPayload): number {
+  return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+}
+
+/**
+ * Split items into inbox groups. Open items show oldest first, so the item
+ * that waited longest is at the top. Archived items keep the API order.
+ */
+export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
+  const open = items.filter((item) => item.status === "open");
+  return {
+    archived: items.filter((item) => item.status !== "open"),
+    fyi: open.filter((item) => item.kind === "notice").sort(oldestFirst),
+    needsYou: open.filter((item) => item.kind === "action").sort(oldestFirst),
+  };
+}

@@ -199,6 +199,12 @@ describe("review item actions API", () => {
     // A search still finds the closed item.
     const found = await (await api(fixture, ben).get("?q=acme")).json();
     expect(found.items).toMatchObject([{ id, status: "done" }]);
+    // The inbox asks for archived items without a search.
+    const all = await (await api(fixture, ben).get("?include=archived")).json();
+    expect(all.items).toMatchObject([
+      { kind: "notice" },
+      { id, status: "done" },
+    ]);
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {

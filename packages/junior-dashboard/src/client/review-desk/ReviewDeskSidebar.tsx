@@ -1,0 +1,244 @@
+import type { ReactNode } from "react";
+import { Link } from "react-router";
+import type {
+  AutomationSummary,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
+
+import { InlineError } from "../components/InlineError";
+import { SearchInput } from "../components/SearchInput";
+import { Skeleton } from "../components/ui/skeleton";
+import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
+import { automationPath, formatRelativeTime } from "../format";
+import { pathWithSearch } from "../searchParams";
+import { cn } from "../styles";
+import { reviewItemPath } from "./reviewItemFormat";
+
+/** A sidebar group key. The page owns which groups are collapsed. */
+export type InboxGroupKey = "archived" | "blocked" | "fyi" | "needs-you";
+
+type Dot = "accent" | "muted" | "warning" | "closed";
+
+const dotClass: Record<Dot, string> = {
+  accent: "bg-dashboard-accent",
+  closed: "border border-dashboard-text-faint",
+  muted: "bg-dashboard-text-faint",
+  warning: "bg-amber-300",
+};
+
+const rowClass =
+  "block min-w-0 rounded-lg px-3 py-2 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus";
+
+function InboxRow(props: {
+  dot: Dot;
+  meta: ReactNode;
+  selected?: boolean;
+  title: string;
+  to: string;
+}) {
+  return (
+    <li>
+      <Link
+        aria-current={props.selected ? "page" : undefined}
+        className={cn(
+          rowClass,
+          props.selected && "bg-dashboard-surface-active",
+        )}
+        to={props.to}
+      >
+        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "mt-[0.4rem] size-2 shrink-0 rounded-full",
+              dotClass[props.dot],
+            )}
+          />
+          <span
+            className={cn(
+              "truncate font-sans text-sm font-medium leading-snug",
+              props.dot === "closed"
+                ? "text-dashboard-text-muted"
+                : "text-dashboard-text",
+            )}
+          >
+            {props.title}
+          </span>
+          <span className="col-start-2 mt-1 truncate font-sans text-xs leading-tight text-dashboard-text-muted">
+            {props.meta}
+          </span>
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+function InboxGroup(props: {
+  children: ReactNode;
+  collapsed: boolean;
+  count: number;
+  first: boolean;
+  label: string;
+  onToggle(): void;
+}) {
+  if (props.count === 0) return null;
+  return (
+    <section aria-label={props.label}>
+      <ConversationSectionHeading
+        className={cn("px-3 pb-1", props.first ? "pt-1" : "pt-3")}
+        collapsed={props.collapsed}
+        count={props.count}
+        label={props.label}
+        onToggle={props.onToggle}
+      />
+      {props.collapsed ? null : (
+        <ul className="m-0 grid list-none gap-0.5 p-0">{props.children}</ul>
+      )}
+    </section>
+  );
+}
+
+function InboxRowsLoading() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-0.5"
+      role="status"
+    >
+      <span className="sr-only">Loading review items</span>
+      <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-16" />
+      {[0, 1, 2, 3, 4].map((row) => (
+        <div className="grid gap-1 rounded-lg px-3 py-2" key={row}>
+          <Skeleton className={cn("h-4", row % 2 ? "w-3/5" : "w-4/5")} />
+          <Skeleton className="h-3 w-2/5 opacity-70" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * List the inbox: open items that need the viewer, notices, blocked
+ * Automations, and archived items, each in a group that collapses.
+ */
+export function ReviewDeskSidebar(props: {
+  archived: ReviewItemPayload[];
+  blocked: AutomationSummary[];
+  collapsed: ReadonlySet<InboxGroupKey>;
+  /** Shown under the groups, such as an empty state or load more. */
+  footer?: ReactNode;
+  error: boolean;
+  fyi: ReviewItemPayload[];
+  loading: boolean;
+  needsYou: ReviewItemPayload[];
+  onSearchChange(value: string): void;
+  onToggle(key: InboxGroupKey): void;
+  search: string;
+  searchParams: URLSearchParams;
+  selectedId?: string;
+  /** The title of the Conversation that added an item, when it is known. */
+  sourceTitle(item: ReviewItemPayload): string | undefined;
+}) {
+  const groups = [
+    { items: props.needsYou, key: "needs-you", label: "Needs you" },
+    { items: props.fyi, key: "fyi", label: "FYI" },
+  ] as const;
+  const shown = [
+    ...groups.map((group) => group.items.length),
+    props.blocked.length,
+  ];
+  const firstKey = (index: number) =>
+    shown.slice(0, index).every((count) => count === 0);
+  const itemRow = (item: ReviewItemPayload, dot: Dot) => {
+    const source = item.automationId ? "Automation" : props.sourceTitle(item);
+    const age = formatRelativeTime(
+      item.status === "open" ? item.createdAt : item.closedAt,
+    );
+    return (
+      <InboxRow
+        dot={dot}
+        key={item.id}
+        meta={source ? `${source} · ${age}` : age}
+        selected={item.id === props.selectedId}
+        title={item.title}
+        to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
+      />
+    );
+  };
+
+  return (
+    <aside className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+      <div className="px-5 py-3">
+        <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
+          Inbox
+        </h2>
+      </div>
+      <div className="px-4 pb-2">
+        <SearchInput
+          label="Search review items"
+          onChange={props.onSearchChange}
+          placeholder="Search items…"
+          size="compact"
+          value={props.search}
+        />
+      </div>
+      <nav
+        aria-label="Review items"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+      >
+        {props.error ? (
+          <InlineError className="px-3 py-2">
+            Could not load review items.
+          </InlineError>
+        ) : props.loading ? (
+          <InboxRowsLoading />
+        ) : (
+          <>
+            {groups.map((group, index) => (
+              <InboxGroup
+                collapsed={props.collapsed.has(group.key)}
+                count={group.items.length}
+                first={firstKey(index)}
+                key={group.key}
+                label={group.label}
+                onToggle={() => props.onToggle(group.key)}
+              >
+                {group.items.map((item) =>
+                  itemRow(item, item.kind === "action" ? "accent" : "muted"),
+                )}
+              </InboxGroup>
+            ))}
+            <InboxGroup
+              collapsed={props.collapsed.has("blocked")}
+              count={props.blocked.length}
+              first={firstKey(2)}
+              label="Blocked automations"
+              onToggle={() => props.onToggle("blocked")}
+            >
+              {props.blocked.map((automation) => (
+                <InboxRow
+                  dot="warning"
+                  key={automation.id}
+                  meta={automation.statusReason ?? "Blocked"}
+                  title={automation.title}
+                  to={automationPath(automation.id)}
+                />
+              ))}
+            </InboxGroup>
+            <InboxGroup
+              collapsed={props.collapsed.has("archived")}
+              count={props.archived.length}
+              first={firstKey(3)}
+              label="Archived"
+              onToggle={() => props.onToggle("archived")}
+            >
+              {props.archived.map((item) => itemRow(item, "closed"))}
+            </InboxGroup>
+            {props.footer}
+          </>
+        )}
+      </nav>
+    </aside>
+  );
+}
