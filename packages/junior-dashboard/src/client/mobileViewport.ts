@@ -6,7 +6,8 @@ const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
 const keyboardOpenProperty = "--dashboard-keyboard-open";
 /** Single owner for composer bottom pad. Call sites must not invent safe-area math. */
-export const composerDockPaddingProperty = "--dashboard-composer-dock-padding";
+export const composerDockPaddingProperty =
+  "--dashboard-composer-dock-padding";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
 const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
@@ -55,7 +56,8 @@ export function mobileViewportMetrics(input: {
   const visualOffsetTop = Math.max(0, Math.round(input.visualOffsetTop));
   const layoutVisualDelta = layoutHeight - visualHeight;
   // Safari default: layout stays large while the keyboard shrinks visual.
-  const resizesVisualOpen = layoutVisualDelta >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
+  const resizesVisualOpen =
+    layoutVisualDelta >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
   // resizes-content: both edges shrink together. Height alone is ambiguous
   // with orientation changes, so require focus or a non-zero visual offset.
   const bothShrunkTogether =
@@ -63,7 +65,8 @@ export function mobileViewportMetrics(input: {
     restingLayoutHeight - Math.min(layoutHeight, visualHeight) >=
       KEYBOARD_OPEN_HEIGHT_DELTA_PX;
   const resizesContentOpen =
-    bothShrunkTogether && (input.editableFocused || visualOffsetTop > 0);
+    bothShrunkTogether &&
+    (input.editableFocused || visualOffsetTop > 0);
   const keyboardOpen = resizesVisualOpen || resizesContentOpen;
 
   if (!keyboardOpen) {
