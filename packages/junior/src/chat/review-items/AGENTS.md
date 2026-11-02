@@ -18,6 +18,8 @@ the tools (`chat/tools/review-items.ts`), or the review desk API
 - A private item links only to the Conversation that added it and to later
   runs of the same Automation. It cannot be assigned to Everyone. Assignees
   must pass `requireReviewItemAssignees`.
+- A plugin notice is assigned only to people in its Conversation, public or
+  private. Junior leaves out the other assignees that the plugin gives.
 - An item belongs to one provider tenant. Links, readers of a public item,
   and Slack mention lookup must stay in that tenant.
 - `canReadReviewItem` and `reviewItemVisibleTo` must give the same readers.
