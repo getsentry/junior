@@ -292,6 +292,33 @@ export function splitSlackReplyText(
   return chunks;
 }
 
+/**
+ * Join the posts of one split reply into its text. Remove the continuation
+ * markers, and the code fence close and reopen that a split inside a code
+ * block adds.
+ */
+export function joinSlackReplyPosts(posts: readonly string[]): string {
+  const texts = posts.map(stripTrailingContinuationMarker);
+  const joined = [...texts];
+  for (let index = 0; index + 1 < texts.length; index += 1) {
+    // Read the post as delivered: its own reopen line is part of it.
+    const text = texts[index]!;
+    const before = text.slice(0, Math.max(0, text.lastIndexOf("\n")));
+    const carryover = getFenceContinuation(before);
+    if (
+      carryover &&
+      `${before}${carryover.closeSuffix}` === text &&
+      texts[index + 1]!.startsWith(carryover.reopenPrefix)
+    ) {
+      joined[index] = joined[index]!.slice(0, -carryover.closeSuffix.length);
+      joined[index + 1] = joined[index + 1]!.slice(
+        carryover.reopenPrefix.length,
+      );
+    }
+  }
+  return joined.join("\n");
+}
+
 /** Return the marker added to non-final overflow chunks. */
 export function getSlackContinuationMarker(): string {
   return CONTINUED_MARKER;
