@@ -4,6 +4,7 @@ import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { peoplePath } from "../format";
 import { cn } from "../styles";
+import { replaceSlackEmoji } from "./transcriptEmoji";
 import { TRANSCRIPT_ANCHOR_CLASS } from "./transcriptMarkdownLinks";
 import { HighlightText } from "./transcriptSearch";
 
@@ -30,12 +31,8 @@ export function MentionPeopleProvider(props: {
   children: ReactNode;
   mentions: readonly ActorIdentity[];
 }) {
-  const people = new Map<string, ActorIdentity>();
-  for (const person of props.mentions) {
-    if (person.slackUserId) people.set(person.slackUserId, person);
-  }
   return (
-    <TranscriptMentionPeople.Provider value={people}>
+    <TranscriptMentionPeople.Provider value={mentionPeople(props.mentions)}>
       {props.children}
     </TranscriptMentionPeople.Provider>
   );
@@ -60,7 +57,8 @@ export function MentionText(props: {
 
 /**
  * Render text with Slack `<@U123>` and `<#C123|name>` tokens as readable
- * mentions. It reads people from the nearest `MentionPeopleProvider`.
+ * mentions and Slack `:name:` codes as emoji. It reads people from the
+ * nearest `MentionPeopleProvider`.
  */
 export function renderMentionText(
   text: string,
@@ -74,7 +72,7 @@ export function renderMentionText(
       nodes.push(
         <HighlightText
           key={`${keyBase}-m-${cursor}`}
-          text={text.slice(cursor, mention.start)}
+          text={replaceSlackEmoji(text.slice(cursor, mention.start))}
         />,
       );
     }
@@ -91,11 +89,50 @@ export function renderMentionText(
     nodes.push(
       <HighlightText
         key={`${keyBase}-m-${cursor}`}
-        text={text.slice(cursor)}
+        text={replaceSlackEmoji(text.slice(cursor))}
       />,
     );
   }
   return nodes;
+}
+
+/**
+ * Return display text as one plain string, with the same names and emoji
+ * that `MentionText` shows. Use it where markup cannot go, such as a title.
+ */
+export function mentionPlainText(
+  text: string,
+  mentions: readonly ActorIdentity[],
+): string {
+  const people = mentionPeople(mentions);
+  let result = "";
+  let cursor = 0;
+  for (const mention of findMentions(text)) {
+    result += replaceSlackEmoji(text.slice(cursor, mention.start));
+    result += mentionLabel(mention, people);
+    cursor = mention.end;
+  }
+  return result + replaceSlackEmoji(text.slice(cursor));
+}
+
+function mentionPeople(
+  mentions: readonly ActorIdentity[],
+): Map<string, ActorIdentity> {
+  const people = new Map<string, ActorIdentity>();
+  for (const person of mentions) {
+    if (person.slackUserId) people.set(person.slackUserId, person);
+  }
+  return people;
+}
+
+function mentionLabel(
+  mention: TranscriptMention,
+  people: ReadonlyMap<string, ActorIdentity>,
+): string {
+  const { id, label, sigil } = mention;
+  const person = sigil === "@" ? people.get(id) : undefined;
+  const name = person?.fullName ?? person?.slackUserName ?? label ?? id;
+  return `${sigil}${name.replace(/^[@#]/, "")}`;
 }
 
 function findMentions(text: string): TranscriptMention[] {
@@ -110,10 +147,9 @@ function findMentions(text: string): TranscriptMention[] {
 
 function MentionView(props: { links: boolean; mention: TranscriptMention }) {
   const people = useContext(TranscriptMentionPeople);
-  const { id, label, sigil } = props.mention;
+  const { id, sigil } = props.mention;
   const person = sigil === "@" ? people.get(id) : undefined;
-  const name = person?.fullName ?? person?.slackUserName ?? label ?? id;
-  const text = <HighlightText text={`${sigil}${name.replace(/^[@#]/, "")}`} />;
+  const text = <HighlightText text={mentionLabel(props.mention, people)} />;
   if (props.links && person?.email) {
     return (
       <Link

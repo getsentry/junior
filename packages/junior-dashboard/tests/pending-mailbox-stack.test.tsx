@@ -174,6 +174,28 @@ describe("PendingMailboxStack remove control", () => {
     expect(html.match(/aria-label="Edit queued message"/g)).toHaveLength(1);
   });
 
+  it("shows Slack mentions as names and Slack emoji codes as emoji", () => {
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        messages={[
+          message({
+            mentions: [{ fullName: "Junior", slackUserId: "U0BOT" }],
+            source: "slack",
+            text: "no idea :smile: <@U0BOT> :wave::skin-tone-3: :custom_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    expect(html).toContain("@Junior");
+    expect(html).not.toContain("U0BOT&gt;");
+    expect(html).toContain("😄");
+    expect(html).toContain("👋🏼");
+    // Workspace emoji are not in the dataset, so they stay as text.
+    expect(html).toContain(":custom_parrot:");
+    expect(html).toContain('title="no idea 😄 @Junior 👋🏼 :custom_parrot:"');
+  });
+
   it("hides mailbox rows already present in committed history", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack
