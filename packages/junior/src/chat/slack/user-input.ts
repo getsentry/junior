@@ -28,18 +28,32 @@ function plainText(text: string) {
   return { type: "plain_text" as const, text, emoji: true };
 }
 
+const SUGGESTED_SUFFIX = " (suggested)";
+
+// Slack has no style for a radio button, checkbox, or text, so a
+// recommended option says so in words. Buttons use the primary style.
+// `maxChars` shortens the label, so the suffix stays visible.
+function optionLabel(
+  option: { label: string; recommended?: boolean },
+  maxChars = Number.POSITIVE_INFINITY,
+) {
+  return option.recommended
+    ? `${truncate(option.label, maxChars - SUGGESTED_SUFFIX.length)}${SUGGESTED_SUFFIX}`
+    : option.label;
+}
+
 /** The question and a short list of what to answer, in Slack markdown. */
 export function slackUserInputText(request: UserInputRequest): string {
   const buttonField = buttonUserInputField(request);
   const notes = buttonField
     ? buttonField.options
         .filter((option) => option.description)
-        .map((option) => `- **${option.label}**: ${option.description}`)
+        .map((option) => `- **${optionLabel(option)}**: ${option.description}`)
     : request.fields.map((field) => {
         const detail =
           field.kind === "text"
             ? "short answer"
-            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => option.label).join(", ")}`;
+            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map(optionLabel).join(", ")}`;
         return `- **${field.label}** (${detail})${field.description ? `: ${field.description}` : ""}`;
       });
   return normalizeSlackReplyMarkdown(
@@ -52,9 +66,10 @@ export function slackUserInputText(request: UserInputRequest): string {
 function toOption(option: {
   description?: string;
   label: string;
+  recommended?: boolean;
 }): PlainTextOption {
   return {
-    text: plainText(option.label),
+    text: plainText(optionLabel(option, USER_INPUT_LIMITS.maxLabelChars)),
     value: option.label,
     ...(option.description
       ? {

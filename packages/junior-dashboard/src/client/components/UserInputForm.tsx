@@ -35,10 +35,31 @@ const optionClass =
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
 
-function OptionText(props: { description?: string; label: string }) {
+// Marks the choice that Junior recommends, next to its label.
+function SuggestedLabel(props: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "ml-2 text-xs font-normal text-dashboard-accent-text/80",
+        props.className,
+      )}
+    >
+      Suggested
+    </span>
+  );
+}
+
+function OptionText(props: {
+  description?: string;
+  label: string;
+  recommended?: boolean;
+}) {
   return (
     <span className="grid min-w-0 gap-0.5 break-words">
-      <span className="font-medium text-dashboard-text">{props.label}</span>
+      <span className="font-medium text-dashboard-text">
+        {props.label}
+        {props.recommended ? <SuggestedLabel /> : null}
+      </span>
       {props.description ? (
         <span className="text-xs text-dashboard-text-muted">
           {props.description}
@@ -90,6 +111,7 @@ function ChoiceField(props: {
               <OptionText
                 description={option.description}
                 label={option.label}
+                recommended={option.recommended}
               />
             </label>
           ))}
@@ -119,7 +141,11 @@ function ChoiceField(props: {
                 )
               }
             />
-            <OptionText description={option.description} label={option.label} />
+            <OptionText
+              description={option.description}
+              label={option.label}
+              recommended={option.recommended}
+            />
           </label>
         ))}
       </div>
@@ -261,6 +287,7 @@ export function UserInputForm(props: {
                     id={`${choicesId}-${index}-label`}
                   >
                     {option.label}
+                    {option.recommended ? <SuggestedLabel /> : null}
                   </span>
                   {option.description ? (
                     <span
@@ -292,6 +319,8 @@ export function UserInputForm(props: {
               onClick={() => pick(buttonField.id, option.label)}
             >
               {option.label}
+              {/* The button gap already spaces the label. */}
+              {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
             </Button>
           ))}
           {secondary}

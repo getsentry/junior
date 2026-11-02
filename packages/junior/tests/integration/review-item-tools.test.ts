@@ -23,8 +23,9 @@ type Context = Pick<
   "conversationId" | "resolveActorIdentity" | "source"
 >;
 
+// Parse the input first, as the agent runtime does.
 async function execute(tool: any, input: unknown): Promise<any> {
-  return await tool.execute(input, {} as any);
+  return await tool.execute(tool.prepareArguments(input), {} as any);
 }
 
 const queue = createConversationWorkQueueTestAdapter();
@@ -113,6 +114,21 @@ describe("review item tools", () => {
     await expect(
       execute(first.add, { ...add, request: undefined }),
     ).rejects.toThrow("An action item needs a `request`.");
+    const recommendBoth = {
+      ...REQUEST,
+      fields: [
+        {
+          ...REQUEST.fields[0],
+          options: [
+            { label: "Approve", recommended: true },
+            { label: "Reject", recommended: true },
+          ],
+        },
+      ],
+    };
+    await expect(
+      execute(first.add, { ...add, request: recommendBoth }),
+    ).rejects.toThrow("can recommend only one option");
     const added = await execute(first.add, add);
     const again = await execute(second.add, {
       ...add,

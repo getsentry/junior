@@ -98,6 +98,7 @@ function controls(item: ReviewItem): Button[] {
         type: "button",
         // Slack requires a unique action_id for each element in one message.
         action_id: `${CHOICE_ACTION_ID_PREFIX}${index}`,
+        ...(option.recommended ? { style: "primary" as const } : undefined),
         text: plainText(option.label),
         // The label goes with the click, so a click on a stale card cannot
         // pick another option after the request changes.

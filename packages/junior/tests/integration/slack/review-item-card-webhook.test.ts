@@ -48,7 +48,7 @@ const SHIP_REQUEST = {
       id: "decision",
       kind: "choice",
       label: "Decision",
-      options: [{ label: "Ship it" }, { label: "Hold" }],
+      options: [{ label: "Ship it", recommended: true }, { label: "Hold" }],
     },
   ],
 };
@@ -135,7 +135,12 @@ async function addItem(
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
   const blocks = call?.params.blocks;
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
-    elements?: Array<{ action_id?: string; text?: unknown; value?: string }>;
+    elements?: Array<{
+      action_id?: string;
+      style?: string;
+      text?: unknown;
+      value?: string;
+    }>;
     type: string;
   }>;
 }
@@ -290,7 +295,8 @@ describe("Slack webhook: Review item cards", () => {
       conversation_ids: [OTHER_THREAD],
     });
 
-    // Each linked thread gets a card with one button per choice.
+    // Each linked thread gets a card with one button per choice. The
+    // recommended choice is the primary button.
     const posts = slackApiOutbox.messages();
     expect(posts.map((post) => post.params.channel).sort()).toEqual([
       "C123",
@@ -299,11 +305,13 @@ describe("Slack webhook: Review item cards", () => {
     const controls = blocksOf(posts[0]).find(
       (block) => block.type === "actions",
     );
-    expect(controls?.elements?.map((element) => element.action_id)).toEqual([
-      "junior_review_item:choice:0",
-      "junior_review_item:choice:1",
-      "junior_review_item:answer",
-      "junior_review_item:dismiss",
+    expect(
+      controls?.elements?.map((element) => [element.action_id, element.style]),
+    ).toEqual([
+      ["junior_review_item:choice:0", "primary"],
+      ["junior_review_item:choice:1", undefined],
+      ["junior_review_item:answer", undefined],
+      ["junior_review_item:dismiss", undefined],
     ]);
 
     // The agent changes the choices. A click on the old card cannot pick a
