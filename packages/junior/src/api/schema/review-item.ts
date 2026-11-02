@@ -21,6 +21,8 @@ const personSchema = z
 export const reviewItemSchema = z
   .object({
     addedByConversationId: z.string().min(1),
+    /** Turn that added the item. Unset for a plugin item. */
+    addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),

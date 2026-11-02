@@ -118,6 +118,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
     ...(item.answer ? { answer: item.answer } : undefined),
+    ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
     ...(item.automationId ? { automationId: item.automationId } : undefined),
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),

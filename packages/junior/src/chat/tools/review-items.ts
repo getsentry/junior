@@ -90,7 +90,7 @@ const bodySchema = z
 
 type ReviewItemToolContext = Pick<
   ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source"
+  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
 >;
 
 /**
@@ -322,6 +322,13 @@ export function createAddReviewItemTool(
           ...content,
           id: existing.id,
           nowMs: Date.now(),
+          // The latest add in the Conversation that added the item has the
+          // most context. A Turn of another Conversation would not match
+          // `addedByConversationId`, so it keeps the stored Turn.
+          ...(context.turnId &&
+          existing.addedByConversationId === context.conversationId
+            ? { addedByTurnId: context.turnId }
+            : undefined),
         });
         if (!updated) {
           throw new ToolInputError(
@@ -340,6 +347,7 @@ export function createAddReviewItemTool(
         ...content,
         addedByConversationId: context.conversationId,
         dedupeKey,
+        ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
         ...(scope.reader.automationId
           ? { automationId: scope.reader.automationId }
