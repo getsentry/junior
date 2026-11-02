@@ -275,7 +275,7 @@ vi.mock("@/chat/pi/client", () => ({
       },
     };
   },
-  getGatewayApiKey: () => undefined,
+  getGatewayApiKey: () => "unauthenticated",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 

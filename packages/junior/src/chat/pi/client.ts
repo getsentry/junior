@@ -15,7 +15,6 @@ import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
   type GatewayCredential,
 } from "@/chat/pi/gateway-auth";
@@ -269,8 +268,8 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
-  const apiKey = credential?.token;
-  const authMode = credential?.mode ?? "api_key";
+  const apiKey = credential.token;
+  const authMode = credential.mode;
   const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
@@ -335,7 +334,7 @@ export async function completeText(params: {
             messages: params.messages,
           },
           {
-            ...(apiKey ? { apiKey } : undefined),
+            apiKey,
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
@@ -492,9 +491,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;
   try {
     result = await withSpan(
@@ -535,7 +532,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
@@ -578,9 +575,7 @@ export async function completeDecision<
   costUsd?: number;
 }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -618,7 +613,7 @@ export async function completeDecision<
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {
@@ -655,9 +650,7 @@ export async function embedTexts(params: {
     throw new Error("Embedding text is required.");
   }
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
@@ -705,7 +698,7 @@ export async function embedTexts(params: {
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {

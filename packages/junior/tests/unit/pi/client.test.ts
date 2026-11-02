@@ -52,8 +52,6 @@ vi.mock("@/chat/pi/gateway-auth", () => ({
     const credential = await mocks.resolveGatewayCredential();
     return credential?.token;
   }),
-  MISSING_GATEWAY_CREDENTIALS_ERROR:
-    "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
   resolveGatewayCredential: mocks.resolveGatewayCredential,
 }));
 
