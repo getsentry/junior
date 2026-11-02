@@ -1,5 +1,9 @@
 import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
@@ -12,7 +16,7 @@ import type {
   ConversationAuthor,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { createSteeringDrain } from "@/chat/task-execution/core-turn";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
@@ -49,10 +53,11 @@ export function createWebSteeringDrain(args: {
   turnId: string;
 }) {
   const { actor, author, context, conversation, turnId } = args;
-  return createSteeringDrain<InboundMessage>({
-    context,
-    turnId,
-    select: async (pending) => {
+  return async (
+    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+  ): Promise<AgentSteeringMessage[]> => {
+    const accepted: AgentSteeringMessage[] = [];
+    await context.attempt.drain(async (pending) => {
       const joining = pending.filter(
         (message) =>
           message.source === "web" &&
@@ -60,14 +65,10 @@ export function createWebSteeringDrain(args: {
           legacyWebMailboxMetadataSchema.safeParse(message.input.metadata)
             .success,
       );
-      return {
-        joining,
-        readIds: joining.map((message) => message.inboundMessageId),
-      };
-    },
-    // Save the transcript Message first. A failed write leaves the input
-    // pending instead of missing from the transcript.
-    beforeAccept: async (joining) => {
+      if (joining.length === 0) return [];
+
+      // Save the transcript Message first. A failed write leaves the input
+      // pending instead of missing from the transcript.
       for (const message of joining) {
         const attachments = readMessageAttachments(message.input.attachments);
         upsertConversationMessage(conversation, {
@@ -90,7 +91,22 @@ export function createWebSteeringDrain(args: {
         conversation,
         conversationId: context.conversationId,
       });
-    },
-    toSteeringMessage: (message) => steeringMessageFromWeb(message, actor),
-  });
+
+      // An earlier drain can save the messages in the Turn and fail before
+      // the mailbox ack. Do not give them to the Turn again.
+      const saved =
+        (await getTurnRecord(context.conversationId, turnId))?.piMessages ?? [];
+      const messages = withoutSavedSteeringMessages(
+        saved,
+        joining.map((message) => steeringMessageFromWeb(message, actor)),
+        buildSteeringPiMessage,
+      );
+      if (messages.length > 0) {
+        await accept(messages);
+        accepted.push(...messages);
+      }
+      return joining.map((message) => message.inboundMessageId);
+    });
+    return accepted;
+  };
 }

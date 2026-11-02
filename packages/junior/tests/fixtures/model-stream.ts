@@ -7,15 +7,12 @@ import {
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 
-/** One fixed model output for one model request. */
-export type FixedModelOutput =
+type FixedModelOutput =
   | {
       type: "text";
       text: string;
       onRequest?: () => void;
       waitFor?: Promise<unknown> | "abort";
-      /** Stop waiting for the abort after this time, as a run that ignores it. */
-      abortTimeoutMs?: number;
     }
   | {
       type: "toolCall";
@@ -58,8 +55,6 @@ function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
 function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   const message = createAssistantMessage(output);
   const { onRequest, waitFor } = output;
-  const abortTimeoutMs =
-    output.type === "text" ? output.abortTimeoutMs : undefined;
   if (!onRequest && !waitFor) {
     return message;
   }
@@ -73,9 +68,6 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
       if (!signal.aborted) {
         await new Promise<void>((resolve) => {
           signal.addEventListener("abort", () => resolve(), { once: true });
-          if (abortTimeoutMs !== undefined) {
-            setTimeout(resolve, abortTimeoutMs);
-          }
         });
       }
     } else if (waitFor) {

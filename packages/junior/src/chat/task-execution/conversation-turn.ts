@@ -24,32 +24,35 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import {
-  buildTurnFailureResponse,
-  logException,
-  setTags,
-  withLogContext,
-} from "@/chat/logging";
+import { logException, setTags, withLogContext } from "@/chat/logging";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
+  getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
+  getConversationTurnBoundaryError,
+  isTurnInputCommitLostError,
   markTurnClosed,
   markTurnFailed,
   startActiveTurn,
+  TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { botConfig } from "@/chat/config";
 import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
+import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
@@ -61,20 +64,12 @@ import {
   abandonTurnRecord,
   getTurnRecord,
   listTurnSummaries,
+  saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import {
-  createTurnSandbox,
-  saveFinishedTurn,
-  type PostAutomatedTurnLimitNotice,
-} from "@/chat/task-execution/core-turn";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import {
-  runWorkerTurn,
-  type PreparedWorkerTurn,
-} from "@/chat/task-execution/worker-turn";
 import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
@@ -144,7 +139,13 @@ function resumedTimerWatchCredentialSubject(
     : undefined;
 }
 
+function hasLostTurnInputCommit(error: unknown): boolean {
+  const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
+  return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
+}
+
 async function completeCancelledConversationTurn(args: {
+  acknowledge(): Promise<void>;
   conversation: ThreadConversationState;
   conversationId: string;
   sandboxRef?: SandboxRef;
@@ -188,6 +189,7 @@ async function completeCancelledConversationTurn(args: {
     outcome: "cancelled",
     turnId: args.turnId,
   });
+  await args.acknowledge();
 }
 
 /**
@@ -204,15 +206,11 @@ function sharedAuthorIdentityId(
 }
 
 /**
- * Create the shared mailbox worker for web and event Turns. Web input has no
- * provider Delivery, so its replies stay in Junior. `eventDelivery` is the
- * Delivery of event input, which sends replies to the Conversation Location.
- * `postAutomatedTurnLimitNotice` posts the automated-turn pause notice there.
+ * Create the shared mailbox worker for web and event Turns.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
-  eventDelivery?: DeliverMessage,
-  postAutomatedTurnLimitNotice?: PostAutomatedTurnLimitNotice,
+  deliverMessage?: DeliverMessage,
 ) {
   return async (
     context: ConversationWorkerContext,
@@ -242,8 +240,6 @@ export function createConversationTurnWorker(
     let event: EventMailboxMetadata["event"] | undefined;
     let batchEvents: ConversationMessageEvent[] = [];
     let authorIdentityId: string | undefined;
-    // The input owner selects Delivery. Source must not select it.
-    let eventInput = false;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -264,7 +260,6 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        eventInput = true;
         text = renderEventBatchText(messages);
         event = firstMetadata.event;
         batchEvents = eventBatchMessageEvents(messages);
@@ -295,6 +290,7 @@ export function createConversationTurnWorker(
     const savedTurn = isResume
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
+    let savedMessageIsEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -302,7 +298,7 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      eventInput = isEventConversationMessage(userMessage);
+      savedMessageIsEvent = isEventConversationMessage(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -346,7 +342,14 @@ export function createConversationTurnWorker(
     });
     const webActor = actor.platform === "web" ? actor : undefined;
     const conversationLocation = storedConversation?.location;
-    const deliverToProvider = Boolean(conversationLocation) && eventInput;
+    // TODO(dcramer): Remove the saved Message check after every deployed Turn
+    // cursor stores Event Source.
+    // TODO(dcramer): Remove this Source-based Delivery choice after the core
+    // Turn lifecycle stores assistant Messages and web and Event work
+    // each supplies optional provider Delivery. Source must not select Delivery.
+    const deliverToProvider =
+      Boolean(conversationLocation) &&
+      (source.kind === "event" || savedMessageIsEvent);
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
@@ -365,12 +368,97 @@ export function createConversationTurnWorker(
           : undefined),
       },
       async () => {
-        const sandbox = createTurnSandbox({
-          conversation,
-          conversationId: context.conversationId,
-          persisted,
-        });
+        let acknowledged = isResume || context.attempt.messages.length === 0;
+        const acknowledge = async (): Promise<void> => {
+          if (acknowledged) {
+            return;
+          }
+          try {
+            await context.attempt.ack();
+          } catch {
+            throw new TurnInputCommitLostError(
+              `Conversation work lease lost before mailbox Message acknowledgement for ${context.conversationId}`,
+            );
+          }
+          acknowledged = true;
+        };
+
+        let sandboxRef: SandboxRef | undefined =
+          getPersistedSandboxState(persisted);
+        const initialSandboxRef = sandboxRef;
         const stopSignal = context.stopSignal?.();
+        const completeCancelledTurn =
+          async (): Promise<ConversationWorkerResult> => {
+            try {
+              await completeCancelledConversationTurn({
+                acknowledge,
+                conversation,
+                conversationId: context.conversationId,
+                sandboxRef,
+                turnId,
+                userMessageId,
+              });
+            } catch (error) {
+              if (hasLostTurnInputCommit(error)) {
+                return { status: "lost_lease" };
+              }
+              throw error;
+            }
+            return { status: "completed" };
+          };
+
+        if (isResume) {
+          if (stopSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+        } else {
+          upsertConversationMessage(conversation, {
+            id: userMessageId,
+            role: "user",
+            text: normalizeConversationText(text),
+            createdAtMs: startedAtMs,
+            author,
+            ...(authorIdentityId ? { authorIdentityId } : undefined),
+            meta: {
+              ...(attachments.length ? { attachments } : undefined),
+              explicitMention: true,
+              replied: false,
+              ...(source.kind === "web"
+                ? { source: "web" as const }
+                : undefined),
+              ...(event
+                ? {
+                    eventType: event.eventType,
+                    eventObjectType: event.objectType,
+                    ...(event.trustedSummary
+                      ? { trustedSummary: event.trustedSummary }
+                      : undefined),
+                    ...(batchEvents.length > 1
+                      ? { events: batchEvents }
+                      : undefined),
+                  }
+                : undefined),
+            },
+          });
+          await persistConversationMessages({
+            conversation,
+            conversationId: context.conversationId,
+          });
+          await lifecycle.start({
+            conversationId: context.conversationId,
+            createdAtMs: Date.now(),
+            inputMessageIds,
+            surface,
+            turnId,
+          });
+          if (stopSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+          startActiveTurn({
+            conversation,
+            nextTurnId: turnId,
+          });
+        }
 
         let currentRunId: string | undefined;
         let assistantMessageDelivered = false;
@@ -392,19 +480,17 @@ export function createConversationTurnWorker(
           const cards = await loadPendingMessageCards(context.conversationId);
           let deliveryResult: DeliveryResult | undefined;
           if (deliverToProvider) {
-            if (!conversationLocation || !eventDelivery) {
+            if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
               );
             }
-            deliveryResult = await eventDelivery({
+            deliveryResult = await deliverMessage({
               cards,
               conversationId: context.conversationId,
               location: conversationLocation,
               text: replyText,
             });
-            // The Location has the reply, even when the commit below fails.
-            assistantMessageDelivered = true;
           }
           await commitAssistantMessage({
             cards,
@@ -424,64 +510,10 @@ export function createConversationTurnWorker(
           assistantMessageDelivered = true;
           failureCode = "agent_run_failed";
         };
-        const prepare = async (): Promise<
-          PreparedWorkerTurn | "finished" | "stopped"
-        > => {
-          if (isResume) {
-            if (stopSignal?.aborted) {
-              return "stopped";
-            }
-          } else {
-            upsertConversationMessage(conversation, {
-              id: userMessageId,
-              role: "user",
-              text: normalizeConversationText(text),
-              createdAtMs: startedAtMs,
-              author,
-              ...(authorIdentityId ? { authorIdentityId } : undefined),
-              meta: {
-                ...(attachments.length ? { attachments } : undefined),
-                explicitMention: true,
-                replied: false,
-                ...(source.kind === "web"
-                  ? { source: "web" as const }
-                  : undefined),
-                ...(event
-                  ? {
-                      eventType: event.eventType,
-                      eventObjectType: event.objectType,
-                      ...(event.trustedSummary
-                        ? { trustedSummary: event.trustedSummary }
-                        : undefined),
-                      ...(batchEvents.length > 1
-                        ? { events: batchEvents }
-                        : undefined),
-                    }
-                  : undefined),
-              },
-            });
-            await persistConversationMessages({
-              conversation,
-              conversationId: context.conversationId,
-            });
-            await lifecycle.start({
-              conversationId: context.conversationId,
-              createdAtMs: Date.now(),
-              inputMessageIds,
-              surface,
-              turnId,
-            });
-            if (stopSignal?.aborted) {
-              return "stopped";
-            }
-            startActiveTurn({
-              conversation,
-              nextTurnId: turnId,
-            });
-          }
 
+        try {
           if (stopSignal?.aborted) {
-            return "stopped";
+            return await completeCancelledTurn();
           }
           if (!isResume) {
             // Match Slack: new input supersedes an auth-paused Turn
@@ -500,7 +532,7 @@ export function createConversationTurnWorker(
             );
             for (const parked of authParked) {
               if (stopSignal?.aborted) {
-                return "stopped";
+                return await completeCancelledTurn();
               }
               await abandonTurnRecord({
                 conversationId: context.conversationId,
@@ -529,7 +561,7 @@ export function createConversationTurnWorker(
             conversation,
           });
           if (stopSignal?.aborted) {
-            return "stopped";
+            return await completeCancelledTurn();
           }
           const piMessages = await loadProjection({
             conversationId: context.conversationId,
@@ -538,8 +570,9 @@ export function createConversationTurnWorker(
           currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
 
-          return {
-            run: {
+          const outcome = await executeTurn(
+            agentRunner,
+            {
               conversationId: context.conversationId,
               turnId,
               runId: currentRunId,
@@ -564,6 +597,7 @@ export function createConversationTurnWorker(
                 ? { location: conversationLocation }
                 : undefined),
               surface,
+              ...(stopSignal ? { signal: stopSignal } : undefined),
               ...(webActor
                 ? {
                     authorization: createWebAuthorization({
@@ -574,7 +608,7 @@ export function createConversationTurnWorker(
                 : { disabledFeatures: ["interactive-auth"] as const }),
               state: {
                 pendingAuth: conversation.processing.pendingAuth,
-                sandboxRef: sandbox.ref,
+                sandboxRef,
               },
               delivery: deliverAssistantMessage,
               durability: {
@@ -589,17 +623,32 @@ export function createConversationTurnWorker(
                       }),
                     }
                   : undefined),
-                onSandboxRefChanged: sandbox.onSandboxRefChanged,
+                onInputCommitted: acknowledge,
+                shouldYield: context.shouldYield,
+                onSandboxRefChanged: async (nextSandboxRef) => {
+                  sandboxRef = nextSandboxRef;
+                  await persistThreadStateById(context.conversationId, {
+                    conversation,
+                    sandboxRef,
+                  });
+                },
                 recordPendingAuth: async (pendingAuth) => {
                   conversation.processing.pendingAuth = pendingAuth;
                   await persistThreadStateById(context.conversationId, {
                     conversation,
-                    sandboxRef: sandbox.ref,
+                    sandboxRef,
                   });
                 },
               },
             },
-            saveResult: async (result) => {
+            async (result) => {
+              if (stopSignal?.aborted) {
+                throw (
+                  stopSignal.reason ??
+                  new DOMException("Turn cancelled", "AbortError")
+                );
+              }
+
               modelFailureCaptureAttempted =
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
@@ -619,17 +668,44 @@ export function createConversationTurnWorker(
                 sessionId: turnId,
                 userMessageId,
               });
-              await saveFinishedTurn({
-                actor,
+              await persistThreadStateById(context.conversationId, {
                 conversation: completedState.conversation,
+                sandboxRef: reply.sandboxRef ?? sandboxRef,
+              });
+              if (reply.piMessages?.length) {
+                // Prefer the live checkpoint slice after yield/resume; first
+                // completion has no prior record and starts at slice 1.
+                const latest = await getTurnRecord(
+                  context.conversationId,
+                  turnId,
+                );
+                await saveTurnCheckpoint({
+                  mode: "completed",
+                  conversationId: context.conversationId,
+                  turnId,
+                  sliceId: latest?.sliceId ?? 1,
+                  messages: reply.piMessages,
+                  durationMs: reply.diagnostics.durationMs,
+                  usage: reply.diagnostics.usage,
+                  // TODO(dcramer): Remove checkpoint Destination after resume
+                  // reads the Conversation Location.
+                  destination,
+                  source,
+                  actor,
+                  surface,
+                });
+              }
+              const automatedTurnLimit =
+                await recordFinishedTurnForAutomatedLimit({
+                  conversationId: context.conversationId,
+                  maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                  source,
+                });
+              await maybePostAutomatedTurnLimitNotice({
                 conversationId: context.conversationId,
-                destination,
-                postAutomatedTurnLimitNotice,
-                result: reply,
-                sandbox,
+                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,
-                surface,
-                turnId,
+                update: automatedTurnLimit,
               });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
@@ -648,144 +724,123 @@ export function createConversationTurnWorker(
                     outcome: "failed",
                   };
             },
-          };
-        };
+          );
 
-        return await runWorkerTurn({
-          agentRunner,
-          context,
-          inputCommitted: isResume || context.attempt.messages.length === 0,
-          stopSignal,
-          steps: {
-            prepare,
-            stop: async () => {
-              await completeCancelledConversationTurn({
-                conversation,
-                conversationId: context.conversationId,
-                sandboxRef: sandbox.ref,
-                turnId,
-                userMessageId,
-              });
-            },
-            awaitAuth: async () => {
-              // Close the live turn the same way Slack does after private-link
-              // delivery. The turn record stays paused for OAuth resume; only
-              // the conversation active pointer is cleared.
-              completeAuthPauseTurn({
-                conversation,
-                sessionId: turnId,
-              });
-              await persistThreadStateById(context.conversationId, {
-                conversation,
-                sandboxRef: sandbox.ref,
-              });
-              return "paused";
-            },
-            complete: async () => {
-              if (completedSuccessfully) {
-                try {
-                  await scheduleSessionCompletedPluginTasks(
-                    {
-                      conversationId: context.conversationId,
-                      sessionId: turnId,
-                    },
-                    {
-                      send: async (message) => {
-                        try {
-                          await processPluginTask(message);
-                        } catch (error) {
-                          logException(
-                            error,
-                            "conversation.plugin.session_completion_task.failed",
-                            {
-                              conversationId: context.conversationId,
-                              pluginName: message.plugin,
-                              taskName: message.name,
-                              turnId,
-                            },
-                          );
-                        }
-                      },
-                    },
-                  );
-                } catch (error) {
-                  logException(
-                    error,
-                    "conversation.plugin.session_completion_task.failed",
-                    {
-                      conversationId: context.conversationId,
-                      turnId,
-                    },
-                  );
-                }
-              }
-            },
-            fail: async (failure) => {
-              const failureEventId =
-                modelFailureCaptureAttempted &&
-                failureCode === "agent_run_failed"
-                  ? modelFailureEventId
-                  : captureConversationTurnFailure({
-                      conversationId: context.conversationId,
-                      error: failure,
-                      failureCode,
-                      runId: currentRunId,
-                      turnId,
-                    });
-              try {
-                markTurnFailed({
-                  conversation,
-                  nowMs: Date.now(),
-                  sessionId: turnId,
-                  userMessageId,
-                  markConversationMessage,
-                });
-                await persistThreadStateById(context.conversationId, {
-                  conversation,
-                  sandboxRef: sandbox.initial ?? null,
-                });
-              } catch (persistenceError) {
-                captureConversationTurnFailure({
+          if (outcome.status !== "completed" && stopSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+
+          if (outcome.status === "suspended") {
+            return { status: "yielded" };
+          }
+          if (outcome.status === "awaiting_auth") {
+            // Close the live turn the same way Slack does after private-link
+            // delivery. The turn record stays paused for OAuth resume; only
+            // the conversation active pointer is cleared.
+            completeAuthPauseTurn({
+              conversation,
+              sessionId: turnId,
+            });
+            await persistThreadStateById(context.conversationId, {
+              conversation,
+              sandboxRef,
+            });
+            await acknowledge();
+            return { status: "paused" };
+          }
+          if (completedSuccessfully) {
+            try {
+              await scheduleSessionCompletedPluginTasks(
+                {
                   conversationId: context.conversationId,
-                  error: persistenceError,
-                  failureCode: "persistence_failed",
+                  sessionId: turnId,
+                },
+                {
+                  send: async (message) => {
+                    try {
+                      await processPluginTask(message);
+                    } catch (error) {
+                      logException(
+                        error,
+                        "conversation.plugin.session_completion_task.failed",
+                        {
+                          conversationId: context.conversationId,
+                          pluginName: message.plugin,
+                          taskName: message.name,
+                          turnId,
+                        },
+                      );
+                    }
+                  },
+                },
+              );
+            } catch (error) {
+              logException(
+                error,
+                "conversation.plugin.session_completion_task.failed",
+                {
+                  conversationId: context.conversationId,
+                  turnId,
+                },
+              );
+            }
+          }
+
+          await acknowledge();
+          return { status: "completed" };
+        } catch (error) {
+          const failure = error instanceof AgentRunError ? error.cause : error;
+          if (hasLostTurnInputCommit(failure)) {
+            return { status: "lost_lease" };
+          }
+          if (stopSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+          if (!context.attempt.isFinalAttempt) {
+            throw failure;
+          }
+
+          const failureEventId =
+            modelFailureCaptureAttempted && failureCode === "agent_run_failed"
+              ? modelFailureEventId
+              : captureConversationTurnFailure({
+                  conversationId: context.conversationId,
+                  error: failure,
+                  failureCode,
                   runId: currentRunId,
                   turnId,
                 });
-              }
-              await lifecycle.fail({
-                conversationId: context.conversationId,
-                createdAtMs: Date.now(),
-                ...(failureEventId ? { eventId: failureEventId } : undefined),
-                failureCode,
-                turnId,
-              });
-              // Tell the people at the Location that the Turn failed. Web
-              // input has no provider Delivery. The dashboard shows the
-              // failed Turn. A reply that the Location already has, such as
-              // a model failure reply, is not followed by a second message.
-              if (
-                deliverToProvider &&
-                failureEventId &&
-                !assistantMessageDelivered
-              ) {
-                try {
-                  await deliverAssistantMessage(
-                    buildTurnFailureResponse(failureEventId),
-                  );
-                } catch (deliveryError) {
-                  captureConversationTurnFailure({
-                    conversationId: context.conversationId,
-                    error: deliveryError,
-                    failureCode: "delivery_failed",
-                    runId: currentRunId,
-                    turnId,
-                  });
-                }
-              }
-            },
-          },
-        });
+          try {
+            markTurnFailed({
+              conversation,
+              nowMs: Date.now(),
+              sessionId: turnId,
+              userMessageId,
+              markConversationMessage,
+            });
+            await persistThreadStateById(context.conversationId, {
+              conversation,
+              sandboxRef: initialSandboxRef ?? null,
+            });
+          } catch (persistenceError) {
+            captureConversationTurnFailure({
+              conversationId: context.conversationId,
+              error: persistenceError,
+              failureCode: "persistence_failed",
+              runId: currentRunId,
+              turnId,
+            });
+          }
+          await lifecycle.fail({
+            conversationId: context.conversationId,
+            createdAtMs: Date.now(),
+            ...(failureEventId ? { eventId: failureEventId } : undefined),
+            failureCode,
+            turnId,
+          });
+          await acknowledge();
+          return { status: "completed" };
+        }
       },
     );
   };

@@ -10,6 +10,7 @@ import { logException, logWarn } from "@/chat/logging";
 import {
   buildAutomatedTurnLimitResponse,
   clearAutomatedTurnLimitNoticeClaim,
+  type AutomatedTurnLimitUpdate,
 } from "@/chat/services/automated-turn-limit";
 import type { Source } from "@sentry/junior-plugin-api";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
@@ -74,4 +75,23 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     });
     return false;
   }
+}
+
+/** Post the pause notice after a finished Turn hits the limit. */
+export async function maybePostAutomatedTurnLimitNotice(args: {
+  conversationId: string;
+  maxTurns: number;
+  nowMs?: number;
+  source?: Source;
+  update: AutomatedTurnLimitUpdate | undefined;
+}): Promise<void> {
+  if (!args.update?.shouldPostNotice) {
+    return;
+  }
+  await postAutomatedTurnLimitNoticeForConversation({
+    conversationId: args.conversationId,
+    maxTurns: args.maxTurns,
+    nowMs: args.nowMs,
+    source: args.source,
+  });
 }

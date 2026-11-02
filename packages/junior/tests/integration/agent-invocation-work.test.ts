@@ -562,6 +562,13 @@ describe("agent invocation conversation work", () => {
         await expect(getAgentInvocation(invocationId)).resolves.toMatchObject(
           expected,
         );
+        // An ended child leaves no paused Turn that a later wake could resume.
+        await expect(
+          getTurnRecord(
+            childConversationId,
+            getAgentInvocationTurnId(invocationId),
+          ),
+        ).resolves.not.toMatchObject({ state: "paused" });
         const projection = await loadProjection({
           conversationId: childConversationId,
         });

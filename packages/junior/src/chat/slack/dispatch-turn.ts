@@ -25,7 +25,6 @@ type ExecuteSlackTurn = (
     onTurnOutcome?: (result: DispatchTurnResult) => void;
     shouldYield?: () => boolean;
     skipBackfill?: boolean;
-    stopSignal?: AbortSignal;
   },
 ) => Promise<void>;
 
@@ -42,7 +41,6 @@ export function createSlackDispatchTurnRunner(options: {
     hooks: {
       ack: () => Promise<void>;
       shouldYield?: () => boolean;
-      stopSignal?: AbortSignal;
     },
   ): Promise<DispatchTurnResult> {
     const state = getStateAdapter();
@@ -119,7 +117,6 @@ export function createSlackDispatchTurnRunner(options: {
       },
       shouldYield: hooks.shouldYield,
       skipBackfill: true,
-      stopSignal: hooks.stopSignal,
     });
     return {
       ...(errorMessage ? { errorMessage } : undefined),

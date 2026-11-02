@@ -9,20 +9,15 @@ import type { StateAdapter } from "chat";
 import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
   getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import {
-  abandonTurnRecord,
-  failTurnRecord,
   getTurnRecord,
   listTurnSummaries,
   recordTurnSummary,
@@ -38,7 +33,6 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import { runWorkerTurn } from "@/chat/task-execution/worker-turn";
 import {
   claimDispatchMailboxAppend,
   confirmDispatchMailboxAppend,
@@ -121,7 +115,6 @@ export interface AgentDispatchConversationWorkerOptions {
     hooks: {
       ack: () => Promise<void>;
       shouldYield?: () => boolean;
-      stopSignal?: AbortSignal;
     },
   ) => Promise<DispatchTurnResult>;
 }
@@ -370,57 +363,31 @@ function missingAuthorizationReason(
     : `This run uses system credentials, which have no ${provider} access. Switch it to creator credentials and connect a ${provider} account.`;
 }
 
-/**
- * End the dispatch Turn with a terminal outcome that no Run recorded: a
- * blocking authorization error, or a failure on the last attempt.
- */
-async function persistTerminalDispatchTurn(
+async function persistBlockedDispatchTurn(
   dispatch: DispatchRecord,
-  outcome: "blocked" | "failed",
-  errorMessage: string,
+  error: AuthorizationFlowDisabledError | PluginCredentialFailureError,
 ): Promise<void> {
-  // End the dispatch first. The retries are used up, so a failed Turn write
-  // below must not leave the dispatch open.
-  if (outcome === "blocked") {
-    await markDispatchBlocked(dispatch.id, errorMessage);
-  } else {
-    await markDispatchFailed(dispatch.id, errorMessage);
-  }
   const conversationId = getDispatchConversationId(dispatch);
-  const turnId = getDispatchTurnId(dispatch.id);
-  const session = await getTurnRecord(conversationId, turnId);
+  const sessionId = getDispatchTurnId(dispatch.id);
+  const session = await getTurnRecord(conversationId, sessionId);
   await recordTurnSummary({
     actor: dispatch.actor,
     conversationId,
     destination: dispatch.destination,
     dispatchId: dispatch.id,
-    dispatchOutcome: outcome,
-    turnId,
+    dispatchOutcome: "blocked",
+    turnId: sessionId,
     sliceId: session?.sliceId ?? 1,
     source: dispatch.source,
     state: "failed",
     surface: "api",
   });
-  // A dispatch that ends between slices keeps an open Turn record. Nothing
-  // may resume it.
-  if (outcome === "blocked") {
-    await abandonTurnRecord({ conversationId, errorMessage, turnId });
-    return;
-  }
-  if (session) {
-    await failTurnRecord({
-      conversationId,
-      errorMessage,
-      expectedVersion: session.version,
-      turnId,
-    });
-  }
-  await new ConversationTurnLifecycleService(getConversationEventStore()).fail({
-    conversationId,
-    createdAtMs: Date.now(),
-    failureCode: "agent_run_failed",
-    turnId,
-  });
+  await markDispatchBlocked(
+    dispatch.id,
+    error instanceof AuthorizationFlowDisabledError
+      ? missingAuthorizationReason(dispatch, error.provider)
+      : error.message,
+  );
 }
 
 /** Run one dispatch start or resume under the owning conversation lease. */
@@ -452,147 +419,111 @@ export function createAgentDispatchConversationWorker(
       );
     }
 
-    // Read the signal before any early return, so the worker clears a stop
-    // request that this wake handles.
-    const stopSignal = context.stopSignal?.();
-    let result: DispatchTurnResult | undefined;
-    // Start the dispatch Turn, or resume it when a durable run exists.
-    const runDispatchTurn = async (
-      durableResult: DurableDispatchTurnResult,
-      hooks: {
-        acknowledge(): Promise<void>;
-        shouldYield(): boolean;
-        stopSignal: AbortSignal | undefined;
-      },
-    ): Promise<DispatchTurnResult> => {
-      if (durableResult.hasResumableRun) {
-        // A durable run proves the original input was already committed.
-        // The mailbox item is only a redelivery wake-up and must not
-        // restart it.
-        await hooks.acknowledge();
-        await options.resumeTurn(dispatch, { shouldYield: hooks.shouldYield });
-        return await readDispatchTurnResult(dispatch);
+    let acknowledged = context.attempt.messages.length === 0;
+    const acknowledge = async (): Promise<void> => {
+      if (acknowledged) {
+        return;
       }
-      const runtimeResult = await options.runTurn(dispatch, {
-        ack: hooks.acknowledge,
-        shouldYield: hooks.shouldYield,
-        stopSignal: hooks.stopSignal,
-      });
-      return runtimeResult.outcome
-        ? runtimeResult
-        : { ...runtimeResult, ...(await readDispatchTurnResult(dispatch)) };
+      try {
+        await context.attempt.ack();
+      } catch {
+        throw new TurnInputCommitLostError(
+          `Conversation work lease lost before dispatch inbox ack for ${context.conversationId}`,
+        );
+      }
+      acknowledged = true;
     };
-    return await runWorkerTurn({
-      context,
-      inputCommitted: context.attempt.messages.length === 0,
-      stopSignal,
-      steps: {
-        prepare: async () => {
-          if (isTerminalDispatchStatus(dispatch.status)) {
-            return "finished";
-          }
-          const durableResult = await readDispatchTurnResult(dispatch);
-          if (
-            durableResult.outcome === "blocked" ||
-            durableResult.outcome === "completed" ||
-            durableResult.outcome === "failed"
-          ) {
-            await projectDispatchTurnResult(dispatch.id, durableResult);
-            return "finished";
-          }
-          if (Date.now() - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
-            await markDispatchFailed(
-              dispatch.id,
-              "Dispatch exceeded its maximum processing age",
-            );
-            return "finished";
-          }
-          const runningDispatch = await markDispatchRunning(dispatch.id);
-          if (!runningDispatch) {
-            throw new Error(`Dispatch record disappeared for ${dispatch.id}`);
-          }
-          if (isTerminalDispatchStatus(runningDispatch.status)) {
-            return "finished";
-          }
-          if (stopSignal?.aborted) {
-            return "stopped";
-          }
-          return {
-            execute: async (hooks) => {
-              try {
-                result = await runDispatchTurn(durableResult, hooks);
-              } catch (error) {
-                if (isCooperativeTurnYieldError(error)) {
-                  return "suspended";
-                }
-                throw error;
-              }
-              if (!result.outcome) {
-                throw new Error(
-                  `Dispatch turn ${dispatch.id} returned without a durable outcome`,
-                );
-              }
-              await hooks.acknowledge();
-              return result.outcome === "awaiting_resume" && hooks.shouldYield()
-                ? "suspended"
-                : "completed";
-            },
-          };
-        },
-        stop: async () => {
-          const stopped = await readDispatchTurnResult(dispatch);
-          if (stopped.outcome && stopped.outcome !== "awaiting_resume") {
-            await projectDispatchTurnResult(dispatch.id, stopped);
-            return;
-          }
-          // End the Turn as root and child stops do, so nothing resumes it.
-          const conversationId = getDispatchConversationId(dispatch);
-          const turnId = getDispatchTurnId(dispatch.id);
-          await abandonTurnRecord({
-            conversationId,
-            errorMessage: "Turn cancelled",
-            turnId,
-          });
-          await new ConversationTurnLifecycleService(
-            getConversationEventStore(),
-          ).complete({
-            conversationId,
-            createdAtMs: Date.now(),
-            outcome: "cancelled",
-            turnId,
-          });
-          await markDispatchFailed(dispatch.id, "Dispatch was stopped");
-        },
-        suspend: async () => {
-          await markDispatchAwaitingResume(dispatch.id);
-        },
-        complete: async () => {
-          if (result) {
-            await projectDispatchTurnResult(dispatch.id, result);
-          }
-        },
-        block: async (error) => {
-          const blocking = getDispatchBlockingError(error);
-          if (!blocking) {
-            return false;
-          }
-          await persistTerminalDispatchTurn(
-            dispatch,
-            "blocked",
-            blocking instanceof AuthorizationFlowDisabledError
-              ? missingAuthorizationReason(dispatch, blocking.provider)
-              : blocking.message,
-          );
-          return true;
-        },
-        fail: async (error) => {
-          await persistTerminalDispatchTurn(
-            dispatch,
-            "failed",
-            error instanceof Error ? error.message : "Dispatch turn failed",
-          );
-        },
-      },
-    });
+    if (isTerminalDispatchStatus(dispatch.status)) {
+      await acknowledge();
+      return { status: "completed" };
+    }
+    const durableResult = await readDispatchTurnResult(dispatch);
+    if (
+      durableResult.outcome === "blocked" ||
+      durableResult.outcome === "completed" ||
+      durableResult.outcome === "failed"
+    ) {
+      await projectDispatchTurnResult(dispatch.id, durableResult);
+      await acknowledge();
+      return { status: "completed" };
+    }
+    if (Date.now() - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
+      await markDispatchFailed(
+        dispatch.id,
+        "Dispatch exceeded its maximum processing age",
+      );
+      await acknowledge();
+      return { status: "completed" };
+    }
+
+    const runningDispatch = await markDispatchRunning(dispatch.id);
+    if (!runningDispatch) {
+      throw new Error(`Dispatch record disappeared for ${dispatch.id}`);
+    }
+    if (isTerminalDispatchStatus(runningDispatch.status)) {
+      await acknowledge();
+      return { status: "completed" };
+    }
+    try {
+      const resumesDurableTurn = durableResult.hasResumableRun === true;
+      if (resumesDurableTurn && context.attempt.messages.length > 0) {
+        // A durable run proves the original input was already committed. The
+        // mailbox item is only a redelivery wake-up and must not restart it.
+        await acknowledge();
+      }
+      let result: DispatchTurnResult;
+      if (resumesDurableTurn) {
+        await options.resumeTurn(dispatch, {
+          shouldYield: context.shouldYield,
+        });
+        result = await readDispatchTurnResult(dispatch);
+      } else {
+        const runtimeResult = await options.runTurn(dispatch, {
+          ack: acknowledge,
+          shouldYield: context.shouldYield,
+        });
+        result = runtimeResult.outcome
+          ? runtimeResult
+          : {
+              ...runtimeResult,
+              ...(await readDispatchTurnResult(dispatch)),
+            };
+      }
+      if (!result.outcome) {
+        throw new Error(
+          `Dispatch turn ${dispatch.id} returned without a durable outcome`,
+        );
+      }
+      await projectDispatchTurnResult(dispatch.id, result);
+      if (result.outcome && !acknowledged) {
+        await acknowledge();
+      }
+      return result.outcome === "awaiting_resume" && context.shouldYield()
+        ? { status: "yielded" }
+        : { status: "completed" };
+    } catch (error) {
+      if (isCooperativeTurnYieldError(error)) {
+        await markDispatchAwaitingResume(dispatch.id);
+        return { status: "yielded" };
+      }
+      if (isTurnInputCommitLostError(error)) {
+        return { status: "lost_lease" };
+      }
+      const blockingError = getDispatchBlockingError(error);
+      if (blockingError) {
+        await persistBlockedDispatchTurn(dispatch, blockingError);
+        await acknowledge();
+        return { status: "completed" };
+      }
+      if (!context.attempt.isFinalAttempt) {
+        throw error;
+      }
+      await markDispatchFailed(
+        dispatch.id,
+        error instanceof Error ? error.message : "Dispatch turn failed",
+      );
+      await acknowledge();
+      return { status: "completed" };
+    }
   };
 }

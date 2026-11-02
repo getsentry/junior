@@ -11,8 +11,8 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
-  resolveConversationRouting,
   resolveTurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import {
   failTurnRecord,
@@ -71,19 +71,12 @@ export async function getPausedTurnRequest(args: {
   ) {
     return undefined;
   }
-  let destination: Destination;
+  let routing: RequiredTurnSessionRouting;
   try {
-    // A dispatch Turn keeps the Source of its dispatch. The wake needs only
-    // the Destination of its Conversation.
-    const routing = turn.dispatchId
-      ? await resolveConversationRouting(args)
-      : await resolveTurnSessionRouting(args);
-    if (!routing?.destination) {
-      throw new Error(
-        `Conversation ${args.conversationId} is missing durable routing metadata`,
-      );
-    }
-    destination = routing.destination;
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+      conversationStore: args.conversationStore,
+    });
   } catch (error) {
     await failTurnRecord({
       conversationId: args.conversationId,
@@ -96,7 +89,7 @@ export async function getPausedTurnRequest(args: {
 
   return {
     conversationId: args.conversationId,
-    destination,
+    destination: routing.destination,
     turnId: args.turnId,
     expectedVersion: turn.version,
     traceContext: turn.traceContext,

@@ -1,6 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
@@ -8,32 +12,46 @@ import {
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { loadProjection } from "@/chat/conversations/projection";
+import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
+  AgentRunError,
+  executeTurn,
   finishTurn,
   type SavedTurnResult,
 } from "@/chat/runtime/turn-execution";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import {
+  getPersistedSandboxState,
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
+  saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { getConversationTurnBoundaryError } from "@/chat/runtime/turn";
+import {
+  getConversationTurnBoundaryError,
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { botConfig } from "@/chat/config";
+import {
+  recordFinishedTurnForAutomatedLimit,
+  resetAutomatedTurnLimit,
+} from "@/chat/services/automated-turn-limit";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
-import {
-  createSteeringDrain,
-  createTurnSandbox,
-  saveFinishedTurn,
-  type TurnSandbox,
-} from "@/chat/task-execution/core-turn";
+import type { PiMessage } from "@/chat/pi/messages";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   agentTypeInstructions,
   agentTypeStartsWithParentHistory,
@@ -49,7 +67,6 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import { runWorkerTurn } from "@/chat/task-execution/worker-turn";
 import {
   completeAgentInvocation,
   createAgentInvocation,
@@ -262,69 +279,91 @@ function createAgentMessageSteeringDrain(
   context: ConversationWorkerContext,
   running: AgentInvocation,
 ) {
-  return createSteeringDrain<AgentInvocation>({
-    context,
-    deferred: true,
-    turnId: getAgentInvocationTurnId(running.invocationId),
-    select: async (pending) => {
-      const readIds: string[] = [];
-      const joining: AgentInvocation[] = [];
-      for (const message of pending) {
-        const metadata = agentInvocationMailboxMetadataSchema.safeParse(
-          message.input.metadata,
-        );
-        if (!metadata.success) {
-          continue;
-        }
-        const candidate = await getAgentInvocation(
-          metadata.data.agentInvocationId,
-        );
-        // Only a parent task or message steers. A grandchild result or a
-        // watch event starts its own agent invocation.
-        if (
-          !candidate?.parentToolCallId ||
-          candidate.invocationId === running.invocationId
-        ) {
-          continue;
-        }
-        if (isTerminalAgentInvocation(candidate)) {
-          // An earlier drain marked this message but did not acknowledge it.
-          if (candidate.parentMailboxStatus === "steered") {
-            readIds.push(message.inboundMessageId);
+  const turnId = getAgentInvocationTurnId(running.invocationId);
+  return async (
+    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+  ): Promise<AgentSteeringMessage[]> => {
+    const accepted: AgentSteeringMessage[] = [];
+    await context.attempt.drain(
+      async (pending) => {
+        const readIds: string[] = [];
+        const joining: AgentInvocation[] = [];
+        for (const message of pending) {
+          const metadata = agentInvocationMailboxMetadataSchema.safeParse(
+            message.input.metadata,
+          );
+          if (!metadata.success) {
+            continue;
           }
-          continue;
+          const candidate = await getAgentInvocation(
+            metadata.data.agentInvocationId,
+          );
+          // Only a parent task or message steers. A grandchild result or a
+          // watch event starts its own agent invocation.
+          if (
+            !candidate?.parentToolCallId ||
+            candidate.invocationId === running.invocationId
+          ) {
+            continue;
+          }
+          if (isTerminalAgentInvocation(candidate)) {
+            // An earlier drain marked this message but did not acknowledge it.
+            if (candidate.parentMailboxStatus === "steered") {
+              readIds.push(message.inboundMessageId);
+            }
+            continue;
+          }
+          if (
+            !sameActorIdentity(candidate.actor, running.actor) ||
+            !isDeepStrictEqual(
+              candidate.credentialContext,
+              running.credentialContext,
+            )
+          ) {
+            break;
+          }
+          joining.push(candidate);
+          readIds.push(message.inboundMessageId);
         }
-        if (
-          !sameActorIdentity(candidate.actor, running.actor) ||
-          !isDeepStrictEqual(
-            candidate.credentialContext,
-            running.credentialContext,
-          )
-        ) {
-          break;
+        if (joining.length === 0) {
+          return readIds;
         }
-        joining.push(candidate);
-        readIds.push(message.inboundMessageId);
-      }
-      return { joining, readIds };
-    },
-    toSteeringMessage: (candidate): AgentSteeringMessage => ({
-      provenance: agentInstructionProvenance,
-      text: agentInvocationInputText(candidate),
-      timestampMs: candidate.createdAtMs,
-    }),
-    // The Turn saves the messages before they are marked.
-    afterAccept: async (joining) => {
-      for (const candidate of joining) {
-        const terminal = await markAgentInvocationSteered(
-          candidate.invocationId,
+        // An earlier drain can save a message in the Turn and then fail
+        // before it marks the agent invocation. Do not give it to the Turn
+        // again.
+        const saved =
+          (await getTurnRecord(running.childConversationId, turnId))
+            ?.piMessages ?? [];
+        const messages = withoutSavedSteeringMessages(
+          saved,
+          joining.map(
+            (candidate): AgentSteeringMessage => ({
+              provenance: agentInstructionProvenance,
+              text: agentInvocationInputText(candidate),
+              timestampMs: candidate.createdAtMs,
+            }),
+          ),
+          buildSteeringPiMessage,
         );
-        if (terminal && isTerminalAgentInvocation(terminal)) {
-          await recordSubagentEnded(terminal);
+        // The Turn saves the messages before they are marked.
+        if (messages.length > 0) {
+          await accept(messages);
+          accepted.push(...messages);
         }
-      }
-    },
-  });
+        for (const candidate of joining) {
+          const terminal = await markAgentInvocationSteered(
+            candidate.invocationId,
+          );
+          if (terminal && isTerminalAgentInvocation(terminal)) {
+            await recordSubagentEnded(terminal);
+          }
+        }
+        return readIds;
+      },
+      { deferred: true },
+    );
+    return accepted;
+  };
 }
 
 /**
@@ -445,35 +484,61 @@ function blockingInvocationError(
     : undefined;
 }
 
-/**
- * Save one completed agent result. The core Turn save comes first. The
- * Delivery of a child then saves the result on its agent invocation.
- */
+function isInvocationInputCommitLost(error: unknown): boolean {
+  const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
+  return isTurnInputCommitLostError(cause);
+}
+
+/** Save one completed agent result on its child agent invocation. */
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
-  sandbox: TurnSandbox;
+  sandboxRef?: SandboxRef;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";
-  await saveFinishedTurn({
-    actor: args.invocation.actor,
-    conversationId: args.invocation.childConversationId,
-    destination: args.invocation.destination,
-    result: args.result,
-    sandbox: args.sandbox,
-    source: args.invocation.source,
-    surface: "internal",
-    turnId: args.turnId,
-    // A task or message from the parent resets the automated-turn limit, like
-    // a person's message on a root. A result or message from a grandchild is
-    // work that the child started, so it does not count. Watch events count.
-    turnLimitInput: args.invocation.parentToolCallId
-      ? "owner"
-      : args.invocation.source.kind === "agent_invocation"
-        ? "own_work"
-        : undefined,
+  await persistThreadStateById(args.invocation.childConversationId, {
+    sandboxRef: args.result.sandboxRef ?? args.sandboxRef,
   });
+  if (args.result.piMessages?.length) {
+    await saveTurnCheckpoint({
+      mode: "completed",
+      conversationId: args.invocation.childConversationId,
+      turnId: args.turnId,
+      durationMs: args.result.diagnostics.durationMs,
+      usage: args.result.diagnostics.usage,
+      destination: args.invocation.destination,
+      ...(failed
+        ? {
+            errorMessage:
+              args.result.diagnostics.errorMessage ?? "Agent invocation failed",
+          }
+        : undefined),
+      messages: args.result.piMessages,
+      actor: args.invocation.actor,
+      source: args.invocation.source,
+      surface: "internal",
+    });
+  }
+  // As on a root, a watch event Turn counts toward the automated-turn limit,
+  // and a task or message from the parent resets it like a user message.
+  if (args.invocation.parentToolCallId) {
+    await resetAutomatedTurnLimit({
+      conversationId: args.invocation.childConversationId,
+    });
+  } else if (args.invocation.source.kind !== "agent_invocation") {
+    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+    // A child has no Location, so this skips the notice and clears its claim.
+    await maybePostAutomatedTurnLimitNotice({
+      conversationId: args.invocation.childConversationId,
+      maxTurns,
+      update: await recordFinishedTurnForAutomatedLimit({
+        conversationId: args.invocation.childConversationId,
+        maxTurns,
+        source: args.invocation.source,
+      }),
+    });
+  }
   const terminal = await completeAgentInvocation({
     invocationId: args.invocation.invocationId,
     ...(failed
@@ -538,31 +603,12 @@ export function createAgentInvocationWorker(
     context: ConversationWorkerContext,
     invocationId: string,
   ): Promise<ConversationWorkerResult> => {
-    const loaded = await getAgentInvocation(invocationId);
-    if (!loaded) {
+    let invocation = await getAgentInvocation(invocationId);
+    if (!invocation) {
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
-    let invocation: AgentInvocation = loaded;
-    // Read the signal before any early return, so the worker clears a stop
-    // request that this wake handles.
-    const stopSignal = context.stopSignal?.();
     // Report the result before ack so a failed parent append retries this work.
-    const report = async (ended: TerminalAgentInvocation): Promise<void> => {
-      let terminal = ended;
-      // A stop that comes after the save still stops the child agents of
-      // this child. Then they cannot report for a `replaced` result, so this
-      // result reports now. A retry after the save reports the same way.
-      if (stopSignal?.aborted) {
-        if (terminal.parentMailboxStatus === "replaced") {
-          const reported = await reportReplacedAgentInvocation(
-            terminal.invocationId,
-          );
-          if (reported && isTerminalAgentInvocation(reported)) {
-            terminal = reported;
-          }
-        }
-        await stopChildAgentsOf(context.conversationId);
-      }
+    const report = async (terminal: TerminalAgentInvocation): Promise<void> => {
       await recordSubagentEnded(terminal);
       await options.enqueueResult?.(terminal);
     };
@@ -579,166 +625,252 @@ export function createAgentInvocationWorker(
       await report(terminal);
     };
 
-    const turnId = getAgentInvocationTurnId(invocation.invocationId);
-    const endInvocation = async (
-      status: "blocked" | "failed" | "stopped",
-      errorMessage: string,
-    ): Promise<void> => {
+    let acknowledged = context.attempt.messages.length === 0;
+    const acknowledge = async (): Promise<void> => {
+      if (acknowledged) {
+        return;
+      }
+      try {
+        await context.attempt.ack();
+      } catch {
+        throw new TurnInputCommitLostError(
+          `Conversation work lease lost before invocation inbox ack for ${context.conversationId}`,
+        );
+      }
+      acknowledged = true;
+    };
+
+    // Read the signal before any early return, so the worker clears a stop
+    // request that this wake handles.
+    const stopSignal = context.stopSignal?.();
+    // `stopChildAgent` already marked its work `stopped`. Any other stop is
+    // recorded here and reported to the parent.
+    // The stop also stops the child agents of this child, so no result of
+    // theirs starts this child again.
+    const finishStopped = async (): Promise<ConversationWorkerResult> => {
       await finish(
         await completeAgentInvocation({
           invocationId,
-          errorMessage,
-          status,
+          errorMessage: "Agent invocation was stopped",
+          status: "stopped",
         }),
       );
+      await stopChildAgentsOf(context.conversationId);
+      await acknowledge();
+      return { status: "completed" };
     };
 
-    return await runWorkerTurn({
-      agentRunner,
-      context,
-      inputCommitted: context.attempt.messages.length === 0,
-      stopSignal,
-      steps: {
-        prepare: async () => {
-          if (invocation.childConversationId !== context.conversationId) {
-            throw new Error(
-              `Agent invocation ${invocationId} belongs to ${invocation.childConversationId}, not ${context.conversationId}`,
-            );
-          }
-          if (context.destination) {
-            throw new Error(
-              `Agent invocation conversation ${context.conversationId} must not own a provider destination`,
-            );
-          }
-          if (isTerminalAgentInvocation(invocation)) {
-            await finish(invocation);
-            return "finished";
-          }
-          const projected = await projectTerminalTurn(invocation);
-          if (projected && isTerminalAgentInvocation(projected)) {
-            await finish(projected);
-            return "finished";
-          }
-          invocation =
-            (await markAgentInvocationRunning(invocation.invocationId)) ??
-            invocation;
-          // A stop can land between the read above and this write.
-          if (isTerminalAgentInvocation(invocation)) {
-            await finish(invocation);
-            return "finished";
-          }
-          await new ConversationTurnLifecycleService(
-            getConversationEventStore(),
-          ).start({
-            conversationId: invocation.childConversationId,
-            createdAtMs: invocation.createdAtMs,
-            inputMessageIds: [
-              getAgentInvocationMessageId(invocation.invocationId),
-            ],
-            surface: "internal",
-            turnId,
-          });
-          const [persisted, projection, tree] = await Promise.all([
-            getPersistedThreadState(invocation.childConversationId),
-            loadProjection({
-              conversationId: invocation.childConversationId,
-            }),
-            readChildDepthAndRootLocation(invocation.childConversationId),
-          ]);
-          const sandbox = createTurnSandbox({
-            conversationId: invocation.childConversationId,
-            persisted,
-          });
-          return {
-            run: {
-              conversationId: invocation.childConversationId,
-              parentConversationId: invocation.parentConversationId,
-              turnId,
-              runId: invocation.invocationId,
-              instruction: {
-                text: agentInvocationInputText(invocation),
-              },
-              // Some types start with the parent's history. Later agent
-              // invocations read it from the child's own Conversation.
-              history:
-                agentTypeStartsWithParentHistory(invocation.agentType) &&
-                projection.length === 0
-                  ? await loadForkHistory(invocation)
-                  : projection,
-              actor: invocation.actor,
-              credentialContext: invocation.credentialContext,
-              destination: invocation.destination,
-              source: invocation.source,
-              ...(tree.location ? { location: tree.location } : undefined),
-              surface: "internal",
-              // TODO(dcramer): Issues #881 and #883 track a path for child runs
-              // to force interactive auth when a delegated tool requires
-              // credentials the parent can request. Today background children
-              // hard-fail instead of pausing for an OAuth link.
-              ...agentInvocationRunPolicy(
-                invocation,
-                tree.depth <= maxAgentDepth,
-              ),
-              state: {
-                sandboxRef: sandbox.ref,
-              },
-              durability: {
-                drainSteeringMessages: createAgentMessageSteeringDrain(
-                  context,
-                  invocation,
-                ),
-                onSandboxRefChanged: sandbox.onSandboxRefChanged,
-              },
+    const turnId = getAgentInvocationTurnId(invocation.invocationId);
+    const lifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
+    let sandboxRef: SandboxRef | undefined;
+    let history: PiMessage[];
+    let location: Location | undefined;
+    let canSpawn = false;
+    try {
+      if (invocation.childConversationId !== context.conversationId) {
+        throw new Error(
+          `Agent invocation ${invocationId} belongs to ${invocation.childConversationId}, not ${context.conversationId}`,
+        );
+      }
+      if (context.destination) {
+        throw new Error(
+          `Agent invocation conversation ${context.conversationId} must not own a provider destination`,
+        );
+      }
+      if (isTerminalAgentInvocation(invocation)) {
+        await finish(invocation);
+        await acknowledge();
+        return { status: "completed" };
+      }
+      const projected = await projectTerminalTurn(invocation);
+      if (projected && isTerminalAgentInvocation(projected)) {
+        await finish(projected);
+        await acknowledge();
+        return { status: "completed" };
+      }
+      invocation =
+        (await markAgentInvocationRunning(invocation.invocationId)) ??
+        invocation;
+      // A stop can land between the read above and this write.
+      if (isTerminalAgentInvocation(invocation)) {
+        await finish(invocation);
+        await acknowledge();
+        return { status: "completed" };
+      }
+      await lifecycle.start({
+        conversationId: invocation.childConversationId,
+        createdAtMs: invocation.createdAtMs,
+        inputMessageIds: [getAgentInvocationMessageId(invocation.invocationId)],
+        surface: "internal",
+        turnId,
+      });
+      const [persisted, projection, tree] = await Promise.all([
+        getPersistedThreadState(invocation.childConversationId),
+        openConversationProjection({
+          conversationId: invocation.childConversationId,
+        }),
+        readChildDepthAndRootLocation(invocation.childConversationId),
+      ]);
+      sandboxRef = getPersistedSandboxState(persisted);
+      // Some types start with the parent's history. Later agent invocations
+      // read it from the child's own Conversation.
+      history =
+        agentTypeStartsWithParentHistory(invocation.agentType) &&
+        projection.messages.length === 0
+          ? await loadForkHistory(invocation)
+          : projection.messages;
+      location = tree.location;
+      canSpawn = tree.depth <= maxAgentDepth;
+    } catch (error) {
+      if (isInvocationInputCommitLost(error)) {
+        return { status: "lost_lease" };
+      }
+      if (!context.attempt.isFinalAttempt) {
+        throw error;
+      }
+      const terminal = await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage:
+          error instanceof Error ? error.message : "Agent invocation failed",
+        status: "failed",
+      });
+      await finish(terminal);
+      await acknowledge();
+      return { status: "completed" };
+    }
+
+    let outcome;
+    try {
+      outcome = await executeTurn(
+        agentRunner,
+        {
+          conversationId: invocation.childConversationId,
+          parentConversationId: invocation.parentConversationId,
+          turnId,
+          runId: invocation.invocationId,
+          instruction: {
+            text: agentInvocationInputText(invocation),
+          },
+          history,
+          actor: invocation.actor,
+          credentialContext: invocation.credentialContext,
+          destination: invocation.destination,
+          source: invocation.source,
+          ...(location ? { location } : undefined),
+          surface: "internal",
+          ...(stopSignal ? { signal: stopSignal } : undefined),
+          // TODO(dcramer): Issues #881 and #883 track a path for child runs to
+          // force interactive auth when a delegated tool requires credentials
+          // the parent can request. Today background children hard-fail instead
+          // of pausing for an OAuth link.
+          ...agentInvocationRunPolicy(invocation, canSpawn),
+          state: {
+            sandboxRef,
+          },
+          durability: {
+            drainSteeringMessages: createAgentMessageSteeringDrain(
+              context,
+              invocation,
+            ),
+            onInputCommitted: acknowledge,
+            shouldYield: context.shouldYield,
+            onSandboxRefChanged: async (nextSandboxRef) => {
+              sandboxRef = nextSandboxRef;
+              await persistThreadStateById(invocation.childConversationId, {
+                sandboxRef,
+              });
             },
-            saveResult: async (result) =>
-              await saveAgentInvocationResult({
-                invocation,
-                result,
-                sandbox,
-                turnId,
-              }),
-          };
+          },
         },
-        // `stopChildAgent` already marked its work `stopped`. Any other stop is
-        // recorded here and reported to the parent. The report also stops the
-        // child agents of this child, so no result of theirs starts this
-        // child again.
-        stop: async () => {
-          await endInvocation("stopped", "Agent invocation was stopped");
-        },
-        suspend: async () => {
-          await markAgentInvocationPaused(invocation.invocationId);
-        },
-        awaitAuth: async (outcome) => {
-          await endInvocation(
-            "blocked",
-            `Agent invocation requires ${outcome.providerDisplayName} authorization`,
-          );
-          return "completed";
-        },
-        complete: async () => {
-          // executeTurn already recorded the terminal Turn; only report the
-          // result.
-          const terminal = await getAgentInvocation(invocation.invocationId);
-          if (terminal && isTerminalAgentInvocation(terminal)) {
-            await report(terminal);
-          }
-        },
-        block: async (error) => {
-          const blocking = blockingInvocationError(error);
-          if (!blocking) {
-            return false;
-          }
-          await endInvocation("blocked", blocking.message);
-          return true;
-        },
-        fail: async (error) => {
-          await endInvocation(
-            "failed",
-            error instanceof Error ? error.message : "Agent invocation failed",
-          );
-        },
-      },
-    });
+        async (result) =>
+          await saveAgentInvocationResult({
+            invocation,
+            result,
+            sandboxRef,
+            turnId,
+          }),
+      );
+    } catch (error) {
+      // A save error has no AgentRunError wrapper. On the final attempt it
+      // must also fail the agent invocation, or the child stays open.
+      const runError = error instanceof AgentRunError ? error.cause : error;
+      if (isInvocationInputCommitLost(runError)) {
+        return { status: "lost_lease" };
+      }
+      if (stopSignal?.aborted) {
+        return await finishStopped();
+      }
+      const blocking = blockingInvocationError(runError);
+      if (blocking) {
+        const terminal = await completeAgentInvocation({
+          invocationId: invocation.invocationId,
+          errorMessage: blocking.message,
+          status: "blocked",
+        });
+        await finish(terminal);
+        await acknowledge();
+        return { status: "completed" };
+      }
+      // A retry cannot pass an execution limit, and its Turn record would
+      // hide the limit as a lost worker.
+      if (
+        !context.attempt.isFinalAttempt &&
+        !isTurnExecutionLimitExceededError(runError)
+      ) {
+        throw runError;
+      }
+      const terminal = await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage:
+          runError instanceof Error
+            ? runError.message
+            : "Agent invocation failed",
+        status: "failed",
+      });
+      await finish(terminal);
+      await acknowledge();
+      return { status: "completed" };
+    }
+
+    if (outcome.status !== "completed" && stopSignal?.aborted) {
+      return await finishStopped();
+    }
+    if (outcome.status === "suspended") {
+      await markAgentInvocationPaused(invocation.invocationId);
+      return { status: "yielded" };
+    }
+    if (outcome.status === "awaiting_auth") {
+      const terminal = await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage: `Agent invocation requires ${outcome.providerDisplayName} authorization`,
+        status: "blocked",
+      });
+      await finish(terminal);
+      await acknowledge();
+      return { status: "completed" };
+    }
+
+    // executeTurn already recorded the terminal Turn; only report the result.
+    let terminal = await getAgentInvocation(invocation.invocationId);
+    // A stop that comes after the save still stops the child agents of this
+    // child. Then they cannot report for a `replaced` result, so this result
+    // reports now.
+    if (stopSignal?.aborted) {
+      if (
+        terminal &&
+        isTerminalAgentInvocation(terminal) &&
+        terminal.parentMailboxStatus === "replaced"
+      ) {
+        terminal = await reportReplacedAgentInvocation(terminal.invocationId);
+      }
+      await stopChildAgentsOf(context.conversationId);
+    }
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await report(terminal);
+    }
+    await acknowledge();
+    return { status: "completed" };
   };
 }

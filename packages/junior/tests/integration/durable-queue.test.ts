@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   botConfig,
@@ -18,14 +20,13 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
-  CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
   requestConversationWork,
   startConversationWork,
@@ -35,11 +36,13 @@ import {
   listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
+  createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
-  createConversationWorkHarness,
+  createSlackAdapterFixture,
   deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
@@ -51,22 +54,10 @@ import {
   queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
-import {
-  createModelStream,
-  type FixedModelOutput,
-} from "../fixtures/model-stream";
+import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
-import { stopConversationTurn } from "@/chat/conversations/stop";
-import {
-  clock,
-  closers,
-  lastTurnEnd,
-  owners,
-  signals,
-  slackReplies,
-} from "../fixtures/turn-lifecycle";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -97,24 +88,39 @@ function almostSpentStartedAtMs(remainingMs: number): number {
  * They may fake only model generation at the agent stream boundary and Slack
  * I/O at the adapter boundary.
  */
-async function slack(options: { outputs?: FixedModelOutput[] } = {}) {
-  const agentRunner = createModelAgentRunner(
-    createModelStream(
-      options.outputs ?? [{ type: "text", text: "Deploy checked." }],
-    ),
-  );
-  const work = await createConversationWorkHarness(agentRunner, {
-    services: { agentRunner },
-  });
-  const wakes = work.queue;
-  return {
-    ...work,
+async function slack(options: { modelStream?: StreamFn } = {}) {
+  const state = getStateAdapter();
+  await state.connect();
+  const wakes = createConversationWorkQueueTestAdapter();
+  const adapter = createSlackAdapterFixture();
+  const modelStream =
+    options.modelStream ??
+    createModelStream([{ type: "text", text: "Deploy checked." }]);
+  const agentRunner = createModelAgentRunner(modelStream);
+  const work = createConversationWork({
     agentRunner,
+    conversationStore: getConversationStore(),
+    getSlackAdapter: () => adapter,
+    queue: wakes,
+    services: { agentRunner },
+    state,
+  });
+  return {
+    state,
     wakes,
-    replies: slackReplies,
+    replies: () =>
+      slackApiOutbox
+        .messages()
+        .map((call) => call.params.text)
+        .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       // Use production worker shouldYield (lease + host request deadline).
-      const process = async () => await work.process(wakes.takeMessage());
+      const process = async () =>
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run: work.run,
+          state,
+        });
       return requestStartedAtMs === undefined
         ? await process()
         : await runWithTurnRequestDeadline(process, requestStartedAtMs);
@@ -135,10 +141,10 @@ async function slack(options: { outputs?: FixedModelOutput[] } = {}) {
           }),
         ),
         services: {
-          getSlackAdapter: () => work.adapter,
+          getSlackAdapter: () => adapter,
           queue: wakes,
           runtime: work.runtime,
-          state: work.state,
+          state,
         },
       }),
   };
@@ -336,10 +342,10 @@ describe("durable queue contract", () => {
     it("runs one mention to one reply and leaves the conversation free", async () => {
       const q = await slack({
         // Second reply is for the later user mention in expectNextTurn.
-        outputs: [
+        modelStream: createModelStream([
           { type: "text", text: "Deploy checked." },
           { type: "text", text: "Deploy checked." },
-        ],
+        ]),
       });
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
@@ -356,7 +362,7 @@ describe("durable queue contract", () => {
       // Watch Conversations have their own id, not a Slack thread id.
       const watchConversationId = "agent-dispatch:watch-1";
       const q = await slack({
-        outputs: [
+        modelStream: createModelStream([
           { type: "text", text: "The subscribed check failed." },
           { type: "text", text: "The subscribed check recovered." },
           { type: "toolCall", name: "systemTime", arguments: {} },
@@ -364,7 +370,7 @@ describe("durable queue contract", () => {
           { type: "text", text: "Deploy checked." },
           { type: "toolCall", name: "systemTime", arguments: {} },
           { type: "text", text: "Never sent.", waitFor: "abort" },
-        ],
+        ]),
       });
       const store = getConversationStore();
       await store.recordActivity({
@@ -550,13 +556,13 @@ describe("durable queue contract", () => {
     it("re-parks when a later attempt times out before any new work is saved", async () => {
       // JUNIOR-7G: a second timeout must preserve the saved tool work.
       const q = await slack({
-        outputs: [
+        modelStream: createModelStream([
           { type: "toolCall", name: "systemTime", arguments: {} },
           { type: "text", text: "Deploy checked.", waitFor: "abort" },
           { type: "text", text: "Deploy checked.", waitFor: "abort" },
           { type: "text", text: "Deploy checked." },
           { type: "text", text: "Deploy checked." },
-        ],
+        ]),
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
@@ -623,10 +629,10 @@ describe("durable queue contract", () => {
       const startedAtMs = almostSpentStartedAtMs(remainingMs);
       const deadlineAtMs = startedAtMs + requestBudgetMs();
       const q = await slack({
-        outputs: [
+        modelStream: createModelStream([
           { type: "text", text: "Deploy checked." },
           { type: "text", text: "Deploy checked." },
-        ],
+        ]),
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
@@ -807,101 +813,6 @@ describe("durable queue contract", () => {
         error: "lost its worker",
       });
       await expectNextTurn(q, "1712345.0006");
-    });
-  });
-});
-
-/**
- * One table for the Turn lifecycle of every work owner. Each row runs real
- * production routing: input reaches the queue, the conversation worker picks
- * the owner, and the real agent runs with fixed model output. Root owners
- * deliver to a person. A child owner reports to its parent agent instead.
- */
-describe("Turn lifecycle for each work owner", () => {
-  beforeEach(() => {
-    resetSlackApiMockState();
-    clock.nowMs = 1_800_000_000_000;
-    vi.spyOn(Date, "now").mockImplementation(() => clock.nowMs);
-  });
-  afterEach(async () => {
-    for (const close of closers.splice(0)) await close();
-    resetSlackApiMockState();
-    await disconnectStateAdapter();
-    vi.restoreAllMocks();
-  });
-
-  describe.each(owners)("$name", (owner) => {
-    const rows = signals.filter((signal) => signal.appliesTo?.(owner) ?? true);
-    it.each(rows)("$name", async (signal) => {
-      let conversationId = "";
-      let stopping: Promise<unknown> | undefined;
-      const harness = await slack({
-        outputs: [
-          ...(owner.setupOutputs ?? []),
-          ...signal.outputs({
-            reply: owner.reply ?? ((text) => ({ type: "text", text })),
-            stop: () => stop(),
-          }),
-        ],
-      });
-      const stop = () => {
-        stopping = stopConversationTurn({
-          conversationId,
-          queue: harness.queue,
-          state: harness.state,
-        });
-      };
-      conversationId = await owner.start(harness);
-      const process = async (softYieldAfterMs?: number) =>
-        await harness.process(
-          harness.queue.takeMessageFor(conversationId),
-          softYieldAfterMs === undefined ? {} : { softYieldAfterMs },
-        );
-      await owner.setup?.({ conversationId, harness, process });
-      await signal.before?.({
-        agentRunner: harness.agentRunner,
-        conversationId,
-        stop,
-        stopped: async () => await stopping,
-      });
-      await stopping;
-      // Run each wake of this Conversation until no work is left.
-      const wakes: string[] = [];
-      while (
-        wakes.length < CONVERSATION_WORK_MAX_RETRIES + 2 &&
-        harness.queue
-          .queuedMessages()
-          .some((message) => message.conversationId === conversationId)
-      ) {
-        if (signal.failFromWake === wakes.length) {
-          // A model error ends the Run with a failed outcome. Only an error
-          // that the runner throws, such as a lost store, retries the wake.
-          vi.spyOn(harness.agentRunner, "run").mockRejectedValue(
-            new Error("agent unavailable"),
-          );
-        }
-        const result = await process(
-          signal.yieldFirst && wakes.length === 0 ? 0 : undefined,
-        );
-        wakes.push(result.status);
-        if (signal.stopAfterWake === wakes.length - 1) {
-          stop();
-          await stopping;
-        }
-        // Each retry wake has a new idempotency key from the clock.
-        clock.nowMs += 1_000;
-      }
-      await stopping;
-
-      const expected = {
-        ...signal.expected(owner),
-        ...owner.slackRunnerGaps?.[signal.name],
-      };
-      expect({
-        wakes,
-        turn: await lastTurnEnd(conversationId),
-        shown: await owner.read(conversationId),
-      }).toEqual(expected);
     });
   });
 });
