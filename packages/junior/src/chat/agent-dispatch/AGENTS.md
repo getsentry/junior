@@ -1,17 +1,10 @@
 # Agent Dispatch
 
-This module turns an idempotent task or plugin dispatch into normal
-Conversation work. It owns dispatch authority and the plugin-facing status
-projection.
-
-## Does not own
-
-- Leases, retries, execution slices, and recovery: `../task-execution/`.
-- Agent execution and durable Turn outcomes: `../runtime/`.
-- Slack Delivery: `../slack/dispatch-turn.ts`. It receives only dispatch-owned
-  contracts.
-
-## Invariants
+Turns an idempotent task or plugin dispatch into Conversation work. Owns
+dispatch authority and the plugin-facing status projection. Leases, retries,
+and recovery are in `../task-execution/`. Agent execution and Turn outcomes
+are in `../runtime/`. Slack Delivery (`../slack/dispatch-turn.ts`) receives
+only dispatch-owned contracts.
 
 - The dispatch record (`store.ts`) is the durable request and status
   projection. The session record owns the active Turn, resume state, delivery
@@ -26,7 +19,7 @@ projection.
 - The worker validates dispatch identity and Destination before it starts or
   resumes the Turn.
 - An accepted destination message is a delivery fence. Projection recovery
-  must never generate it again.
+  never generates it again.
 - A failed session without an explicit dispatch outcome stays retryable. The
   final queue attempt owns terminal failure.
 - Take the dispatch lock only while you hold the Conversation lease. Never wait

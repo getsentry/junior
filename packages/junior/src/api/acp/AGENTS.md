@@ -1,34 +1,29 @@
 # Remote ACP
 
-This directory owns the ACP v1 Streamable HTTP route at `/api/acp`: JSON-RPC,
-SSE, connection state, browser authorization, and its direct Conversation
-calls in `conversations.ts`. ACP is a pre-stable surface.
-
-It does not own Conversations or Turns. It uses the existing web Actor,
-mailbox, Turn worker, event store, and Conversation access rules.
+Owns the pre-stable ACP v1 Streamable HTTP route at `/api/acp`: JSON-RPC, SSE,
+connection state, browser authorization, and the Conversation calls in
+`conversations.ts`. It reuses the web Actor, mailbox, Turn worker, event
+store, and Conversation access rules. It does not own Conversations or Turns.
 
 ## Boundaries
 
 - No adapter or plugin contract sits between ACP and the runtime. No ACP type
   enters the agent loop.
-- The ACP `sessionId` is the `conversationId`. The Conversation stays the
-  source for history, Turn state, and replay.
-- An ACP session maps to a private Conversation.
-- Client paths do not select the Junior Sandbox. Junior stores prompt
-  resource links as text and never fetches their URIs.
-- Client MCP servers, embedded resources, media, filesystem callbacks, and
-  terminal callbacks are not supported.
-
-## Auth
-
-- Only browser sign-in through the dashboard grants ACP access. The client
-  must support ACP URL elicitation. Personal tokens do not grant ACP access.
+- The ACP `sessionId` is the `conversationId`. An ACP session maps to a
+  private Conversation, which stays the source for history, Turn state, and
+  replay.
+- Client paths do not select the Junior Sandbox. Prompt resource links are
+  stored as text. Junior never fetches their URIs.
+- Not supported: client MCP servers, embedded resources, media, filesystem
+  callbacks, and terminal callbacks.
+- Only dashboard browser sign-in grants access, and the client must support
+  ACP URL elicitation. Personal tokens do not grant access.
 
 ## State And Delivery
 
 - All transport state is in the `StateAdapter`, with hashed connection
-  credentials. Any app instance can serve any request. Do not add process
-  affinity or a separate ACP service.
+  credentials. Any app instance serves any request. No process affinity or
+  separate ACP service.
 - A full stream buffer returns `503`. It never drops an item.
 - Junior accepts a prompt only while the Conversation has no runnable work.
   The Conversation mutation lock covers this check and the mailbox append.
