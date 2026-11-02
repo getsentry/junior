@@ -9,7 +9,9 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
@@ -36,6 +38,29 @@ describe("conversation pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
+    // The author's Google photo shows before the Message reaches history.
+    const [author] = await getDb()
+      .select({ userId: juniorIdentities.userId })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.emailNormalized, actor.email.toLowerCase()),
+          isNotNull(juniorIdentities.userId),
+        ),
+      )
+      .limit(1);
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        id: "identity-google-author",
+        avatarUrl: "https://lh3.googleusercontent.com/a/author",
+        createdAt: new Date(1_000),
+        kind: "user",
+        provider: "google",
+        providerSubjectId: "google-author",
+        updatedAt: new Date(1_000),
+        userId: author!.userId,
+      });
 
     const app = createJuniorApi();
     const response = await app.request(
@@ -50,6 +75,7 @@ describe("conversation pending messages API", () => {
     expect(report.messages).toEqual([
       {
         actorIdentity: {
+          avatarUrl: "/api/people/avatars/identity-google-author",
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },

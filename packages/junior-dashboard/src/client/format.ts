@@ -370,7 +370,10 @@ export function transcriptMessageActorLabel(
     // The conversation actor started the child agent but did not write its
     // input, so do not fall back to that actor here.
     if (message.agentInvocationId) return "Agent invocation";
-    return actorLabel(transcriptMessageActor(conversation, message)) ?? "User";
+    // Show the person's name, not their email. A web send carries both, and
+    // its durable Message carries only the name.
+    const actor = transcriptMessageActor(conversation, message);
+    return actor?.fullName?.trim() || (actorLabel(actor) ?? "User");
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";

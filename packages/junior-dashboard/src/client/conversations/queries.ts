@@ -205,6 +205,7 @@ function outboxActorIdentity(
   ])?.me.user;
   if (!user?.email) return undefined;
   return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
     email: user.email,
     fullName: user.name || undefined,
   };

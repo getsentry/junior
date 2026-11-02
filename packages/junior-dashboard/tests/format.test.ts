@@ -229,7 +229,9 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          // A web send carries an email, but the label is the name.
           actorIdentity: {
+            email: "taylor@example.com",
             fullName: "Taylor Chen",
             slackUserName: "taylor",
           },

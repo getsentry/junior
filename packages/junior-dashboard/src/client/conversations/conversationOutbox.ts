@@ -163,6 +163,7 @@ function sameActorIdentity(
   if (left === right) return true;
   if (!left || !right) return false;
   return (
+    left.avatarUrl === right.avatarUrl &&
     left.email === right.email &&
     left.fullName === right.fullName &&
     left.slackUserId === right.slackUserId &&
