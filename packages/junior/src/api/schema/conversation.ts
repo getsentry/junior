@@ -129,6 +129,11 @@ export const actorIdentitySchema = z
     avatarUrl: z.string().optional(),
     email: z.string().optional(),
     fullName: z.string().optional(),
+    /**
+     * Identity ids of this participant. A Message names its author with
+     * `authorIdentityId`, so the client reads the photo from here.
+     */
+    identityIds: z.array(z.string()).optional(),
     slackUserId: z.string().optional(),
     slackUserName: z.string().optional(),
   })
@@ -144,6 +149,8 @@ export const conversationPendingMessageDeliverySchema = z.enum([
 export const conversationPendingMessageSchema = z
   .object({
     actorIdentity: actorIdentitySchema.optional(),
+    /** Identity id of the author. Conversation participants list it. */
+    authorIdentityId: z.string().min(1).optional(),
     createdAt: z.string().datetime(),
     delivery: conversationPendingMessageDeliverySchema,
     inboundMessageId: z.string().min(1),
@@ -355,6 +362,8 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
+    /** Identity id of the author. Conversation participants list it. */
+    authorIdentityId: z.string().min(1).optional(),
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),

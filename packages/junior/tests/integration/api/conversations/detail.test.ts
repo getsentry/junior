@@ -330,7 +330,7 @@ describe("conversation detail API", () => {
     ]);
   });
 
-  it("shows the photo of each message author", async () => {
+  it("names the participant who wrote each message", async () => {
     const conversationId = "slack:C123:author-photos";
     await getConversationStore().recordActivity({
       actor: {
@@ -374,13 +374,21 @@ describe("conversation detail API", () => {
     const detail = await readConversationDetail(conversationId, {
       viewer: testViewer("owner@example.com"),
     });
+    // Messages name their author. The participant carries the photo once.
     expect(detail?.events[0]?.data).toMatchObject({
-      actorIdentity: {
+      authorIdentityId: owner!.id,
+    });
+    expect(detail?.events[0]?.data).not.toHaveProperty(
+      "actorIdentity.avatarUrl",
+    );
+    expect(detail?.participants).toEqual([
+      expect.objectContaining({
         avatarUrl: avatarPath(owner!.id),
         fullName: "Owner Person",
+        identityIds: [owner!.id],
         slackUserId: "UOWNER1",
-      },
-    });
+      }),
+    ]);
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

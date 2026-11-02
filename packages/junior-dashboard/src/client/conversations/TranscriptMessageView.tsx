@@ -100,7 +100,8 @@ export const TranscriptMessageView = memo(
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
     previous.conversation.canFork === next.conversation.canFork &&
-    previous.conversation.actorIdentity === next.conversation.actorIdentity,
+    previous.conversation.actorIdentity === next.conversation.actorIdentity &&
+    previous.conversation.participants === next.conversation.participants,
 );
 
 /** Render a redacted primary chat message without exposing body content. */

@@ -93,6 +93,9 @@ export function pendingTranscriptMessage(
     ...(message.actorIdentity
       ? { actorIdentity: message.actorIdentity }
       : undefined),
+    ...(message.authorIdentityId
+      ? { authorIdentityId: message.authorIdentityId }
+      : undefined),
     ...(message.mentions ? { mentions: message.mentions } : undefined),
   };
 }
@@ -221,6 +224,9 @@ export function transcriptMessagesFromEvents(
           : undefined),
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
+          : undefined),
+        ...(data.authorIdentityId
+          ? { authorIdentityId: data.authorIdentityId }
           : undefined),
         ...(data.agentInvocationId
           ? { agentInvocationId: data.agentInvocationId }

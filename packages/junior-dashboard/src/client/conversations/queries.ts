@@ -40,6 +40,7 @@ import {
   readDashboardResponse,
 } from "../http";
 import {
+  attachMailboxAuthorAvatars,
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
@@ -820,11 +821,15 @@ export function useConversationData(conversationId: string | undefined) {
     // Hide stopped rows from both sources, or the outbox copy of a stopped
     // send would look unseen and come back.
     const stopped = stoppedMessageIds.data;
+    const authored = attachMailboxAuthorAvatars(
+      mailbox?.messages,
+      detailData?.participants,
+    );
     const server = stopped.length
-      ? mailbox?.messages.filter(
+      ? authored?.filter(
           (message) => !stopped.includes(message.inboundMessageId),
         )
-      : mailbox?.messages;
+      : authored;
     const local = stopped.length
       ? outbox.data.filter((message) => !stopped.includes(message.messageId))
       : outbox.data;
@@ -844,7 +849,12 @@ export function useConversationData(conversationId: string | undefined) {
     pendingMessagesRef.current = queued;
     inlineMessagesRef.current = inline;
     return { inlineMessages: inline, pendingMessages: queued };
-  }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
+  }, [
+    outbox.data,
+    mailbox?.messages,
+    detailData?.participants,
+    stoppedMessageIds.data,
+  ]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detailData &&

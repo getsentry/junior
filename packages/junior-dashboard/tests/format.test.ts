@@ -32,6 +32,7 @@ import {
   summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
+  transcriptMessageActor,
 } from "../src/client/format";
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
@@ -219,6 +220,53 @@ describe("dashboard conversation formatting", () => {
     ]);
 
     expect(formatConversationDuration(conversation!)).toBe("none");
+  });
+
+  it("reads each message author from the conversation participants", () => {
+    const owner = {
+      avatarUrl: "/api/people/identities/identity-web/avatar?v=1",
+      email: "owner@example.com",
+      fullName: "Owner Person",
+      identityIds: ["identity-slack", "identity-web"],
+    };
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "web",
+          role: "user",
+          text: "ship it",
+          authorIdentityId: "identity-web",
+          actorIdentity: { fullName: "Saved Name" },
+        }),
+      ],
+      {
+        actorIdentity: { fullName: "Alice" },
+        participants: [{ fullName: "Alice" }, owner],
+      },
+    );
+
+    expect(summarizeMessages(conversation).items).toEqual([
+      { author: "Owner Person", bytes: 7 },
+    ]);
+    expect(
+      transcriptMessageActor(conversation, {
+        authorIdentityId: "identity-slack",
+        parts: [],
+        role: "user",
+        sourceSeq: 1,
+      }),
+    ).toBe(owner);
+    // An author who is not a participant yet keeps the saved identity.
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentity: { fullName: "New Person" },
+        authorIdentityId: "identity-new",
+        parts: [],
+        role: "user",
+        sourceSeq: 2,
+      }),
+    ).toEqual({ fullName: "New Person" });
   });
 
   it("summarizes visible canonical messages and structural tools", () => {

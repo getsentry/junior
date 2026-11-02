@@ -13,6 +13,7 @@ import {
   decodeStoredConversationEvent,
   type ConversationEvent,
 } from "@/chat/conversations/history";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationReportEvent } from "../schema/conversation";
@@ -21,7 +22,6 @@ import {
   conversationReportSourceEventTypes,
   projectConversationReportEventPage,
 } from "./events";
-import { readIdentityParticipants } from "./participants";
 
 const conversationEventColumns = getTableColumns(juniorConversationEvents);
 const MIN_SCAN_SIZE = 64;
@@ -193,40 +193,27 @@ async function projectConversationEventRows(
   });
 }
 
-/**
- * Add the photo path of each user Message author. A Message without a saved
- * author name gets the name of its author Identity.
- */
-async function attachMessageAuthorAvatars(
-  executor: JuniorSqlDatabase,
+// Name the Identity that wrote each user Message. The client reads the name
+// and photo of that Identity from the Conversation participants.
+function attachMessageAuthorIdentityIds(
   rows: readonly ConversationEventRow[],
   events: ConversationReportEvent[],
-): Promise<ConversationReportEvent[]> {
+): ConversationReportEvent[] {
   const identityIdBySeq = new Map(
     rows.flatMap((row) =>
-      row.actorIdentityId ? [[row.seq, row.actorIdentityId] as const] : [],
+      row.actorIdentityId && row.actorIdentityId !== SYSTEM_IDENTITY_ID
+        ? [[row.seq, row.actorIdentityId] as const]
+        : [],
     ),
   );
-  const authorIdentityId = (event: ConversationReportEvent) =>
-    event.data.type === "message" && event.data.role === "user"
-      ? identityIdBySeq.get(event.seq)
-      : undefined;
-  const participants = await readIdentityParticipants(
-    executor.db(),
-    events.flatMap((event) => authorIdentityId(event) ?? []),
-  );
   return events.map((event) => {
-    const identityId = authorIdentityId(event);
-    const author = identityId ? participants.get(identityId) : undefined;
-    if (!author || event.data.type !== "message") return event;
-    const saved = event.data.actorIdentity;
-    const actorIdentity = saved
-      ? {
-          ...saved,
-          ...(author.avatarUrl ? { avatarUrl: author.avatarUrl } : undefined),
-        }
-      : author;
-    return { ...event, data: { ...event.data, actorIdentity } };
+    if (event.data.type !== "message" || event.data.role !== "user") {
+      return event;
+    }
+    const authorIdentityId = identityIdBySeq.get(event.seq);
+    return authorIdentityId
+      ? { ...event, data: { ...event.data, authorIdentityId } }
+      : event;
   });
 }
 
@@ -275,7 +262,7 @@ export async function readConversationEventPage(
 
   const page = projected.slice(-args.limit);
   const events = args.canExposePayload
-    ? await attachMessageAuthorAvatars(executor, rows, page)
+    ? attachMessageAuthorIdentityIds(rows, page)
     : page;
   return {
     events,

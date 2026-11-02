@@ -3,6 +3,7 @@ import type {
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
+import { conversationParticipant } from "../format";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
@@ -26,6 +27,26 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
+
+/**
+ * Give each server mailbox row the photo of its author. The row names its
+ * author by Identity id, and the Conversation participants carry the photo.
+ */
+export function attachMailboxAuthorAvatars(
+  messages: readonly ConversationPendingMessage[] | undefined,
+  participants: readonly ActorIdentity[] | undefined,
+): readonly ConversationPendingMessage[] | undefined {
+  if (!messages || !participants?.length) return messages;
+  return messages.map((message) => {
+    const avatarUrl = conversationParticipant(
+      participants,
+      message.authorIdentityId,
+    )?.avatarUrl;
+    return avatarUrl && message.actorIdentity
+      ? { ...message, actorIdentity: { ...message.actorIdentity, avatarUrl } }
+      : message;
+  });
+}
 
 /** Stable React Query key for one conversation's local send outbox. */
 export function conversationOutboxQueryKey(conversationId: string | undefined) {

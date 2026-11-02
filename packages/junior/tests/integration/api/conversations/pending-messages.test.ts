@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { avatarPath } from "../../../fixtures/avatar";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
@@ -39,9 +38,10 @@ describe("conversation pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
-    // The author's Google photo shows before the Message reaches history.
+    // The row names its author, so the client can read the author photo from
+    // the Conversation participants before the Message reaches history.
     const [author] = await getDb()
-      .select({ userId: juniorIdentities.userId })
+      .select({ id: juniorIdentities.id })
       .from(juniorIdentities)
       .where(
         and(
@@ -50,18 +50,6 @@ describe("conversation pending messages API", () => {
         ),
       )
       .limit(1);
-    await getDb()
-      .insert(juniorIdentities)
-      .values({
-        id: "identity-google-author",
-        avatarUrl: "https://lh3.googleusercontent.com/a/author",
-        createdAt: new Date(1_000),
-        kind: "user",
-        provider: "google",
-        providerSubjectId: "google-author",
-        updatedAt: new Date(1_000),
-        userId: author!.userId,
-      });
 
     const app = createJuniorApi();
     const response = await app.request(
@@ -76,10 +64,10 @@ describe("conversation pending messages API", () => {
     expect(report.messages).toEqual([
       {
         actorIdentity: {
-          avatarUrl: avatarPath("identity-google-author"),
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
+        authorIdentityId: author!.id,
         createdAt: expect.any(String),
         delivery: "defer",
         inboundMessageId: accepted.messageId,

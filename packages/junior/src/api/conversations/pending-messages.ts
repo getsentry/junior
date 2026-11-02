@@ -18,7 +18,6 @@ import {
   type ConversationPendingMessagesReport,
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
-import { readIdentityParticipants } from "./participants";
 import { webActorFromEmail } from "@/chat/conversations/web-input";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import {
@@ -232,37 +231,21 @@ export async function readConversationPendingMessages(
 
   const work = await getConversation({ conversationId });
   const pendingMessages = work?.execution.pendingMessages ?? [];
-  const [projectedMessages, authors] = await Promise.all([
-    Promise.all(
-      pendingMessages.map((message) =>
-        projectPendingMessage(message, canExposePayload),
-      ),
+  const projectedMessages = await Promise.all(
+    pendingMessages.map((message) =>
+      projectPendingMessage(message, canExposePayload),
     ),
-    canExposePayload
-      ? readIdentityParticipants(
-          getDb(),
-          pendingMessages.flatMap(
-            (message) => message.input.authorIdentityId ?? [],
-          ),
-        )
-      : new Map<string, ActorIdentity>(),
-  ]);
+  );
   const messages = await attachPendingMentions(
     conversationId,
     projectedMessages.flatMap((message, index) => {
       if (!message) return [];
-      const identityId = pendingMessages[index]!.input.authorIdentityId;
-      const avatarUrl = identityId
-        ? authors.get(identityId)?.avatarUrl
-        : undefined;
-      return avatarUrl && message.actorIdentity
-        ? [
-            {
-              ...message,
-              actorIdentity: { ...message.actorIdentity, avatarUrl },
-            },
-          ]
-        : [message];
+      const authorIdentityId = pendingMessages[index]!.input.authorIdentityId;
+      return [
+        canExposePayload && authorIdentityId
+          ? { ...message, authorIdentityId }
+          : message,
+      ];
     }),
   );
 
