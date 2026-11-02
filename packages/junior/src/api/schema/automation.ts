@@ -250,8 +250,14 @@ const automationDefinitionFields = {
 const automationVersionFields = {
   version: z.number().int().positive(),
   createdAt: z.string().datetime(),
-  /** Null for versions saved by the upgrade, because the editor is unknown. */
-  editedBy: eventAutomationPrincipalSchema.nullable(),
+  /**
+   * The person who saved the version, or `"junior"` when Junior changed the
+   * trigger itself. Null for versions saved by the upgrade, because the
+   * editor is unknown.
+   */
+  editedBy: z
+    .union([eventAutomationPrincipalSchema, z.literal("junior")])
+    .nullable(),
 };
 
 const scheduledAutomationVersionSchema = z

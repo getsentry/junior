@@ -252,6 +252,15 @@ async function publish(
         expect(event.data).toMatchObject(data);
       }
     }
+    // When every copy is for one pull request, core gets its number, so a
+    // trigger for another pull request skips the lookups.
+    const numbers = [
+      ...new Set(published.map((event) => event.data?.pullRequest)),
+    ];
+    const onePullRequest = numbers.length === 1 ? numbers[0] : undefined;
+    expect(known.map((data) => data.pullRequest)).toEqual(
+      known.map(() => onePullRequest),
+    );
     events.push(...published);
   }
   return events;
