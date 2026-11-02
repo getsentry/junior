@@ -107,6 +107,18 @@ export function embeddingDistance(embedding: MemoryEmbedding): SQL {
   return sql`(${juniorMemoryEmbeddings.embedding}::vector(${size})) <=> ${JSON.stringify(embedding.vector)}::vector(${size})`;
 }
 
+/**
+ * Cosine distance cutoff that never casts a stored vector of another size.
+ * Postgres does not promise to check `dimensions` before other WHERE terms,
+ * and the cast fails on a vector of another size. CASE fixes the order.
+ */
+export function embeddingWithinDistance(
+  embedding: MemoryEmbedding,
+  maxDistance: number,
+): SQL {
+  return sql`CASE WHEN ${juniorMemoryEmbeddings.dimensions} = ${vectorSize(embedding)} THEN ${embeddingDistance(embedding)} END <= ${maxDistance}`;
+}
+
 /** Match stored vectors from the same model and size as a query vector. */
 export function sameEmbeddingModel(embedding: MemoryEmbedding): SQL {
   return and(
