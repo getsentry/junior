@@ -6,7 +6,10 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { INPUT_IMAGE_TYPES } from "@sentry/junior/api/schema";
+import {
+  INPUT_IMAGE_TYPES,
+  type ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 import {
   AlertCircle,
   Clock3,
@@ -230,14 +233,17 @@ function PendingMetaIcons(props: {
   );
 }
 
-function PendingAuthorAvatar(props: { message: ConversationMailboxMessage }) {
+function PendingAuthorAvatar(props: {
+  authors?: ConversationDetailReport["authors"];
+  message: ConversationMailboxMessage;
+}) {
+  const { actorIdentityId } = props.message;
   // Pending rows can come from web or Slack. Redacted rows hide the author.
-  if (!props.message.actorIdentity) {
-    return <ActorAvatar name="?" size="list" />;
-  }
-  return (
-    <ParticipantAvatar participant={props.message.actorIdentity} size="list" />
-  );
+  const author =
+    (actorIdentityId ? props.authors?.[actorIdentityId] : undefined) ??
+    props.message.actorIdentity;
+  if (!author) return <ActorAvatar name="?" size="list" />;
+  return <ParticipantAvatar participant={author} size="list" />;
 }
 
 /** Show small previews so the reader can tell which images a queued message has. */
@@ -294,6 +300,7 @@ function PendingAttachmentThumbnails(props: {
 
 function PendingRow(props: {
   actionsDisabled: boolean;
+  authors?: ConversationDetailReport["authors"];
   cancelError: boolean;
   cancelPending: boolean;
   canEdit: boolean;
@@ -322,7 +329,10 @@ function PendingRow(props: {
         className="items-center"
         left={
           <>
-            <PendingAuthorAvatar message={props.message} />
+            <PendingAuthorAvatar
+              authors={props.authors}
+              message={props.message}
+            />
             {redacted ? null : (
               <PendingAttachmentThumbnails
                 conversationId={props.conversationId}
@@ -438,6 +448,8 @@ function sameEmail(left: string | undefined, right: string | undefined) {
 
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
+  /** Author of each row, by `actorIdentityId`. */
+  authors?: ConversationDetailReport["authors"];
   cancelError?: boolean;
   cancelPending?: boolean;
   cancelTargetInboundMessageId?: string;
@@ -506,6 +518,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
     return (
       <PendingRow
         actionsDisabled={actionsDisabled}
+        authors={props.authors}
         cancelError={Boolean(props.cancelError && isTarget)}
         cancelPending={Boolean(props.cancelPending && isTarget)}
         canEdit={ownWebRow}

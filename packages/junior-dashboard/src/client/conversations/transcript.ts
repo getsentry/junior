@@ -223,8 +223,18 @@ export function reuseConversationEventReferences(
     JSON.stringify(previous.annotations) === JSON.stringify(next.annotations)
       ? previous.annotations
       : next.annotations;
-  if (events === next.events && annotations === next.annotations) return next;
-  return { ...next, events, annotations };
+  const authors =
+    JSON.stringify(previous.authors) === JSON.stringify(next.authors)
+      ? previous.authors
+      : next.authors;
+  if (
+    events === next.events &&
+    annotations === next.annotations &&
+    authors === next.authors
+  ) {
+    return next;
+  }
+  return { ...next, events, annotations, authors };
 }
 
 function sameConversationEventVersion(

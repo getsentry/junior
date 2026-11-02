@@ -1,7 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
-  ConversationDetailReport,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
@@ -29,25 +28,6 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
-
-/**
- * Give each server mailbox row the photo of its author. The row names its
- * author by Identity id, and the Conversation `authors` carry the photo.
- */
-export function withMailboxAuthorPhotos(
-  messages: readonly ConversationPendingMessage[] | undefined,
-  authors: ConversationDetailReport["authors"],
-): readonly ConversationPendingMessage[] | undefined {
-  if (!messages || !authors) return messages;
-  return messages.map((message) => {
-    const avatarUrl = message.actorIdentityId
-      ? authors[message.actorIdentityId]?.avatarUrl
-      : undefined;
-    return avatarUrl && message.actorIdentity
-      ? { ...message, actorIdentity: { ...message.actorIdentity, avatarUrl } }
-      : message;
-  });
-}
 
 /** Identity of the viewer, for the outbox rows that they send. */
 export function outboxActorIdentity(

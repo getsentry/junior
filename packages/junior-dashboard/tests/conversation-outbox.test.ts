@@ -7,35 +7,9 @@ import {
   mergeConversationMailboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
-  withMailboxAuthorPhotos,
 } from "../src/client/conversations/conversationOutbox";
 
 describe("conversation outbox", () => {
-  it("adds the author photo to a queued row by its Identity id", () => {
-    const row = {
-      actorIdentity: { email: "owner@example.com" },
-      actorIdentityId: "identity-web",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      delivery: "defer" as const,
-      inboundMessageId: "inbound-1",
-      messageId: "message-1",
-      receivedAt: "2026-01-01T00:00:00.000Z",
-      role: "user" as const,
-      source: "web" as const,
-    };
-
-    expect(
-      withMailboxAuthorPhotos([row], {
-        "identity-web": { avatarUrl: "/avatar?v=1" },
-      }),
-    ).toEqual([
-      {
-        ...row,
-        actorIdentity: { avatarUrl: "/avatar?v=1", email: "owner@example.com" },
-      },
-    ]);
-  });
-
   it("builds a sending row for one submit", () => {
     expect(
       conversationOutboxMessageForSubmit({

@@ -47,7 +47,6 @@ import {
   reuseConversationMailboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
-  withMailboxAuthorPhotos,
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
@@ -727,7 +726,6 @@ export function useConversationData(conversationId: string | undefined) {
       ? deferredDetail
       : detail.data;
   const mailbox = detailData?.mailbox;
-  const authors = detailData?.authors;
   // Accept is not visibility. Keep a local row until either server resource
   // contains its real Message id. History and mailbox arrive in one render.
   useEffect(() => {
@@ -825,12 +823,11 @@ export function useConversationData(conversationId: string | undefined) {
     // Hide stopped rows from both sources, or the outbox copy of a stopped
     // send would look unseen and come back.
     const stopped = stoppedMessageIds.data;
-    const authored = withMailboxAuthorPhotos(mailbox?.messages, authors);
     const server = stopped.length
-      ? authored?.filter(
+      ? mailbox?.messages.filter(
           (message) => !stopped.includes(message.inboundMessageId),
         )
-      : authored;
+      : mailbox?.messages;
     const local = stopped.length
       ? outbox.data.filter((message) => !stopped.includes(message.messageId))
       : outbox.data;
@@ -850,7 +847,7 @@ export function useConversationData(conversationId: string | undefined) {
     pendingMessagesRef.current = queued;
     inlineMessagesRef.current = inline;
     return { inlineMessages: inline, pendingMessages: queued };
-  }, [outbox.data, mailbox?.messages, authors, stoppedMessageIds.data]);
+  }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detailData &&
