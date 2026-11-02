@@ -1,5 +1,6 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { z } from "zod";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import {
   RISK_LEVELS,
   USER_AUTHORIZATION_LEVELS,
@@ -52,7 +53,10 @@ const rejectionMarkerSchema = z
     version: z.literal(1),
   })
   .strict();
-/** Core-owned versioned transcript state for one rejected action. */
+/**
+ * Core-owned versioned transcript state for one rejected action. Stored
+ * transcripts keep it, so a shape change needs a new version.
+ */
 export type ToolActionRejectionMarker = z.output<typeof rejectionMarkerSchema>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,6 +74,26 @@ export function getToolActionRejectionMarker(
     message.details.guardianActionRejection,
   );
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Read the markers of the nested calls in one `codemode` tool result, in
+ * call order. The bridge copies each marker from the gate.
+ */
+function getCodeModeRejectionMarkers(
+  message: Record<string, unknown>,
+): ToolActionRejectionMarker[] {
+  if (
+    message.toolName !== CODEMODE_TOOL_NAME ||
+    !isRecord(message.details) ||
+    !Array.isArray(message.details.calls)
+  ) {
+    return [];
+  }
+  return message.details.calls.flatMap((call) => {
+    const marker = getToolActionRejectionMarker({ details: call });
+    return marker ? [marker] : [];
+  });
 }
 
 /**
@@ -142,7 +166,15 @@ export function restoreToolActionRejections(
   for (const message of messages) {
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const record = message as Record<string, unknown>;
-    if (record.role !== "toolResult" || record.isError !== true) {
+    if (record.role !== "toolResult") {
+      continue;
+    }
+    // A script can finish after a nested call was rejected, so its result
+    // need not be an error.
+    for (const rejection of getCodeModeRejectionMarkers(record)) {
+      addPriorRejection(priorRejections, rejection.priorRejection);
+    }
+    if (record.isError !== true) {
       continue;
     }
     const rejection = getToolActionRejectionMarker(record);

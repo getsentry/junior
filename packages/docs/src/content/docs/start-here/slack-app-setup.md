@@ -73,10 +73,20 @@ Subscribe to the events that match your usage:
 | `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
 | `agent_session_stopped`       | Slack's stop button for a running Junior Turn.       |
+| `channel_created`             | Optional auto-join of new public channels.           |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
 Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn. The thread stays subscribed. The `stop` keyword also makes Junior leave the thread.
+
+To make Junior join each new public channel, subscribe to `channel_created` and turn on the option. Junior does not join channels that existed before. The app needs `channels:join`.
+
+```ts title="server.ts"
+export default await createApp({
+  plugins,
+  slack: { autoJoinNewChannels: true },
+});
+```
 
 For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 

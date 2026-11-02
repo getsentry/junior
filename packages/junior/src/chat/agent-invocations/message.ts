@@ -7,13 +7,14 @@ import type {
 } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { findChildAgentConversationId } from "./bindings";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import {
   createAgentInvocationForMessage,
-  findChildAgentConversationId,
   getActiveAgentInvocationForConversation,
 } from "./store";
+import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
 import { enqueueAgentInvocation } from "./work";
 
@@ -25,8 +26,9 @@ type MessageOptions = {
 
 /**
  * Bind a Run's Actor and credentials to messages for its parent and child
- * agents. A message to a child continues that child. A message to the parent
- * wakes the parent like a result.
+ * agents, and for other top-level agents. A message to a child continues that
+ * child. A message to the parent wakes the parent like a result. A top-level
+ * agent can also message another top-level agent that it has access to.
  */
 export function bindMessageAgent(
   run: AgentRun,
@@ -69,9 +71,16 @@ export function bindMessageAgent(
       target: input.to,
     });
     if (!childConversationId) {
-      throw new AgentMessageTargetError(
-        `"${input.to}" is not "${PARENT_AGENT_TARGET}" or a child agent of this conversation`,
-      );
+      await enqueueTopLevelAgentMessage({
+        actor,
+        messageKey: `${run.turnId}:${call.toolCallId}`,
+        queue,
+        senderConversationId: run.conversationId,
+        state: options.state,
+        text: input.text,
+        to: input.to,
+      });
+      return { conversationId: input.to, delivery: "queued" };
     }
     const { invocation, queued } = await createAgentInvocationForMessage({
       actor,

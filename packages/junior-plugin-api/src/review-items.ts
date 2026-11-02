@@ -1,6 +1,9 @@
 /** A notice that a plugin puts on the review desk. */
 export interface PluginReviewNotice {
-  /** Junior assigns the User linked to each Identity. */
+  /**
+   * Junior assigns the User linked to each Identity, but only when that User
+   * is in the notice's Conversation. It leaves out the others.
+   */
   assigneeIdentityIds: string[];
   /** Markdown details for the person. */
   body: string;

@@ -1540,6 +1540,53 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_switch_target");
   });
 
+  it("stops each replaced sandbox when two workspace switches overlap", async () => {
+    const initialSandbox = makeSandbox("sbx_overlap_initial");
+    const slowSandbox = makeSandbox("sbx_overlap_slow");
+    const fastSandbox = makeSandbox("sbx_overlap_fast");
+    let releaseSlow: (() => void) | undefined;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockImplementationOnce(async () => {
+        await slowGate;
+        return slowSandbox;
+      })
+      .mockResolvedValueOnce(fastSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-slow")
+      .mockReturnValueOnce("profile-fast");
+    const workspace = (id: string) => ({
+      id,
+      name: id,
+      setupScript: "",
+      vcpus: null,
+      snapshot: null,
+      repos: [],
+    });
+    const runtime = createSandboxRuntime({
+      workspace: workspace("workspace-initial"),
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+
+    const slowSwitch = runtime.switchWorkspace(workspace("workspace-slow"));
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledTimes(2));
+    await runtime.switchWorkspace(workspace("workspace-fast"));
+    releaseSlow?.();
+    await slowSwitch;
+
+    // The last switch to finish wins, and no replaced sandbox keeps running.
+    expect(runtime.sandboxRef()?.id).toBe("sbx_overlap_slow");
+    expect(initialSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(fastSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(slowSandbox.stop).not.toHaveBeenCalled();
+  });
+
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
     const forbiddenSandbox = makeSandbox("sbx_forbidden", {
       writeFilesError: createApiError(
@@ -1978,6 +2025,145 @@ describe("createTestSandbox", () => {
         access: "write",
       },
     });
+  });
+
+  it("keeps egress auth signals with their own command when two bash calls start together", async () => {
+    const sandbox = makeSandbox("sbx_parallel_auth_signal");
+    let releaseFirst!: () => void;
+    const firstHolds = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("gh issue create")) {
+        await setSandboxEgressAuthRequiredSignal(
+          {
+            credentials: { actor: { type: "user", userId: "U123" } },
+            egressId: "sbx_parallel_auth_signal_session",
+            expiresAtMs: Date.now() + 60_000,
+            contextId: "ctx-parallel",
+          },
+          {
+            provider: "github",
+            grant: { name: "user-write", access: "write" },
+          },
+        );
+        firstEntered();
+        await firstHolds;
+        return { exitCode: 1, stdout: async () => "", stderr: async () => "" };
+      }
+      return { exitCode: 0, stdout: async () => "ok", stderr: async () => "" };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createTestSandbox({
+      sandboxId: "sbx_parallel_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const first = executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "gh issue create" },
+    });
+    await firstStarted;
+    const second = executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "echo ok" },
+    });
+    // The second command waits; it must not clear or read the first one's
+    // signal.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult.result.details.auth_required).toMatchObject({
+      provider: "github",
+      grant: { name: "user-write", access: "write" },
+    });
+    expect(secondResult.result.details.exit_code).toBe(0);
+    expect(secondResult.result.details.auth_required).toBeUndefined();
+  });
+
+  it("runs a queued bash command on the sandbox that replaced the one it saw", async () => {
+    const initialSandbox = makeSandbox("sbx_queued_initial");
+    const nextSandbox = makeSandbox("sbx_queued_next");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(nextSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    let releaseFirst!: () => void;
+    const firstHolds = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    initialSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("first")) {
+        firstEntered();
+        await firstHolds;
+      }
+      return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+    });
+    nextSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("echo second")) {
+        await setSandboxEgressAuthRequiredSignal(
+          {
+            credentials: { actor: { type: "user", userId: "U123" } },
+            egressId: "sbx_queued_next_session",
+            expiresAtMs: Date.now() + 60_000,
+            contextId: "ctx-queued",
+          },
+          {
+            provider: "github",
+            grant: { name: "user-write", access: "write" },
+          },
+        );
+      }
+      return { exitCode: 1, stdout: async () => "", stderr: async () => "" };
+    });
+    const workspace = (id: string) => ({
+      id,
+      name: id,
+      setupScript: "",
+      vcpus: null,
+      snapshot: null,
+      repos: [],
+    });
+    const sandbox = createSandbox({
+      workspace: workspace("workspace-initial"),
+      skills: [],
+      referenceFiles: [],
+    });
+    const bash = (command: string) =>
+      sandbox.tools.execute({ toolName: "bash", input: { command } });
+
+    const first = bash("echo first");
+    await firstStarted;
+    // Queued behind the first command, with the initial sandbox resolved.
+    const second = bash("echo second");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sandbox.switchWorkspace(workspace("workspace-next"));
+    releaseFirst();
+    const [, secondResult] = await Promise.all([first, second]);
+
+    // The signal comes from the session the command ran on.
+    expect(secondResult).toMatchObject({
+      details: { auth_required: { provider: "github" } },
+    });
+    const ranOn = (target: MockSandbox) =>
+      target.runCommand.mock.calls.some(([input]) =>
+        String(input.args?.[1]).includes("echo second"),
+      );
+    expect(ranOn(nextSandbox)).toBe(true);
+    expect(ranOn(initialSandbox)).toBe(false);
   });
 
   it("attaches sandbox egress auth signals to bash results with exit code 0 (pipe-masked failures)", async () => {

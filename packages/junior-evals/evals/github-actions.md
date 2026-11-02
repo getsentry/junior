@@ -27,7 +27,7 @@ is required. A missing key skips uploads, including on fork pull requests.
 
 Each suite uploads one run after execution. Behavioral and integration combine
 all shards. Dataset names are `junior-behavioral`, `junior-integration`,
-`junior-guardian`, and `junior-router`. The job summary links to the run.
+`junior-guardian`, `junior-router`, and `junior-classifiers`. The job summary links to the run.
 Existing score gates and artifacts stay in place, including when tests fail.
 
 `scripts/report.mjs` maps Vitest results to scores, errors, transcripts, duration,
@@ -99,8 +99,9 @@ Four independent workflows run on pull requests. All use the display name `Evals
 - `evals-integration.yml` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - `evals-guardian.yml` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 - `evals-router.yml` runs isolated turn route snapshots when Router eval files/harness changed or the PR has `trigger-evals-router` / `trigger-evals`
+- `evals-classifiers.yml` runs isolated classifier snapshots when classifier eval files/harnesses or classifier source changed or the PR has `trigger-evals-classifiers` / `trigger-evals`
 
-Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy and turn router changes.
+Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy, turn router, and classifier changes.
 
 Guardian and Router evals only need gateway credentials. Behavioral and integration evals still need gateway plus sandbox access.
 

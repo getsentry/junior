@@ -24,8 +24,10 @@ const AGENT_FIXTURE_ROOT = "packages/junior-evals/src/fixture/";
 const AGENT_FIXTURE_ALIAS = "@junior-evals/fixture/";
 const JUNIOR_TESTS_ROOT = "packages/junior/tests/";
 const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
-// Guardian and router evals call one model boundary and do not run the agent.
+// Guardian, router, and classifier evals call one model boundary and do not
+// run the agent.
 const ISOLATED_EVAL_ROOTS = [
+  "packages/junior-evals/evals/classifiers/",
   "packages/junior-evals/evals/guardian/",
   "packages/junior-evals/evals/router/",
 ];
@@ -340,7 +342,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/AGENTS.md, and packages/junior-evals/AGENTS.md.`,
+      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;

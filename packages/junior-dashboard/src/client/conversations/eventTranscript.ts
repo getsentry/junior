@@ -93,6 +93,7 @@ export function pendingTranscriptMessage(
     ...(message.actorIdentity
       ? { actorIdentity: message.actorIdentity }
       : undefined),
+    ...(message.mentions ? { mentions: message.mentions } : undefined),
   };
 }
 

@@ -19,8 +19,8 @@ import {
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
 
-// Every Review item access rule lives in this file. See "Access" in
-// AGENTS.md for the product rules that each function applies.
+// Every Review item access rule lives in this file. Callers must not copy a
+// rule.
 
 /**
  * Who reads Review items. An item is visible when it is public and its

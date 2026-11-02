@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 
 import {
@@ -11,7 +11,10 @@ import {
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
 import { VersionDriftBanner } from "./components/VersionDriftBanner";
-import { PageRouteLoading } from "./components/PageRouteLoading";
+import {
+  PageContentSkeleton,
+  type PageContentSkeletonVariant,
+} from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
@@ -36,10 +39,12 @@ import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
-import { ConnectionsPage } from "./pages/ConnectionsPage";
-import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
-import { SettingsPage } from "./pages/SettingsPage";
+import { ConnectionsPage } from "./pages/settings/ConnectionsPage";
+import { McpSettingsPage } from "./pages/settings/McpSettingsPage";
+import { PersonalTokensPage } from "./pages/settings/PersonalTokensPage";
+import { SettingsPage } from "./pages/settings/SettingsPage";
+import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
 import { SystemPage } from "./pages/system/SystemPage";
 import {
   SystemPageLayout,
@@ -65,7 +70,10 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
-import { ReviewDeskPage } from "./review-desk/ReviewDeskPage";
+import {
+  ReviewDeskLoading,
+  ReviewDeskPage,
+} from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
 import type { DashboardCoreData } from "./types";
 
@@ -73,6 +81,56 @@ const dashboardNoise = {
   backgroundImage:
     "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.7'/%3E%3C/svg%3E\")",
 };
+
+const settingsRoutes: {
+  loading: {
+    description: string;
+    label: string;
+    title: string;
+    variant?: PageContentSkeletonVariant;
+  };
+  path: string;
+  render(data: DashboardCoreData): ReactNode;
+}[] = [
+  {
+    loading: {
+      description: "Manage your profile and preferences.",
+      label: "Loading settings",
+      title: "General",
+    },
+    path: "/settings",
+    render: (data) => <SettingsPage identity={data.me} />,
+  },
+  {
+    loading: {
+      description: "Create and revoke personal API tokens.",
+      label: "Loading API tokens",
+      title: "API Tokens",
+      variant: "list",
+    },
+    path: "/settings/api-tokens",
+    render: () => <PersonalTokensPage />,
+  },
+  {
+    loading: {
+      description: "Connect and disconnect your accounts.",
+      label: "Loading identities",
+      title: "Identities",
+      variant: "list",
+    },
+    path: "/settings/connections",
+    render: () => <ConnectionsPage />,
+  },
+  {
+    loading: {
+      description: "Connect an MCP client to your conversations.",
+      label: "Loading MCP",
+      title: "MCP",
+    },
+    path: "/settings/mcp",
+    render: () => <McpSettingsPage />,
+  },
+];
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
@@ -124,10 +182,20 @@ export function DashboardShell() {
   }, [location.pathname]);
 
   async function signOut() {
-    await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
-      credentials: "same-origin",
-      method: "POST",
-    });
+    // Better Auth rejects a request body without a JSON content type. On
+    // Vercel, a bodiless POST still arrives with an empty body.
+    const response = await fetch(
+      `${data?.config.authPath ?? "/api/auth"}/sign-out`,
+      {
+        body: "{}",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Sign-out returned ${response.status}`);
+    }
     window.location.assign(data?.config.basePath ?? "/");
   }
 
@@ -137,6 +205,7 @@ export function DashboardShell() {
         className="bg-dashboard-bg"
         enabled={
           workspace ||
+          location.pathname === "/review" ||
           hasAutomationDetailsFrame(location.pathname) ||
           isMemoryLibraryPath(location.pathname)
         }
@@ -365,11 +434,7 @@ export function DashboardShell() {
           <Route
             element={
               loading ? (
-                <PageRouteLoading
-                  description="Items that need a person, and who can act on them."
-                  label="Loading review desk"
-                  title="Review desk"
-                />
+                <ReviewDeskLoading />
               ) : loggedIn ? (
                 <ReviewDeskPage />
               ) : (
@@ -513,56 +578,29 @@ export function DashboardShell() {
             }
             path="/system/*"
           />
-          <Route
-            element={
-              loading ? (
-                <PageRouteLoading
-                  description="Manage your Junior profile and preferences."
-                  label="Loading settings"
-                  title="Settings"
-                />
-              ) : loggedIn ? (
-                <SettingsPage identity={data!.me} />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/settings"
-          />
-          <Route
-            element={
-              loading ? (
-                <PageRouteLoading
-                  description="Create and revoke personal API tokens."
-                  label="Loading API tokens"
-                  title="API tokens"
-                  variant="list"
-                />
-              ) : loggedIn ? (
-                <PersonalTokensPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/settings/api-tokens"
-          />
-          <Route
-            element={
-              loading ? (
-                <PageRouteLoading
-                  description="Connect and disconnect your accounts."
-                  label="Loading connected accounts"
-                  title="Connected accounts"
-                  variant="list"
-                />
-              ) : loggedIn ? (
-                <ConnectionsPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/settings/connections"
-          />
+          {settingsRoutes.map((route) => (
+            <Route
+              element={
+                loading ? (
+                  <SettingsPageLayout
+                    description={route.loading.description}
+                    title={route.loading.title}
+                  >
+                    <PageContentSkeleton
+                      label={route.loading.label}
+                      variant={route.loading.variant}
+                    />
+                  </SettingsPageLayout>
+                ) : loggedIn ? (
+                  route.render(data!)
+                ) : (
+                  <Navigate replace to="/" />
+                )
+              }
+              key={route.path}
+              path={route.path}
+            />
+          ))}
           <Route
             element={
               loading || userPagesQuery.isPending ? (

@@ -31,7 +31,9 @@ import { CopyButton } from "../components/CopyButton";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   CONVERSATION_EVENT_PARAM,
+  CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  turnStartedEventSeq,
 } from "./conversationRoutes";
 import {
   ConversationComposer,
@@ -89,6 +91,12 @@ import {
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { ConversationReviewBar } from "../review-desk/ConversationReviewBar";
+import { useReviewItemData } from "../review-desk/queries";
+import {
+  latestReviewItemId,
+  reviewItemWaitsForAnswer,
+} from "../review-desk/reviewItemFormat";
+import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { Transcript } from "./TranscriptView";
 import {
   readConversationStartPosition,
@@ -137,20 +145,24 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
+  // A linked Turn opens the event that started it. Until that event is
+  // found, it acts like a linked event that is still loading.
+  const linkedTurnId = searchParams.get(CONVERSATION_TURN_PARAM) ?? undefined;
+  const eventOpen =
+    selectedEventSeq !== undefined || linkedTurnId !== undefined;
   // Event details and turn context show over Conversation details. Closing
   // them shows details again when details are open. A linked event starts
   // with details closed, so closing it does not open a panel nobody chose.
   const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
-    selectedEventSeq === undefined ? undefined : false,
+    eventOpen ? false : undefined,
   );
   const detailsOpen = detailsChoice ?? detailsDefaultOpen;
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
-  const eventOpen = selectedEventSeq !== undefined;
   const showDetails = detailsOpen && !eventOpen && !turnContext;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
-    selectedEventSeq === undefined ? "rich" : "raw",
+    eventOpen ? "raw" : "rich",
   );
-  const view = selectedEventSeq === undefined ? viewState : "raw";
+  const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
@@ -199,6 +211,10 @@ export function ConversationPage(props: {
     () => committedMessageIds(detail.data?.events),
     [detail.data?.events],
   );
+  const reviewItemId = useMemo(
+    () => latestReviewItemId(detail.data?.events),
+    [detail.data?.events],
+  );
   // Cancel needs the latest mailbox watermark, but not as a render prop. Live
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
@@ -210,6 +226,7 @@ export function ConversationPage(props: {
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
+          next.delete(CONVERSATION_TURN_PARAM);
           if (seq === undefined) next.delete(CONVERSATION_EVENT_PARAM);
           else next.set(CONVERSATION_EVENT_PARAM, String(seq));
           return next;
@@ -221,14 +238,14 @@ export function ConversationPage(props: {
   );
   const onViewChange = useCallback(
     (value: TranscriptViewMode) => {
-      if (value !== "raw" && selectedEventSeq !== undefined) {
+      if (value !== "raw" && eventOpen) {
         setSelectedEventSeq(undefined);
       }
       // Turn context belongs to a message in the Conversation view.
       setTurnContext(undefined);
       setView(value);
     },
-    [selectedEventSeq, setSelectedEventSeq],
+    [eventOpen, setSelectedEventSeq],
   );
   // A linked event can be older than the first page. Load earlier pages until
   // it is present or history ends.
@@ -247,12 +264,41 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
-  // Keep the panel while the transcript or a linked event loads.
+  // Load earlier pages until the linked Turn starts or history ends. Then
+  // replace the Turn link with a link to its first event, or drop it when
+  // history has no such event. A history error keeps the link, so a retry
+  // or reload can still find the Turn.
+  const linkedTurnSeq = linkedTurnId
+    ? turnStartedEventSeq(transcript?.events, linkedTurnId)
+    : undefined;
+  const linkedTurnMissing =
+    linkedTurnId !== undefined &&
+    linkedTurnSeq === undefined &&
+    transcript !== undefined;
+  const loadLinkedTurn =
+    linkedTurnMissing &&
+    detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage &&
+    !detail.historyError;
+  const linkedTurnNotFound =
+    linkedTurnMissing &&
+    !detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage;
+  useEffect(() => {
+    if (loadLinkedTurn) loadPreviousPageRef.current();
+  }, [loadLinkedTurn, oldestLoadedSeq]);
+  useEffect(() => {
+    if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
+    else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
+  }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
+  // Keep the panel while the transcript or a linked event loads, and for the
+  // render before a found Turn link becomes an event link.
   const eventLoading =
     eventOpen &&
     !selectedEvent &&
     (detail.isPending ||
-      (linkedEventMissing &&
+      linkedTurnSeq !== undefined ||
+      ((linkedEventMissing || linkedTurnMissing) &&
         (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
         !detail.historyError));
   const showEvent = Boolean(selectedEvent) || eventLoading;
@@ -486,6 +532,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              reviewItemId={reviewItemId}
               // Without live history, an inline send would never leave the
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
@@ -579,6 +626,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** The last Review item that Junior added in the transcript. */
+  reviewItemId?: string;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -588,6 +637,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  // A message closes the review items that it answers. Ask before it drops
+  // answers that the reader did not send.
+  const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
   stopTurnRef.current = stopTurn;
@@ -597,6 +649,31 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
+  // While Junior waits for an answer, hide the message box, the review bar,
+  // and the queued messages, so the reader answers in the question and does
+  // not type the answer as a new message.
+  // Dismiss on the question closes the item and shows the message box again.
+  // The message box stays mounted, so its text and images stay, and it does
+  // not hide while it has focus.
+  const reviewItem = useReviewItemData(props.reviewItemId).data;
+  const [composerShownForItemId, setComposerShownForItemId] =
+    useState<string>();
+  const [composerFocused, setComposerFocused] = useState(false);
+  const question =
+    reviewItem &&
+    !props.stoppable &&
+    !composerFocused &&
+    reviewItemWaitsForAnswer(reviewItem) &&
+    composerShownForItemId !== reviewItem.id
+      ? reviewItem
+      : undefined;
+  // The message box can show only because it has focus. Using the review bar
+  // or queued messages moves focus out of it, so keep them shown for this item.
+  const keepComposerShown = () => {
+    if (composerFocused && reviewItem && reviewItemWaitsForAnswer(reviewItem)) {
+      setComposerShownForItemId(reviewItem.id);
+    }
+  };
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -788,41 +865,61 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           {props.pendingAuthorization ? (
             <PendingAuthorization authorization={props.pendingAuthorization} />
           ) : null}
-          <ConversationReviewBar conversationId={props.conversationId} />
-          <PendingMailboxStack
-            cancelError={cancelError}
-            cancelPending={cancelPendingMessages.isPending}
-            cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-            committedMessageIds={props.committedMessageIds}
-            conversationId={props.conversationId}
-            editTargetInboundMessageId={editTargetInboundMessageId}
-            messages={props.pendingMessages}
-            onCancelMessage={onCancelMessage}
-            onEditMessage={onEditMessage}
-            onLayoutChange={onMailboxLayoutChange}
-            onRetry={onRetry}
-            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
-            steerTargetInboundMessageId={steerTargetInboundMessageId}
-            viewerEmail={viewerEmail}
-          />
+          {/* The review bar and queued messages hide with the message box, so
+              the question is the last thing above the dock. */}
+          <div
+            hidden={Boolean(question)}
+            onFocus={keepComposerShown}
+            onPointerDown={keepComposerShown}
+          >
+            <ConversationReviewBar conversationId={props.conversationId} />
+            <PendingMailboxStack
+              cancelError={cancelError}
+              cancelPending={cancelPendingMessages.isPending}
+              cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+              committedMessageIds={props.committedMessageIds}
+              conversationId={props.conversationId}
+              editTargetInboundMessageId={editTargetInboundMessageId}
+              messages={props.pendingMessages}
+              onCancelMessage={onCancelMessage}
+              onEditMessage={onEditMessage}
+              onLayoutChange={onMailboxLayoutChange}
+              onRetry={onRetry}
+              onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+              steerTargetInboundMessageId={steerTargetInboundMessageId}
+              viewerEmail={viewerEmail}
+            />
+          </div>
+          {unsentAnswers.dialog}
         </>
       }
     >
-      <ConversationComposer
-        draftId={props.conversationId}
-        error={
-          queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
-        }
-        ref={composerRef}
-        label="Continue this conversation"
-        submitLabel="Send"
-        onFocus={onComposerFocus}
-        onStop={props.stoppable ? onStop : undefined}
-        stopPending={stopTurn.isPending}
-        onSubmitStart={onSubmitStart}
-        onSubmit={onSubmit}
-      />
+      <div
+        hidden={Boolean(question)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setComposerFocused(false);
+          }
+        }}
+        onFocus={() => setComposerFocused(true)}
+      >
+        <ConversationComposer
+          confirmSubmit={unsentAnswers.confirmSubmit}
+          draftId={props.conversationId}
+          error={
+            queueActionError ??
+            (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          }
+          ref={composerRef}
+          label="Continue this conversation"
+          submitLabel="Send"
+          onFocus={onComposerFocus}
+          onStop={props.stoppable ? onStop : undefined}
+          stopPending={stopTurn.isPending}
+          onSubmitStart={onSubmitStart}
+          onSubmit={onSubmit}
+        />
+      </div>
     </ComposerDock>
   );
 });

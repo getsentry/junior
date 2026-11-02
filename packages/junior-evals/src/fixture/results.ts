@@ -351,10 +351,13 @@ export function readCallEvents(args: {
 
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
- * changes formatting and links references, such as `owner/repo#1`.
+ * changes formatting and links references, such as `owner/repo#1`. Remove
+ * code fence lines: a split inside a code block closes the block at the end of
+ * a post and opens it again in the next post.
  */
 function comparableText(text: string): string {
   return text
+    .replace(/^[ \t]*(`{3,}|~{3,}).*$/gm, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/<[^|>]+\|([^>]*)>/g, "$1")
     .replace(/<(https?:\/\/[^>]+)>/g, "$1")
@@ -364,8 +367,10 @@ function comparableText(text: string): string {
 }
 
 /**
- * Use Slack thread posts as the replies of a Slack call. A post that matches
- * a stored reply keeps the stored message id, so `fork()` can use it.
+ * Use Slack thread posts as the replies of a Slack call. Delivery splits a
+ * long reply into several posts; consecutive posts that make up one stored
+ * reply are one reply. A matched reply keeps the stored message id, so
+ * `fork()` can use it.
  */
 export function slackCallReplies(args: {
   conversationId: string;
@@ -373,20 +378,40 @@ export function slackCallReplies(args: {
   posts: SlackPost[];
 }): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
   const unmatched = [...args.durable.replies];
+  const postTexts = args.posts.map(({ text }) => comparableText(text));
+  // The number of posts from `start` that make up the stored reply.
+  const postCount = (start: number, reply: Reply): number => {
+    const target = comparableText(reply.text);
+    if (!postTexts[start]) return 0;
+    let joined = "";
+    for (let end = start; end < postTexts.length; end += 1) {
+      joined = joined ? `${joined} ${postTexts[end]}` : postTexts[end]!;
+      if (joined === target) return end - start + 1;
+      if (!target.startsWith(joined)) return 0;
+    }
+    return 0;
+  };
   const extra: VisibleMessage[] = [];
-  const replies = args.posts.map((post): Reply => {
-    const index = unmatched.findIndex(
-      (reply) => comparableText(reply.text) === comparableText(post.text),
-    );
+  const replies: Reply[] = [];
+  for (let start = 0; start < args.posts.length; ) {
+    let count = 0;
+    const index = unmatched.findIndex((reply) => {
+      count = postCount(start, reply);
+      return count > 0;
+    });
     const durable = index >= 0 ? unmatched.splice(index, 1)[0] : undefined;
-    if (!durable) extra.push({ content: post.text, role: "assistant" });
-    return {
-      channelId: post.channel,
+    const posts = args.posts.slice(start, start + Math.max(count, 1));
+    const first = posts[0]!;
+    const text = posts.map((post) => post.text).join("\n");
+    if (!durable) extra.push({ content: text, role: "assistant" });
+    replies.push({
+      channelId: first.channel,
       conversationId: args.conversationId,
-      messageId: durable?.messageId ?? `slack:${post.ts}`,
-      text: post.text,
-    };
-  });
+      messageId: durable?.messageId ?? `slack:${first.ts}`,
+      text,
+    });
+    start += posts.length;
+  }
   return {
     replies,
     visibleMessages: [...args.durable.visibleMessages, ...extra],

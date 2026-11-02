@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -13,6 +14,7 @@ import {
   isOnlyAssignee,
   reviewItemReaderForUser,
 } from "./access";
+import { matchReplyToReviewItems } from "./reply-match";
 import {
   closeReviewItem,
   getReviewItem,
@@ -23,7 +25,7 @@ import {
 } from "./store";
 
 /** What a person can do with a Review item. */
-export type ReviewItemAction = "take" | "submit" | "complete" | "dismiss";
+export type ReviewItemAction = "take" | "submit" | "dismiss";
 
 /** An expected failure of a person action, for the API to report. */
 export class ReviewItemActionError extends Error {
@@ -59,7 +61,6 @@ export function reviewItemChange(
 ): ReviewItemChange {
   if (action === "take") return { kind: "taken", user };
   if (action === "submit") return { kind: "submitted", user };
-  if (action === "complete") return { kind: "completed", user };
   return { kind: "dismissed", user };
 }
 
@@ -103,7 +104,7 @@ function submittedAnswer(
 
 /**
  * Do one person action on a Review item and tell its linked Conversations.
- * The first submit, complete, or dismiss closes the item for every
+ * The first submit or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
@@ -165,12 +166,6 @@ export async function actOnReviewItem(args: {
       throw new ReviewItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",
-      );
-    }
-    if (action === "complete" && item.kind === "action") {
-      throw new ReviewItemActionError(
-        "invalid",
-        "An action item needs an answer. Submit it or dismiss it.",
       );
     }
     const answer =
@@ -236,6 +231,9 @@ function messageAnswer(
  * - The agent added it in this Conversation (`addedByConversationId`).
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
+ * - The decision model says that the reply answers this item
+ *   (`matchReplyToReviewItems`). Other open items in the thread stay open.
+ *   When the decision fails, all items stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
  * an answer on the card or the review desk. Each item closes as `done` with
@@ -266,9 +264,28 @@ export async function closeReviewItemsAnsweredByReply(args: {
   if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
-  for (const item of items.filter((candidate) =>
-    replyAnswers(candidate, user),
-  )) {
+  const answered = items.filter((candidate) => replyAnswers(candidate, user));
+  let matched: Set<string>;
+  try {
+    matched = await matchReplyToReviewItems({
+      conversationId: args.conversationId,
+      items: answered.filter((candidate) => candidate.status === "open"),
+      text: args.text,
+    });
+  } catch (error) {
+    // The reply is already saved, so the agent still gets it.
+    logWarn("review_item.reply_match.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "gen_ai.conversation.id": args.conversationId,
+    });
+    matched = new Set();
+  }
+  // A retry of a reply still delivers the items that it closed.
+  const toDeliver = answered.filter(
+    (candidate) => candidate.status !== "open" || matched.has(candidate.id),
+  );
+  for (const item of toDeliver) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
       const answer = messageAnswer(item, args.text);

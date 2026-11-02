@@ -300,7 +300,7 @@ describe("ready to merge notice", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `**Add the review desk notice** is approved, and GitHub says that it can merge. Merge it, or say why not: ${PULL_URL}`,
+          body: `**Add the review desk notice** is approved, and GitHub says that it can merge: ${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,

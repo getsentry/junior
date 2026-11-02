@@ -1,4 +1,4 @@
-/** Blocked report of a child agent. See "Delivery rules" in AGENTS.md. */
+/** Blocked report of a child agent. */
 import { z } from "zod";
 import {
   isToolResultError,

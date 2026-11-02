@@ -10,6 +10,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import {
+  boundProfile,
   defaultModelId,
   modelIdForProfile,
   type ModelProfile,
@@ -988,7 +989,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               piMessages,
               modelId: modelIdForProfile(
                 botConfig,
-                loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
+                boundProfile(
+                  botConfig,
+                  loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
+                ),
               ),
             });
             if (compaction.compacted) {

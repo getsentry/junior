@@ -37,9 +37,10 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 
-// A search shows at most this many archived matches, with the first page.
-// Only open items page. An item that closes while a person reads only
-// leaves the open order, so a cursor in it never skips or repeats an item.
+// A list shows at most this many archived matches, with the first page.
+// Only open items page, oldest first. Creation time never changes, and an
+// item that closes while a person reads only leaves the open order, so a
+// cursor never skips or repeats an item.
 const ARCHIVED_LIMIT = 50;
 
 /** The list that a cursor belongs to. */
@@ -48,10 +49,10 @@ type ListFilters = Pick<ReviewItemFilters, "conversationId" | "query">;
 const cursorSchema = z
   .object({
     conversationId: z.string().min(1).optional(),
+    createdAtMs: z.number().int(),
     id: z.string().min(1),
     query: z.string().min(1).optional(),
-    updatedAtMs: z.number().int(),
-    version: z.literal(1),
+    version: z.literal(2),
   })
   .strict();
 
@@ -63,9 +64,9 @@ function encodeCursor(item: ReviewItem, filters: ListFilters): string {
   return Buffer.from(
     JSON.stringify({
       ...filters,
+      createdAtMs: item.createdAt.getTime(),
       id: item.id,
-      updatedAtMs: item.updatedAt.getTime(),
-      version: 1,
+      version: 2,
     }),
     "utf8",
   ).toString("base64url");
@@ -86,7 +87,7 @@ function decodeCursor(
     ) {
       return undefined;
     }
-    return { id: parsed.id, updatedAt: new Date(parsed.updatedAtMs) };
+    return { createdAt: new Date(parsed.createdAtMs), id: parsed.id };
   } catch {
     return undefined;
   }
@@ -118,6 +119,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
     ...(item.answer ? { answer: item.answer } : undefined),
+    ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
     ...(item.automationId ? { automationId: item.automationId } : undefined),
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
@@ -176,6 +178,7 @@ export function createReviewItemRoutes(services: {
       const open = await searchReviewItems(db, reader, {
         ...filters,
         limit: query.limit + 1,
+        order: "oldest",
         statuses: ["open"],
         ...(after ? { after } : undefined),
       });
@@ -183,7 +186,7 @@ export function createReviewItemRoutes(services: {
       const last = page.at(-1);
       // The archived matches come once, with the first page.
       const archived =
-        filters.query && !after
+        (filters.query || query.include === "archived") && !after
           ? await searchReviewItems(db, reader, {
               ...filters,
               limit: ARCHIVED_LIMIT + 1,

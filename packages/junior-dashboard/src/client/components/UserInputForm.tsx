@@ -1,5 +1,12 @@
 import { ArrowRight } from "lucide-react";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   buttonUserInputField,
   isEmptyUserInputAnswer,
@@ -28,10 +35,31 @@ const optionClass =
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
 
-function OptionText(props: { description?: string; label: string }) {
+// Marks the choice that Junior recommends, next to its label.
+function SuggestedLabel(props: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "ml-2 text-xs font-normal text-dashboard-accent-text/80",
+        props.className,
+      )}
+    >
+      Suggested
+    </span>
+  );
+}
+
+function OptionText(props: {
+  description?: string;
+  label: string;
+  recommended?: boolean;
+}) {
   return (
     <span className="grid min-w-0 gap-0.5 break-words">
-      <span className="font-medium text-dashboard-text">{props.label}</span>
+      <span className="font-medium text-dashboard-text">
+        {props.label}
+        {props.recommended ? <SuggestedLabel /> : null}
+      </span>
       {props.description ? (
         <span className="text-xs text-dashboard-text-muted">
           {props.description}
@@ -49,13 +77,15 @@ function ChoiceField(props: {
 }) {
   const id = useId();
   const { field } = props;
-  // Say how many choices count, so a reader knows when a field is done.
+  // Radios already say that one choice counts. Say it for checkboxes only.
   const legend = (
     <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
       {field.label}
-      <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
-        {field.kind === "choice" ? "Pick one" : "Pick any"}
-      </span>
+      {field.kind === "multi_choice" ? (
+        <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
+          Pick any
+        </span>
+      ) : null}
     </legend>
   );
   const description = field.description ? (
@@ -83,6 +113,7 @@ function ChoiceField(props: {
               <OptionText
                 description={option.description}
                 label={option.label}
+                recommended={option.recommended}
               />
             </label>
           ))}
@@ -112,7 +143,11 @@ function ChoiceField(props: {
                 )
               }
             />
-            <OptionText description={option.description} label={option.label} />
+            <OptionText
+              description={option.description}
+              label={option.label}
+              recommended={option.recommended}
+            />
           </label>
         ))}
       </div>
@@ -155,10 +190,12 @@ function TextField(props: {
  * answer. Choices with descriptions stack as rows, so each description stays
  * with its choice. Other requests show a form that the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
- * Dismiss, sit after the answer controls.
+ * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
+ * the form has picks or text that the reader has not sent.
  */
 export function UserInputForm(props: {
   onSubmit(answer: UserInputAnswer): Promise<void>;
+  onUnsentChange?(unsent: boolean): void;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
@@ -204,6 +241,13 @@ export function UserInputForm(props: {
   const normalized = normalizeUserInputAnswer(props.request, answer);
   const answeredCount = Object.keys(normalized.values).length;
   const fieldCount = props.request.fields.length;
+  // A button answer sends on click, so only the form can hold unsent input.
+  const unsent =
+    !buttonField && !sending && !isEmptyUserInputAnswer(normalized);
+  const onUnsentChange = props.onUnsentChange;
+  useEffect(() => {
+    onUnsentChange?.(unsent);
+  }, [onUnsentChange, unsent]);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!isEmptyUserInputAnswer(normalized)) {
@@ -245,6 +289,7 @@ export function UserInputForm(props: {
                     id={`${choicesId}-${index}-label`}
                   >
                     {option.label}
+                    {option.recommended ? <SuggestedLabel /> : null}
                   </span>
                   {option.description ? (
                     <span
@@ -276,6 +321,8 @@ export function UserInputForm(props: {
               onClick={() => pick(buttonField.id, option.label)}
             >
               {option.label}
+              {/* The button gap already spaces the label. */}
+              {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
             </Button>
           ))}
           {secondary}

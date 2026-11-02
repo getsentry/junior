@@ -4,6 +4,7 @@ import {
   checkFileLengths,
   countFileLines,
   isCoreDoc,
+  isNestedAgentsDoc,
   isReferenceDoc,
 } from "./check-file-length.mjs";
 
@@ -58,11 +59,16 @@ test("reports stale and invalid exceptions", () => {
 });
 
 test("separates core docs from reference docs", () => {
-  assert.equal(isCoreDoc("packages/junior/src/chat/AGENTS.md"), true);
+  assert.equal(isCoreDoc("AGENTS.md"), true);
   assert.equal(isCoreDoc("packages/junior-github/README.md"), true);
   assert.equal(isCoreDoc("policies/testing.md"), true);
   assert.equal(isCoreDoc("TELEMETRY.md"), false);
   assert.equal(isReferenceDoc("TELEMETRY.md"), true);
   assert.equal(isCoreDoc("CONTRIBUTING.md"), false);
   assert.equal(isReferenceDoc("CONTRIBUTING.md"), false);
+});
+
+test("allows AGENTS.md only at the repo root", () => {
+  assert.equal(isNestedAgentsDoc("AGENTS.md"), false);
+  assert.equal(isNestedAgentsDoc("packages/junior/src/chat/AGENTS.md"), true);
 });

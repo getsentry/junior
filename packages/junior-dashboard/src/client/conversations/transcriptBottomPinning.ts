@@ -24,6 +24,16 @@ const PREVIOUS_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
+const PIN_START_ATTRIBUTE = "data-transcript-pin-start";
+const PIN_START_MARGIN_PX = 16;
+
+/**
+ * Mark a tall block whose start the reader must see first, such as a Review
+ * item card. The value is a stable id, so each block moves the view only once.
+ */
+export function transcriptPinStartProps(id: string) {
+  return { [PIN_START_ATTRIBUTE]: id };
+}
 
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
@@ -334,6 +344,7 @@ export function usePinnedTranscriptBottom(input: {
   const terminalPinPendingRef = useRef(false);
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
+  const seenPinStartsRef = useRef(new Set<string>());
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [openedAtUnread, setOpenedAtUnread] = useState(false);
@@ -453,13 +464,26 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
+      // A new block that does not fit shows its start, not its end. Stop
+      // following, so later layout does not move the start out of view.
+      const startTop = newPinStartScrollTop(
+        root,
+        contentElementRef.current,
+        seenPinStartsRef.current,
+      );
+      if (startTop !== null) setFollowingIntent(false);
+
       // Only suppress pin-settle noise while still following. After the reader
       // leaves the bottom, do not open a window that can ignore their scroll.
-      const suppressSettleNoise = followingRef.current;
+      const suppressSettleNoise = startTop !== null || followingRef.current;
       const generation = suppressSettleNoise
         ? ++programmaticScrollGenerationRef.current
         : 0;
-      setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
+      setScrollTop(
+        root,
+        startTop ?? scrollSnapshot(root).scrollHeight,
+        behavior,
+      );
 
       const settleProgrammaticScroll = () => {
         if (
@@ -802,6 +826,38 @@ export function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   }
 
   return window;
+}
+
+/**
+ * Return the scroll position that shows the start of the last pin-start block,
+ * when a bottom pin would cut off its start. Each block counts once.
+ */
+function newPinStartScrollTop(
+  root: ScrollRoot,
+  content: HTMLElement | null,
+  seen: Set<string>,
+): number | null {
+  const block = content
+    ? Array.from(
+        content.querySelectorAll<HTMLElement>(`[${PIN_START_ATTRIBUTE}]`),
+      ).at(-1)
+    : undefined;
+  const id = block?.getAttribute(PIN_START_ATTRIBUTE);
+  if (!block || !id || seen.has(id)) return null;
+  const rect = block.getBoundingClientRect();
+  // The block has no size until its data loads. Check it again then.
+  if (rect.height === 0) return null;
+  seen.add(id);
+
+  const snapshot = scrollSnapshot(root);
+  const offset =
+    snapshot.scrollTop -
+    (isWindowRoot(root) ? 0 : root.getBoundingClientRect().top);
+  const startTop = rect.top + offset - PIN_START_MARGIN_PX;
+  const bottomTop = snapshot.scrollHeight - snapshot.clientHeight;
+  // Keep the bottom pin when it shows the start, or when the block is above it.
+  if (startTop >= bottomTop || rect.bottom + offset <= bottomTop) return null;
+  return Math.max(0, startTop);
 }
 
 function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {

@@ -361,20 +361,15 @@ describe("Automation edit API", () => {
           ).status,
         ).toBe(404);
         expect((await patch(input, "foreign@example.com")).status).toBe(404);
-        // Public readers can edit, but creator-only fields stay creator-only.
-        for (const [field, value] of [
-          ["credentialMode", "creator"],
-          ["outcomes", []],
-        ] as const) {
-          const response = await patch(
-            { kind, revision: initial.revision, [field]: value },
-            "reader@example.com",
-          );
-          expect(response.status).toBe(400);
-          expect(await response.json()).toMatchObject({
-            fields: { [field]: expect.any(Array) },
-          });
-        }
+        // Public readers can edit anything except turning on creator credentials.
+        const readerCredentials = await patch(
+          { kind, revision: initial.revision, credentialMode: "creator" },
+          "reader@example.com",
+        );
+        expect(readerCredentials.status).toBe(400);
+        expect(await readerCredentials.json()).toMatchObject({
+          fields: { credentialMode: expect.any(Array) },
+        });
         expect(
           (
             await createJuniorApi().request(url, {

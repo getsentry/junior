@@ -15,6 +15,7 @@ import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
+import { transcriptPinStartProps } from "./transcriptBottomPinning";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
@@ -71,7 +72,7 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
     <div className="min-w-0">
       {frame}
       {reviewItemId ? (
-        <div className="mt-2">
+        <div className="mt-2" {...transcriptPinStartProps(reviewItemId)}>
           <TranscriptReviewItemCard itemId={reviewItemId} />
         </div>
       ) : null}

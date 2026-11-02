@@ -415,8 +415,8 @@ test("groups the signed-in profile and session actions in the header", async ({
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "API tokens" }),
-  ).toHaveAttribute("href", "/settings/api-tokens");
+    popover.getByRole("link", { name: "Settings", exact: true }),
+  ).toHaveAttribute("href", "/settings");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -430,7 +430,10 @@ test("groups the signed-in profile and session actions in the header", async ({
       request.method() === "POST",
   );
   await page.getByRole("button", { name: "Log out" }).click();
-  await signOutRequest;
+  // Better Auth returns 415 for a sign-out body without a JSON content type.
+  expect((await signOutRequest).headers()["content-type"]).toBe(
+    "application/json",
+  );
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {

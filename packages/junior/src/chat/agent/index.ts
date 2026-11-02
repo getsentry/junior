@@ -116,13 +116,12 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  TURN_LIMIT_DISABLED_REASON,
+  TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
   createTurnLimitGate,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
-import { disabledToolMessage } from "@/chat/tools/definition";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -157,6 +156,7 @@ import {
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
+  boundProfile,
   modelIdForProfile,
   ModelProfileNotConfiguredError,
   profileConfig,
@@ -450,7 +450,10 @@ async function executeAgentRunInPrivacyContext(
   };
   try {
     const projection = await openConversationProjection({ conversationId });
-    activeModelProfile = run.modelProfile ?? projection.modelProfile;
+    activeModelProfile = boundProfile(
+      botConfig,
+      run.modelProfile ?? projection.modelProfile,
+    );
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
@@ -685,6 +688,18 @@ async function executeAgentRunInPrivacyContext(
             activeProfileConfig.reasoningLevel ??
             storedTurnRoute.reasoningLevel,
           reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
+        };
+      } else if (
+        boundProfile(botConfig, storedTurnRoute.modelProfile) !==
+        storedTurnRoute.modelProfile
+      ) {
+        // The host removed the routed profile. Finish the Turn on the default.
+        turnRoute = {
+          profile: botConfig.defaultProfile,
+          reasoningLevel:
+            profileConfig(botConfig, botConfig.defaultProfile).reasoningLevel ??
+            storedTurnRoute.reasoningLevel,
+          reason: `retired_profile:${storedTurnRoute.modelProfile}:${botConfig.defaultProfile}`,
         };
       } else {
         turnRoute = {
@@ -1168,7 +1183,7 @@ async function executeAgentRunInPrivacyContext(
         ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage, toolCall }) => {
+      beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -1207,13 +1222,7 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return {
-            block: true,
-            reason: disabledToolMessage(
-              toolCall.name,
-              TURN_LIMIT_DISABLED_REASON,
-            ),
-          };
+          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =

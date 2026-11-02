@@ -7,6 +7,10 @@ import {
   type SlackInboundEvent,
 } from "./slack-payload";
 import { handleSlackForm } from "./slack-form";
+import {
+  joinCreatedSlackChannel,
+  slackChannelCreatedEnvelopeSchema,
+} from "./slack-channel-created";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
@@ -140,6 +144,8 @@ export interface SlackWebhookServices {
   allowedDomains?: readonly string[];
   /** Slack user IDs of bots that may start a Turn without an email domain. */
   allowedBotUserIds?: readonly string[];
+  /** Join each public channel created after this is on. Defaults to off. */
+  autoJoinNewChannels?: boolean;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -167,7 +173,10 @@ function parseJson(body: string): unknown {
 }
 
 function installationFromEnvelope(
-  body: SlackEventEnvelope,
+  body: Pick<
+    SlackEventEnvelope,
+    "enterprise_id" | "is_enterprise_install" | "team_id"
+  >,
 ): SlackInstallationContext {
   return {
     teamId: body.team_id,
@@ -478,6 +487,8 @@ async function routeParsedMessage(args: {
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
+  /** Run the task after the caller releases the thread's ingress lock. */
+  runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -642,16 +653,18 @@ async function routeParsedMessage(args: {
       }),
     });
   };
+  // The close can call the decision model, so it runs after the ingress
+  // lock is released and does not block later messages in the thread.
   try {
     await persist();
   } catch (error) {
     // A failed queue wake can follow a saved reply. The reply still answers.
     if (error instanceof SlackEventPersistenceError && error.saved) {
-      await closeAnswered();
+      args.runAfterUnlock(closeAnswered);
     }
     throw error;
   }
-  await closeAnswered();
+  args.runAfterUnlock(closeAnswered);
 }
 
 async function handleSlackEvent(args: {
@@ -778,6 +791,8 @@ async function handleSlackEvent(args: {
           });
           if (!member) return;
           const message = adapter.parseMessage(event);
+          let afterUnlock: (() => Promise<void>) | undefined;
+          // The task runs after the lock is released, also when routing throws.
           const routed = await withLock(
             state,
             `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
@@ -792,10 +807,13 @@ async function handleSlackEvent(args: {
                 receivedAtMs,
                 allowedBotUserIds: args.services.allowedBotUserIds ?? [],
                 allowedDomains: args.services.allowedDomains ?? [],
+                runAfterUnlock: (task) => {
+                  afterUnlock = task;
+                },
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
-          );
+          ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
           }
@@ -890,7 +908,29 @@ export async function handleSlackWebhook(args: {
     });
   }
 
-  const result = slackEventEnvelopeSchema.safeParse(parseJson(body));
+  const json = parseJson(body);
+  const channelCreated = slackChannelCreatedEnvelopeSchema.safeParse(json);
+  if (channelCreated.success) {
+    if (args.services.autoJoinNewChannels) {
+      const channelId = channelCreated.data.event.channel.id;
+      enqueue(
+        args.waitUntil,
+        withLogContext({ platform: "slack", destinationName: channelId }, () =>
+          joinCreatedSlackChannel({
+            adapter,
+            channelId,
+            installation: installationFromEnvelope(channelCreated.data),
+            state: args.services.state ?? getStateAdapter(),
+          }).catch((error) => {
+            logException(error, "slack.channel.auto_join.failed");
+          }),
+        ),
+      );
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  const result = slackEventEnvelopeSchema.safeParse(json);
   if (!result.success) {
     return new Response("Invalid JSON", { status: 400 });
   }

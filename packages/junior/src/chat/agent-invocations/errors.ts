@@ -24,10 +24,23 @@ export class AgentMessageQueueFullError extends Error {
   }
 }
 
-/** A messageAgent target is not the parent or a child of the sender. */
+/**
+ * A messageAgent target is not the parent, a child, or a top-level agent that
+ * the sender can message.
+ */
 export class AgentMessageTargetError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AgentMessageTargetError";
+  }
+}
+
+/** A top-level agent paused automated Turns, so it takes no agent message. */
+export class AgentMessagePausedError extends Error {
+  constructor(conversationId: string) {
+    super(
+      `${conversationId} paused automated work until a person replies there`,
+    );
+    this.name = "AgentMessagePausedError";
   }
 }

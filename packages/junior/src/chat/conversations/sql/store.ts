@@ -653,6 +653,18 @@ export class SqlStore implements ConversationStore {
     return undefined;
   }
 
+  async recordDestinationVisibility(args: {
+    channelName?: string;
+    destination: Destination;
+    nowMs?: number;
+    visibility: ConversationPrivacy;
+  }): Promise<void> {
+    await this.upsertDestination(
+      destinationUpsertFromDestination(args),
+      args.nowMs ?? Date.now(),
+    );
+  }
+
   async findSlackDestinationByName(args: {
     channelName: string;
     teamId: string;

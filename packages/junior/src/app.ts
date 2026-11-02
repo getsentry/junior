@@ -1,6 +1,7 @@
 // Core owns host-level route ordering for Junior. ACP and MCP mount before
 // plugin routes, and plugin routes mount before the dashboard (see
 // dashboard-routes).
+
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -210,6 +211,12 @@ export interface JuniorAppOptions extends BotModelConfig {
      * have no profile email, so `allowedDomains` blocks them otherwise.
      */
     allowedBotUserIds?: string[];
+    /**
+     * Join each public channel created after this is on. Existing channels
+     * are not joined. The Slack app must subscribe to `channel_created`.
+     * Defaults to `false`.
+     */
+    autoJoinNewChannels?: boolean;
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -716,6 +723,7 @@ export async function createApp(
     }),
     allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
     allowedDomains,
+    autoJoinNewChannels: options?.slack?.autoJoinNewChannels === true,
   };
 
   const app = new Hono();

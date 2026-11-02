@@ -88,7 +88,7 @@ docker network prune -f --filter label=dev.junior.sandbox
 docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
 ```
 
-The limits of this provider are in `packages/junior/src/chat/sandbox/AGENTS.md`.
+This provider is for local development and QA only. Do not run untrusted workloads with it.
 
 ## Work in isolated branches
 

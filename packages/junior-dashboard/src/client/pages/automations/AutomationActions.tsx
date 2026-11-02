@@ -22,9 +22,8 @@ import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
 /**
- * Header actions for one Automation: Edit, then creator-only Pause or Resume
- * and Delete. Public readers can edit settings, but only the creator controls
- * lifecycle. Lifecycle actions re-read the revision before they apply.
+ * Header actions for one Automation: Edit, Pause or Resume, and Delete.
+ * Lifecycle actions re-read the revision before they apply.
  */
 export function AutomationActions({
   automation,

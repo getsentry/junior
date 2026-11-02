@@ -6,6 +6,10 @@
     {
       "name": "anti-slop",
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "display-text",
+      "specifier": "./oxlint/display-text.ts"
     }
   ],
   "ignorePatterns": [
@@ -50,6 +54,41 @@
     "anti-slop/no-unknown-parameters": "off",
     "anti-slop/no-unknown-returns": "error",
     "anti-slop/no-unsafe-dictionary-type": "off",
-    "anti-slop/require-safety-comment-for-type-assertion": "off"
-  }
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "display-text/no-raw-display-text": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "react-markdown",
+              "remark-*",
+              "rehype-*",
+              "emojibase-data",
+              "emojibase-data/*"
+            ],
+            "message": "Render Markdown and emoji only through client/display-text/DisplayText."
+          },
+          {
+            "group": [
+              "**/display-text/*",
+              "!**/display-text/DisplayText",
+              "!**/display-text/plainText"
+            ],
+            "message": "Import only DisplayText or displayPlainText from client/display-text."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/client/display-text/**"],
+      "rules": {
+        "display-text/no-raw-display-text": "off",
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }

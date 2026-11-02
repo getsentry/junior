@@ -423,6 +423,32 @@ describe("completeText", () => {
     });
   });
 
+  it("sends the input type only to models that embed queries differently", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2, 0.3]],
+      usage: { tokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    await embedTexts({
+      inputType: "query",
+      modelId: "voyage/voyage-4-lite",
+      texts: ["one"],
+    });
+    await embedTexts({
+      inputType: "query",
+      modelId: "openai/text-embedding-3-small",
+      texts: ["one"],
+    });
+
+    expect(mocks.embedMany.mock.calls[0]?.[0]).toMatchObject({
+      providerOptions: { voyage: { inputType: "query" } },
+    });
+    expect(mocks.embedMany.mock.calls[1]?.[0]).not.toHaveProperty(
+      "providerOptions",
+    );
+  });
+
   it("leaves embedding cost unknown for models without a verified rate", async () => {
     mocks.embedMany.mockResolvedValue({
       embeddings: [[0.1, 0.2, 0.3]],

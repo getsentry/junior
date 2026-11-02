@@ -153,6 +153,8 @@ export const conversationPendingMessageSchema = z
     role: z.literal("user"),
     source: z.enum(["slack", "web"]),
     text: z.string().optional(),
+    /** People mentioned in the text, resolved at read time. */
+    mentions: z.array(actorIdentitySchema).optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
@@ -164,11 +166,14 @@ export const conversationPendingMessageSchema = z
         message: "pending message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && (data.actorIdentity || data.attachments)) {
+    if (
+      data.redacted &&
+      (data.actorIdentity || data.attachments || data.mentions)
+    ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted pending messages must not expose actor identity or attachments",
+          "redacted pending messages must not expose actor identity, attachments, or mentions",
       });
     }
   });

@@ -1,5 +1,5 @@
 {
-  "id": "d40c3aed-3e1d-4e87-ab8b-7ebbc906331d",
+  "id": "e195a34f-e236-4221-881e-ccdcee261e6e",
   "prevId": "63624186-3205-4985-b9c8-8613366e4b04",
   "version": "7",
   "dialect": "postgresql",
@@ -2208,67 +2208,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_conversation_read_positions": {
-      "name": "junior_conversation_read_positions",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_read_seq": {
-          "name": "last_read_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_conversation_read_positions_user_id_junior_users_id_fk": {
-          "name": "junior_conversation_read_positions_user_id_junior_users_id_fk",
-          "tableFrom": "junior_conversation_read_positions",
-          "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_conversation_read_positions_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_conversation_read_positions_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_conversation_read_positions",
-          "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_read_positions_user_conversation_pk": {
-          "name": "junior_conversation_read_positions_user_conversation_pk",
-          "columns": ["user_id", "conversation_id"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_conversations": {
       "name": "junior_conversations",
       "schema": "",
@@ -3358,6 +3297,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "added_by_turn_id": {
+          "name": "added_by_turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "provider": {
           "name": "provider",

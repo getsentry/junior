@@ -33,7 +33,8 @@ export function createBashTool() {
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
-    // Bash is sequential so sandbox egress auth signals stay command-scoped.
+    // Egress auth signals are per egress session. The sandbox runs one bash
+    // command at a time so each command reads only its own signals.
     executionMode: "sequential",
     execute: async () => {
       throw new Error("bash can only run when sandbox execution is enabled.");

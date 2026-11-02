@@ -19,8 +19,8 @@ import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
 
 /**
- * One Review item: something that needs a person. See
- * `chat/review-items/AGENTS.md`. An action item stores its `request`, and
+ * One Review item: something that needs a person. An action item stores its
+ * `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
  * and `dismissed`. `closed_by_user_id` is null when an agent closed it.
  */
@@ -52,6 +52,11 @@ export const juniorReviewItems = pgTable(
       .references(() => juniorConversations.conversationId, {
         onDelete: "cascade",
       }),
+    /**
+     * Turn of the agent that added the item, or that last added it again with
+     * its dedupe key. Null for a plugin item, which has no Turn.
+     */
+    addedByTurnId: text("added_by_turn_id"),
     /**
      * Provider tenant, such as a Slack workspace, of the Conversation that
      * added the item. A public item is visible only inside it.

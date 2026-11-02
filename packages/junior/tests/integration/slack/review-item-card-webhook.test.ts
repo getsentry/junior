@@ -10,7 +10,11 @@ import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
-import { getReviewItem } from "@/chat/review-items/store";
+import {
+  closeReviewItem,
+  getReviewItem,
+  REVIEW_ITEM_REPLIED_REASON,
+} from "@/chat/review-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
@@ -44,7 +48,7 @@ const SHIP_REQUEST = {
       id: "decision",
       kind: "choice",
       label: "Decision",
-      options: [{ label: "Ship it" }, { label: "Hold" }],
+      options: [{ label: "Ship it", recommended: true }, { label: "Hold" }],
     },
   ],
 };
@@ -131,7 +135,12 @@ async function addItem(
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
   const blocks = call?.params.blocks;
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
-    elements?: Array<{ action_id?: string; text?: unknown; value?: string }>;
+    elements?: Array<{
+      action_id?: string;
+      style?: string;
+      text?: unknown;
+      value?: string;
+    }>;
     type: string;
   }>;
 }
@@ -286,7 +295,8 @@ describe("Slack webhook: Review item cards", () => {
       conversation_ids: [OTHER_THREAD],
     });
 
-    // Each linked thread gets a card with one button per choice.
+    // Each linked thread gets a card with one button per choice. The
+    // recommended choice is the primary button.
     const posts = slackApiOutbox.messages();
     expect(posts.map((post) => post.params.channel).sort()).toEqual([
       "C123",
@@ -295,11 +305,13 @@ describe("Slack webhook: Review item cards", () => {
     const controls = blocksOf(posts[0]).find(
       (block) => block.type === "actions",
     );
-    expect(controls?.elements?.map((element) => element.action_id)).toEqual([
-      "junior_review_item:choice:0",
-      "junior_review_item:choice:1",
-      "junior_review_item:answer",
-      "junior_review_item:dismiss",
+    expect(
+      controls?.elements?.map((element) => [element.action_id, element.style]),
+    ).toEqual([
+      ["junior_review_item:choice:0", "primary"],
+      ["junior_review_item:choice:1", undefined],
+      ["junior_review_item:answer", undefined],
+      ["junior_review_item:dismiss", undefined],
     ]);
 
     // The agent changes the choices. A click on the old card cannot pick a
@@ -473,6 +485,38 @@ describe("Slack webhook: Review item cards", () => {
     );
   });
 
+  it("names the recommended option of a form in the card text", async () => {
+    harness();
+    await slackThread(THREAD, "public");
+    const ana = await slackUser("ana@example.com", "U123");
+    await addItem(ana, {
+      kind: "action",
+      title: "Plan the rollout",
+      body: "Pick a rollout window.",
+      assignees: ["everyone"],
+      request: {
+        question: "How should the rollout go?",
+        fields: [
+          {
+            id: "window",
+            kind: "choice",
+            label: "Window",
+            options: [
+              { label: "Tuesday 02:00 UTC", recommended: true },
+              { label: "Thursday 02:00 UTC" },
+            ],
+          },
+          { id: "notes", kind: "text", label: "Notes" },
+        ],
+      },
+    });
+
+    const [post] = slackApiOutbox.messages();
+    expect(JSON.stringify(blocksOf(post))).toContain(
+      "Tuesday 02:00 UTC (suggested), Thursday 02:00 UTC",
+    );
+  });
+
   it("keeps a long answer inside the Slack limits of a card", async () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -534,13 +578,18 @@ describe("Slack webhook: Review item cards", () => {
       dedupe_key: "deploy-key",
     });
 
+    const posts = slackApiOutbox.messages();
+    expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    // A notice has nothing to answer, so its only control is Dismiss.
     expect(
-      slackApiOutbox.messages().map((post) => post.params.channel),
-    ).toEqual(["C123"]);
+      blocksOf(posts[0])
+        .find((block) => block.type === "actions")
+        ?.elements?.map((element) => element.action_id),
+    ).toEqual(["junior_review_item:dismiss"]);
 
     // Only an assignee can act. Ben gets an ephemeral note.
     await click({
-      actionId: "junior_review_item:done",
+      actionId: "junior_review_item:dismiss",
       actionTs: "1712345.0003",
       itemId: item.id,
       userId: "U456",
@@ -550,7 +599,7 @@ describe("Slack webhook: Review item cards", () => {
     );
 
     await click({
-      actionId: "junior_review_item:done",
+      actionId: "junior_review_item:dismiss",
       actionTs: "1712345.0004",
       itemId: item.id,
       userId: "U123",
@@ -558,12 +607,15 @@ describe("Slack webhook: Review item cards", () => {
     const updates = slackApiOutbox.calls("chat.update");
     expect(updates).toHaveLength(1);
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
-      "ana@example.com marked this done",
+      "ana@example.com dismissed this",
     );
   });
 
-  it("closes a question when its assignee replies in the thread", async () => {
-    const { click, queue, reply, state } = harness({
+  // Which open question a reply answers is a decision model choice, so the
+  // classifier eval `review-item-replies.eval.ts` checks it with the real model.
+  // These cases cover the rules that apply before or after that choice.
+  it("keeps a question open when the person who replies may not answer it", async () => {
+    const { reply, state } = harness({
       allowedDomains: ["example.com"],
     });
     const emails: Record<string, string> = {
@@ -591,58 +643,10 @@ describe("Slack webhook: Review item cards", () => {
       request: SHIP_REQUEST,
     });
     expect(item.assignees).toEqual(["ana@example.com"]);
-    const [card] = slackApiOutbox.messages();
 
     // Ben is not assigned, so his reply does not answer for Ana.
     await reply("U456", "1712345.0003");
     expect((await getReviewItem(getDb(), item.id))?.status).toBe("open");
-
-    // Junior follows the thread, so Ana's reply needs no mention to start a
-    // Turn. It answers like a mention.
-    await state.subscribe(THREAD);
-    await reply("U123", "1712345.0004", { mention: false });
-    expect(await getReviewItem(getDb(), item.id)).toMatchObject({
-      // The item saves the message text without the mention of Junior.
-      answer: { other: "Hold, the tests are red", values: {} },
-      closeReason: "Replied in thread",
-      closedBy: { email: "ana@example.com" },
-      status: "done",
-    });
-    const updates = slackApiOutbox.calls("chat.update");
-    expect(updates).toHaveLength(1);
-    expect(blocksOf(updates[0]).some((block) => block.type === "actions")).toBe(
-      false,
-    );
-    expect(JSON.stringify(blocksOf(updates[0]))).toContain(
-      "ana@example.com replied in the thread",
-    );
-
-    // The reply is the answer. A later click on the old card adds no Turn.
-    await click({
-      actionId: "junior_review_item:choice:0",
-      actionTs: "1712345.0005",
-      itemId: item.id,
-      userId: "U123",
-      value: buttonValue(card, "junior_review_item:choice:0"),
-    });
-    // A later desk answer from Ana does not count as a retry, so it fails.
-    await expect(
-      actOnReviewItem({
-        action: "submit",
-        answer: { requestId: item.id, values: { decision: ["Ship it"] } },
-        delivery: { queue, show: createSlackReviewItemShow() },
-        id: item.id,
-        user: ana,
-      }),
-    ).rejects.toThrow("Review item is closed.");
-    const work = await getConversationWorkState({
-      conversationId: THREAD,
-      state,
-    });
-    expect(work?.messages.map((message) => message.input.authorId)).toEqual([
-      "U456",
-      "U123",
-    ]);
 
     // A question with no assignees takes an answer from anyone, but not
     // from a Slack author outside the allowed domains.
@@ -668,13 +672,26 @@ describe("Slack webhook: Review item cards", () => {
       {},
     );
     expect(unassigned.item.assignees).toEqual([]);
+    // Junior follows the thread, so a reply needs no mention to start a Turn.
+    await state.subscribe(THREAD);
     await reply("UOUT", "1712345.0006", { mention: false });
     expect((await getReviewItem(getDb(), unassigned.item.id))?.status).toBe(
       "open",
     );
+
+    // Both replies still reach the agent.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages.map((message) => message.input.authorId)).toEqual([
+      "U456",
+      "UOUT",
+    ]);
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(0);
   });
 
-  it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {
+  it("delivers a question that a reply closed again when the reply is retried", async () => {
     const { postInDashboard, queue } = harness();
     await slackThread(THREAD, "public");
     await slackThread(OTHER_THREAD, "public");
@@ -686,20 +703,26 @@ describe("Slack webhook: Review item cards", () => {
       request: SHIP_REQUEST,
       conversation_ids: [OTHER_THREAD],
     });
-    queue.rejectSends();
-
-    // The dashboard shows an error, but the mailbox already saved the reply.
-    expect((await postInDashboard(ana)).status).toBe(500);
-    expect(await getReviewItem(getDb(), item.id)).toMatchObject({
-      answer: { other: "Hold, the tests are red." },
-      closeReason: "Replied in thread",
+    // Ana's first reply closed the item, but its delivery did not finish.
+    await closeReviewItem(getDb(), {
+      answer: {
+        other: "Hold, the tests are red.",
+        requestId: item.id,
+        values: {},
+      },
+      closedByUserId: ana.id,
+      id: item.id,
+      nowMs: Date.now(),
+      reason: REVIEW_ITEM_REPLIED_REASON,
       status: "done",
     });
 
-    // A retry of the reply still wakes the other linked thread.
-    queue.allowSends();
-    queue.clearSentRecords();
+    // The retry needs no decision: it shows the close on the card and wakes
+    // the other linked thread.
     expect((await postInDashboard(ana)).status).toBe(200);
+    expect(
+      JSON.stringify(blocksOf(slackApiOutbox.calls("chat.update")[0])),
+    ).toContain("ana@example.com replied in the thread");
     expect(
       queue.sentRecords().map((record) => record.conversationId),
     ).toContain(OTHER_THREAD);

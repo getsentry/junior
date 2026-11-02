@@ -4,21 +4,19 @@ Last updated: 2026-05-07
 
 ## Sources
 
-| Source                                                          | Use                                               |
-| --------------------------------------------------------------- | ------------------------------------------------- |
-| `AGENTS.md`                                                     | repo validation and contribution rules            |
-| `packages/junior-plugin-api/AGENTS.md`                          | plugin registration and public extension contract |
-| `packages/junior/src/chat/plugins/AGENTS.md`                    | host discovery and runtime ownership              |
-| `packages/junior/src/chat/credentials/AGENTS.md`                | actor-bound provider credential injection         |
-| `packages/docs/src/content/docs/extend/index.md`                | public plugin setup                               |
-| `packages/docs/src/content/docs/concepts/skills-and-plugins.md` | mental model                                      |
-| `packages/docs/src/content/docs/cli/check.md`                   | app validation                                    |
-| `packages/junior/src/chat/skills.ts`                            | skill parser/discovery/runtime boundary           |
-| `packages/junior/src/chat/plugins/manifest.ts`                  | manifest parser                                   |
-| `packages/junior/src/chat/plugins/package-discovery.ts`         | packaged plugin discovery                         |
-| `packages/junior/src/cli/check.ts`                              | `junior check` behavior                           |
-| `packages/junior/scripts/check-skills.mjs`                      | repo skill validation                             |
-| `packages/junior-*` and `apps/example`                          | working examples                                  |
+| Source                                                          | Use                                       |
+| --------------------------------------------------------------- | ----------------------------------------- |
+| `AGENTS.md`                                                     | repo validation and contribution rules    |
+| `packages/junior/src/chat/credentials/`                         | actor-bound provider credential injection |
+| `packages/docs/src/content/docs/extend/index.md`                | public plugin setup                       |
+| `packages/docs/src/content/docs/concepts/skills-and-plugins.md` | mental model                              |
+| `packages/docs/src/content/docs/cli/check.md`                   | app validation                            |
+| `packages/junior/src/chat/skills.ts`                            | skill parser/discovery/runtime boundary   |
+| `packages/junior/src/chat/plugins/manifest.ts`                  | manifest parser                           |
+| `packages/junior/src/chat/plugins/package-discovery.ts`         | packaged plugin discovery                 |
+| `packages/junior/src/cli/check.ts`                              | `junior check` behavior                   |
+| `packages/junior/scripts/check-skills.mjs`                      | repo skill validation                     |
+| `packages/junior-*` and `apps/example`                          | working examples                          |
 
 ## Decisions
 

@@ -34,6 +34,12 @@ const optionSchema = z.object({
   description: descriptionSchema.describe(
     "Optional short note about what this choice does.",
   ),
+  recommended: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true on the choice that you recommend, and say why in its description. A `choice` field can recommend one option.",
+    ),
 });
 
 const fieldBase = {
@@ -106,6 +112,15 @@ export const userInputRequestSchema = z
         context.addIssue({
           code: "custom",
           message: "Each choice of a field needs a different label.",
+        });
+      }
+      if (
+        field.kind === "choice" &&
+        field.options.filter((option) => option.recommended).length > 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "A `choice` field can recommend only one option.",
         });
       }
     }

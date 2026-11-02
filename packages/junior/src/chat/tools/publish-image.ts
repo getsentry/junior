@@ -33,11 +33,9 @@ export function createPublishImageTool(args: {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    approvalMode: "review",
+    approvalMode: "approve",
     description:
       "Publish one sandbox image to a durable public HTTPS URL. Anyone on the internet with the URL can view the image. Use only when an external destination needs a public image URL. Do not use for private file sharing or private conversation storage. Supports PNG, JPEG, GIF, and WebP up to 10 MB.",
-    describeProposal: ({ path }) =>
-      `Publish sandbox image ${path} to a public internet URL.`,
     executionMode: "sequential",
     inputSchema: z
       .object({

@@ -1,7 +1,7 @@
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
-import { MentionText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
@@ -34,8 +34,8 @@ export function TranscriptStructuredEventView(props: {
               </div>
             )}
             {detail.description ? (
-              <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
-                <MentionText mentions={mentions} text={detail.description} />
+              <div className="mt-1">
+                <DisplayText mentions={mentions} text={detail.description} />
               </div>
             ) : null}
             {detail.content ? (
@@ -70,7 +70,8 @@ export function TranscriptStructuredEventView(props: {
         </span>
         {presentation.preview ? (
           <span className="mt-0.5 block truncate text-xs text-dashboard-text-muted">
-            <MentionText
+            <DisplayText
+              inline
               links={!collapsible}
               mentions={mentions}
               text={presentation.preview}
