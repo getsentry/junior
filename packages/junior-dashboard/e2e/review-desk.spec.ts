@@ -92,9 +92,21 @@ const answered = {
   title: "Review the initech license entry",
 };
 
+const conversationId = "slack:CQA123:1770003600.000200";
+
+// The agent added this item in the Conversation, so a message there closes it.
+const migration = {
+  ...license,
+  addedByConversationId: conversationId,
+  body: "The billing migration is ready.",
+  conversationIds: [conversationId],
+  id: "item-migration",
+  title: "Pick the billing migration window",
+};
+
 async function mockReviewItems(page: Page) {
   const actions: { body: unknown; id: string }[] = [];
-  const open = [rollout, license, audit, prReady];
+  const open = [rollout, license, audit, prReady, migration];
   const archived = [answered];
   const items = [...open, ...archived];
   await page.route("**/api/review-items**", async (route) => {
@@ -201,4 +213,82 @@ test("a search finds open and archived items", async ({ dashboard, page }) => {
   ).toBeVisible();
   await expect(detail.getByText("Archived · Done")).toBeVisible();
   await screenshot(page, "review-desk-search", { lightTheme: true });
+});
+
+test("a message asks before it drops unsent picks", async ({
+  dashboard,
+  page,
+}) => {
+  const actions = await mockReviewItems(page);
+  const messages: string[] = [];
+  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
+  await page.route(`${path}/messages`, async (route) => {
+    messages.push(route.request().postDataJSON().message);
+    await route.fulfill({
+      json: { conversationId, messageId: "reply", status: "accepted" },
+    });
+  });
+  // Show the tool call that added the item, so its card is in the transcript.
+  await page.route(path, async (route) => {
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), "if-none-match": "" },
+    });
+    const detail = await response.json();
+    const last = detail.events.at(-1);
+    await route.fulfill({
+      response,
+      json: {
+        ...detail,
+        events: [
+          ...detail.events,
+          {
+            createdAt: last.createdAt,
+            data: {
+              calls: [
+                {
+                  name: "addReviewItem",
+                  output: { item: { id: migration.id } },
+                  status: "completed",
+                  toolCallId: "add-migration",
+                },
+              ],
+              type: "tool_calls",
+            },
+            seq: last.seq + 1,
+          },
+        ],
+        isParticipant: true,
+      },
+    });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const card = page.getByRole("region", {
+    name: `Review item: ${migration.title}`,
+  });
+  await card.getByRole("radio", { name: "Approve" }).click();
+  const composer = page.getByLabel("Continue this conversation");
+  await composer.fill("Thursday works.");
+  await composer.press("Enter");
+
+  // Go back keeps the draft and the picks.
+  const confirm = page.getByRole("alertdialog", {
+    name: "Send without your answers?",
+  });
+  await expect(confirm).toContainText(migration.title);
+  await screenshot(page, "conversation-unsent-answers");
+  await confirm.getByRole("button", { name: "Go back" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(composer).toHaveValue("Thursday works.");
+  await expect(card.getByRole("radio", { name: "Approve" })).toBeChecked();
+  expect(messages).toEqual([]);
+
+  // The reader can send the message anyway.
+  await composer.press("Enter");
+  await confirm.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(() => messages).toEqual(["Thursday works."]);
+  await expect(composer).toHaveValue("");
+  expect(actions).toEqual([]);
 });

@@ -1,6 +1,11 @@
 // Core owns host-level route ordering for Junior. ACP and MCP mount before
 // plugin routes, and plugin routes mount before the dashboard (see
 // dashboard-routes).
+
+// Code Mode is not wired up yet. This import keeps pi-codemode in the server
+// bundle so Nitro copies its QuickJS wasm and worker files (see
+// CODEMODE_TRACE_DEPS in nitro.ts). Replace it with the Code Mode import site.
+import "@earendil-works/pi-codemode";
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,

@@ -16,10 +16,6 @@ Keep transcript layout in these feature components. Use the UI kit in
 
 ## Rules
 
-- Display text keeps Slack tokens such as `<@U123>`. The API returns
-  `mentions` beside the owning object. Render with `TranscriptText` or
-  `MentionText`. Do not resolve names in the dashboard, and do not rewrite
-  tokens into links on the server.
 - The Automation trigger card shows the credentials from the dispatch record
   of the run, not the current setting. Keep the run input collapsed, because
   it is not from a person.

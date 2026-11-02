@@ -95,6 +95,7 @@ import {
   latestReviewItemId,
   reviewItemWaitsForAnswer,
 } from "../review-desk/reviewItemFormat";
+import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { showTranscriptPinStart } from "./transcriptBottomPinning";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
@@ -591,6 +592,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  // A message closes the review items that it answers. Ask before it drops
+  // answers that the reader did not send.
+  const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
   stopTurnRef.current = stopTurn;
@@ -824,6 +828,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             steerTargetInboundMessageId={steerTargetInboundMessageId}
             viewerEmail={viewerEmail}
           />
+          {unsentAnswers.dialog}
         </>
       }
     >
@@ -835,6 +840,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         />
       ) : (
         <ConversationComposer
+          confirmSubmit={unsentAnswers.confirmSubmit}
           draftId={props.conversationId}
           error={
             queueActionError ??

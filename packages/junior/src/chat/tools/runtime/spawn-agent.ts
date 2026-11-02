@@ -65,6 +65,7 @@ export function createSpawnAgentTool(
       "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
       `Configured profiles:\n${profileList}`,
     ].join(" "),
+    exposure: "modelOnly",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

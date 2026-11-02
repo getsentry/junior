@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
+import { DisplayText } from "../src/client/display-text/DisplayText";
+import { displayPlainText } from "../src/client/display-text/plainText";
 
 function renderedLinks(text: string) {
-  const html = renderToStaticMarkup(<TranscriptMarkdown text={text} />);
+  const html = renderToStaticMarkup(<DisplayText text={text} />);
   return {
     html,
     links: [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)].map(
@@ -13,7 +14,7 @@ function renderedLinks(text: string) {
   };
 }
 
-describe("transcript markdown links", () => {
+describe("display text links", () => {
   it("links safe destinations and keeps only the label of unsafe ones", () => {
     const { html, links } = renderedLinks(
       'See [trace](https://sentry.example/trace), https://docs.example/path)., [local](/api/me), [titled](https://docs.example/titled "Docs"), [bad](javascript:https://unsafe.example), [data](data:text/html,hi), and ![pixel](javascript:alert(1)).',
@@ -96,5 +97,48 @@ describe("transcript markdown links", () => {
     expect(renderedLinks("see <https://example.com/a*b> here").links).toEqual([
       { href: "https://example.com/a*b", label: "https://example.com/a*b" },
     ]);
+  });
+});
+
+describe("display text tokens", () => {
+  const mentions = [{ fullName: "Junior", slackUserId: "U0BOT" }];
+  const text =
+    "**Done** :smile: <@U0BOT> see <https://example.com/pr|the PR> :wave::skin-tone-3: :custom_parrot:";
+
+  it("renders Slack mentions, links, and emoji the same way in each mode", () => {
+    const block = renderToStaticMarkup(
+      <DisplayText mentions={mentions} text={text} />,
+    );
+    const inline = renderToStaticMarkup(
+      <DisplayText inline mentions={mentions} text={text} />,
+    );
+
+    for (const html of [block, inline]) {
+      expect(html).toContain("<strong");
+      expect(html).toContain("@Junior");
+      expect(html).toContain("😄");
+      expect(html).toContain("👋🏼");
+      // Workspace emoji are not in the dataset, so they stay as text.
+      expect(html).toContain(":custom_parrot:");
+      expect(html).toContain("the PR");
+      expect(html).not.toContain("U0BOT&gt;");
+    }
+    expect(block).toContain('href="https://example.com/pr"');
+    // Inline text can sit in a button or a card link, so it has no links.
+    expect(inline).not.toContain("<a ");
+    expect(inline).not.toMatch(/<(p|div|ul|li|h\d)[\s>]/);
+  });
+
+  it("keeps emoji codes literal inside code", () => {
+    const html = renderToStaticMarkup(<DisplayText text="Use `:smile:`." />);
+
+    expect(html).toContain(":smile:");
+    expect(html).not.toContain("😄");
+  });
+
+  it("returns the same names and emoji as plain text", () => {
+    expect(displayPlainText(text, mentions)).toBe(
+      "Done 😄 @Junior see the PR 👋🏼 :custom_parrot:",
+    );
   });
 });

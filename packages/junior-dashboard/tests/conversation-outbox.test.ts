@@ -156,6 +156,16 @@ describe("conversation outbox", () => {
     );
     expect(second).not.toBe(first);
     expect(second[0]?.actorIdentity?.fullName).toBe("Morgan Lee");
+
+    // A later poll can resolve a mention name that the first poll missed.
+    const mentions = [{ fullName: "Junior", slackUserId: "U0BOT" }];
+    const third = mergeConversationMailboxMessages(
+      [{ ...second[0]!, mentions }],
+      [],
+      second,
+    );
+    expect(third).not.toBe(second);
+    expect(third[0]?.mentions).toEqual(mentions);
   });
 
   it("shows inline sends in the transcript until a failure moves them to the queue", () => {

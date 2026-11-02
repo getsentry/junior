@@ -21,6 +21,7 @@ import {
   type ConversationWatch,
 } from "@sentry/junior/api/schema";
 
+import { DisplayText } from "../display-text/DisplayText";
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
 import { dashboardDisclosureChevronClass } from "../styles";
@@ -106,7 +107,9 @@ function WatchRow(props: { watch: ConversationWatch }) {
       {/* Indent under the title: icon column, column gap, and row padding. */}
       <div className="grid min-w-0 gap-1.5 pb-2 pl-9 pr-1.5 pt-0.5 text-xs leading-4 text-dashboard-text-muted">
         {watch.intent ? (
-          <p className="m-0 break-words">{watch.intent}</p>
+          <p className="m-0 break-words">
+            <DisplayText inline text={watch.intent} />
+          </p>
         ) : null}
         {watch.firesAt ? (
           <p className="m-0">

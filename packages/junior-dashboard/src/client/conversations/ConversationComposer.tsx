@@ -90,6 +90,11 @@ type ConversationComposerProps = {
   /** Lets the parent put a message taken out of the queue back in the draft. */
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
+  /**
+   * Return a promise to ask the reader before a send. The draft stays when it
+   * resolves false. Return undefined to send at once.
+   */
+  confirmSubmit?: () => Promise<boolean> | undefined;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -140,6 +145,8 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
+  // Blocks a second send while the reader answers `confirmSubmit`.
+  const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
@@ -255,18 +262,30 @@ export const ConversationComposer = memo(function ConversationComposer(
     syncTextareaHeight();
   };
 
+  const canSubmit = () =>
+    Boolean(draftRef.current.text.trim() || imagesRef.current.length) &&
+    online &&
+    !submittingRef.current &&
+    !confirmingRef.current &&
+    !sendLocked &&
+    !readingImagesRef.current;
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (!canSubmit()) return;
+    const confirmation = props.confirmSubmit?.();
+    if (confirmation) {
+      confirmingRef.current = true;
+      let confirmed: boolean;
+      try {
+        confirmed = await confirmation;
+      } finally {
+        confirmingRef.current = false;
+      }
+      if (!confirmed) return;
+    }
     const text = draftRef.current.text.trim();
     const submittedImages = imagesRef.current;
-    if (
-      (!text && !submittedImages.length) ||
-      !online ||
-      submittingRef.current ||
-      sendLocked ||
-      readingImagesRef.current
-    )
-      return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,

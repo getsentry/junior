@@ -26,6 +26,8 @@ const AVATAR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const AVATAR_FAILURE_TTL_MS = 5 * 60 * 1000;
 const AVATAR_FETCH_TIMEOUT_MS = 5_000;
 const MAX_AVATAR_BYTES = 1024 * 1024;
+// Google photo URLs redirect once to another Google photo host.
+const MAX_AVATAR_REDIRECTS = 3;
 
 /** One profile photo, ready to send to the browser. */
 interface AvatarImage {
@@ -149,15 +151,45 @@ function avatarFetchFailed(
   return null;
 }
 
-async function fetchAvatarImage(url: string): Promise<AvatarImage | null> {
+// Fetch the photo. Follow a redirect only to a photo host of the same
+// provider, so a redirect cannot leave the provider photo hosts.
+async function fetchAvatarResponse(
+  url: string,
+  provider: string,
+  signal: AbortSignal,
+): Promise<Response | "redirect_off_host" | "too_many_redirects"> {
+  let current = url;
+  for (let redirects = 0; ; redirects += 1) {
+    const response = await fetch(current, { redirect: "manual", signal });
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || !location) {
+      return response;
+    }
+    await response.body?.cancel();
+    const next = URL.canParse(location, current)
+      ? parseAvatarUrl(new URL(location, current).href, provider)
+      : undefined;
+    if (!next) return "redirect_off_host";
+    if (redirects >= MAX_AVATAR_REDIRECTS) return "too_many_redirects";
+    current = next;
+  }
+}
+
+async function fetchAvatarImage(
+  url: string,
+  provider: string,
+): Promise<AvatarImage | null> {
   const host = new URL(url).hostname;
   let data: Uint8Array | undefined;
   try {
-    // No redirects: a redirect could leave the provider photo hosts.
-    const response = await fetch(url, {
-      redirect: "error",
-      signal: AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS),
-    });
+    const response = await fetchAvatarResponse(
+      url,
+      provider,
+      AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS),
+    );
+    if (typeof response === "string") {
+      return avatarFetchFailed(host, { "app.reason": response });
+    }
     if (!response.ok) {
       await response.body?.cancel();
       return avatarFetchFailed(host, {
@@ -204,11 +236,11 @@ export async function readAvatarImage(
     )
     .limit(1);
   const url = row ? parseAvatarUrl(row.avatarUrl, row.provider) : undefined;
-  if (!url) return undefined;
+  if (!row || !url) return undefined;
   // A new photo has a new URL, so the key changes with the photo.
   const key = `avatar:${createHash("sha256").update(url).digest("hex")}`;
   const image = await createCache(state, "core").getOrLoad(key, async () => {
-    const loaded = await fetchAvatarImage(url);
+    const loaded = await fetchAvatarImage(url, row.provider);
     return {
       value: loaded,
       ttlMs: loaded ? AVATAR_CACHE_TTL_MS : AVATAR_FAILURE_TTL_MS,

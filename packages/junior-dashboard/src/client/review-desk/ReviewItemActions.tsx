@@ -8,10 +8,11 @@ import {
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
-import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
+import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
+import { useReportUnsentAnswer } from "./UnsentAnswers";
 
 function personLabel(person: { displayName?: string; email: string }) {
   return person.displayName ?? person.email;
@@ -79,6 +80,8 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
   const { item } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
+  const [unsent, setUnsent] = useState(false);
+  useReportUnsentAnswer(item, unsent);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct) {
@@ -126,9 +129,10 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
       {item.kind === "action" && item.request ? (
         <div className="text-sm">
           <div className="font-medium">
-            <TranscriptMarkdown text={item.request.question} />
+            <DisplayText text={item.request.question} />
           </div>
           <UserInputForm
+            onUnsentChange={setUnsent}
             onSubmit={(answer) =>
               run({
                 action: "submit",
