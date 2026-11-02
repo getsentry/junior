@@ -194,8 +194,9 @@ describe("Lifecycle and Resilience", () => {
   }) => {
     // The release push stalls past the turn deadline, so the turn pauses and
     // continues in a new worker run. The person says `stop` during the first
-    // model request of that run. The fixture holds that request for longer
-    // than the 500 ms stop check, so the run must see the stop and end.
+    // model request of that run. The worker checks for a stop every 500 ms,
+    // and a replayed response returns at once, so the hook holds the request
+    // for three checks. The run must see the stop before any later step.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
@@ -218,15 +219,19 @@ describe("Lifecycle and Resilience", () => {
           if (progress.type === "model_request" && paused && !sentStop) {
             sentStop = true;
             await send(slackThreadMessage("stop"));
+            await new Promise((resolve) => setTimeout(resolve, 1_500));
           }
         },
       },
     );
 
     expect(sentStop).toBe(true);
-    // A stopped turn has no reply. Without the stop, it would succeed.
+    // The only post is the stop acknowledgement. Without the fix, the
+    // continued run ignores the stop, succeeds, and posts the release status.
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
-    expect(conversation.replies).toEqual([]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("stay out of this thread"),
+    ]);
     expect(
       completedMcpToolCalls(
         "mcp__eval-operation__release-status",
