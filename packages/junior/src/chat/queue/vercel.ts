@@ -15,11 +15,19 @@ function defaultQueueClientOptions(): QueueClientOptions {
 }
 
 let client: QueueClient | undefined;
+let currentDeploymentClient: QueueClient | undefined;
 
 // Build on first use, not at import, so env is read when the app runs.
 function getVercelQueueClient(): QueueClient {
   client ??= new QueueClient(defaultQueueClientOptions());
   return client;
+}
+
+// A default client pins each message to the deployment that sent it. This
+// client is unpinned, so its messages are not tied to an old deployment.
+function getCurrentDeploymentQueueClient(): QueueClient {
+  currentDeploymentClient ??= new QueueClient({ deploymentId: null });
+  return currentDeploymentClient;
 }
 
 function visibility(consumer: QueueConsumer) {
@@ -33,18 +41,22 @@ export const vercelQueueProvider: QueueProvider = {
   // OpenTelemetry has no well-known `messaging.system` value for Vercel Queues.
   messagingSystem: "vercel_queue",
   send: async (topic, payload, options) => {
-    const { messageId } = await getVercelQueueClient().send(
-      topic,
-      payload,
-      options,
-    );
+    const { currentDeployment, ...sendOptions } = options ?? {};
+    const queueClient = currentDeployment
+      ? getCurrentDeploymentQueueClient()
+      : getVercelQueueClient();
+    const { messageId } = await queueClient.send(topic, payload, sendOptions);
     return messageId ? { messageId } : {};
   },
-  createCallback: (consumer) =>
-    handleCallback(consumer.handler, {
-      retry: consumer.retry,
-      ...visibility(consumer),
-    }),
+  createCallback: (consumer) => {
+    const options = { retry: consumer.retry, ...visibility(consumer) };
+    return consumer.currentDeployment
+      ? getCurrentDeploymentQueueClient().handleCallback(
+          consumer.handler,
+          options,
+        )
+      : handleCallback(consumer.handler, options);
+  },
   registerDevConsumer: (consumer) =>
     registerDevConsumer({
       client: getVercelQueueClient(),

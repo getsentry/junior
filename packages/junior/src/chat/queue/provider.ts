@@ -31,6 +31,11 @@ export interface QueueSendOptions {
   idempotencyKey?: string;
   /** Drop the message if it is not delivered within this many seconds. */
   retentionSeconds?: number;
+  /**
+   * Do not pin the message to the deployment that sent it, so a newer
+   * deployment can receive it. Its consumer must set the same flag.
+   */
+  currentDeployment?: boolean;
 }
 
 /** Result of one queue send. */
@@ -48,6 +53,8 @@ export interface QueueConsumer {
     metadata: QueueMessageMetadata,
   ): QueueRetryDirective | undefined;
   topic: string;
+  /** Receive messages sent with `currentDeployment`. */
+  currentDeployment?: boolean;
   /** Wait this many seconds before a message that is in flight is sent again. */
   visibilityTimeoutSeconds?: number;
 }

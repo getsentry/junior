@@ -35,6 +35,7 @@ describe("conversation queue transport", () => {
         delaySeconds: 16,
         idempotencyKey: "idem-1",
         retentionSeconds: 3_600,
+        currentDeployment: true,
       },
     );
   });

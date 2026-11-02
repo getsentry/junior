@@ -10,6 +10,8 @@ import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
 export interface QueueCallbackOptions<Message> {
   consumerGroup: string;
+  /** Receive messages sent with `currentDeployment`. */
+  currentDeployment?: boolean;
   /** Use `null` when durable state already owns the attempt limit. */
   maxDeliveries: number | null;
   onRejected(
@@ -89,6 +91,7 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
 
   const consumer: QueueConsumer = {
     consumerGroup: options.consumerGroup,
+    currentDeployment: options.currentDeployment,
     handler,
     retry,
     topic: options.topic,

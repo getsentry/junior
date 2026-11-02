@@ -181,6 +181,7 @@ function conversationWorkCallback(
 ) {
   return queueCallback<ConversationQueueMessage>({
     consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
+    currentDeployment: true,
     // Conversation work stores and limits failed attempts in durable state.
     maxDeliveries: null,
     onRejected: logConversationQueueMessageRejected,

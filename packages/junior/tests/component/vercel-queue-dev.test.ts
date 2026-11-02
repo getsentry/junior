@@ -88,6 +88,7 @@ const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 const originalConversationWorkEnabled =
   process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
+const originalDeploymentId = process.env.VERCEL_DEPLOYMENT_ID;
 
 afterEach(async () => {
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
@@ -108,6 +109,11 @@ afterEach(async () => {
     delete process.env.JUNIOR_SECRET;
   } else {
     process.env.JUNIOR_SECRET = originalJuniorSecret;
+  }
+  if (originalDeploymentId === undefined) {
+    delete process.env.VERCEL_DEPLOYMENT_ID;
+  } else {
+    process.env.VERCEL_DEPLOYMENT_ID = originalDeploymentId;
   }
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
@@ -312,6 +318,7 @@ describe("plugin task Vercel queue integration", () => {
     }));
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
+    process.env.VERCEL_DEPLOYMENT_ID = "dpl_sender";
 
     const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
       await import("@/chat/plugins/task-queue");
@@ -339,6 +346,41 @@ describe("plugin task Vercel queue integration", () => {
         retentionSeconds: 3600,
       },
     );
+    // Plugin tasks stay on the deployment that sent them.
+    expect(QueueClient).toHaveBeenCalledExactlyOnceWith({});
+  });
+
+  it("sends conversation wakes unpinned from the sending deployment", async () => {
+    const send = vi.fn(async () => ({ messageId: "msg_wake" }));
+    const QueueClient = vi.fn(function QueueClientMock() {
+      return { send };
+    });
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient,
+      handleCallback: vi.fn(),
+      registerDevConsumer: vi.fn(),
+    }));
+
+    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env.VERCEL_DEPLOYMENT_ID = "dpl_sender";
+
+    const { createVercelConversationWorkQueue } =
+      await import("@/chat/task-execution/vercel-queue");
+
+    await expect(
+      createVercelConversationWorkQueue({ topic: "work" }).send({
+        schemaVersion: 2,
+        conversationId: "slack:C123:1712345.0001",
+      }),
+    ).resolves.toEqual({ messageId: "msg_wake" });
+
+    expect(QueueClient).toHaveBeenCalledExactlyOnceWith({ deploymentId: null });
+    expect(send).toHaveBeenCalledWith("work", expect.any(Object), {
+      delaySeconds: undefined,
+      idempotencyKey: undefined,
+      retentionSeconds: 3600,
+    });
   });
 });
 
@@ -386,9 +428,12 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     const routeHandler = vi.fn();
     const handleCallback = vi.fn(() => routeHandler);
 
+    const QueueClient = vi.fn(function QueueClientMock() {
+      return { handleCallback };
+    });
     vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback,
+      QueueClient,
+      handleCallback: vi.fn(),
       registerDevConsumer: vi.fn(),
     }));
 
@@ -405,6 +450,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
         visibilityTimeoutSeconds: 45,
       }),
     ).toBe(routeHandler);
+    // The consumer must ack unpinned messages with an unpinned client.
+    expect(QueueClient).toHaveBeenCalledExactlyOnceWith({ deploymentId: null });
 
     type TestQueueMetadata = {
       consumerGroup: string;
@@ -514,9 +561,12 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     const routeHandler = vi.fn();
     const handleCallback = vi.fn(() => routeHandler);
 
+    const QueueClient = vi.fn(function QueueClientMock() {
+      return { handleCallback };
+    });
     vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback,
+      QueueClient,
+      handleCallback: vi.fn(),
       registerDevConsumer: vi.fn(),
     }));
 

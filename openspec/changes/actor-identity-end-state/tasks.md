@@ -89,9 +89,9 @@ Finish #2482.
     - The Inbound message schema is strict. The Slack, web, Agent
       invocation, and plugin dispatch kinds of `input.metadata` are strict
       too. Old code rejects the id on the entry and in its metadata.
-    - The mailbox is in shared Redis. Vercel Queues sends a queue message
-      only to the deployment that sent it, but this does not stop an old
-      worker from reading a new mailbox entry.
+    - The mailbox is in shared Redis. Conversation wakes are not pinned to
+      the deployment that sent them, and an old worker can read a new
+      mailbox entry.
     - During a deploy, an old worker can still run a Turn while new code
       adds a steering message to the same Conversation. After that, the old
       worker cannot read the Conversation execution. Its lease check-in,

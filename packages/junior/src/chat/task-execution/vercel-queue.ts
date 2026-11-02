@@ -67,6 +67,9 @@ export function createVercelConversationWorkQueue(
             retentionSeconds:
               options.retentionSeconds ??
               CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+            // Work continues on the new version after a deploy. The payload
+            // holds only ids, and durable state already spans versions.
+            currentDeployment: true,
           });
           if (!result.messageId) {
             return {};
