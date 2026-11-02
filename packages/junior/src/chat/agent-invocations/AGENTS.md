@@ -11,3 +11,6 @@
   Turn Source (a child watch-event Turn has an event Source).
 - An Agent type (`agent-types.ts`) is data. Read its fields, never its name.
   Types do not limit tools.
+- A top-level agent message (`top-level-message.ts`) runs as the event system
+  Actor. It never carries the sender's Actor or credentials. Check its access
+  on each send: same tenant, same scope, and a member for a private target.
