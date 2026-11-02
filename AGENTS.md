@@ -14,6 +14,13 @@
 - Before you change code in a directory, read each `AGENTS.md` on the path from
   the repo root to that directory.
 
+## Product Design and Comms
+
+- Don't state the obvious. This applies to UI copy, hints, empty states, agent
+  replies, Slack messages, docs, and PR text. Remove a line when the control,
+  label, layout, or context already says it. For example, do not put "One
+  click sends your answer" under answer buttons.
+
 ## Commands
 
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
