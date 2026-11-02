@@ -24,6 +24,7 @@ import {
   triggerKind,
   type AutomationTriggerInput,
 } from "@/chat/automations/tool-support";
+import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { AutomationDestination } from "@/chat/automations/creator";
 import { sameDestination } from "@/chat/destination";
@@ -322,7 +323,7 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator. Only the creator can enable creator credentials. A non-creator who changes the instruction, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
     inputSchema,
     prepareArguments(args) {
       // Null means omitted.
@@ -355,6 +356,19 @@ export function createUpdateAutomationTool(
       if (input.destination && current.kind === "event") {
         throw new ToolInputError(
           "Event automations cannot move. Create a new event automation in this conversation instead.",
+        );
+      }
+      // Anyone can move a public Automation. A private one stays where its
+      // creator put it.
+      if (
+        input.destination &&
+        !current.ownedByViewer &&
+        (await resolveDestinationVisibility({
+          destination: current.task.destination,
+        })) !== "public"
+      ) {
+        throw new ToolInputError(
+          "Only the creator can move an automation out of a private channel or DM.",
         );
       }
       const editor = automationEditor(caller.viewer, current);

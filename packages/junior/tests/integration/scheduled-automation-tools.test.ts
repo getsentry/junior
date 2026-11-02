@@ -1271,6 +1271,15 @@ describe("Scheduled automation tools", () => {
       },
     });
 
+    // This channel is not public, so only the creator can move the task.
+    await expect(
+      executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
+        automationId: created.automation.id,
+        destination: "<#CPUBLIC>",
+      }),
+    ).rejects.toThrow(
+      "Only the creator can move an automation out of a private channel or DM.",
+    );
     // Another actor can change where results go. The change drops the
     // creator's credentials.
     await expect(
