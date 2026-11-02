@@ -177,9 +177,8 @@ This matches the current rules on `main`:
 - Another Actor's message does not join an active Actor's credentialed work.
   The worker puts messages in one Turn only when their author and Source
   match (`selectContiguousTurnBatch` in
-  `task-execution/attempt-selection.ts`). By default, another Actor's
-  mid-run Slack ask waits for its own Turn (`JUNIOR_CROSS_ACTOR_MID_RUN_MODE`,
-  `follow_up`).
+  `task-execution/attempt-selection.ts`). Another Actor's mid-run Slack
+  ask always waits for its own Turn.
 - A system-acted event Turn uses the grants of a Watch creator only through
   `timerWatchCredentialSubject` (`chat/events/notification.ts`). It gives a
   credential subject only when every event in the batch has a valid subject
