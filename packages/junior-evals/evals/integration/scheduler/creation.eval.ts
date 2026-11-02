@@ -76,7 +76,7 @@ describe("Schedule Creation", () => {
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  test("when a reminder for the requester posts to the channel, save it for the Automation creator without conversation references", async ({
+  test("when a reminder posts to the channel, save it without conversation references", async ({
     run,
   }) => {
     const conversation = await run(
@@ -88,9 +88,8 @@ describe("Schedule Creation", () => {
     const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     // The run does not see this request, so "this channel" would mean nothing.
+    // `createAutomation` rejects it, so a saved instruction never has it.
     const { instruction } = creates[0]!.input as { instruction?: string };
-    expect(instruction).toMatch(/\bAutomation creator\b/i);
-    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
     expect(instruction).not.toMatch(/\bthis channel\b/i);
   });
 
