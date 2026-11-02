@@ -2,8 +2,8 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 /**
- * Proves the `run.actors` runtime threading contract from
- * `packages/junior/src/chat/AGENTS.md`: the live actors getter passed into the plugin
+ * Proves the `run.actors` runtime threading contract: the live actors getter
+ * passed into the plugin
  * hook runner is seeded from the run actor and grows as steering messages
  * with a resolvable actor drain into the run, without ever including an
  * unattributable steering message.

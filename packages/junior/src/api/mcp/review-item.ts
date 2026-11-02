@@ -1,4 +1,9 @@
-/** Own the MCP view of one Review item, shared by the review item tools. */
+/**
+ * Own the MCP view of one Review item, shared by the review item tools.
+ *
+ * MCP Review items stay read-only. An answer or dismissal sends a message to
+ * the linked Conversations, which can start a Turn.
+ */
 import { z } from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
 import { canActOnReviewItem } from "@/chat/review-items/access";

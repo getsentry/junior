@@ -8,6 +8,9 @@
  * sets the mode: `auto`, `replay`, `record`, or `off`. Without it, a run with
  * the write token (`ROACH_TOKEN`) uses `auto`, and a run without it uses
  * `replay`, because the service allows only `replay` without the token.
+ *
+ * Anyone who can make the same request can read its recording. Never record
+ * private responses.
  */
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import type { RecordingMode, RecordingRule, RunConfig } from "./roach/types";
