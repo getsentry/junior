@@ -19,6 +19,10 @@ const DOC_GUIDANCE =
   "owns into its JSDoc and procedures into a skill. See " +
   "policies/documentation.md.";
 
+const NESTED_AGENTS_GUIDANCE =
+  "Only the repo root has an AGENTS.md. Put intent in a code comment next " +
+  "to the code that it governs. See policies/documentation.md.";
+
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const DOC_FILENAMES = new Set(["AGENTS.md", "README.md"]);
 const REFERENCE_DOC_PATHS = new Set(["TELEMETRY.md", "TERMINOLOGY.md"]);
@@ -87,6 +91,13 @@ export function isCoreDoc(filePath) {
   );
 }
 
+/** An AGENTS.md below the repo root. */
+export function isNestedAgentsDoc(filePath) {
+  return (
+    filePath !== "AGENTS.md" && path.posix.basename(filePath) === "AGENTS.md"
+  );
+}
+
 /** Reference docs that agents look up. They may be long, but not unbounded. */
 export function isReferenceDoc(filePath) {
   return REFERENCE_DOC_PATHS.has(filePath);
@@ -138,6 +149,9 @@ function main() {
       {},
       MAX_CODE_FILE_LINES,
       DOC_GUIDANCE,
+    ),
+    ...collectFiles(root, isNestedAgentsDoc).map(
+      (file) => `${file.path}: ${NESTED_AGENTS_GUIDANCE}`,
     ),
   ];
   if (errors.length === 0) {

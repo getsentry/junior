@@ -5,5 +5,5 @@
   current behavior and cannot override `../policies/`.
 - Write a plan only when a change crosses many boundaries or needs a rollout
   order.
-- When the work is done, move lasting rules into code, types, tests, or the
-  owning `AGENTS.md`. Then delete the plan. Git history is the archive.
+- When the work is done, move lasting rules into code, types, tests, code
+  comments, or policies. Then delete the plan. Git history is the archive.

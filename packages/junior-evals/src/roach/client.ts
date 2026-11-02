@@ -1,5 +1,13 @@
 /**
- * The client of the Roach service. See `AGENTS.md` in this directory.
+ * The client of the Roach service.
+ *
+ * This directory copies the client side of
+ * [`getsentry/roach`](https://github.com/getsentry/roach) at commit `9c623c0`.
+ * Delete it when `@sentry/roach` is on npm. Use only Node built-ins here. To
+ * update, copy `client.ts`, `types.ts`, `values.ts`, and `report.ts` again,
+ * keep the local changes, and change the commit above. Local changes:
+ * `CONTROL_PATH` is a constant here (no `server.ts`), `types.ts` adds service
+ * types, and `values.ts` drops service-only functions.
  *
  * `startRemoteRun()` starts a run on a Roach service. It
  * returns `env`, the variables that send the traffic of a process through

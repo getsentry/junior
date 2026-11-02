@@ -14,7 +14,7 @@ Do not use policies for:
 - copied schemas, commands, or test inventories
 - public product docs
 
-Put module intent and invariants in the owning directory's `AGENTS.md`. Follow
+Put module intent and invariants in code comments next to the code. Follow
 `documentation.md`. Code, runtime schemas, exported types, and tests define the real
 contract. Temporary plans live under `../openspec/changes/` and cannot override
 policy.

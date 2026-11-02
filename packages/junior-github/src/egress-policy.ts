@@ -2,7 +2,10 @@
  * GitHub egress policy and grant selection.
  *
  * Owns which GitHub requests Junior may make and which credential grant
- * each request needs.
+ * each request needs. Junior-owned issue, pull request, review, and push
+ * writes never fall back to user OAuth. Merge, fork, branch deletion, REST ref
+ * writes, and administration stay unsupported; unknown REST writes and
+ * GraphQL mutations are denied.
  */
 import {
   EgressPolicyDenied,
