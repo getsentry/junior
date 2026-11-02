@@ -1,6 +1,6 @@
 # Automation pages
 
-- Core owns validation, edit access, creator-only rules, revision checks,
+- Core owns validation, edit access, creator credential rules, revision checks,
   Schedule previews, and the Event catalog. Show core errors. Do not repeat
   these rules in the page.
 - Preview requests never save or run work.

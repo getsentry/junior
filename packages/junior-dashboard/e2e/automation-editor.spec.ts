@@ -219,7 +219,7 @@ test("replaces an Event trigger with one for any resource", async ({
   ]);
 });
 
-test("public non-creators edit settings without creator-only controls", async ({
+test("public non-creators edit settings without creator credentials", async ({
   page,
   dashboard,
 }) => {
@@ -233,9 +233,8 @@ test("public non-creators edit settings without creator-only controls", async ({
   await expect(
     page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add message" })).toHaveCount(
-    0,
-  );
+  // Public readers can change where results go.
+  await expect(page.getByRole("button", { name: "Add message" })).toBeVisible();
   await page
     .getByLabel("Instruction", { exact: true })
     .fill("Notify responders and link the incident timeline.");

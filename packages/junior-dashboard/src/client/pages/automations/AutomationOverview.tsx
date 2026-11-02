@@ -198,8 +198,8 @@ function AutomationAbout(props: { automation: AutomationSummary }) {
           {automation.destination.visibility === "private"
             ? null
             : "You can edit, pause, or delete it because it is in a public channel. "}
-          Only {automation.createdBy} can change where results go, turn on their
-          connected accounts, or resume or run it while it uses them.
+          Only {automation.createdBy} can turn on their connected accounts, or
+          resume or run it while it uses them.
         </p>
       )}
     </RailCard>
