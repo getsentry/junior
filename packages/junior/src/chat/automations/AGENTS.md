@@ -44,6 +44,8 @@ The creator's credentials must run only work that the creator approved.
   `requireInstructionReferences` rejects "this channel", the creator's own
   name or mention, and other people named without a Slack mention.
 - Each run puts the creator mention in the `Created by:` task input line.
+  It also writes the mention for "the Automation creator" in the
+  instructions.
 
 ## Edits And Versions
 
