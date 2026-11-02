@@ -126,9 +126,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     return route.fallback();
   });
   await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
-  await expect(page.getByLabel("Resource identifier")).toHaveValue(
-    "getsentry/junior#42",
-  );
+  await expect(page.getByLabel("Trigger name")).toHaveValue("Closed issues");
   await screenshot(page, "automation-event-editor");
   // Only issue.closed sets closedBy, so the filter hides for issue.opened.
   await expect(page.getByLabel("closedBy", { exact: true })).toBeVisible();
@@ -173,9 +171,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
       instruction: "Summarize the issue and include a link.",
       trigger: {
         namespace: "github",
-        resourceType: "issue",
-        identifier: "getsentry/junior#42",
-        label: "Issue 42",
+        label: "Closed issues",
         events: ["issue.closed", "issue.opened"],
         match: { state: "closed" },
       },
@@ -183,16 +179,30 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   ]);
 });
 
-test("replaces an Event trigger with one for any resource", async ({
+test("replaces a saved trigger that names one resource", async ({
   page,
   dashboard,
 }) => {
   const state = await mockAutomationEditor(page, "event");
+  // A trigger saved before identifiers left the write paths.
+  state.value = {
+    ...state.value,
+    trigger: {
+      namespace: "github",
+      resourceType: "issue",
+      identifier: "getsentry/junior#42",
+      label: "Issue 42",
+      events: ["issue.closed"],
+      match: {},
+    },
+  } as typeof state.value;
   await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
-  await page.getByLabel("Resource type").selectOption("github:*");
+  // Its events and filters cannot change without the identifier, so the
+  // editor offers only a whole replacement.
+  await expect(page.getByText("This trigger names one resource.")).toBeVisible();
+  await expect(page.getByLabel("Trigger name")).toHaveCount(0);
+  await page.getByLabel("Replace trigger").selectOption("github");
   await page.getByRole("button", { name: "Replace trigger" }).click();
-  await expect(page.getByLabel("Resource identifier")).toHaveCount(0);
-  // A trigger with no identifier names no resource.
   await page.getByLabel("Trigger name").fill("Closed issues");
   await page.getByRole("checkbox", { name: /^issue closed/ }).check();
   await screenshot(page, "automation-event-editor-any-resource");

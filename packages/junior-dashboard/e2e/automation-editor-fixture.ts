@@ -55,11 +55,9 @@ export async function mockAutomationEditor(
           status: "active",
           trigger: {
             namespace: "github",
-            resourceType: "issue",
-            identifier: "getsentry/junior#42",
-            label: "Issue 42",
+            label: "Closed issues",
             events: ["issue.closed"],
-            match: {},
+            match: { state: "closed" },
           },
         },
   );
