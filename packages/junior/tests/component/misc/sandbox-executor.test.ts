@@ -2112,6 +2112,23 @@ describe("createTestSandbox", () => {
       }
       return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
     });
+    nextSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("echo second")) {
+        await setSandboxEgressAuthRequiredSignal(
+          {
+            credentials: { actor: { type: "user", userId: "U123" } },
+            egressId: "sbx_queued_next_session",
+            expiresAtMs: Date.now() + 60_000,
+            contextId: "ctx-queued",
+          },
+          {
+            provider: "github",
+            grant: { name: "user-write", access: "write" },
+          },
+        );
+      }
+      return { exitCode: 1, stdout: async () => "", stderr: async () => "" };
+    });
     const workspace = (id: string) => ({
       id,
       name: id,
@@ -2135,8 +2152,12 @@ describe("createTestSandbox", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     await sandbox.switchWorkspace(workspace("workspace-next"));
     releaseFirst();
-    await Promise.all([first, second]);
+    const [, secondResult] = await Promise.all([first, second]);
 
+    // The signal comes from the session the command ran on.
+    expect(secondResult).toMatchObject({
+      details: { auth_required: { provider: "github" } },
+    });
     const ranOn = (target: MockSandbox) =>
       target.runCommand.mock.calls.some(([input]) =>
         String(input.args?.[1]).includes("echo second"),
