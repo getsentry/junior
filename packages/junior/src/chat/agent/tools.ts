@@ -661,6 +661,10 @@ export async function wireAgentTools(
     args.conversationPrivacy,
     onToolResult,
     actionReview,
+    {
+      countToolCall: args.resume.countToolCall,
+      workspace: agentSandbox.workspace,
+    },
   );
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic

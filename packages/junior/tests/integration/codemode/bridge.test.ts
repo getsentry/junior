@@ -6,11 +6,8 @@ import {
   CODE_MODE_SCRIPT_TIMEOUT_MS,
   runCodeModeScript,
 } from "@/chat/codemode/bridge";
-import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { createToolActionReview } from "@/chat/guardian/gate";
-import { restoreToolActionRejections } from "@/chat/guardian/history";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
-import type { PiMessage } from "@/chat/pi/messages";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
@@ -160,7 +157,7 @@ describe("Code Mode bridge", () => {
       },
     }) as AnyToolDefinition;
 
-    const result = await runCodeModeScript({
+    const { result } = await runCodeModeScript({
       countToolCall: resume.countToolCall,
       pipeline: pipelineFor(review),
       source: `
@@ -209,7 +206,7 @@ describe("Code Mode bridge", () => {
       },
     }) as AnyToolDefinition;
 
-    const result = await runCodeModeScript({
+    const { result } = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
@@ -242,7 +239,7 @@ describe("Code Mode bridge", () => {
     } as never);
     const { scriptTools } = planToolExposure(registry);
 
-    const result = await runCodeModeScript({
+    const { result } = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
@@ -262,11 +259,11 @@ describe("Code Mode bridge", () => {
     expect(handoff).not.toHaveBeenCalled();
   });
 
-  it("rejects only the denied call and keeps its marker for history", async () => {
+  it("rejects only the denied call and keeps its marker", async () => {
     const review = fakeGuardian();
     const posts: Array<{ channel: string; text: string }> = [];
 
-    const result = await runCodeModeScript({
+    const { result } = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(review),
       source: `
@@ -306,21 +303,6 @@ describe("Code Mode bridge", () => {
       expect.objectContaining({ status: "completed", toolName: "post" }),
       expect.objectContaining({ status: "rejected", toolName: "post" }),
     ]);
-
-    const history: PiMessage[] = [
-      {
-        role: "toolResult",
-        toolCallId: CODEMODE_CALL_ID,
-        toolName: CODEMODE_TOOL_NAME,
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        details: result,
-        isError: false,
-        timestamp: 1,
-      } as PiMessage,
-    ];
-    expect(restoreToolActionRejections(history)).toEqual([
-      rejected.guardianActionRejection!.priorRejection,
-    ]);
   });
 
   it("refuses a drain over the batch limit before any review", async () => {
@@ -328,7 +310,7 @@ describe("Code Mode bridge", () => {
     const onToolCall = vi.fn();
     const posts: Array<{ channel: string; text: string }> = [];
 
-    const result = await runCodeModeScript({
+    const { result } = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(review, { onToolCall }),
       source: `
@@ -366,7 +348,7 @@ describe("Code Mode bridge", () => {
     });
     await entered.promise;
     await vi.advanceTimersByTimeAsync(CODE_MODE_SCRIPT_TIMEOUT_MS);
-    const result = await run;
+    const { result } = await run;
 
     expect(result).toMatchObject({
       ok: false,
@@ -393,7 +375,7 @@ describe("Code Mode bridge", () => {
     });
     await Promise.all([firstEntered.promise, secondEntered.promise]);
     controller.abort(new Error("Run yielded"));
-    const result = await run;
+    const { result } = await run;
 
     expect(result).toMatchObject({
       ok: false,
@@ -434,7 +416,7 @@ describe("Code Mode bridge", () => {
     controller.abort(new Error("Run yielded"));
     // Past the bridge's short settle grace, far below the script deadline.
     await vi.advanceTimersByTimeAsync(5_000);
-    const result = await run;
+    const { result } = await run;
 
     expect(result).toMatchObject({
       ok: false,

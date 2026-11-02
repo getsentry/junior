@@ -60,6 +60,10 @@ import {
   type ToolActionRejectionMarker,
 } from "@/chat/guardian/history";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import {
+  createCodeModeTool,
+  type CodeModeToolOptions,
+} from "@/chat/codemode/tool";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**
@@ -710,7 +714,11 @@ export function createToolPipeline(options: ToolPipelineOptions) {
 /** A pipeline for one Run's tools. */
 export type ToolPipeline = ReturnType<typeof createToolPipeline>;
 
-/** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
+/**
+ * Wrap tool definitions into Pi Agent tool objects with logging, validation,
+ * and sandbox execution. With `codeMode`, the model also gets the `codemode`
+ * tool, which runs scripts over this pipeline.
+ */
 export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
   sandbox: SkillSandbox,
@@ -727,6 +735,7 @@ export function createPiAgentTools(
   conversationPrivacy?: ConversationPrivacy,
   onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
   actionReview?: ToolActionReview,
+  codeMode?: Pick<CodeModeToolOptions, "countToolCall" | "workspace">,
 ): AgentTool[] {
   const plannedTools = planToolExposure(tools);
   const visibleTools: Record<string, AnyToolDefinition> = {
@@ -736,6 +745,9 @@ export function createPiAgentTools(
     throw new Error(
       `${SEARCH_TOOLS_NAME} and ${EXECUTE_TOOL_NAME} are reserved for tool catalog discovery`,
     );
+  }
+  if (visibleTools[CODEMODE_TOOL_NAME]) {
+    throw new Error(`${CODEMODE_TOOL_NAME} is reserved for Code Mode`);
   }
   visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
     plannedTools.catalogTools,
@@ -754,6 +766,13 @@ export function createPiAgentTools(
     onToolResult,
     actionReview,
   });
+  if (codeMode) {
+    visibleTools[CODEMODE_TOOL_NAME] = createCodeModeTool({
+      ...codeMode,
+      pipeline,
+      scriptTools: plannedTools.scriptTools,
+    });
+  }
   return Object.entries(visibleTools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
