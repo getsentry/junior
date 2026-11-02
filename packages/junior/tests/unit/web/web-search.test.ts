@@ -27,7 +27,10 @@ describe("createWebSearchTool", () => {
 
   beforeEach(() => {
     vi.mocked(createGatewayProvider).mockReturnValue(gatewayProvider as never);
-    vi.mocked(resolveGatewayCredential).mockResolvedValue(undefined);
+    vi.mocked(resolveGatewayCredential).mockResolvedValue({
+      mode: "none",
+      token: "unauthenticated",
+    });
   });
 
   afterEach(() => {
@@ -64,7 +67,9 @@ describe("createWebSearchTool", () => {
       {} as never,
     );
 
-    expect(createGatewayProvider).toHaveBeenCalledWith({});
+    expect(createGatewayProvider).toHaveBeenCalledWith({
+      apiKey: "unauthenticated",
+    });
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
       mode: "agentic",
       maxResults: 2,

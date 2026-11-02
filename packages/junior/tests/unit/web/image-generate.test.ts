@@ -8,8 +8,6 @@ vi.mock("@/chat/pi/client", () => ({
     async () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
   ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
-  MISSING_GATEWAY_CREDENTIALS_ERROR:
-    "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
 }));
 
 vi.mock("@/chat/prompt", () => ({
