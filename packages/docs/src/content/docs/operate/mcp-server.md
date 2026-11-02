@@ -21,6 +21,8 @@ Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code
 
 ## Connect Claude Code
 
+In the dashboard, open **Settings** and select **MCP**. The page shows the server URL, the Claude Code command, and a JSON config for other clients.
+
 Add Junior as an HTTP MCP server:
 
 ```bash
