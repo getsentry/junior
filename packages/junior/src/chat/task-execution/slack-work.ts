@@ -463,7 +463,7 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean },
+    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -679,6 +679,7 @@ export function createSlackConversationWorker(
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
               shouldYield: context.shouldYield,
+              stopSignal: context.stopSignal?.(),
             });
           },
         });

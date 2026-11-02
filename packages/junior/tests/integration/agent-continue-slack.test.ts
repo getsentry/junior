@@ -64,6 +64,7 @@ function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
+  stopSignal?: AbortSignal;
 }): Promise<boolean> {
   // Direct resume only. Worker-owned timeout lease handback is covered by
   // durable-queue, not reimplemented here.
@@ -82,6 +83,7 @@ function continueAgentRun(args: {
             queue,
           }),
       },
+      { stopSignal: args.stopSignal },
     ),
   );
 }
@@ -325,6 +327,84 @@ describe("paused turn Slack integration", () => {
         providerTenantId: "T123",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("stops a resumed turn without posting its reply", async () => {
+    const conversationId = "slack:C123:1712345.0020";
+    const sessionId = "turn_msg_20";
+    // The worker found a stop request for this run before the resume began.
+    const stop = new AbortController();
+    stop.abort(new Error("Conversation work stopped"));
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      conversationId,
+      turnId: sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0020"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "yield",
+      resumedFromSliceId: 1,
+    });
+    await threadStateModule.persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "msg.20",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: { userId: "U123", userName: "alice" },
+          },
+        ],
+        processing: { activeTurnId: sessionId },
+        vision: { byFileId: {} },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+      stopSignal: stop.signal,
+    });
+
+    expect(continued).toBe(true);
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]?.signal).toBe(stop.signal);
+    // A stopped Turn posts neither its reply nor a failure notice.
+    expect(slackApiOutbox.messages()).toEqual([]);
+    await expect(
+      turnSessionStoreModule.getTurnRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({
+      state: "abandoned",
+      errorMessage: "Turn interrupted",
+    });
+    const persisted =
+      await threadStateModule.getPersistedThreadState(conversationId);
+    const conversation = coerceThreadConversationState(persisted);
+    await hydrateConversationMessages({ conversation, conversationId });
+    expect(conversation.processing.activeTurnId).toBeUndefined();
+    expect(
+      conversation.messages.find((message) => message.id === "msg.20")?.meta,
+    ).toMatchObject({ replied: false, skippedReason: "turn interrupted" });
+    const { getConversationEventStore } = await import("@/chat/db");
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      turnId: sessionId,
+      outcome: "cancelled",
+    });
   });
 
   it("restores the Turn Actor when the saved Message has no profile data", async () => {
