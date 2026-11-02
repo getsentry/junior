@@ -24,12 +24,13 @@ describe("Asking a Person", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        "Can you write my out-of-office auto-reply for my vacation? Point people to Sam for anything urgent.",
+        "Can you write my out-of-office auto-reply for my vacation? It should say the day I'm back, and point people to Sam for anything urgent.",
         { author: MAYA },
       ),
     );
 
-    // The dates are Maya's. The agent asks on the desk, not in plain text.
+    // Only Maya knows the day she is back. The agent asks on the desk, not
+    // in plain text.
     expect(askedRequests(conversation)).not.toHaveLength(0);
   });
 
