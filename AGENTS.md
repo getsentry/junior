@@ -1,8 +1,8 @@
 # Agent Instructions
 
 Before you change code in a directory, read each `AGENTS.md` on the path from
-the repo root. Repo-wide policy is indexed in `policies/README.md`. Telemetry
-names live in `TELEMETRY.md`.
+the repo root. Read the reference files at the end when your work touches
+their area.
 
 ## Rules
 
@@ -55,3 +55,38 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | File length            | `pnpm file-length:check` (code max 1,000 lines, core docs max 120)               |
 
 Split long files at a feature boundary. Do not compress formatting to pass.
+
+## Reference
+
+Vocabulary and names:
+
+- `TERMINOLOGY.md`: canonical words for code and docs.
+- `TELEMETRY.md`: span, metric, and attribute names.
+
+Policies in `policies/`:
+
+- `correctness-complexity.md`: how much design a fix needs.
+- `interface-design.md`: function and module shape.
+- `error-handling.md`: where failures are caught or retried.
+- `runtime-boundary-schemas.md`: validating data at runtime edges.
+- `provider-boundaries.md`: what belongs in core vs. a plugin.
+- `context-bound-systems.md`: passing authority, destination, and scope.
+- `security.md`: credentials, sandbox, and model access.
+- `data-redaction.md`: conversation privacy and redaction.
+- `serverless-background-work.md`: work that must survive request edges.
+- `observability.md`: telemetry for diagnosis.
+- `system-prompt.md`, `agent-steering.md`, `agentic-semantics.md`: prompt
+  text and agent behavior.
+- `tool-design.md`: model-facing tool contracts.
+- `testing.md`, `test-adapters.md`, `evals.md`: what to test and where.
+- `frontend-components.md`: dashboard UI ownership and styling.
+- `code-comments.md`, `documentation.md`: comments and internal docs.
+
+Package rules:
+
+- `packages/junior/src/chat/AGENTS.md`: chat runtime.
+- `packages/junior/tests/AGENTS.md`: test layout and fixtures.
+- `packages/junior/migrations/AGENTS.md`: database migrations.
+- `packages/junior-evals/AGENTS.md`: evals and recordings.
+- `packages/junior-dashboard/AGENTS.md`: dashboard.
+- `packages/junior-plugin-api/AGENTS.md`: plugin contracts.
