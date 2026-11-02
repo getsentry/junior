@@ -13,6 +13,8 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation detail API", () => {
@@ -325,6 +327,59 @@ describe("conversation detail API", () => {
         slackUserId: "UOWNER1",
       },
     ]);
+  });
+
+  it("shows the photo of each message author", async () => {
+    const conversationId = "slack:C123:author-photos";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "Author photos",
+      visibility: "public",
+    });
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          authorIdentityId: owner!.id,
+          messageId: "owner-1",
+          meta: { author: { fullName: "Owner Person", userId: "UOWNER1" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+    ]);
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer("owner@example.com"),
+    });
+    expect(detail?.events[0]?.data).toMatchObject({
+      actorIdentity: {
+        avatarUrl: `/api/people/avatars/${owner!.id}`,
+        fullName: "Owner Person",
+        slackUserId: "UOWNER1",
+      },
+    });
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

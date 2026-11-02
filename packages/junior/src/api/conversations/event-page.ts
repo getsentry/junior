@@ -21,6 +21,7 @@ import {
   conversationReportSourceEventTypes,
   projectConversationReportEventPage,
 } from "./events";
+import { readIdentityParticipants } from "./participants";
 
 const conversationEventColumns = getTableColumns(juniorConversationEvents);
 const MIN_SCAN_SIZE = 64;
@@ -193,6 +194,43 @@ async function projectConversationEventRows(
 }
 
 /**
+ * Add the photo path of each user Message author. A Message without a saved
+ * author name gets the name of its author Identity.
+ */
+async function attachMessageAuthorAvatars(
+  executor: JuniorSqlDatabase,
+  rows: readonly ConversationEventRow[],
+  events: ConversationReportEvent[],
+): Promise<ConversationReportEvent[]> {
+  const identityIdBySeq = new Map(
+    rows.flatMap((row) =>
+      row.actorIdentityId ? [[row.seq, row.actorIdentityId] as const] : [],
+    ),
+  );
+  const authorIdentityId = (event: ConversationReportEvent) =>
+    event.data.type === "message" && event.data.role === "user"
+      ? identityIdBySeq.get(event.seq)
+      : undefined;
+  const participants = await readIdentityParticipants(
+    executor.db(),
+    events.flatMap((event) => authorIdentityId(event) ?? []),
+  );
+  return events.map((event) => {
+    const identityId = authorIdentityId(event);
+    const author = identityId ? participants.get(identityId) : undefined;
+    if (!author || event.data.type !== "message") return event;
+    const saved = event.data.actorIdentity;
+    const actorIdentity = saved
+      ? {
+          ...saved,
+          ...(author.avatarUrl ? { avatarUrl: author.avatarUrl } : undefined),
+        }
+      : author;
+    return { ...event, data: { ...event.data, actorIdentity } };
+  });
+}
+
+/**
  * Read the latest reporting events before an exclusive boundary.
  *
  * Source rows are scanned in bounded chunks until the requested projected page
@@ -235,7 +273,10 @@ export async function readConversationEventPage(
     beforeSeq = batch.at(-1)!.seq;
   }
 
-  const events = projected.slice(-args.limit);
+  const page = projected.slice(-args.limit);
+  const events = args.canExposePayload
+    ? await attachMessageAuthorAvatars(executor, rows, page)
+    : page;
   return {
     events,
     ...(projected.length > events.length && events[0]

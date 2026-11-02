@@ -203,7 +203,7 @@ function TurnContextActor(props: { actor: ActorIdentity; timestamp?: number }) {
       aria-label="Speaker"
       className="flex min-w-0 items-center gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3"
     >
-      <ActorAvatar name={name} size="detail" />
+      <ActorAvatar imageUrl={props.actor.avatarUrl} name={name} size="detail" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline justify-between gap-3">
           {email ? (

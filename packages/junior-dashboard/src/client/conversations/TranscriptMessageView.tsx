@@ -40,6 +40,9 @@ export const TranscriptMessageView = memo(
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
+        avatarUrl={
+          transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+        }
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
@@ -109,6 +112,9 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
+      avatarUrl={
+        transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+      }
     >
       <TranscriptMessageHeader
         message={props.message}

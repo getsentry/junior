@@ -58,6 +58,37 @@ function participantIdentity(
   return Object.keys(participant).length > 0 ? participant : undefined;
 }
 
+/**
+ * Read the actor identity, with its photo path, of each person Identity id.
+ * The system Identity is not a person, so it is not in the map.
+ */
+export async function readIdentityParticipants(
+  db: JuniorDatabase,
+  identityIds: readonly string[],
+): Promise<Map<string, ActorIdentity>> {
+  if (identityIds.length === 0) return new Map();
+  const rows = await db
+    .select(identityColumns)
+    .from(juniorIdentities)
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        inArray(juniorIdentities.id, [...new Set(identityIds)]),
+        ne(juniorIdentities.kind, "system"),
+      ),
+    );
+  const userAvatarUrls = await readUserAvatarUrls(
+    db,
+    rows.flatMap((row) => (row.userId ? [row.userId] : [])),
+  );
+  const participants = new Map<string, ActorIdentity>();
+  for (const row of rows) {
+    const participant = participantIdentity(row, userAvatarUrls);
+    if (participant) participants.set(row.identityId, participant);
+  }
+  return participants;
+}
+
 /** Read actor identities in first-appearance order for each Conversation. */
 export async function readConversationParticipants(
   db: JuniorDatabase,
