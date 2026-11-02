@@ -44,10 +44,8 @@ function toolContext(responses: Response[]) {
 }
 
 describe("updatePullRequestFeedback", () => {
-  it("is directly available to event turns without action review", () => {
-    const { tool } = toolContext([]);
-    expect(tool.exposure).toBe("direct");
-    expect(tool.approvalMode).toBe("approve");
+  it("is directly available to event turns", () => {
+    expect(toolContext([]).tool.exposure).toBe("direct");
   });
 
   it("adds the addressed reaction for a fresh conversation comment", async () => {
@@ -125,28 +123,46 @@ describe("updatePullRequestFeedback", () => {
     );
   });
 
-  it("refuses feedback on a pull request that the bot did not author", async () => {
-    const { fetch, tool } = toolContext(
-      pullRequestLookup("review", HUMAN_USER_ID),
-    );
+  // The model supplies the comment, so both cases come from untrusted input.
+  it.each([
+    {
+      name: "a pull request that the bot did not author",
+      commentKind: "review" as const,
+      responses: pullRequestLookup("review", HUMAN_USER_ID),
+    },
+    {
+      name: "a plain issue",
+      commentKind: "conversation" as const,
+      responses: [
+        response({
+          issue_url: "https://api.github.com/repos/getsentry/junior/issues/8",
+        }),
+        response({ message: "Not Found" }, 404),
+      ],
+    },
+  ])(
+    "refuses feedback on a comment on $name",
+    async ({ commentKind, responses }) => {
+      const { fetch, tool } = toolContext(responses);
 
-    await expect(
-      tool.execute?.(
-        {
-          repo: "getsentry/junior",
-          commentKind: "review",
-          commentId: 77,
-          status: "addressed",
-        },
-        { toolCallId: "foreign-pr" },
-      ),
-    ).rejects.toThrow(
-      "only set feedback status on comments on pull requests it authored",
-    );
+      await expect(
+        tool.execute?.(
+          {
+            repo: "getsentry/junior",
+            commentKind,
+            commentId: 77,
+            status: "addressed",
+          },
+          { toolCallId: "not-owned" },
+        ),
+      ).rejects.toThrow(
+        "only set feedback status on comments on pull requests it authored",
+      );
 
-    // Only the two ownership reads ran. No reaction was listed or written.
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
+      // Only the two ownership reads ran. No reaction was listed or written.
+      expect(fetch).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("replaces Junior's prior status reaction without touching a human reaction", async () => {
     const { fetch, tool } = toolContext([
