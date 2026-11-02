@@ -5,7 +5,6 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { InlineError } from "../components/InlineError";
 import { LoadMorePagination } from "../components/Pagination";
 import { useDetailsPanel } from "../components/DetailsPanel";
-import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDocumentTitle } from "../documentTitle";
 import { pathWithSearch, useDebouncedSearchParam } from "../searchParams";
@@ -24,10 +23,7 @@ import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
 const shellClass =
   "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
 
-function InboxEmpty(props: {
-  className?: string;
-  onShowArchived?: () => void;
-}) {
+function InboxEmpty(props: { className?: string }) {
   return (
     <div
       className={cn(
@@ -38,11 +34,6 @@ function InboxEmpty(props: {
       <p className="m-0 font-display text-lg font-medium text-dashboard-text">
         Nothing needs you
       </p>
-      {props.onShowArchived ? (
-        <Button onClick={props.onShowArchived} variant="quiet">
-          See archived items
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -78,22 +69,29 @@ export function ReviewDeskPage() {
   useDocumentTitle("Inbox");
   const [searchParams] = useSearchParams();
   const [search, setSearch, q] = useDebouncedSearchParam();
-  const {
-    items: list,
-    moreArchived,
-    query: items,
-  } = useReviewItemsData({ includeArchived: true, q });
+  const { items: list, moreArchived, query: items } = useReviewItemsData({ q });
   const showBlocked = !q;
   const blocked = useBlockedAutomationsData(showBlocked);
   const blockedAutomations = showBlocked
     ? (blocked.data?.automations ?? [])
     : [];
   const groups = useMemo(() => inboxGroups(list), [list]);
+  // A search lists every match in one list. Later pages add open items, so
+  // keep open matches before archived ones.
+  const results = useMemo(
+    () =>
+      q
+        ? [
+            ...list.filter((item) => item.status === "open"),
+            ...list.filter((item) => item.status !== "open"),
+          ]
+        : undefined,
+    [list, q],
+  );
   const open = [...groups.needsYou, ...groups.fyi];
 
-  // Archived items stay out of the way until a search or the reader asks.
   const [collapsed, setCollapsed] = useState<ReadonlySet<InboxGroupKey>>(
-    () => new Set(["archived"]),
+    () => new Set(),
   );
   const toggle = (key: InboxGroupKey) =>
     setCollapsed((current) => {
@@ -102,16 +100,6 @@ export function ReviewDeskPage() {
       else next.add(key);
       return next;
     });
-  const shownCollapsed = useMemo(() => {
-    if (!q || !collapsed.has("archived")) return collapsed;
-    const next = new Set(collapsed);
-    next.delete("archived");
-    return next;
-  }, [collapsed, q]);
-  const showArchived =
-    groups.archived.length > 0 && shownCollapsed.has("archived")
-      ? () => toggle("archived")
-      : undefined;
 
   const itemParam = searchParams.get("item") ?? undefined;
   // Wide screens select the item that waited longest. Small screens show
@@ -125,12 +113,11 @@ export function ReviewDeskPage() {
 
   // Read source titles only for the rows on screen and the selected item.
   const sourceIds = useMemo(() => {
-    const shown = [
-      ...(shownCollapsed.has("needs-you") ? [] : groups.needsYou),
-      ...(shownCollapsed.has("fyi") ? [] : groups.fyi),
-      ...(shownCollapsed.has("archived") ? [] : groups.archived),
-      ...(selected ? [selected] : []),
+    const rows = results ?? [
+      ...(collapsed.has("needs-you") ? [] : groups.needsYou),
+      ...(collapsed.has("fyi") ? [] : groups.fyi),
     ];
+    const shown = selected ? [...rows, selected] : rows;
     return [
       ...new Set(
         shown
@@ -138,7 +125,7 @@ export function ReviewDeskPage() {
           .map((item) => item.addedByConversationId),
       ),
     ];
-  }, [groups, selected, shownCollapsed]);
+  }, [collapsed, groups, results, selected]);
   const sourceTitles = useLinkedConversationTitles(sourceIds);
   const sourceTitle = (item: ReviewItemPayload) =>
     sourceTitles[sourceIds.indexOf(item.addedByConversationId)];
@@ -162,9 +149,8 @@ export function ReviewDeskPage() {
         )}
       >
         <ReviewDeskSidebar
-          archived={groups.archived}
           blocked={blockedAutomations}
-          collapsed={shownCollapsed}
+          collapsed={collapsed}
           error={Boolean(items.error && !items.data)}
           footer={
             <>
@@ -179,9 +165,9 @@ export function ReviewDeskPage() {
                   Could not load more items. Try again.
                 </InlineError>
               ) : null}
-              {moreArchived && !shownCollapsed.has("archived") ? (
+              {moreArchived ? (
                 <p className="m-0 px-3 py-2 text-xs text-dashboard-text-muted">
-                  Search to find older archived items.
+                  Narrow the search to find older archived items.
                 </p>
               ) : null}
               {loaded && q && list.length === 0 ? (
@@ -189,12 +175,7 @@ export function ReviewDeskPage() {
                   No items match "{q}".
                 </p>
               ) : null}
-              {empty ? (
-                <InboxEmpty
-                  className="md:hidden"
-                  onShowArchived={showArchived}
-                />
-              ) : null}
+              {empty ? <InboxEmpty className="md:hidden" /> : null}
             </>
           }
           fyi={groups.fyi}
@@ -202,6 +183,7 @@ export function ReviewDeskPage() {
           needsYou={groups.needsYou}
           onSearchChange={setSearch}
           onToggle={toggle}
+          results={results}
           search={search}
           searchParams={listParams}
           selectedId={selected?.id}
@@ -250,7 +232,7 @@ export function ReviewDeskPage() {
         ) : direct.error ? (
           <InlineError className="p-7">Review item not found.</InlineError>
         ) : empty ? (
-          <InboxEmpty onShowArchived={showArchived} />
+          <InboxEmpty />
         ) : null}
       </section>
     </div>
