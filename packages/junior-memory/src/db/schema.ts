@@ -15,7 +15,6 @@ import {
   primaryKey,
   text,
   uniqueIndex,
-  vector,
 } from "drizzle-orm/pg-core";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
@@ -26,6 +25,22 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
 } from "../types";
+
+/**
+ * pgvector column without a fixed size. Rows from different embedding models
+ * can have different sizes; the dimensions column records each row's size.
+ */
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector";
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+  fromDriver(value) {
+    return value.slice(1, -1).split(",").map(Number);
+  },
+});
 
 const tsvector = customType<{ data: string }>({
   dataType() {
@@ -115,37 +130,44 @@ export const juniorMemoryEmbeddings = pgTable(
   "junior_memory_embeddings",
   {
     memoryId: text("memory_id")
-      .primaryKey()
+      .notNull()
       .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     dimensions: integer("dimensions").notNull(),
     metric: text("metric", { enum: MEMORY_EMBEDDING_METRICS }).notNull(),
     contentHash: text("content_hash").notNull(),
-    embedding: vector("embedding", {
-      dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-    }).notNull(),
+    embedding: vector("embedding").notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
+    // One vector per memory per model, so a new model can be backfilled while
+    // reads still use the old one.
+    primaryKey({ columns: [table.memoryId, table.provider, table.model] }),
     index("junior_memory_embeddings_model_idx").on(
       table.provider,
       table.model,
       table.dimensions,
       table.metric,
     ),
-    // Cosine ANN for vector recall/search. Ops must match cosineDistance (<=>).
-    // Keep this unfiltered so planners can use HNSW before scope/status joins.
-    index("junior_memory_embeddings_embedding_hnsw_idx")
-      .using("hnsw", table.embedding.op("vector_cosine_ops"))
-      .with({ m: 16, ef_construction: 64 }),
+    // Cosine ANN for vector recall/search, one index per vector size. Queries
+    // must use the same cast and a literal dimensions filter to use it.
+    ...MEMORY_EMBEDDING_DIMENSIONS.map((dimensions) =>
+      index(`junior_memory_embeddings_embedding_${dimensions}_hnsw_idx`)
+        .using(
+          "hnsw",
+          sql`(${table.embedding}::vector(${sql.raw(String(dimensions))})) vector_cosine_ops`,
+        )
+        .with({ m: 16, ef_construction: 64 })
+        .where(sql`${table.dimensions} = ${sql.raw(String(dimensions))}`),
+    ),
     check(
       "junior_memory_embeddings_metric_check",
       sql`${table.metric} IN ('cosine')`,
     ),
     check(
       "junior_memory_embeddings_dimensions_check",
-      sql`${table.dimensions} = ${sql.raw(String(MEMORY_EMBEDDING_DIMENSIONS))}`,
+      sql`${table.dimensions} IN (${sql.raw(MEMORY_EMBEDDING_DIMENSIONS.join(", "))}) AND vector_dims(${table.embedding}) = ${table.dimensions}`,
     ),
   ],
 );

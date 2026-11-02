@@ -37,7 +37,9 @@ export function createPluginModel(
       });
       return {
         object: result.object,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
   };
@@ -53,6 +55,9 @@ export function createPluginEmbedder(
       return await embedTexts({
         modelId: botConfig.embeddingModelId,
         texts: input.texts,
+        ...(input.inputType !== undefined
+          ? { inputType: input.inputType }
+          : undefined),
         signal: runtime.signal,
         metadata: {
           pluginName,

@@ -157,9 +157,9 @@ export async function createMemoryPromptContributions(
   });
   let embeddingCostUsd: number | undefined;
   const sourceEmbedder = context.embedder;
-  const embedder = sourceEmbedder
+  const embedder: MemoryEmbeddingProvider | undefined = sourceEmbedder
     ? {
-        async embedTexts(input: { texts: string[] }) {
+        async embedTexts(input) {
           const result = await sourceEmbedder.embedTexts(input);
           embeddingCostUsd = addUsd(embeddingCostUsd, result.costUsd);
           return result;
@@ -174,7 +174,9 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
+      ...(embeddingCostUsd !== undefined
+        ? { costUsd: embeddingCostUsd }
+        : undefined),
       events: context.events,
       memories: [],
     });

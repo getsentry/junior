@@ -6,6 +6,7 @@ import {
   createSlackSource,
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
+  type PluginCliActionContext,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
@@ -98,7 +99,11 @@ function memoryDb(fixture: MemoryFixture): MemoryDb {
   return fixture.db();
 }
 
-async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
+async function runMemoryCli(
+  fixture: MemoryFixture,
+  argv: string[],
+  embedder: PluginCliActionContext["embedder"] = createTestEmbedder(),
+) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const definition = createMemoryCliCommand();
@@ -143,6 +148,7 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
               summary: definition.summary,
             },
             db: memoryDb(fixture),
+            embedder,
             io,
             log: noopLogger,
             plugin: { name: "memory" },
@@ -191,8 +197,11 @@ CREATE TABLE junior_conversation_participants (
 `);
 }
 
-function unitEmbedding(index: number): number[] {
-  const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
+function unitEmbedding(
+  index: number,
+  dimensions: number = TEST_EMBEDDING_DIMENSIONS,
+): number[] {
+  const embedding = Array.from({ length: dimensions }, () => 0);
   embedding[index] = 1;
   return embedding;
 }
@@ -214,10 +223,13 @@ function createTestEmbedder(
   } = {},
 ) {
   const calls: string[][] = [];
+  const inputTypes: Array<string | undefined> = [];
   return {
     calls,
-    async embedTexts(input: { texts: string[] }) {
+    inputTypes,
+    async embedTexts(input: { inputType?: string; texts: string[] }) {
       calls.push(input.texts);
+      inputTypes.push(input.inputType);
       return {
         ...(overrides.costUsd !== undefined
           ? { costUsd: overrides.costUsd }
@@ -3022,6 +3034,96 @@ WHERE id = '${superseded.memory.id}'
       });
       expect(results[0]).toEqual(
         expect.objectContaining({ id: react.memory.id }),
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("moves memory vectors to a new embedding model with reembed", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const reactMemory = "Uses React hooks for UI state.";
+      const mangoMemory = "Favorite CLI QA snack is mango chips.";
+      const oldMemory = "Prefers superseded memories to keep old vectors.";
+      const query = "client rendering library";
+      const oldStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: createTestEmbedder({
+          [reactMemory]: unitEmbedding(1),
+          [mangoMemory]: unitEmbedding(2),
+          [oldMemory]: unitEmbedding(3),
+        }),
+        now: () => TEST_NOW_MS,
+      });
+      const react = await oldStore.createMemory({
+        content: reactMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-react",
+      });
+      const mango = await oldStore.createMemory({
+        content: mangoMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-mango",
+      });
+      const superseded = await oldStore.createMemory({
+        content: oldMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-superseded",
+      });
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET superseded_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${superseded.memory.id}'
+`);
+
+      const newEmbedder = createTestEmbedder(
+        {
+          [reactMemory]: unitEmbedding(1, 1024),
+          [mangoMemory]: unitEmbedding(2, 1024),
+          [query]: unitEmbedding(1, 1024),
+        },
+        { dimensions: 1024, model: "new-model" },
+      );
+      const reembed = await runMemoryCli(
+        fixture,
+        ["reembed", "--batch-size", "1"],
+        newEmbedder,
+      );
+      expect(reembed).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(reembed.stdout).toContain(
+        "Done: embedded 2 of 2 memories with test-embedding-provider new-model.",
+      );
+      expect(newEmbedder.inputTypes).toEqual(["document", "document"]);
+
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryEmbeddings);
+      expect(
+        rows
+          .map((row) => `${row.memoryId}:${row.model}:${row.dimensions}`)
+          .sort(),
+      ).toEqual(
+        [
+          `${react.memory.id}:test-embedding-model:1536`,
+          `${react.memory.id}:new-model:1024`,
+          `${mango.memory.id}:test-embedding-model:1536`,
+          `${mango.memory.id}:new-model:1024`,
+          `${superseded.memory.id}:test-embedding-model:1536`,
+        ].sort(),
+      );
+
+      const newStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: newEmbedder,
+        now: () => TEST_NOW_MS,
+      });
+      const [top] = await newStore.searchMemories({ query });
+      expect(top).toEqual(expect.objectContaining({ id: react.memory.id }));
+      expect(newEmbedder.inputTypes.at(-1)).toBe("query");
+
+      const rerun = await runMemoryCli(fixture, ["reembed"], newEmbedder);
+      expect(rerun.stdout).toContain(
+        "Done: embedded 0 of 2 memories with test-embedding-provider new-model.",
       );
     } finally {
       await fixture.close();

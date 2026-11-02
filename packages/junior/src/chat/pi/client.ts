@@ -198,6 +198,9 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "openai/text-embedding-ada-002": 0.1,
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
+  "voyage/voyage-4": 0.06,
+  "voyage/voyage-4-large": 0.12,
+  "voyage/voyage-4-lite": 0.02,
 };
 // Decision models bill input tokens only.
 const DECISION_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -632,8 +635,20 @@ export async function completeDecision<
   }
 }
 
+/** Map the input type to the provider option for models that embed queries and documents differently. */
+function embeddingProviderOptions(
+  modelId: string,
+  inputType: "document" | "query" | undefined,
+): { voyage: { inputType: "document" | "query" } } | undefined {
+  if (inputType === undefined || !modelId.startsWith("voyage/")) {
+    return undefined;
+  }
+  return { voyage: { inputType } };
+}
+
 /** Generate text embeddings through the host-owned AI Gateway provider. */
 export async function embedTexts(params: {
+  inputType?: "document" | "query";
   modelId: string;
   texts: string[];
   signal?: AbortSignal;
@@ -651,6 +666,10 @@ export async function embedTexts(params: {
   }
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
+  const providerOptions = embeddingProviderOptions(
+    params.modelId,
+    params.inputType,
+  );
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
@@ -660,6 +679,7 @@ export async function embedTexts(params: {
         const result = await embedMany({
           model: provider.embeddingModel(params.modelId),
           values: texts,
+          ...(providerOptions !== undefined ? { providerOptions } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),

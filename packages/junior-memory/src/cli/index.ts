@@ -1,4 +1,5 @@
 import type { PluginCliCommandDefinition } from "@sentry/junior-plugin-api";
+import { configureMemoryReembedCommand } from "./reembed";
 import { configureMemorySearchCommand } from "./search";
 import { configureMemoryShowCommand } from "./show";
 
@@ -6,10 +7,11 @@ import { configureMemoryShowCommand } from "./show";
 export function createMemoryCliCommand(): PluginCliCommandDefinition {
   return {
     name: "memory",
-    summary: "Inspect Junior memory state",
+    summary: "Inspect and maintain Junior memory state",
     configure(command, junior) {
       configureMemorySearchCommand(command, junior);
       configureMemoryShowCommand(command, junior);
+      configureMemoryReembedCommand(command, junior);
     },
   };
 }

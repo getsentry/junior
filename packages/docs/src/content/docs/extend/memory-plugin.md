@@ -16,7 +16,7 @@ New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by 
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
+Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1024- or 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index for each vector size for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Install
 
@@ -132,7 +132,15 @@ Embedding model used for vector search.
 - **Required:** No
 - **Environment override:** `AI_EMBEDDING_MODEL`
 
-The model must produce 1536-dimensional vectors. Changing it after memories exist requires flushing `junior_memory_embeddings` so embeddings can be regenerated. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
+The model must produce 1024- or 1536-dimensional vectors. Junior stores one vector per memory for each model and only compares vectors from the same model, so you can change the model without data loss. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
+
+To change the model after memories exist:
+
+1. Run `AI_EMBEDDING_MODEL=<new-model> pnpm junior memory reembed` against the production database. It embeds each active memory that has no vector for the new model. You can run it again safely.
+2. Set `AI_EMBEDDING_MODEL` to the new model in the deployment environment and deploy.
+3. Run the command again to embed memories that were stored during the change.
+
+To roll back, set `AI_EMBEDDING_MODEL` back to the old model. The old vectors stay until you delete them.
 
 </details>
 
@@ -170,7 +178,7 @@ After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin
 pnpm junior upgrade
 ```
 
-On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column plus its HNSW cosine index.
+On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector` column plus an HNSW cosine index for each supported vector size.
 
 ## Verify
 
@@ -203,7 +211,8 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 - **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
-- **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.
+- **Vector recall stops after a model change**: `AI_EMBEDDING_MODEL` was changed before memories had vectors for the new model. Run `pnpm junior memory reembed` with the new model.
+- **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
 - **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance or may not be directly relevant to the request.
 
 ## Next step

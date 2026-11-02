@@ -80,9 +80,15 @@ export interface PluginModel {
   }>;
 }
 
+/** How embedded text is used. Some models embed queries and documents differently. */
+export type PluginEmbeddingInputType = "document" | "query";
+
 export interface PluginEmbedder {
   /** Embed plugin-owned text for derived retrieval without exposing provider credentials. */
-  embedTexts(input: { texts: string[] }): Promise<{
+  embedTexts(input: {
+    inputType?: PluginEmbeddingInputType;
+    texts: string[];
+  }): Promise<{
     /** Best-effort estimated provider cost for this embedding call. */
     costUsd?: number;
     dimensions: number;
