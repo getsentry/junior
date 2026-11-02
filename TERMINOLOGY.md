@@ -87,6 +87,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Event Inbound message. It gives no user approval.
 - **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
   history, and per-task instructions. It does not limit tools.
+- **Tool exposure**: who may call a tool: the model, the tool catalog
+  (`searchTools` and `executeTool`), or a Code Mode script (a script that
+  calls tools with `tools.x(args)`). `ToolExposure` owns the values.
 - **Annotation**: saved facts or a link on one Conversation. An update sends
   no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
