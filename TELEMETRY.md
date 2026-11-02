@@ -90,6 +90,22 @@ fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_out
 sort=-timestamp
 ```
 
+Code Mode scripts, with their nested call counts and failures.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:codemode'
+fields=timestamp,trace,span.duration,gen_ai.conversation.id,app.codemode.call.count,app.codemode.call.peak_concurrency,app.codemode.call.rejected_count,app.codemode.run_ms,app.codemode.error.kind
+sort=-timestamp
+```
+
+Nested tool calls from Code Mode scripts.
+
+```text
+dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.dispatcher.name:codemode'
+fields=timestamp,trace,gen_ai.tool.name,gen_ai.tool.call.id,span.duration,app.guardian.decision,error.type
+sort=-timestamp
+```
+
 Slack delivery failures after the agent turn ran.
 
 ```text
@@ -162,12 +178,55 @@ attributes. Nested logs and spans inherit them.
 | No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`                |
 | Timeout, empty answer, bad reasoning | `agent.turn.*`, `guardian.action_review.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare` |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`             |
+| Code Mode script slow or failed      | `app.codemode.*` on span `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans              |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
+
+## Code Mode
+
+A `codemode` tool call runs one script in a QuickJS VM. The script calls other
+tools. `codeModeSpanAttributes` in `chat/codemode/telemetry.ts` maps the
+attributes below.
+
+- The `codemode` call has one `gen_ai.execute_tool` span, with
+  `gen_ai.tool.name:codemode`.
+- Each nested call has its own `gen_ai.execute_tool` span, which is a child of
+  the `codemode` span. It has the real `gen_ai.tool.name`, so the tool queries
+  above also find calls from scripts.
+- A nested span sets `gen_ai.tool.dispatcher.name:codemode`, as `executeTool`
+  does for catalog tools. Its `gen_ai.tool.call.id` is
+  `<codemode call id>/c<n>`, where `n` is the VM number for the call.
+- A nested span keeps its own `app.guardian.*` decision. A nested failure logs
+  `agent.tool_call.failed` with the nested call id.
+- `withSpan` makes a child of the active span. pi-codemode reports calls in a
+  worker callback, which can lose the async context. Run each nested call with
+  the `codemode` span active (`Sentry.withActiveSpan`, as in
+  `chat/pi/traced-stream.ts`).
+
+Attributes on the `codemode` span:
+
+| Attribute                                      | Type    | Meaning                                                |
+| ---------------------------------------------- | ------- | ------------------------------------------------------ |
+| `app.codemode.script.bytes`                    | int     | script size in UTF-8 bytes                             |
+| `app.codemode.call.count`                      | int     | nested calls made, including rejected calls            |
+| `app.codemode.call.peak_concurrency`           | int     | most nested calls that ran at the same time            |
+| `app.codemode.call.rejected_count`             | int     | nested calls not allowed by action review              |
+| `app.codemode.call.batch_limit_rejected_count` | int     | nested calls refused by the per-drain batch limit      |
+| `app.codemode.vm.start_ms`                     | int     | time until the VM was ready                            |
+| `app.codemode.run_ms`                          | int     | time from VM ready until the result settled            |
+| `app.codemode.output.bytes`                    | int     | script output in UTF-8 bytes, before truncation        |
+| `app.codemode.output.truncated`                | boolean | output was cut to the output limit                     |
+| `app.codemode.error.kind`                      | string  | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
+
+- `app.codemode.vm.start_ms` and `app.codemode.run_ms` are absent when the VM
+  did not start. `app.codemode.error.kind` is absent when the script returned
+  a result. `memory` is a `script` failure from the VM heap limit.
+- `gen_ai.tool.call.result.size` is the size of the result the model gets,
+  after truncation.
 
 ## Invariants
 
