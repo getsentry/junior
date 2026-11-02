@@ -428,18 +428,25 @@ function TranscriptEntryList(props: {
 }
 
 /**
- * Find the seq of the first unread row. Entries are in seq order, so this is
- * the first seq after the read position. Rows after the range arrived after
- * open, so they get no marker.
+ * Find the seq of the first unread row. Entries are in seq order, and pending
+ * sends without a seq come last, so a binary search finds the first seq after
+ * the read position. Rows after the range arrived after open, so they get no
+ * marker.
  */
 function unreadMarkerSeq(
   entries: readonly TranscriptEntry[],
   unread: TranscriptUnreadRange | undefined,
 ): number | undefined {
   if (!unread) return undefined;
-  const seq = entries.find(
-    (entry) => entry.seq !== undefined && entry.seq > unread.afterSeq,
-  )?.seq;
+  let low = 0;
+  let high = entries.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    const seq = entries[middle]!.seq;
+    if (seq !== undefined && seq <= unread.afterSeq) low = middle + 1;
+    else high = middle;
+  }
+  const seq = entries[low]?.seq;
   return seq !== undefined && seq <= unread.throughSeq ? seq : undefined;
 }
 

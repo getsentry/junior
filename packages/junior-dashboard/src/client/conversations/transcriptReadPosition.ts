@@ -12,7 +12,7 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   conversationReadPositionSchema,
@@ -21,9 +21,10 @@ import {
 } from "@sentry/junior/api/schema";
 import { put } from "../http";
 import { conversationDetailQueryKey } from "./queries";
-import { scrollRootFor, viewportBounds } from "./transcriptBottomPinning";
+import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
+const ROW_SELECTOR = "[data-transcript-seq]";
 const START_POSITION_STORAGE_KEY = "junior:conversation:start-position";
 
 /** Where a Conversation opens: at the first unread row or at the latest. */
@@ -41,8 +42,6 @@ export type ReadPositionAtOpen = {
   lastReadSeq?: number;
   unread?: TranscriptUnreadRange;
 };
-
-type VerticalBounds = { bottom: number; top: number };
 
 /** Edit the browser-only preference for where Conversations open. */
 export function useConversationStartPosition() {
@@ -116,12 +115,14 @@ function readPositionAtOpen(
 }
 
 /**
- * Send read positions for one Conversation. The cached detail keeps the
- * stored value, so the next visit in this session opens at the right place.
+ * Send read positions for one Conversation. A position at or before the one
+ * in the cached detail is not sent, because the server already has it. The
+ * cached detail keeps the stored value, so the next visit in this session
+ * opens at the right place.
  */
 export function useMarkConversationRead(conversationId: string) {
   const queryClient = useQueryClient();
-  const mutation = useMutation({
+  const { mutate } = useMutation({
     mutationFn: (lastReadSeq: number) =>
       put(
         conversationReadPositionSchema,
@@ -135,35 +136,26 @@ export function useMarkConversationRead(conversationId: string) {
       );
     },
   });
-  return mutation.mutate;
-}
-
-/**
- * Find the last row that has reached the viewport, in rows that are in
- * document order.
- */
-export function lastSeenRowIndex(
-  count: number,
-  rowAt: (index: number) => VerticalBounds,
-  viewport: VerticalBounds,
-): number | null {
-  let low = 0;
-  let high = count;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    if (rowAt(middle).top < viewport.bottom) low = middle + 1;
-    else high = middle;
-  }
-  return low === 0 ? null : low - 1;
+  return useCallback(
+    (lastReadSeq: number) => {
+      const stored = queryClient.getQueryData<ConversationDetailReport>(
+        conversationDetailQueryKey(conversationId),
+      )?.readPosition?.lastReadSeq;
+      if (stored !== undefined && lastReadSeq <= stored) return;
+      mutate(lastReadSeq);
+    },
+    [conversationId, mutate, queryClient],
+  );
 }
 
 /**
  * Report the last transcript row that the reader saw.
  *
- * Each scroll or layout change measures the row. Reports wait a short time
- * and only move forward. A hidden or paused page does not measure. Leaving
- * the page or hiding it sends the measured row at once, so a quick exit keeps
- * progress.
+ * An IntersectionObserver keeps the set of rows in the viewport, so a scroll
+ * does not measure rows. Reports send the highest seq in that set. They wait
+ * a short time and only move forward. A hidden or paused page does not
+ * report. Leaving the page or hiding it sends the pending row at once, so a
+ * quick exit keeps progress.
  */
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
@@ -171,9 +163,9 @@ export function useTranscriptReadReporter(input: {
   lastReadSeq?: number;
   onRead?: (seq: number) => void;
   /**
-   * Stop measuring while the rows are not in reading order, such as search
-   * results. This is read when a measure runs, so the render that changes
-   * the rows also stops their measure.
+   * Stop reporting while the rows are not in reading order, such as search
+   * results. This is read when a report is scheduled, so the render that
+   * changes the rows also stops their report.
    */
   paused?: boolean;
 }): void {
@@ -188,7 +180,9 @@ export function useTranscriptReadReporter(input: {
     const content = input.content;
     const root = scrollRootFor(content);
     if (!enabled || !content || !root) return;
+    if (typeof IntersectionObserver === "undefined") return;
 
+    const visibleRows = new Set<HTMLElement>();
     let timer: number | undefined;
     let seenSeq: number | null = null;
     const send = () => {
@@ -202,8 +196,12 @@ export function useTranscriptReadReporter(input: {
     };
     const schedule = () => {
       if (pausedRef.current || document.visibilityState !== "visible") return;
-      const seq = lastSeenTranscriptSeq(content, viewportBounds(root));
-      if (seq !== null) seenSeq = seq;
+      // Read the seq now: an activity group row moves its seq as it grows.
+      for (const row of visibleRows) {
+        const seq = Number(row.dataset.transcriptSeq);
+        if (Number.isSafeInteger(seq)) seenSeq = Math.max(seenSeq ?? -1, seq);
+      }
+      if (seenSeq === null) return;
       timer ??= window.setTimeout(send, READ_REPORT_DELAY_MS);
     };
     const onVisibilityChange = () => {
@@ -211,34 +209,46 @@ export function useTranscriptReadReporter(input: {
       else send();
     };
 
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(schedule);
-    observer?.observe(content);
-    root.addEventListener("scroll", schedule, { passive: true });
+    const intersections = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const row = entry.target as HTMLElement;
+          if (entry.isIntersecting && row.isConnected) visibleRows.add(row);
+          else visibleRows.delete(row);
+        }
+        schedule();
+      },
+      { root: root === window ? null : (root as HTMLElement) },
+    );
+    const rowsIn = (node: Node): HTMLElement[] => {
+      if (!(node instanceof HTMLElement)) return [];
+      const rows = [...node.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
+      return node.matches(ROW_SELECTOR) ? [node, ...rows] : rows;
+    };
+    const observeRows = (node: Node) => {
+      for (const row of rowsIn(node)) intersections.observe(row);
+    };
+    const forgetRows = (node: Node) => {
+      for (const row of rowsIn(node)) {
+        intersections.unobserve(row);
+        visibleRows.delete(row);
+      }
+    };
+    // Rows mount and unmount as history loads and replies arrive.
+    const mutations = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach(observeRows);
+        record.removedNodes.forEach(forgetRows);
+      }
+    });
+    mutations.observe(content, { childList: true, subtree: true });
+    observeRows(content);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    schedule();
     return () => {
       send();
-      observer?.disconnect();
-      root.removeEventListener("scroll", schedule);
+      intersections.disconnect();
+      mutations.disconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, input.content]);
-}
-
-function lastSeenTranscriptSeq(
-  content: HTMLElement,
-  viewport: VerticalBounds,
-): number | null {
-  const rows = content.querySelectorAll<HTMLElement>("[data-transcript-seq]");
-  const index = lastSeenRowIndex(
-    rows.length,
-    (row) => rows[row]!.getBoundingClientRect(),
-    viewport,
-  );
-  if (index === null) return null;
-  const seq = Number(rows[index]!.dataset.transcriptSeq);
-  return Number.isSafeInteger(seq) ? seq : null;
 }

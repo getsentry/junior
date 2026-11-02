@@ -261,9 +261,9 @@ export function shouldShowJumpToLatest(input: {
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
 }): boolean {
-  if (input.following) return false;
   return (
-    Boolean(input.openedAtUnread) || (input.enabled && input.hasPendingUpdate)
+    !input.following &&
+    (Boolean(input.openedAtUnread) || (input.enabled && input.hasPendingUpdate))
   );
 }
 
@@ -834,10 +834,7 @@ function setScrollTop(
 }
 
 /** Read the visible band of a scroll root in client coordinates. */
-export function viewportBounds(root: ScrollRoot): {
-  bottom: number;
-  top: number;
-} {
+function viewportBounds(root: ScrollRoot): { bottom: number; top: number } {
   if (isWindowRoot(root)) return { bottom: window.innerHeight, top: 0 };
   const top = root.getBoundingClientRect().top;
   return { bottom: top + root.clientHeight, top };
