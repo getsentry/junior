@@ -653,6 +653,8 @@ describe("agent invocation conversation work", () => {
     async ({ state: orphanState }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const activeAtRun: unknown[] = [];
+      // Integration tests do not run the agent. The runner reads the run and
+      // stops it, so its work retries until the test finishes the invocation.
       const { process, queue, state } = await createConversationWorkHarness({
         run: async (run) => {
           activeAtRun.push(
@@ -661,6 +663,13 @@ describe("agent invocation conversation work", () => {
           throw new Error("stop after reading the run");
         },
       });
+      const parentMailbox = async () =>
+        (
+          await getConversationWorkState({
+            conversationId: parentConversationId,
+            state,
+          })
+        )?.messages ?? [];
       try {
         const orphan = await createAgentInvocation({
           ...invocationInput,
@@ -708,7 +717,9 @@ describe("agent invocation conversation work", () => {
           state,
         });
 
-        await process(queue.takeMessageFor(childConversationId));
+        await expect(
+          process(queue.takeMessageFor(childConversationId)),
+        ).resolves.toMatchObject({ status: "failed" });
 
         expect(activeAtRun).toEqual([
           expect.objectContaining({
@@ -716,16 +727,51 @@ describe("agent invocation conversation work", () => {
             status: "running",
           }),
         ]);
-        // The queued work reports for both.
-        await expect(
-          getAgentInvocation(orphan.invocationId),
-        ).resolves.toMatchObject({
-          parentMailboxStatus: "replaced",
-          status: "failed",
-        });
         await expect(
           getTurnRecord(childConversationId, orphanTurnId),
         ).resolves.not.toMatchObject({ state: orphanState });
+        // The newer work does not continue the earlier task, so the earlier
+        // agent invocation sends its own result before the newer one ends.
+        await expect(
+          getAgentInvocation(orphan.invocationId),
+        ).resolves.toMatchObject({
+          parentMailboxStatus: "appended",
+          status: "failed",
+        });
+        const orphanResult = expect.objectContaining({
+          inboundMessageId: getAgentInvocationResultMessageId(
+            orphan.invocationId,
+          ),
+          input: expect.objectContaining({
+            text: expect.stringMatching(
+              orphanState === "paused"
+                ? /failed\.[\s\S]*Error:\nThis task was not resumed\. Newer work for this child agent started/
+                : /failed\.[\s\S]*Error:\nAgent invocation lost its worker/,
+            ),
+          }),
+        });
+        await expect(parentMailbox()).resolves.toEqual([orphanResult]);
+
+        await completeAgentInvocation({
+          invocationId: queued.invocationId,
+          result: "Retry path checked",
+          status: "completed",
+        });
+        await expect(
+          process(queue.takeMessageFor(childConversationId)),
+        ).resolves.toMatchObject({ status: "completed" });
+
+        await expect(parentMailbox()).resolves.toEqual([
+          orphanResult,
+          expect.objectContaining({
+            inboundMessageId: getAgentInvocationResultMessageId(
+              queued.invocationId,
+            ),
+            input: expect.objectContaining({
+              text: expect.stringMatching(/Result:\nRetry path checked/),
+            }),
+          }),
+        ]);
       } finally {
         await fixture.close();
       }

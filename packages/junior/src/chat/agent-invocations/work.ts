@@ -477,19 +477,25 @@ async function projectTerminalTurn(
 /**
  * End an agent invocation that is still running or paused while other work
  * of its child starts. A saved finished Turn gives its result. Otherwise it
- * fails.
+ * fails. The newer work does not continue this task, so the result goes to
+ * the parent on its own.
  */
 async function endOtherActiveAgentInvocation(
   invocation: AgentInvocation,
 ): Promise<AgentInvocation | undefined> {
-  return (
+  const terminal =
     (await projectTerminalTurn(invocation)) ??
     (await completeAgentInvocation({
       invocationId: invocation.invocationId,
-      errorMessage: "Agent invocation was not resumed before newer work",
+      errorMessage:
+        "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
       status: "failed",
-    }))
-  );
+    }));
+  return terminal &&
+    isTerminalAgentInvocation(terminal) &&
+    terminal.parentMailboxStatus === "replaced"
+    ? await reportReplacedAgentInvocation(terminal.invocationId)
+    : terminal;
 }
 
 /** Classify authorization failures that terminally block background work. */
@@ -710,7 +716,7 @@ export function createAgentInvocationWorker(
         return { status: "completed" };
       }
       // A child has at most one running or paused agent invocation. End any
-      // other active one first, so this one reports for both.
+      // other active one first. Each one reports its own result.
       for (const active of await listActiveAgentInvocationsForConversation(
         invocation.childConversationId,
       )) {
