@@ -109,7 +109,7 @@ const SAFETY_RULES = [
  * about one tool goes in that tool's description, not here.
  */
 const TOOL_POLICY_RULES = [
-  "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, use clear placeholders or ask one focused question with `addReviewItem` instead of searching unrelated memory, history, files, or providers.",
+  "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, do not search unrelated memory, history, files, or providers. Put a clear placeholder where a fact that only the person knows goes, and ask for those facts with one `addReviewItem` item.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials.",
