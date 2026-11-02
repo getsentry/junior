@@ -1,53 +1,19 @@
 # GitHub plugin
 
-The plugin owns credentials, egress policy, tools, signed webhooks, events,
-and pull request and issue outcomes. Core only delivers published events to
-matching subscriptions.
-
-## Credentials and egress
-
-- The plugin picks the grant from the forwarded request:
-  `installation-read` for reads, `user-read` for `GET /user`,
-  `installation-write` for allowlisted App writes and Git smart-HTTP pushes,
-  and `user-write` for user-attachment uploads.
-- Deny unknown REST writes and GraphQL mutations. Merge, fork, branch
-  deletion, REST ref writes, and administration stay unsupported.
 - Junior-owned issue, pull request, review, and push operations never fall
   back to user OAuth.
-- The sandbox never gets a raw token. The host adds the `Authorization`
-  header.
+- Merge, fork, branch deletion, REST ref writes, and administration stay
+  unsupported. Deny unknown REST writes and GraphQL mutations.
 - Read tokens request read level only. Write tokens omit `permissions`, so
   GitHub applies the installation envelope.
-
-## Commits
-
-- Junior is author and committer. Credit human actors once with
-  `Co-Authored-By` trailers.
-- Junior sets `core.hooksPath` for every sandbox command. Its hooks pass all
-  other client hooks to the repository hooks. A failing repository hook stops
-  the commit or push.
-
-## Pull requests
-
-- Save the created pull request before assignment. Assignment failures never
-  fail the tool. A retry returns the saved pull request and does not create
-  or reassign.
+- A failing repository hook must stop the commit or push.
 - `junior_github_pull_request_requesters` stores only the core identity id
-  and, for the opener, the Conversation. No logins or user data. The first
-  row is the opener, and later rows never replace it.
-- Read the GitHub login through `ctx.users.readIdentity()` at webhook time.
+  and, for the opener, the Conversation. Do not copy logins or user data.
+  Read the login through `ctx.users.readIdentity()` at webhook time.
 - When the opener is unknown, leave the opener fields out. Never use the bot
   in its place.
-- Webhooks never read the pull request body.
-- Before the match, load only filter values. Load other values only after an
-  event matches. A failed load leaves the value out.
-
-## Ready-to-merge notice
-
-- Ready means open, not draft, approved, no open change request, and
-  `mergeable_state` is `clean`.
-- One webhook at a time checks a pull request (`ready_sync_id`,
-  `ready_sync_requests`). Hold no database connection during GitHub calls.
+- Webhooks never read the pull request body. Load values other than filter
+  values only after an event matches.
+- Hold no database connection during GitHub calls.
 - Change `ready_to_merge_at` only after the Review item changes, so the next
-  webhook retries a failure. A notice failure does not fail the webhook.
-- Close the notice when the pull request merges, closes, or stops being ready.
+  webhook retries a failure.
