@@ -89,14 +89,12 @@ import {
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { ConversationReviewBar } from "../review-desk/ConversationReviewBar";
-import { ReviewItemPrompt } from "../review-desk/ReviewItemPrompt";
 import { useReviewItemData } from "../review-desk/queries";
 import {
   latestReviewItemId,
   reviewItemWaitsForAnswer,
 } from "../review-desk/reviewItemFormat";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
-import { showTranscriptPinStart } from "./transcriptBottomPinning";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -604,20 +602,21 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // While Junior waits for an answer, the question replaces the message box,
-  // so the reader does not type the answer as a new message. The reader can
-  // still choose to write one for this item. The message box stays mounted,
-  // so its text and images stay, and it does not hide while it has focus.
+  // While Junior waits for an answer, hide the message box, so the reader
+  // answers in the question and does not type the answer as a new message.
+  // Dismiss on the question closes the item and shows the message box again.
+  // The message box stays mounted, so its text and images stay, and it does
+  // not hide while it has focus.
   const reviewItem = useReviewItemData(props.reviewItemId).data;
-  const [writeForReviewItemId, setWriteForReviewItemId] = useState<string>();
+  const [composerShownForItemId, setComposerShownForItemId] =
+    useState<string>();
   const [composerFocused, setComposerFocused] = useState(false);
-  const composerBoxRef = useRef<HTMLDivElement>(null);
   const question =
     reviewItem &&
     !props.stoppable &&
     !composerFocused &&
     reviewItemWaitsForAnswer(reviewItem) &&
-    writeForReviewItemId !== reviewItem.id
+    composerShownForItemId !== reviewItem.id
       ? reviewItem
       : undefined;
   const questionIdRef = useRef(question?.id);
@@ -724,7 +723,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
       // The edit puts the message back in the message box, so show it.
-      if (questionIdRef.current) setWriteForReviewItemId(questionIdRef.current);
+      if (questionIdRef.current)
+        setComposerShownForItemId(questionIdRef.current);
       const inboundMessageId = message.inboundMessageId;
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
@@ -836,19 +836,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         </>
       }
     >
-      {question ? (
-        <ReviewItemPrompt
-          item={question}
-          onShowQuestion={() => showTranscriptPinStart(question.id)}
-          onWriteMessage={() => {
-            setWriteForReviewItemId(question.id);
-            // The button goes away, so move focus to the shown message box.
-            requestAnimationFrame(() =>
-              composerBoxRef.current?.querySelector("textarea")?.focus(),
-            );
-          }}
-        />
-      ) : null}
       <div
         hidden={Boolean(question)}
         onBlur={(event) => {
@@ -857,7 +844,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           }
         }}
         onFocus={() => setComposerFocused(true)}
-        ref={composerBoxRef}
       >
         <ConversationComposer
           confirmSubmit={unsentAnswers.confirmSubmit}

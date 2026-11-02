@@ -622,12 +622,21 @@ for (const view of [desktop, mobile]) {
       updatedAt: report.startedAt,
       visibility: "public",
     };
+    let dismissed = false;
+    const current = () =>
+      dismissed
+        ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
+        : item;
     await page.route(`**/api/review-items/${item.id}`, (route) =>
-      route.fulfill({ json: item }),
+      route.fulfill({ json: current() }),
     );
-    // The Conversation also lists the item above the message box.
+    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      dismissed = true;
+      return route.fulfill({ json: current() });
+    });
+    // The Conversation also lists the open item above the message box.
     await page.route(`**/api/review-items?*`, (route) =>
-      route.fulfill({ json: { items: [item] } }),
+      route.fulfill({ json: { items: dismissed ? [] : [item] } }),
     );
     report.events = [
       ...Array.from({ length: 20 }, (_, seq) => ({
@@ -672,32 +681,18 @@ for (const view of [desktop, mobile]) {
     await expect(
       card.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
-    // The question replaces the message box, so the reader does not type the
-    // answer as a new message.
-    const prompt = page.getByRole("region", {
-      name: "Junior is waiting for your answer",
-    });
+    // The message box hides while Junior waits, so the reader answers in the
+    // question and does not type the answer as a new message.
     const composer = page.getByLabel("Continue this conversation");
-    await expect(prompt).toBeVisible();
     await expect(composer).toBeHidden();
     await screenshot(page, "conversation-review-item-card", {
       view: view.name,
     });
 
-    await page.locator("[data-chat-scroll]").hover();
-    await page.mouse.wheel(0, -10_000);
-    await expect(
-      card.getByRole("heading", { name: item.title }),
-    ).not.toBeInViewport();
-    await prompt.getByRole("button", { name: "Show question" }).click();
-    await expect(
-      card.getByRole("heading", { name: item.title }),
-    ).toBeInViewport();
-
-    await prompt.getByRole("button", { name: "Write a message" }).click();
-    await expect(composer).toBeFocused();
-    await expect(prompt).toBeHidden();
-    await screenshot(page, "conversation-review-item-message", {
+    // Dismiss closes the item and shows the message box again.
+    await card.getByRole("button", { name: "Dismiss" }).click();
+    await expect(composer).toBeVisible();
+    await screenshot(page, "conversation-review-item-dismissed", {
       view: view.name,
     });
   });

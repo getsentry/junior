@@ -33,24 +33,6 @@ export function transcriptPinStartProps(id: string) {
   return { [PIN_START_ATTRIBUTE]: id };
 }
 
-/**
- * Scroll a pin-start block into view and focus its first control, so a
- * keyboard reader can act on it at once.
- */
-export function showTranscriptPinStart(id: string): void {
-  const block = document.querySelector<HTMLElement>(
-    `[${PIN_START_ATTRIBUTE}="${CSS.escape(id)}"]`,
-  );
-  if (!block) return;
-  block.scrollIntoView({
-    behavior: preferredExplicitScrollBehavior(),
-    block: "start",
-  });
-  block
-    .querySelector<HTMLElement>("input, textarea, button")
-    ?.focus({ preventScroll: true });
-}
-
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
 
