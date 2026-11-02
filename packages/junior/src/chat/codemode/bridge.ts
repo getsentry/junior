@@ -209,8 +209,11 @@ function boundedOutput(result: CodemodeResult) {
 /**
  * Run one Code Mode script. Each nested call takes the normal tool path:
  * argument checks, plugin hooks, action review (one batch per VM drain),
- * credentials and auth handling, then the executor. Tools with
- * `executionMode: "sequential"` run one at a time; others run in parallel.
+ * credentials and auth handling, then the executor. The script decides
+ * concurrency: `await a(); await b()` runs the calls one after the other,
+ * and `Promise.all` runs them at the same time. `executionMode` applies only
+ * to direct calls. A tool whose calls must not overlap serializes them in
+ * its own executor.
  *
  * The result lists every nested call, also after a timeout or abort. An
  * authorization pause from a nested call stops the script and throws, so the
@@ -249,7 +252,6 @@ export async function runCodeModeScript(
   let drain: CodemodeHostCall[] = [];
   let lastSeq = 0;
   let runningCalls = 0;
-  let sequentialTail: Promise<void> = Promise.resolve();
   let pauseError: unknown;
 
   const track = (work: Promise<void>) => {
@@ -294,31 +296,12 @@ export async function runCodeModeScript(
     answer(hostCallId, { ok: false, message });
   };
 
-  /**
-   * Hold a call that action review allowed until it can run. Tools that
-   * share state (the Sandbox, files, canvases) declare
-   * `executionMode: "sequential"` and run one at a time. A direct call also
-   * serializes tools that may need review, because it is reviewed alone. A
-   * script reviews each drain as one batch, so that reason does not apply.
-   */
-  const admit = async (tool: AnyToolDefinition) => {
-    if (tool.executionMode !== "sequential") {
-      return undefined;
-    }
-    const previous = sequentialTail;
-    const slot = deferred<void>();
-    sequentialTail = slot.promise;
-    await previous;
-    return () => slot.resolve();
-  };
-
   const runCall = async (
     host: CodemodeHostCall,
     call: ScriptCall,
     tool: AnyToolDefinition,
     review: (action: ToolAction) => Promise<ToolActionReviewResult>,
   ) => {
-    let release: (() => void) | undefined;
     let outcome: ScriptToolCallOutcome;
     try {
       outcome = await inParentSpan(() =>
@@ -333,7 +316,6 @@ export async function runCodeModeScript(
             if (!result.allowed) {
               return result;
             }
-            release = await admit(tool);
             controller.signal.throwIfAborted();
             call.started = true;
             runningCalls += 1;
@@ -352,7 +334,6 @@ export async function runCodeModeScript(
       call.status = call.started ? "interrupted" : "not_started";
       return;
     } finally {
-      release?.();
       if (call.started) {
         runningCalls -= 1;
       }

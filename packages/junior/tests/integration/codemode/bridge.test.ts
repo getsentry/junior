@@ -119,11 +119,10 @@ function postTool(posts: Array<{ channel: string; text: string }>) {
 }
 
 /** A tool that runs until the host aborts it. */
-function waitTool(entered: () => void, executionMode?: "sequential") {
+function waitTool(entered: () => void) {
   return tool({
     description: "Wait for a long job.",
     inputSchema: Type.Object({}),
-    ...(executionMode ? { executionMode } : undefined),
     execute: async (_input, { signal }) => {
       entered();
       await new Promise((_, reject) => {
@@ -190,18 +189,22 @@ describe("Code Mode bridge", () => {
     expect(resume.countToolCall()).toBe(4);
   });
 
-  it("runs a sequential tool one call at a time", async () => {
-    let running = 0;
-    let peak = 0;
+  it("lets a script run sequential tools at the same time", async () => {
+    // `executionMode: "sequential"` orders direct calls only. In a script,
+    // `Promise.all` overlaps the calls.
+    const bothStarted = deferred();
+    let started = 0;
     const edit = tool({
       description: "Edit a file in the Sandbox.",
       executionMode: "sequential",
       inputSchema: Type.Object({ path: Type.String() }),
       execute: async ({ path }) => {
-        running += 1;
-        peak = Math.max(peak, running);
-        await new Promise((done) => setTimeout(done, 20));
-        running -= 1;
+        started += 1;
+        if (started === 2) {
+          bothStarted.resolve();
+        }
+        // Each call waits until both run, so they must overlap.
+        await bothStarted.promise;
         return { path };
       },
     }) as AnyToolDefinition;
@@ -210,14 +213,13 @@ describe("Code Mode bridge", () => {
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
-        await Promise.all(["a", "b", "c"].map((path) => tools.edit({ path })));
+        await Promise.all(["a", "b"].map((path) => tools.edit({ path })));
       `,
       toolCallId: CODEMODE_CALL_ID,
       tools: { edit },
     });
 
-    expect(result.calls.map((call) => call.status)).toEqual(["ok", "ok", "ok"]);
-    expect(peak).toBe(1);
+    expect(result.calls.map((call) => call.status)).toEqual(["ok", "ok"]);
   });
 
   it("refuses model-only tools inside the script", async () => {
@@ -375,8 +377,8 @@ describe("Code Mode bridge", () => {
 
   it("settles pending calls when the Run aborts", async () => {
     const controller = new AbortController();
-    const entered = deferred();
-    const secondCall = vi.fn();
+    const firstEntered = deferred();
+    const secondEntered = deferred();
 
     const run = runCodeModeScript({
       countToolCall: turnCount().countToolCall,
@@ -385,12 +387,11 @@ describe("Code Mode bridge", () => {
       source: `await Promise.all([tools.first({}), tools.second({})]);`,
       toolCallId: CODEMODE_CALL_ID,
       tools: {
-        first: waitTool(entered.resolve, "sequential"),
-        // Queued behind `first`, so it has not started at the abort.
-        second: waitTool(secondCall, "sequential"),
+        first: waitTool(firstEntered.resolve),
+        second: waitTool(secondEntered.resolve),
       },
     });
-    await entered.promise;
+    await Promise.all([firstEntered.promise, secondEntered.promise]);
     controller.abort(new Error("Run yielded"));
     const result = await run;
 
@@ -399,10 +400,9 @@ describe("Code Mode bridge", () => {
       error: { kind: "aborted", message: "Run yielded" },
       calls: [
         { toolName: "first", status: "interrupted" },
-        { toolName: "second", status: "not_started" },
+        { toolName: "second", status: "interrupted" },
       ],
     });
-    expect(secondCall).not.toHaveBeenCalled();
   });
 
   it("does not wait long for a call that ignores the abort before it runs", async () => {
