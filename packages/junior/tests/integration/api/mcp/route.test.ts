@@ -2,9 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
-import { getSqlExecutor } from "@/chat/db";
+import { appendConversationBrief } from "@/chat/briefs/store";
+import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { insertReviewItem } from "@/chat/review-items/store";
 import { juniorConversationParticipants } from "@/db/schema";
 import { createPersonalToken } from "@/personal-tokens/store";
 import {
@@ -14,6 +16,7 @@ import {
   viewerCookie,
   withMcpClient,
 } from "../../../fixtures/mcp-http";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import {
   MCP_CLIENT_ID,
   MCP_CLIENT_NAME,
@@ -25,6 +28,8 @@ const VIEWER = "mcp-viewer@example.com";
 const OTHER_VIEWER = "mcp-other@example.com";
 // Claude Code listens on a random loopback port.
 const REDIRECT_URI = "http://127.0.0.1:53682/callback";
+const ALL_SCOPES =
+  "conversations:read conversations:manage review_items:read automations:read";
 
 type TokenBody = {
   access_token: string;
@@ -145,13 +150,15 @@ async function seedConversation(args: {
 async function approveClient(
   app: Hono,
   email: string,
-): Promise<{ code: string; verifier: string }> {
+  scope = "conversations:read",
+): Promise<{ code: string; consentHtml: string; verifier: string }> {
   const pkce = createPkce();
   const authorize = await app.request(
     authorizeUrl({
       client_id: MCP_CLIENT_ID,
       code_challenge: pkce.challenge,
       redirect_uri: REDIRECT_URI,
+      scope,
     }),
   );
   const consentUrl = authorize.headers.get("location") ?? "";
@@ -165,7 +172,28 @@ async function approveClient(
     "code",
   );
   if (!code) throw new Error("MCP consent returned no code");
-  return { code, verifier: pkce.verifier };
+  return { code, consentHtml: page.html, verifier: pkce.verifier };
+}
+
+/** Connect the test client as one viewer and return its access token. */
+async function connect(app: Hono, email: string, scope = ALL_SCOPES) {
+  const response = await exchangeCode(
+    app,
+    await approveClient(app, email, scope),
+  );
+  return ((await response.json()) as TokenBody).access_token;
+}
+
+/** Call one tool with the official MCP SDK client. */
+async function callTool(
+  app: Hono,
+  token: string,
+  name: string,
+  args: Record<string, unknown> = {},
+) {
+  return await withMcpClient(app, token, (client) =>
+    client.callTool({ name, arguments: args }),
+  );
 }
 
 function exchangeCode(
@@ -269,13 +297,13 @@ describe("remote MCP HTTP", () => {
       resource: MCP_TEST_URL,
       authorization_servers: [MCP_TEST_ORIGIN],
       bearer_methods_supported: ["header"],
-      scopes_supported: ["conversations:read"],
+      scopes_supported: ALL_SCOPES.split(" "),
     });
     expect(serverMetadata).toEqual({
       issuer: MCP_TEST_ORIGIN,
       authorization_endpoint: `${MCP_TEST_ORIGIN}/api/mcp/oauth/authorize`,
       token_endpoint: `${MCP_TEST_ORIGIN}/api/mcp/oauth/token`,
-      scopes_supported: ["conversations:read"],
+      scopes_supported: ALL_SCOPES.split(" "),
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
@@ -346,7 +374,7 @@ describe("remote MCP HTTP", () => {
     expect(removedDomain.status).toBe(401);
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(
-      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="conversations:read"`,
+      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="${ALL_SCOPES}"`,
     );
   });
 
@@ -440,6 +468,236 @@ describe("remote MCP HTTP", () => {
       );
     },
   );
+
+  it("shows the requested scopes and lists only their tools", async () => {
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    // An empty scope asks for every scope.
+    const everyScope = await approveClient(app, VIEWER, "");
+    const everyTokens = (await (
+      await exchangeCode(app, everyScope)
+    ).json()) as TokenBody;
+    const readOnly = await connect(app, VIEWER, "conversations:read");
+    const toolNames = async (token: string) =>
+      (await withMcpClient(app, token, (client) => client.listTools())).tools
+        .map((tool) => tool.name)
+        .sort();
+    const invalidScope = await app.request(
+      authorizeUrl({
+        client_id: MCP_CLIENT_ID,
+        code_challenge: createPkce().challenge,
+        redirect_uri: REDIRECT_URI,
+        scope: "conversations:write",
+      }),
+    );
+    const widenedRefresh = await requestTokens(app, {
+      client_id: MCP_CLIENT_ID,
+      grant_type: "refresh_token",
+      refresh_token: everyTokens.refresh_token,
+      resource: MCP_TEST_URL,
+      scope: "conversations:read",
+    });
+
+    for (const scope of ALL_SCOPES.split(" ")) {
+      expect(everyScope.consentHtml).toContain(scope);
+    }
+    expect(everyTokens.scope).toBe(ALL_SCOPES);
+    expect(await toolNames(everyTokens.access_token)).toEqual([
+      "archiveConversation",
+      "getAutomation",
+      "getConversation",
+      "getReviewItem",
+      "listAutomations",
+      "listConversationMessages",
+      "listConversations",
+      "listReviewItems",
+      "stopConversation",
+    ]);
+    expect(await toolNames(readOnly)).toEqual([
+      "getConversation",
+      "listConversationMessages",
+      "listConversations",
+    ]);
+    expect(
+      new URL(invalidScope.headers.get("location") ?? "").searchParams.get(
+        "error",
+      ),
+    ).toBe("invalid_scope");
+    await expect(widenedRefresh.json()).resolves.toMatchObject({
+      error: "invalid_scope",
+    });
+  });
+
+  it("reads a participant's Conversation in pieces and hides other Conversations", async () => {
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    const conversationId = "slack:C123:1700000000.000300";
+    const otherConversationId = "slack:C123:1700000000.000400";
+    await seedConversation({
+      conversationId,
+      email: VIEWER,
+      title: "Viewer incident",
+    });
+    await seedConversation({
+      conversationId: otherConversationId,
+      email: OTHER_VIEWER,
+      title: "Other incident",
+    });
+    await getConversationEventStore().append(
+      conversationId,
+      (
+        [
+          { role: "user", text: "What broke?" },
+          { role: "assistant", text: "The relay deploy broke ingestion." },
+          { role: "user", text: "Roll it back." },
+          { role: "assistant", text: "The rollback is done." },
+        ] as const
+      ).map(({ role, text }, index) => ({
+        data: {
+          type: "message" as const,
+          messageId: `message-${index}`,
+          role,
+          text,
+        },
+        createdAtMs: Date.now() + index,
+      })),
+    );
+    await appendConversationBrief(getDb(), {
+      content: conversationBriefFixture({ summary: "Relay was rolled back." }),
+      conversationId,
+      modelId: "test-model",
+      searchText: "relay rollback",
+      throughSeq: 0,
+      turnId: "brief-turn",
+    });
+    const token = await connect(app, VIEWER);
+
+    const conversation = await callTool(app, token, "getConversation", {
+      conversationId,
+    });
+    const newest = await callTool(app, token, "listConversationMessages", {
+      conversationId,
+      limit: 3,
+    });
+    const older = await callTool(app, token, "listConversationMessages", {
+      before: (newest.structuredContent as { nextCursor: string }).nextCursor,
+      conversationId,
+    });
+    const hidden = await callTool(app, token, "getConversation", {
+      conversationId: otherConversationId,
+    });
+    const stopped = await callTool(app, token, "stopConversation", {
+      conversationId,
+    });
+    const archived = await callTool(app, token, "archiveConversation", {
+      conversationId,
+      lastSeenAt: (
+        conversation.structuredContent as {
+          conversation: { lastSeenAt: string };
+        }
+      ).conversation.lastSeenAt,
+    });
+
+    expect(conversation.structuredContent).toMatchObject({
+      conversation: { conversationId, title: "Viewer incident" },
+      brief: {
+        summary: "Relay was rolled back.",
+        updatedAt: expect.any(String),
+      },
+      lastReply: { role: "assistant", text: "The rollback is done." },
+    });
+    expect(conversation.structuredContent).not.toHaveProperty("brief.record");
+    expect(
+      (newest.structuredContent as { messages: { text: string }[] }).messages,
+    ).toEqual([
+      expect.objectContaining({ text: "The relay deploy broke ingestion." }),
+      expect.objectContaining({ text: "Roll it back." }),
+      expect.objectContaining({ text: "The rollback is done." }),
+    ]);
+    expect(older.structuredContent).toEqual({
+      messages: [
+        expect.objectContaining({ role: "user", text: "What broke?" }),
+      ],
+    });
+    expect(hidden).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "Conversation not found." }],
+    });
+    expect(stopped.structuredContent).toEqual({
+      status: "no_work",
+      droppedMessages: 0,
+    });
+    expect(archived.structuredContent).toEqual({
+      archivedAt: expect.any(String),
+    });
+  });
+
+  it("lists the viewer's Review items and reads Automations", async () => {
+    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    await seedConversation({
+      conversationId: "slack:C123:1700000000.000500",
+      email: VIEWER,
+      title: "Release review",
+    });
+    const viewer = await resolveViewerUser(VIEWER);
+    const other = await resolveViewerUser(OTHER_VIEWER);
+    const addItem = async (userId: string, title: string) =>
+      (await insertReviewItem(getDb(), {
+        addedByConversationId: "slack:C123:1700000000.000500",
+        assignedToEveryone: false,
+        assigneeUserIds: [userId],
+        body: "Pick one.",
+        conversationIds: ["slack:C123:1700000000.000500"],
+        dedupeKey: title,
+        kind: "action",
+        nowMs: Date.now(),
+        request: {
+          question: "Ship it?",
+          fields: [
+            {
+              id: "decision",
+              kind: "choice",
+              label: "Decision",
+              options: [{ label: "Ship" }, { label: "Wait" }],
+            },
+          ],
+        },
+        title,
+        visibility: "private",
+      }))!;
+    const mine = await addItem(viewer!.id, "Approve the release");
+    const theirs = await addItem(other!.id, "Approve the budget");
+    const token = await connect(app, VIEWER);
+
+    const listed = await callTool(app, token, "listReviewItems");
+    const hidden = await callTool(app, token, "getReviewItem", {
+      id: theirs.id,
+    });
+    const automations = await callTool(app, token, "listAutomations");
+    const missingAutomation = await callTool(app, token, "getAutomation", {
+      id: "missing",
+    });
+
+    expect(listed.structuredContent).toEqual({
+      items: [
+        expect.objectContaining({
+          id: mine.id,
+          canAct: true,
+          question: "Ship it?",
+          status: "open",
+          title: "Approve the release",
+        }),
+      ],
+      truncated: false,
+    });
+    expect(hidden).toMatchObject({ isError: true });
+    expect(automations.structuredContent).toEqual({
+      automations: [],
+      total: 0,
+    });
+    expect(missingAutomation).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "Automation not found." }],
+    });
+  });
 
   it("does not mount when dashboard sign-in is not required", async () => {
     const app = await createApp({

@@ -1,52 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { readConversationFeed } from "@/api/conversations/list";
-import {
-  conversationFeedQuerySchema,
-  conversationReportStatusSchema,
-  conversationSurfaceSchema,
-  type ConversationSummaryReport,
-} from "@/api/schema/conversation";
-import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { conversationFeedQuerySchema } from "@/api/schema/conversation";
+import { mcpConversation, mcpConversationSchema } from "../conversation";
+import { mcpToolResult, type McpToolContext } from "../tool-context";
 
-/** MCP view of one Conversation. It omits dashboard-only fields. */
-const mcpConversationSchema = z
-  .object({
-    conversationId: z.string(),
-    title: z.string(),
-    status: conversationReportStatusSchema,
-    surface: conversationSurfaceSchema,
-    channelName: z.string().optional(),
-    locationUrl: z.string().optional(),
-    startedAt: z.string(),
-    lastSeenAt: z.string(),
-    archivedAt: z.string().optional(),
-    url: z.string().optional(),
-  })
-  .strict();
-
-type McpConversation = z.output<typeof mcpConversationSchema>;
-
-function mcpConversation(summary: ConversationSummaryReport): McpConversation {
-  return {
-    conversationId: summary.conversationId,
-    title: summary.displayTitle,
-    status: summary.status,
-    surface: summary.surface,
-    channelName: summary.channelNameRedacted ? undefined : summary.channelName,
-    locationUrl: summary.locationUrl,
-    startedAt: summary.startedAt,
-    lastSeenAt: summary.lastSeenAt,
-    archivedAt: summary.archivedAt ?? undefined,
-    url: getDashboardConversationLink(summary.conversationId),
-  };
-}
-
-/** Register `listConversations`, which lists the Conversations of `user`. */
+/** Register `listConversations`, which lists the Conversations of the user. */
 export function registerListConversationsTool(
   server: McpServer,
-  user: User,
+  { user }: McpToolContext,
 ): void {
   // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is the Zod object API.
   const feedQuery = conversationFeedQuerySchema.shape;
@@ -64,15 +26,18 @@ export function registerListConversationsTool(
       },
       // The SDK checks `structuredContent` against this schema.
       outputSchema: { conversations: z.array(mcpConversationSchema) },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
     },
     async ({ q, status }) => {
       const feed = await readConversationFeed({ q, status, viewer: user });
-      const result = { conversations: feed.conversations.map(mcpConversation) };
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return mcpToolResult({
+        conversations: feed.conversations.map(mcpConversation),
+      });
     },
   );
 }
