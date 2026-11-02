@@ -1,7 +1,12 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
-import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import {
+  slackMention,
+  slackThreadMessage,
+  reply,
+  webMessage,
+} from "@junior-evals/fixture/inputs";
 import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
@@ -182,6 +187,52 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.replies).toHaveLength(1);
     expect(sentWhilePaused).toBe(true);
     expect(conversation.replies[0]!.text).toContain("Owner: Dana");
+  });
+
+  test("when a person says stop while a continued turn runs, stop the turn without a reply", async ({
+    agent,
+  }) => {
+    // The release push stalls past the turn deadline, so the turn pauses and
+    // continues in a new worker run. The person says `stop` during the first
+    // model request of that run. The fixture holds that request for longer
+    // than the 500 ms stop check, so the run must see the stop and end.
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([evalOperation]),
+      limits: {
+        turnTimeoutMs:
+          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+      },
+    });
+    let paused = false;
+    let sentStop = false;
+    const conversation = await run(
+      slackMention(
+        "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
+      ),
+      {
+        onProgress: async (progress, { send }) => {
+          if (progress.type === "paused") {
+            paused = true;
+            return;
+          }
+          if (progress.type === "model_request" && paused && !sentStop) {
+            sentStop = true;
+            await send(slackThreadMessage("stop"));
+          }
+        },
+      },
+    );
+
+    expect(sentStop).toBe(true);
+    // A stopped turn has no reply. Without the stop, it would succeed.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+    expect(conversation.replies).toEqual([]);
+    expect(
+      completedMcpToolCalls(
+        "mcp__eval-operation__release-status",
+        conversation,
+      ),
+    ).toHaveLength(0);
   });
 
   test("when the model provider rejects a request, Junior posts a safe failure reply and answers the next message", async ({
