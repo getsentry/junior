@@ -604,10 +604,48 @@ export function createToolActionReview(options: {
     }
   };
 
+  /**
+   * Count one batch as one attempt of the agent. An allowed action resets
+   * the count. A batch with a rejected action and no allowed action adds
+   * one. Return true when the batch reaches the limit.
+   */
+  const countAttempt = (
+    actions: readonly ToolAction[],
+    steps: readonly ReviewStep[],
+  ): boolean => {
+    const reviewed = steps.filter((step) => step.kind === "reviewed");
+    if (reviewed.some((step) => step.decision.decision === "allow")) {
+      consecutiveRejections = 0;
+      return false;
+    }
+    const first = reviewed[0];
+    if (!first) {
+      return false;
+    }
+    consecutiveRejections += 1;
+    if (consecutiveRejections < MAX_CONSECUTIVE_REJECTIONS) {
+      return false;
+    }
+    // Keep Sentry visibility for the limit without aborting the run.
+    logException(
+      new ToolActionReviewLimitError(),
+      "guardian.action_review.exhausted",
+      {
+        "app.guardian.decision": first.decision.decision,
+        "app.guardian.risk_level": first.decision.riskLevel,
+        "app.guardian.user_authorization": first.decision.userAuthorization,
+        "gen_ai.tool.name": first.proposal.tool.name,
+        "gen_ai.tool.call.id": actions[steps.indexOf(first)]!.toolCallId,
+      },
+    );
+    return true;
+  };
+
   /** Apply one review step to gate state and return the action's result. */
   const settle = (
     toolCallId: string,
     step: ReviewStep,
+    exhausted: boolean,
   ): ToolActionReviewResult => {
     if (step.kind === "skipped") {
       return { allowed: true };
@@ -618,27 +656,10 @@ export function createToolActionReview(options: {
     }
     const { decision, proposal } = step;
     if (decision.decision === "allow") {
-      consecutiveRejections = 0;
       return { allowed: true, decision };
     }
     const reviewedAction = projectedRejection(proposal, decision);
     addPriorRejection(priorRejections, reviewedAction);
-    consecutiveRejections += 1;
-    const exhausted = consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
-    if (exhausted) {
-      // Keep Sentry visibility for the limit without aborting the run.
-      logException(
-        new ToolActionReviewLimitError(),
-        "guardian.action_review.exhausted",
-        {
-          "app.guardian.decision": decision.decision,
-          "app.guardian.risk_level": decision.riskLevel,
-          "app.guardian.user_authorization": decision.userAuthorization,
-          "gen_ai.tool.name": proposal.tool.name,
-          "gen_ai.tool.call.id": toolCallId,
-        },
-      );
-    }
     pendingRejections.set(toolCallId, {
       decision: decision.decision,
       priorRejection: reviewedAction,
@@ -676,12 +697,14 @@ export function createToolActionReview(options: {
             MAX_CONCURRENT_REVIEWS,
             (action) => reviewStep(action, rejections, signal),
           );
-          // Change gate state in batch order, so the count of consecutive
-          // rejections does not depend on which review finished first.
+          // A batch, such as one script drain, is one attempt. Change gate
+          // state in batch order, so it does not depend on which review
+          // finished first.
+          const exhausted = countAttempt(actions, steps);
           return new Map(
             actions.map((action, index) => [
               action.toolCallId,
-              settle(action.toolCallId, steps[index]!),
+              settle(action.toolCallId, steps[index]!, exhausted),
             ]),
           );
         },

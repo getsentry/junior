@@ -493,7 +493,7 @@ describe("tool action review", () => {
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 
-  it("reviews a batch against one rejection snapshot and counts rejections in batch order", async () => {
+  it("reviews a batch against one rejection snapshot and counts it as one attempt", async () => {
     const onDecision = vi.fn(async () => undefined);
     // The first action finishes last, so completion order differs from
     // batch order.
@@ -553,25 +553,44 @@ describe("tool action review", () => {
     );
 
     expect(results.get("core")).toEqual({ allowed: true });
+    const exhausted = "rejected three consecutive tool execution attempts";
+    // Three rejections in one batch are one attempt, so none reaches the
+    // limit.
     for (const id of ["a", "b", "c"]) {
       expect(results.get(id)).toMatchObject({
         allowed: false,
-        error: { decision: "deny", reason: `Rejected ${id}.` },
+        error: {
+          decision: "deny",
+          message: expect.not.stringContaining(exhausted),
+          reason: `Rejected ${id}.`,
+        },
       });
     }
-    // The third rejection in batch order reaches the limit, also though the
-    // first action finished last.
-    const exhausted = "rejected three consecutive tool execution attempts";
-    expect(results.get("a")).toMatchObject({
-      error: { message: expect.not.stringContaining(exhausted) },
-    });
-    expect(results.get("c")).toMatchObject({
-      error: { message: expect.stringContaining(exhausted) },
-    });
     for (const [proposal] of review.mock.calls) {
       expect(proposal.priorRejectedActions).toBeUndefined();
     }
     expect(onDecision).toHaveBeenCalledTimes(3);
+
+    // The third rejected batch reaches the limit for each of its actions.
+    const retry = (id: string) => ({
+      toolCallId: id,
+      toolName: "deleteWorkspace",
+      tool: reviewed,
+      input: { target: id },
+    });
+    const second = await reviewToolActions([retry("d")], actionReview);
+    expect(second.get("d")).toMatchObject({
+      error: { message: expect.not.stringContaining(exhausted) },
+    });
+    const third = await reviewToolActions(
+      [retry("e"), retry("f")],
+      actionReview,
+    );
+    for (const id of ["e", "f"]) {
+      expect(third.get(id)).toMatchObject({
+        error: { message: expect.stringContaining(exhausted) },
+      });
+    }
   });
 
   it("bounds script provenance in the proposal", async () => {
