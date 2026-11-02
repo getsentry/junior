@@ -4,6 +4,7 @@ import { StatusChip } from "./StatusChip";
 import { ArrowUpRight, CircleAlert, Clock3 } from "lucide-react";
 import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
+import { DisplayText } from "../display-text/DisplayText";
 import { automationPath } from "../format";
 
 /** Show a saved automation inside a reply, with a preview and a detail link. */
@@ -43,7 +44,7 @@ export function AutomationCard({
           </StatusChip>
         )}
         <p className="m-0 line-clamp-3 break-words text-sm leading-relaxed text-dashboard-text-muted">
-          {card.instruction}
+          <DisplayText inline text={card.instruction} />
         </p>
         <div className="flex items-start gap-2 text-xs leading-relaxed text-dashboard-text">
           <Clock3

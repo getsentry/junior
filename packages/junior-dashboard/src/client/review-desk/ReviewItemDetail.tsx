@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../components/StatusChip";
-import { TranscriptMarkdown } from "../conversations/TranscriptMarkdown";
+import { DisplayText } from "../display-text/DisplayText";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
@@ -54,7 +54,7 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
           {item.visibility === "private" ? " · Private" : null}
         </p>
       </header>
-      <TranscriptMarkdown text={item.body} />
+      <DisplayText text={item.body} />
       <section
         aria-label={item.status === "open" ? "Actions" : "Outcome"}
         className="border-t border-dashboard-border-subtle pt-5"

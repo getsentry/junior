@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
-import { MentionText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -47,7 +47,12 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
-          <MentionText links={links} mentions={mentions} text={summary} />
+          <DisplayText
+            inline
+            links={links}
+            mentions={mentions}
+            text={summary}
+          />
         </span>
         {!isBatch && props.message.eventType ? (
           <EventTypeChip eventType={props.message.eventType} />
@@ -62,7 +67,8 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
             >
               <span className="min-w-0 break-words">
-                <MentionText
+                <DisplayText
+                  inline
                   links={links}
                   mentions={mentions}
                   text={event.trustedSummary ?? event.eventType}
