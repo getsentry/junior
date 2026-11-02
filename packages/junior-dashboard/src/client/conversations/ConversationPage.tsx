@@ -160,7 +160,7 @@ export function ConversationPage(props: {
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
-  const readAtOpen = useReadPositionAtOpen(detail.data, detail.isFresh);
+  const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );

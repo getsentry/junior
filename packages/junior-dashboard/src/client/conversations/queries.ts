@@ -913,11 +913,11 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
-    /** The shown detail was fetched in this visit, not only read from cache. */
-    isFresh:
-      detail.isFetchedAfterMount &&
-      !detail.isFetching &&
-      detailData === detail.data,
+    /** The latest detail after a fetch in this visit, before it is deferred. */
+    fetchedDetail:
+      detail.isFetchedAfterMount && !detail.isFetching
+        ? detail.data
+        : undefined,
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,

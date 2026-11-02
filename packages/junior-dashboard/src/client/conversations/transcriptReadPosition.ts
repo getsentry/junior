@@ -72,35 +72,36 @@ export function readConversationStartPosition(): ConversationStartPosition {
  * is keyed by Conversation, so this runs once for each visit.
  *
  * The read position comes from the first detail, which can be a cached copy.
- * The last unread row waits for the first detail fetched in this visit, so a
- * stale cache cannot hide messages that arrived while the reader was away.
+ * The last unread row comes from the first detail fetched in this visit, so a
+ * stale cache cannot hide messages that arrived while the reader was away,
+ * and later polls cannot add rows that arrived after open.
  */
 export function useReadPositionAtOpen(
-  detail:
-    | {
-        events: readonly { seq: number }[];
-        readPosition?: ConversationReadPosition;
-      }
-    | undefined,
-  /** The detail was fetched in this visit, not only read from the cache. */
-  fresh: boolean,
+  detail: DetailAtOpen | undefined,
+  /** The first detail fetched in this visit, not only read from the cache. */
+  fetched: DetailAtOpen | undefined,
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
   const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
-  const [freshEnd, setFreshEnd] = useState<{ throughSeq?: number }>();
+  const [fetchedEnd, setFetchedEnd] = useState<{ throughSeq?: number }>();
   const read =
     opened ??
     (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
   if (!opened && read) setOpened(read);
   const end =
-    freshEnd ??
-    (detail && fresh ? { throughSeq: detail.events.at(-1)?.seq } : undefined);
-  if (!freshEnd && end) setFreshEnd(end);
+    fetchedEnd ??
+    (fetched ? { throughSeq: fetched.events.at(-1)?.seq } : undefined);
+  if (!fetchedEnd && end) setFetchedEnd(end);
   return readPositionAtOpen(
     read?.lastReadSeq,
     end ? end.throughSeq : detail?.events.at(-1)?.seq,
   );
 }
+
+type DetailAtOpen = {
+  events: readonly { seq: number }[];
+  readPosition?: ConversationReadPosition;
+};
 
 /** Find the rows after the read position, through the last row at open. */
 function readPositionAtOpen(
