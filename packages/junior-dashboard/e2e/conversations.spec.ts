@@ -430,7 +430,10 @@ test("groups the signed-in profile and session actions in the header", async ({
       request.method() === "POST",
   );
   await page.getByRole("button", { name: "Log out" }).click();
-  await signOutRequest;
+  // Better Auth returns 415 for a sign-out body without a JSON content type.
+  expect((await signOutRequest).headers()["content-type"]).toBe(
+    "application/json",
+  );
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {

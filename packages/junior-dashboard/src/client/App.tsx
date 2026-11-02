@@ -124,10 +124,20 @@ export function DashboardShell() {
   }, [location.pathname]);
 
   async function signOut() {
-    await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
-      credentials: "same-origin",
-      method: "POST",
-    });
+    // Better Auth rejects a request body without a JSON content type. On
+    // Vercel, a bodiless POST still arrives with an empty body.
+    const response = await fetch(
+      `${data?.config.authPath ?? "/api/auth"}/sign-out`,
+      {
+        body: "{}",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Sign-out returned ${response.status}`);
+    }
     window.location.assign(data?.config.basePath ?? "/");
   }
 
