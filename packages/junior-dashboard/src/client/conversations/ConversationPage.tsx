@@ -284,11 +284,13 @@ export function ConversationPage(props: {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
-  // Keep the panel while the transcript or a linked event loads.
+  // Keep the panel while the transcript or a linked event loads, and for the
+  // render before a found Turn link becomes an event link.
   const eventLoading =
     eventOpen &&
     !selectedEvent &&
     (detail.isPending ||
+      linkedTurnSeq !== undefined ||
       ((linkedEventMissing || linkedTurnMissing) &&
         (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
         !detail.historyError));
