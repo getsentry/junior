@@ -226,9 +226,9 @@ function messageAnswer(
 }
 
 /**
- * Close the open action items that a person answered with a reply in their
+ * Close the open action item that a person answered with a reply in their
  * thread. Call it after the reply is saved to the Conversation, so the
- * reply always reaches the agent. Each item that it closes saves `text` as
+ * reply always reaches the agent. The item that it closes saves `text` as
  * its answer, so the item keeps what the person said.
  *
  * A reply closes an item only when all of these are true:
@@ -236,9 +236,12 @@ function messageAnswer(
  * - The agent added it in this Conversation (`addedByConversationId`).
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
+ * - It is the only open item in this Conversation that the replier can
+ *   answer. A reply cannot show which of two questions it answers, so then
+ *   all of them stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the review desk. Each item closes as `done` with
+ * an answer on the card or the review desk. The item closes as `done` with
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.
@@ -266,9 +269,14 @@ export async function closeReviewItemsAnsweredByReply(args: {
   if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
-  for (const item of items.filter((candidate) =>
-    replyAnswers(candidate, user),
-  )) {
+  const answered = items.filter((candidate) => replyAnswers(candidate, user));
+  const isOpen = (candidate: ReviewItem) => candidate.status === "open";
+  // A retry of a reply still delivers the items that it closed.
+  const toDeliver =
+    answered.filter(isOpen).length > 1
+      ? answered.filter((candidate) => !isOpen(candidate))
+      : answered;
+  for (const item of toDeliver) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
       const answer = messageAnswer(item, args.text);

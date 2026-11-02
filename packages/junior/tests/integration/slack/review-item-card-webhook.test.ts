@@ -672,6 +672,20 @@ describe("Slack webhook: Review item cards", () => {
     expect((await getReviewItem(getDb(), unassigned.item.id))?.status).toBe(
       "open",
     );
+
+    // Ana can now answer two open questions. A reply cannot show which one
+    // it answers, so both stay open for their cards or the review desk.
+    const second = await addItem(ana, {
+      kind: "action",
+      title: "Ship release 1.2.5",
+      body: "The release checks passed.",
+      dedupe_key: "release:1.2.5",
+      request: SHIP_REQUEST,
+    });
+    await reply("U123", "1712345.0007", { mention: false });
+    for (const id of [unassigned.item.id, second.item.id]) {
+      expect((await getReviewItem(getDb(), id))?.status).toBe("open");
+    }
   });
 
   it("closes a question when its assignee replies on the dashboard, also when only the queue wake fails", async () => {

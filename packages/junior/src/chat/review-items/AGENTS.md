@@ -57,8 +57,10 @@ the tools (`chat/tools/review-items.ts`), or the review desk API
 
 - `closeReviewItemsAnsweredByReply` saves the message before it closes items,
   so the reply always reaches the agent.
-- A reply closes only open action items that this Conversation added and that
-  the person may act on. Items assigned to Everyone stay open.
+- A reply closes only an open action item that this Conversation added and
+  that the person may act on. Items assigned to Everyone stay open.
+- A reply closes at most one item. When the person can answer more than one
+  open item, the reply cannot show which one it answers, so all stay open.
 
 ## Purge And Delete
 
