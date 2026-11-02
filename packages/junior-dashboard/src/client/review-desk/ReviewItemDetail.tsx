@@ -83,7 +83,11 @@ export function ReviewItemDetail(props: { item: ReviewItemPayload }) {
           </Fact>
         ) : null}
         <Fact label="Added by">
-          <Link to={conversationPath(item.addedByConversationId)}>
+          <Link
+            to={conversationPath(item.addedByConversationId, {
+              turnId: item.addedByTurnId,
+            })}
+          >
             Conversation
           </Link>
           {item.automationId ? (

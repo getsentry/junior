@@ -53,6 +53,11 @@ export const juniorReviewItems = pgTable(
         onDelete: "cascade",
       }),
     /**
+     * Turn of the agent that added the item, or that last added it again with
+     * its dedupe key. Null for a plugin item, which has no Turn.
+     */
+    addedByTurnId: text("added_by_turn_id"),
+    /**
      * Provider tenant, such as a Slack workspace, of the Conversation that
      * added the item. A public item is visible only inside it.
      */

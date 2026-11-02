@@ -31,7 +31,9 @@ import { CopyButton } from "../components/CopyButton";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   CONVERSATION_EVENT_PARAM,
+  CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  turnStartedEventSeq,
 } from "./conversationRoutes";
 import {
   ConversationComposer,
@@ -138,20 +140,24 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
+  // A linked Turn opens the event that started it. Until that event is
+  // found, it acts like a linked event that is still loading.
+  const linkedTurnId = searchParams.get(CONVERSATION_TURN_PARAM) ?? undefined;
+  const eventOpen =
+    selectedEventSeq !== undefined || linkedTurnId !== undefined;
   // Event details and turn context show over Conversation details. Closing
   // them shows details again when details are open. A linked event starts
   // with details closed, so closing it does not open a panel nobody chose.
   const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
-    selectedEventSeq === undefined ? undefined : false,
+    eventOpen ? false : undefined,
   );
   const detailsOpen = detailsChoice ?? detailsDefaultOpen;
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
-  const eventOpen = selectedEventSeq !== undefined;
   const showDetails = detailsOpen && !eventOpen && !turnContext;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
-    selectedEventSeq === undefined ? "rich" : "raw",
+    eventOpen ? "raw" : "rich",
   );
-  const view = selectedEventSeq === undefined ? viewState : "raw";
+  const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
@@ -213,6 +219,7 @@ export function ConversationPage(props: {
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
+          next.delete(CONVERSATION_TURN_PARAM);
           if (seq === undefined) next.delete(CONVERSATION_EVENT_PARAM);
           else next.set(CONVERSATION_EVENT_PARAM, String(seq));
           return next;
@@ -224,14 +231,14 @@ export function ConversationPage(props: {
   );
   const onViewChange = useCallback(
     (value: TranscriptViewMode) => {
-      if (value !== "raw" && selectedEventSeq !== undefined) {
+      if (value !== "raw" && eventOpen) {
         setSelectedEventSeq(undefined);
       }
       // Turn context belongs to a message in the Conversation view.
       setTurnContext(undefined);
       setView(value);
     },
-    [selectedEventSeq, setSelectedEventSeq],
+    [eventOpen, setSelectedEventSeq],
   );
   // A linked event can be older than the first page. Load earlier pages until
   // it is present or history ends.
@@ -250,12 +257,41 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
-  // Keep the panel while the transcript or a linked event loads.
+  // Load earlier pages until the linked Turn starts or history ends. Then
+  // replace the Turn link with a link to its first event, or drop it when
+  // history has no such event. A history error keeps the link, so a retry
+  // or reload can still find the Turn.
+  const linkedTurnSeq = linkedTurnId
+    ? turnStartedEventSeq(transcript?.events, linkedTurnId)
+    : undefined;
+  const linkedTurnMissing =
+    linkedTurnId !== undefined &&
+    linkedTurnSeq === undefined &&
+    transcript !== undefined;
+  const loadLinkedTurn =
+    linkedTurnMissing &&
+    detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage &&
+    !detail.historyError;
+  const linkedTurnNotFound =
+    linkedTurnMissing &&
+    !detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage;
+  useEffect(() => {
+    if (loadLinkedTurn) loadPreviousPageRef.current();
+  }, [loadLinkedTurn, oldestLoadedSeq]);
+  useEffect(() => {
+    if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
+    else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
+  }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
+  // Keep the panel while the transcript or a linked event loads, and for the
+  // render before a found Turn link becomes an event link.
   const eventLoading =
     eventOpen &&
     !selectedEvent &&
     (detail.isPending ||
-      (linkedEventMissing &&
+      linkedTurnSeq !== undefined ||
+      ((linkedEventMissing || linkedTurnMissing) &&
         (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
         !detail.historyError));
   const showEvent = Boolean(selectedEvent) || eventLoading;

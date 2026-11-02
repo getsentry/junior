@@ -113,6 +113,8 @@ interface BaseToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId: string;
+  /** Turn that runs this tool call. */
+  turnId?: string;
   /** Parent of a child agent Conversation. Unset for a root Conversation. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */

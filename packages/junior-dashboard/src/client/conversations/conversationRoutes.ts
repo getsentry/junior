@@ -1,6 +1,17 @@
-/** Build the dashboard route for a conversation id. */
-export function conversationPath(conversationId: string): string {
-  return `/conversations/${encodeURIComponent(conversationId)}`;
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+
+/**
+ * Build the dashboard route for a conversation id. A `turnId` opens the
+ * start of that Turn in the event log.
+ */
+export function conversationPath(
+  conversationId: string,
+  options?: { turnId?: string },
+): string {
+  const path = `/conversations/${encodeURIComponent(conversationId)}`;
+  return options?.turnId
+    ? `${path}?${CONVERSATION_TURN_PARAM}=${encodeURIComponent(options.turnId)}`
+    : path;
 }
 
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
@@ -19,4 +30,20 @@ export function parseConversationEventSeq(
   value: string | null | undefined,
 ): number | undefined {
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
+/** Query param that opens the start of one Turn in the event log. */
+export const CONVERSATION_TURN_PARAM = "turn";
+
+/** Find the sequence number of the event that started a Turn. */
+export function turnStartedEventSeq(
+  events: readonly ConversationReportEvent[] | undefined,
+  turnId: string,
+): number | undefined {
+  return events?.find(
+    ({ data }) =>
+      data.type === "turn_lifecycle" &&
+      data.state === "started" &&
+      data.turnId === turnId,
+  )?.seq;
 }

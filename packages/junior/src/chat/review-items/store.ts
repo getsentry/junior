@@ -59,6 +59,8 @@ export interface ReviewItemAssignee {
 /** A Review item with its assignees and linked Conversations. */
 export interface ReviewItem {
   addedByConversationId: string;
+  /** Turn that added the item. Unset for a plugin item. */
+  addedByTurnId?: string;
   answer?: UserInputAnswer;
   assignedToEveryone: boolean;
   assignees: ReviewItemAssignee[];
@@ -167,6 +169,7 @@ async function hydrate(
       updatedAt: row.updatedAt,
       visibility: row.visibility,
       ...(row.answer ? { answer: row.answer } : undefined),
+      ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(row.automationId ? { automationId: row.automationId } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
@@ -305,6 +308,7 @@ export async function insertReviewItem(
   db: JuniorDatabase,
   input: ReviewItemContent & {
     addedByConversationId: string;
+    addedByTurnId?: string;
     automationId?: string;
     dedupeKey: string;
     nowMs: number;
@@ -318,6 +322,7 @@ export async function insertReviewItem(
       .values({
         ...contentColumns(input),
         addedByConversationId: input.addedByConversationId,
+        addedByTurnId: input.addedByTurnId ?? null,
         automationId: input.automationId ?? null,
         createdAt: now,
         dedupeKey: input.dedupeKey,
@@ -341,15 +346,29 @@ export async function insertReviewItem(
   return item;
 }
 
-/** Replace the content of one open Review item. Return false when closed. */
+/**
+ * Replace the content of one open Review item. Return false when closed.
+ * `addedByTurnId` moves the Turn pointer to the Turn that added the item
+ * again; omit it to keep the stored Turn.
+ */
 export async function updateReviewItemContent(
   db: JuniorDatabase,
-  input: ReviewItemContent & { id: string; nowMs: number },
+  input: ReviewItemContent & {
+    addedByTurnId?: string;
+    id: string;
+    nowMs: number;
+  },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const updated = await tx
       .update(juniorReviewItems)
-      .set({ ...contentColumns(input), updatedAt: new Date(input.nowMs) })
+      .set({
+        ...contentColumns(input),
+        updatedAt: new Date(input.nowMs),
+        ...(input.addedByTurnId
+          ? { addedByTurnId: input.addedByTurnId }
+          : undefined),
+      })
       .where(
         and(
           eq(juniorReviewItems.id, input.id),
