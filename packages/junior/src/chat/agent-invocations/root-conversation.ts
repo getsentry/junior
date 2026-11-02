@@ -9,9 +9,14 @@
  * Compaction and handoff never rewrite these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
- * Only a message whose author has the same Actor identity as the Run counts
- * as authority. Each other message keeps its real author as a label and is
- * only context. Nothing is copied into the Run.
+ * A message counts as the user only when its stored author Identity is one
+ * of the Identities of the person behind the Run's Actor: every Identity of
+ * their User, or only the Actor's own Identity when it has no User. So a
+ * review desk answer from the person's web Identity counts in a Slack thread.
+ * A message without a stored author Identity does not count. The local CLI is
+ * the one exception, because it has no per-person Identity. An Automation
+ * run's own instruction counts as `automation`. Each other message keeps its
+ * real author as a label and is only context. Nothing is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -23,6 +28,7 @@ import {
   type RootConversation,
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -105,11 +111,24 @@ function messageAuthor(
     : undefined;
 }
 
+/**
+ * Return the Identity ids of the person behind `actor`: every Identity of
+ * their User, or only the Actor's own Identity when it has no User. A system
+ * or local Actor has no user Identity, so this set is empty for it.
+ */
+async function actorIdentityIds(actor: Actor): Promise<Set<string>> {
+  const resolved = await readActorIdentity(actor);
+  const identities =
+    resolved?.user?.identities ?? (resolved ? [resolved.identity] : []);
+  return new Set(identities.map((identity) => identity.id));
+}
+
 /** Label one root message with its real author. */
 function messageLabel(
   root: Conversation,
   data: MessageData,
   actor: Actor,
+  personIdentityIds: ReadonlySet<string>,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -121,11 +140,19 @@ function messageLabel(
   if (data.meta?.eventType !== undefined) {
     return "event";
   }
-  const author = messageAuthor(root, data);
-  if (!sameActorIdentity(author, actor)) {
-    return author?.platform === "system" ? "event" : "other person";
+  if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
+    return "user";
   }
-  return author?.platform === "system" ? "automation" : "user";
+  const author = messageAuthor(root, data);
+  if (author?.platform === "system") {
+    return sameActorIdentity(author, actor) ? "automation" : "event";
+  }
+  // The local CLI has no per-person Identity. Its messages use the system
+  // Identity, which events use too, so a local message counts by its Actor.
+  if (author?.platform === "local" && sameActorIdentity(author, actor)) {
+    return "user";
+  }
+  return "other person";
 }
 
 /** Characters of one message as Guardian reads it, with a label per line. */
@@ -235,6 +262,7 @@ export async function readRootConversation(args: {
     pinnedRead && openingEdit !== undefined
       ? { ...pinnedRead.data, text: openingEdit }
       : pinnedRead?.data;
+  const personIdentityIds = await actorIdentityIds(args.actor);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
@@ -244,7 +272,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor),
+      author: messageLabel(root, data, args.actor, personIdentityIds),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -256,7 +284,7 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(root, opening, args.actor),
+            author: messageLabel(root, opening, args.actor, personIdentityIds),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]
