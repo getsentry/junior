@@ -505,6 +505,24 @@ function reportSubagentLabel(
 }
 
 /**
+ * A fork child commits its parent's agent history in its first Turn, with the
+ * parent's timestamps. So it comes after that Turn's start but is older than
+ * it. The parent Conversation already shows it.
+ */
+function isInheritedHistory(
+  event: ConversationEvent,
+  firstTurnStart: ConversationEvent | undefined,
+): boolean {
+  return (
+    firstTurnStart !== undefined &&
+    event.seq > firstTurnStart.seq &&
+    event.createdAtMs < firstTurnStart.createdAtMs &&
+    (event.data.type === "assistant_message" ||
+      event.data.type === "tool_result")
+  );
+}
+
+/**
  * Project canonical events into the ordered reporting boundary.
  *
  * `canExposePayload` must come from the authorized conversation-detail policy;
@@ -513,6 +531,8 @@ function reportSubagentLabel(
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
+  /** `turn_started` of the Conversation's first Turn. */
+  firstTurnStart?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -550,6 +570,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
+    if (isInheritedHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -559,6 +580,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
+    if (isInheritedHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);
