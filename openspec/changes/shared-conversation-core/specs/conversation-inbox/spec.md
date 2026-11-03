@@ -49,6 +49,18 @@ conversation, minted in the child's transaction, with `answers` and
 - **THEN** the parent gets one record in its own conversation, with
   `answers` naming the asked records and `sentBy` naming the child's turn.
 
+### Requirement: Copies Of A Verified Person Actor
+
+Besides core person ingress, the only sources of a `VerifiedPersonActor`
+SHALL be the result-record copy and the cutover move (P45). Both SHALL copy
+it from verified stored state.
+
+#### Scenario: Result record for a person's request
+
+- **WHEN** a child result answers a record whose actor is a person
+- **THEN** the result record copies that verified actor, and nothing else
+  makes one.
+
 ### Requirement: Accept Each Message Once
 
 The core SHALL accept each inbound message id once per conversation. The id

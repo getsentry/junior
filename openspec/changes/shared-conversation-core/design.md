@@ -253,7 +253,8 @@ inserts the child conversation and request record, commits, then calls
 Stored once on the conversation (`ConversationPolicy`) and on each request
 record (`replyTo`). There is no `kind` field: the rows below differ only in
 these values. The only per-kind code is at the edges: ingress parsing, and
-one delivery adapter per `replyTo.kind` (`interfaces/edges.md`).
+one delivery adapter per `replyTo.kind`, plus one outcome adapter for
+Automation outcomes (`interfaces/edges.md`).
 
 | Kind           | Actor from                     | `canAskUser` | `joinRule`    | `whenBusy` | Default `replyTo`         |
 | -------------- | ------------------------------ | ------------ | ------------- | ---------- | ------------------------- |
@@ -821,7 +822,7 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 ### P43. SQL lock or Redis lock with a SQL counter (from review) — Decided
 
 - **Decided:** the SQL lock (P5). Source: the planning thread.
-- **Cost:** an estimate to measure in step 3 (`tasks.md`): one indexed `UPDATE` per running turn every 15 s (300 running
+- **Cost:** an estimate to measure in step 15 (`tasks.md`): one indexed `UPDATE` per running turn every 15 s (300 running
   turns is 20 writes per second), and one indexed read per credentialed
   proxy call.
 - **Why:** the lock, the version and the stop time sit on one row. Each
@@ -830,7 +831,7 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   that goes up at each take. Check-ins cost no SQL write, and fencing still
   holds at the SQL save. But the proxy and the save check read two stores,
   and a take is two writes that a crash can split.
-- **Note, switch rule:** if the step 3 measurement shows the check-in load
+- **Note, switch rule:** if the step 15 measurement shows the check-in load
   is a problem, switch. Only the lock module changes.
 
 ### P44. One clock for a stop and the input it judges — Decided
@@ -854,40 +855,110 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 ### P45. A cutover that is safe under a rolling deploy (from P1)
 
 Old and new workers run at once during each deploy. Model: `Cutover.tla`
-(P37). The first draft failed two of three checks; this proposal folds in
-the four fixes.
+(P37). The first draft failed two of three checks. This proposal folds in
+the four model fixes (C1 to C4) and the durability and trust reviews.
 
-- **Proposal:**
-  - The conversation row gets a `core` field (`old` or `new`). The SQL
-    lock take decides the path per conversation and sets `core` in the
-    same compare-and-set. The reader release before the cutover (`tasks.md`
-    step 14) teaches today's workers to read it: they refuse a conversation
-    that the new core owns.
-  - **Every new-core lock take that finds today's state runs the move**,
-    not only the take that set `core` (C1, C2). It takes today's Redis
-    lease (`execution.lease`), so it waits while an old worker is
-    mid-turn. Then, in one locked step, it moves the state: an open Redis
-    turn cursor into a turn row keyed by its turn id; today's waiting
-    inbox input (`pendingMessages`) into inbox entries with core-minted
-    request records; active Agent invocation rows and dispatch records
-    into request records; Slack `activeTurnId` and `pendingAuth` into the
-    turn row. The insert is keyed by turn id, so a repeat after a crash
-    inserts nothing new and only deletes.
-  - **The move pins the lease** (C4). Before the insert, it writes today's
-    lease with no expiry and leaves it there. Only the reader release
-    understands the pin: it reads `core` without taking the lease, and a
-    move back replaces the pin. A worker without the reader release can
-    never take the lease of a moved conversation, so this does not depend
-    on deploy order.
-  - **The reader release fences today's cursor writes with the lease**
-    (C3). Today each cursor write takes only a per-turn mutation lock
-    (`task-execution/turn-cursor.ts`, `withTurnCursorMutation` on
-    `turnCursorMutationKey`; `main` at `0dbbec3`), not the conversation
-    lease. The reader release makes them check the lease token. A stalled
-    old worker can still post until its next check-in: the same window as
-    P5 "Limit".
-  - A cutover switch decides whether a lock take on an old-core
-    conversation moves it. The cutover release turns it on.
+- **Proposal (recommended): a switch gated on a drained deploy.**
+  - **Owner field.** The conversation row gets a `core` field (`old` or
+    `new`). The root conversation's SQL lock take decides it and sets it in
+    the same compare-and-set. A child conversation inherits its root's
+    `core`. The reader release (`tasks.md` step 14) teaches today's workers
+    to read `core` and the switch: they refuse a conversation that the new
+    core owns.
+  - **Deploy gate.** The cutover switch can turn on only after the reader
+    release runs on every worker and old in-flight attempts have drained.
+    The deploy job writes a marker with database `now()` when the reader
+    release is promoted and the earlier deployment takes no new requests.
+    The switch reads the marker and refuses to turn on until `now()` is at
+    least the marker plus 6.5 minutes (the 5-minute attempt limit plus the
+    90 s lock). A deploy of an older release clears the marker. Reason: a
+    worker without the reader release has no lease fence. If it stalls past
+    its lease, the new core runs the same turn again. The gate makes sure
+    no such worker runs once the switch is on.
+  - **Cursor writes fenced by the lease** (C3). Today each cursor write
+    takes only a per-turn mutation lock (`task-execution/turn-cursor.ts`,
+    `withTurnCursorMutation` on `turnCursorMutationKey`; `main` at
+    `0dbbec3`), not the conversation lease. The reader release makes them
+    check the lease token too. This covers a stalled worker that has the
+    reader release. It can still post until its next check-in: the same
+    window as P5 "Limit".
+  - **Move on every new-core take** (C1, C2). Every new-core lock take
+    that finds today's state runs the move, not only the take that set
+    `core`. It takes today's lease (`execution.lease`), so it waits while
+    an old worker is mid-turn. Then, in one locked step, it moves an open
+    Redis turn cursor into a turn row keyed by its turn id, and Slack
+    `activeTurnId` and `pendingAuth` into that turn row. A repeat after a
+    crash inserts nothing new and only deletes.
+  - **Pin** (C4). Before the insert, the move writes today's lease with
+    `expiresAtMs = Number.MAX_SAFE_INTEGER` and a fixed token, and leaves
+    it there. A no-expiry value does not work on `main`: `normalizeLease`
+    (`task-execution/state.ts:419-434`) drops a lease whose `expiresAtMs`
+    is not a finite number (`coerce.ts:7-11`), and JSON turns `Infinity`
+    into `null`. A dropped lease reads as no lease. `MAX_SAFE_INTEGER` is
+    finite, so `isLeaseActive` (`state.ts:606-607`) keeps it live. The
+    lease is a field of the conversation record, which each write saves
+    with the 7-day `JUNIOR_THREAD_STATE_TTL_MS` (`state.ts:1054-1058`).
+    **Choice:** each new-core lock take refreshes that record's 7-day TTL
+    while `core = new`. Not in SQL, because only a worker without the
+    reader release needs the pin, and it reads only Redis. Reader-release
+    workers read `core` in SQL, which does not expire. With the deploy
+    gate, the pin is a second guard for a rollback below the reader
+    release, which the rollback rule forbids while a new-core conversation
+    exists.
+  - **Inbox move, safe to repeat.** Today's waiting input
+    (`pendingMessages`) moves in the same locked step into inbox entries
+    with core-minted request records. The record is unique on
+    `(conversationId, inboundMessageId)`, so a repeat after a crash mints
+    no second request id. The move copies today's dedupe list
+    (`execution.inboundMessageIds`, `state.ts:159`) into the inbox's
+    duplicate check, so a Slack retry after the move is still a duplicate.
+    Admission (allowed domains, P19 trust) runs again on each moved input;
+    a failure is dropped with a recorded reason.
+  - **Parent and child.** Active Agent invocation rows and dispatch
+    records move into request records only when the child conversation is
+    new-core or idle. Otherwise that part of the move waits for a later
+    take.
+  - **Authority of moved state.** A moved turn or record keeps the
+    verified old actor and subject, or it is closed (I15):
+    - Before `bindSubject`, the move verifies each old subject with
+      today's check (table below). Then it binds the subject to the new
+      request id, and `credentialsForTurn` runs before the first resume.
+    - A moved Agent invocation row takes its actor and subject from the
+      record that created it, through `onBehalfOf`. It does not use the
+      copy that `createAgentInvocationFromLatest` stored
+      (`agent-invocations/store.ts:493`, `result.ts:405,437`; bug 12). If
+      they differ, or that record is gone, the move closes the row with a
+      `failed` result to the parent.
+    - If `TurnRecord.actor` is missing, or a check fails, the move closes
+      the turn or record with a visible note. It never falls back to
+      `resolveResumeExecutionIdentity` (`task-execution/paused-turn.ts:313`)
+      or the author lookup: P26 forbids filling in an actor.
+    - A moved `pendingAuth` for a system actor ends the turn `blocked`. A
+      person's old sign-in link expires, or the move rebinds it to the
+      turn id.
+  - **Move back.** The reader release moves an idle new-core conversation
+    back to today's workers only when the switch is off (`Cutover.tla`,
+    lines 127 and 144). A move back replaces the pin.
+
+| Old binding (`credentials/subject.ts`) | Check before `bindSubject`                   | New `kind`           | New `scope`                   | `dmChannelId`       |
+| -------------------------------------- | -------------------------------------------- | -------------------- | ----------------------------- | ------------------- |
+| `slack-direct-conversation`            | `verifySlackDirectCredentialSubject`         | none yet (see below) | none yet                      | `binding.channelId` |
+| `scheduled-automation`                 | `verifyScheduledAutomationCredentialSubject` | `automation_creator` | `{ automationId: taskId }`    | none                |
+| `event-automation`                     | `verifyEventAutomationCredentialSubject`     | `automation_creator` | `{ automationId: taskId }`    | none                |
+| `timer-watch`                          | `verifyTimerWatchCredentialSubject`          | `timer_creator`      | `{ conversationId, watchId }` | none                |
+
+- `teamId` comes from the old binding or the record's Destination. A
+  plugin dispatch into a DM (`agent-dispatch/context.ts:49`) has no kind
+  or scope in `interfaces/access.md` yet. Step 15 adds one, or the move
+  closes those records with a note.
+- **Other options:**
+  - A time-based fence: no deploy marker. The move refuses to run until
+    today's lease has been expired for the attempt limit plus 90 s. It
+    depends on every old worker keeping the 5-minute attempt limit, and
+    each move waits about 6.5 minutes.
+  - A hard cutover: stop every worker, move all state offline, then start
+    only new-core workers. It is the simplest to prove, but it needs
+    downtime.
 - **Checks:**
   - First draft: `cutover_design noStrandedCursor` (a crash after the
     core switch strands the open turn) and
@@ -898,9 +969,14 @@ the four fixes.
     stopped old worker).
   - Fenced, not pinned: `cutover_midDeployFenced oneCoreLive` fails (a
     worker without the reader release takes the lease after the move).
-  - All four fixes: `cutover_midDeployPinnedFenced` holds `safety` and
-    `noDuplicateTurn`.
-- **Model gap:** the move of today's inbox input is not modeled yet.
+  - `cutover_midDeployPinnedFenced` holds `safety` and `noDuplicateTurn`
+    only because `Cutover.tla:153` fences `o1` too. With `o1` unfenced, as
+    in reality, the durability review reports a 13-step `safety`
+    counterexample: `o1` stalls, its lease expires, the new core pins and
+    inserts, then both run T1. The deploy gate closes it; the model fix is
+    step G.
+- **Model gap:** the deploy gate, the unfenced `o1`, the inbox move, a
+  parent with a child, and I15 (step G, G.1f).
 - **Rollback of the cutover release:** turn the switch off. No more
   conversations move. A new-core conversation goes back to today's workers
   at its next lock take once it has no open turn and no open record; open
@@ -921,17 +997,29 @@ release-then-read covers it, but not when the holder dies or loses its
 lock between its pause save and its release. With one such loss, a paused
 turn waits for the repair job (`errors_design l3_pausedResumedNoRepair`,
 12 steps: a dropped `send()` notify, `Crash_AfterSavePause`, then the
-redelivered message dropped too before the lock expires). That breaks L3
-as `specs/verification/spec.md` states it ("without fairness for the
-repair job"). With the repair job, L3 holds
-(`errors_design l3_pausedResumed`).
+redelivered message dropped too before the lock expires). With the repair
+job, L3 holds (`errors_design l3_pausedResumed`).
 
-- **Proposal:** a notify that finds a live lock is queued again with a
-  delay until the lock expires, instead of dropped.
-- **Alternative:** require L3 without the repair job only for runs with no
-  loss, and accept the repair-job wait after a loss, as for a lost
-  `running` turn (`lostTurnPickedUpNoRepair`, accepted).
-- **Model gap:** neither option is modeled yet.
+- **Proposal (recommended): keep the drop, with the repair job as the
+  backstop.** L3 without the repair job is required only for runs with no
+  lost notify. After a loss, the paused turn waits for the repair job, as
+  a lost `running` turn does (`lostTurnPickedUpNoRepair`, accepted). A
+  notify carries no payload: only the conversation id.
+- **Other option: one delayed notify per `(conversationId, lockVersion)`.**
+  A notify that finds a live lock sends one new queue message (not a
+  retry) with a delay until the lock expires, keyed by conversation id and
+  the lock version it saw. The worker acks the original only after that
+  send succeeds. The delayed notify also carries no payload.
+  - Why a plain requeue fails: it loops every 15 s for the whole turn, and
+    each busy `send()` adds another notify. A key on the conversation id
+    alone is dropped by the queue's `idempotencyKey` dedupe
+    (`queue/provider.ts:30-31`) while an earlier one is pending, though
+    the wake is still needed. A requeue by retry hits the retry limit or
+    the retention time, and the wake is lost. Today's busy defer
+    (`task-execution/worker.ts:433-443`) is such a loop every
+    `CONVERSATION_WORK_DEFER_DELAY_MS` (15 s); its key includes the time,
+    so the dedupe does not drop it.
+- **Model gap:** neither option is modeled yet (step G, G.1f).
 
 ## Verification
 
@@ -942,7 +1030,7 @@ Decided (the planning thread).
 
 | Layer             | Catches                                        | Runs                       |
 | ----------------- | ---------------------------------------------- | -------------------------- |
-| Protocol model    | a design rule that cannot hold (races, orders) | TLC in CI                  |
+| Protocol model    | a design rule that cannot hold (races, orders) | TLC in CI (P41)            |
 | Conformance tests | code that does not do what the model does      | integration tests          |
 | Structural rules  | a second writer or a bypass of a single owner  | types, import checks, lint |
 | Traceability      | a requirement with no check, or a stale check  | CI script                  |
@@ -958,7 +1046,9 @@ Decided (the planning thread).
   - `cfg/`: one TLC config per instance, with the constants of one plan
     revision;
   - `checks.txt`: each check and its expected result; `check.sh` runs
-    them with TLC and fails on any change of result.
+    them with TLC and fails on any change of result. `check.sh` pins a TLC
+    release that cannot be published again (step G, G.1k): v1.8.0 is a
+    prerelease whose jar was replaced, so its checksum changed.
 - TLC checks the safety invariants and the liveness properties
   exhaustively within each bound. It searches breadth-first, so each
   counterexample trace is a shortest one. An expected `violated` is a
@@ -977,11 +1067,17 @@ Decided (the planning thread).
   - `Cutover`: 1 conversation, one worker of each kind (without the reader
     release, with it, new core), 2 inputs, up to 2 crashes, 2 lease or
     lock expiries, 3 switch flips.
-- **Not modeled yet** (step G tasks G.1a–G.1f): parent and child
+- **Not modeled yet** (step G tasks G.1a–G.1j): parent and child
   conversations, the system actor, the adversarial `send`, request-record
   matching (I5, I6, I9, I12), tree-stop results (I8), sandbox process tags
-  (I13), the move of today's inbox input at cutover (P45), and the P46
-  options. Until then, these invariants are not checked.
+  (I13), the P45 deploy gate with an unfenced `o1`, the inbox move, a
+  parent with a child at cutover, the authority of moved state (I15), the
+  P46 choice, `send()` as its P32 steps, and a stalled worker. Until then,
+  these invariants are not checked.
+- **Bound on queue messages:** `WorkerLock.tla` drops a notify past
+  `QUEUE_CAP` (`Inc`), which hides a lost wake. A state constraint replaces
+  it, so TLC stops exploring past the bound instead of changing behavior
+  (G.1i).
 - **Adversary:** a `send` action that puts any message with any request id
   in any inbox, so I9 and the E5 traces are not vacuous.
 - **Processes:** each sandbox process carries its creator's (actor,
@@ -1015,7 +1111,9 @@ Decided (the planning thread).
     `credentialsForTurn` has. An import rule keeps the low-level credential
     resolvers private to its module.
   - S3, S4: `VerifiedPersonActor` and the agent-message type are branded,
-    made only in core ingress and the core agent module. An import-boundary
+    made only in core ingress and the core agent module. The only other
+    sources of a `VerifiedPersonActor` are the result-record copy and the
+    cutover move (P45), and both copy it from verified stored state. An import-boundary
     check keeps `createRequest` and `send` out of plugin reach. The record
     write asserts the brand at run time too.
   - S6: an import rule in `scripts/check-test-architecture.mjs`.
@@ -1031,7 +1129,8 @@ Decided (the planning thread).
 - Each scenario id is capability, requirement and scenario titles in kebab
   case. Tests carry it in their name or a `// spec:` comment; rules in
   their `note`; model invariants in a comment. While this plan exists, the
-  check also reads `specs/`, so the list cannot drift from it.
+  check also reads `specs/`, so the list cannot drift from it. From step
+  17, when this plan is deleted, the list is the only source.
 - The trace check also matches each fault point name (P42) with a
   `Crash_<Point>` action in `WorkerLock.tla`, both ways.
 - The scenarios of `specs/verification/` are exempt: the gate itself
@@ -1043,12 +1142,16 @@ Decided (the planning thread).
   the conformance tests and the structural rules are green, the trace check
   shows no gap, and the `guardian` eval suite passes for the P15 outside
   text and the P20 "never approval" rules. Source: the planning thread.
-- **Timing:** the gate ships first (step G): the full model (G.1a–G.1g),
+- **Timing:** the gate ships first (step G): the full model (G.1a–G.1l),
   the conformance harness with the `faults` port, the structural check
   runner and the trace check. The words step (step 2) follows. Each build
   step merges when the checks its Verify line names are green against the
   new core. The gate is green before the cutover release (step 15), and
-  every later release keeps it green.
+  every later release keeps it green. Before the cutover release, it
+  includes I15 (P45).
+- **CI:** `check.sh` runs when `packages/junior/verification/**` changes,
+  and once a week. The larger G.1f bound runs only in the weekly job. The
+  conformance tests with the `faults` port run on every PR.
 
 ### P42. Crash points through one faults port — Decided
 
@@ -1059,6 +1162,10 @@ was lost".
 - **Decided:** one injected `faults` port. Source: the planning thread.
   - Tests pass it through Junior's existing dependency wiring. It is
     optional and does nothing when absent. Production never passes it.
+  - Each point has two faults: `kill` (the worker dies after the step) and
+    `stall` (the worker pauses after the step, and resumes after its lock
+    expired). A stalled worker is how a slow old worker posts late (P5
+    "Limit", P45).
   - No global, no singleton and no test-only module API.
   - Step G amends `policies/testing.md` to allow this port.
 - **Points:** one per `Crash_<Point>` action in `WorkerLock.tla`. The
@@ -1076,6 +1183,8 @@ was lost".
     writes that only earlier drafts (`ab76f5d`) or `noPause` have. The
     design has no such write, so they have no point in code, and the
     trace check skips them.
+  - `send()` gets one point per P32 step (append, `inboxSeq`, `wakeAtMs`,
+    wake-time index, notify) when the model splits it (G.1h).
 - **Other boundaries that stay:**
   - Queue redelivery: the queue provider adapter (`queue/provider.ts`)
     redelivers an unacked message.
@@ -1106,11 +1215,11 @@ was lost".
 
 Every item is **Proposed, needs sign-off**.
 
-1. P45: the `core` owner field; a move on every new-core lock take that
-   finds today's state, keyed by turn id; a pinned lease; today's cursor
-   writes fenced by the lease in the reader release; today's inbox input
-   moved in the same step (not modeled yet); a cutover switch and its
-   rollback.
-2. P46: a notify that finds a live lock is queued again with a delay
-   until the lock expires, or L3 without the repair job is required only
-   for runs with no loss.
+1. P45: a cutover switch gated on a drained deploy (recommended), a
+   time-based fence, or a hard cutover. The recommended option also has
+   the `core` owner field decided at the root, a move on every new-core
+   take keyed by turn id, a pin at `MAX_SAFE_INTEGER` with a refreshed TTL,
+   cursor writes fenced by the lease, an inbox move safe to repeat, and
+   verified authority for moved state (I15).
+2. P46: keep the drop with the repair job as the backstop (recommended),
+   or one delayed notify per `(conversationId, lockVersion)`.

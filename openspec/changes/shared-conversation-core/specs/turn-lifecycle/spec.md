@@ -18,6 +18,54 @@ A conversation SHALL have at most one turn that is `running`, `paused` or
 - **THEN** it moves that turn into the turn row and deletes the old one in
   the same locked step, so two open turns never exist.
 
+### Requirement: Cutover Under A Rolling Deploy
+
+The cutover SHALL run a conversation on one core at a time while old and
+new workers run together (Proposed, needs sign-off: P45). The root
+conversation SHALL decide `core`, and a child SHALL inherit it. The cutover
+switch SHALL turn on only after the reader release runs on every worker and
+old in-flight attempts have drained.
+
+#### Scenario: Old worker refuses a new-core conversation
+
+- **WHEN** a worker with the reader release takes work for a new-core
+  conversation
+- **THEN** it refuses it and runs nothing (Proposed: P45).
+
+#### Scenario: Pin outlives the move
+
+- **WHEN** the move has run and an old worker reads today's lease
+- **THEN** it finds the pin (`expiresAtMs = Number.MAX_SAFE_INTEGER`, a
+  fixed token) live, and each new-core lock take refreshes the record's
+  7-day TTL (Proposed: P45).
+
+#### Scenario: Switch waits for the drained deploy
+
+- **WHEN** someone turns the switch on less than the attempt limit plus
+  90 s after the reader-release marker, or with no marker
+- **THEN** the switch stays off (Proposed: P45).
+
+#### Scenario: Move back only with the switch off
+
+- **WHEN** an idle new-core conversation is taken by a worker with the
+  reader release while the switch is on
+- **THEN** it does not move back (Proposed: P45).
+
+#### Scenario: Inbox move after a crash
+
+- **WHEN** a worker dies inside the move and the next new-core take runs
+  it again
+- **THEN** each moved input has one request record, unique on
+  `(conversationId, inboundMessageId)`, and a Slack retry of a moved
+  message is a duplicate (Proposed: P45).
+
+#### Scenario: Moved authority not verified
+
+- **WHEN** a moved turn or record has no actor, or its old subject fails
+  today's check
+- **THEN** the move closes it with a visible note and fills in no actor
+  from another source (Proposed: P45, I15).
+
 ### Requirement: The Turn Row Owns Turn Status
 
 The turn row SHALL be the only turn status. It SHALL list the request

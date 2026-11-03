@@ -132,7 +132,7 @@ type FailReason =
 /** One response to one reply target. */
 type Delivery = {
   deliveryId: string; // turnId + response index + target
-  target: ReplyTarget;
+  target: ReplyTarget | OutcomeTarget; // OutcomeTarget: edges.md
   /** Saved with the intent. A restart sends this text again (P5). */
   body: ResponseBody;
   state: "intended" | "sent" | "failed";

@@ -75,9 +75,21 @@ function shouldPost(target: ReplyTarget, body: ResponseBody): boolean {
   return body.kind !== "child_result"; // location posts; stored saves
 }
 
-/** One adapter for Automation outcomes. finishTurn calls it once per
- * outcome, in order, with the run's one result (P18). */
-const outcomeTarget: ReplyTargetAdapter;
+/** One Automation outcome. It gets only the run's one result (P18). */
+type OutcomeTarget = { outcomeIndex: number; destination: Destination };
+
+/** finishTurn calls it once per outcome, in order, with the run's one
+ * result. find() has the same use as for a reply target. */
+const outcomeTarget: {
+  post(
+    target: OutcomeTarget,
+    delivery: Delivery,
+  ): Promise<{ providerMessageId?: string }>;
+  find(
+    target: OutcomeTarget,
+    deliveryId: string,
+  ): Promise<{ providerMessageId: string } | undefined>;
+};
 ```
 
 - `location`: Slack post in the thread. `find` reads message metadata.

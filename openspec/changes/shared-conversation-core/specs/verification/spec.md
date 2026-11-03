@@ -5,8 +5,8 @@
 ### Requirement: Protocol Model Checked By A Machine
 
 A TLA+ model of the core protocol SHALL live in `packages/junior/verification/`,
-and CI SHALL check it with TLC on every change to the model or the core
-(Decided: P37, P40). It SHALL cover the worker lock and lock version, turn
+and CI SHALL check it with TLC on every change to that directory and once a
+week (Decided: P37, P40, P41). It SHALL cover the worker lock and lock version, turn
 states, the inbox, join now and wait, request records, `finishTurn` and
 delivery, stop (including the tree), child results, sign-in pause and supersede,
 restart and retry, sandbox processes tagged with their creator, and an
@@ -78,6 +78,18 @@ The model SHALL check (Decided: P37):
 - **THEN** no turn takes it in, or the checker reports a counterexample
   for I9.
 
+### Requirement: Moved State Invariant
+
+The model SHALL check **I15**: a turn or record that the cutover moves has
+the verified old actor and subject, or it is closed (Proposed, needs
+sign-off: P45). The gate SHALL hold it before the cutover release.
+
+#### Scenario: Move without a verified subject
+
+- **WHEN** the model moves a turn whose old subject fails its check
+- **THEN** the turn is closed, or the checker reports a counterexample for
+  I15.
+
 ### Requirement: Proxy Invariant
 
 The model SHALL check **I13**: the proxy adds credentials only for the
@@ -136,11 +148,10 @@ within the crash bound (Decided: P37):
 
 - **L1** every request record ends `answered` or `stopped`;
 - **L2** no turn stays `finishing` forever;
-- **L3** a paused turn with work left is eventually resumed or finished,
-  without fairness for the repair job (needs the P32 sign-in and delayed
-  notify fix). After a lost worker,
-  `errors_design l3_pausedResumedNoRepair` fails today; the fix is P46
-  (Proposed, needs sign-off: P46).
+- **L3** a paused turn with work left is eventually resumed or finished.
+  In runs with no lost notify, this holds without fairness for the repair
+  job (needs the P32 sign-in and delayed notify fix). After a lost notify,
+  it holds with the repair job (Proposed, needs sign-off: P46).
 
 #### Scenario: Delivery never succeeds
 
@@ -151,7 +162,7 @@ within the crash bound (Decided: P37):
 ### Requirement: Conformance Tests Against Real Wiring
 
 Model-based integration tests SHALL drive real Junior wiring, faking only
-Slack and the LLM. After each step they SHALL compare user-visible outcomes
+Slack and the LLM, and SHALL run on every PR. After each step they SHALL compare user-visible outcomes
 and the durable records the specs name (turn row, request record, delivery)
 with the model. They SHALL NOT mock Junior modules. Crashes SHALL come
 from the one `faults` port (Decided: P38, P42).
@@ -169,9 +180,9 @@ from the one `faults` port (Decided: P38, P42).
 
 ### Requirement: Crash Points From One Faults Port
 
-Runs SHALL crash a worker at named fault points: after each SQL write,
-Redis operation and post, and where the provider accepted a post but the
-reply was lost. One optional `faults` port SHALL supply them through the
+Runs SHALL crash (`kill`) or pause (`stall`) a worker at named fault
+points: after each SQL write, Redis operation and post, and where the
+provider accepted a post but the reply was lost. One optional `faults` port SHALL supply them through the
 existing dependency wiring, as a no-op when absent. Production SHALL never
 pass it, and it SHALL have no global, singleton or test-only module API.
 Point names SHALL match `Crash_<Point>` actions in `WorkerLock.tla`
@@ -182,6 +193,13 @@ Point names SHALL match `Crash_<Point>` actions in `WorkerLock.tla`
 - **WHEN** a run kills the worker after `startTurn` commits
 - **THEN** after the next worker, the turn row and history match the
   model: one prompt, the message gone from the inbox.
+
+#### Scenario: Stalled worker resumes
+
+- **WHEN** a run stalls a worker after a save until its lock expired, then
+  resumes it
+- **THEN** its next save or post is refused, except the one post that P5
+  "Limit" allows.
 
 #### Scenario: Fault point with no model action
 
@@ -225,7 +243,7 @@ Types, an import-boundary check and runtime asserts SHALL enforce
 
 - **S3** only core person ingress makes a `VerifiedPersonActor`, and a
   person-actor record needs one (conversation-inbox: Core Mints Request
-  Records);
+  Records, Copies Of A Verified Person Actor);
 - **S4** only `finishTurn`, `askChild` and `messageParent` make agent
   messages and their records; plugin code cannot import `createRequest`
   or `send` (agent-tree: Only Matching Results Are Accepted).

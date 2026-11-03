@@ -2,7 +2,7 @@
 
 Hand-written TLA+ models of the shared conversation core in
 `openspec/changes/shared-conversation-core/` (P37), checked by TLC. They
-check the plan at `6c7ab79`. A model change that changes a result also
+check the plan at `c38c3d8`. A model change that changes a result also
 changes `checks.txt`. `FINDINGS.md` has the counterexamples.
 
 | File             | What it models                                                    |
