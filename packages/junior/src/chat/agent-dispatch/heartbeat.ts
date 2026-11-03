@@ -12,7 +12,10 @@ import {
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  endAgentInvocationsOfStoppedWork,
+  enqueueAgentInvocation,
+} from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -186,8 +189,11 @@ export async function runHeartbeat(args: {
   nowMs: number;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  // Runs before result recovery, so an invocation that this ends is sent to
+  // its parent in the same heartbeat.
   await recoverConversationWork({
     nowMs: args.nowMs,
+    onWorkStopped: endAgentInvocationsOfStoppedWork,
     queue,
   });
   await recoverPendingDispatchMailboxAppends({

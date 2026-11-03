@@ -33,6 +33,8 @@ function heartbeatIdempotencyKey(
 export async function recoverConversationWork(args: {
   limit?: number;
   nowMs: number;
+  /** Ends what the stopped work owned, such as an agent invocation. */
+  onWorkStopped?: (conversationId: string) => Promise<void>;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<ConversationWorkRecoveryResult> {
@@ -114,6 +116,7 @@ export async function recoverConversationWork(args: {
                 "app.worker.retry_count": (work.execution.retryCount ?? 0) + 1,
               },
             );
+            await args.onWorkStopped?.(conversationId);
             return;
           }
           const wake = await ensureConversationWake({

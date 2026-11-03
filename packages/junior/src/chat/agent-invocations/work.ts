@@ -497,6 +497,32 @@ async function endOtherActiveAgentInvocation(
   );
 }
 
+/**
+ * End the active agent invocations of a child whose work stopped after its
+ * tries ran out. A killed worker never runs its own failure path, so this is
+ * the only place the invocation ends. The heartbeat sends the result.
+ */
+export async function endAgentInvocationsOfStoppedWork(
+  conversationId: string,
+): Promise<void> {
+  for (const invocation of await listActiveAgentInvocationsForConversation(
+    conversationId,
+  )) {
+    const terminal =
+      (await projectTerminalTurn(invocation, { reportNow: true })) ??
+      (await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage:
+          "This task stopped. Its worker failed repeatedly before it could finish.",
+        reportNow: true,
+        status: "failed",
+      }));
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await persistTerminalLifecycle(terminal);
+    }
+  }
+}
+
 /** Classify authorization failures that terminally block background work. */
 function blockingInvocationError(
   error: unknown,
