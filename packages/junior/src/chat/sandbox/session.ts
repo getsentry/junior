@@ -51,9 +51,15 @@ const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
+interface AcquiredSandbox {
+  session: SandboxSession;
+  /** Resumed or created by this acquisition, so preparation just used it. */
+  fresh: boolean;
+}
+
 interface SandboxAcquisition {
   controller: AbortController;
-  promise: Promise<SandboxSession>;
+  promise: Promise<AcquiredSandbox>;
   settled: boolean;
   waiters: number;
 }
@@ -630,7 +636,7 @@ export function createSandboxRuntime(
 
   const acquireSandbox = async (
     signal?: AbortSignal,
-  ): Promise<SandboxSession> => {
+  ): Promise<AcquiredSandbox> => {
     return await withSandboxSpan(
       "sandbox.acquire",
       "sandbox.acquire",
@@ -644,7 +650,7 @@ export function createSandboxRuntime(
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
-          return cachedSandbox;
+          return { session: cachedSandbox, fresh: false };
         }
 
         signal?.throwIfAborted();
@@ -652,19 +658,19 @@ export function createSandboxRuntime(
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "resumed" });
-          return hintedSandbox;
+          return { session: hintedSandbox, fresh: true };
         }
 
         const createdSandbox = await createFreshSandbox(signal);
         setSpanAttributes({ "app.sandbox.acquire.outcome": "created" });
-        return createdSandbox;
+        return { session: createdSandbox, fresh: true };
       },
     );
   };
 
   const getOrAcquireSandbox = async (
     signal?: AbortSignal,
-  ): Promise<SandboxSession> => {
+  ): Promise<AcquiredSandbox> => {
     for (;;) {
       signal?.throwIfAborted();
       let acquisition = acquiringSandbox;
@@ -879,10 +885,15 @@ export function createSandboxRuntime(
   const ensureReadySandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
-    const session = await getOrAcquireSandbox(signal);
+    const { session, fresh } = await getOrAcquireSandbox(signal);
     signal?.throwIfAborted();
-    await probeSession(session);
-    signal?.throwIfAborted();
+    // Resume and create just ran preparation commands that write under the
+    // workspace root. Only a cached session needs the probe to prove it is
+    // still live.
+    if (!fresh) {
+      await probeSession(session);
+      signal?.throwIfAborted();
+    }
     await extendKeepAlive(session);
     startKeepAlive(session);
     return session;
@@ -952,7 +963,7 @@ export function createSandboxRuntime(
       await stopSession(previous?.session);
     },
     async acquire(signal) {
-      return await getOrAcquireSandbox(signal);
+      return (await getOrAcquireSandbox(signal)).session;
     },
     async tools(signal) {
       return createToolExecutors(await ensureReadySandbox(signal));

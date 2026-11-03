@@ -742,6 +742,7 @@ describe("createTestSandbox", () => {
     ]);
 
     expect(firstExecutors.fs).toBe(secondExecutors.fs);
+    expect(freshSandbox.mkDir).not.toHaveBeenCalled();
   });
 
   it("cancels sandbox acquisition with the tool signal", async () => {
@@ -2990,6 +2991,28 @@ describe("createTestSandbox", () => {
     });
 
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes a cached sandbox but not one it just created or resumed", async () => {
+    const createdSandbox = makeSandbox("sbx_probe_created");
+    sandboxCreateMock.mockResolvedValueOnce(createdSandbox);
+    const created = createTestSandbox();
+    created.configureSkills([]);
+
+    await created.execute({ toolName: "bash", input: { command: "echo 1" } });
+    expect(createdSandbox.mkDir).not.toHaveBeenCalled();
+
+    await created.execute({ toolName: "bash", input: { command: "echo 2" } });
+    expect(createdSandbox.mkDir).toHaveBeenCalledOnce();
+    expect(createdSandbox.mkDir).toHaveBeenCalledWith(SANDBOX_WORKSPACE_ROOT);
+
+    const resumedSandbox = makeSandbox("sbx_probe_resumed");
+    sandboxGetMock.mockResolvedValueOnce(resumedSandbox);
+    const resumed = createTestSandbox({ sandboxId: "sbx_probe_resumed" });
+    resumed.configureSkills([]);
+
+    await resumed.execute({ toolName: "bash", input: { command: "echo 1" } });
+    expect(resumedSandbox.mkDir).not.toHaveBeenCalled();
   });
 
   it("fails a stopped cached session and reacquires it on a later tool call", async () => {
