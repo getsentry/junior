@@ -48,6 +48,8 @@ export interface AppendWebMessageInput {
   message: string;
   images?: SandboxFileUpload[];
   idempotencyKey: string;
+  /** Review item whose answer or action this Message reports. */
+  reviewItemId?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -151,6 +153,7 @@ export function buildWebInboundMessage(args: {
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
+  reviewItemId?: string;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -190,6 +193,7 @@ export function buildWebInboundMessage(args: {
         // Inbound message Source.kind to identify web input.
         kind: "api_turn",
         messageId: args.messageId,
+        ...(args.reviewItemId && { reviewItemId: args.reviewItemId }),
       } satisfies LegacyWebMailboxMetadata,
     },
     receivedAtMs: nowMs,
@@ -319,6 +323,7 @@ export async function appendAndEnqueueWebMessage(
       attachments,
       messageId,
       nowMs,
+      ...(input.reviewItemId && { reviewItemId: input.reviewItemId }),
     }),
     conversationStore: options.conversationStore,
     nowMs,

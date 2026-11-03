@@ -18,8 +18,7 @@ const AFTER_COUNT = 3;
 /**
  * Pick the messages nearest the time an item was added. Only messages show:
  * the tool call that added the item would repeat its card. For a closed item,
- * messages from its close on do not show: the card already has the answer,
- * and later answers to other items would push out the context.
+ * messages from its close on do not show: the card already has the answer.
  */
 function conversationExcerpt(
   events: readonly ConversationReportEvent[],
@@ -27,8 +26,12 @@ function conversationExcerpt(
 ): { after: ConversationReportEvent[]; before: ConversationReportEvent[] } {
   const askedAt = Date.parse(item.createdAt);
   const closedAt = item.closedAt ? Date.parse(item.closedAt) : Infinity;
+  // Answers to items show on their cards, not as context for this one.
   const messages = events.filter(
-    (event) => event.data.type === "message" && event.data.role !== "system",
+    (event) =>
+      event.data.type === "message" &&
+      event.data.role !== "system" &&
+      !event.data.reviewItemIds,
   );
   return {
     after: messages

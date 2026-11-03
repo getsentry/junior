@@ -87,9 +87,13 @@ function api(fixture: ConversationFixture, viewer: User) {
   };
 }
 
-async function pendingTexts(conversationId: string): Promise<string[]> {
+async function pendingMessages(conversationId: string) {
   const conversation = await getConversation({ conversationId });
-  return (conversation?.execution.pendingMessages ?? []).map(
+  return conversation?.execution.pendingMessages ?? [];
+}
+
+async function pendingTexts(conversationId: string): Promise<string[]> {
+  return (await pendingMessages(conversationId)).map(
     (message) => message.input.text,
   );
 }
@@ -234,6 +238,10 @@ describe("review item actions API", () => {
       expect(texts).toHaveLength(1);
       expect(texts[0]).toContain("ana@example.com answered review item");
       expect(texts[0]).toContain("Not fair source");
+      // The answer names its item, so the dashboard shows it as an answer.
+      expect(
+        (await pendingMessages(conversationId))[0]?.input.metadata,
+      ).toMatchObject({ reviewItemId: id });
     }
 
     // Ben is too late, and the item leaves the open views.

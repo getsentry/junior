@@ -65,19 +65,28 @@ export function useReviewItemsData(filters: {
   return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
 }
 
-/** Read one Review item, for a link to an item outside the current list. */
-export function useReviewItemData(id: string | undefined) {
-  return useQuery({
+function reviewItemDetailQuery(id: string | undefined) {
+  return {
     enabled: Boolean(id),
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       fetchDashboardJson(
         reviewItemSchema,
         `/api/review-items/${encodeURIComponent(id!)}`,
         signal,
       ),
     retry: false,
-  });
+  };
+}
+
+/** Read one Review item, for a link to an item outside the current list. */
+export function useReviewItemData(id: string | undefined) {
+  return useQuery(reviewItemDetailQuery(id));
+}
+
+/** Read several Review items by id, such as the items one message answers. */
+export function useReviewItemsByIdData(ids: readonly string[]) {
+  return useQueries({ queries: ids.map((id) => reviewItemDetailQuery(id)) });
 }
 
 /**

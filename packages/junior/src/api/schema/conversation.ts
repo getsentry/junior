@@ -158,6 +158,8 @@ export const conversationPendingMessageSchema = z
     /** People mentioned in the text, resolved at read time. */
     mentions: z.array(actorIdentitySchema).optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
+    /** Review items whose answers or actions this person message reports. */
+    reviewItemIds: z.array(z.string().min(1)).min(1).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -170,12 +172,15 @@ export const conversationPendingMessageSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.attachments || data.mentions)
+      (data.actorIdentity ||
+        data.attachments ||
+        data.mentions ||
+        data.reviewItemIds)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted pending messages must not expose actor identity, attachments, or mentions",
+          "redacted pending messages must not expose actor identity, attachments, mentions, or review items",
       });
     }
   });
@@ -369,6 +374,8 @@ const conversationReportMessageEventDataSchema = z
     /** Every Event when several arrived together in one message. */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
+    /** Review items whose answers or actions this person message reports. */
+    reviewItemIds: z.array(z.string().min(1)).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -383,12 +390,16 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.cards || data.attachments || data.events)
+      (data.actorIdentity ||
+        data.cards ||
+        data.attachments ||
+        data.events ||
+        data.reviewItemIds)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, or events",
+          "redacted messages must not expose actor identity, cards, attachments, events, or review items",
       });
     }
   });

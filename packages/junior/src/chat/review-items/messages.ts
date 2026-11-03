@@ -141,6 +141,7 @@ async function sendOne(args: {
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,
+          reviewItemId: args.item.id,
         },
         { nowMs: args.nowMs, queue: args.queue },
       );

@@ -17,6 +17,7 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
+import { batchReviewItemIds } from "@/chat/task-execution/mailbox-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
@@ -71,6 +72,7 @@ export function createWebSteeringDrain(args: {
       // pending instead of missing from the transcript.
       for (const message of joining) {
         const attachments = readMessageAttachments(message.input.attachments);
+        const reviewItemIds = batchReviewItemIds([message]);
         upsertConversationMessage(conversation, {
           id: message.inboundMessageId,
           role: "user",
@@ -83,6 +85,7 @@ export function createWebSteeringDrain(args: {
           meta: {
             ...(attachments.length ? { attachments } : undefined),
             explicitMention: true,
+            ...(reviewItemIds ? { reviewItemIds } : undefined),
             source: "web",
           },
         });

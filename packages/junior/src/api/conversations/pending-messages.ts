@@ -127,6 +127,9 @@ async function projectPendingMessage(
             actorIdentity: actorIdentityFromWebMetadata(metadata.data),
             text,
             ...(attachments.length ? { attachments } : undefined),
+            ...(metadata.data.reviewItemId
+              ? { reviewItemIds: [metadata.data.reviewItemId] }
+              : undefined),
           }
         : { redacted: true as const }),
     };

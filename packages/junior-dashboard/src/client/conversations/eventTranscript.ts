@@ -97,6 +97,9 @@ export function pendingTranscriptMessage(
       ? { actorIdentityId: message.actorIdentityId }
       : undefined),
     ...(message.mentions ? { mentions: message.mentions } : undefined),
+    ...(message.reviewItemIds
+      ? { reviewItemIds: message.reviewItemIds }
+      : undefined),
   };
 }
 
@@ -239,6 +242,9 @@ export function transcriptMessagesFromEvents(
         ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
+          : undefined),
+        ...(data.reviewItemIds
+          ? { reviewItemIds: data.reviewItemIds }
           : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };

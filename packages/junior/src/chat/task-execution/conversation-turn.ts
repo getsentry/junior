@@ -82,7 +82,10 @@ import {
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import {
+  batchReviewItemIds,
+  joinMailboxText,
+} from "@/chat/task-execution/mailbox-input";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
@@ -240,6 +243,7 @@ export function createConversationTurnWorker(
     let event: EventMailboxMetadata["event"] | undefined;
     let batchEvents: ConversationMessageEvent[] = [];
     let authorIdentityId: string | undefined;
+    let reviewItemIds: string[] | undefined;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -265,6 +269,7 @@ export function createConversationTurnWorker(
         batchEvents = eventBatchMessageEvents(messages);
       } else {
         text = joinMailboxText(messages);
+        reviewItemIds = batchReviewItemIds(messages);
       }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
@@ -426,6 +431,7 @@ export function createConversationTurnWorker(
               ...(source.kind === "web"
                 ? { source: "web" as const }
                 : undefined),
+              ...(reviewItemIds ? { reviewItemIds } : undefined),
               ...(event
                 ? {
                     eventType: event.eventType,

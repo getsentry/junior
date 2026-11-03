@@ -265,6 +265,60 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
 });
 
+test("answers show as rows, not as context for other items", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  // The person answered another item right after Junior asked for this one.
+  const answerText = `Dashboard User answered review item "${answered.title}".`;
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), "if-none-match": "" },
+      });
+      const detail = await response.json();
+      const answerAt = Date.parse(rollout.createdAt) + 10_000;
+      const answer = {
+        seq: 100_000,
+        createdAt: new Date(answerAt).toISOString(),
+        data: {
+          type: "message",
+          messageId: "answer-initech",
+          reviewItemIds: [answered.id],
+          role: "user",
+          source: "web",
+          text: answerText,
+        },
+      };
+      // The answer is the only message after the ask.
+      const before = (detail.events as { createdAt: string }[]).filter(
+        (event) => Date.parse(event.createdAt) <= Date.parse(rollout.createdAt),
+      );
+      await route.fulfill({
+        response,
+        json: { ...detail, events: [...before, answer] },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(
+    detail.getByText("Find the slow checkout requests"),
+  ).toBeVisible();
+  const answerName = `Answer: ${answered.title}`;
+  await expect(detail.getByRole("region", { name: answerName })).toHaveCount(0);
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const answer = page.getByRole("region", { name: answerName });
+  await expect(answer.getByText("MIT license, no change.")).toBeVisible();
+  await expect(page.getByText(answerText)).toHaveCount(0);
+});
+
 test("on mobile the list opens one item at a time", async ({
   dashboard,
   page,

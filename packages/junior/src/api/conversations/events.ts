@@ -314,6 +314,17 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
+/** Read the Review items whose answers a person message reports. */
+function reportReviewItemIds(
+  meta: Record<string, unknown> | undefined,
+): { reviewItemIds: string[] } | undefined {
+  const parsed = z
+    .array(z.string().min(1))
+    .min(1)
+    .safeParse(meta?.reviewItemIds);
+  return parsed.success ? { reviewItemIds: parsed.data } : undefined;
+}
+
 // The report has no `cancelled` state. A cancelled Turn has no reply.
 const TURN_COMPLETED_STATES = {
   success: "succeeded",
@@ -368,6 +379,7 @@ function reportEventData(args: {
         ...(typeof data.meta?.agentInvocationId === "string"
           ? { agentInvocationId: data.meta.agentInvocationId }
           : undefined),
+        ...(args.canExposePayload ? reportReviewItemIds(data.meta) : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
         ...(typeof data.meta?.eventType === "string"
