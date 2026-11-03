@@ -70,24 +70,29 @@ export function ReviewItemContext(props: {
     [events, props.item],
   );
   // The first page holds the newest events. Load earlier pages until the
-  // page reaches the time the item was added, or history ends.
+  // page reaches the time the item was added, or history ends. Until then
+  // the loaded messages after the ask are not the first ones, so the
+  // excerpt waits.
   const loadPreviousPageRef = useRef(detail.loadPreviousPage);
   loadPreviousPageRef.current = detail.loadPreviousPage;
   const oldest = events?.[0]?.createdAt;
-  const loadEarlier =
+  const missingEarlier =
     oldest !== undefined &&
     Date.parse(oldest) > Date.parse(props.item.createdAt) &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
+    detail.hasPreviousPage;
+  const loadEarlier =
+    missingEarlier && !detail.isLoadingPreviousPage && !detail.historyError;
   useEffect(() => {
     if (loadEarlier) loadPreviousPageRef.current();
   }, [loadEarlier, oldest]);
 
-  if (detail.isPending) return <TranscriptLoading />;
+  if (detail.isPending || (missingEarlier && !detail.historyError)) {
+    return <TranscriptLoading />;
+  }
   if (
     !data ||
     !excerpt ||
+    missingEarlier ||
     data.eventHistory.status !== "available" ||
     excerpt.before.length + excerpt.after.length === 0
   ) {
