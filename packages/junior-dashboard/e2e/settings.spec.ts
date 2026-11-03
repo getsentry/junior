@@ -47,3 +47,21 @@ test("follows the system theme until the user picks one", async ({
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(root).toHaveAttribute("data-theme", "dark");
 });
+
+test("turns on composer autocorrect for this browser", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByPlaceholder("Message Junior…");
+  await expect(composer).toHaveAttribute("autocorrect", "off");
+  await expect(composer).toHaveAttribute("spellcheck", "false");
+
+  await page.getByRole("button", { name: /Open profile menu/ }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByText("Autocorrect", { exact: true }).click();
+
+  await page.goto(dashboard.baseURL);
+  await expect(composer).toHaveAttribute("autocorrect", "on");
+  await expect(composer).toHaveAttribute("spellcheck", "true");
+});

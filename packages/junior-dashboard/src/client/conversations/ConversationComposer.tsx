@@ -26,6 +26,7 @@ import {
 } from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
+import { useComposerAutocorrect } from "./composerAutocorrect";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -132,6 +133,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
+  const [autocorrect] = useComposerAutocorrect();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef(initialDraft);
@@ -490,10 +492,11 @@ export const ConversationComposer = memo(function ConversationComposer(
         </label>
         <textarea
           // Chat is technical: ids, paths, code. Keep the keyboard chat-like
-          // (Send) and suppress browser IME assist that fights identifiers.
+          // (Send) and suppress browser IME assist that fights identifiers,
+          // unless the user turns autocorrect on in settings.
           autoCapitalize="off"
           autoComplete="off"
-          autoCorrect="off"
+          autoCorrect={autocorrect ? "on" : "off"}
           className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
@@ -510,7 +513,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           placeholder="Message Junior…"
           ref={textareaRef}
           rows={1}
-          spellCheck={false}
+          spellCheck={autocorrect}
         />
         <div
           className={cn(
