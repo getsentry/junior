@@ -52,7 +52,8 @@ function messageTimestamp(message: PiMessage): unknown {
   return (message as { timestamp?: unknown }).timestamp;
 }
 
-function isStandaloneRuntimeContextMessage(
+/** Return whether the message is a Turn's context, paired with the instruction after it. */
+export function isStandaloneRuntimeContextMessage(
   messages: PiMessage[],
   index: number,
 ): boolean {

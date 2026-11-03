@@ -937,8 +937,8 @@ export function createSlackTurnRuntime<
           if (hooks.telemetry) {
             set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
           }
-          // This path can compact context and run router/vision model calls
-          // before executeSlackTurn() opens the main reply span.
+          // This path can run router/vision model calls before
+          // executeSlackTurn() opens the main reply span.
           const content = parseContent(message);
           const strippedUserText = stripLeadingBotMention(
             stripLeadingSteeringOverride(content.topLevelText),

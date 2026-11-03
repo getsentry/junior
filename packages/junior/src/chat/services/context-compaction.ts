@@ -1,9 +1,12 @@
 /**
  * Context compaction.
  *
- * Bounds Pi history for long conversations. Removes runtime context before
- * summarizing and commits a history replacement. Active compaction and handoff
- * keep the authored instruction before the summary. Checkpoints can append
+ * Bounds Pi history for long conversations and commits a history
+ * replacement. Capacity compaction gets its summary from the caller, which
+ * asks the agent model with the cached request prefix. Handoff summarizes with
+ * the fast model. Mid-turn and handoff replacements keep the authored
+ * instruction before the summary. Turn-start replacements keep recent user
+ * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
 import type { Message } from "@earendil-works/pi-ai";
@@ -23,9 +26,9 @@ import {
 } from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
-import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
+  isStandaloneRuntimeContextMessage,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -34,11 +37,7 @@ import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
-import {
-  boundProfile,
-  modelIdForProfile,
-  type ModelProfile,
-} from "@/chat/model-profile";
+import type { ModelProfile } from "@/chat/model-profile";
 import {
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
@@ -53,34 +52,21 @@ import {
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
-import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
+import {
+  withCompactionSpan,
+  type CompactionMode,
+} from "@/chat/services/context-compaction-telemetry";
 import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_CHARS = 6_000;
 
-export interface ContextCompactorDeps {
-  completeText: typeof completeText;
-  autoCompactionTriggerTokens?: number;
-}
-
-export interface ContextCompactor {
-  maybeCompact: (args: CompactContextArgs) => Promise<CompactContextResult>;
-}
-
-export interface CompactContextArgs {
-  conversation: ThreadConversationState;
-  conversationContext?: string;
-  conversationId: string;
-  onCompactionStart?: () => void | Promise<void>;
-  piMessages: PiMessage[];
-  metadata?: {
-    channelId?: string;
-    actorId?: string;
-    runId?: string;
-    threadId?: string;
-  };
-  modelId: string;
+/** Log fields of the Turn that compacts its history. */
+export interface CompactionMetadata {
+  channelId?: string;
+  actorId?: string;
+  runId?: string;
+  threadId?: string;
 }
 
 export interface CompactContextResult {
@@ -92,7 +78,7 @@ export interface CompactContextResult {
 interface HandoffContextArgs {
   conversationContext?: string;
   conversationId: string;
-  metadata?: CompactContextArgs["metadata"];
+  metadata?: CompactionMetadata;
   piMessages: PiMessage[];
   runtimeContext: PiMessage[];
   signal?: AbortSignal;
@@ -105,9 +91,7 @@ interface HandoffContextArgs {
 }
 
 interface ActiveContextCompactionArgs {
-  conversationContext?: string;
   conversationId: string;
-  metadata?: CompactContextArgs["metadata"];
   modelId: string;
   modelProfile: ModelProfile;
   onCompactionStart?: () => void | Promise<void>;
@@ -116,6 +100,13 @@ interface ActiveContextCompactionArgs {
     provenance: ConversationMessageProvenance;
   }>;
   piMessages: PiMessage[];
+  /**
+   * `blocking` runs before the first model request of a Turn. With a new
+   * instruction, it keeps recent user messages from committed history before
+   * the summary. `active` runs between model calls and keeps only the
+   * instruction.
+   */
+  mode: Exclude<CompactionMode, "handoff">;
   runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal;
   /** Index in the runtime context messages where the current Turn starts. */
@@ -383,6 +374,10 @@ function selectRetainedUserMessageEntries(
     sourceIndex >= 0;
     sourceIndex -= 1
   ) {
+    // Check the pair in place: alone, a context message looks like an ask.
+    if (isStandaloneRuntimeContextMessage(messages, sourceIndex)) {
+      continue;
+    }
     const stripped = stripRuntimeTurnContext([messages[sourceIndex]!]);
     const message = stripped[0];
     if (
@@ -425,15 +420,65 @@ export function selectRetainedUserMessages(
   );
 }
 
-/** Ask the fast model for a bounded continuation summary of durable context. */
+/** Match a message across a durable commit, which can reorder JSON keys. */
+function retainedMessageKey(message: PiMessage): string {
+  const { role, timestamp } = message as {
+    role?: unknown;
+    timestamp?: unknown;
+  };
+  return `${String(role)}:${String(timestamp)}:${messageText(message)}`;
+}
+
+/**
+ * Load recent user messages from committed history. Each one keeps its
+ * original author and source event.
+ */
+async function loadRetainedUserMessages(
+  conversationId: string,
+  pendingMessages: PiMessage[],
+) {
+  const projection = await loadConversationProjection({ conversationId });
+  // The Turn can commit its context and new instruction before compaction.
+  // They follow the summary, so leave them and everything after them out of
+  // the selection.
+  const pendingKeys = new Set(pendingMessages.map(retainedMessageKey));
+  let pendingStart = projection.messages.findIndex((message) =>
+    pendingKeys.has(retainedMessageKey(message)),
+  );
+  if (
+    pendingStart > 0 &&
+    isStandaloneRuntimeContextMessage(projection.messages, pendingStart - 1)
+  ) {
+    pendingStart -= 1;
+  }
+  const history =
+    pendingStart === -1
+      ? projection.messages
+      : projection.messages.slice(0, pendingStart);
+  return selectRetainedUserMessageEntries(
+    trimTrailingAssistantMessages(history),
+  ).map((entry) => {
+    const provenance = projection.provenance[entry.sourceIndex];
+    if (!provenance) {
+      throw new Error("retained message provenance is missing");
+    }
+    return {
+      message: entry.message,
+      provenance,
+      sourceEventSeq: projection.seqs[entry.sourceIndex],
+    };
+  });
+}
+
+/** Ask the fast model for a bounded handoff summary of durable context. */
 async function summarizeContext(
   args: {
     conversationContext?: string;
     piMessages: PiMessage[];
-    metadata?: CompactContextArgs["metadata"];
+    metadata?: CompactionMetadata;
     signal?: AbortSignal;
   },
-  deps: ContextCompactorDeps,
+  deps: { completeText: typeof completeText },
 ): Promise<string> {
   const instructions = [
     "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.",
@@ -500,27 +545,6 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
   return estimateContextTokens(messages).tokens;
 }
 
-/**
- * Preserve each retained user message's original instruction author by using
- * the retained source projection index; the synthetic compaction summary is
- * always unauthored context.
- */
-function buildReplacementProvenance(args: {
-  retained: RetainedUserMessage[];
-  sourceProvenance: ConversationMessageProvenance[];
-}): ConversationMessageProvenance[] {
-  return [
-    ...args.retained.map((entry) => {
-      const provenance = args.sourceProvenance[entry.sourceIndex];
-      if (!provenance) {
-        throw new Error("retained message provenance is missing");
-      }
-      return provenance;
-    }),
-    contextProvenance,
-  ];
-}
-
 async function loadLastInstruction(conversationId: string) {
   const event =
     await getConversationEventStore().loadLatestInstruction(conversationId);
@@ -555,168 +579,10 @@ function loadCompactionSource(messages: PiMessage[]): CompactionSource {
   return { reason: "missing_context" };
 }
 
-/** Decide whether this turn crosses the compaction threshold and perform it. */
-async function maybeCompactWithDeps(
-  args: CompactContextArgs,
-  deps: ContextCompactorDeps,
-): Promise<CompactContextResult> {
-  const source = loadCompactionSource(args.piMessages);
-  if ("reason" in source) {
-    return { compacted: false, reason: source.reason };
-  }
-
-  const triggerTokens =
-    deps.autoCompactionTriggerTokens ??
-    getAgentContextCompactionTriggerTokens(args.modelId);
-  if (source.estimatedTokens <= triggerTokens) {
-    return { compacted: false, reason: "below_threshold" };
-  }
-  return await withCompactionSpan("blocking", () =>
-    compactAboveThreshold(args, deps, source, triggerTokens),
-  );
-}
-
-async function compactAboveThreshold(
-  args: CompactContextArgs,
-  deps: ContextCompactorDeps,
-  source: { estimatedTokens: number; messages: PiMessage[] },
-  triggerTokens: number,
-): Promise<CompactContextResult> {
-  await args.onCompactionStart?.();
-
-  let summary: string;
-  try {
-    summary = await summarizeContext(
-      {
-        conversationContext: args.conversationContext,
-        piMessages: source.messages,
-        metadata: args.metadata,
-      },
-      deps,
-    );
-  } catch (error) {
-    logWarn("context_compaction.summary.failed", {
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
-    });
-    setSpanAttributes({ "app.compaction.outcome": "summary_failed" });
-    return { compacted: false, reason: "summary_failed" };
-  }
-
-  return await writeCompactedThreadContext(args, source.messages, summary, {
-    estimatedTokens: source.estimatedTokens,
-    triggerTokens,
-    inputLimitTokens: getAgentContextInputLimitTokens(args.modelId),
-  });
-}
-
-/**
- * Replace active agent history so later turns read the compacted history, not
- * the pre-compaction runtime transcript.
- */
-async function writeCompactedThreadContext(
-  args: CompactContextArgs,
-  sourceMessages: PiMessage[],
-  summary: string,
-  context: {
-    estimatedTokens: number;
-    triggerTokens?: number;
-    inputLimitTokens: number;
-  },
-): Promise<CompactContextResult> {
-  const eventStore = getConversationEventStore();
-  const sourceProjection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
-  const compactedProfile = boundProfile(
-    botConfig,
-    sourceProjection.modelProfile,
-  );
-  const retained = selectRetainedUserMessageEntries(
-    trimTrailingAssistantMessages(sourceProjection.messages),
-  );
-  const continuation = appendOpenPlan(
-    renderCompactionSummary(summary),
-    sourceMessages,
-  );
-  const replacement = [
-    ...retained.map((entry) => entry.message),
-    userMessage(continuation),
-  ];
-  const replacementInputTokens = estimateHistoryTokens(replacement);
-  // Provenance comes from the committed projection so retained user asks keep
-  // their original instruction author across the compaction epoch.
-  const replacementProvenance = buildReplacementProvenance({
-    retained,
-    sourceProvenance: sourceProjection.provenance,
-  });
-  await eventStore.replaceHistory(args.conversationId, {
-    createdAtMs: Date.now(),
-    data: {
-      type: "compaction",
-      modelProfile: compactedProfile,
-      modelId: modelIdForProfile(botConfig, compactedProfile),
-      details: {
-        reason: "capacity",
-        estimatedInputTokens: context.estimatedTokens,
-        replacementInputTokens,
-        triggerTokens:
-          context.triggerTokens ??
-          getAgentContextCompactionTriggerTokens(args.modelId),
-        inputLimitTokens: context.inputLimitTokens,
-        inputMessageCount: sourceMessages.length,
-        retainedMessageCount: replacement.length - 1,
-        summaryChars: summary.length,
-      },
-      summary,
-      replacementHistory: replacement.map((message, index) => {
-        const sourceEventSeq =
-          index < retained.length
-            ? sourceProjection.seqs[retained[index]!.sourceIndex]
-            : undefined;
-        return {
-          item: historyItemFromPiMessage(
-            message,
-            replacementProvenance[index]!,
-          ),
-          ...(sourceEventSeq === undefined ? undefined : { sourceEventSeq }),
-        };
-      }),
-    },
-  });
-
-  setSpanAttributes({
-    "app.compaction.outcome": "compacted",
-    "app.compaction.input_messages": sourceMessages.length,
-    "app.compaction.retained_messages": replacement.length - 1,
-    "app.compaction.summary_chars": summary.length,
-    "app.compaction.input.estimate": context.estimatedTokens,
-    "app.compaction.replacement.estimate": replacementInputTokens,
-    "app.compaction.input_limit": context.inputLimitTokens,
-    ...(context.triggerTokens !== undefined
-      ? { "app.compaction.threshold": context.triggerTokens }
-      : undefined),
-  });
-
-  return {
-    compacted: true,
-    piMessages: replacement,
-  };
-}
-
-/** Build the service that owns local context compaction. */
-export function createContextCompactor(
-  deps: ContextCompactorDeps,
-): ContextCompactor {
-  return {
-    maybeCompact: async (args) => await maybeCompactWithDeps(args, deps),
-  };
-}
-
 /** Compact the active conversation and durably bind its selected handoff profile. */
 export async function compactContextForHandoff(
   args: HandoffContextArgs,
-  deps: Pick<ContextCompactorDeps, "completeText">,
+  deps: { completeText: typeof completeText },
 ): Promise<PiMessage[]> {
   return await withCompactionSpan("handoff", () =>
     compactForHandoff(args, deps),
@@ -725,7 +591,7 @@ export async function compactContextForHandoff(
 
 async function compactForHandoff(
   args: HandoffContextArgs,
-  deps: Pick<ContextCompactorDeps, "completeText">,
+  deps: { completeText: typeof completeText },
 ): Promise<PiMessage[]> {
   const retainedInstruction = await loadLastInstruction(args.conversationId);
   const contextMessage = runtimeContextMessage(
@@ -782,10 +648,13 @@ async function compactForHandoff(
 /**
  * Replace oversized active history at Pi's next-turn boundary before another
  * provider request can observe it.
+ *
+ * `summarize` gets the history without pending messages. When it fails, the
+ * history stays as it is, unless the history is at the input limit.
  */
 export async function compactActiveContextIfNeeded(
   args: ActiveContextCompactionArgs,
-  deps: Pick<ContextCompactorDeps, "completeText">,
+  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
   const source = loadCompactionSource([
@@ -799,30 +668,26 @@ export async function compactActiveContextIfNeeded(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
-  return await withCompactionSpan("active", () =>
-    compactActiveAboveThreshold(args, deps, source, triggerTokens),
+  return await withCompactionSpan(args.mode, () =>
+    compactActiveAboveThreshold(args, summarize, source, triggerTokens),
   );
 }
 
 async function compactActiveAboveThreshold(
   args: ActiveContextCompactionArgs,
-  deps: Pick<ContextCompactorDeps, "completeText">,
+  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
   source: { estimatedTokens: number; messages: PiMessage[] },
   triggerTokens: number,
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
+  const retainUserMessages =
+    args.mode === "blocking" && pendingMessages.length > 0;
   await args.onCompactionStart?.();
 
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
   let summary: string;
   try {
-    summary = await summarizeContext(
-      {
-        ...args,
-        piMessages: args.piMessages,
-      },
-      deps,
-    );
+    summary = await summarize(args.piMessages, args.signal);
   } catch (error) {
     if (source.estimatedTokens >= inputLimitTokens) {
       throw new ContextInputLimitExceededError(
@@ -846,7 +711,7 @@ async function compactActiveAboveThreshold(
   );
   const summaryMessage = userMessage(continuation);
   const retainedInstruction =
-    pendingMessages.length === 0
+    pendingMessages.length === 0 && !retainUserMessages
       ? await loadLastInstruction(args.conversationId)
       : undefined;
   const instructionMessages = retainedInstruction
@@ -863,19 +728,39 @@ async function compactActiveAboveThreshold(
     args.turnStartMessageIndex,
     typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
   );
-  const replacement = [
-    ...(contextMessage
-      ? [{ message: contextMessage, provenance: contextProvenance }]
-      : []),
-    ...instructionMessages.map((message, index) => ({
-      message,
-      provenance: instructionProvenance[index]!,
-      ...(index === 0 && retainedInstruction
-        ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
-        : undefined),
-    })),
-    { message: summaryMessage, provenance: contextProvenance },
-  ];
+  const contextEntries = contextMessage
+    ? [{ message: contextMessage, provenance: contextProvenance }]
+    : [];
+  const instructionEntries = instructionMessages.map((message, index) => ({
+    message,
+    provenance: instructionProvenance[index]!,
+    ...(index === 0 && retainedInstruction
+      ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
+      : undefined),
+  }));
+  const summaryEntry = {
+    message: summaryMessage,
+    provenance: contextProvenance,
+  };
+  // At Turn start, earlier asks and the summary come first, then the new
+  // Turn's context and instruction, as they would after a normal Turn.
+  const retainedUserMessages = retainUserMessages
+    ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
+    : [];
+  const replacement: Array<{
+    message: PiMessage;
+    provenance: ConversationMessageProvenance;
+    sourceEventSeq?: number;
+  }> = retainUserMessages
+    ? [
+        ...retainedUserMessages,
+        summaryEntry,
+        ...contextEntries,
+        ...instructionEntries,
+      ]
+    : [...contextEntries, ...instructionEntries, summaryEntry];
+  const retainedMessageCount =
+    retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
@@ -898,7 +783,7 @@ async function compactActiveAboveThreshold(
         triggerTokens,
         inputLimitTokens,
         inputMessageCount: source.messages.length,
-        retainedMessageCount: instructionMessages.length,
+        retainedMessageCount,
         summaryChars: summary.length,
       },
       summary,
@@ -913,7 +798,7 @@ async function compactActiveAboveThreshold(
   setSpanAttributes({
     "app.compaction.outcome": "compacted",
     "app.compaction.input_messages": source.messages.length,
-    "app.compaction.retained_messages": instructionMessages.length,
+    "app.compaction.retained_messages": retainedMessageCount,
     "app.compaction.summary_chars": summary.length,
     "app.compaction.input.estimate": source.estimatedTokens,
     "app.compaction.replacement.estimate": replacementInputTokens,

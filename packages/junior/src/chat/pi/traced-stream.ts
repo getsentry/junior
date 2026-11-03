@@ -54,11 +54,13 @@ function buildChatStartAttributes(
   options: Parameters<StreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
+  promptName: string | undefined,
 ): Record<string, TraceAttributeValue> {
   const attributes: Record<string, TraceAttributeValue> = {
     "gen_ai.operation.name": "chat",
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.request.model": model.id,
+    ...(promptName ? { "gen_ai.prompt.name": promptName } : undefined),
     "gen_ai.request.stream": true,
     "gen_ai.output.type": "text",
     "server.address": GEN_AI_SERVER_ADDRESS,
@@ -263,6 +265,8 @@ function relayStream(
  * passed to `new Agent({ streamFn: ... })` and runs once per loop iteration.
  *
  * The base argument exists so tests can inject a stub stream function.
+ * `promptName` names a request that is not an agent loop call, such as a
+ * context summary.
  */
 export function createTracedStreamFn(
   baseOrOptions:
@@ -270,6 +274,7 @@ export function createTracedStreamFn(
     | {
         conversationPrivacy?: ConversationPrivacy;
         base?: StreamFn;
+        promptName?: string;
       } = streamSimple,
 ): StreamFn {
   const base =
@@ -286,6 +291,8 @@ export function createTracedStreamFn(
       ? undefined
       : baseOrOptions.conversationPrivacy;
   const effectivePrivacy = conversationPrivacy ?? "private";
+  const promptName =
+    typeof baseOrOptions === "function" ? undefined : baseOrOptions.promptName;
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
@@ -298,6 +305,7 @@ export function createTracedStreamFn(
           options,
           mode,
           effectivePrivacy,
+          promptName,
         ),
       },
     });

@@ -78,13 +78,12 @@ describe("active-turn context compaction", () => {
   it("includes provider output in measured context usage", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const completeText = vi.fn(
-      async () => ({ text: "Continue from the summary." }) as never,
-    );
+    const summarize = vi.fn(async () => "Continue from the summary.");
 
     const result = await compactActiveContextIfNeeded(
       {
         conversationId: "conversation-provider-usage",
+        mode: "active",
         modelId: "openai/gpt-5.4",
         modelProfile: "standard",
         piMessages: [
@@ -96,21 +95,22 @@ describe("active-turn context compaction", () => {
           }),
         ],
       },
-      { completeText },
+      summarize,
     );
 
     expect(result.compacted).toBe(true);
-    expect(completeText).toHaveBeenCalledOnce();
+    expect(summarize).toHaveBeenCalledOnce();
   });
 
   it("ignores trailing tool details outside model input", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const completeText = vi.fn();
+    const summarize = vi.fn();
 
     const result = await compactActiveContextIfNeeded(
       {
         conversationId: "conversation-tool-details",
+        mode: "active",
         modelId: "openai/gpt-5.4",
         modelProfile: "standard",
         piMessages: [
@@ -130,11 +130,11 @@ describe("active-turn context compaction", () => {
           } as PiMessage,
         ],
       },
-      { completeText },
+      summarize,
     );
 
     expect(result).toEqual({ compacted: false, reason: "below_threshold" });
-    expect(completeText).not.toHaveBeenCalled();
+    expect(summarize).not.toHaveBeenCalled();
   });
 
   it("replaces oversized tool history with continuation state", async () => {
@@ -194,6 +194,7 @@ describe("active-turn context compaction", () => {
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
+        mode: "active",
         modelId: "openai/gpt-5.4",
         modelProfile: "standard",
         pendingMessages: [
@@ -215,9 +216,7 @@ describe("active-turn context compaction", () => {
         ],
         piMessages: activeMessages,
       },
-      {
-        completeText: async () => ({ text: "No outstanding asks." }) as never,
-      },
+      async () => "No outstanding asks.",
     );
 
     expect(result.compacted).toBe(true);
