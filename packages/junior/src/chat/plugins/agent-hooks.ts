@@ -43,7 +43,11 @@ import { createPluginConversationEventReader } from "@/chat/plugins/conversation
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import {
+  createPluginEmbedder,
+  createPluginModel,
+  createPluginReranker,
+} from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import {
@@ -272,6 +276,7 @@ function invocationPluginContext(
         }
       : undefined),
     model: createPluginModel(plugin.manifest.name, plugin.model),
+    reranker: createPluginReranker(plugin.manifest.name),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),

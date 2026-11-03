@@ -20,6 +20,7 @@ describe("createApp profiles", () => {
         standard: "anthropic/claude-sonnet-5",
         handoff: "openai/gpt-5.6-sol",
       },
+      rerankingModelId: "voyage/rerank-2.5",
       visionModelId: "openai/gpt-5.6-sol",
       webSearchModelId: "openai/gpt-5.4",
       plugins: defineJuniorPlugins([]),
@@ -35,6 +36,7 @@ describe("createApp profiles", () => {
         standard: { modelId: "anthropic/claude-sonnet-5" },
         handoff: { modelId: "openai/gpt-5.6-sol" },
       },
+      rerankingModelId: "voyage/rerank-2.5",
       visionModelId: "openai/gpt-5.6-sol",
       webSearchModelId: "openai/gpt-5.4",
     });

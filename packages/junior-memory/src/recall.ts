@@ -5,11 +5,11 @@ import {
   type Identity,
   type PluginConversationEvents,
   type PluginLogger,
+  type PluginReranker,
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type { MemoryAgent, MemoryRecallResult } from "./agent";
 import { memoriesRecalledEvent } from "./events";
 import {
   createMemoryStore,
@@ -22,9 +22,17 @@ import { memoryRuntimeContextSchema } from "./types";
 const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
+// Lowest reranker score that admits a candidate. Tuned for the default
+// `voyage/rerank-2.5-lite`; retune it if the reranking model changes.
+// Measured 2026-11-03 on 28 queries against 20 memories (memory test and eval
+// fixtures, plus 11 small-talk queries):
+// - 0.55 kept 12 of 19 relevant pairs, admitted 3 off-topic pairs (max 0.626),
+//   and kept every small-talk query empty (max 0.547).
+// - 0.50 kept 13, admitted 4, and gave 1 of 11 small-talk queries a memory.
+// - Clear matches scored 0.63-0.93. Indirect matches scored 0.37-0.60.
+const RECALL_MIN_RERANK_SCORE = 0.55;
 
 export interface MemoryRecallContext {
-  agent: Pick<MemoryAgent, "selectRelevantMemories">;
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
@@ -32,6 +40,7 @@ export interface MemoryRecallContext {
   log: PluginLogger;
   locationId?: string;
   actor?: Actor;
+  reranker: PluginReranker;
   source: Source;
   text: string;
   users: {
@@ -184,26 +193,27 @@ export async function createMemoryPromptContributions(
     });
     return undefined;
   }
-  let recall: MemoryRecallResult;
+  let rerank: { costUsd?: number; scores: number[] };
   try {
-    recall = await context.agent.selectRelevantMemories({
-      candidates: candidates.map(({ content, id }) => ({ content, id })),
-      userRequest: context.text,
+    rerank = await context.reranker.rerank({
+      documents: candidates.map(({ content }) => content),
+      query: context.text,
     });
   } catch {
-    // Automatic recall is optional context; a relevance-model failure must not
+    // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
-    context.log.warn("memory_recall_selection_failed");
+    context.log.warn("memory_recall_rerank_failed");
     return undefined;
   }
-  const candidatesById = new Map(
-    candidates.map((memory) => [memory.id, memory]),
-  );
-  const relevant = recall.relevantIds
-    .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined);
+  const { scores } = rerank;
+  // Sort is stable, so equal scores keep retrieval rank order.
+  const relevant = candidates
+    .map((memory, index) => ({ memory, score: scores[index]! }))
+    .filter(({ score }) => score >= RECALL_MIN_RERANK_SCORE)
+    .sort((left, right) => right.score - left.score)
+    .map(({ memory }) => memory);
   const selected = selectPromptMemories(relevant);
-  const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
+  const costUsd = addUsd(embeddingCostUsd, rerank.costUsd);
   await emitRecallOutcome({
     ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,

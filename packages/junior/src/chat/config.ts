@@ -89,6 +89,8 @@ export interface BotModelConfig {
   embeddingModelId?: string;
   /** Model used for low-cost structured and utility calls. */
   fastModelId?: string;
+  /** Model used to rerank plugin retrieval candidates. */
+  rerankingModelId?: string;
   /** Model used to review sensitive tool calls. */
   guardianModelId?: string;
   /** Model used to generate images. */
@@ -106,6 +108,7 @@ export interface BotConfig {
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
+  rerankingModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
   profiles: Readonly<Record<string, ModelProfileConfig>>;
@@ -255,6 +258,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
+const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
@@ -502,6 +506,8 @@ function readBotConfig(
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
+    rerankingModelId:
+      toOptionalTrimmed(env.AI_RERANKING_MODEL) ?? DEFAULT_RERANKING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId:
       env.AI_VISION_MODEL === undefined
@@ -858,6 +864,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       "guardianModelId",
       config.guardianModelId,
       validateGatewayModelId,
+    );
+  }
+  if (config.rerankingModelId !== undefined) {
+    botConfig.rerankingModelId = requireModelId(
+      "rerankingModelId",
+      config.rerankingModelId,
+      toOptionalTrimmed,
     );
   }
   if (config.imageGenerationModelId !== undefined) {

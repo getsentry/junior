@@ -10,6 +10,7 @@ import {
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
+  type PluginReranker,
   type PluginRunTranscriptEntry,
   type PluginState,
   type PluginTaskContext,
@@ -266,39 +267,27 @@ function createTestEmbedder(
   };
 }
 
-function recallModel(
-  select: (candidates: string[]) => string[],
+/** Fake reranker that scores each candidate memory by its content. */
+function testReranker(
+  score: (content: string) => number = () => 0.9,
   costUsd?: number,
-): PluginModel {
+): PluginReranker {
   return {
-    async completeObject(input) {
-      const encoded =
-        /<candidate-memories>\n(.+)\n<\/candidate-memories>/s.exec(
-          input.prompt,
-        )?.[1];
-      const candidates = JSON.parse(
-        (encoded ?? "[]")
-          .replaceAll("&lt;", "<")
-          .replaceAll("&gt;", ">")
-          .replaceAll("&amp;", "&"),
-      ) as Array<{
-        content: string;
-        id: string;
-      }>;
+    async rerank({ documents }) {
       return {
         ...(costUsd !== undefined ? { costUsd } : undefined),
-        object: {
-          relevantIds: select(candidates.map(({ content }) => content)).map(
-            (content) =>
-              candidates.find((candidate) => candidate.content === content)!.id,
-          ),
-        },
+        scores: documents.map(score),
       };
     },
   };
 }
 
-const selectAllRecallModel = recallModel((candidates) => candidates);
+// Automatic recall ranks with the reranker and never calls the model.
+const recallOnlyModel: PluginModel = {
+  async completeObject() {
+    throw new Error("automatic recall must not call the model");
+  },
+};
 
 function extractionModel(
   memories: Array<{
@@ -607,43 +596,6 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
-  });
-
-  it("normalizes recall selection to known unique candidate ids", async () => {
-    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
-    const model: PluginModel = {
-      async completeObject(input) {
-        calls.push(input);
-        return {
-          costUsd: 0.0042,
-          object: {
-            relevantIds: ["memory-2", "unknown", "memory-2", "memory-1"],
-          },
-        };
-      },
-    };
-    const agent = createMemoryAgent(model);
-
-    await expect(
-      agent.selectRelevantMemories({
-        candidates: [
-          { content: "Release notes live in Notion.", id: "memory-1" },
-          {
-            content: "getsentry/junior CI runs package tests with pnpm.",
-            id: "memory-2",
-          },
-        ],
-        userRequest: "How does CI work in getsentry/junior?",
-      }),
-    ).resolves.toEqual({
-      costUsd: 0.0042,
-      relevantIds: ["memory-2", "memory-1"],
-    });
-    expect(calls[0]?.system).toContain(
-      "Reject memories that merely share a company",
-    );
-    expect(calls[0]?.prompt).toContain("<candidate-memories>");
     expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
@@ -4198,8 +4150,13 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           },
         },
         log: noopLogger,
-        model: recallModel((candidates) => candidates, 0.0042),
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        // The lower-ranked memory scores higher, so the prompt leads with it.
+        reranker: testReranker(
+          (content) => (content === personal.memory.content ? 0.9 : 0.7),
+          0.0042,
+        ),
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
       });
@@ -4215,17 +4172,17 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         content: {
           memories: [
             {
-              id: conversation.memory.id,
-              content: conversation.memory.content,
-              kind: conversation.memory.kind,
-              observedAtMs: conversation.memory.observedAtMs,
-              scope: "personal",
-            },
-            {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
+              scope: "personal",
+            },
+            {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
               scope: "personal",
             },
           ],
@@ -4242,7 +4199,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         expect.objectContaining({
           data: {
             costUsd: 0.0045,
-            memories: [conversation.memory.id, personal.memory.id],
+            memories: [personal.memory.id, conversation.memory.id],
           },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
@@ -4290,8 +4247,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           },
         },
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
         state: memoryState,
         text: "Walk through the deploy checklist steps.",
       });
@@ -4343,8 +4301,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
         state: memoryState,
         text: "Where do release notes live?",
       });
@@ -4382,7 +4341,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("filters candidates that only share repository and CI vocabulary", async () => {
+  it("admits only candidates whose rerank score clears the threshold", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4395,7 +4354,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-relevant",
       });
-      await store.createConversationMemory({
+      const vocabulary = await store.createConversationMemory({
         content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-vocabulary",
@@ -4415,10 +4374,12 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
-        model: recallModel((candidates) =>
-          candidates.filter((content) => content.includes("getsentry/junior")),
-        ),
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker((content) => {
+          if (content === relevant.memory.content) return 0.8;
+          return content === vocabulary.memory.content ? 0.4 : 0.3;
+        }),
         state: memoryState,
         text: "How does CI work in getsentry/junior?",
       });
@@ -4466,8 +4427,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
             },
           },
           log: noopLogger,
-          model: recallModel(() => [], 0.0017),
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => 0.2, 0.0017),
           state: memoryState,
           text: "How do autofix PR tests use the dashboard workflow?",
         }),
@@ -4506,12 +4468,11 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
             },
           },
           log: noopLogger,
-          model: {
-            async completeObject() {
-              throw new Error("Recall model should not run without candidates");
-            },
-          },
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => {
+            throw new Error("Reranker should not run without candidates");
+          }),
           state: memoryState,
           text: "Where do release notes live?",
         }),
@@ -4530,7 +4491,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("continues without recalled context when relevance selection fails", async () => {
+  it("continues without recalled context when reranking fails", async () => {
     const fixture = await createMemoryFixture();
     const warnings: string[] = [];
     const log: PluginLogger = {
@@ -4560,17 +4521,16 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log,
-          model: {
-            async completeObject() {
-              throw new Error("model unavailable");
-            },
-          },
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => {
+            throw new Error("reranker unavailable");
+          }),
           state: memoryState,
           text: "Where do release notes live?",
         }),
       ).resolves.toBeUndefined();
-      expect(warnings).toEqual(["memory_recall_selection_failed"]);
+      expect(warnings).toEqual(["memory_recall_rerank_failed"]);
     } finally {
       await fixture.close();
     }
@@ -4596,8 +4556,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log: noopLogger,
-          model: selectAllRecallModel,
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(),
           state: memoryState,
           text: "   ",
         }),
@@ -4635,8 +4596,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         db: memoryDb(fixture),
         embedder,
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
         state: memoryState,
         text: query,
       });

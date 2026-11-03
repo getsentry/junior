@@ -196,7 +196,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         ? {
             async userPrompt(ctx) {
               return await createMemoryPromptContributions({
-                agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
@@ -208,6 +207,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                   ? { locationId: ctx.locationId }
                   : undefined),
                 log: ctx.log,
+                reranker: ctx.reranker,
                 source: ctx.source,
                 text: ctx.text,
                 users: ctx.users,

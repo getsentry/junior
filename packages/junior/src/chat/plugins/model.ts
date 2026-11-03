@@ -2,6 +2,7 @@ import type {
   PluginEmbedder,
   PluginModel,
   PluginModelConfig,
+  PluginReranker,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
@@ -9,6 +10,7 @@ import {
   completeObject,
   embedTexts,
   GEN_AI_PROVIDER_NAME,
+  rerankTexts,
 } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
@@ -68,6 +70,23 @@ export function createPluginEmbedder(
         metadata: {
           pluginName,
           pluginModelRole: "embedding",
+        },
+      });
+    },
+  };
+}
+
+/** Create the host-owned reranking capability exposed to prompt hooks. */
+export function createPluginReranker(pluginName: string): PluginReranker {
+  return {
+    async rerank(input) {
+      return await rerankTexts({
+        documents: input.documents,
+        modelId: botConfig.rerankingModelId,
+        query: input.query,
+        metadata: {
+          pluginName,
+          pluginModelRole: "reranking",
         },
       });
     },

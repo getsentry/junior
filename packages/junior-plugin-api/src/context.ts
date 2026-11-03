@@ -102,6 +102,16 @@ export interface PluginEmbedder {
   }>;
 }
 
+export interface PluginReranker {
+  /** Score plugin-owned documents against one query without exposing provider credentials. */
+  rerank(input: { documents: string[]; query: string }): Promise<{
+    /** Best-effort provider cost for this reranking call. */
+    costUsd?: number;
+    /** One relevance score per document, in input order. Higher is more relevant. */
+    scores: number[];
+  }>;
+}
+
 export interface PluginContext {
   /** Short-lived cache scoped to this plugin. */
   cache: PluginCache;

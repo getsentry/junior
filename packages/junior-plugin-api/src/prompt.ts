@@ -5,6 +5,7 @@ import type {
   PluginContext,
   PluginEmbedder,
   PluginModel,
+  PluginReranker,
   Actor,
   Identity,
   Source,
@@ -86,6 +87,8 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   /** Conversation-bound event writer when the prompt belongs to a durable turn. */
   events?: PluginConversationEvents;
   model: PluginModel;
+  /** Host reranker bound to the configured reranking model. */
+  reranker: PluginReranker;
   /** Location associated with this Conversation. */
   locationId?: string;
   actor?: Actor;
