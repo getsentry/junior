@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.275.0
+
+### New Features ✨
+
+#### Compaction
+
+- Prepare a summary in a background job by @sentry-junior in [#2606](https://github.com/getsentry/junior/pull/2606)
+- Swap in prepared background summaries by @sentry-junior in [#2605](https://github.com/getsentry/junior/pull/2605)
+- Summarize with the agent model and cached request prefix by @sentry-junior in [#2602](https://github.com/getsentry/junior/pull/2602)
+
+#### Dashboard
+
+- Use the top bar on tall desktop windows by @thomasjiangcy with @sentry-junior in [#2616](https://github.com/getsentry/junior/pull/2616)
+- Restore the Needs attention conversation section by @BYK with @sentry-junior in [#2610](https://github.com/getsentry/junior/pull/2610)
+- Show a spinner for running conversations in the sidebar by @thomasjiangcy with @sentry-junior in [#2608](https://github.com/getsentry/junior/pull/2608)
+- Rework the conversation page around a context panel by @sentry-junior in [#2603](https://github.com/getsentry/junior/pull/2603)
+
+#### Other
+
+- (slack) Send current-message images natively to image models by @thomasjiangcy with @sentry-junior in [#2617](https://github.com/getsentry/junior/pull/2617)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Center the jump to latest pill above the composer by @thomasjiangcy with @sentry-junior in [#2612](https://github.com/getsentry/junior/pull/2612)
+- Anchor the Inbox count badge to the icon by @thomasjiangcy with @sentry-junior in [#2609](https://github.com/getsentry/junior/pull/2609)
+- Keep Escape, location, and review chips working in the context panel by @sentry-junior in [#2604](https://github.com/getsentry/junior/pull/2604)
+
+#### Web Fetch
+
+- Cancel the body when a read times out by @thomasjiangcy with @sentry-junior in [#2620](https://github.com/getsentry/junior/pull/2620)
+- Ask for Markdown and keep pages over the byte limit by @thomasjiangcy with @sentry-junior in [#2618](https://github.com/getsentry/junior/pull/2618)
+
+#### Other
+
+- (codemode) Prefer one script for multi-call work and say how calls order by @thomasjiangcy with @sentry-junior in [#2615](https://github.com/getsentry/junior/pull/2615)
+- (compaction) Keep the background mark and result on the current history by @sentry-junior in [#2611](https://github.com/getsentry/junior/pull/2611)
+- (sandbox) Allow file tools to use /tmp by @thomasjiangcy with @sentry-junior in [#2619](https://github.com/getsentry/junior/pull/2619)
+
+### Internal Changes 🔧
+
+- (workspaces) List Workspaces in the turn context by @thomasjiangcy with @sentry-junior in [#2613](https://github.com/getsentry/junior/pull/2613)
+
 ## 0.274.0
 
 ### New Features ✨
