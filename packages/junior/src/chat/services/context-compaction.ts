@@ -73,7 +73,11 @@ export interface CompactionMetadata {
 export interface CompactContextResult {
   compacted: boolean;
   piMessages?: PiMessage[];
-  reason?: "below_threshold" | "missing_context" | "summary_failed";
+  reason?:
+    | "below_threshold"
+    | "history_conflict"
+    | "missing_context"
+    | "summary_failed";
 }
 
 interface HandoffContextArgs {

@@ -303,19 +303,23 @@ describe("background compaction swap", () => {
         return await replaceHistory(id, replacement, options);
       });
 
+    // Oversized history, so a blocking fallback would summarize and write.
+    const summarize = vi.fn(async () => "Stale fallback.");
+
     const result = await compactWithPreparedSummary(
       {
         conversationId,
         mode: "blocking",
         modelId: MODEL_ID,
         modelProfile: "standard",
-        piMessages: [],
+        piMessages: firstTurn,
       },
-      async () => "Unused.",
+      summarize,
     );
     spy.mockRestore();
 
     expect(result.compacted).toBe(false);
+    expect(summarize).not.toHaveBeenCalled();
     expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
       committed.historyVersion + 1,
     );

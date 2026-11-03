@@ -124,7 +124,9 @@ export async function compactWithPreparedSummary(
   summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
 ): Promise<CompactContextResult> {
   const swapped = await swapPreparedCompaction(args);
-  if (swapped.compacted) {
+  // After a conflict the active messages are stale. A blocking summary
+  // would write them over the other replacement.
+  if (swapped.compacted || swapped.reason === "history_conflict") {
     return swapped;
   }
   return await compactActiveContextIfNeeded(args, summarize);
@@ -299,7 +301,7 @@ async function applyPreparedSummary(
     { expectedHistoryVersion: budget.historyVersion },
   );
   if (result.status === "conflict") {
-    return discard("conflict");
+    return { ...discard("conflict"), reason: "history_conflict" };
   }
   setSpanAttributes({
     "app.compaction.outcome": "applied",
