@@ -87,7 +87,7 @@ describe("event automation blocking", () => {
           getEventCatalog(),
         ),
         {
-          automationId: automation.id,
+          automation_id: automation.id,
           status,
         },
       );
@@ -141,7 +141,7 @@ describe("event automation blocking", () => {
           getEventCatalog(),
         ),
         {
-          automationId: automation.id,
+          automation_id: automation.id,
           status: "active",
         },
       ),
@@ -230,7 +230,7 @@ describe("event automation blocking", () => {
         getEventCatalog(),
       ),
       {
-        automationId: automation.id,
+        automation_id: automation.id,
         status: "active",
       },
     );
@@ -246,7 +246,7 @@ describe("event automation blocking", () => {
           getEventCatalog(),
         ),
         {
-          automationId,
+          automation_id: automationId,
         },
       );
     await remove(sibling.id);

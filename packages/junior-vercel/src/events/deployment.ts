@@ -101,10 +101,10 @@ export function vercelDeploymentSubscribable(input: {
   return {
     ...vercelDeploymentResource(input),
     match: {
-      projectId: input.projectId,
+      project_id: input.projectId,
       ...(input.target ? { target: input.target } : undefined),
       ...(input.commitSha
-        ? { commitSha: input.commitSha.toLowerCase() }
+        ? { commit_sha: input.commitSha.toLowerCase() }
         : undefined),
     },
     suggested_events: VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,

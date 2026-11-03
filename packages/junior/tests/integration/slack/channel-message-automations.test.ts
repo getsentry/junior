@@ -181,8 +181,8 @@ describe("Slack channel-message automations", () => {
         catalog,
       ),
       {
-        automationId: automation.id,
-        credentialMode: "creator",
+        automation_id: automation.id,
+        credential_mode: "creator",
       },
     );
     expect(
@@ -207,7 +207,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ userId: "U777" }),
+        trigger: trigger({ user_id: "U777" }),
       },
     )) as { automation: { id: string } };
 
@@ -253,7 +253,7 @@ describe("Slack channel-message automations", () => {
           instruction: "Summarize new messages.",
           title: "Summarize secrets",
           outcomes: [],
-          trigger: trigger({ channelId: "C999" }),
+          trigger: trigger({ channel_id: "C999" }),
         },
       ),
     ).rejects.toThrow("can watch only the channel where it posts");
@@ -297,8 +297,8 @@ describe("Slack channel-message automations", () => {
         catalog,
       ),
       {
-        automationId: scoped.id,
-        trigger: { ...trigger(), match: { channelId: null } },
+        automation_id: scoped.id,
+        trigger: { ...trigger(), match: { channel_id: null } },
       },
       "drop-channel",
     );
@@ -344,7 +344,7 @@ describe("Slack channel-message automations", () => {
       execute(createWatchEventsTool(channelContext, catalog), {
         namespace: "slack",
         identifier: "C123",
-        resourceType: "channel",
+        resource_type: "channel",
         label: "New messages",
         events: ["message.posted"],
         intent: "Tell me about new messages.",

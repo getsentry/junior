@@ -36,9 +36,9 @@ describe("getRelease", () => {
       ),
     ).resolves.toMatchObject({
       release: {
-        htmlUrl: RELEASE.html_url,
+        html_url: RELEASE.html_url,
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       repo: "GetSentry/Junior",
       tag: "0.129.0",
@@ -71,7 +71,7 @@ describe("getRelease", () => {
     ).resolves.toMatchObject({
       release: {
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       tag: null,
       subscribable: {
@@ -100,7 +100,7 @@ describe("getRelease", () => {
       release: {
         draft: false,
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       tag: null,
     });

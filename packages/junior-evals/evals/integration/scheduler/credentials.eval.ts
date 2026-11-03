@@ -17,8 +17,8 @@ const alice = {
 
 function credentialMode(call: ToolCall | undefined): unknown {
   const input = call?.input;
-  return input && typeof input === "object" && "credentialMode" in input
-    ? input.credentialMode
+  return input && typeof input === "object" && "credential_mode" in input
+    ? input.credential_mode
     : undefined;
 }
 

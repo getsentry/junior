@@ -31,8 +31,8 @@ const issueTrigger = {
 
 function credentialMode(call: ToolCall | undefined): unknown {
   const input = call?.input;
-  return input && typeof input === "object" && "credentialMode" in input
-    ? input.credentialMode
+  return input && typeof input === "object" && "credential_mode" in input
+    ? input.credential_mode
     : undefined;
 }
 
@@ -66,7 +66,7 @@ describe("Event automation credentials", () => {
         type: "event",
         events: ["pull_request.review.changes_requested"],
         namespace: "github",
-        match: { repo: "getsentry/junior", pullRequest: 691 },
+        match: { repo: "getsentry/junior", pull_request: 691 },
       },
     });
     expect([undefined, "creator"]).toContain(credentialMode(creates[0]));

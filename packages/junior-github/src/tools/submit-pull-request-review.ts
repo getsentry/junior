@@ -16,22 +16,22 @@ const reviewCommentSchema = z
       .positive()
       .describe("Line in the pull request diff."),
     side: z.enum(["LEFT", "RIGHT"]).describe("Side of the pull request diff."),
-    startLine: z
+    start_line: z
       .number()
       .int()
       .positive()
       .optional()
       .describe("First line of a multi-line comment."),
-    startSide: z
+    start_side: z
       .enum(["LEFT", "RIGHT"])
       .optional()
       .describe("First side of a multi-line comment."),
   })
   .strict()
   .refine(
-    ({ startLine, startSide }) =>
-      (startLine === undefined) === (startSide === undefined),
-    { message: "startLine and startSide must be provided together." },
+    ({ start_line, start_side }) =>
+      (start_line === undefined) === (start_side === undefined),
+    { message: "start_line and start_side must be provided together." },
   );
 
 const inputSchema = z
@@ -53,7 +53,7 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("submitPullRequestReview"),
   repo: z.string(),
   number: z.number(),
-  reviewId: z.number(),
+  review_id: z.number(),
   state: z.string(),
   url: z.string(),
 });
@@ -61,7 +61,7 @@ interface Result extends PluginToolOutput {
   target: "submitPullRequestReview";
   repo: string;
   number: number;
-  reviewId: number;
+  review_id: number;
   state: string;
   url: string;
 }
@@ -122,11 +122,11 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
         body: comment.body,
         line: comment.line,
         side: comment.side,
-        ...(comment.startLine !== undefined
-          ? { start_line: comment.startLine }
+        ...(comment.start_line !== undefined
+          ? { start_line: comment.start_line }
           : undefined),
-        ...(comment.startSide !== undefined
-          ? { start_side: comment.startSide }
+        ...(comment.start_side !== undefined
+          ? { start_side: comment.start_side }
           : undefined),
       }));
       const response = await egress.fetch({
@@ -160,7 +160,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
         target: "submitPullRequestReview",
         repo: repo.ref,
         number: review.number,
-        reviewId: providerResult.id,
+        review_id: providerResult.id,
         state: providerResult.state,
         url: providerResult.html_url,
       };

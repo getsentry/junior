@@ -17,7 +17,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
       "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
     inputSchema: z
       .object({
-        afterMs: z
+        after_ms: z
           .number()
           .int()
           .positive()
@@ -43,7 +43,8 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
           ? context.actor.userId
           : undefined;
       const watch = await createTimerWatch({
-        ...input,
+        afterMs: input.after_ms,
+        intent: input.intent,
         conversationId: context.conversationId,
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,

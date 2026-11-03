@@ -99,7 +99,7 @@ describe("Event automation management", () => {
     const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
-      credentialMode: "system",
+      credential_mode: "system",
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
@@ -107,7 +107,7 @@ describe("Event automation management", () => {
         type: "event",
         namespace: "github",
         events: ["pull_request.review.changes_requested"],
-        match: { repo: "getsentry/junior", pullRequest: 691 },
+        match: { repo: "getsentry/junior", pull_request: 691 },
       },
     });
     const names = conversation.toolCalls.map((call) => call.name);
@@ -272,7 +272,7 @@ describe("Event automation management", () => {
     );
     expect(updates).toHaveLength(1);
     expect(updates[0]!.input).toMatchObject({
-      automationId: id,
+      automation_id: id,
       trigger: { type: "event", events: ["issue.reopened"] },
     });
     // A saved trigger with an identifier keeps it when the tools edit it.
@@ -283,7 +283,7 @@ describe("Event automation management", () => {
           events: ["issue.reopened"],
           identifier: "getsentry/junior#208",
           namespace: "github",
-          resourceType: "issue",
+          resource_type: "issue",
         },
       },
     });
@@ -291,7 +291,7 @@ describe("Event automation management", () => {
       completedToolCalls("deleteAutomation", listing, update, removal).map(
         (call) => call.input,
       ),
-    ).toEqual([{ automationId: id }]);
+    ).toEqual([{ automation_id: id }]);
     expect(
       completedToolCalls("createAutomation", listing, update, removal),
     ).toEqual([]);

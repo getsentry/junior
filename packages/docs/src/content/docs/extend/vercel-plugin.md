@@ -156,7 +156,7 @@ The deployment was canceled.
 
 An event automation selects deployments with filters instead of an identifier.
 `deployment.succeeded`, `deployment.error`, and `deployment.canceled` can run
-for every project with no filter. Use the `projectId` or `target` filter to limit one.
+for every project with no filter. Use the `project_id` or `target` filter to limit one.
 Junior does not check that the creator can see the projects, so a broad
 automation can post private project names in its channel. See
 [Automations](/concepts/automations/).

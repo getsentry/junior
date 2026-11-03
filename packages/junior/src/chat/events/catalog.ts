@@ -5,7 +5,7 @@ import {
   eventTriggerProblems,
   normalizeEventIdentifier,
   normalizeEventMatch,
-  eventMatchSchema,
+  agentEventMatchSchema,
   type EventMatchFields,
   type EventTriggerDescription,
   type EventTriggerProblem,
@@ -191,10 +191,10 @@ export function eventGuidance(
 
 /** Build the match object the tools accept for one resource type. */
 export function registeredEventMatchSchema() {
-  return eventMatchSchema
+  return agentEventMatchSchema
     .optional()
     .describe(
-      "Optional filters: exact values for the resource type match_fields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional filters: exact values for the resource type match_fields, with snake_case keys. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
@@ -248,12 +248,14 @@ function uniqueMatchValues(match: EventMatch | undefined) {
  * Reject an event automation trigger or a Watch that cannot work, with every
  * problem in one message for the agent. Return its match as it is saved:
  * each text value in the case that its plugin declares, with no repeated
- * list values.
+ * list values. The dashboard clears `inputKeys` so messages name the filters
+ * as its plugin declares them.
  */
 export function requireValidEventTrigger(
   catalog: EventCatalog,
   selection: RegisteredEventSelection,
   target: "event_automation" | "watch",
+  options: { inputKeys: boolean } = { inputKeys: true },
 ): EventMatch | undefined {
   const fields =
     eventTriggerChoices(catalog[selection.namespace] ?? NO_SOURCE, selection)
@@ -262,9 +264,7 @@ export function requireValidEventTrigger(
     ...selection,
     match: normalizeEventMatch(fields, selection.match),
   };
-  const problems = registeredEventTriggerProblems(catalog, normalized, {
-    inputKeys: true,
-  });
+  const problems = registeredEventTriggerProblems(catalog, normalized, options);
   if (problems.length > 0) {
     const source =
       catalog[selection.namespace]?.displayName ?? selection.namespace;
@@ -306,10 +306,10 @@ export function requireEventIdentifier(
   const fitting = resourceTypes.filter(fits).map((candidate) => candidate.type);
   throw new ToolInputError(
     [
-      `Identifier "${identifier}" does not fit resourceType "${input.resourceType}" in namespace "${input.namespace}". Expected format: "${resourceType.identifier.format}".`,
+      `Identifier "${identifier}" does not fit resource_type "${input.resourceType}" in namespace "${input.namespace}". Expected format: "${resourceType.identifier.format}".`,
       ...(fitting.length > 0
         ? [
-            `If the identifier is correct, use one of these resourceType values: ${fitting.map((type) => `"${type}"`).join(", ")}.`,
+            `If the identifier is correct, use one of these resource_type values: ${fitting.map((type) => `"${type}"`).join(", ")}.`,
           ]
         : []),
     ].join(" "),

@@ -1,3 +1,4 @@
+import { agentEventKeys } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
@@ -61,7 +62,9 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
           namespace: subscription.namespace,
           resource_type: subscription.resourceType,
           events: subscription.events,
-          ...(subscription.match ? { match: subscription.match } : undefined),
+          ...(subscription.match
+            ? { match: agentEventKeys(subscription.match) }
+            : undefined),
           intent: subscription.intent,
           expires_at: new Date(subscription.expiresAtMs).toISOString(),
           ...(subscription.firesAtMs !== undefined

@@ -1,4 +1,4 @@
-import type { TaskOutcome } from "@sentry/junior-plugin-api";
+import { declaredEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import {
   taskOutcomeInputSchema,
   type TaskOutcomeInput,
@@ -37,6 +37,7 @@ import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import {
   compileScheduleIntent,
+  scheduleIntentFromTool,
   ScheduleIntentError,
 } from "@/chat/scheduled-automations/schedule-intent";
 import {
@@ -93,7 +94,7 @@ async function compileSchedule(
   try {
     return compileScheduleIntent({
       defaultTimezone: timezone,
-      intent: trigger.schedule,
+      intent: scheduleIntentFromTool(trigger.schedule),
       nowMs,
     });
   } catch (error) {
@@ -215,7 +216,7 @@ export function createAutomationTool(
             "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
           )
           .optional(),
-        credentialMode: z
+        credential_mode: z
           .enum(["creator", "system"])
           .nullable()
           .describe(
@@ -230,17 +231,17 @@ export function createAutomationTool(
         title?: string | null;
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
-        credentialMode?: "creator" | "system" | null;
+        credential_mode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
       if (prepared.title == null) {
         delete prepared.title;
       }
       if (
-        prepared.credentialMode === "creator" ||
-        prepared.credentialMode === null
+        prepared.credential_mode === "creator" ||
+        prepared.credential_mode === null
       ) {
-        delete prepared.credentialMode;
+        delete prepared.credential_mode;
       }
       return prepared;
     },
@@ -259,7 +260,15 @@ export function createAutomationTool(
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
               catalog,
-              slackChannelMessageTrigger(input.trigger, destination.channelId),
+              slackChannelMessageTrigger(
+                {
+                  ...input.trigger,
+                  match: input.trigger.match
+                    ? declaredEventKeys(input.trigger.match)
+                    : undefined,
+                },
+                destination.channelId,
+              ),
             )
           : undefined;
       const toolCallId = options.toolCallId?.trim();
@@ -301,7 +310,7 @@ export function createAutomationTool(
         id,
         instruction: input.instruction,
         nowMs,
-        credentialMode: input.credentialMode ?? "creator",
+        credentialMode: input.credential_mode ?? "creator",
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,

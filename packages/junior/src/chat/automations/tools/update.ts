@@ -1,3 +1,4 @@
+import { declaredEventKeys } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -34,6 +35,7 @@ import { saveEventAutomation } from "@/chat/event-automations/store";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { logInfo } from "@/chat/logging";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
+import { scheduleIntentFromTool } from "@/chat/scheduled-automations/schedule-intent";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { scheduledAutomationAttributes } from "@/chat/scheduled-automations/telemetry";
 import { parseSlackTeamId } from "@/chat/slack/ids";
@@ -57,7 +59,7 @@ type UpdateInput = {
   instruction?: string;
   trigger?: AutomationTriggerChangesInput;
   outcomes?: z.output<typeof taskOutcomeInputSchema>[];
-  credentialMode?: "creator" | "system";
+  credential_mode?: "creator" | "system";
   destination?: string;
 };
 
@@ -164,8 +166,8 @@ async function updateScheduled(
     Object.keys(input).every(
       (key) =>
         key === "destination" ||
-        (key === "credentialMode" &&
-          input.credentialMode === task.credentialMode),
+        (key === "credential_mode" &&
+          input.credential_mode === task.credentialMode),
     )
   ) {
     return current;
@@ -177,8 +179,10 @@ async function updateScheduled(
       title: input.title,
       instruction: input.instruction,
       schedule:
-        input.trigger?.type === "schedule" ? input.trigger.schedule : undefined,
-      credentialMode: input.credentialMode,
+        input.trigger?.type === "schedule"
+          ? scheduleIntentFromTool(input.trigger.schedule)
+          : undefined,
+      credentialMode: input.credential_mode,
       // A move resolves outcomes against the new Destination below.
       outcomes: moving ? undefined : input.outcomes,
     },
@@ -246,12 +250,12 @@ async function updateEvent(
             match: changedEventMatch(
               task.trigger,
               trigger.namespace,
-              trigger.match,
+              trigger.match ? declaredEventKeys(trigger.match) : undefined,
             ),
           }
         : undefined,
       outcomes: input.outcomes,
-      credentialMode: input.credentialMode,
+      credentialMode: input.credential_mode,
     },
     current.ownedByViewer,
     catalog,
@@ -274,7 +278,7 @@ export function createUpdateAutomationTool(
   const trigger = automationTriggerChangesSchema(catalog);
   const inputSchema = z
     .object({
-      automationId: z
+      automation_id: z
         .string()
         .min(1)
         .describe(
@@ -296,7 +300,7 @@ export function createUpdateAutomationTool(
           "Replacement messages to send after successful work. Use an empty list to send nothing. Omit or use null to leave unchanged.",
         )
         .optional(),
-      credentialMode: z
+      credential_mode: z
         .enum(["system", "creator"])
         .nullable()
         .describe(
@@ -339,12 +343,12 @@ export function createUpdateAutomationTool(
       ) as z.input<typeof inputSchema>;
     },
     outputSchema: automationToolResultSchema,
-    async execute({ automationId, status: requestedStatus, ...fields }) {
+    async execute({ automation_id, status: requestedStatus, ...fields }) {
       // prepareArguments removed every null.
       const input = fields as UpdateInput;
       const status = requestedStatus ?? undefined;
       const caller = await requireToolCaller(context);
-      const current = await requireToolAutomation(caller, automationId);
+      const current = await requireToolAutomation(caller, automation_id);
       if (input.trigger && triggerKind(input.trigger) !== current.kind) {
         throw new ToolInputError(
           `This automation runs on ${current.kind === "scheduled" ? "a schedule" : "events"}. The trigger type cannot change. Create a new automation instead.`,

@@ -510,7 +510,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       const timer = (await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check the deploy again." },
+        { after_ms: 60_000, intent: "Check the deploy again." },
         "child-timer",
       )) as { id: string };
       clock.mockReturnValue(clock() + 120_000);
@@ -567,12 +567,12 @@ describe("agent invocation identity and concurrency", () => {
       // never fires.
       await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check once more." },
+        { after_ms: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
       await execute(
         childTools.watchTimer!,
-        { afterMs: 600_000, intent: "Check much later." },
+        { after_ms: 600_000, intent: "Check much later." },
         "child-timer-3",
       );
       clock.mockReturnValue(clock() + 120_000);
@@ -610,7 +610,7 @@ describe("agent invocation identity and concurrency", () => {
       });
       await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check after the restart." },
+        { after_ms: 60_000, intent: "Check after the restart." },
         "child-timer-4",
       );
       clock.mockReturnValue(clock() + 120_000);
@@ -695,7 +695,7 @@ describe("agent invocation identity and concurrency", () => {
         clock.mockReturnValue(clock() + 1_000);
         const timer = (await execute(
           tools.watchTimer!,
-          { afterMs: 600_000, intent },
+          { after_ms: 600_000, intent },
           intent,
         )) as { id: string };
         return timer.id;

@@ -60,7 +60,7 @@ function writeGeneratedArtifacts(files: FileUpload[]) {
   return files.map((file) => ({
     bytes: Buffer.isBuffer(file.data) ? file.data.byteLength : 0,
     filename: file.filename,
-    mimeType: file.mimeType,
+    mime_type: file.mimeType,
     path: `/tmp/junior/artifacts/${file.filename}`,
   }));
 }
@@ -107,7 +107,7 @@ describe("createImageGenerateTool", () => {
         {
           bytes: PNG_BYTES.byteLength,
           filename: "generated-image-1737000000000-1.png",
-          mimeType: "image/png",
+          mime_type: "image/png",
           path: "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
         },
       ],

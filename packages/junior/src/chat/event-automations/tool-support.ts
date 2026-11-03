@@ -1,5 +1,6 @@
 import {
-  eventMatchSchema,
+  agentEventKeys,
+  agentEventMatchSchema,
   eventTriggerText,
   type EventMatch,
   type EventTriggerDescription,
@@ -17,6 +18,7 @@ import {
   describeRegisteredEventTrigger,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
+  registeredEventTriggerProblems,
   requireEventIdentifier,
   requireValidEventTrigger,
   type EventCatalog,
@@ -89,7 +91,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(plugins)).min(1),
       match: registeredEventMatchSchema().describe(
-        "Filters that select the events, from the match_fields of the namespace. Use the match of a subscribable tool result to select one resource, such as { repo, pullRequest } for one pull request. Leave it out to run for every resource, when the reach of each event allows that. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry.",
+        "Filters that select the events, from the match_fields of the namespace. Use the match of a subscribable tool result to select one resource, such as { repo, pull_request } for one pull request. Leave it out to run for every resource, when the reach of each event allows that. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry.",
       ),
     })
     .strict();
@@ -101,7 +103,10 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
  * a trigger broader by leaving out a filter.
  */
 const eventMatchChangesSchema = z
-  .record(z.string(), z.union([eventMatchSchema.valueType, z.null()]))
+  .record(
+    agentEventMatchSchema.keyType,
+    z.union([agentEventMatchSchema.valueType, z.null()]),
+  )
   .optional()
   .describe(
     "Filter changes, from the match_fields of the namespace. A value sets the filter, null removes it, and a filter that is left out keeps its saved value. When the namespace changes, the saved filters are dropped.",
@@ -151,6 +156,7 @@ export function requireEventAutomationTrigger(
     namespace: string;
     resourceType?: string | null;
   },
+  options?: { inputKeys: boolean },
 ): EventAutomation["trigger"] {
   const identifier = input.identifier ?? undefined;
   const resourceType = input.resourceType ?? undefined;
@@ -164,6 +170,7 @@ export function requireEventAutomationTrigger(
     automationEventCatalog(catalog),
     { namespace: input.namespace, resourceType, events, match: input.match },
     "event_automation",
+    options,
   );
   return {
     namespace: input.namespace,
@@ -205,7 +212,12 @@ export function compactEventAutomation(
   catalog: EventCatalog,
   isCreator: boolean,
 ) {
-  const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
+  // Name filters as the agent writes them in match.
+  const problems = registeredEventTriggerProblems(
+    automationEventCatalog(catalog),
+    task.trigger,
+    { inputKeys: true },
+  ).map((problem) => problem.message);
   return compactEventAutomationResultSchema.parse({
     type: "event",
     id: task.id,
@@ -220,7 +232,9 @@ export function compactEventAutomation(
       resource_type: task.trigger.resourceType ?? null,
       label: task.trigger.label,
       events: task.trigger.events,
-      ...(task.trigger.match ? { match: task.trigger.match } : undefined),
+      ...(task.trigger.match
+        ? { match: agentEventKeys(task.trigger.match) }
+        : undefined),
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
     },

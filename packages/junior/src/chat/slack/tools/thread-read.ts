@@ -170,7 +170,7 @@ export function createSlackThreadReadTool(
         .nullable()
         .optional(),
       channel_id: slackChannelRefParam.nullable().optional(),
-      ts: slackTimestampParam(
+      slack_ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
       )
         .nullable()
@@ -193,7 +193,7 @@ export function createSlackThreadReadTool(
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ url, channel_id, ts, limit, max_pages }) => {
+    execute: async ({ url, channel_id, slack_ts, limit, max_pages }) => {
       let channelId: SlackChannelId;
       let messageTs: SlackMessageTs;
       let threadTs: SlackMessageTs | undefined;
@@ -206,8 +206,8 @@ export function createSlackThreadReadTool(
         channelId = parsed.reference.channelId;
         messageTs = parsed.reference.messageTs;
         threadTs = parsed.reference.threadTs;
-      } else if (channel_id && ts) {
-        const parsedTs = parseRequiredSlackTimestampParam("ts", ts);
+      } else if (channel_id && slack_ts) {
+        const parsedTs = parseRequiredSlackTimestampParam("slack_ts", slack_ts);
         if (!parsedTs.ok) {
           throw new ToolInputError(parsedTs.error);
         }
@@ -220,7 +220,7 @@ export function createSlackThreadReadTool(
         messageTs = parsedTs.value;
       } else {
         throw new ToolInputError(
-          "Provide either a Slack message `url` or both `channel_id` and `ts`.",
+          "Provide either a Slack message `url` or both `channel_id` and `slack_ts`.",
         );
       }
 

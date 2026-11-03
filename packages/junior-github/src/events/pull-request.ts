@@ -46,10 +46,10 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   "pull_request.review.approved":
     "When the approval includes actionable feedback, address it like any other review feedback.",
   "pull_request.comment.created":
-    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined".',
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".',
   "pull_request.review_comment.created":
-    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
-  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch baseBranch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.`,
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, comment_id, and comment_kind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
+  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.`,
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
@@ -252,7 +252,7 @@ export function gitHubPullRequestSubscribable(input: {
     ...gitHubPullRequestResource(input),
     match: {
       repo: gitHubRepoDataSchema.parse(input.repo),
-      pullRequest: input.number,
+      pull_request: input.number,
     },
     ...(suggestedEvents.length > 0
       ? { suggested_events: [...suggestedEvents] }

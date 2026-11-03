@@ -214,7 +214,7 @@ describe("slackThreadRead", () => {
     });
   });
 
-  it("reads a thread from explicit channel_id and ts", async () => {
+  it("reads a thread from explicit channel_id and slack_ts", async () => {
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.500000",
@@ -240,7 +240,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0MANUAL",
-      ts: "1700000000.500000",
+      slack_ts: "1700000000.500000",
       url: null,
       limit: null,
       max_pages: null,
@@ -283,7 +283,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({ locationChannelId: "G0PRIVATE" });
     const result = await executeTool(tool, {
       channel_id: "G0PRIVATE",
-      ts: "1700000000.100000",
+      slack_ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
@@ -317,7 +317,7 @@ describe("slackThreadRead", () => {
     });
     const result = await executeTool(tool, {
       channel_id: "G0PRIVATE",
-      ts: "1700000000.100000",
+      slack_ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
@@ -339,7 +339,7 @@ describe("slackThreadRead", () => {
     await expect(
       executeTool(tool, {
         channel_id: "G0PRIVATE",
-        ts: "1700000000.100000",
+        slack_ts: "1700000000.100000",
       }),
     ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
@@ -376,7 +376,7 @@ describe("slackThreadRead", () => {
     await expect(
       executeTool(tool, {
         channel_id: "D0SOMEONE",
-        ts: "1700000000.100000",
+        slack_ts: "1700000000.100000",
       }),
     ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
@@ -486,7 +486,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0FLAKY",
-      ts: "1700000000.100000",
+      slack_ts: "1700000000.100000",
     });
     expect(result).toMatchObject({
       channel_id: "C0FLAKY",
@@ -512,7 +512,7 @@ describe("slackThreadRead", () => {
     await expect(
       executeTool(tool, {
         channel_id: "C0STILL",
-        ts: "1700000000.100000",
+        slack_ts: "1700000000.100000",
       }),
     ).rejects.toThrow("Could not read this Slack thread");
   });
@@ -529,14 +529,14 @@ describe("slackThreadRead", () => {
     await expect(executeTool(tool, {})).rejects.toThrow("Provide either");
   });
 
-  it("rejects invalid explicit ts format", async () => {
+  it("rejects invalid explicit slack_ts format", async () => {
     const tool = createTool();
     await expect(
       executeTool(tool, {
         channel_id: "C123",
-        ts: "not-a-timestamp",
+        slack_ts: "not-a-timestamp",
       }),
-    ).rejects.toThrow("Invalid `ts` Slack timestamp");
+    ).rejects.toThrow("Invalid `slack_ts` Slack timestamp");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
@@ -578,7 +578,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0PAGED",
-      ts: "1700000000.000000",
+      slack_ts: "1700000000.000000",
     });
 
     expect(result).toMatchObject({
@@ -623,7 +623,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C123",
-      ts: "1700000000.100000",
+      slack_ts: "1700000000.100000",
     });
 
     const file = result.messages[0].files[0];
@@ -678,7 +678,7 @@ describe("slackThreadRead", () => {
     const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0SHARE",
-      ts: "1700000000.300000",
+      slack_ts: "1700000000.300000",
     });
 
     expect(result.messages[0].files).toEqual([

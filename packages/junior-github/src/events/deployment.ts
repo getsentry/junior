@@ -99,7 +99,7 @@ export function gitHubDeploymentSourceSubscribable(input: {
     ...gitHubDeploymentSourceResource(input),
     match: {
       repo: gitHubRepoDataSchema.parse(input.repo),
-      commitSha: gitHubCommitShaDataSchema.parse(input.commitSha),
+      commit_sha: gitHubCommitShaDataSchema.parse(input.commitSha),
       ...(environment ? { environment } : undefined),
     },
     suggested_events: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,

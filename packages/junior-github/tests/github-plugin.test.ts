@@ -654,7 +654,7 @@ describe("github plugin", () => {
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
-          "exact repo, commentId, and commentKind from Verified details",
+          "exact repo, comment_id, and comment_kind from Verified details",
         ),
       },
       "pull_request.review_comment.created": {

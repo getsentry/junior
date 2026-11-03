@@ -10,7 +10,7 @@ import {
   registeredEventAutomationTriggerSchema,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
-import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
+import { toolScheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
 import {
   compactTask,
   compactTaskResultSchema,
@@ -44,7 +44,7 @@ export const automationSearchResultSchema = juniorToolOutputSchema
 const scheduleTriggerSchema = z
   .object({
     type: z.literal("schedule"),
-    schedule: scheduleIntentSchema.describe(
+    schedule: toolScheduleIntentSchema.describe(
       "When the automation runs. The scheduler computes the exact next run from this intent and the server clock.",
     ),
   })

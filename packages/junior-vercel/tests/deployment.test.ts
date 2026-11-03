@@ -25,7 +25,7 @@ describe("Vercel deployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           project: "junior",
           target: "production",
           team: "sentry",
@@ -33,9 +33,9 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA.toLowerCase(),
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: COMMIT_SHA.toLowerCase(),
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         namespace: "vercel",
         identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
@@ -76,7 +76,7 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-legacy-project" },
       ),
     ).resolves.toMatchObject({
-      projectId: "QmLegacyProject123",
+      project_id: "QmLegacyProject123",
     });
   });
 
@@ -89,9 +89,9 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-project" },
       ),
     ).resolves.toMatchObject({
-      commitSha: null,
-      deploymentTarget: null,
-      projectId: "prj_junior",
+      commit_sha: null,
+      deployment_target: null,
+      project_id: "prj_junior",
       subscribable: {
         identifier: "prj_junior",
         label: "Vercel deployments for prj_junior",
@@ -109,9 +109,9 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-target" },
       ),
     ).resolves.toMatchObject({
-      commitSha: null,
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: null,
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         identifier: "prj_junior:production",
         label: "Vercel production deployments for prj_junior",
@@ -125,13 +125,13 @@ describe("Vercel deployment", () => {
 
     await expect(
       tool.execute?.(
-        { commitSha: COMMIT_SHA, project: "junior" },
+        { commit_sha: COMMIT_SHA, project: "junior" },
         { toolCallId: "deployment-default-target" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA.toLowerCase(),
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: COMMIT_SHA.toLowerCase(),
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
       },
@@ -143,7 +143,7 @@ describe("Vercel deployment", () => {
 
     await tool.execute?.(
       {
-        commitSha: COMMIT_SHA,
+        commit_sha: COMMIT_SHA,
         project: "junior",
         target: "production",
         team: "team_sentry",

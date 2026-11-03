@@ -27,8 +27,8 @@ export const compactTaskResultSchema = z
     instruction: z.string(),
     schedule: z.string(),
     timezone: z.string(),
-    // Keeps the camelCase keys of the schedule input, so the model can pass
-    // the recurrence back to the Automation tools unchanged.
+    // Uses the keys of the schedule input, so the model can pass the
+    // recurrence back to the Automation tools unchanged.
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
     destination: z
@@ -111,11 +111,11 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
       ? {
           frequency: task.schedule.recurrence.frequency,
           interval: task.schedule.recurrence.interval,
-          startDate: task.schedule.recurrence.startDate,
+          start_date: task.schedule.recurrence.startDate,
           time: task.schedule.recurrence.time,
           weekdays: task.schedule.recurrence.weekdays,
           month: task.schedule.recurrence.month,
-          dayOfMonth: task.schedule.recurrence.dayOfMonth,
+          day_of_month: task.schedule.recurrence.dayOfMonth,
         }
       : null,
     next_run_at: task.nextRunAtMs

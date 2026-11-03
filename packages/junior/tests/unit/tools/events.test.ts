@@ -87,7 +87,7 @@ describe("event tools", () => {
         {
           identifier: "GetSentry/Junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: [
             "pull_request.checks.failed",
@@ -129,7 +129,7 @@ describe("event tools", () => {
       {
         identifier: "getsentry/junior#1",
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
         label: "GitHub PR #1",
         events: ["pull_request.checks.failed"],
         intent: "Report failed checks.",
@@ -203,7 +203,7 @@ describe("event tools", () => {
         {
           namespace: "github",
           reach: {
-            "pull_request.checks.failed": { anyOf: ["authors"] },
+            "pull_request.checks.failed": { any_of: ["authors"] },
             "pull_request.review.changes_requested": "resource",
           },
         },
@@ -230,7 +230,7 @@ describe("event tools", () => {
           },
         },
         namespace: { enum: ["github", "vercel"] },
-        resourceType: { enum: ["deployment", "pull_request"] },
+        resource_type: { enum: ["deployment", "pull_request"] },
       },
     });
   });
@@ -257,7 +257,7 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "issue",
+          resource_type: "issue",
           label: "GitHub issue #1",
           events: ["pull_request.merged"],
           intent: "Report closure.",
@@ -278,11 +278,11 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: ["pull_request.checks.failed"],
           intent: "Report failed checks.",
-          ttlMs: 31 * 24 * 60 * 60 * 1000,
+          ttl_ms: 31 * 24 * 60 * 60 * 1000,
         },
         {},
       ),

@@ -142,7 +142,7 @@ describe("Automation edit API", () => {
           await execute(
             createUpdateAutomationTool(slackToolContext(), getEventCatalog()),
             {
-              automationId: id,
+              automation_id: id,
               instruction,
               ...(instruction === "Edited from Slack."
                 ? { title: "Title from Slack" }
@@ -538,7 +538,7 @@ describe("Automation edit API", () => {
         fields: {
           trigger: [
             expect.stringContaining(
-              'Filter "authorUsername" (match.authorUsername) does not exist for this resource type.',
+              'Filter "authorUsername" does not exist for this resource type.',
             ),
           ],
         },
@@ -557,7 +557,7 @@ describe("Automation edit API", () => {
         fields: {
           trigger: [
             expect.stringContaining(
-              'Filter "headBranch" (match.headBranch) is not set on "pull_request.comment.created"',
+              'Filter "headBranch" is not set on "pull_request.comment.created"',
             ),
           ],
         },
@@ -637,7 +637,7 @@ describe("Automation edit API", () => {
       expect(await unscoped.json()).toMatchObject({
         fields: {
           trigger: [
-            'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
+            'This GitHub trigger cannot be saved. This trigger needs a "repo" filter, because "pull_request.opened" cannot run for every resource.',
           ],
         },
       });

@@ -16,9 +16,9 @@ const inputSchema = z
   })
   .strict();
 const repositorySchema = z.object({
-  defaultBranch: z.string(),
+  default_branch: z.string(),
   description: z.string().nullable(),
-  fullName: z.string(),
+  full_name: z.string(),
   private: z.boolean(),
   subscribable: subscribableResourceSchema.optional(),
   url: z.string(),
@@ -103,9 +103,9 @@ export function createGitHubGetRepositoryTool(ctx: {
         repo: providerResult.full_name,
       });
       const data: Repository = {
-        defaultBranch: providerResult.default_branch,
+        default_branch: providerResult.default_branch,
         description: providerResult.description,
-        fullName: providerResult.full_name,
+        full_name: providerResult.full_name,
         private: providerResult.private,
         ...(subscribable ? { subscribable } : undefined),
         url: providerResult.html_url,

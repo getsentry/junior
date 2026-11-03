@@ -45,7 +45,7 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
   const { conversationId, tools, queue, drain, historyTexts, agentRuns } =
     await timerConversation();
-  const input = { afterMs: 60_000, intent: "Check the deployment." };
+  const input = { after_ms: 60_000, intent: "Check the deployment." };
   const timer = (await execute(tools.watchTimer!, input, "timer-1")) as {
     id: string;
     fires_at: string;
@@ -126,7 +126,7 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
   const { conversationId, tools, queue } = await timerConversation();
   const timer = (await execute(
     tools.watchTimer!,
-    { afterMs: 1, intent: "Check once." },
+    { after_ms: 1, intent: "Check once." },
     "timer-retry",
   )) as { id: string };
   clock.mockReturnValue(clock() + 1);
@@ -154,7 +154,7 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
 
   await execute(
     tools.watchTimer!,
-    { afterMs: 1, intent: "Do not deliver stale work." },
+    { after_ms: 1, intent: "Do not deliver stale work." },
     "timer-expired",
   );
   clock.mockReturnValue(clock() + 24 * 60 * 60 * 1000 + 2);
@@ -170,11 +170,11 @@ it("drops a fired timer when the root session stops, the same as a child", async
   const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
   const { conversationId, tools, queue, drain, agentRuns } =
     await timerConversation();
-  const input = { afterMs: 60_000, intent: "Check the deployment." };
+  const input = { after_ms: 60_000, intent: "Check the deployment." };
   await execute(tools.watchTimer!, input, "timer-1");
   await execute(
     tools.watchTimer!,
-    { afterMs: 600_000, intent: "Check much later." },
+    { after_ms: 600_000, intent: "Check much later." },
     "timer-2",
   );
   clock.mockReturnValue(clock() + 60_000);

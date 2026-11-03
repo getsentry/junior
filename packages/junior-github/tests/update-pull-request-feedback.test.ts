@@ -59,8 +59,8 @@ describe("updatePullRequestFeedback", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          commentKind: "conversation",
-          commentId: 55,
+          comment_kind: "conversation",
+          comment_id: 55,
           status: "addressed",
         },
         { toolCallId: "mark-addressed" },
@@ -68,9 +68,9 @@ describe("updatePullRequestFeedback", () => {
     ).resolves.toEqual({
       target: "updatePullRequestFeedback",
       repo: "getsentry/junior",
-      commentId: 55,
+      comment_id: 55,
       status: "addressed",
-      reactionId: 91,
+      reaction_id: 91,
     });
 
     expect(fetch).toHaveBeenCalledTimes(4);
@@ -106,8 +106,8 @@ describe("updatePullRequestFeedback", () => {
     await tool.execute?.(
       {
         repo: "getsentry/junior",
-        commentKind: "review",
-        commentId: 77,
+        comment_kind: "review",
+        comment_id: 77,
         status: "declined",
       },
       { toolCallId: "mark-declined" },
@@ -149,8 +149,8 @@ describe("updatePullRequestFeedback", () => {
         tool.execute?.(
           {
             repo: "getsentry/junior",
-            commentKind,
-            commentId: 77,
+            comment_kind: commentKind,
+            comment_id: 77,
             status: "addressed",
           },
           { toolCallId: "not-owned" },
@@ -179,13 +179,13 @@ describe("updatePullRequestFeedback", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          commentKind: "conversation",
-          commentId: 55,
+          comment_kind: "conversation",
+          comment_id: 55,
           status: "addressed",
         },
         { toolCallId: "mark-addressed" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reactionId: 3 });
+    ).resolves.toMatchObject({ status: "addressed", reaction_id: 3 });
 
     expect(fetch).toHaveBeenCalledTimes(5);
     const deleteRequest = fetch.mock.calls[3]?.[0]?.request as Request;
@@ -210,13 +210,13 @@ describe("updatePullRequestFeedback", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          commentKind: "conversation",
-          commentId: 55,
+          comment_kind: "conversation",
+          comment_id: 55,
           status: "addressed",
         },
         { toolCallId: "missing-eyes" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reactionId: 3 });
+    ).resolves.toMatchObject({ status: "addressed", reaction_id: 3 });
 
     expect(fetch).toHaveBeenCalledTimes(5);
   });
@@ -231,13 +231,13 @@ describe("updatePullRequestFeedback", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          commentKind: "conversation",
-          commentId: 55,
+          comment_kind: "conversation",
+          comment_id: 55,
           status: "addressed",
         },
         { toolCallId: "already-addressed" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reactionId: 9 });
+    ).resolves.toMatchObject({ status: "addressed", reaction_id: 9 });
 
     expect(fetch).toHaveBeenCalledTimes(3);
   });
@@ -249,8 +249,8 @@ describe("updatePullRequestFeedback", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          commentKind: "conversation",
-          commentId: 55,
+          comment_kind: "conversation",
+          comment_id: 55,
           status: "reviewing",
         },
         { toolCallId: "mark-reviewing" },

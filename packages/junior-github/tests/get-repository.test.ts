@@ -30,8 +30,8 @@ describe("getRepository", () => {
         { toolCallId: "get-repository" },
       ),
     ).resolves.toMatchObject({
-      defaultBranch: "main",
-      fullName: "GetSentry/Junior",
+      default_branch: "main",
+      full_name: "GetSentry/Junior",
       subscribable: {
         identifier: "getsentry/junior",
         label: "GitHub repository GetSentry/Junior",
