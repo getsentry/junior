@@ -7,6 +7,7 @@
  * `readConversationEvent` reads back.
  */
 import type { PiMessage } from "@/chat/pi/messages";
+import { hasCurrentInstruction } from "@/chat/pi/transcript";
 
 /** Results up to this many text characters stay whole. */
 const MAX_KEPT_RESULT_CHARS = 2_000;
@@ -102,22 +103,23 @@ function trimResult(
 /**
  * Trim old tool results in a replacement history.
  *
- * Results after the last user message belong to the latest Turn or tool loop
- * and stay whole. So do short results, error results up to a cap, and
+ * Results after the last Turn instruction belong to the latest Turn and stay
+ * whole. Runtime context and summaries are user messages too, so they do not
+ * mark a Turn. So do short results, error results up to a cap, and
  * results that have no source event to point to. Images outside the latest
  * Turn become a short note.
  */
 export function trimToolResults<T extends TrimmableEntry>(
   entries: T[],
 ): { entries: T[]; trimming: ToolResultTrimming } {
-  let latestUserIndex = -1;
+  let latestInstructionIndex = -1;
   entries.forEach((entry, index) => {
-    if (role(entry.message) === "user") latestUserIndex = index;
+    if (hasCurrentInstruction(entry.message)) latestInstructionIndex = index;
   });
   const trimming: ToolResultTrimming = { trimmedResults: 0, removedChars: 0 };
   const trimmed = entries.map((entry, index) => {
     if (
-      index > latestUserIndex ||
+      index > latestInstructionIndex ||
       role(entry.message) !== "toolResult" ||
       entry.sourceEventSeq === undefined
     ) {

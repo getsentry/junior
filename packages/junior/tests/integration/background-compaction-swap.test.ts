@@ -123,6 +123,8 @@ describe("background compaction swap", () => {
       ),
       toolCall("call-4", 10),
       toolResult("call-4", LONG_LOG, 11),
+      // A checkpoint can add context after the latest Turn's results.
+      user("<runtime-turn-context>\nNew context.\n</runtime-turn-context>", 11),
       assistant("Read that too.", 12),
     ];
     const committed = await commitMessages({

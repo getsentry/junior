@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createResumeState } from "@/chat/agent/resume";
 import { commitMessages } from "@/chat/conversations/projection";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { runCodeModeScript } from "@/chat/codemode/bridge";
@@ -217,7 +218,7 @@ describe("readConversationEvent", () => {
     const ask = (text: string, timestamp: number) =>
       ({
         role: "user",
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: renderCurrentInstruction(text) }],
         timestamp,
       }) as PiMessage;
     const reply = (timestamp: number) =>
