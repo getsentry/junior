@@ -18,6 +18,7 @@ import {
 import { issueAuthorizationCode } from "./grants";
 import { resolveMcpUrls } from "./metadata";
 import { renderMcpPage } from "./page";
+import { MCP_SCOPE_DESCRIPTIONS, parseMcpScopes } from "./scopes";
 import { sha256Hex, type McpState } from "./state";
 
 function expiredPage(): Response {
@@ -45,8 +46,15 @@ function consentPage(args: {
   const clientName = args.authorization.clientName ?? clientHost;
   const button = (action: string, label: string, primary: boolean) =>
     `<button type="submit" name="action" value="${action}" style="border:0;border-radius:.375rem;cursor:pointer;font:inherit;font-weight:700;padding:.625rem 1rem;margin-right:.5rem;${primary ? "background:#a78bfa;color:#000" : "background:#333;color:#fff"}">${label}</button>`;
+  const scopeItems = (parseMcpScopes(args.authorization.scope) ?? [])
+    .map(
+      (scope) =>
+        `<li style="margin:0 0 .25rem">${escapeHtml(MCP_SCOPE_DESCRIPTIONS[scope])} <code style="color:#8a8a8a">${escapeHtml(scope)}</code></li>`,
+    )
+    .join("");
   return renderMcpPage({
-    bodyHtml: `      <p style="margin:0 0 1rem;color:#b8b8b8;line-height:1.5">The app is published at <strong style="color:#fff">${escapeHtml(clientHost)}</strong>. It can list your ${escapeHtml(args.agentName)} conversations.</p>
+    bodyHtml: `      <p style="margin:0 0 .5rem;color:#b8b8b8;line-height:1.5">The app is published at <strong style="color:#fff">${escapeHtml(clientHost)}</strong>. In ${escapeHtml(args.agentName)}, it can:</p>
+      <ul style="margin:0 0 1rem;padding-left:1.25rem;color:#b8b8b8;line-height:1.5">${scopeItems}</ul>
       <form method="post">
         <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}">
         ${button("approve", "Allow", true)}${button("deny", "Deny", false)}
@@ -138,6 +146,7 @@ export async function handleMcpConsentPage(args: {
     email: args.user.email,
     redirectUri: authorization.redirectUri,
     resource: authorization.resource,
+    scope: authorization.scope,
     state: args.state,
   });
   return authorizationRedirect({

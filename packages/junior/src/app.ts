@@ -739,6 +739,7 @@ export async function createApp(
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
         baseURL: resolvePublicBaseURL(dashboard),
+        queue: conversationWorkQueue,
         state: getMcpState(),
       });
       return handleMcpRequest(c.req.raw);

@@ -1,109 +1,37 @@
-import { createHash, randomBytes } from "node:crypto";
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
-import { getSqlExecutor } from "@/chat/db";
-import { createSqlStore } from "@/chat/conversations/sql/store";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
 import { createPersonalToken } from "@/personal-tokens/store";
 import {
+  approveMcpClient,
+  approveMcpConsent,
+  connectMcpClient,
+  createPkce,
+  exchangeMcpCode,
+  MCP_TEST_ALLOWED_DOMAINS,
   MCP_TEST_ORIGIN,
+  MCP_TEST_OTHER_VIEWER,
+  MCP_TEST_REDIRECT_URI,
   MCP_TEST_URL,
+  MCP_TEST_VIEWER,
+  mcpAuthorizeUrl,
+  type McpTokenBody,
   mockMcpDashboardConfig,
-  viewerCookie,
+  openMcpConsentPage,
+  requestMcpTokens,
   withMcpClient,
 } from "../../../fixtures/mcp-http";
+import { seedMcpConversation } from "../../../fixtures/mcp-tools";
 import {
   MCP_CLIENT_ID,
   MCP_CLIENT_NAME,
   MCP_MISMATCHED_CLIENT_ID,
 } from "../../../msw/handlers/mcp-client-metadata";
 
-const ALLOWED_DOMAINS = ["example.com"];
-const VIEWER = "mcp-viewer@example.com";
-const OTHER_VIEWER = "mcp-other@example.com";
-// Claude Code listens on a random loopback port.
-const REDIRECT_URI = "http://127.0.0.1:53682/callback";
-
-type TokenBody = {
-  access_token: string;
-  expires_in: number;
-  refresh_token: string;
-  scope: string;
-  token_type: string;
-};
+const ALL_SCOPES =
+  "conversations:read conversations:manage review_items:read automations:read";
 
 mockMcpDashboardConfig();
-
-/** Create one RFC 7636 PKCE verifier and its S256 challenge. */
-function createPkce(): { challenge: string; verifier: string } {
-  const verifier = randomBytes(32).toString("base64url");
-  return {
-    challenge: createHash("sha256").update(verifier).digest("base64url"),
-    verifier,
-  };
-}
-
-/** Build an authorization request URL with valid defaults. */
-function authorizeUrl(params: Record<string, string>): string {
-  const url = new URL(`${MCP_TEST_ORIGIN}/api/mcp/oauth/authorize`);
-  for (const [name, value] of Object.entries({
-    response_type: "code",
-    code_challenge_method: "S256",
-    scope: "conversations:read",
-    resource: MCP_TEST_URL,
-    ...params,
-  })) {
-    url.searchParams.set(name, value);
-  }
-  return url.toString();
-}
-
-/** Open the consent page as one viewer and return its form token. */
-async function openConsentPage(
-  app: Hono,
-  consentUrl: string,
-  email: string,
-): Promise<{ csrf?: string; html: string; status: number }> {
-  const response = await app.request(consentUrl, {
-    headers: { cookie: viewerCookie(email) },
-  });
-  const html = await response.text();
-  return {
-    csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
-    html,
-    status: response.status,
-  };
-}
-
-/** Approve consent as the viewer who opened the page. */
-async function approveConsent(
-  app: Hono,
-  args: { consentUrl: string; csrf: string; email: string },
-): Promise<Response> {
-  return await app.request(args.consentUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      cookie: viewerCookie(args.email),
-      origin: MCP_TEST_ORIGIN,
-    },
-    body: new URLSearchParams({ action: "approve", csrf: args.csrf }),
-  });
-}
-
-/** POST one form-encoded request to the MCP token endpoint. */
-async function requestTokens(
-  app: Hono,
-  params: Record<string, string>,
-): Promise<Response> {
-  return await app.request(`${MCP_TEST_ORIGIN}/api/mcp/oauth/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params),
-  });
-}
 
 /** Send a raw `tools/list` request with one bearer token. */
 async function listTools(app: Hono, token: string): Promise<Response> {
@@ -118,72 +46,8 @@ async function listTools(app: Hono, token: string): Promise<Response> {
   });
 }
 
-/** Store one root Conversation that the named viewer takes part in. */
-async function seedConversation(args: {
-  conversationId: string;
-  email: string;
-  title: string;
-}): Promise<void> {
-  const sql = getSqlExecutor();
-  await createSqlStore(sql).recordActivity({
-    conversationId: args.conversationId,
-    destination: { channelId: "C123", platform: "slack", teamId: "T123" },
-    nowMs: Date.now(),
-    title: args.title,
-    visibility: "public",
-  });
-  const viewer = await resolveViewerUser(args.email);
-  if (!viewer) throw new Error(`missing viewer for ${args.email}`);
-  await sql.db().insert(juniorConversationParticipants).values({
-    lastMessageAt: new Date(),
-    rootConversationId: args.conversationId,
-    userId: viewer.id,
-  });
-}
-
-/** Approve the test client as one viewer and return its code and verifier. */
-async function approveClient(
-  app: Hono,
-  email: string,
-): Promise<{ code: string; verifier: string }> {
-  const pkce = createPkce();
-  const authorize = await app.request(
-    authorizeUrl({
-      client_id: MCP_CLIENT_ID,
-      code_challenge: pkce.challenge,
-      redirect_uri: REDIRECT_URI,
-    }),
-  );
-  const consentUrl = authorize.headers.get("location") ?? "";
-  const page = await openConsentPage(app, consentUrl, email);
-  const approved = await approveConsent(app, {
-    consentUrl,
-    csrf: page.csrf ?? "",
-    email,
-  });
-  const code = new URL(approved.headers.get("location") ?? "").searchParams.get(
-    "code",
-  );
-  if (!code) throw new Error("MCP consent returned no code");
-  return { code, verifier: pkce.verifier };
-}
-
-function exchangeCode(
-  app: Hono,
-  args: { code: string; verifier: string },
-): Promise<Response> {
-  return requestTokens(app, {
-    client_id: MCP_CLIENT_ID,
-    code: args.code,
-    code_verifier: args.verifier,
-    grant_type: "authorization_code",
-    redirect_uri: REDIRECT_URI,
-    resource: MCP_TEST_URL,
-  });
-}
-
 function refresh(app: Hono, refreshToken: string): Promise<Response> {
-  return requestTokens(app, {
+  return requestMcpTokens(app, {
     client_id: MCP_CLIENT_ID,
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -197,16 +61,16 @@ describe("remote MCP HTTP", () => {
   });
 
   it("connects a CIMD client and lists only the signed-in user's Conversations", async () => {
-    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const pkce = createPkce();
-    await seedConversation({
+    await seedMcpConversation({
       conversationId: "slack:C123:1700000000.000100",
-      email: VIEWER,
+      email: MCP_TEST_VIEWER,
       title: "Viewer launch plan",
     });
-    await seedConversation({
+    await seedMcpConversation({
       conversationId: "slack:C123:1700000000.000200",
-      email: OTHER_VIEWER,
+      email: MCP_TEST_OTHER_VIEWER,
       title: "Other person's roadmap",
     });
 
@@ -227,39 +91,43 @@ describe("remote MCP HTTP", () => {
 
     const authorize = await app.request(
       `${serverMetadata.authorization_endpoint}?${new URL(
-        authorizeUrl({
+        mcpAuthorizeUrl({
           client_id: MCP_CLIENT_ID,
           code_challenge: pkce.challenge,
-          redirect_uri: REDIRECT_URI,
+          redirect_uri: MCP_TEST_REDIRECT_URI,
           state: "client-state",
         }),
       ).searchParams.toString()}`,
     );
     const consentUrl = authorize.headers.get("location") ?? "";
-    const page = await openConsentPage(app, consentUrl, VIEWER);
-    const otherPage = await openConsentPage(app, consentUrl, OTHER_VIEWER);
-    const approved = await approveConsent(app, {
+    const page = await openMcpConsentPage(app, consentUrl, MCP_TEST_VIEWER);
+    const otherPage = await openMcpConsentPage(
+      app,
+      consentUrl,
+      MCP_TEST_OTHER_VIEWER,
+    );
+    const approved = await approveMcpConsent(app, {
       consentUrl,
       csrf: page.csrf ?? "",
-      email: VIEWER,
+      email: MCP_TEST_VIEWER,
     });
     const callback = new URL(approved.headers.get("location") ?? "");
-    const issued = await exchangeCode(app, {
+    const issued = await exchangeMcpCode(app, {
       code: callback.searchParams.get("code") ?? "",
       verifier: pkce.verifier,
     });
-    const tokens = (await issued.json()) as TokenBody;
+    const tokens = (await issued.json()) as McpTokenBody;
     const listed = await withMcpClient(app, tokens.access_token, (client) =>
-      client.callTool({ name: "listConversations", arguments: {} }),
+      client.callTool({ name: "searchConversations", arguments: {} }),
     );
     const rotated = await refresh(app, tokens.refresh_token);
-    const rotatedTokens = (await rotated.json()) as TokenBody;
+    const rotatedTokens = (await rotated.json()) as McpTokenBody;
     const rotatedSearch = await withMcpClient(
       app,
       rotatedTokens.access_token,
       (client) =>
         client.callTool({
-          name: "listConversations",
+          name: "searchConversations",
           arguments: { q: "roadmap" },
         }),
     );
@@ -269,13 +137,13 @@ describe("remote MCP HTTP", () => {
       resource: MCP_TEST_URL,
       authorization_servers: [MCP_TEST_ORIGIN],
       bearer_methods_supported: ["header"],
-      scopes_supported: ["conversations:read"],
+      scopes_supported: ALL_SCOPES.split(" "),
     });
     expect(serverMetadata).toEqual({
       issuer: MCP_TEST_ORIGIN,
       authorization_endpoint: `${MCP_TEST_ORIGIN}/api/mcp/oauth/authorize`,
       token_endpoint: `${MCP_TEST_ORIGIN}/api/mcp/oauth/token`,
-      scopes_supported: ["conversations:read"],
+      scopes_supported: ALL_SCOPES.split(" "),
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
@@ -287,7 +155,9 @@ describe("remote MCP HTTP", () => {
     expect(page.html).toContain(`Connect ${MCP_CLIENT_NAME}`);
     expect(page.html).toContain("mcp-client.example.test");
     expect(otherPage.status).toBe(403);
-    expect(`${callback.origin}${callback.pathname}`).toBe(REDIRECT_URI);
+    expect(`${callback.origin}${callback.pathname}`).toBe(
+      MCP_TEST_REDIRECT_URI,
+    );
     expect(callback.searchParams.get("state")).toBe("client-state");
     expect(callback.searchParams.get("iss")).toBe(MCP_TEST_ORIGIN);
     expect(issued.status).toBe(200);
@@ -299,26 +169,12 @@ describe("remote MCP HTTP", () => {
       scope: "conversations:read",
       token_type: "Bearer",
     });
-    expect(listed).toEqual({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(listed.structuredContent),
-        },
+    expect(listed.structuredContent).toEqual({
+      conversations: [
+        expect.objectContaining({
+          conversationId: "slack:C123:1700000000.000100",
+        }),
       ],
-      structuredContent: {
-        conversations: [
-          {
-            conversationId: "slack:C123:1700000000.000100",
-            title: "Viewer launch plan",
-            status: "completed",
-            surface: "slack",
-            startedAt: expect.any(String),
-            lastSeenAt: expect.any(String),
-            url: `${MCP_TEST_ORIGIN}/conversations/${encodeURIComponent("slack:C123:1700000000.000100")}`,
-          },
-        ],
-      },
     });
     expect(rotated.status).toBe(200);
     expect(rotatedTokens.refresh_token).not.toBe(tokens.refresh_token);
@@ -328,14 +184,14 @@ describe("remote MCP HTTP", () => {
   });
 
   it("rejects a personal token and a token for a domain that is no longer allowed", async () => {
-    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const personal = await createPersonalToken({
-      email: VIEWER,
+      email: MCP_TEST_VIEWER,
       name: "MCP rejected token",
     });
     const tokens = (await (
-      await exchangeCode(app, await approveClient(app, VIEWER))
-    ).json()) as TokenBody;
+      await exchangeMcpCode(app, await approveMcpClient(app, MCP_TEST_VIEWER))
+    ).json()) as McpTokenBody;
 
     const response = await listTools(app, personal.token);
     const removedDomain = await listTools(
@@ -346,22 +202,22 @@ describe("remote MCP HTTP", () => {
     expect(removedDomain.status).toBe(401);
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(
-      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="conversations:read"`,
+      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="${ALL_SCOPES}"`,
     );
   });
 
   it("ends a grant 30 days after consent even when it is refreshed", async () => {
-    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const day = 24 * 60 * 60 * 1000;
     const startMs = Date.now();
     const tokens = (await (
-      await exchangeCode(app, await approveClient(app, VIEWER))
-    ).json()) as TokenBody;
+      await exchangeMcpCode(app, await approveMcpClient(app, MCP_TEST_VIEWER))
+    ).json()) as McpTokenBody;
 
     vi.useFakeTimers({ now: startMs + 29 * day, toFake: ["Date"] });
     const refreshed = (await (
       await refresh(app, tokens.refresh_token)
-    ).json()) as TokenBody;
+    ).json()) as McpTokenBody;
     vi.setSystemTime(startMs + 31 * day);
     const afterEnd = await refresh(app, refreshed.refresh_token);
 
@@ -373,25 +229,25 @@ describe("remote MCP HTTP", () => {
   });
 
   it("revokes the grant when a code or a rotated refresh token is reused", async () => {
-    const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
-    const approval = await approveClient(app, VIEWER);
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const approval = await approveMcpClient(app, MCP_TEST_VIEWER);
     const first = (await (
-      await exchangeCode(app, approval)
-    ).json()) as TokenBody;
-    const reusedCode = await exchangeCode(app, approval);
+      await exchangeMcpCode(app, approval)
+    ).json()) as McpTokenBody;
+    const reusedCode = await exchangeMcpCode(app, approval);
     const afterCodeReuse = await refresh(app, first.refresh_token);
 
     const second = (await (
-      await exchangeCode(app, await approveClient(app, VIEWER))
-    ).json()) as TokenBody;
+      await exchangeMcpCode(app, await approveMcpClient(app, MCP_TEST_VIEWER))
+    ).json()) as McpTokenBody;
     const rotatedOnce = (await (
       await refresh(app, second.refresh_token)
-    ).json()) as TokenBody;
+    ).json()) as McpTokenBody;
     // A concurrent refresh by another client process loses without logout.
     const racedRefresh = await refresh(app, second.refresh_token);
     const rotated = (await (
       await refresh(app, rotatedOnce.refresh_token)
-    ).json()) as TokenBody;
+    ).json()) as McpTokenBody;
     vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ["Date"] });
     const reusedRefresh = await refresh(app, rotatedOnce.refresh_token);
     const afterRefreshReuse = await refresh(app, rotated.refresh_token);
@@ -413,20 +269,24 @@ describe("remote MCP HTTP", () => {
   });
 
   it.each([
-    ["a private IP client ID", "https://10.0.0.5/client.json", REDIRECT_URI],
+    [
+      "a private IP client ID",
+      "https://10.0.0.5/client.json",
+      MCP_TEST_REDIRECT_URI,
+    ],
     [
       "a document for another client ID",
       MCP_MISMATCHED_CLIENT_ID,
-      REDIRECT_URI,
+      MCP_TEST_REDIRECT_URI,
     ],
     ["an unregistered redirect URI", MCP_CLIENT_ID, "https://evil.example/cb"],
   ])(
     "shows an error without redirecting for %s",
     async (_, clientId, redirectUri) => {
-      const app = await createApp({ allowedDomains: ALLOWED_DOMAINS });
+      const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
 
       const response = await app.request(
-        authorizeUrl({
+        mcpAuthorizeUrl({
           client_id: clientId,
           code_challenge: createPkce().challenge,
           redirect_uri: redirectUri,
@@ -440,6 +300,68 @@ describe("remote MCP HTTP", () => {
       );
     },
   );
+
+  it("shows the requested scopes and lists only their tools", async () => {
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    // An empty scope asks for every scope.
+    const everyScope = await approveMcpClient(app, MCP_TEST_VIEWER, "");
+    const everyTokens = (await (
+      await exchangeMcpCode(app, everyScope)
+    ).json()) as McpTokenBody;
+    const readOnly = await connectMcpClient(
+      app,
+      MCP_TEST_VIEWER,
+      "conversations:read",
+    );
+    const toolNames = async (token: string) =>
+      (await withMcpClient(app, token, (client) => client.listTools())).tools
+        .map((tool) => tool.name)
+        .sort();
+    const invalidScope = await app.request(
+      mcpAuthorizeUrl({
+        client_id: MCP_CLIENT_ID,
+        code_challenge: createPkce().challenge,
+        redirect_uri: MCP_TEST_REDIRECT_URI,
+        scope: "conversations:write",
+      }),
+    );
+    const widenedRefresh = await requestMcpTokens(app, {
+      client_id: MCP_CLIENT_ID,
+      grant_type: "refresh_token",
+      refresh_token: everyTokens.refresh_token,
+      resource: MCP_TEST_URL,
+      scope: "conversations:read",
+    });
+
+    for (const scope of ALL_SCOPES.split(" ")) {
+      expect(everyScope.consentHtml).toContain(scope);
+    }
+    expect(everyTokens.scope).toBe(ALL_SCOPES);
+    expect(await toolNames(everyTokens.access_token)).toEqual([
+      "archiveConversation",
+      "getAutomation",
+      "getConversation",
+      "getReviewItem",
+      "listConversationMessages",
+      "searchAutomations",
+      "searchConversations",
+      "searchReviewItems",
+      "stopConversation",
+    ]);
+    expect(await toolNames(readOnly)).toEqual([
+      "getConversation",
+      "listConversationMessages",
+      "searchConversations",
+    ]);
+    expect(
+      new URL(invalidScope.headers.get("location") ?? "").searchParams.get(
+        "error",
+      ),
+    ).toBe("invalid_scope");
+    await expect(widenedRefresh.json()).resolves.toMatchObject({
+      error: "invalid_scope",
+    });
+  });
 
   it("does not mount when dashboard sign-in is not required", async () => {
     const app = await createApp({

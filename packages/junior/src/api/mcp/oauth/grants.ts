@@ -7,7 +7,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
-import { MCP_SCOPE } from "./metadata";
+import { mcpScopeValueSchema, parseMcpScopes, type McpScope } from "./scopes";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const CODE_TTL_MS = 60 * 1000;
@@ -29,7 +29,7 @@ const authorizationCodeSchema = z
     grantId: z.string().uuid(),
     redirectUri: z.string().min(1),
     resource: z.string().min(1),
-    scope: z.literal(MCP_SCOPE),
+    scope: mcpScopeValueSchema,
   })
   .strict();
 
@@ -40,7 +40,7 @@ const grantSchema = z
     /** Absolute end of the grant. Refresh never moves it. */
     expiresAtMs: z.number().int().positive(),
     resource: z.string().min(1),
-    scope: z.literal(MCP_SCOPE),
+    scope: mcpScopeValueSchema,
   })
   .strict();
 
@@ -98,6 +98,8 @@ export async function issueAuthorizationCode(args: {
   email: string;
   redirectUri: string;
   resource: string;
+  /** Approved scopes as a stored scope value. */
+  scope: string;
   state: McpState;
 }): Promise<string> {
   const code = randomBytes(32).toString("base64url");
@@ -108,7 +110,7 @@ export async function issueAuthorizationCode(args: {
     grantId: randomUUID(),
     redirectUri: args.redirectUri,
     resource: args.resource,
-    scope: MCP_SCOPE,
+    scope: args.scope,
   };
   await args.state.set(codeKey(code), record, CODE_TTL_MS);
   return code;
@@ -249,9 +251,13 @@ export async function refreshGrant(args: {
   ) {
     return invalidGrant("The refresh token is not valid.");
   }
-  if (args.scope !== undefined && args.scope !== grant.scope) {
+  // Refresh cannot narrow or widen a grant. Connect again for other scopes.
+  if (
+    args.scope !== undefined &&
+    parseMcpScopes(args.scope)?.join(" ") !== grant.scope
+  ) {
     return {
-      description: `The only scope is ${MCP_SCOPE}.`,
+      description: `Refresh keeps the granted scope: ${grant.scope}.`,
       error: "invalid_scope",
       ok: false,
     };
@@ -282,16 +288,19 @@ export async function refreshGrant(args: {
   return await issueTokens(args.state, token.grantId, grant);
 }
 
+/** The user and scopes of one valid MCP access token. */
+export type McpAccessGrant = { email: string; scopes: McpScope[] };
+
 /**
- * Return the user email of one MCP access token for one resource. Personal
- * tokens and other bearer values never match, because only this module
- * stores MCP access tokens.
+ * Return the user email and scopes of one MCP access token for one
+ * resource. Personal tokens and other bearer values never match, because
+ * only this module stores MCP access tokens.
  */
 export async function authenticateMcpAccessToken(args: {
   resource: string;
   state: McpState;
   token: string;
-}): Promise<string | undefined> {
+}): Promise<McpAccessGrant | undefined> {
   if (!args.token.startsWith(ACCESS_TOKEN_PREFIX)) return undefined;
   const token = await readRecord(
     args.state,
@@ -301,5 +310,6 @@ export async function authenticateMcpAccessToken(args: {
   if (!token) return undefined;
   const grant = await readGrant(args.state, token.grantId);
   if (!grant || grant.resource !== args.resource) return undefined;
-  return grant.email;
+  // The stored value is already validated, so it always parses.
+  return { email: grant.email, scopes: parseMcpScopes(grant.scope) ?? [] };
 }
