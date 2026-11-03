@@ -55,6 +55,7 @@ test("turns on composer autocorrect for this browser", async ({
   await page.goto(dashboard.baseURL);
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toHaveAttribute("autocorrect", "off");
+  await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
@@ -63,5 +64,6 @@ test("turns on composer autocorrect for this browser", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(composer).toHaveAttribute("autocorrect", "on");
+  await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
 });

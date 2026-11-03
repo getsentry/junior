@@ -494,7 +494,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           // Chat is technical: ids, paths, code. Keep the keyboard chat-like
           // (Send) and suppress browser IME assist that fights identifiers,
           // unless the user turns autocorrect on in settings.
-          autoCapitalize="off"
+          autoCapitalize={autocorrect ? "sentences" : "off"}
           autoComplete="off"
           autoCorrect={autocorrect ? "on" : "off"}
           className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"

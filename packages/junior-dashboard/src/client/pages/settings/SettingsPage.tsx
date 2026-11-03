@@ -184,8 +184,9 @@ function ComposerAutocorrectSetting() {
         <span className="grid gap-0.5">
           <span className="text-sm font-medium">Autocorrect</span>
           <span className="text-xs text-dashboard-text-muted">
-            Let your keyboard correct spelling as you type. Autocorrect can
-            change ids, paths, and code. This choice applies to this browser.
+            Let your keyboard correct spelling and capitalize sentences as you
+            type. This can change ids, paths, and code. This choice applies to
+            this browser.
           </span>
         </span>
       </label>
