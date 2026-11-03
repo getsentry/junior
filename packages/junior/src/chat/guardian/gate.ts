@@ -61,6 +61,11 @@ export interface ToolAction {
   toolName: string;
   tool: AnyToolDefinition;
   input: Record<string, unknown>;
+  /**
+   * The model tool call that this action is part of. The rejection limit
+   * counts each attempt once. Defaults to `toolCallId`.
+   */
+  attemptId?: string;
   /** Set when a Code Mode script made the call. The gate bounds it. */
   script?: {
     source: string;
@@ -561,6 +566,15 @@ export function createToolActionReview(options: {
   const priorRejections = [...(options.priorRejections ?? [])];
   const pendingRejections = new Map<string, ToolActionRejectionMarker>();
   let consecutiveRejections = 0;
+  /**
+   * Rejection state of each attempt, so an attempt counts only once. Pi runs
+   * a `codemode` call alone, so no other attempt changes the count while
+   * its batches run.
+   */
+  const attempts = new Map<
+    string,
+    { before: number; exhausted: boolean; rejected: boolean }
+  >();
 
   /**
    * Review one action and record its decision. Gate state does not change
@@ -604,10 +618,67 @@ export function createToolActionReview(options: {
     }
   };
 
+  /**
+   * Count each attempt in the batch once, in batch order. An attempt with a
+   * rejection adds one to the count from before the attempt, also when it
+   * has allowed actions or spans several batches. An attempt with only
+   * allowed actions resets the count. Skipped and unavailable actions do not
+   * change it. Return the attempt state of each action.
+   */
+  const countAttempts = (
+    actions: readonly ToolAction[],
+    steps: readonly ReviewStep[],
+  ) => {
+    const states = actions.map((action) => {
+      const id = action.attemptId ?? action.toolCallId;
+      let state = attempts.get(id);
+      if (!state) {
+        state = {
+          before: consecutiveRejections,
+          exhausted: false,
+          rejected: false,
+        };
+        attempts.set(id, state);
+      }
+      return state;
+    });
+    states.forEach((state, index) => {
+      const step = steps[index]!;
+      if (step.kind !== "reviewed" || state.rejected) {
+        return;
+      }
+      if (step.decision.decision === "allow") {
+        // A later action of the same attempt can still add one.
+        consecutiveRejections = 0;
+        return;
+      }
+      state.rejected = true;
+      consecutiveRejections = state.before + 1;
+      if (consecutiveRejections < MAX_CONSECUTIVE_REJECTIONS) {
+        return;
+      }
+      state.exhausted = true;
+      // Keep Sentry visibility for the limit without aborting the run.
+      logException(
+        new ToolActionReviewLimitError(),
+        "guardian.action_review.exhausted",
+        {
+          "app.guardian.decision": step.decision.decision,
+          "app.guardian.risk_level": step.decision.riskLevel,
+          "app.guardian.user_authorization": step.decision.userAuthorization,
+          "gen_ai.tool.name": step.proposal.tool.name,
+          "gen_ai.tool.call.id": actions[index]!.toolCallId,
+        },
+      );
+    });
+    return states;
+  };
+
   /** Apply one review step to gate state and return the action's result. */
   const settle = (
     toolCallId: string,
     step: ReviewStep,
+    exhausted: boolean,
   ): ToolActionReviewResult => {
     if (step.kind === "skipped") {
       return { allowed: true };
@@ -618,27 +689,10 @@ export function createToolActionReview(options: {
     }
     const { decision, proposal } = step;
     if (decision.decision === "allow") {
-      consecutiveRejections = 0;
       return { allowed: true, decision };
     }
     const reviewedAction = projectedRejection(proposal, decision);
     addPriorRejection(priorRejections, reviewedAction);
-    consecutiveRejections += 1;
-    const exhausted = consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
-    if (exhausted) {
-      // Keep Sentry visibility for the limit without aborting the run.
-      logException(
-        new ToolActionReviewLimitError(),
-        "guardian.action_review.exhausted",
-        {
-          "app.guardian.decision": decision.decision,
-          "app.guardian.risk_level": decision.riskLevel,
-          "app.guardian.user_authorization": decision.userAuthorization,
-          "gen_ai.tool.name": proposal.tool.name,
-          "gen_ai.tool.call.id": toolCallId,
-        },
-      );
-    }
     pendingRejections.set(toolCallId, {
       decision: decision.decision,
       priorRejection: reviewedAction,
@@ -676,12 +730,17 @@ export function createToolActionReview(options: {
             MAX_CONCURRENT_REVIEWS,
             (action) => reviewStep(action, rejections, signal),
           );
-          // Change gate state in batch order, so the count of consecutive
-          // rejections does not depend on which review finished first.
+          // Change gate state in batch order, so it does not depend on
+          // which review finished first.
+          const states = countAttempts(actions, steps);
           return new Map(
             actions.map((action, index) => [
               action.toolCallId,
-              settle(action.toolCallId, steps[index]!),
+              settle(
+                action.toolCallId,
+                steps[index]!,
+                states[index]!.exhausted,
+              ),
             ]),
           );
         },

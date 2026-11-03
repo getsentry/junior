@@ -493,7 +493,7 @@ describe("tool action review", () => {
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 
-  it("reviews a batch against one rejection snapshot and counts rejections in batch order", async () => {
+  it("reviews a batch against one rejection snapshot", async () => {
     const onDecision = vi.fn(async () => undefined);
     // The first action finishes last, so completion order differs from
     // batch order.
@@ -559,19 +559,59 @@ describe("tool action review", () => {
         error: { decision: "deny", reason: `Rejected ${id}.` },
       });
     }
-    // The third rejection in batch order reaches the limit, also though the
-    // first action finished last.
-    const exhausted = "rejected three consecutive tool execution attempts";
-    expect(results.get("a")).toMatchObject({
-      error: { message: expect.not.stringContaining(exhausted) },
-    });
-    expect(results.get("c")).toMatchObject({
-      error: { message: expect.stringContaining(exhausted) },
-    });
     for (const [proposal] of review.mock.calls) {
       expect(proposal.priorRejectedActions).toBeUndefined();
     }
     expect(onDecision).toHaveBeenCalledTimes(3);
+  });
+
+  it("counts each attempt once toward the rejection limit", async () => {
+    const actionReview = reviewContext({
+      review: vi.fn<ToolActionReviewer["review"]>(async (proposal) => ({
+        decision: proposal.input.deny ? "deny" : "allow",
+        reason: "Decided by the test.",
+        riskLevel: "high",
+        userAuthorization: "low",
+      })),
+    });
+    const reviewed = definition({ approvalMode: "review" });
+    const exhausted = "rejected three consecutive tool execution attempts";
+    const attempt = async (
+      attemptId: string,
+      calls: Array<[toolCallId: string, deny: boolean]>,
+    ) =>
+      await reviewToolActions(
+        calls.map(([toolCallId, deny]) => ({
+          attemptId,
+          toolCallId,
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { deny },
+        })),
+        actionReview,
+      );
+    const limited = (
+      results: Awaited<ReturnType<typeof attempt>>,
+      toolCallId: string,
+    ) =>
+      (results.get(toolCallId) as { error: Error }).error.message.includes(
+        exhausted,
+      );
+
+    // An allowed action does not cancel a rejection in the same attempt.
+    const first = await attempt("m", [
+      ["m1", false],
+      ["m2", true],
+    ]);
+    expect(limited(first, "m2")).toBe(false);
+    expect(limited(await attempt("n", [["n1", true]]), "n1")).toBe(false);
+    // An attempt over several batches adds one to the count from before it.
+    await attempt("o", [["o1", false]]);
+    expect(limited(await attempt("o", [["o2", true]]), "o2")).toBe(true);
+    expect(limited(await attempt("o", [["o3", true]]), "o3")).toBe(true);
+    // An attempt with only allowed actions resets the count.
+    await attempt("p", [["p1", false]]);
+    expect(limited(await attempt("q", [["q1", true]]), "q1")).toBe(false);
   });
 
   it("bounds script provenance in the proposal", async () => {

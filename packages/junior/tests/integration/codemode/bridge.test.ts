@@ -307,6 +307,53 @@ describe("Code Mode bridge", () => {
     ]);
   });
 
+  it.each([
+    [
+      "parallel",
+      `return await Promise.allSettled(
+        ["#a", "#b", "#c", "#d"].map((channel) =>
+          tools.post({ channel, text: "summary" }),
+        ),
+      );`,
+    ],
+    [
+      "sequential",
+      `for (const channel of ["#a", "#b", "#c", "#d"]) {
+        try {
+          await tools.post({ channel, text: "summary" });
+        } catch {}
+      }`,
+    ],
+  ])("counts a %s script as one attempt", async (_order, source) => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "ask",
+      reason: "The user did not name these channels.",
+      riskLevel: "medium",
+      rule: "none",
+      userAuthorization: "low",
+    }));
+    const posts: Array<{ channel: string; text: string }> = [];
+
+    const { result } = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      pipeline: pipelineFor(review),
+      source,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: { post: postTool(posts) },
+    });
+
+    expect(posts).toEqual([]);
+    expect(result.calls.map((call) => call.status)).toEqual(
+      Array(4).fill("rejected"),
+    );
+    // Each call gets the confirmation text. None reaches the limit.
+    const errors = new Set(result.calls.map((call) => call.error));
+    expect(errors.size).toBe(1);
+    const [error] = errors;
+    expect(error).toContain("explicit user confirmation is required");
+    expect(error).not.toContain("rejected three consecutive");
+  });
+
   it("refuses a drain over the batch limit before any review", async () => {
     const review = fakeGuardian();
     const onToolCall = vi.fn();

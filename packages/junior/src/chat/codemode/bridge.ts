@@ -466,6 +466,7 @@ export async function runCodeModeScript(
       return await run.pipeline.reviewScriptCalls(
         actions.map((action) => ({
           ...action,
+          attemptId: run.toolCallId,
           script: { source: run.source, calls: earlier },
         })),
         controller.signal,
