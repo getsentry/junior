@@ -354,5 +354,9 @@ describe("review item actions API", () => {
     expect(texts).toEqual([
       expect.stringContaining("cal@example.com took review item"),
     ]);
+    // Only an answer names its item. A take stays text in the transcript.
+    const [takeMessage] = await pendingMessages("slack:CPUB:1.000001");
+    expect(takeMessage?.source).toBe("web");
+    expect(takeMessage?.input.metadata).not.toHaveProperty("reviewItemId");
   });
 });

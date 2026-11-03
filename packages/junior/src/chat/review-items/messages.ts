@@ -141,7 +141,11 @@ async function sendOne(args: {
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,
-          reviewItemId: args.item.id,
+          // Only the answer is marked. The dashboard shows a marked Message
+          // as the item's current answer, so a take or dismiss stays text.
+          ...(args.change.kind === "submitted"
+            ? { reviewItemId: args.item.id }
+            : undefined),
         },
         { nowMs: args.nowMs, queue: args.queue },
       );
