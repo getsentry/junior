@@ -86,6 +86,9 @@ describe("model message history", () => {
     ).toBe(JSON.stringify(firstAssistant?.content));
     expect(stored.slice(0, first.messages.length)).toEqual(first.messages);
     expect(requests).toHaveLength(3);
+    expect(requests.map((request) => request.sessionAffinity)).toEqual(
+      Array(3).fill(agent.conversationId()),
+    );
     const before = requests[1]!;
     const after = requests[2]!;
     expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
