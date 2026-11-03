@@ -196,4 +196,34 @@ describe("event batch message meta", () => {
     ]);
     expect(eventBatchMessageMeta([watchEvent(1)])).not.toHaveProperty("events");
   });
+
+  // An agent result has no task facts. The Watch Event stays the Message's own
+  // Event, whatever the order.
+  it("prefers the Watch Event over another own input", () => {
+    const agentResult = createEventInboundMessage({
+      event: {
+        eventKey: "agent:done",
+        eventType: "agent_invocation.finished",
+        identifier: "agent:child",
+        namespace: "junior",
+        occurredAtMs: 1,
+        trustedSummary: "Child agent finished.",
+      },
+      subscription: { conversationId: "local:cli:relay", id: "watch-agent" },
+      text: "Child agent finished.",
+    });
+    const meta = eventBatchMessageMeta([
+      agentResult,
+      relay(taken),
+      watchEvent(1),
+    ]);
+    expect(meta).toMatchObject({
+      eventType: "pull_request.checks.failed",
+      reviewItemChanges: [taken],
+      trustedSummary: "CI failed on run 1.",
+    });
+    expect(meta.events).toEqual([
+      expect.objectContaining({ trustedSummary: "CI failed on run 1." }),
+    ]);
+  });
 });

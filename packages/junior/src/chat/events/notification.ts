@@ -292,11 +292,11 @@ function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
  *
  * A relay of a person change to a Review item is not one of the Message's
  * own Events: its record goes to `reviewItemChanges`, and the dashboard shows
- * it as a change row. The Message's own Event is its first other input.
- * `events` lists the Watch Events when several arrived, as the task message
- * counts them. When relays share the Message with one own Event, `events`
- * lists that Event, so a reader can tell it from a Message that only records
- * changes.
+ * it as a change row. The Message's own Event is its first Watch Event, the
+ * kind the task message counts, or else its first other input, such as an
+ * agent result. `events` lists the Watch Events when several arrived. When
+ * relays share the Message with one own Event, `events` lists that Event, so
+ * a reader can tell it from a Message that only records changes.
  */
 export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
@@ -312,16 +312,15 @@ export function eventBatchMessageMeta(
     message.input.reviewItemChange ? [message.input.reviewItemChange] : [],
   );
   const own = messages.filter((message) => !message.input.reviewItemChange);
-  const metadata = (own[0] ?? messages[0])?.input.metadata;
+  const watched = own.filter((message) => readEventTaskFacts(message));
+  const primary = watched[0] ?? own[0];
+  const metadata = (primary ?? messages[0])?.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return {};
-  const watchEvents = own.flatMap((message) =>
-    readEventTaskFacts(message) ? messageEvent(message) : [],
-  );
   const events =
-    watchEvents.length > 1
-      ? watchEvents
-      : reviewItemChanges.length && own[0]
-        ? messageEvent(own[0])
+    watched.length > 1
+      ? watched.flatMap(messageEvent)
+      : reviewItemChanges.length && primary
+        ? messageEvent(primary)
         : [];
   return {
     eventType: metadata.event.eventType,
