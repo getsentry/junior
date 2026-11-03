@@ -59,6 +59,7 @@ import { createUserCustomizationTools } from "@/chat/tools/user-customization";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
+import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
@@ -145,6 +146,7 @@ export function createTools(
     ...createUserCustomizationTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
+  tools.readConversationEvent = createReadConversationEventTool(context);
   if (context.conversationPrivacy === "public") {
     tools.searchConversationBriefs = createSearchConversationBriefsTool(
       slackContext
