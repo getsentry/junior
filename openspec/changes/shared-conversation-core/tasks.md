@@ -214,7 +214,7 @@ Needs: P34, P35, P44.
 
 ### 12. One credential builder and the sandbox pass
 
-Needs: P17, P36, and the shared-file decision (Decisions Needed 39).
+Needs: P17, P36, and the shared-file decision (Decisions Needed 35).
 
 - [ ] 12.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
       run). Check at every start and resume.

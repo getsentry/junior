@@ -199,7 +199,7 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
    `finishTurn(stopped)` (P34).
 4. A turn acts for one actor and one whose-access, taken from its starting
    request record. Input that joins must have the same actor, exactly the
-   same signed subject and the same source (Decided; P20 for "exactly").
+   same signed subject and the same source (Decided, P20).
 5. Another person's message never joins a running turn. Events never join
    (Decided). Results never join (today's rule).
 6. A message is taken into a turn only after the turn row lists its request
@@ -471,9 +471,12 @@ stay stable across reviews. Retired numbers say where they went.
   Location. Its request record replaces the dispatch record.
 - **Evidence:** `agent-dispatch/store.ts` (`agent-dispatch:{id}`).
 
-### P15. Who results and agent messages act for (Q11)
+### P15. Who results and agent messages act for (Q11) — Decided
 
-- **Proposal:** a result acts for the actor and whose-access of the request
+- **Decided:** a result acts for the person on the request record it
+  answers. Other people's messages in that turn are outside text and never
+  approval. Source: the planning thread.
+- **Detail:** a result acts for the actor and whose-access of the request
   record it answers. A grandchild's record stores the child turn's actor,
   which came from the record that turn answered. In a result turn, messages
   from other actors reach the model marked as outside text, from before or
@@ -487,9 +490,12 @@ stay stable across reviews. Retired numbers say where they went.
 - **Proposal:** step 2 changes `TERMINOLOGY.md` first. Code names change
   only when a step touches that code.
 
-### P17. Delegated access (Q17, J)
+### P17. Delegated access (Q17, J) — Decided
 
-- **Proposal:** a plugin passes an unbound subject. Core binds and signs it,
+- **Decided:** core checks the signed grant at every turn start and
+  resume, and the signature covers the run (its request id). Source: the
+  planning thread.
+- **Detail:** a plugin passes an unbound subject. Core binds and signs it,
   as on `main`. The signature covers kind, scope, `userId`, `teamId`,
   `dmChannelId` and the request id of the run (today it does not cover the
   run). `createRequest` takes the unbound subject, mints the request id,
@@ -508,20 +514,31 @@ stay stable across reviews. Retired numbers say where they went.
   fails and shows on the Automation.
 - **Evidence:** `automation-result.ts`.
 
-### P19. Untrusted event authors (Q17)
+### P19. Untrusted event authors (Q17) — Decided
 
-- **Proposal:** decide trust at ingress. Unverified and untrusted authors
+- **Decided:** decide trust at ingress. Unverified and untrusted authors
   are dropped with a recorded reason. A dropped event makes no request
-  record.
+  record. Source: the planning thread.
 - **Evidence:** `events/notification.ts`;
   `openspec/changes/actor-identity-end-state`.
 
-### P20. Mixed-access event batches (Q17)
+### P20. One access per event turn (Q17) — Decided
 
-- **Proposal:** split. Group events in one window by actor and exact
-  signed subject (scope included), in first-arrival order. Each group is one
-  turn. Event author text is never approval.
-- **Alternatives:** today's fallback: one turn with no delegated access.
+- **Decided:** split by person and exact signed access. Source: the
+  planning thread.
+- **Detail:** a mixed-access batch is never formed. Inbox selection groups
+  event input in one window by actor and exact signed subject (scope
+  included), in first-arrival order, before it becomes a turn. Each group
+  is one turn, so no turn holds mixed access. Event author text is never
+  approval.
+- **Today (bug):** `timerWatchCredentialSubject`
+  (`events/notification.ts:159-185`, `main` at `962eaf4`) returns no
+  subject when a batch mixes timer creators, so the whole batch runs with
+  no delegated access. This fails closed, so it is not a security hole.
+  But a timer silently loses its creator's access because another Watch's
+  event landed in the same window.
+- **Check:** I6 (every taken batch has one actor and one exact signed
+  subject); conversation-inbox › Events with different access.
 - **Evidence:** `events/notification.ts`; `task-execution/attempt-selection.ts`.
 
 ### P21. Plugin view
@@ -714,7 +731,7 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   turned off (`core.hooksPath=/dev/null`), package scripts turned off, and
   a clean `HOME` and `PATH`. They lower the risk; they do not remove it.
   This needs David: accept the shared-file risk with these mitigations, or
-  reopen sandbox sharing (Decisions Needed 39).
+  reopen sandbox sharing (Decisions Needed 35).
 - **Alternatives:** a new pass per attempt (old P29); a sandbox per actor.
 
 ### P43. SQL lock or Redis lock with a SQL counter (from review)
@@ -935,40 +952,34 @@ Every item is **Proposed, needs sign-off**.
 12. P12: per-turn limits end the turn on the first try.
 13. P13: sign-in only for person actors; system actors end `blocked`.
 14. P14: one conversation per plugin-started agent (Q9).
-15. P15: results act for the record's actor; other actors' messages are
-    outside text (Q11).
-16. P16: `TERMINOLOGY.md` first (Q16).
-17. P17: core binds and signs delegated access, including the run id;
-    checked at every start and resume (Q17, J).
-18. P18: `replyTo.responses` decides what is posted.
-19. P19: drop untrusted event authors at ingress (Q17).
-20. P20: split mixed-access batches by exact subject (Q17).
-21. P21: plugin view computed from the record.
-22. P22: errors before take-in count delivery attempts.
-23. P23: one kind of request record, minted by core for every input.
-24. P26: core-minted ids, match check, provenance; a result has its own
+15. P16: `TERMINOLOGY.md` first (Q16).
+16. P18: `replyTo.responses` decides what is posted.
+17. P21: plugin view computed from the record.
+18. P22: errors before take-in count delivery attempts.
+19. P23: one kind of request record, minted by core for every input.
+20. P26: core-minted ids, match check, provenance; a result has its own
     record in the parent, and its sender comes from the child's turn row.
-25. P30: closing turns.
-26. P31: `error_retry` pause.
-27. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
+21. P30: closing turns.
+22. P31: `error_retry` pause.
+23. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
     notify; `recordSignIn` raises `inboxSeq`; release, then read the inbox
     record again.
-28. P33: delivery attempts and backoff while finishing; permanent errors
+24. P33: delivery attempts and backoff while finishing; permanent errors
     skip backoff.
-29. P34: a stop judges input `createdAtMs`; joins refuse older input;
+25. P34: a stop judges input `createdAtMs`; joins refuse older input;
     newer taken-in input goes back to the inbox.
-30. P35: no parent turn for results under a tree stop.
-31. P36: sandbox pass lifecycle; the proxy needs a live lock.
-32. P37: Quint model; TLC for safety and liveness; the bound;
+26. P35: no parent turn for results under a tree stop.
+27. P36: sandbox pass lifecycle; the proxy needs a live lock.
+28. P37: Quint model; TLC for safety and liveness; the bound;
     worked examples as traces.
-33. P38: conformance tests on records and visible outcomes, with no new
+29. P38: conformance tests on records and visible outcomes, with no new
     seams.
-34. P39: structural rules S1–S6 as types, import checks and ast-grep.
-35. P40: `verification/` at the repo root; a two-way trace check.
-36. P41: the gate, including guardian evals; green before step 5.
-37. P42: crash points only at existing boundaries.
-38. P43: SQL lock rather than a Redis lock with a SQL counter.
-39. Needs David: accept the shared-file risk with the P36 mitigations, or
+30. P39: structural rules S1–S6 as types, import checks and ast-grep.
+31. P40: `verification/` at the repo root; a two-way trace check.
+32. P41: the gate, including guardian evals; green before step 5.
+33. P42: crash points only at existing boundaries.
+34. P43: SQL lock rather than a Redis lock with a SQL counter.
+35. Needs David: accept the shared-file risk with the P36 mitigations, or
     reopen sandbox sharing.
-40. P44, needs David: which clock judges a stop against input from another
+36. P44, needs David: which clock judges a stop against input from another
     source or from core.

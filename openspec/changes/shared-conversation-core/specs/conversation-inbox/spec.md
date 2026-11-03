@@ -99,7 +99,7 @@ before events. Input from people SHALL NOT wait for an event window.
 
 A turn SHALL take in only a contiguous run of waiting input with the same
 actor, exactly the same signed subject (scope included) and the same source
-(Decided; Proposed, needs sign-off: P20 for exact equality).
+(Decided: P20).
 
 #### Scenario: Interleaved people
 
@@ -111,12 +111,13 @@ actor, exactly the same signed subject (scope included) and the same source
 - **WHEN** web input and event input wait together
 - **THEN** they run in separate turns.
 
-#### Scenario: Mixed-access event batch
+#### Scenario: Events with different access
 
 - **WHEN** events from two Watches with different signed subjects wait in
   one window
-- **THEN** they split into one turn per subject, in order of first arrival
-  (Proposed, needs sign-off: P20).
+- **THEN** inbox selection groups them by actor and exact signed subject
+  before a turn starts, one turn per group in order of first arrival, and
+  no turn holds mixed access (Decided: P20).
 
 ### Requirement: Event Window
 
@@ -145,7 +146,7 @@ admitted (Decided).
 
 - **WHEN** an event comes from an unverified or untrusted author
 - **THEN** ingress drops it with a recorded reason, and no request record is
-  made (Decided: discard; Proposed, needs sign-off: P19 for where).
+  made (Decided: P19).
 
 ### Requirement: Join Now And Wait
 

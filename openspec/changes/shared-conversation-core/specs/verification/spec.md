@@ -44,10 +44,18 @@ The model SHALL check (Proposed, needs sign-off: P37):
 
 - **I5** a turn acts only with its request record's actor and whose-access;
 - **I6** a joined message has exactly the turn's actor, signed subject and
-  source;
+  source, and every batch a turn takes in, at start or by join, has one
+  actor and one exact signed subject (P20);
 - **I9** a taken message's record is in the receiving conversation and
   matches the message, and a result's sender, read from the child's turn
   row, is a child of the receiver.
+
+#### Scenario: Events with different access
+
+- **WHEN** two Watch events with different signed subjects wait in one
+  window
+- **THEN** each taken batch has one actor and one exact signed subject, or
+  the checker reports a counterexample for I6.
 
 #### Scenario: Forged message
 

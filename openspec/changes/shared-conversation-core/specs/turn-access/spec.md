@@ -36,9 +36,9 @@ SHALL never reach the sandbox, files, arguments, logs or model context.
 A plugin SHALL pass only an unbound subject. Core SHALL bind and sign it. The
 signature SHALL cover kind, scope, user id, team id, DM channel id and the
 request id of the run. `createRequest` SHALL take the unbound subject, mint
-the id, then bind it (Proposed, needs sign-off: P17). A delegated subject
+the id, then bind it (Decided: P17). A delegated subject
 SHALL be used only with a system actor. `credentialsForTurn` SHALL check it
-at every turn start and resume (Proposed, needs sign-off: P17).
+at every turn start and resume (Decided: P17).
 
 #### Scenario: Plugin passes a binding
 
@@ -73,7 +73,8 @@ subject, as today, bound again for the child's record.
 A result or agent message SHALL act for the actor and whose-access of the
 request record it answers, never the child's latest request. In a result
 turn, messages from other actors SHALL reach the model as outside text,
-from before or after the record was made (Proposed, needs sign-off: P15).
+from before or after the record was made. They SHALL never count as
+approval (Decided: P15).
 
 #### Scenario: Grandchild result after another person messaged the child
 

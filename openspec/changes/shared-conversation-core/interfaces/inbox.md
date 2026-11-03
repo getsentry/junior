@@ -246,19 +246,20 @@ Before: inbox `[A1 (wait), B1 (wait), A2 (wait)]`, no open turn.
 
 A2 never joins T1: B1 is between them, and the run is contiguous.
 
-### E3. Mixed-access event batch (P20, Proposed)
+### E3. Events with different access (P20, Decided)
 
 Before: three events arrive inside one window. `e1` from A's timer Watch
 (subject `sA`, scope Watch W1), `e2` from a second timer of A's (subject
 `sA'`, scope Watch W2), `e3` a CI event with no grant.
 
 1. The window ends 30 s after `e1`, plus 5 s per extra event: 40 s.
-2. `selectTurnInput` groups by actor and exact signed subject: `[e1]`,
-   `[e2]`, `[e3]`. `sA` and `sA'` have the same user but a different scope,
+2. `selectTurnInput` groups by actor and exact signed subject before any
+   turn starts: `[e1]`, `[e2]`, `[e3]`. `sA` and `sA'` have the same user but a different scope,
    so they do not share a turn.
 3. Three turns run, all as the system actor.
 
-Today: one turn with no delegated access.
+Today (bug): one turn with no delegated access, because `e3` has no grant
+(`timerWatchCredentialSubject`, P20). A batch never mixes access.
 
 ### E4. Plain reply from the turn's own author
 

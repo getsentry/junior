@@ -26,7 +26,7 @@ P30). There SHALL be no separate age rule.
 Each run SHALL get its own conversation with a fixed Location (Proposed,
 needs sign-off: P14). Its turn SHALL act as the system actor for that
 plugin. A plugin SHALL NOT pass an actor. A plugin SHALL pass only an
-unbound subject, which core binds (Proposed, needs sign-off: P17).
+unbound subject, which core binds (Decided: P17).
 
 #### Scenario: Inbox message names an actor
 
