@@ -41,9 +41,18 @@ import {
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import { logInfo, logWarn, withSpan } from "@/chat/logging";
+import {
+  logInfo,
+  logWarn,
+  withSpan,
+  type SetSpanAttributes,
+} from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import {
+  createPluginEmbedder,
+  createPluginModel,
+  createPluginReranker,
+} from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import {
@@ -241,6 +250,32 @@ function pluginInvocationContext(
   }
 }
 
+/**
+ * Let a plugin add numeric diagnostics to its hook span. Plugins own the
+ * meaning of these attributes, so they stay in the plugin's `app.<name>.`
+ * namespace and cannot overwrite host attributes or carry text.
+ */
+function pluginSpanAttributeSetter(
+  pluginName: string,
+  setSpanAttributes: SetSpanAttributes,
+): UserPromptContext["setSpanAttributes"] {
+  const prefix = `app.${pluginName}.`;
+  return (attributes) => {
+    const allowed = Object.fromEntries(
+      Object.entries(attributes).filter(
+        ([key, value]) =>
+          key.length > prefix.length &&
+          key.startsWith(prefix) &&
+          typeof value === "number" &&
+          Number.isFinite(value),
+      ),
+    );
+    if (Object.keys(allowed).length > 0) {
+      setSpanAttributes(allowed);
+    }
+  };
+}
+
 function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
@@ -253,6 +288,7 @@ function invocationPluginContext(
     | "source"
     | "userText"
   >,
+  setSpanAttributes: SetSpanAttributes,
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
@@ -272,6 +308,11 @@ function invocationPluginContext(
         }
       : undefined),
     model: createPluginModel(plugin.manifest.name, plugin.model),
+    reranker: createPluginReranker(plugin.manifest.name),
+    setSpanAttributes: pluginSpanAttributeSetter(
+      plugin.manifest.name,
+      setSpanAttributes,
+    ),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
@@ -321,7 +362,7 @@ function pluginMcpContext(
 async function withPluginHookSpan<T>(
   pluginName: string,
   hookName: "beforeToolExecute" | "sandboxPrepare" | "userPrompt",
-  callback: () => Promise<T>,
+  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
 ): Promise<T> {
   return await withSpan(
     `plugin.hook ${hookName}`,
@@ -581,9 +622,14 @@ export async function getPluginUserPromptContributions(args: {
       const rawResult = await withPluginHookSpan(
         pluginName,
         "userPrompt",
-        async () =>
+        async (setSpanAttributes) =>
           await hook({
-            ...invocationPluginContext(plugin, args.context, args.turnId),
+            ...invocationPluginContext(
+              plugin,
+              args.context,
+              setSpanAttributes,
+              args.turnId,
+            ),
           }),
       );
       if (rawResult === undefined) {

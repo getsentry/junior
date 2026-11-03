@@ -24,6 +24,7 @@ import {
   Experimental_DecisionRefusalError,
   generateObject,
   NoObjectGeneratedError,
+  rerank,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -183,6 +184,7 @@ export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+const GEN_AI_OPERATION_RERANK = "rerank" as const;
 const GEN_AI_OPERATION_DECIDE = "decide" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
@@ -741,6 +743,98 @@ export async function embedTexts(params: {
     logException(providerError, "ai.embeddings.failed", {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+      "gen_ai.request.model": params.modelId,
+    });
+    throw providerError;
+  }
+}
+
+/** Read the billed cost that AI Gateway reports in provider metadata. */
+function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+  const cost = (
+    providerMetadata as { gateway?: { cost?: unknown } } | undefined
+  )?.gateway?.cost;
+  const value = typeof cost === "string" ? Number(cost) : cost;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+/** Score documents against one query through the host-owned AI Gateway provider. */
+export async function rerankTexts(params: {
+  documents: string[];
+  modelId: string;
+  query: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ costUsd?: number; scores: number[] }> {
+  const query = params.query.trim();
+  if (!query || params.documents.length === 0) {
+    throw new Error("Reranking query and documents are required.");
+  }
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  try {
+    return await withSpan(
+      `${GEN_AI_OPERATION_RERANK} ${params.modelId}`,
+      "gen_ai.rerank",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async (setSpanAttributes) => {
+        const result = await rerank({
+          model: provider.rerankingModel(params.modelId),
+          query,
+          documents: params.documents,
+        });
+        // The SDK sorts by score. Plugins get scores in input order.
+        const scores = params.documents.map(() => Number.NaN);
+        for (const { originalIndex, score } of result.ranking) {
+          scores[originalIndex] = score;
+        }
+        if (
+          result.ranking.length !== params.documents.length ||
+          !scores.every(Number.isFinite)
+        ) {
+          throw createProviderError(
+            "Reranking provider returned invalid scores.",
+            {
+              kind: "invalid_response",
+              modelId: params.modelId,
+            },
+          );
+        }
+        const costUsd = gatewayCostUsd(result.providerMetadata);
+        if (costUsd !== undefined) {
+          setSpanAttributes(
+            extractGenAiUsageAttributes({
+              cost: { total: costUsd },
+            }),
+          );
+        }
+        return {
+          ...(costUsd !== undefined ? { costUsd } : undefined),
+          scores,
+        };
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
+        "gen_ai.request.model": params.modelId,
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential.mode,
+        "app.rerank.document.count": params.documents.length,
+      },
+    );
+  } catch (error) {
+    const providerError = createProviderError(error, {
+      modelId: params.modelId,
+    });
+    if (isProviderRetryError(providerError)) {
+      throw providerError;
+    }
+
+    logException(providerError, "ai.rerank.failed", {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;

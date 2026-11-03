@@ -48,7 +48,7 @@ Pass plugin options to `memoryPlugin({ ... })` in `plugins.ts`. Set deployment v
 <details class="plugin-config">
 <summary><code>modelId</code></summary>
 
-Model used for memory classification, consolidation, and automatic recall relevance.
+Model used for memory classification and consolidation.
 
 - **Define:** `memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" })` in `plugins.ts`
 - **Default:** The app's structured model
@@ -140,6 +140,20 @@ To roll back, set `AI_EMBEDDING_MODEL` back to the old model. The old vectors st
 
 </details>
 
+<details class="plugin-config">
+<summary><code>AI_RERANKING_MODEL</code></summary>
+
+Reranking model that scores recall candidates against the user's message.
+
+- **Define:** Set `AI_RERANKING_MODEL` in the deployment environment
+- **Default:** `voyage/rerank-2.5-lite`
+- **Required:** No
+- **Environment override:** `AI_RERANKING_MODEL`
+
+Automatic recall adds a candidate to the prompt only when its score is at least `0.55`. This threshold is tuned for the default model. If the reranking call fails, the turn continues without recalled memories.
+
+</details>
+
 ## Manage personal memories
 
 Signed-in users can search, page through, and forget their personal memories
@@ -209,7 +223,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
-- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance or may not be directly relevant to the request.
+- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 

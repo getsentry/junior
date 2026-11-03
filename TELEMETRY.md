@@ -98,6 +98,16 @@ fields=timestamp,trace,span.duration,gen_ai.conversation.id,app.codemode.call.co
 sort=-timestamp
 ```
 
+Automatic memory recall outcomes, next to the hook latency. The
+`app.memory.recall.*` attributes are on recalls that reached the reranker.
+The child `gen_ai.rerank` span has the reranker latency and `error.type`.
+
+```text
+dataset=spans query='span.op:plugin.hook app.plugin.hook:userPrompt app.plugin.name:memory app.memory.recall.candidate.count:*'
+fields=timestamp,trace,span.duration,app.memory.recall.candidate.count,app.memory.recall.admitted.count,app.memory.recall.injected.count,app.memory.recall.score.max
+sort=-timestamp
+```
+
 Nested tool calls from Code Mode scripts.
 
 ```text
@@ -184,6 +194,7 @@ attributes. Nested logs and spans inherit them.
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
 

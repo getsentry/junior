@@ -341,6 +341,7 @@ describe("agent plugin hooks", () => {
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
             expect(ctx).toHaveProperty("model");
+            expect(ctx).toHaveProperty("reranker");
             return [{ text: "remembered context" }];
           },
         },
