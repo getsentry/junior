@@ -225,6 +225,20 @@ test.describe("conversation time sections", () => {
     await expect(details).toHaveCount(0);
     await expect(page).not.toHaveURL(/review=/);
 
+    // With details already open, the chip still expands the question.
+    await page
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    const question = details
+      .getByRole("region", { name: "Needs you" })
+      .getByText("Merge the checkout fix?");
+    await expect(question).toBeHidden();
+    await chip.click();
+    await expect(question).toBeVisible();
+    await details
+      .getByRole("button", { name: "Close conversation details" })
+      .click();
+
     const today = sidebar.getByRole("button", { name: "Today" });
     await today.click();
     await expect(today).toHaveAttribute("aria-expanded", "false");
