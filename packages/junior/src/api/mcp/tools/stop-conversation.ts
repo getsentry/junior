@@ -4,6 +4,8 @@ import { stopConversationTurnForViewer } from "@/api/conversations/stop";
 import { mcpConversationIdSchema } from "../conversation";
 import {
   apiToolError,
+  isConversationParticipant,
+  mcpToolError,
   mcpToolResult,
   type McpToolContext,
 } from "../tool-context";
@@ -34,6 +36,9 @@ export function registerStopConversationTool(
       },
     },
     async ({ conversationId }) => {
+      if (!(await isConversationParticipant(user, conversationId))) {
+        return mcpToolError("Conversation not found.");
+      }
       try {
         const result = await stopConversationTurnForViewer(
           user,
