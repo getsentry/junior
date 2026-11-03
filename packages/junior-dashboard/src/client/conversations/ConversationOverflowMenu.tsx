@@ -22,15 +22,19 @@ export function ConversationOverflowMenu(props: {
       if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
     }
 
+    // Capture runs before the details panel's document listener, and
+    // preventDefault tells it that this Escape is taken.
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      setOpen(false);
     }
 
     document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", closeOnEscape, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("keydown", closeOnEscape, true);
     };
   }, [open]);
 

@@ -514,7 +514,13 @@ export function hasConversationStats(props: {
   return conversationStatItems(props).length > 0;
 }
 
-type ConversationStatItem = { content: ReactNode; key: string; label: string };
+type ConversationStatItem = {
+  content: ReactNode;
+  key: string;
+  label: string;
+  /** Shown below `md` only, where the title bar is hidden. */
+  mobileOnly?: boolean;
+};
 
 /** Render runtime, source, token, and cost metadata as a labeled list. */
 export function ConversationStats(props: {
@@ -527,7 +533,10 @@ export function ConversationStats(props: {
     <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
       {stats.map((item) => (
         <div
-          className="flex min-w-0 items-baseline justify-between gap-4"
+          className={cn(
+            "flex min-w-0 items-baseline justify-between gap-4",
+            item.mobileOnly && "md:hidden",
+          )}
           key={item.key}
         >
           <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
@@ -579,7 +588,17 @@ function conversationStatItems(props: {
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
+  const location = conversationLocation(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
+    // The desktop title bar shows the location. Mobile hides that bar.
+    location
+      ? {
+          content: location,
+          key: "location",
+          label: "Location",
+          mobileOnly: true,
+        }
+      : undefined,
     sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
