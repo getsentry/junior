@@ -74,14 +74,15 @@ export const TranscriptMessageView = memo(
           message={props.message}
           conversation={props.conversation}
         />
-        {props.message.reviewItemChange ? (
-          <ReviewItemChangeRow
-            fallback={text}
-            record={props.message.reviewItemChange}
-          />
-        ) : (
-          text
-        )}
+        {props.message.reviewItemChanges?.length
+          ? props.message.reviewItemChanges.map((record, index) => (
+              <ReviewItemChangeRow
+                fallback={text}
+                key={index}
+                record={record}
+              />
+            ))
+          : text}
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}

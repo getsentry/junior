@@ -33,8 +33,8 @@ describe("webConversationMessage", () => {
   // A batch can mix changes and typed Messages. Each keeps its own record.
   it("keeps the Review item change record of each Message", () => {
     const taken = { kind: "taken", reviewItemId: "item-a" } as const;
-    expect(webMessage("a", taken).meta?.reviewItemChange).toEqual(taken);
-    expect(webMessage("b").meta).not.toHaveProperty("reviewItemChange");
+    expect(webMessage("a", taken).meta?.reviewItemChanges).toEqual([taken]);
+    expect(webMessage("b").meta).not.toHaveProperty("reviewItemChanges");
   });
 });
 

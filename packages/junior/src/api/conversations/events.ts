@@ -6,10 +6,7 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import {
-  readReviewItemChangeRecord,
-  type ReviewItemChangeRecord,
-} from "@/chat/review-items/change-record";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
@@ -318,12 +315,20 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-/** Read the Review item change that a message records. */
-function reportReviewItemChange(
+const storedReviewItemChangesSchema = z
+  .array(reviewItemChangeRecordSchema)
+  .min(1);
+
+/** Read the Review item changes that a message records. */
+function reportReviewItemChanges(
   meta: Record<string, unknown> | undefined,
-): { reviewItemChange: ReviewItemChangeRecord } | undefined {
-  const record = readReviewItemChangeRecord(meta?.reviewItemChange);
-  return record ? { reviewItemChange: record } : undefined;
+):
+  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | undefined {
+  const parsed = storedReviewItemChangesSchema.safeParse(
+    meta?.reviewItemChanges,
+  );
+  return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
 }
 
 // The report has no `cancelled` state. A cancelled Turn has no reply.
@@ -381,7 +386,7 @@ function reportEventData(args: {
           ? { agentInvocationId: data.meta.agentInvocationId }
           : undefined),
         ...(args.canExposePayload
-          ? reportReviewItemChange(data.meta)
+          ? reportReviewItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,

@@ -111,29 +111,89 @@ describe("event batch message meta", () => {
     receivedAtMs: 1,
     source: "event",
   });
+  const watchEvent = (n: number): InboundMessage => {
+    const event = {
+      eventKey: `pr:${n}`,
+      eventType: "pull_request.checks.failed",
+      identifier: "getsentry/junior#691",
+      namespace: "github",
+      occurredAtMs: n,
+      trustedSummary: `CI failed on run ${n}.`,
+    };
+    const subscription = {
+      conversationId: "local:cli:relay",
+      id: "watch-pr",
+    };
+    return createEventInboundMessage({
+      event,
+      subscription,
+      task: eventTaskFacts(
+        {
+          intent: "Fix failed checks.",
+          label: "GitHub PR getsentry/junior#691",
+          resourceType: "pull_request",
+        },
+        event,
+      ),
+      text: `CI failed on run ${n}.`,
+    });
+  };
   const taken = { kind: "taken", reviewItemId: "item-1" } as const;
   const submitted = { kind: "submitted", reviewItemId: "item-1" } as const;
 
-  it("keeps the record on the Message of one relay", () => {
+  it("keeps the record of one relay, with no own Event", () => {
     expect(eventBatchMessageMeta([relay(taken)])).toEqual({
-      reviewItemChange: taken,
+      eventType: "review_item.taken",
+      reviewItemChanges: [taken],
+      trustedSummary: 'Review item "Ship it" changed: taken.',
     });
   });
 
-  // A take and the later answer can share a Turn. Each Event keeps its own
-  // change, so the take does not read as the answer.
-  it("lists each relay of a batch with its own record", () => {
-    expect(eventBatchMessageMeta([relay(taken), relay(submitted)])).toEqual({
-      events: [
-        expect.objectContaining({
-          eventType: "review_item.taken",
-          reviewItemChange: taken,
-        }),
-        expect.objectContaining({
-          eventType: "review_item.submitted",
-          reviewItemChange: submitted,
-        }),
-      ],
+  // A take and the later answer can share a Turn. Each keeps its own record,
+  // so the take does not read as the answer.
+  it("records each relay of a batch, with no own Event", () => {
+    expect(
+      eventBatchMessageMeta([relay(taken), relay(submitted)]),
+    ).toMatchObject({ reviewItemChanges: [taken, submitted] });
+    expect(
+      eventBatchMessageMeta([relay(taken), relay(submitted)]),
+    ).not.toHaveProperty("events");
+  });
+
+  // Relays are not Watch Events: the heading counts what the task message
+  // counts, and keeps the shared label.
+  it("keeps relays out of the Watch Events of a mixed batch", () => {
+    const meta = eventBatchMessageMeta([
+      relay(taken),
+      watchEvent(1),
+      watchEvent(2),
+    ]);
+    expect(meta).toMatchObject({
+      eventType: "pull_request.checks.failed",
+      reviewItemChanges: [taken],
+      trustedSummary: "CI failed on run 1.",
     });
+    expect(meta.events).toEqual([
+      expect.objectContaining({
+        label: "GitHub PR getsentry/junior#691",
+        trustedSummary: "CI failed on run 1.",
+      }),
+      expect.objectContaining({
+        label: "GitHub PR getsentry/junior#691",
+        trustedSummary: "CI failed on run 2.",
+      }),
+    ]);
+  });
+
+  it("lists the one own Event of a Message that also records changes", () => {
+    const meta = eventBatchMessageMeta([relay(taken), watchEvent(1)]);
+    expect(meta).toMatchObject({
+      eventType: "pull_request.checks.failed",
+      reviewItemChanges: [taken],
+    });
+    expect(meta.events).toEqual([
+      expect.objectContaining({ trustedSummary: "CI failed on run 1." }),
+    ]);
+    expect(eventBatchMessageMeta([watchEvent(1)])).not.toHaveProperty("events");
   });
 });

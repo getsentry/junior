@@ -202,7 +202,9 @@ describe("conversation report event projection", () => {
       messageId: "answer-1",
       role: "user",
       text: "Alice answered review item item-1.",
-      meta: { reviewItemChange: { kind: "submitted", reviewItemId: "item-1" } },
+      meta: {
+        reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
+      },
     });
 
     expect(
@@ -244,7 +246,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "answer-1",
           role: "user",
-          reviewItemChange: { kind: "submitted", reviewItemId: "item-1" },
+          reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
           text: "Alice answered review item item-1.",
         },
       },

@@ -16,10 +16,3 @@ export const reviewItemChangeRecordSchema = z
 export type ReviewItemChangeRecord = z.output<
   typeof reviewItemChangeRecordSchema
 >;
-
-/** Read a saved record. A malformed value reads as no record. */
-export function readReviewItemChangeRecord(
-  value: unknown,
-): ReviewItemChangeRecord | undefined {
-  return reviewItemChangeRecordSchema.safeParse(value).data;
-}

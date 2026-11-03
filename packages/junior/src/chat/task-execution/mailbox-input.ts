@@ -38,7 +38,9 @@ export function webConversationMessage(
     meta: {
       ...(attachments.length ? { attachments } : undefined),
       explicitMention: true,
-      ...(reviewItemChange ? { reviewItemChange } : undefined),
+      ...(reviewItemChange
+        ? { reviewItemChanges: [reviewItemChange] }
+        : undefined),
       source: "web",
     },
   };

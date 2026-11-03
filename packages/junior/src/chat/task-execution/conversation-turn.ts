@@ -95,7 +95,6 @@ import {
   isEventMailboxMetadata,
   renderEventBatchText,
   timerWatchCredentialSubject,
-  type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { InboundMessage } from "@/chat/task-execution/store";
@@ -241,7 +240,6 @@ export function createConversationTurnWorker(
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
-    let event: EventMailboxMetadata["event"] | undefined;
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
@@ -266,7 +264,6 @@ export function createConversationTurnWorker(
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
         text = renderEventBatchText(messages);
-        event = firstMetadata.event;
         eventMeta = eventBatchMessageMeta(messages);
       } else {
         text = joinMailboxText(messages);
@@ -454,16 +451,7 @@ export function createConversationTurnWorker(
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,
-                ...(event
-                  ? {
-                      eventType: event.eventType,
-                      eventObjectType: event.objectType,
-                      ...(event.trustedSummary
-                        ? { trustedSummary: event.trustedSummary }
-                        : undefined),
-                      ...eventMeta,
-                    }
-                  : undefined),
+                ...eventMeta,
               },
             });
           }

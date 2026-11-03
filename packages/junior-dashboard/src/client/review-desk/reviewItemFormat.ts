@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type {
   ConversationReportEvent,
-  ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -92,29 +91,20 @@ export function latestReviewItemId(
   return undefined;
 }
 
-type ChangeRecords = {
-  events?: readonly { reviewItemChange?: ReviewItemChangeRecord }[];
-  reviewItemChange?: ReviewItemChangeRecord;
-};
-
 /**
- * Return the Review item changes that one message records. A person message
- * or a single relay has one. An Event batch has one for each relay in it.
+ * Return a message for another item's excerpt, without the Review item
+ * changes that it records: those show on their own items. Returns undefined
+ * when nothing else remains.
  */
-export function messageReviewItemChanges(
-  message: ChangeRecords,
-): ReviewItemChangeRecord[] {
-  if (message.reviewItemChange) return [message.reviewItemChange];
-  return (message.events ?? []).flatMap((event) =>
-    event.reviewItemChange ? [event.reviewItemChange] : [],
-  );
-}
-
-/** True when a message only records Review item changes. */
-export function onlyRecordsReviewItemChanges(message: ChangeRecords): boolean {
-  if (message.reviewItemChange) return true;
-  const events = message.events ?? [];
-  return events.length > 0 && events.every((event) => event.reviewItemChange);
+export function excerptMessage(
+  event: ConversationReportEvent,
+): ConversationReportEvent | undefined {
+  const { data } = event;
+  if (data.type !== "message" || !data.reviewItemChanges) return event;
+  // A message with changes lists its own Events. With none, it only
+  // records changes.
+  if (!data.events) return undefined;
+  return { ...event, data: { ...data, reviewItemChanges: undefined } };
 }
 
 /** True when an open item asks a question that the viewer can answer. */

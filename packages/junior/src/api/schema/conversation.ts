@@ -353,8 +353,6 @@ export const conversationReportMessageEventSchema = z
     eventType: z.string().min(1),
     label: z.string().min(1).optional(),
     objectType: objectTypeSchema.optional(),
-    /** Review item change that this Event relays. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     trustedSummary: z.string().min(1).optional(),
   })
   .strict();
@@ -374,11 +372,15 @@ const conversationReportMessageEventDataSchema = z
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    /** Every Event when several arrived together in one message. */
+    /**
+     * The Watch Events when several arrived together. A message that also
+     * records Review item changes lists its own Event here even when it has
+     * one.
+     */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
-    /** Review item change that this Message records. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Person changes to Review items that this message records. */
+    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -397,12 +399,12 @@ const conversationReportMessageEventDataSchema = z
         data.cards ||
         data.attachments ||
         data.events ||
-        data.reviewItemChange)
+        data.reviewItemChanges)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, events, or a review item",
+          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
       });
     }
   });

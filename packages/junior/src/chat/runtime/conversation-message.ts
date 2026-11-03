@@ -74,7 +74,9 @@ export function toConversationMessage(
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
-      ...(reviewItemChange ? { reviewItemChange } : undefined),
+      ...(reviewItemChange
+        ? { reviewItemChanges: [reviewItemChange] }
+        : undefined),
       source: "slack",
       ...(slackTs ? { slackTs } : undefined),
     },

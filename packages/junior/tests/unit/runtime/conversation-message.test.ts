@@ -139,10 +139,10 @@ describe("conversation message Review item change", () => {
 
     expect(
       toConversationMessage({ entry: message, text: message.text }).meta
-        ?.reviewItemChange,
-    ).toEqual(record);
+        ?.reviewItemChanges,
+    ).toEqual([record]);
     expect(
       toConversationMessage({ entry: createMessage(), text: "hello" }).meta,
-    ).not.toHaveProperty("reviewItemChange");
+    ).not.toHaveProperty("reviewItemChanges");
   });
 });

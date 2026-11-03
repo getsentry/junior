@@ -135,8 +135,8 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
-  /** Review item change that this message records. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  /** Person changes to Review items that this message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */

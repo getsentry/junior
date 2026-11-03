@@ -20,8 +20,6 @@ export interface ConversationMessageEvent {
   /** Resource label, used to group Events under one heading. */
   label?: string;
   objectType?: ObjectType;
-  /** Review item change that this Event relays. */
-  reviewItemChange?: ReviewItemChangeRecord;
   trustedSummary?: string;
 }
 
@@ -36,7 +34,11 @@ export interface ConversationMessageMeta {
   /** First Event of the batch. Marks the message as an Event message. */
   eventType?: string;
   eventObjectType?: ObjectType;
-  /** Every Event when several arrived together. Omitted for one Event. */
+  /**
+   * The Watch Events when several arrived together. A Message that also
+   * records Review item changes lists its own Event here even when it has
+   * one. Omitted otherwise.
+   */
   events?: ConversationMessageEvent[];
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
@@ -45,8 +47,8 @@ export interface ConversationMessageMeta {
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   replied?: boolean;
-  /** Review item change that this Message records. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  /** Person changes to Review items that this Message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;
   skippedReason?: string;
 }

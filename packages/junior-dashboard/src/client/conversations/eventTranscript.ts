@@ -98,7 +98,7 @@ export function pendingTranscriptMessage(
       : undefined),
     ...(message.mentions ? { mentions: message.mentions } : undefined),
     ...(message.reviewItemChange
-      ? { reviewItemChange: message.reviewItemChange }
+      ? { reviewItemChanges: [message.reviewItemChange] }
       : undefined),
   };
 }
@@ -243,8 +243,8 @@ export function transcriptMessagesFromEvents(
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
-        ...(data.reviewItemChange
-          ? { reviewItemChange: data.reviewItemChange }
+        ...(data.reviewItemChanges
+          ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };
