@@ -20,6 +20,8 @@ move to the domain below.
 | `event.name`                        | one stable event structure   | logs                        |
 | `gen_ai.tool.name`                  | tool                         | `gen_ai.execute_tool` spans |
 | `gen_ai.request.model`              | model                        | `gen_ai.chat` spans         |
+| `gen_ai.response.id`                | AI Gateway generation id     | `gen_ai.chat` spans         |
+| `service.instance.id`               | one Junior process           | logs, spans                 |
 | `user.id`                           | accountable person           | logs, spans, errors         |
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
@@ -158,6 +160,15 @@ fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when
 sort=-timestamp
 ```
 
+Slow model requests, with the phases before the gateway saw them. See
+[Model Requests](#model-requests).
+
+```text
+dataset=spans query='span.op:gen_ai.chat gen_ai.response.time_to_first_chunk:>5'
+fields=timestamp,trace,gen_ai.response.id,service.instance.id,app.ai.http.queue_ms,app.ai.http.connect_ms,app.ai.http.body_send_ms,app.ai.http.response_wait_ms,app.ai.event_loop.utilization,app.ai.gateway.vercel_id
+sort=-timestamp
+```
+
 Auth, credential, and resume failures.
 
 ```text
@@ -196,6 +207,7 @@ attributes. Nested logs and spans inherit them.
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
+| Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
 
 ## Code Mode
@@ -239,6 +251,47 @@ Attributes on the `codemode` span:
   a result. `memory` is a `script` failure from the VM heap limit.
 - `gen_ai.tool.call.result.size` is the size of the result the model gets,
   after truncation.
+
+## Model Requests
+
+A `gen_ai.chat` span covers one model call through AI Gateway. Its child
+`http.client` span starts when undici creates the request.
+`chat/pi/gateway-request-timing.ts` reads undici diagnostics channels and
+writes the HTTP phases of the call onto the `gen_ai.chat` span.
+
+| Attribute                       | Type    | Meaning                                                |
+| ------------------------------- | ------- | ------------------------------------------------------ |
+| `app.ai.http.attempt_count`     | int     | HTTP attempts, including Pi retries                    |
+| `app.ai.http.queue_ms`          | int     | request created until headers written to the socket    |
+| `app.ai.http.connection_reused` | boolean | the socket sent an earlier request                     |
+| `app.ai.http.connect_ms`        | int     | DNS, TCP, and TLS time of a new socket                 |
+| `app.ai.http.body_send_ms`      | int     | headers written until the body was sent                |
+| `app.ai.http.response_wait_ms`  | int     | body sent until response headers arrived               |
+| `http.request.body.size`        | int     | request body bytes                                     |
+| `app.ai.event_loop.utilization` | double  | event loop utilization, span start to response headers |
+| `app.ai.gateway.vercel_id`      | string  | `x-vercel-id` response header: Vercel edge POPs and id |
+| `gen_ai.response.id`            | string  | AI Gateway generation id (`gen_...`)                   |
+
+- The `app.ai.http.*` phases are from the last attempt only.
+- `app.ai.http.connect_ms` is absent when the socket was reused. It is best
+  effort: overlapping connects to the same host usually record none.
+- With a new socket, `app.ai.http.queue_ms` includes the connect time.
+- The gateway sends response headers with the first token. So
+  `app.ai.http.response_wait_ms` includes the gateway time to first token.
+
+To find where time went before the gateway saw a request, get the gateway
+latency for `gen_ai.response.id` from the AI Gateway generation API. Then
+compare the phases:
+
+- High `queue_ms` on a reused socket, or high event loop utilization: Junior's
+  process was busy or the connection pool was full.
+- High `connect_ms`: DNS, TCP, or TLS was slow.
+- High `body_send_ms`: the upload was slow.
+- `response_wait_ms` much larger than the gateway time to first token, with
+  small Junior phases: the delay was after Junior's socket, in the network or
+  at the Vercel edge. Use `app.ai.gateway.vercel_id` with Vercel.
+- The same `service.instance.id` on more than one slow call: they shared one
+  process.
 
 ## Invariants
 

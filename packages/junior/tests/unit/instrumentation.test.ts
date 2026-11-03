@@ -6,6 +6,7 @@ const ORIGINAL_SENTRY_DSN = process.env.SENTRY_DSN;
 const ORIGINAL_SENTRY_RELEASE = process.env.SENTRY_RELEASE;
 const ORIGINAL_VERCEL_DEPLOYMENT_ID = process.env.VERCEL_DEPLOYMENT_ID;
 const ORIGINAL_VERCEL_GIT_COMMIT_SHA = process.env.VERCEL_GIT_COMMIT_SHA;
+const ORIGINAL_VERCEL_REGION = process.env.VERCEL_REGION;
 
 function resetEnv(): void {
   if (ORIGINAL_SENTRY_DSN === undefined) {
@@ -27,6 +28,11 @@ function resetEnv(): void {
     delete process.env.VERCEL_GIT_COMMIT_SHA;
   } else {
     process.env.VERCEL_GIT_COMMIT_SHA = ORIGINAL_VERCEL_GIT_COMMIT_SHA;
+  }
+  if (ORIGINAL_VERCEL_REGION === undefined) {
+    delete process.env.VERCEL_REGION;
+  } else {
+    process.env.VERCEL_REGION = ORIGINAL_VERCEL_REGION;
   }
 }
 
@@ -56,6 +62,7 @@ describe("initSentry", () => {
     process.env.SENTRY_RELEASE = " ";
     process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
     process.env.VERCEL_GIT_COMMIT_SHA = "git-sha";
+    process.env.VERCEL_REGION = "iad1";
 
     const { init, globalScope, instrumentation } =
       await loadInstrumentationModule();
@@ -111,6 +118,8 @@ describe("initSentry", () => {
         "app.junior.version": JUNIOR_VERSION,
         "deployment.id": "dpl_123",
         "service.version": `${JUNIOR_VERSION}+git-sha`,
+        "service.instance.id": expect.any(String),
+        "cloud.region": "iad1",
       }),
     );
   });
