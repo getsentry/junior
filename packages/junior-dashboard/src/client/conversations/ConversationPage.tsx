@@ -325,7 +325,9 @@ export function ConversationPage(props: {
     !history.historyError;
   const linkedTurnNotFound =
     linkedTurnMissing &&
-    !newerPending &&
+    // A failed newer page also keeps the link, so its retry can find the Turn.
+    !holdCachedTranscript &&
+    !history.newer &&
     !history.hasPreviousPage &&
     !history.isLoadingPreviousPage;
   useEffect(() => {

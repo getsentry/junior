@@ -32,6 +32,10 @@ async function mockReadPositionConversation(
     newerGate: Promise.resolve(),
     /** The first `after` cursor that `newerGate` holds. */
     newerGateAfter: 0,
+    /** Fail the `after` pages that `newerGate` holds. */
+    failNewer: false,
+    /** The event that starts Turn `turn-<seq>`. */
+    turnStartSeq: -1,
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     reported: [] as number[],
@@ -77,12 +81,19 @@ async function mockReadPositionConversation(
         createdAt: new Date(
           Date.parse(generatedAt) + seq * 1_000,
         ).toISOString(),
-        data: {
-          type: "message",
-          messageId: `message-${seq}`,
-          role: seq % 2 === 0 ? "user" : "assistant",
-          text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-        },
+        data:
+          seq === state.turnStartSeq
+            ? {
+                type: "turn_lifecycle",
+                state: "started",
+                turnId: `turn-${seq}`,
+              }
+            : {
+                type: "message",
+                messageId: `message-${seq}`,
+                role: seq % 2 === 0 ? "user" : "assistant",
+                text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+              },
         seq,
       };
     });
@@ -93,6 +104,10 @@ async function mockReadPositionConversation(
       const after = query.get("after");
       if (after && Number(after) >= state.newerGateAfter) {
         await state.newerGate;
+        if (state.failNewer) {
+          await route.fulfill({ status: 500, json: { error: "failed" } });
+          return;
+        }
       }
       const latestSeq = state.eventCount - 1;
       const from = after
@@ -229,7 +244,7 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
     .toBeGreaterThanOrEqual(52);
 });
 
-test("opens a linked event that newer pages have not loaded yet", async ({
+test("opens linked events and Turns that newer pages have not loaded yet", async ({
   page,
   dashboard,
 }) => {
@@ -259,6 +274,23 @@ test("opens a linked event that newer pages have not loaded yet", async ({
   await expect(linked).toBeVisible();
   releaseNewer();
   await expect(linked).toContainText("Transcript message 70 ");
+
+  // A failed newer page keeps a Turn link, so a retry can still open it.
+  mock.turnStartSeq = 70;
+  mock.failNewer = true;
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-70`,
+  );
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText("Newer events could not be loaded."),
+  ).toBeVisible();
+  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+  await expect(page).toHaveURL(/[?&]turn=turn-70(&|$)/);
+  mock.failNewer = false;
+  await transcript.getByRole("button", { name: "Load newer events" }).click();
+  await expect(page).toHaveURL(/[?&]event=70(&|$)/);
+  await expect(linked).toBeVisible();
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({
