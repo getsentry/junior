@@ -240,6 +240,17 @@ export function DashboardShell() {
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
+                profile={
+                  loggedIn ? (
+                    <ProfileMenu
+                      identity={data!.me}
+                      onSignOut={signOut}
+                      spend={personalSpendQuery.data}
+                      userPages={userPages}
+                      variant="top-bar"
+                    />
+                  ) : undefined
+                }
                 mobileIdentity={
                   loggedIn ? (
                     <ProfileMenu

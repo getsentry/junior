@@ -1,4 +1,11 @@
-import { Boxes, LogOut, Settings, ShieldCheck, UserRound } from "lucide-react";
+import {
+  Boxes,
+  ChevronDown,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
@@ -19,11 +26,17 @@ type ProfileMenuProps = {
   userPages: PluginUserPageLink[];
   /**
    * `popover` is the avatar control at the bottom of the desktop nav rail.
+   * `top-bar` is the spend and avatar control in the tall desktop top bar.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?: "popover" | "sheet-spend" | "sheet-links" | "sheet-identity";
+  variant?:
+    | "popover"
+    | "top-bar"
+    | "sheet-spend"
+    | "sheet-links"
+    | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -307,6 +320,7 @@ export function ProfileMenu({
     );
   }
 
+  const topBar = variant === "top-bar";
   return (
     <Popover
       onOpenChange={(nextOpen, details) => {
@@ -324,18 +338,56 @@ export function ProfileMenu({
       <PopoverTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          topBar
+            ? "group flex h-10 items-center gap-2 px-1.5"
+            : "grid size-10 place-items-center",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         closeDelay={HOVER_CLOSE_DELAY_MS}
         delay={HOVER_OPEN_DELAY_MS}
         openOnHover
       >
+        {topBar ? (
+          <span className="flex items-center gap-2">
+            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
+                7d
+              </span>
+              <span className="text-xs font-semibold text-dashboard-text">
+                <SpendAmount value={spend?.sevenDaysUsd} />
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className="h-3 w-px bg-dashboard-fill-strong"
+            />
+            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
+                30d
+              </span>
+              <span className="text-xs font-semibold text-dashboard-text">
+                <SpendAmount value={spend?.thirtyDaysUsd} />
+              </span>
+            </span>
+          </span>
+        ) : null}
         <ProfileAvatar user={identity.user} />
+        {topBar ? (
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
+              open && "rotate-180 text-dashboard-text",
+            )}
+            size={14}
+            strokeWidth={2}
+          />
+        ) : null}
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        side="right"
+        side={topBar ? "bottom" : "right"}
         className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
         id="profile-popover"
       >

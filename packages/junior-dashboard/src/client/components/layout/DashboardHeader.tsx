@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { JuniorLogo } from "../JuniorLogo";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -31,8 +32,8 @@ function NavCount(props: { count?: number }) {
 }
 
 /**
- * Render the mobile shell header and navigation sheet. Desktop navigation
- * lives in `NavRail`.
+ * Render the shell header: the mobile bar and navigation sheet, and the
+ * desktop top bar on tall windows. Short desktop windows use `NavRail`.
  */
 export function DashboardHeader(props: {
   /** Back target used on mobile conversation detail. */
@@ -47,6 +48,8 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
+  /** Spend and account control at the right of the tall desktop top bar. */
+  profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -63,6 +66,13 @@ export function DashboardHeader(props: {
     onOpenChangeRef.current(true);
   });
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
+      isActive
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
+        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
+    );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
@@ -85,8 +95,35 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg md:hidden">
-      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2">
+    <header className="relative bg-dashboard-bg md:hidden md:tall:block">
+      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
+        <Link
+          aria-label={`${getDashboardAgentName()} home`}
+          className="flex items-center text-inherit no-underline"
+          to="/"
+        >
+          <JuniorLogo />
+        </Link>
+        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+          <Link
+            aria-current={props.workspaceActive ? "page" : undefined}
+            className={navLinkClass({ isActive: props.workspaceActive })}
+            to="/"
+          >
+            Conversations
+          </Link>
+          {props.navItems.map((item) => (
+            <NavLink className={navLinkClass} key={item.key} to={item.to}>
+              {item.label}
+              <NavCount count={item.count} />
+            </NavLink>
+          ))}
+        </nav>
+        {props.profile ? (
+          <div className="justify-self-end">{props.profile}</div>
+        ) : null}
+      </div>
+      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
