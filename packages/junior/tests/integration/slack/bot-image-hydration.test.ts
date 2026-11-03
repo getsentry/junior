@@ -14,6 +14,12 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 const listThreadRepliesMock = vi.fn();
 const ORIGINAL_ENV = { ...process.env };
+// Inline vision summaries are the fallback when a profile model cannot read
+// images.
+const TEXT_ONLY_MODEL_ID = "alibaba/qwen3.7-max";
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+]);
 
 async function createRuntime(
   args: Parameters<
@@ -487,7 +493,7 @@ describe("bot image hydration", () => {
       text: "Current screenshot summary",
       message: {} as never,
     }));
-    const attachmentFetch = vi.fn(async () => Buffer.from("attachment-image"));
+    const attachmentFetch = vi.fn(async () => PNG_BYTES);
     const streamForRun = vi.fn((request) => {
       expect(request.instruction.attachments).toEqual([
         expect.objectContaining({
@@ -512,6 +518,7 @@ describe("bot image hydration", () => {
       },
       {
         AI_VISION_MODEL: "openai/gpt-5.4",
+        AI_MODEL: TEXT_ONLY_MODEL_ID,
       },
     );
 
@@ -616,10 +623,8 @@ describe("bot image hydration", () => {
         message: {} as never,
       };
     });
-    const firstAttachmentFetch = vi.fn(async () => Buffer.from("first-image"));
-    const secondAttachmentFetch = vi.fn(async () =>
-      Buffer.from("second-image"),
-    );
+    const firstAttachmentFetch = vi.fn(async () => PNG_BYTES);
+    const secondAttachmentFetch = vi.fn(async () => PNG_BYTES);
     const streamForRun = vi.fn((request) => {
       expect(request.instruction.attachments).toEqual([
         expect.objectContaining({
@@ -647,6 +652,7 @@ describe("bot image hydration", () => {
       },
       {
         AI_VISION_MODEL: "openai/gpt-5.4",
+        AI_MODEL: TEXT_ONLY_MODEL_ID,
       },
     );
 
@@ -746,6 +752,7 @@ describe("bot image hydration", () => {
       },
       {
         AI_VISION_MODEL: "openai/gpt-5.4",
+        AI_MODEL: TEXT_ONLY_MODEL_ID,
       },
     );
 
@@ -781,7 +788,7 @@ describe("bot image hydration", () => {
             type: "image",
             mimeType: "image/png",
             name: "long.png",
-            data: Buffer.from("image-bytes"),
+            data: PNG_BYTES,
           },
         ],
       }),
