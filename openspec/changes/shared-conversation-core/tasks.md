@@ -214,7 +214,7 @@ Needs: P34, P35, P44.
 
 ### 12. One credential builder and the sandbox pass
 
-Needs: P17, P36, and the shared-file decision (Decisions Needed 35).
+Needs: P36, and the shared-file decision (Decisions Needed 35).
 
 - [ ] 12.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
       run). Check at every start and resume.
@@ -258,7 +258,7 @@ Needs: P23, P26.
 
 ### 15. Request records: writer release
 
-Needs: P7, P15, P20, P26, P39.
+Needs: P7, P26, P39.
 
 - [ ] 15.1 Core ingress, `askChild` and `startPluginAgent` mint records.
       `finishTurn` and `messageParent` mint result records in the parent,
