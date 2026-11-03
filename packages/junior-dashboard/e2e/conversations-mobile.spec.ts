@@ -721,6 +721,27 @@ test("keeps the message in view while earlier history and late content load", as
     transcript.getByText("Transcript message 39 "),
   ).not.toBeInViewport();
 
+  // Rows keep their real size while the reader scrolls up through them, so
+  // the transcript never corrects the reader's own scroll. On phones, such
+  // corrections make the transcript jump.
+  await transcript.evaluate((element) => {
+    const scrollTo = element.scrollTo.bind(element);
+    element.dataset.scrollCorrections = "0";
+    element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
+      element.dataset.scrollCorrections = String(
+        Number(element.dataset.scrollCorrections) + 1,
+      );
+      scrollTo(...args);
+    };
+  });
+  await transcript.hover();
+  for (let step = 0; step < 8; step += 1) {
+    await page.mouse.wheel(0, -150);
+  }
+  await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();
+  await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+  await transcript.getByText("Transcript message 43 ").scrollIntoViewIfNeeded();
+
   // Content that grows above the reader, such as an image that loads late,
   // must not push the message they are reading out of view.
   await transcript.getByText("Transcript message 20 ").evaluate((element) => {

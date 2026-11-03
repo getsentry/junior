@@ -35,7 +35,14 @@ export function TranscriptUnreadMarker() {
   );
 }
 
-/** Leave room for control outlines inside the mobile row's paint bounds. */
+/**
+ * Lay out one transcript row at its real size.
+ *
+ * Rows do not use `content-visibility: auto`. A skipped row has an estimated
+ * size, and it changes size when the reader scrolls near it. Above the
+ * reader, each change needs a scroll correction while they scroll, and on
+ * phones those corrections make the transcript jump.
+ */
 export function TranscriptRow(props: {
   /** Stable row id that holds the reader's place while layout changes. */
   anchorKey?: string;
@@ -46,7 +53,7 @@ export function TranscriptRow(props: {
 }) {
   return (
     <div
-      className="mobile-transcript-row -mx-2 px-2 py-1.5"
+      className="py-1.5"
       data-scroll-anchor={props.anchorKey}
       data-transcript-seq={props.seq}
     >
