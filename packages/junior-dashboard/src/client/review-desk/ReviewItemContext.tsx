@@ -12,25 +12,31 @@ import type { ConversationTranscript } from "../types";
 
 /** Messages before the item that the excerpt shows. */
 const BEFORE_COUNT = 3;
-/** Messages after the item that the excerpt shows, newest last. */
-const AFTER_COUNT = 8;
+/** Messages after the item that the excerpt shows. */
+const AFTER_COUNT = 3;
 
 /**
- * Split the messages of a Conversation at the time an item was added. Only
- * messages show: the tool call that added the item would repeat its card.
+ * Pick the messages nearest the time an item was added. Only messages show:
+ * the tool call that added the item would repeat its card. For a closed item,
+ * messages from its close on do not show: the card already has the answer,
+ * and later answers to other items would push out the context.
  */
 function conversationExcerpt(
   events: readonly ConversationReportEvent[],
-  itemCreatedAt: string,
+  item: Pick<ReviewItemPayload, "closedAt" | "createdAt">,
 ): { after: ConversationReportEvent[]; before: ConversationReportEvent[] } {
-  const askedAt = Date.parse(itemCreatedAt);
+  const askedAt = Date.parse(item.createdAt);
+  const closedAt = item.closedAt ? Date.parse(item.closedAt) : Infinity;
   const messages = events.filter(
     (event) => event.data.type === "message" && event.data.role !== "system",
   );
   return {
     after: messages
-      .filter((event) => Date.parse(event.createdAt) > askedAt)
-      .slice(-AFTER_COUNT),
+      .filter((event) => {
+        const at = Date.parse(event.createdAt);
+        return at > askedAt && at < closedAt;
+      })
+      .slice(0, AFTER_COUNT),
     before: messages
       .filter((event) => Date.parse(event.createdAt) <= askedAt)
       .slice(-BEFORE_COUNT),
@@ -49,8 +55,8 @@ function Excerpt(props: {
 }
 
 /**
- * Show the end of the Conversation that added an item, split where the agent
- * asked. Returns `fallback` when the viewer cannot read its messages.
+ * Show the messages around the point where the agent added an item, split
+ * where it asked. Returns `fallback` when the viewer cannot read its messages.
  */
 export function ReviewItemContext(props: {
   fallback: ReactNode;
@@ -60,30 +66,37 @@ export function ReviewItemContext(props: {
   const data = detail.data;
   const events = data?.events;
   const excerpt = useMemo(
-    () =>
-      events ? conversationExcerpt(events, props.item.createdAt) : undefined,
-    [events, props.item.createdAt],
+    () => (events ? conversationExcerpt(events, props.item) : undefined),
+    [events, props.item],
   );
   // The first page holds the newest events. Load earlier pages until the
-  // page reaches the time the item was added, or history ends.
+  // page reaches the time the item was added, or history ends. Until then
+  // the loaded messages after the ask are not the first ones, so the
+  // excerpt waits.
   const loadPreviousPageRef = useRef(detail.loadPreviousPage);
   loadPreviousPageRef.current = detail.loadPreviousPage;
   const oldest = events?.[0]?.createdAt;
-  const loadEarlier =
+  // Redacted or expired history has no messages to wait for.
+  const available = data?.eventHistory.status === "available";
+  const missingEarlier =
+    available &&
     oldest !== undefined &&
     Date.parse(oldest) > Date.parse(props.item.createdAt) &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
+    detail.hasPreviousPage;
+  const loadEarlier =
+    missingEarlier && !detail.isLoadingPreviousPage && !detail.historyError;
   useEffect(() => {
     if (loadEarlier) loadPreviousPageRef.current();
   }, [loadEarlier, oldest]);
 
-  if (detail.isPending) return <TranscriptLoading />;
+  if (detail.isPending || (missingEarlier && !detail.historyError)) {
+    return <TranscriptLoading />;
+  }
   if (
     !data ||
     !excerpt ||
-    data.eventHistory.status !== "available" ||
+    !available ||
+    missingEarlier ||
     excerpt.before.length + excerpt.after.length === 0
   ) {
     return props.fallback;
