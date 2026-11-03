@@ -12,9 +12,12 @@ const {
   extractWebFetchResponseMock: vi.fn(),
 }));
 
-vi.mock("@/chat/tools/web/network", () => ({
+vi.mock("@/chat/tools/web/network", async (importOriginal) => ({
   assertPublicUrl: assertPublicUrlMock,
   fetchTextWithRedirects: fetchTextWithRedirectsMock,
+  readResponseBytes: (
+    await importOriginal<typeof import("@/chat/tools/web/network")>()
+  ).readResponseBytes,
   withTimeout: withTimeoutMock,
 }));
 

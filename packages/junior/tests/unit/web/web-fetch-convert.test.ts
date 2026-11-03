@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
 import {
   extractContent,
   extractContentDetails,
@@ -118,6 +119,26 @@ describe("web fetch content conversion", () => {
     expect(result.extracted_chars).toBeGreaterThan(result.content.length);
     expect(result.truncated).toBe(true);
     expect(fullContent.length).toBe(result.extracted_chars);
+  });
+
+  it("keeps the first part of a page over the byte limit", async () => {
+    const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
+    const html = `<html><body><main>${paragraph.repeat(80)}</main></body></html>`;
+
+    const { result } = await extractWebFetchResponse(
+      new URL("https://docs.example.com/huge"),
+      new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+      1200,
+    );
+
+    expect(Buffer.byteLength(html)).toBeGreaterThan(MAX_FETCH_BYTES);
+    expect(result.content).toContain("Slack streaming docs");
+    expect(result.source_bytes).toBe(MAX_FETCH_BYTES);
+    expect(result.truncated).toBe(true);
+    expect(result.source_truncated).toBe(true);
   });
 
   it("reports client-side fetch failures as repairable tool errors", async () => {
