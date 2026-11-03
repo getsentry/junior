@@ -4,18 +4,41 @@
 
 ### Requirement: Save Before Ack
 
-The core SHALL save input to the inbox before it tells the provider that the
-input arrived. `send()` SHALL only add to the inbox and notify a worker.
+Core ingress SHALL save the request record, then the inbox entry, before it
+tells the provider that the input arrived. `send()` SHALL only add to the
+inbox, set the wake time and notify a worker.
 
 #### Scenario: Inbox save fails
 
 - **WHEN** the inbox save fails
-- **THEN** the provider gets an error and sends the input again.
+- **THEN** the provider gets an error and sends the input again
+- **AND** the retry finds the saved record by its idempotency key.
 
 #### Scenario: Worker notification fails
 
 - **WHEN** the save works but the queue send fails
-- **THEN** the input stays, and a retry or the timer job notifies a worker.
+- **THEN** the input stays, and the repair job notifies a worker
+  (Proposed, needs sign-off: P7, P32).
+
+### Requirement: Core Mints Request Records
+
+Core SHALL mint a request record for every input, with an id in its own
+namespace (Proposed, needs sign-off: P23, P26). The record SHALL store the
+conversation id and the inbound message id. Only core person ingress
+(Slack, web, ACP, CLI) SHALL make a record with a person actor.
+
+#### Scenario: Message points at another record
+
+- **WHEN** a message's record belongs to another conversation or another
+  inbound message
+- **THEN** the worker drops the message with a recorded reason and starts no
+  turn.
+
+#### Scenario: Missing record
+
+- **WHEN** a message's record does not exist
+- **THEN** the message is dropped with a recorded reason
+- **AND** no actor is filled in from another source.
 
 ### Requirement: Accept Each Message Once
 
@@ -25,23 +48,24 @@ SHALL come from the source's own id.
 #### Scenario: Provider retry
 
 - **WHEN** a provider sends the same message again
-- **THEN** there is no second inbound message and no second turn start.
+- **THEN** there is no second record, no second inbound message and no
+  second turn start.
 
-#### Scenario: Copy while pending
+#### Scenario: Copy while waiting
 
 - **WHEN** a copy arrives while the first is still waiting
 - **THEN** the core notifies a worker once more
 - **AND** a Slack copy with new attachments or a mention upgrades the
-  waiting entry (attachments added, wait changed to join now) and keeps its
+  waiting entry (files added, `wait` changed to `now`) and keeps its
   timestamps.
 
 ### Requirement: Inbound Message Fields
 
-An inbound message SHALL carry its source, join now or wait, sent time,
-arrival time, delivery attempt count, event kind and request id
+An inbound message SHALL carry its source, `join` (`now` or `wait`), sent
+time, arrival time, delivery attempt count, event kind and request id
 (Proposed, needs sign-off: P9).
 
-#### Scenario: Ordering needs the fields
+#### Scenario: Ordering reads only these fields
 
 - **WHEN** the worker orders the inbox
 - **THEN** it reads only these fields and the request records.
@@ -49,8 +73,8 @@ arrival time, delivery attempt count, event kind and request id
 ### Requirement: Stable Order And Priority
 
 The core SHALL order waiting input by sent time, then arrival time, then id.
-It SHALL pick join-now input before wait input, and input from people before
-events. Input from people SHALL NOT wait for an event window.
+It SHALL pick `join: now` input before `wait` input, and input from people
+before events. Input from people SHALL NOT wait for an event window.
 
 #### Scenario: Out of order arrival
 
@@ -65,7 +89,8 @@ events. Input from people SHALL NOT wait for an event window.
 ### Requirement: One Actor, One Access, One Source Per Turn
 
 A turn SHALL take in only a contiguous run of waiting input with the same
-actor, the same whose-access and the same source (Decided).
+actor, exactly the same signed subject (scope included) and the same source
+(Decided; Proposed, needs sign-off: P20 for exact equality).
 
 #### Scenario: Interleaved people
 
@@ -79,10 +104,10 @@ actor, the same whose-access and the same source (Decided).
 
 #### Scenario: Mixed-access event batch
 
-- **WHEN** events from Watches with different timer creators wait in one
-  window
-- **THEN** they split into one turn per actor and whose-access, in order of
-  first arrival (Proposed, needs sign-off: P20).
+- **WHEN** events from two Watches with different signed subjects wait in
+  one window
+- **THEN** they split into one turn per subject, in order of first arrival
+  (Proposed, needs sign-off: P20).
 
 ### Requirement: Event Window
 
@@ -94,13 +119,13 @@ each extra event, up to 60 s. Then one turn takes in the batch.
 - **WHEN** three check runs land on one pull request inside the window
 - **THEN** one turn takes in all three.
 
-### Requirement: Admission Before Send
+### Requirement: Admission Before Ingress Saves
 
-A source SHALL admit input before `send()`. The same check SHALL cover input
-that starts a turn and input that would join one. Slack authors SHALL be
-verified workspace members, not Junior, and on an allowed domain when one is
-set. When no allowed domains are set, any workspace bot SHALL be admitted
-(Decided).
+A source SHALL admit input before it saves anything. The same check SHALL
+cover input that starts a turn and input that would join one. Slack authors
+SHALL be verified workspace members, not Junior, and on an allowed domain
+when one is set. When no allowed domains are set, any workspace bot SHALL be
+admitted (Decided).
 
 #### Scenario: Outsider
 
@@ -113,30 +138,23 @@ set. When no allowed domains are set, any workspace bot SHALL be admitted
 - **THEN** ingress drops it with a recorded reason, and no request record is
   made (Decided: discard; Proposed, needs sign-off: P19 for where).
 
-#### Scenario: Bot loop
-
-- **WHEN** another bot and Junior reply to each other in a thread
-- **THEN** bot input counts toward the automated-turn limit (Proposed, needs
-  sign-off: P27).
-
 ### Requirement: Join Now And Wait
 
-A Slack mention or `!!` message SHALL be join now. Other input SHALL be
-wait. A dashboard user SHALL be able to change their own waiting message to
-join now.
+A Slack mention or `!!` message SHALL be `join: now`. Other input SHALL be
+`wait`. A dashboard user SHALL be able to change their own waiting message to
+`now`.
 
 #### Scenario: DM follow-up during a turn
 
 - **WHEN** a DM follow-up with no mention arrives during a turn
-- **THEN** it is wait input and runs in the next turn.
+- **THEN** it is `wait` input and runs in the next turn.
 
 ### Requirement: Who May Join A Running Turn
 
 Waiting input SHALL join a running turn only at a safe point and only when
-`canJoin` holds: same actor, same whose-access, same source, and join now
-(or join now or wait for child agents). Events, plugin-started input and
-results SHALL never join (Decided). Joined input SHALL keep its own author
-in history. The turn SHALL keep its starting actor.
+`canJoin` holds. Events, plugin-started input and results SHALL never join
+(Decided). Joined input SHALL keep its own author in history. The turn
+SHALL keep its starting actor.
 
 #### Scenario: Another person
 
@@ -145,7 +163,7 @@ in history. The turn SHALL keep its starting actor.
 
 #### Scenario: Plain reply from the turn's own person
 
-- **WHEN** A sends a plain Slack reply (wait) during A's turn
+- **WHEN** A sends a plain Slack reply (`wait`) during A's turn
 - **THEN** it waits for the next turn (Decided)
 - **AND** the user docs say so.
 
@@ -156,13 +174,24 @@ in history. The turn SHALL keep its starting actor.
 
 ### Requirement: A Paused Turn Goes First
 
-While a paused turn waits to resume, new wait input SHALL wait behind it. A
-joined web message SHALL NOT start a second turn.
+While a paused turn waits to resume, new `wait` input SHALL wait behind it.
+A joined web message SHALL NOT start a second turn.
 
-#### Scenario: Deferred message on a paused conversation
+#### Scenario: Wait message on a paused conversation
 
-- **WHEN** a conversation is paused and a wait message arrives
+- **WHEN** a conversation is paused and a `wait` message arrives
 - **THEN** the resume runs first.
+
+### Requirement: No Lost Wakes
+
+`send()` SHALL set the wake time to now. A worker SHALL release the lock and
+then read the inbox, and notify a worker when work is left (Proposed, needs
+sign-off: P32).
+
+#### Scenario: Message while the lock is held
+
+- **WHEN** a message arrives while another worker holds the lock
+- **THEN** that worker sees it after release and notifies a worker.
 
 ### Requirement: Limit On Automated Turns
 
@@ -211,21 +240,10 @@ input was not kept, complete it when the turn ends, and clear it on stop.
 
 ### Requirement: The CLI Uses The Inbox
 
-CLI top-level turns SHALL go through `send()` and `work()` with the local
-store (Decided).
+CLI top-level turns SHALL go through core person ingress and `work()` with
+the local store (Decided).
 
 #### Scenario: Duplicate CLI input
 
 - **WHEN** the CLI sends the same message id twice
 - **THEN** one turn runs.
-
-### Requirement: Missing Request Record
-
-Input whose stored request record is missing or invalid SHALL be dropped
-with a recorded reason. The core SHALL NOT fill in an actor from another
-source (Proposed, needs sign-off: P26).
-
-#### Scenario: Record deleted
-
-- **WHEN** a waiting message points to a request record that does not exist
-- **THEN** the message is dropped with a recorded reason and no turn starts.

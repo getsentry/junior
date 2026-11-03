@@ -31,12 +31,23 @@ SHALL never reach the sandbox, files, arguments, logs or model context.
 - **THEN** the next call needs sign-in, because user credentials are never
   cached.
 
-### Requirement: Delegated Access Is Signed And Checked At Use
+### Requirement: Core Binds And Signs Delegated Access
 
-A delegated subject SHALL be used only with a system actor. The runtime
-SHALL sign it. A plugin SHALL NOT supply the binding. A DM-bound subject
-SHALL work only in its DM. `credentialsForTurn` SHALL check the binding at
-every turn start and resume (Proposed, needs sign-off: P17).
+A plugin SHALL pass only an unbound subject. Core SHALL bind and sign it. The
+signature SHALL cover kind, scope, user id, team id, DM channel id and the
+request id of the run (Proposed, needs sign-off: P17). A delegated subject
+SHALL be used only with a system actor. `credentialsForTurn` SHALL check it
+at every turn start and resume (Proposed, needs sign-off: P17).
+
+#### Scenario: Plugin passes a binding
+
+- **WHEN** a plugin passes a subject that already has a binding
+- **THEN** core refuses it.
+
+#### Scenario: Subject reused for another run
+
+- **WHEN** a signed subject is presented for a different request id
+- **THEN** building credentials throws.
 
 #### Scenario: Automation switched to system mode
 
@@ -44,17 +55,11 @@ every turn start and resume (Proposed, needs sign-off: P17).
   created
 - **THEN** that run's next turn start or resume uses system credentials.
 
-#### Scenario: Person actor with a subject
-
-- **WHEN** a person actor carries a delegated subject
-- **THEN** building credentials throws.
-
 ### Requirement: Timer Grants Come From A Person's Turn
 
 A timer Watch SHALL carry its creator's grant only when a person's turn made
 it, bound to that conversation and Watch. A child of a turn with a grant
-SHALL get it, checked against the root conversation (Proposed, needs
-sign-off: P28).
+SHALL get the actor but no delegated subject until P28 is decided.
 
 #### Scenario: System turn sets a timer
 
@@ -64,25 +69,27 @@ sign-off: P28).
 ### Requirement: Results Act For The Request Record
 
 A result or agent message SHALL act for the actor and whose-access of the
-request record it points to, never the child's latest request (Proposed,
-needs sign-off: P15).
+request record it answers, never the child's latest request. In a result
+turn, messages from other actors after the record was made SHALL reach the
+model as outside text (Proposed, needs sign-off: P15).
 
 #### Scenario: Grandchild result after another person messaged the child
 
 - **WHEN** A asks a child, the child starts a grandchild, then B messages the
   child, then the grandchild finishes
-- **THEN** the grandchild's result turn acts for A.
+- **THEN** the result turn acts for A
+- **AND** B's message is outside text and is not approval.
 
 ### Requirement: An Event Author Is Never The Actor
 
 An event turn SHALL act as the system actor, with access only from its Watch
-or Automation grant. Event text SHALL reach the model as labeled external
-text.
+or Automation grant. Event author text SHALL reach the model as labeled
+outside text and SHALL never be approval.
 
 #### Scenario: Linked author comments
 
 - **WHEN** a linked GitHub user comments on a watched pull request
-- **THEN** their tokens are not used.
+- **THEN** their tokens are not used, and their text is not approval.
 
 ### Requirement: Agent Text Is Never Approval
 
@@ -109,62 +116,73 @@ as the system actor and send no result back.
 
 ### Requirement: Lookups Outside A Turn
 
-A lookup outside a turn SHALL NOT use installation credentials on a
-person's text. Title lookups SHALL use the latest person turn's credentials
-(Proposed, needs sign-off: P25).
+A lookup outside a turn, such as a conversation title, SHALL run as a system
+actor with no user credentials, as today.
 
-#### Scenario: Title for a private repo link
+#### Scenario: Title for a private link
 
-- **WHEN** a conversation title is built from a link to data that the person cannot see
-- **THEN** the lookup uses that person's credentials and gets nothing.
+- **WHEN** a title is built from a link that needs user access
+- **THEN** the lookup gets no user credentials and the title skips those
+  facts.
 
 ### Requirement: Sandbox Pass Ends With Its Turn
 
-A sandbox pass SHALL be bound to one turn and one VM, issued per attempt,
-and revoked in `finishTurn` and at a lost-worker restart (Decided; Proposed,
-needs sign-off: P29). The proxy SHALL check the VM token, the signature,
-expiry, revocation and a declared host before it adds credentials.
+A turn SHALL have at most one pass, saved on its turn row (Decided: ends
+with its turn). Each attempt SHALL renew the same pass, with an expiry
+capped near the attempt limit. `finishTurn` and the `sign_in`, `post_retry`
+and `error_retry` pauses SHALL apply a no-credentials policy. The proxy
+SHALL add credentials only when the pass is the open turn's pass and that
+turn is running, plus today's checks (Proposed, needs sign-off: P36).
 Undeclared hosts SHALL stay open with no credentials (Decided).
 
 #### Scenario: Background process after the turn
 
 - **WHEN** a process from an ended turn calls a declared domain
-- **THEN** the proxy refuses it.
+- **THEN** no credentials are added.
 
-#### Scenario: Pass for another VM
+#### Scenario: Pass from an older turn
 
-- **WHEN** the pass's VM differs from the token's sandbox
+- **WHEN** a request carries a pass that is not the open turn's pass
 - **THEN** the proxy refuses it.
 
 ### Requirement: One Sandbox Per Conversation
 
-Turns of different actors in one conversation SHALL share its sandbox
-(Decided). Child conversations SHALL have their own. The user docs SHALL say
-so. Snapshot builds SHALL run as the system actor with no credential route.
+Turns of different actors in one conversation SHALL share its sandbox and
+files (Decided). When a turn's actor or access differs from the last pass's
+turn, the worker SHALL kill user processes before it applies the new pass
+(Proposed, needs sign-off: P36). Child conversations SHALL have their own
+sandbox. The user docs SHALL say so.
 
 #### Scenario: Two people in one thread
 
-- **WHEN** A's turn clones a repo, then B's turn runs in the same conversation
-- **THEN** B's turn sees the checkout
-- **AND** B's turn cannot use A's credentials, because A's pass was revoked.
+- **WHEN** A's turn leaves a process running and then B's turn uses the
+  sandbox
+- **THEN** the process is killed before B's pass is applied, and A's files
+  stay.
 
 ### Requirement: Signals Belong To Their Turn
 
 A sign-in-needed or permission-denied signal from the proxy SHALL reach only
 the turn named on the pass.
 
-#### Scenario: Old process during another turn
+#### Scenario: Signal after the turn ended
 
-- **WHEN** a process from A's turn hits a provider during B's turn
-- **THEN** B's turn gets no sign-in prompt for A.
+- **WHEN** a signal names a turn that has ended
+- **THEN** no other turn gets a sign-in prompt for it.
 
 ### Requirement: Sign-In Pause
 
-Only a turn whose policy can ask a person SHALL send a sign-in link. The link
-SHALL be private, one use, last 10 minutes, and be bound to the actor and the
-turn id (Proposed, needs sign-off: P13). The thread SHALL get a short notice.
-A child or plugin-started agent SHALL end `blocked` (Decided). The callback
-SHALL only save the sign-in and notify a worker.
+Only a turn with a person actor, in a conversation that can ask a person,
+SHALL send a sign-in link. A system-actor turn SHALL end `blocked` (Proposed,
+needs sign-off: P13). A child or plugin-started agent SHALL end `blocked`
+(Decided). The link SHALL be private, one use, last 10 minutes, and be bound
+to the actor and the turn id. The callback SHALL only save the sign-in and
+notify a worker.
+
+#### Scenario: Timer turn needs sign-in
+
+- **WHEN** a timer turn needs an account
+- **THEN** no link is sent and the turn ends `blocked` with the reason.
 
 #### Scenario: No private delivery
 
@@ -176,16 +194,17 @@ SHALL only save the sign-in and notify a worker.
 New input from the same person SHALL end a turn that waits for sign-in with
 a short note, and that input SHALL run next. Other people's input and events
 SHALL wait until sign-in or link expiry. At expiry the turn SHALL end with a
-short note. The rule SHALL be the same for every kind (Decided). The ended
-turn SHALL be `stopped` (Proposed, needs sign-off: P13, P24).
+short note. The rule SHALL be the same for every kind (Decided). "Same
+person" SHALL mean a person actor equal to the turn's actor; the ended turn
+SHALL be `stopped` (Proposed, needs sign-off: P13).
 
 #### Scenario: Same person
 
 - **WHEN** A's turn waits for sign-in and A posts again
-- **THEN** the old turn ends with a note and A's new message runs.
+- **THEN** the old turn ends with a note and A's new message runs next.
 
 #### Scenario: Another person
 
 - **WHEN** A's turn waits for sign-in and B posts
-- **THEN** B's message runs after A signs in and that turn ends, or after the
-  link expires.
+- **THEN** B's message runs after A's turn ends, by sign-in or by link
+  expiry.

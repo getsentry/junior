@@ -6,26 +6,32 @@
 
 A plugin-started agent SHALL be created once per plugin and key. A copy
 SHALL return the first one. Its request record SHALL replace the dispatch
-record. The repair job SHALL send its input again when it was lost
-(Proposed, needs sign-off: P7). A run older than 24 h with no turn SHALL
-fail.
+record. Lost input SHALL go through the one repair job, and a run the job
+gives up on SHALL end through a closing turn (Proposed, needs sign-off: P7,
+P30). There SHALL be no separate age rule.
 
 #### Scenario: Copy from the plugin
 
 - **WHEN** a plugin starts a run with a key that it already used
 - **THEN** it gets the first run's id and nothing new starts.
 
-### Requirement: Own Conversation And Stored Actor
+#### Scenario: Input never reaches the inbox
+
+- **WHEN** a run's input is not added and the repair job reaches its limit
+- **THEN** a closing turn ends the run `failed` and the plugin sees
+  `failed`.
+
+### Requirement: Own Conversation And System Actor
 
 Each run SHALL get its own conversation with a fixed Location (Proposed,
-needs sign-off: P14). Its turn SHALL act as the stored system actor with an
-optional delegated subject. Its inbox message SHALL hold only the request
-id.
+needs sign-off: P14). Its turn SHALL act as the system actor for that
+plugin. A plugin SHALL NOT pass an actor. A plugin SHALL pass only an
+unbound subject, which core binds (Proposed, needs sign-off: P17).
 
 #### Scenario: Inbox message names an actor
 
 - **WHEN** the inbox message text names another actor
-- **THEN** the turn still acts as the stored system actor.
+- **THEN** the turn still acts as the system actor.
 
 ### Requirement: Cannot Ask A Person
 
@@ -35,15 +41,17 @@ SHALL end it `blocked`, with a reason for the credential mode.
 #### Scenario: Creator mode, no account
 
 - **WHEN** a creator-mode run needs an account the creator has not connected
-- **THEN** it ends `blocked` with "needs a connected account" and sends no link.
+- **THEN** it ends `blocked` with "needs a connected account" and sends no
+  link.
 
 ### Requirement: What A Plugin Sees
 
 A plugin SHALL see only `{id, status, resultMessageTs?, errorMessage?}` for
-its own runs. `status` SHALL be computed from the request record and SHALL
-never change after it is final (Proposed, needs sign-off: P21).
+its own runs. `status` SHALL be computed from the request record and its
+turn, and SHALL never change after it is final (Proposed, needs sign-off:
+P21).
 
-#### Scenario: Result already saved
+#### Scenario: Result already sent
 
 - **WHEN** the turn already has a sent delivery
 - **THEN** the run is `completed` and the agent does not run again.
@@ -51,9 +59,10 @@ never change after it is final (Proposed, needs sign-off: P21).
 ### Requirement: An Automation Run Says How It Ends
 
 An Automation run SHALL end with `finishAutomationRun`: `send_message`,
-`no_action` or `misconfigured`. Its responses SHALL be the declared outcome
-messages. Other assistant text SHALL be saved only (Proposed, needs
-sign-off: P18).
+`no_action` or `misconfigured`. Its reply target SHALL post only declared
+outcomes; other assistant text SHALL be saved only (Proposed, needs
+sign-off: P18). `send_message` and `no_action` SHALL end `completed`;
+`misconfigured` SHALL end `blocked`.
 
 #### Scenario: No declared outcome
 
@@ -70,7 +79,8 @@ sign-off: P18).
 
 A run SHALL post only to its stored outcomes, in order, once each.
 `current_conversation` SHALL be the Automation's Location. `task_creator`
-SHALL be the creator's DM. An empty list SHALL post nothing.
+SHALL be the creator's DM. An empty list SHALL post nothing. A failure SHALL
+NOT be posted to the outcomes.
 
 #### Scenario: Empty outcomes
 
@@ -94,10 +104,10 @@ pair SHALL be the request record's idempotency key.
 
 ### Requirement: Creator Or System Credentials
 
-In creator mode, a run SHALL carry a subject bound to the creator and the
-task. In system mode, none. Only the creator SHALL turn on creator mode. A
-change by someone else to the instruction, trigger, outcomes or Location
-SHALL switch it to system mode.
+In creator mode, a run SHALL carry a subject bound to the creator, the task
+and the run. In system mode, none. Only the creator SHALL turn on creator
+mode. A change by someone else to the instruction, trigger, outcomes or
+Location SHALL switch it to system mode.
 
 #### Scenario: Someone else edits the instruction
 

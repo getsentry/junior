@@ -2,18 +2,20 @@
 
 ## How To Use This Plan
 
-- Each step ships alone, leaves `main` correct, and deletes the copy it
-  replaces. A step that only adds a layer is not done.
+- Each step ships alone, leaves `main` correct, deletes the copy it
+  replaces, and rolls back alone. A step that only adds a layer is not done.
+- Each step uses only what earlier steps added.
+- Rolling deploy: old and new workers run at the same time. Readers ship one
+  release before writers. A "writer" step starts only after its reader step
+  is fully deployed.
 - At the start of each step, check this plan against current `main`.
 - Each step adds or extends an integration test through the real worker
   (`policies/testing.md`). Fake only Slack and LLMs.
-- Each step is safe under a rolling deploy: old and new workers run at the
-  same time. Readers ship before writers.
 - "Needs" lists the decisions (`design.md`, Decisions Needed) that must be
-  signed off before the step starts. A change to a decided rule needs
-  David's OK.
-- Steps 3 to 11 fix today's workers. Steps 12 and 13 move child agents and
-  plugin-started agents onto the one worker (P1).
+  signed off first. A change to a decided rule needs David's OK.
+- Steps 3 to 13 fix today's workers. Steps 16 to 19 move each worker onto
+  `work()` and delete it. The end state has one worker and no per-kind
+  last-try branch.
 
 ## Steps
 
@@ -25,133 +27,197 @@
 ### 2. Words
 
 - [ ] 2.1 Change `TERMINOLOGY.md` to the words in `design.md` (P16).
-- [ ] 2.2 Keep the old names in its mapping table until their code changes.
 
 ### 3. One writer for the SQL status columns
 
-- [ ] 3.1 Only turn start and the turn end write `execution_status` and
-      `run_id`.
+- [ ] 3.1 Only turn start and turn end write `execution_status` and `run_id`.
 - [ ] 3.2 Delete: the second writer in `recordExecution`.
 
-### 4. Lock version and a finished turn that stays finished
+### 4. Resumed plugin-started agents honor stop
 
-Needs: P2, P5.
+- [ ] 4.1 A resumed plugin-started agent reads the saved stop.
+- [ ] 4.2 Test: stop a paused plugin-started agent; the next attempt ends it
+      `stopped` and the agent does not run.
+- [ ] 4.3 One-line fix. No copy to delete; step 11 deletes the stop
+      variants.
 
-- [ ] 4.1 Add the lock version counter on the SQL conversation row. Raise it
-      when a worker takes the lock.
-- [ ] 4.2 Every turn save and history commit checks it in the same write.
-      Throw `LockLostError` on an old version.
-- [ ] 4.3 Refuse any save to a finished turn.
-- [ ] 4.4 Test: a slow worker's save after a new worker took the lock (turn
-      E3).
-- [ ] 4.5 Delete: the lease check followed by a separate write.
+### 5. SQL worker lock and lock version
 
-### 5. One `finishTurn`
+Needs: P5.
 
-Needs: P4, P8, P12, P22.
+- [ ] 5.1 Add lock token, expiry and version to the conversation row. Take
+      the lock with the compare-and-set. Check in and release with the
+      token and version.
+- [ ] 5.2 Workers hold the SQL lock and today's Redis lease together, so
+      old workers stay excluded.
+- [ ] 5.3 Test: a slow worker after a takeover cannot check in (turn E3).
+- Rollback: the Redis lease still guards. The columns go unused.
 
-- [ ] 5.1 Add `finishTurn`, resumable through `finishing`. Today's four
-      last-try branches call it with a reply target, not a callback.
-- [ ] 5.2 The timer job only clears an expired lock and notifies a worker.
-      The next worker restarts once or fails the turn.
-- [ ] 5.3 Count `errors` and `restarts` per turn. Giving up keeps other
-      people's waiting input.
-- [ ] 5.4 Write one `turn.terminal` event per turn end.
-- [ ] 5.5 Test: retries running out (turn E4) and a dead worker (turn E2).
-- [ ] 5.6 Delete: the lost-worker fallback in the timer job and the second
+### 6. Turn rows: reader release
+
+Needs: P2, P30, P31.
+
+- [ ] 6.1 Add the turn table and the one-open index. Workers run a turn
+      stored as a row: `startTurn` in one transaction, fenced
+      `saveCheckpoint`, a finished guard.
+- [ ] 6.2 New turns still start in the Redis turn cursor. Add a finished
+      guard to cursor writes.
+- [ ] 6.3 Test: a late save to a finished turn is refused.
+- Rollback: no rows exist yet.
+
+### 7. Turn rows: writer release
+
+Needs: P2.
+
+- [ ] 7.1 New turns start as rows. A worker that takes the lock and finds an
+      open cursor moves it into a row and deletes the cursor in that locked
+      step. No read fallback.
+- [ ] 7.2 Stop and sign-in key by turn id.
+- [ ] 7.3 Test: redelivered prompt (turn E1).
+- [ ] 7.4 Delete: Slack `activeTurnId` and new cursor writes.
+- Rollback: step 6 runs rows.
+
+### 8. Drop the Redis lease and turn cursor
+
+- [ ] 8.1 Ship after a count shows no open cursor.
+- [ ] 8.2 Delete: the Redis lease, the turn cursor code and the per-turn
+      Redis mutation lock.
+- Rollback: step 7 workers also hold the SQL lock.
+
+### 9. One `finishTurn`
+
+Needs: P4, P8, P12, P22, P30, P31.
+
+- [ ] 9.1 Add `finishTurn` (resumable through `finishing`) and `closeInput`.
+      Today's four last-try branches call it with the reply target as
+      data. Steps 16 to 19 delete those branches.
+- [ ] 9.2 Errors pause `error_retry`. A turn is lost only when `running`
+      under an expired lock. The timer job only notifies a worker.
+- [ ] 9.3 Write one `turn.terminal` event per turn end.
+- [ ] 9.4 Test: retries running out (turn E4) and a dead worker (turn E2).
+- [ ] 9.5 Delete: the lost-worker fallback in the timer job and the second
       status-to-end mapping.
 
-### 6. Resumed plugin-started agents honor stop
+### 10. Delivery intents and pause reasons
 
-- [ ] 6.1 A resumed plugin-started agent reads the saved stop.
+Needs: P5, P10, P11, P33.
 
-### 7. The turn row is the only turn status
+- [ ] 10.1 Save a delivery intent with its text before each post. Check
+      `find` before a repeat post. Send the saved text.
+- [ ] 10.2 Delivery attempts and backoff while finishing.
+- [ ] 10.3 Split `retry`; rename `yield` and `timeout`.
+- [ ] 10.4 Test: two outcomes, second fails (edges E1); stuck delivery (turn
+      E6).
+- [ ] 10.5 Delete: the post-then-commit guard in each provider turn.
 
-Needs: P2, P3.
+### 11. One stop
 
-- [ ] 7.1 Add the SQL turn row with one open row per conversation.
-      `currentTurn` reads it. Stop and sign-in key by turn id.
-- [ ] 7.2 Read the Redis turn cursor as a fallback until its entries expire
-      (24 h), then remove the fallback.
-- [ ] 7.3 Delete: the Redis turn cursor, Slack `activeTurnId` and
-      `pendingAuth`, and the per-turn Redis mutation lock.
+Needs: P34, P35.
 
-### 8. Delivery intents and pause reasons
+- [ ] 11.1 `stop()` saves a stop time on the conversation and every
+      conversation below it, and notifies each worker. `startTurn` checks
+      it. Slack stop, dashboard stop, ACP stop and thread opt-out all call
+      it.
+- [ ] 11.2 Today's child worker reads the stop time.
+- [ ] 11.3 Test: top-level stop of a tree (agents E3).
+- [ ] 11.4 Delete: the opt-out-only tree walk and the stop variants per
+      entry point.
 
-Needs: P5, P10, P11.
+### 12. One credential builder and the sandbox pass
 
-- [ ] 8.1 Save a delivery intent before each post. Post with the delivery id.
-      Check `find` before a repeat post.
-- [ ] 8.2 Split `retry` into `post_retry` and a restart. Rename `yield` and
-      `timeout`.
-- [ ] 8.3 Test: two outcomes where the second post fails (edges E1).
-- [ ] 8.4 Delete: the post-then-commit guard in each provider turn.
+Needs: P17, P36.
 
-### 9. One credential builder and a sandbox pass per turn
+- [ ] 12.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
+      run). Check at every start and resume.
+- [ ] 12.2 One pass per turn on the turn row. The proxy checks it against
+      the open turn. No-credentials policy at finish and at the listed
+      pauses. Kill user processes when the actor or access changes.
+- [ ] 12.3 Document one sandbox per conversation in the user docs.
+- [ ] 12.4 Test: background process after the turn (access E5).
+- [ ] 12.5 Delete: the other turn credential builders, and the pass that
+      lasts for the sandbox timeout.
 
-Needs: P17, P28, P29.
+### 13. One sign-in rule
 
-- [ ] 9.1 Add `credentialsForTurn`. Check delegated subjects at every start
-      and resume.
-- [ ] 9.2 Bind the pass to the turn. Revoke it in `finishTurn` and at a
-      restart. The proxy checks revocation.
-- [ ] 9.3 Save proxy sign-in signals under the pass's turn.
-- [ ] 9.4 Document one sandbox per conversation in the user docs.
-- [ ] 9.5 Test: a background process after the turn ends (access E4).
-- [ ] 9.6 Delete: the other turn credential builders.
+Needs: P13.
 
-### 10. One sign-in supersede rule
+- [ ] 13.1 Same-person input supersedes; others wait until sign-in or expiry.
+      System-actor turns end `blocked`.
+- [ ] 13.2 Test: access E1, E2 and E3.
+- [ ] 13.3 Delete: Slack `pendingAuth`, the silent web supersede, and the
+      "newer sign-in replaces" path.
 
-Needs: P13, P24.
+### 14. Request records: reader release
 
-- [ ] 10.1 Same-person input ends a sign-in wait with a note. Others wait
-      until sign-in or expiry. Same for every kind.
-- [ ] 10.2 Test: access E1 and E2.
-- [ ] 10.3 Delete: the silent web supersede and the Slack "newer sign-in
-      replaces" path.
+Needs: P23, P26.
 
-### 11. Top-level stop stops the tree
+- [ ] 14.1 Readers (`listAgents`, the dashboard, result handling, the plugin
+      view) read request records when present, else today's rows.
+- [ ] 14.2 `selectTurnInput` runs the match check when a record exists.
+- Rollback: no records exist yet.
 
-- [ ] 11.1 Slack stop, dashboard stop, ACP stop and thread opt-out stop the
-      tree and mark its open request records `stopped`.
-- [ ] 11.2 Test: agents E3.
+### 15. Request records: writer release
 
-### 12. Child agents on the one worker
+Needs: P7, P15, P20, P26.
 
-Needs: P6, P7, P15, P20, P23, P26.
+- [ ] 15.1 Core ingress, `askChild` and `startPluginAgent` mint records.
+      They still write today's rows.
+- [ ] 15.2 The repair job works on records.
+- [ ] 15.3 Test: a forged result (agents E5) and a mismatched record (inbox
+      E5).
+- [ ] 15.4 Delete: "copy the latest request" for result actors.
+- Rollback: step 14 reads both.
 
-- [ ] 12.1 Add request records. `spawnAgent` and `messageAgent` save one and
-      call `send()`.
-- [ ] 12.2 Child turns run in `work()`. Results go to the parent inbox at
-      `finishTurn`.
-- [ ] 12.3 Set `maxAgentDepth` default to 1.
-- [ ] 12.4 Report or move live `replaced` requests before the cutover.
-- [ ] 12.5 Test: busy child (agents E1), grandchild result (agents E2).
-- [ ] 12.6 Delete: the child runner, Agent invocation run statuses,
-      `replaced`, `reportNow`, the result sweep and "copy the latest
-      request".
+### 16. Slack on `work()`
 
-### 13. Plugin-started agents on the one worker
+- [ ] 16.1 Slack conversations run in `work()`.
+- [ ] 16.2 Delete: `task-execution/slack-work.ts` and its last-try branch.
+
+### 17. Web and events on `work()`
+
+- [ ] 17.1 Web and event conversations run in `work()`.
+- [ ] 17.2 Delete: the web and event worker paths in
+      `task-execution/conversation-turn.ts` and `mailbox-turn.ts`, their
+      last-try branch, and `task-execution/web-steering.ts`.
+
+### 18. Child agents on `work()`
+
+Needs: P6.
+
+- [ ] 18.1 `askChild` only sends. Child turns run in `work()`. Results go to
+      the parent inbox at `finishTurn`.
+- [ ] 18.2 Set `maxAgentDepth` default to 1.
+- [ ] 18.3 Report or move live `replaced` requests before the cutover.
+- [ ] 18.4 Test: busy child (agents E1) and grandchild result (agents E2).
+- [ ] 18.5 Delete: the child runner in `agent-invocations/work.ts`, its
+      last-try branch, `replaced` and `reportNow`.
+
+### 19. Plugin-started agents on `work()`
 
 Needs: P14, P18, P21.
 
-- [ ] 13.1 A request record replaces the dispatch record. Plugins read the
-      computed view.
-- [ ] 13.2 Test: an Automation run through `finishTurn`.
-- [ ] 13.3 Delete: the dispatch runner, dispatch statuses and the outbox
-      sweep.
+- [ ] 19.1 Plugin-started runs use `work()`. Plugins read the computed view.
+- [ ] 19.2 Test: an Automation run through `finishTurn`.
+- [ ] 19.3 Delete: the runner in `agent-dispatch/work.ts`, its last-try
+      branch, the outbox sweep and the 24 h failure rule.
 
-### 14. The CLI through the inbox
+### 20. Stop writing today's rows
 
-- [ ] 14.1 `pnpm cli -- chat` calls `send()` and runs `work()` locally.
-- [ ] 14.2 Delete: the CLI's direct turn path.
+- [ ] 20.1 One release after steps 18 and 19, stop writing Agent invocation
+      run statuses and dispatch records.
+- [ ] 20.2 Delete: the result sweep and the fallback reads from step 14.
 
-### 15. Clean up
+### 21. The CLI through the inbox
+
+- [ ] 21.1 `pnpm cli -- chat` uses core person ingress and runs `work()`
+      locally.
+- [ ] 21.2 Delete: the CLI's direct turn path.
+
+### 22. Clean up
 
 Needs: P3.
 
-- [ ] 15.1 Drop `execution_status` and `run_id` one release after no code
-      reads them.
-- [ ] 15.2 Remove old Redis keys after they expire.
-- [ ] 15.3 Move lasting rules into code, tests and policies. Delete this
+- [ ] 22.1 Drop `execution_status` and `run_id` one release after no code
+      reads them. Drop the old tables after a dry run.
+- [ ] 22.2 Move lasting rules into code, tests and policies. Delete this
       plan.

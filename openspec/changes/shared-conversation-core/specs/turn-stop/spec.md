@@ -2,13 +2,13 @@
 
 ## ADDED Requirements
 
-### Requirement: Stop Is Saved And Keyed By Turn
+### Requirement: A Stop Saves A Stop Time
 
-A stop SHALL be saved on the open turn record, keyed by its turn id. It
-SHALL reach a running, paused or restarted turn on any worker. An old stop
-SHALL NOT stop a new turn. The turn SHALL end `stopped` with no more
-assistant responses. Only person input waiting at stop time SHALL be
-removed.
+A stop SHALL save a stop time on the conversation and notify a worker. It
+SHALL NOT write a turn row or a request record (Proposed, needs sign-off:
+P34). A worker SHALL stop an open turn that started before the stop time.
+`startTurn` SHALL refuse input older than the stop time in its transaction.
+A new turn after the stop SHALL run normally.
 
 #### Scenario: Slack stop button
 
@@ -21,10 +21,22 @@ removed.
 - **WHEN** the turn waits for sign-in
 - **THEN** the stop notifies a worker and the turn ends.
 
-#### Scenario: Stop races a pause
+#### Scenario: Stop races a turn start
 
-- **WHEN** a stop arrives while the turn saves a pause
-- **THEN** the conversation stays runnable so that the stop is seen.
+- **WHEN** a stop is saved while a worker starts a turn with older input
+- **THEN** the start transaction sees the stop time and refuses that input.
+
+### Requirement: Input Older Than A Stop
+
+Person input older than the stop SHALL NOT run. It SHALL be saved to history
+as not run, so the person can see it and ask again. Event and agent input
+older than the stop SHALL be dropped. Both SHALL end through a closing turn
+(Proposed, needs sign-off: P30, P34).
+
+#### Scenario: Event before the stop
+
+- **WHEN** an event arrived before the stop
+- **THEN** it is dropped and starts no turn.
 
 ### Requirement: Stop After A Post
 
@@ -34,13 +46,14 @@ the post SHALL stay visible (Decided).
 #### Scenario: Stop lands after the post
 
 - **WHEN** a stop arrives after Slack accepted response 1
-- **THEN** response 1 stays, the turn ends `stopped`, and no more responses are sent.
+- **THEN** response 1 stays, the turn ends `stopped`, and no more responses
+  are sent.
 
 ### Requirement: A Stop Command Never Enters The Inbox
 
-A `stop` or `!stop` message to Junior SHALL stop the turn and post an ack.
-It SHALL NOT start a turn. Input older than the stop SHALL be dropped,
-including events. A thread opt-out SHALL also stop following the thread.
+A `stop` or `!stop` message to Junior SHALL call `stop()` and post an ack. It
+SHALL NOT start a turn. A thread opt-out SHALL also stop following the
+thread.
 
 #### Scenario: Stop for someone else
 
@@ -55,24 +68,43 @@ including events. A thread opt-out SHALL also stop following the thread.
 ### Requirement: Top-Level Stop Stops The Tree
 
 Every stop of a top-level agent SHALL stop every conversation below it:
-Slack stop, dashboard stop, ACP stop and thread opt-out (Decided). Every open
-request record in the tree SHALL become `stopped`.
+Slack stop, dashboard stop, ACP stop and thread opt-out (Decided). Each
+conversation's `finishTurn` and closing turns SHALL mark its records
+`stopped`.
 
 #### Scenario: Late child result
 
 - **WHEN** a child result arrives after a tree stop
-- **THEN** it is dropped and starts no top-level turn.
+- **THEN** it is recorded on its request record and starts no parent turn
+  (Proposed, needs sign-off: P35).
 
 ### Requirement: Stopping A Child
 
-A child stopped by `stopAgent` SHALL send no result. A child stopped any
-other way SHALL send its parent a `stopped` result (Decided). Stopping a
+A child stopped by `stopAgent` SHALL send no result (Decided). A child
+stopped any other way SHALL send its parent a `stopped` result (Decided),
+unless the parent is stopped too (Proposed, needs sign-off: P35). Stopping a
 child SHALL stop its own children and cancel its Watches.
 
 #### Scenario: stopAgent
 
 - **WHEN** the parent stops a child with `stopAgent`
 - **THEN** the parent gets no result.
+
+#### Scenario: Dashboard stop of a child
+
+- **WHEN** an admin stops a child from the dashboard and the parent still
+  runs
+- **THEN** the parent gets a `stopped` result.
+
+### Requirement: No New Work Under A Stop
+
+`askChild` and `startTurn` SHALL check the stop time under the parent's SQL
+lock and in the start transaction.
+
+#### Scenario: Stopped turn spawns late
+
+- **WHEN** a stopped turn calls `spawnAgent` before it sees the stop
+- **THEN** the spawn is refused and nothing starts.
 
 ### Requirement: Resumed Plugin-Started Agents Honor Stop
 

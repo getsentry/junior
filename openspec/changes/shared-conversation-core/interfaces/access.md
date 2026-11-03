@@ -2,25 +2,42 @@
 
 Sketches for review, not final code. Labels follow `../design.md`.
 
-## Credentials For A Turn
+## Delegated Access
 
 ```ts
-/**
- * Delegated access, signed by the runtime (HMAC over kind, scope and user).
- * A plugin never supplies the binding. Used only with a system actor.
- */
-type SignedCredentialSubject = {
+/** What a plugin may pass. It has no binding and no signature. */
+type UnboundCredentialSubject = {
   kind: "automation_creator" | "timer_creator";
   userId: string;
-  /** What it is bound to: Automation id, or conversation + Watch id. */
+};
+
+/**
+ * Bound and signed by core (P17). Used only with a system actor. The HMAC
+ * covers kind, scope, userId, teamId, dmChannelId and requestId.
+ */
+type SignedCredentialSubject = UnboundCredentialSubject & {
   scope:
     | { automationId: string }
     | { conversationId: ConversationId; watchId: string };
+  teamId: string;
   /** DM-bound subjects work only in this DM. */
   dmChannelId?: string;
+  /** The run this subject was bound for. Another run cannot reuse it. */
+  requestId: RequestId;
   signature: string;
 };
 
+/** Core only. Throws if the plugin passed a binding (as on main). */
+function bindSubject(
+  subject: UnboundCredentialSubject,
+  scope: SignedCredentialSubject["scope"],
+  run: { requestId: RequestId; teamId: string; dmChannelId?: string },
+): SignedCredentialSubject;
+```
+
+## Credentials For A Turn
+
+```ts
 /**
  * What a turn may use. Built once per attempt. Tools, MCP, the sandbox pass
  * and the credential proxy read only this. Real tokens stay on the host.
@@ -35,9 +52,9 @@ type TurnCredentials = {
 
 /**
  * The only credential builder (rule 8). Reads the turn's own actor and
- * subject, never newer input. Checks the subject signature and binding at
- * every turn start and resume (P17). Throws when a person actor carries a
- * delegated subject, or when the binding no longer holds.
+ * subject, never newer input. At every turn start and resume, checks the
+ * signature, the run id and that the binding still holds (P17). Throws when
+ * a person actor carries a subject.
  */
 function credentialsForTurn(
   turn: TurnRecord,
@@ -45,79 +62,86 @@ function credentialsForTurn(
 ): Promise<TurnCredentials>;
 ```
 
-Today 6 turn paths, the CLI, title lookups and snapshot builds each build
-credentials. After step 9 in `tasks.md`, only `credentialsForTurn` builds
-them for a turn. Snapshot builds keep their own system-only path (no user
-credentials, credential route removed before the setup script runs).
+Title lookups do not use this. They keep today's system actor with no user
+credentials (P25 retired).
 
 ## Sandbox And Sandbox Pass
+
+The pass is in the sandbox network policy, so it applies to every process
+in the VM (P36).
 
 ```ts
 /** SQL, on the conversation. One sandbox per conversation (Decided). */
 type SandboxRef = {
   conversationId: ConversationId;
   vmId: string;
-  snapshotId?: string;
+  /** Actor and exact subject of the turn that last held a pass. */
+  lastPassFor?: { actor: Actor; subject?: SignedCredentialSubject };
 };
 
-/**
- * Lets the conversation's sandbox use one turn's access through the
- * credential proxy. Signed. Ends with its turn (Decided).
- */
 type SandboxPass = {
   passId: string;
   turnId: TurnId;
   vmId: string;
-  /** The worker lock version that issued it (P5). */
-  lockVersion: number;
   expiresAtMs: number;
 };
 
 /**
- * Issue a pass at the first sandbox use in an attempt. Saves sandboxPassId
- * on the turn (fenced) before the sandbox sees the pass. A new attempt after
- * a lost worker revokes the old pass first.
+ * At an attempt's first sandbox use. If the turn has no pass, mint one and
+ * save sandboxPassId on the turn (fenced) first. If lastPassFor differs from
+ * this turn's actor or subject, kill user processes. Then apply the policy
+ * with the pass, expiry capped near the attempt limit. Later attempts of
+ * the same turn renew the same pass.
  */
-function issueSandboxPass(
+function applySandboxPass(
   lock: WorkerLock,
   turn: TurnRecord,
   sandbox: SandboxRef,
 ): Promise<SandboxPass>;
 
-/** Mark the pass revoked in Redis. finishTurn calls it. Idempotent. */
-function revokeSandboxPass(passId: string): Promise<void>;
+/**
+ * finishTurn and the sign_in, post_retry and error_retry pauses call this.
+ * The VM keeps its files. Requests to declared domains get no credentials.
+ */
+function applyNoCredentialsPolicy(sandbox: SandboxRef): Promise<void>;
 
 /**
- * The credential proxy runs this before it adds credentials: VM token
- * matches pass.vmId, signature is good, pass not expired or revoked, and a
- * plugin declares the host. Undeclared hosts pass through with no
- * credentials (Decided).
+ * The credential proxy, before it adds credentials: the VM token matches
+ * pass.vmId; the signature and expiry are good; the pass id equals the
+ * sandboxPassId of the conversation's open turn in SQL, and that turn is
+ * running; a plugin declares the host. Anything else fails closed.
+ * Undeclared hosts pass with no credentials (Decided).
  */
 function checkProxyRequest(
   request: ProxyRequest,
   pass: SandboxPass,
-): ProxyDecision;
+): Promise<ProxyDecision>;
 
 type ProxyDecision =
   | { allow: true; credentials: "none" | { provider: string } }
   | {
       allow: false;
       status: 403;
-      reason: "vm_mismatch" | "revoked" | "expired" | "bad_signature";
+      reason:
+        | "vm_mismatch"
+        | "not_current_pass"
+        | "turn_not_running"
+        | "expired"
+        | "bad_signature";
     };
 ```
 
-A "sign-in needed" or "permission denied" signal from the proxy is saved
-under `pass.turnId`, not under the VM. Only that turn sees it.
+A sign-in-needed or permission-denied signal from the proxy is saved under
+`pass.turnId`. Only that turn sees it.
 
-## Sign-In Pause
+## Sign-In
 
 ```ts
 /**
- * Pause the turn for sign-in at a safe point. Needs policy.canAskUser.
- * Sends the private link (10 minutes, one use, bound to actor and turnId)
- * and the short thread notice. Sets wakeAtMs to the link expiry.
- * Without canAskUser the turn ends blocked instead.
+ * Pause for sign-in at a safe point. Needs policy.canAskUser and a person
+ * actor (P13); otherwise the turn ends blocked. Sends the private link (10
+ * minutes, one use, bound to actor and turnId) and the short thread notice.
+ * Applies the no-credentials policy. Sets wakeAtMs to the link expiry.
  */
 function pauseForSignIn(
   lock: WorkerLock,
@@ -138,30 +162,30 @@ function recordSignIn(
 
 Inside `work()`, for an open turn paused for sign-in:
 
-| Found                                  | Action                                                                  |
-| -------------------------------------- | ----------------------------------------------------------------------- |
-| `turn_authorized` for this turn        | resume the turn                                                         |
-| new input from the turn's own person   | `finishTurn(stopped: superseded)`, then a turn for that input (Decided) |
-| input from another person, or an event | wait (Decided)                                                          |
-| `nowMs >= linkExpiresAtMs`             | `finishTurn(stopped: sign_in_expired)` (Decided)                        |
-| stop request                           | `finishTurn(stopped: person)`                                           |
+| Found                                          | Action                                                               |
+| ---------------------------------------------- | -------------------------------------------------------------------- |
+| a stop time after the turn started             | `finishTurn(stopped: person)`                                        |
+| `turn_authorized` for this turn                | resume the turn                                                      |
+| new input whose actor is the same person (P13) | `finishTurn(stopped: superseded)`, then a turn for it next (Decided) |
+| input from another person, or any system actor | wait (Decided)                                                       |
+| `nowMs >= linkExpiresAtMs`                     | `finishTurn(stopped: sign_in_expired)` (Decided)                     |
 
 ## Examples
 
 ### E1. Same person supersedes a sign-in pause
 
-Before: T1 for A, paused `sign_in` (GitHub), link expires 12:10. Inbox
-`[b1 (B, 12:03)]`.
+Before: T1 for A (person), paused `sign_in` (GitHub), link expires 12:10.
+Inbox `[b1 (B, 12:03)]`.
 
 1. 12:05: A posts `a2`. `send(a2)` notifies a worker.
-2. `work()` finds T1 paused and `a2` from A. It calls `finishTurn(T1,
-stopped: superseded)`. The thread gets "Stopped waiting for GitHub
-   sign-in." The pass is revoked. The link no longer resumes anything.
-3. T2 starts with `[a2]` (P24: the superseding message goes next).
+2. `work()` finds T1 paused and `a2` from A, a person actor equal to T1's.
+   It calls `finishTurn(T1, stopped: superseded)`. The thread gets "Stopped
+   waiting for GitHub sign-in."
+3. T2 starts with `[a2]`, ahead of `b1` (Decided).
 4. After T2: T3 for B with `[b1]`.
 
-If A signs in after step 2: `recordSignIn` saves the grant for T1, and
-`work()` ignores it because T1 is finished. A's account stays connected.
+If A signs in after step 2, `work()` ignores the grant for T1, which is
+finished. A's account stays connected.
 
 ### E2. Another person waits until the link expires
 
@@ -169,26 +193,41 @@ Before: T1 for A, paused `sign_in`, link expires 12:10. B posts `b1` at
 12:03.
 
 1. `work()` at 12:03: input from B, so it waits. `wakeAtMs` stays 12:10.
-2. 12:10: the timer job notifies a worker. `work()` calls `finishTurn(T1,
-stopped: sign_in_expired)`. The thread gets the short ending note.
+2. 12:10: a worker runs. `finishTurn(T1, stopped: sign_in_expired)`. The
+   thread gets the short ending note.
 3. T2 starts for B with `[b1]`.
 
-### E3. Lost worker and the sandbox pass
+### E3. A timer turn needs sign-in
 
-Before: T1 for A, attempt 1 on W1 (v7), pass `p1` (v7) in use.
+Before: T1 runs for the system actor with A's timer subject. A tool needs
+A's Linear account.
 
-1. W1 is lost. W2 takes the lock (v8) and restarts T1 (`restarts: 1`).
-2. W2 calls `revokeSandboxPass(p1)` before the agent loop starts.
-3. A process from attempt 1 still calls GitHub. The proxy finds `p1`
-   revoked: 403. No credentials are added.
-4. W2's first sandbox call issues `p2` (v8).
+1. `pauseForSignIn` sees a system actor. No link is sent.
+2. `finishTurn(T1, blocked: "needs a connected Linear account")`. The
+   thread gets that reason.
 
-### E4. Background process after the turn ends
+### E4. Lost worker keeps the pass
 
-Before: T1 for A left `npm run watch` running in the sandbox. T1 ends.
-`finishTurn` revokes `p1`. T2 for B starts and does not use the sandbox.
+Before: T1 for A, attempt 1 on W1 (v7), pass `p1` applied.
 
-1. The old process calls a declared domain with `p1`. 403 `revoked`.
-2. It calls an undeclared domain. It goes through with no credentials.
-3. B's files and A's files share the sandbox (Decided: one sandbox per
-   conversation). The user docs must say so.
+1. W1 is lost. W2 takes the lock (v8) and restarts T1.
+2. `applySandboxPass` finds `sandboxPassId: p1` on T1 and the same actor.
+   It renews `p1`'s expiry. No processes are killed.
+3. Between W1's loss and W2's restart, T1 stayed `running`, so the proxy
+   still allowed `p1`. Inference: W1's processes kept A's access for up to
+   the lock expiry. That is the same turn and the same person.
+
+### E5. Background process after the turn ends
+
+Before: T1 for A left `npm run watch` running. T1 ends; `finishTurn`
+applies the no-credentials policy. Later T2 for B starts.
+
+1. Before T2: the old process calls a declared domain. The policy has no
+   pass, so no credentials are added.
+2. T2's first sandbox use: `lastPassFor` is A, T2 is B. The worker kills
+   user processes, then applies B's pass `p2`.
+3. The process is gone, so it can never send with B's pass. A's files
+   stay (Decided: one sandbox per conversation). The user docs say so.
+
+If T2 were also A's, step 2 would not kill the process. It would then run
+with A's access during T2 (P36, limit).

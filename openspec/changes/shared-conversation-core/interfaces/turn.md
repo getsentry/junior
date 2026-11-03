@@ -5,35 +5,37 @@ Sketches for review, not final code. Labels follow `../design.md`.
 ## Worker Lock
 
 ```ts
-/** Redis token plus the SQL lock version it raised (P5). */
+/** What a worker holds. The SQL conversation row is the source (P5). */
 type WorkerLock = {
   conversationId: ConversationId;
   token: string;
   lockVersion: number;
-  lastCheckInAtMs: number;
-  /** lastCheckInAtMs + 90 s. */
   expiresAtMs: number;
 };
 
 /**
- * Take the Redis lock, then raise the SQL lock version and keep the new
- * value. Undefined when another worker holds a live lock.
+ * One compare-and-set on the conversation row: take the lock when it is
+ * free or expired, and raise lockVersion. Undefined when a live lock is
+ * held. The version never goes down.
  */
 function acquireWorkerLock(
   conversationId: ConversationId,
 ): Promise<WorkerLock | undefined>;
 
-/** Every 15 s. False: the lock is lost. The worker stops at once. */
+/** Every 15 s. Matches token, version and a live expiry. False: lost. */
 function checkIn(lock: WorkerLock): Promise<boolean>;
 
-/** Thrown by any save or post that carries an old lock version. */
+/**
+ * Clear the token (same match as checkIn), then read the Redis record. If
+ * the inbox has work or wakeAtMs <= now, notify a worker (P32).
+ */
+function releaseWorkerLock(lock: WorkerLock): Promise<void>;
+
+/** Thrown by any save that does not match the held token and version. */
 type LockLostError = Error & {
   code: "lock_lost";
   conversationId: ConversationId;
-  /** The version the worker held. */
   held: number;
-  /** The version in SQL. */
-  current: number;
 };
 
 /** True for a LockLostError. The worker stops and does not retry. */
@@ -55,30 +57,24 @@ type TurnRecord = {
   source: InboundMessage["source"];
   /** Model profile and reasoning, chosen at start, kept on resume. */
   route: TurnRoute;
-  status:
-    | "running"
-    | "paused"
-    | "finishing"
-    | "completed"
-    | "failed"
-    | "blocked"
-    | "stopped";
+  startedAtMs: number;
+  status: "running" | "paused" | "finishing" | Outcome;
   pause?: TurnPause;
-  /** Set when status becomes "finishing". finishTurn reads it on resume. */
+  /** Set with "finishing". finishTurn reads it when it runs again. */
   outcome?: TurnOutcome;
-  stopRequestedAtMs?: number;
-  /** Turn errors after its input was taken in. Limit 5 (Decided). */
+  /** Turn errors after take-in. Limit 5 (Proposed, P4). */
   errors: number;
-  /** Restarts after a lost worker. Limit 1 (Decided; P4). */
+  /** Restarts after a lost worker. Limit 1 (Decided). */
   restarts: number;
   totals: {
-    slices: number;
+    attempts: number;
     toolCalls: number;
     costUsd: number;
     durationMs: number;
   };
   checkpoint: { historySeq: number; boundaryKey: string };
   deliveries: Delivery[];
+  /** The one pass for this turn (P36). The proxy compares against it. */
   sandboxPassId?: string;
   /** Lock version of the last save. */
   lockVersion: number;
@@ -86,9 +82,10 @@ type TurnRecord = {
 
 type TurnPause =
   | {
-      reason: "soft_time_limit" | "hard_time_limit" | "post_retry";
+      reason: "soft_time_limit" | "hard_time_limit" | "error_retry";
       resumedFrom: string;
     }
+  | { reason: "post_retry"; deliveryId: string }
   | { reason: "sign_in"; provider: string; linkExpiresAtMs: number };
 
 type TurnOutcome =
@@ -102,55 +99,53 @@ type TurnOutcome =
     };
 
 type FailReason =
-  | "error" // last of 5 turn errors
+  | "error" // the last of 5 turn errors
   | "lost_worker" // lost again after its one restart
   | "no_progress"
-  | "limit" // slices, tool calls or cost; first try
-  | "input_dropped"; // its input hit 5 delivery attempts
+  | "limit" // attempts, tool calls or cost; first try
+  | "post_failed" // a post_retry delivery hit its own limit
+  | "input_dropped"; // its input hit 5 delivery attempts (closing turn)
 
-/** One response to one reply target. The id goes with the post (P5). */
+/** One response to one reply target. */
 type Delivery = {
   deliveryId: string; // turnId + response index + target
   target: ReplyTarget;
-  state: "intended" | "sent";
+  /** Saved with the intent. A restart sends this text again (P5). */
+  body: ResponseBody;
+  state: "intended" | "sent" | "failed";
+  attempts: number;
+  nextAttemptAtMs?: number;
   providerMessageId?: string;
 };
 ```
 
-## Current Turn
+## Current Turn And Saves
 
 ```ts
 /**
  * The conversation's open turn, if any. This is #2567's currentTurnId: the
- * one row with an open status, enforced by a partial unique index (P2).
- * Stop, sign-in and the dashboard key by its turnId, not by an attempt id.
+ * one open row, enforced by a partial unique index (P2).
  */
 function currentTurn(
   conversationId: ConversationId,
 ): Promise<TurnRecord | undefined>;
 
 /**
- * Create the turn row for the first selected message, under the lock. Fails
- * when an open row exists (the index refuses it). Reads actor, access,
- * source and route from the starting request record, never from text.
+ * One transaction: check the lock, check the stop time, create the turn row
+ * with its requestIds, and commit the prompt to history. Refuses input
+ * older than the stop time. Reads actor, access, source and route from the
+ * starting record, never from text. Inbox removal comes after the commit.
  */
 function startTurn(
   lock: WorkerLock,
-  first: InboundMessage,
-  request: RequestView,
+  batch: InboundMessage[],
+  first: RequestRecord,
 ): Promise<TurnRecord>;
-```
 
-## Saves
-
-A checkpoint save and a history commit are the same write. There is no
-history write outside `saveCheckpoint`.
-
-```ts
 /**
- * One SQL transaction: check the lock version, append history, update the
- * turn row. Then remove taken-in messages from the inbox (Redis, token
- * check). Throws LockLostError on an old version.
+ * One transaction: check the lock, append history, update the turn row,
+ * add takeIn request ids. Then remove taken-in messages from the inbox.
+ * The only history write. Throws LockLostError.
  */
 function saveCheckpoint(
   lock: WorkerLock,
@@ -163,55 +158,68 @@ function saveCheckpoint(
 ): Promise<TurnRecord>;
 ```
 
-`takeIn` adds request ids to `turn.requestIds` in the same transaction. Inbox
-removal comes after the commit (rule 6). A crash between them leaves the
-message in the inbox. The next worker sees its request id in the open turn
-and removes it without adding it again (E1).
+A crash after the commit and before inbox removal leaves the message in the
+inbox. The next worker sees its request id in the open turn and removes it
+without adding it again (E1).
 
 ## Worker
 
 ```ts
 /**
- * The only worker. Every kind of conversation uses it. Takes the lock, then
- * does the first that applies:
+ * The only worker. Every kind uses it. Takes the lock, then does the first
+ * that applies:
  * 1. open turn "finishing": run finishTurn again with the saved outcome;
- * 2. open turn "running" (no live worker): restart once, or fail (P8);
- * 3. open turn "paused": resume it; new input from the turn's own person
- *    supersedes a sign-in wait (access.md);
- * 4. no open turn: start one from selectTurnInput.
- * Then notify a worker again if work is left.
+ * 2. stopAtMs is after the open turn's startedAtMs: finishTurn(stopped);
+ * 3. open turn "running": the last worker was lost (P8). Restart once, or
+ *    finishTurn(failed: lost_worker);
+ * 4. open turn "paused": resume it, or handle sign-in (access.md);
+ * 5. no open turn: run selectTurnInput. Close dropped or stop-cut input
+ *    with closeInput, and records the repair job flagged. Then startTurn.
+ * Then releaseWorkerLock, which re-checks for work.
  */
 function work(conversationId: ConversationId): Promise<void>;
 ```
 
-## Delivery And Finishing
+## Delivery, Finishing And Closing
 
 ```ts
 /**
- * Send one assistant response to each distinct reply target of the turn's
- * requests, once. Saves the intent (fenced), posts with the delivery id,
- * saves the provider message id. Parent targets get only the turn's result
- * at finishTurn.
+ * Send one response to each distinct reply target of the turn's records,
+ * as replyTo.responses allows (P18). Checks in, saves the intent with the
+ * text (fenced), posts, saves the provider message id. Uses
+ * replyTargets[target.kind] (edges.md); no branch on kind here.
  */
 function deliver(
   lock: WorkerLock,
   turn: TurnRecord,
-  response: Response,
+  body: ResponseBody,
 ): Promise<void>;
 
 /**
- * The only way a turn ends. Resumable: a worker that finds the turn
- * "finishing" calls it again with the saved outcome. Steps:
- * 1. save status "finishing" and the outcome (fenced);
- * 2. send the error message, ending note, child result or Automation
- *    outcome to each reply target, with fixed delivery ids;
- * 3. mark each request record "answered" with its outcome, or "stopped";
- * 4. revoke the sandbox pass;
- * 5. save the finished status and write one `turn.terminal` event.
+ * The only way a turn ends, and the only writer of request status.
+ * Resumable through "finishing":
+ * 1. save "finishing" and the outcome (fenced);
+ * 2. send the error message, ending note, child result or declared
+ *    outcome, with fixed delivery ids; retry with backoff up to 5 attempts,
+ *    then mark the delivery failed (P33);
+ * 3. move each taken-in record from open to answered or stopped
+ *    (WHERE status = 'open');
+ * 4. apply the no-credentials sandbox policy (P36);
+ * 5. save the finished status and write one turn.terminal event.
  */
 function finishTurn(
   lock: WorkerLock,
   turn: TurnRecord,
+  outcome: TurnOutcome,
+): Promise<void>;
+
+/**
+ * A closing turn (P30): startTurn and finishTurn in one locked step, with
+ * no agent. Records input that will not run.
+ */
+function closeInput(
+  lock: WorkerLock,
+  batch: InboundMessage[],
   outcome: TurnOutcome,
 ): Promise<void>;
 ```
@@ -220,87 +228,119 @@ function finishTurn(
 
 ```ts
 /**
- * Save a stop request on the open turn. A worker sees it at the next safe
- * point and before each post. A top-level stop also stops every
- * conversation below it (Decided). Input from a person is kept.
+ * Save stopAtMs = now and stopBy on the conversation and on every
+ * conversation below it, then notify each worker (P34). Writes no turn row
+ * and no request record (rule 7). A top-level stop is always a tree stop
+ * (Decided). Input from a person older than the stop is kept in history as
+ * "not run".
  */
 function stop(
   conversationId: ConversationId,
   by: StopBy,
-): Promise<{ stopped: boolean }>;
+): Promise<{ stopped: ConversationId[] }>;
 
 type StopBy =
   | { kind: "person"; actor: PersonActor } // Slack stop, dashboard, ACP
   | { kind: "opt_out"; actor: PersonActor } // Slack thread opt-out
-  | { kind: "parent"; parentConversationId: ConversationId } // stopAgent
-  | { kind: "tree"; rootConversationId: ConversationId };
+  | { kind: "stop_agent"; parentConversationId: ConversationId }; // no result
 ```
+
+`finishTurn` in a stopped child sends its parent a `stopped` result unless
+`stopBy` is `stop_agent`, or the parent's own stop time is after the
+record's `createdAtMs` (a tree stop, P35).
 
 ## Examples
 
 ### E1. Redelivered prompt
 
-Before: inbox `[m1 (request r1)]`. No open turn. Lock version 6.
+Before: inbox `[m1 (req_1)]`. No open turn. Lock version 6.
 
-1. W1 takes the lock (v7). `saveCheckpoint` commits the prompt and creates
-   T1 with `requestIds: [r1]`.
+1. W1 takes the lock (v7). `startTurn` creates T1 with `requestIds:
+[req_1]` and commits the prompt, in one transaction.
 2. W1 dies before it removes `m1` from the inbox.
-3. The lock expires. W2 takes it (v8).
-4. `work()` finds T1 `running` and `m1` in the inbox. `r1` is in
+3. The lock expires. The queue redelivers. W2 takes the lock (v8).
+4. `work()` finds T1 `running` (case 3) and `m1` in the inbox. `req_1` is in
    `T1.requestIds`, so W2 removes `m1` and does not add it again.
-5. T1 has `restarts: 0`, so W2 restarts it from the checkpoint and sets
-   `restarts: 1`.
+5. `restarts: 0`, so W2 restarts T1 from its checkpoint, `restarts: 1`.
 
-After: history has one copy of the prompt. The sender check does not run
+After: one copy of the prompt in history. The sender check does not run
 again on a saved message.
 
 ### E2. Dead worker
 
 Before: T1 `running`, lock v7, last checkpoint at 12:00:00.
 
-1. W1 checks in at 12:00:10, then dies at 12:00:20.
-2. At 12:01:40 (90 s after the last check-in) the lock expires. The timer
-   job clears it and notifies a worker. It does not touch T1.
-3. W2 takes the lock (v8). T1 is `running`, `restarts: 0`, slices left. W2
-   sets `restarts: 1` and continues from the 12:00:00 checkpoint.
-4. Work done between 12:00:00 and 12:00:20 runs again. A post from that time
-   has a saved intent; W2 asks the provider for its delivery id before it
-   posts again.
+1. W1 checks in at 12:00:10 and dies at 12:00:20.
+2. At 12:01:40 the lock is expired. Within 5 minutes the repair job sees an
+   open turn with no live lock and notifies a worker. It writes nothing.
+3. W2's compare-and-set takes the lock (v8). T1 is `running`: lost.
+   `restarts: 1`. W2 continues from the 12:00:00 checkpoint.
+4. A delivery saved as `intended` between 12:00:00 and 12:00:20 is sent
+   again from its saved text, after `find` shows it did not land.
 
-If W2 also dies before its first save: the next worker finds `restarts: 1`
-and calls `finishTurn` with `failed: lost_worker`.
+If W2 also dies: the next worker finds `restarts: 1` and calls
+`finishTurn(failed: lost_worker)`.
 
 ### E3. Slow worker refused by the lock version
 
-Before: W1 holds v7 and runs T1.
+Before: W1 holds token `t1`, v7, and runs T1.
 
-1. W1 stalls. It misses its check-ins for 90 s.
-2. W2 takes the lock. SQL lock version becomes 8. W2 restarts T1.
-3. W1 wakes and calls `saveCheckpoint` with v7. The transaction reads
-   version 8 and throws `LockLostError`. W1 stops. Nothing is saved.
-4. Had W1 tried to post first, the delivery intent save would fail the same
-   way, so the post never happens.
+1. W1 stalls and misses its check-ins for 90 s.
+2. W2's compare-and-set matches (expired): token `t2`, v8.
+3. W1 wakes and calls `saveCheckpoint`. The transaction's row check needs
+   `t1` and v7; the row has `t2` and v8. `LockLostError`. Nothing is saved.
+4. Had W1 tried to post, its check-in and its intent save fail the same way.
 
-### E4. Retries running out
+A Redis expiry cannot reset v8: the counter lives on the SQL row.
 
-Before: T1 for A took in `a1`. The inbox has `b1` (B) and `a2` (A, wait).
+### E4. Error retries, then retries running out
 
-1. Five attempts of T1 fail with errors after the input was taken in.
-   `errors` goes 1 to 5. Each attempt restarts from the last checkpoint.
-2. On the fifth error the worker calls `finishTurn` with
-   `failed: error` and an event id.
-3. A's Slack thread gets the error message. `r(a1)` becomes `answered` with
-   outcome `failed`. The processing reaction completes.
+Before: T1 for A took in `req_a1`. The inbox has `b1` (B) and `a2` (A,
+wait).
+
+1. Attempt 1 throws after take-in. The worker saves `paused: error_retry`,
+   `errors: 1`, and releases the lock cleanly. `work()` case 4 resumes it
+   next. Case 3 does not fire, so the restart is not used.
+2. Attempts 2–5 fail the same way. On `errors: 5` the worker calls
+   `finishTurn(failed: error)`.
+3. A's thread gets the error message. `req_a1` becomes `answered`,
+   `failed`. The processing reaction completes.
 4. The inbox still has `b1` and `a2`. T2 starts for B.
 
-Today: the conversation goes `failed`, all waiting messages are dropped, and
-T1 stays open (bugs 1 and 11).
+Today: the conversation goes `failed`, waiting messages are dropped, and T1
+stays open (bugs 1 and 11).
 
 ### E5. Stop after a post
 
-Before: T1 for A posted response 1 (delivery `sent`).
+Before: T1 for A (started 12:00) posted response 1 (`sent`).
 
-1. A clicks stop. `stop()` saves `stopRequestedAtMs` on T1.
-2. At the next safe point the worker calls `finishTurn` with
-   `stopped: person`.
-3. Response 1 stays visible. No more responses are sent (Decided).
+1. A clicks stop at 12:02. `stop()` sets `stopAtMs` on the conversation
+   and notifies a worker. It does not touch T1's row.
+2. The running worker sees the stop time at its next safe point
+   and calls `finishTurn(stopped: person)`.
+3. Response 1 stays. No more responses (Decided).
+
+### E6. A delivery that keeps failing while finishing
+
+Before: T1 `finishing` with `failed: error`. Slack returns a retryable
+error for the error message.
+
+1. Attempt 1 fails. The delivery gets `attempts: 1`,
+   `nextAttemptAtMs: +30 s`. The worker sets `wakeAtMs` and releases.
+2. Attempts 2–5 fail the same way, with longer waits.
+3. The delivery becomes `failed`. `finishTurn` goes on: `req_1` becomes
+   `answered`, T1 becomes `failed`, and `turn.terminal` has
+   `deliveryFailed: true`.
+
+T1 does not stay `finishing`, and the next turn can start.
+
+### E7. A message that arrives while the lock is held
+
+1. W1 holds the lock and is about to finish T1.
+2. B's message `b1` arrives. `send()` appends it, sets `wakeAtMs = now`,
+   and notifies. W2 fails to take the lock and exits.
+3. W1 releases the lock, then reads the Redis record. It sees `b1` and
+   notifies a worker. W3 runs T2 for B.
+
+If W1 died before step 3, the repair job sees `wakeAtMs` in the past and no
+lock, and notifies a worker.

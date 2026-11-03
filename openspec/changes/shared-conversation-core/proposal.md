@@ -40,13 +40,15 @@ requirements. `tasks.md` has the migration steps.
   refused.
 - One `finishTurn` ends every turn: done, error, stop, no progress, a limit,
   the last retry, a lost worker with no restart left, sign-in expiry or
-  supersede.
+  supersede. It is the only writer of turn and request record status.
 - A request record holds who asked, with whose access, and where results go.
-  It has no run status. `spawnAgent` and `messageAgent` save one and put one
+  Core mints one for every input. It has no run status. `spawnAgent` and `messageAgent` save one and put one
   message in the child's inbox. They never start a second runner.
 - A child's turn result goes to the parent's inbox as new input.
-- Stopping a top-level agent stops its whole tree.
-- The sandbox pass ends with its turn.
+- A stop saves a stop time on the conversation. Stopping a top-level agent
+  stops its whole tree.
+- The sandbox pass ends with its turn, and the credential proxy checks it
+  against the open turn.
 
 ## Decided And Proposed
 
@@ -55,6 +57,7 @@ requirements. `tasks.md` has the migration steps.
   **Decided**.
 - Everything marked **Proposed, needs sign-off** is a suggestion from this
   plan. It is not decided. `design.md`, Decisions Needed, lists them all.
+  `design.md`, Later, lists items this change does not need.
 - A change to a decided rule needs David's OK.
 
 ## Specs
