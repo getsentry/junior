@@ -17,6 +17,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { linkifyGitHubReferences } from "../reply-markdown.js";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
@@ -263,7 +264,7 @@ async function createGitHubIssueRequest(
     title: nonEmptyString(input.title, "title"),
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(
-        input.body ?? "",
+        linkifyGitHubReferences(input.body ?? ""),
         ctx,
         await resolveGitHubRequester(ctx),
       ),

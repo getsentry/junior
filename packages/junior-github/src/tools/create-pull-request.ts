@@ -19,6 +19,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { linkifyGitHubReferences } from "../reply-markdown.js";
 import {
   gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
@@ -284,7 +285,11 @@ function createGitHubPullRequestRequest(
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
+      appendGitHubRequesterAttribution(
+        linkifyGitHubReferences(input.body ?? ""),
+        ctx,
+        requester,
+      ),
       conversationId,
       dashboardUrl,
     ),
