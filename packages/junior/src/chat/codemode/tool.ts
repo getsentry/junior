@@ -165,11 +165,12 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
 
 function renderDescription(tools: Record<string, AnyToolDefinition>): string {
   return [
-    "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. Use it to fan out independent tool calls (`Promise.all`), or to chain calls where one result selects the next call. For one call, or calls that you must read before you decide, call the tools directly.",
+    "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. When a task needs several tool calls, such as the same lookup for many items or a search and then a read of each result, use one script instead of separate calls. For one call, or when you must read a result before you decide the next step, call the tools directly.",
     "",
     "The code is the body of an async function: top-level `await` and `return` work. It runs in a QuickJS VM with no Node, file system, network, or timers.",
     "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
     "- Arguments and results must be JSON-serializable.",
+    "- Run calls at the same time (`Promise.all`) only when they do not depend on each other. Await a call before a call that needs its result. Run calls that change the same thing one after another.",
     "- Only the return value and the output of `text(value)` and `console.log(...)` come back to you. Return or print what you need.",
     `- The script has ${CODE_MODE_SCRIPT_TIMEOUT_MS / 1000} seconds, including its tool calls.`,
     `- Start at most ${MAX_TOOL_ACTION_BATCH} calls before the script awaits. A larger batch fails, and none of its calls run.`,
