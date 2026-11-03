@@ -192,8 +192,8 @@ export async function runHeartbeat(args: {
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   await recoverConversationWork({
+    beforeWorkStops: endAgentInvocationsOfStoppedWork,
     nowMs: args.nowMs,
-    onWorkStopped: endAgentInvocationsOfStoppedWork,
     queue,
   });
   await recoverPendingDispatchMailboxAppends({

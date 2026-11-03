@@ -4,6 +4,7 @@ import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
   clearExpiredConversationLease,
+  CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   ensureConversationWake,
   getConversationWorkState,
@@ -31,10 +32,10 @@ function heartbeatIdempotencyKey(
 
 /** Requeue expired leases and stranded mailbox work without running the agent. */
 export async function recoverConversationWork(args: {
+  /** Ends what a conversation owns when its last attempt loses its worker. */
+  beforeWorkStops?: (conversationId: string) => Promise<void>;
   limit?: number;
   nowMs: number;
-  /** Ends what the stopped work owned, such as an agent invocation. */
-  onWorkStopped?: (conversationId: string) => Promise<void>;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<ConversationWorkRecoveryResult> {
@@ -52,11 +53,6 @@ export async function recoverConversationWork(args: {
     staleBeforeMs,
     state: args.state,
   });
-
-  const endStoppedWork = async (conversationId: string): Promise<void> => {
-    await args.onWorkStopped?.(conversationId);
-    await removeActiveConversation({ conversationId, state: args.state });
-  };
 
   for (const conversationId of ids) {
     await withLogContext({ conversationId }, async () => {
@@ -96,21 +92,19 @@ export async function recoverConversationWork(args: {
           return;
         }
 
-        // Stopped work keeps its place in the scan until `onWorkStopped`
-        // succeeds, so a failed callback runs again on the next heartbeat.
-        if (
-          work.execution.status === "failed" &&
-          !work.execution.lease &&
-          !hasRunnableConversationWork(work)
-        ) {
-          await endStoppedWork(conversationId);
-          return;
-        }
-
         if (
           work.execution.lease &&
           work.execution.lease.expiresAtMs <= args.nowMs
         ) {
+          // A lost worker runs no failure path. This runs before the stop, so
+          // when it throws, the lease stays expired and the next heartbeat
+          // runs it again.
+          if (
+            (work.execution.retryCount ?? 0) + 1 >=
+            CONVERSATION_WORK_MAX_RETRIES
+          ) {
+            await args.beforeWorkStops?.(conversationId);
+          }
           const recovery = await clearExpiredConversationLease({
             conversationId,
             nowMs: args.nowMs,
@@ -132,7 +126,6 @@ export async function recoverConversationWork(args: {
                 "app.worker.retry_count": (work.execution.retryCount ?? 0) + 1,
               },
             );
-            await endStoppedWork(conversationId);
             return;
           }
           const wake = await ensureConversationWake({

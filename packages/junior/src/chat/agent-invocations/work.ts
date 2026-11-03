@@ -76,8 +76,9 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
-  listActiveAgentInvocationsForConversation,
-  listNonTerminalAgentInvocationsForConversation,
+  ACTIVE_AGENT_INVOCATION_STATUSES,
+  listAgentInvocationsForConversation,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -499,35 +500,22 @@ async function endOtherActiveAgentInvocation(
 }
 
 /**
- * End the agent invocations of a child whose work stopped after its tries ran
- * out. A killed worker never runs its own failure path, so this is the only
- * place they end. Stopped work drops its mailbox, so a pending invocation whose
- * input was appended never runs either. The heartbeat sends each result.
+ * End every unfinished agent invocation of a child whose last attempt lost its
+ * worker. The worker ran no failure path, and the stop drops the child's
+ * mailbox, so none of them can run. The heartbeat sends each result.
  */
 export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
 ): Promise<void> {
-  for (const invocation of await listNonTerminalAgentInvocationsForConversation(
+  for (const invocation of await listAgentInvocationsForConversation(
     conversationId,
+    NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   )) {
-    if (invocation.status === "pending") {
-      // Its mailbox append has not run yet. That append starts the work again.
-      if (invocation.mailboxStatus !== "appended") continue;
-      await completeAgentInvocation({
-        invocationId: invocation.invocationId,
-        errorMessage:
-          "This task did not start. Its child agent stopped after its worker failed repeatedly.",
-        reportNow: true,
-        status: "failed",
-      });
-      continue;
-    }
     const terminal =
       (await projectTerminalTurn(invocation, { reportNow: true })) ??
       (await completeAgentInvocation({
         invocationId: invocation.invocationId,
-        errorMessage:
-          "This task stopped. Its worker failed repeatedly before it could finish.",
+        errorMessage: "This task stopped because its worker failed repeatedly.",
         reportNow: true,
         status: "failed",
       }));
@@ -756,8 +744,9 @@ export function createAgentInvocationWorker(
       }
       // A child has at most one running or paused agent invocation. End any
       // other active one first. Each one reports its own result.
-      for (const active of await listActiveAgentInvocationsForConversation(
+      for (const active of await listAgentInvocationsForConversation(
         invocation.childConversationId,
+        ACTIVE_AGENT_INVOCATION_STATUSES,
       )) {
         if (active.invocationId !== invocation.invocationId) {
           await finish(await endOtherActiveAgentInvocation(active));

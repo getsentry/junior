@@ -86,21 +86,13 @@ describe("agent invocation worker crash", () => {
       const parent = await getConversationWorkState({
         conversationId: parentConversationId,
       });
-      expect(parent?.messages).toHaveLength(2);
-      expect(parent?.messages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            input: expect.objectContaining({
-              text: expect.stringMatching(/This task stopped/),
-            }),
-          }),
-          expect.objectContaining({
-            input: expect.objectContaining({
-              text: expect.stringMatching(/This task did not start/),
-            }),
-          }),
-        ]),
+      const stopped = expect.stringMatching(
+        /stopped because its worker failed repeatedly/,
       );
+      expect(parent?.messages.map((message) => message.input.text)).toEqual([
+        stopped,
+        stopped,
+      ]);
       // Nothing may resume the dead Turn.
       await expect(
         getTurnRecord(
