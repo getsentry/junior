@@ -53,6 +53,7 @@ import {
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
 import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
@@ -570,7 +571,17 @@ async function maybeCompactWithDeps(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
+  return await withCompactionSpan("blocking", () =>
+    compactAboveThreshold(args, deps, source, triggerTokens),
+  );
+}
 
+async function compactAboveThreshold(
+  args: CompactContextArgs,
+  deps: ContextCompactorDeps,
+  source: { estimatedTokens: number; messages: PiMessage[] },
+  triggerTokens: number,
+): Promise<CompactContextResult> {
   await args.onCompactionStart?.();
 
   let summary: string;
@@ -588,6 +599,7 @@ async function maybeCompactWithDeps(
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
+    setSpanAttributes({ "app.compaction.outcome": "summary_failed" });
     return { compacted: false, reason: "summary_failed" };
   }
 
@@ -674,13 +686,16 @@ async function writeCompactedThreadContext(
   });
 
   setSpanAttributes({
+    "app.compaction.outcome": "compacted",
     "app.compaction.input_messages": sourceMessages.length,
     "app.compaction.retained_messages": replacement.length - 1,
     "app.compaction.summary_chars": summary.length,
+    "app.compaction.input.estimate": context.estimatedTokens,
+    "app.compaction.replacement.estimate": replacementInputTokens,
+    "app.compaction.input_limit": context.inputLimitTokens,
     ...(context.triggerTokens !== undefined
-      ? { "app.compaction.trigger_tokens": context.triggerTokens }
+      ? { "app.compaction.threshold": context.triggerTokens }
       : undefined),
-    "app.context_tokens_estimated": context.estimatedTokens,
   });
 
   return {
@@ -700,6 +715,15 @@ export function createContextCompactor(
 
 /** Compact the active conversation and durably bind its selected handoff profile. */
 export async function compactContextForHandoff(
+  args: HandoffContextArgs,
+  deps: Pick<ContextCompactorDeps, "completeText">,
+): Promise<PiMessage[]> {
+  return await withCompactionSpan("handoff", () =>
+    compactForHandoff(args, deps),
+  );
+}
+
+async function compactForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
@@ -775,7 +799,18 @@ export async function compactActiveContextIfNeeded(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
+  return await withCompactionSpan("active", () =>
+    compactActiveAboveThreshold(args, deps, source, triggerTokens),
+  );
+}
 
+async function compactActiveAboveThreshold(
+  args: ActiveContextCompactionArgs,
+  deps: Pick<ContextCompactorDeps, "completeText">,
+  source: { estimatedTokens: number; messages: PiMessage[] },
+  triggerTokens: number,
+): Promise<CompactContextResult> {
+  const pendingMessages = args.pendingMessages ?? [];
   await args.onCompactionStart?.();
 
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
@@ -801,6 +836,7 @@ export async function compactActiveContextIfNeeded(
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
+    setSpanAttributes({ "app.compaction.outcome": "summary_failed" });
     return { compacted: false, reason: "summary_failed" };
   }
 
@@ -875,13 +911,14 @@ export async function compactActiveContextIfNeeded(
     },
   });
   setSpanAttributes({
+    "app.compaction.outcome": "compacted",
     "app.compaction.input_messages": source.messages.length,
-    "app.compaction.replacement_tokens": replacementInputTokens,
     "app.compaction.retained_messages": instructionMessages.length,
     "app.compaction.summary_chars": summary.length,
-    "app.compaction.trigger_tokens": triggerTokens,
-    "app.context_input_limit_tokens": inputLimitTokens,
-    "app.context_tokens_estimated": source.estimatedTokens,
+    "app.compaction.input.estimate": source.estimatedTokens,
+    "app.compaction.replacement.estimate": replacementInputTokens,
+    "app.compaction.input_limit": inputLimitTokens,
+    "app.compaction.threshold": triggerTokens,
   });
   return { compacted: true, piMessages: messages };
 }
