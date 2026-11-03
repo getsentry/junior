@@ -9,7 +9,7 @@ in stored data: where input comes from, who the turn acts for, and where
 results go.
 
 This plan is the end state for #2567. It supersedes #883. `design.md` has the
-model, the words and the proposed answers. `interfaces/` has the type and
+model, the words and the answers. `interfaces/` has the type and
 function sketches with worked examples for review. `specs/` has the
 requirements. `tasks.md` has the migration steps.
 
@@ -42,8 +42,9 @@ requirements. `tasks.md` has the migration steps.
   the last retry, a lost worker with no restart left, sign-in expiry or
   supersede. It is the only writer of turn and request record status.
 - A request record holds who asked, with whose access, and where results go.
-  Core mints one for every input. It has no run status. `spawnAgent` and `messageAgent` save one and put one
-  message in the child's inbox. They never start a second runner.
+  Core mints one for every input. It has no run status. `spawnAgent` and
+  `messageAgent` save one and put one message in the child's inbox. They never
+  start a second runner.
 - A child's turn result goes to the parent's inbox as new input, with its
   own record in the parent. The parent checks the sender from the child's
   turn row.
@@ -51,9 +52,10 @@ requirements. `tasks.md` has the migration steps.
   stops its whole tree.
 - The sandbox pass ends with its turn, and the credential proxy checks it
   against the open turn.
-- A machine-checked model, conformance tests, structural rules and a trace
-  check gate the new core, and are green before the cutover release. They live in `verification/` at the
-  repo root, not in this plan (`design.md`, Verification).
+- A TLA+ model checked by TLC, conformance tests, structural rules and a
+  trace check gate the new core. The gate ships first and is green before
+  the cutover release. It lives in `packages/junior/verification/`, not in
+  this plan (`design.md`, Verification).
 
 ## Decided And Proposed
 
@@ -93,5 +95,6 @@ Also out of scope:
 
 - #2567 (target design, audit, behavior stories, decisions)
 - #883 (superseded)
-- #2556 (retried prompt save; still open; step 1)
+- #2556 (retried prompt save; lands on its own, outside this plan and the
+  gate)
 - `openspec/changes/actor-identity-end-state` (Owner and event authors)

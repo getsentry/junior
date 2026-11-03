@@ -7,8 +7,8 @@
 A plugin-started agent SHALL be created once per plugin and key. A copy
 SHALL return the first one. Its request record SHALL replace the dispatch
 record. Lost input SHALL go through the one repair job, and a run the job
-gives up on SHALL end through a closing turn (Proposed, needs sign-off: P7,
-P30). There SHALL be no separate age rule.
+gives up on SHALL end through a closing turn (Decided: P7, P30). There
+SHALL be no separate age rule.
 
 #### Scenario: Copy from the plugin
 
@@ -23,10 +23,10 @@ P30). There SHALL be no separate age rule.
 
 ### Requirement: Own Conversation And System Actor
 
-Each run SHALL get its own conversation with a fixed Location (Proposed,
-needs sign-off: P14). Its turn SHALL act as the system actor for that
-plugin. A plugin SHALL NOT pass an actor. A plugin SHALL pass only an
-unbound subject, which core binds (Decided: P17).
+Each run SHALL get its own conversation with a fixed Location (Decided: P14).
+Its turn SHALL act as the system actor for that plugin. A plugin SHALL NOT pass
+an actor. A plugin SHALL pass only an unbound subject, which core binds
+(Decided: P17).
 
 #### Scenario: Inbox message names an actor
 
@@ -48,8 +48,7 @@ SHALL end it `blocked`, with a reason for the credential mode.
 
 A plugin SHALL see only `{id, status, resultMessageTs?, errorMessage?}` for
 its own runs. `status` SHALL be computed from the request record and its
-turn, and SHALL never change after it is final (Proposed, needs sign-off:
-P21).
+turn, and SHALL never change after it is final (Decided: P21).
 
 #### Scenario: Result already sent
 
@@ -71,8 +70,8 @@ one result, which its outcomes deliver (Decided: P18). A `failed` or
 ### Requirement: Where The Result Comes From
 
 The result SHALL come from the finished run: its final response, or a
-`finishAutomationRun` call when the run makes one (Proposed, needs
-sign-off: P18).
+`finishAutomationRun` call when the run makes one, so the source can vary
+(Proposed, needs sign-off: P18; David: "it's ok for this to vary").
 
 #### Scenario: Result from the final response
 

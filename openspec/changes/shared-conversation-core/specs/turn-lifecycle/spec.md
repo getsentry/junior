@@ -92,14 +92,14 @@ queue message SHALL carry only the conversation id.
 
 - **WHEN** an attempt hits the hard time limit before it saves anything new
 - **THEN** the turn pauses `hard_time_limit` again, and the attempt limit
-  stops repeats (Proposed, needs sign-off: P10, P11).
+  stops repeats (Decided: P10, P11).
 
 ### Requirement: A Turn Must Make Progress
 
 A turn that pauses `soft_time_limit` at the boundary it resumed from SHALL
 end `failed: no_progress`. A `post_retry` pause SHALL be exempt until its
 delivery reaches 5 post attempts; then the turn SHALL end
-`failed: post_failed` (Proposed, needs sign-off: P11).
+`failed: post_failed` (Decided: P11).
 
 #### Scenario: Same boundary twice
 
@@ -111,8 +111,7 @@ delivery reaches 5 post attempts; then the turn SHALL end
 
 A turn SHALL stop at 100 attempts, 1,000 tool calls or $100 cost. Totals
 SHALL survive resume, compaction and handoff. A limit SHALL end the turn on
-the first try after one wrap-up step, outside the retry limit (Proposed,
-needs sign-off: P12).
+the first try after one wrap-up step, outside the retry limit (Decided: P12).
 
 #### Scenario: Cost limit
 
@@ -123,11 +122,10 @@ needs sign-off: P12).
 ### Requirement: Retry Limit Per Turn
 
 A turn SHALL have one retry limit (Decided). An error after take-in SHALL
-pause the turn `error_retry`, count one error, and release the lock (Proposed,
-needs sign-off: P31). The limit SHALL be 5 errors (Proposed, needs
-sign-off: P4). Each message SHALL allow 5 delivery attempts before a turn
-takes it in. An error before take-in SHALL count a delivery attempt and show
-nothing (Proposed, needs sign-off: P22).
+pause the turn `error_retry`, count one error, and release the lock
+(Decided: P31). A lost-worker restart SHALL also count one error. The limit
+SHALL be 5 errors, restarts included; one failure SHALL count once
+(Decided: P4).
 
 #### Scenario: Retries run out
 
@@ -138,27 +136,43 @@ nothing (Proposed, needs sign-off: P22).
 #### Scenario: An error is not a lost worker
 
 - **WHEN** an attempt fails with an error and releases the lock
-- **THEN** the next worker resumes the `error_retry` pause and does not use
-  the restart.
+- **THEN** the next worker resumes the `error_retry` pause, counts no second
+  error, and does not use the restart.
+
+### Requirement: Errors Before The Input Is Saved
+
+An error before `startTurn` commits SHALL retry the message with no visible
+text and count one delivery attempt. Each message SHALL allow 5 delivery
+attempts. After the fifth, a closing turn SHALL end `failed: input_dropped`
+and send the error message. These attempts SHALL NOT count against the
+turn error limit, because no turn started (Decided: P22).
+
+#### Scenario: Failures before the turn started
+
+- **WHEN** a message fails 4 times before `startTurn` commits, and then its
+  turn starts
+- **THEN** nothing showed for the 4 failures, and the turn starts with
+  `errors: 0`.
 
 ### Requirement: Lost Worker Gets One Restart
 
 After a lost worker, every kind of turn SHALL get one restart from its last
 checkpoint (Decided). A turn SHALL count as lost only when it is `running`
-and the worker took an expired lock (Proposed, needs sign-off: P8). A
-restart SHALL NOT count against the retry limit (Proposed, needs sign-off:
-P4).
+and the worker took an expired lock (Decided: P8). The restart SHALL count
+one error against the retry limit. `restarts` SHALL only enforce the one
+restart (Decided: P4).
 
 #### Scenario: Lost twice
 
-- **WHEN** the worker is lost again after the restart, or no attempt is left
+- **WHEN** the worker is lost again after the restart, or the restart would
+  be the fifth error
 - **THEN** the turn ends `failed: lost_worker` with a visible error message.
 
 #### Scenario: Pause save fails
 
 - **WHEN** a worker's pause save fails while the turn is `running`
 - **THEN** it does not release the lock, the lock expires, and the repair
-  job notifies a worker on its next pass (Proposed, needs sign-off: P8).
+  job notifies a worker on its next pass (Decided: P8).
 
 ### Requirement: The Response Rule
 
@@ -222,7 +236,7 @@ be resumable.
 
 A delivery that fails while finishing SHALL retry with backoff, up to 5
 attempts. A permanent provider error SHALL fail it at once. Then it SHALL
-be `failed`, and the turn SHALL finish anyway (Proposed, needs sign-off:
+be `failed`, and the turn SHALL finish anyway (Decided:
 P33).
 
 #### Scenario: Error message cannot be posted
@@ -234,7 +248,7 @@ P33).
 ### Requirement: Closing Turns
 
 Input that will not run SHALL still get a turn row that ends at once,
-without the agent (Proposed, needs sign-off: P30).
+without the agent (Decided: P30).
 
 #### Scenario: Input past its delivery attempts
 
@@ -247,8 +261,7 @@ without the agent (Proposed, needs sign-off: P30).
 One repair job SHALL resend lost input, stamp records on `accepted`,
 `duplicate` or `refused`, stop after 5 attempts or 24 h, and notify workers
 for flagged records, past wake times (from a wake-time index) and
-`running` turns whose lock expired. It SHALL write no status (Proposed,
-needs sign-off: P7).
+`running` turns whose lock expired. It SHALL write no status (Decided: P7).
 
 #### Scenario: Parent turn fails after saving the record
 

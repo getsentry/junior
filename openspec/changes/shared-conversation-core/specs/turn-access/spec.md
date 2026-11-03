@@ -130,12 +130,11 @@ actor with no user credentials, as today.
 
 ### Requirement: Sandbox Pass Ends With Its Turn
 
-A turn SHALL have at most one pass, saved on its turn row (Decided: ends
-with its turn). Each attempt SHALL renew the same pass, with an expiry
-capped near the attempt limit. `finishTurn` and the `sign_in`, `post_retry`
-and `error_retry` pauses SHALL apply a no-credentials policy (Proposed,
-needs sign-off: P36). Undeclared hosts SHALL stay open with no credentials
-(Decided).
+A turn SHALL have at most one pass, saved on its turn row (Decided: ends with
+its turn). Each attempt SHALL renew the same pass, with an expiry capped near
+the attempt limit. `finishTurn` and the `sign_in`, `post_retry` and
+`error_retry` pauses SHALL apply a no-credentials policy (Decided: P36).
+Undeclared hosts SHALL stay open with no credentials (Decided).
 
 #### Scenario: Background process after the turn
 
@@ -145,8 +144,7 @@ needs sign-off: P36). Undeclared hosts SHALL stay open with no credentials
 ### Requirement: The Proxy Checks The Running Turn
 
 The proxy SHALL add credentials only when the pass is the open turn's pass,
-that turn is running and its lock is live, plus today's checks (Proposed,
-needs sign-off: P36).
+that turn is running and its lock is live, plus today's checks (Decided: P36).
 
 #### Scenario: Pass from an older turn
 
@@ -164,7 +162,7 @@ needs sign-off: P36).
 Turns of different actors in one conversation SHALL share its sandbox and
 files (Decided). When a turn's actor or access differs from the last pass's
 turn, the worker SHALL kill user processes before it applies the new pass
-(Proposed, needs sign-off: P36). Child conversations SHALL have their own
+(Decided: P36). Child conversations SHALL have their own
 sandbox. The user docs SHALL say so.
 
 #### Scenario: Two people in one thread
@@ -174,19 +172,18 @@ sandbox. The user docs SHALL say so.
 - **THEN** the process is killed before B's pass is applied, and A's files
   stay.
 
-### Requirement: Shared Files Run Under The Next Pass
+### Requirement: Shared Files Are A Documented Limit
 
-Files that one actor's turn leaves (git hooks, shell rc files, `PATH`
-shims, package scripts) SHALL be named as a risk: they can run again under
-the next actor's pass. B's commands SHALL run with git hooks and package
-scripts turned off and with a clean `HOME` and `PATH` (Proposed, needs
-sign-off: P36). It needs David's decision: accept the risk, or reopen
-sandbox sharing.
+A conversation SHALL keep one sandbox, and its files SHALL stay across
+turns. A file that one person's turn leaves can run in a later person's
+turn with that person's access. This is an accepted limit, and the user
+docs SHALL state it (Decided: P36).
 
-#### Scenario: Planted git hook
+#### Scenario: Docs state the shared-file limit
 
-- **WHEN** A's turn writes a git hook and B's turn runs `git commit`
-- **THEN** the hook does not run.
+- **WHEN** a person reads the sandbox section of the security docs
+- **THEN** it says that files stay in a conversation's sandbox and can run
+  in a later person's turn with that person's access.
 
 ### Requirement: Signals Belong To Their Turn
 
@@ -200,12 +197,11 @@ the turn named on the pass.
 
 ### Requirement: Sign-In Pause
 
-Only a turn with a person actor, in a conversation that can ask a person,
-SHALL send a sign-in link. A system-actor turn SHALL end `blocked` (Proposed,
-needs sign-off: P13). A child or plugin-started agent SHALL end `blocked`
-(Decided). The link SHALL be private, one use, last 10 minutes, and be bound
-to the actor and the turn id. The callback SHALL only save the sign-in and
-notify a worker.
+Only a turn with a person actor, in a conversation that can ask a person, SHALL
+send a sign-in link. A system-actor turn SHALL end `blocked` (Decided: P13). A
+child or plugin-started agent SHALL end `blocked` (Decided). The link SHALL be
+private, one use, last 10 minutes, and be bound to the actor and the turn id.
+The callback SHALL only save the sign-in and notify a worker.
 
 #### Scenario: Timer turn needs sign-in
 
@@ -224,7 +220,7 @@ a short note, and that input SHALL run next. Other people's input and events
 SHALL wait until sign-in or link expiry. At expiry the turn SHALL end with a
 short note. The rule SHALL be the same for every kind (Decided). "Same
 person" SHALL mean a person actor equal to the turn's actor; the ended turn
-SHALL be `stopped` (Proposed, needs sign-off: P13).
+SHALL be `stopped` (Decided: P13).
 
 #### Scenario: Same person
 

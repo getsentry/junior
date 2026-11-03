@@ -4,13 +4,13 @@
 
 ### Requirement: Protocol Model Checked By A Machine
 
-A formal model of the core protocol SHALL live in `verification/` at the
-repo root, and CI SHALL check it on every change to the model or the core
-(Proposed, needs sign-off: P37, P40). It SHALL cover the worker lock and
-lock version, turn states, the inbox, join now and wait, request records,
-`finishTurn` and delivery, stop (including the tree), child results,
-sign-in pause and supersede, restart and retry, sandbox processes tagged
-with their creator, and an adversarial `send`.
+A TLA+ model of the core protocol SHALL live in `packages/junior/verification/`,
+and CI SHALL check it with TLC on every change to the model or the core
+(Decided: P37, P40). It SHALL cover the worker lock and lock version, turn
+states, the inbox, join now and wait, request records, `finishTurn` and
+delivery, stop (including the tree), child results, sign-in pause and supersede,
+restart and retry, sandbox processes tagged with their creator, and an
+adversarial `send`.
 
 #### Scenario: Safety invariant broken
 
@@ -25,7 +25,7 @@ with their creator, and an adversarial `send`.
 
 ### Requirement: Turn Safety Invariants
 
-The model SHALL check (Proposed, needs sign-off: P37):
+The model SHALL check (Decided: P37):
 
 - **I1** one open turn per conversation;
 - **I2** a finished turn stays finished;
@@ -40,7 +40,7 @@ The model SHALL check (Proposed, needs sign-off: P37):
 
 ### Requirement: Actor Invariants
 
-The model SHALL check (Proposed, needs sign-off: P37):
+The model SHALL check (Decided: P37):
 
 - **I5** a turn acts only with its request record's actor and whose-access;
 - **I6** a joined message has exactly the turn's actor, signed subject and
@@ -68,7 +68,9 @@ The model SHALL check (Proposed, needs sign-off: P37):
 
 The model SHALL check **I13**: the proxy adds credentials only for the
 running turn's pass with a live lock, to a process tagged with that turn's
-actor and subject (Proposed, needs sign-off: P37).
+actor and subject (Decided: P37). Files left in the
+sandbox SHALL NOT be a gate check: they are an accepted, documented limit
+(Decided: P36).
 
 #### Scenario: Process from an earlier actor
 
@@ -78,7 +80,7 @@ actor and subject (Proposed, needs sign-off: P37).
 
 ### Requirement: Delivery Invariants
 
-The model SHALL check (Proposed, needs sign-off: P37):
+The model SHALL check (Decided: P37):
 
 - **I7** each delivery id is posted at most once, unless a takeover
   happened between its intent and its post;
@@ -91,13 +93,15 @@ The model SHALL check (Proposed, needs sign-off: P37):
 
 ### Requirement: Stop Invariants
 
-The model SHALL check these against the person's real order of actions,
-not the design's own stop test (Proposed, needs sign-off: P37):
+The model SHALL check these against Junior's receive order: the database
+stamps at inbox append and in the `stop()` transaction (Decided: P37,
+P44):
 
-- **I10** after the stop, no intent is saved for input sent before it;
-- **I11** no turn starts with, and no join takes in, input older than the
-  stop (`i11j` for joins);
-- **I14** a stop never stops a turn or input newer than it
+- **I10** after the stop, no intent is saved for input that Junior
+  received before it;
+- **I11** no turn starts with, and no join takes in, input that Junior
+  received before the stop (`i11j` for joins);
+- **I14** a stop never stops a turn or input that Junior received after it
   (`spareNewerTurn`, `spareNewerInput`).
 
 #### Scenario: Stop races a post
@@ -114,7 +118,7 @@ not the design's own stop test (Proposed, needs sign-off: P37):
 ### Requirement: Liveness Under Fairness
 
 TLC SHALL check, under weak fairness for workers and queue delivery and
-within the crash bound (Proposed, needs sign-off: P37):
+within the crash bound (Decided: P37):
 
 - **L1** every request record ends `answered` or `stopped`;
 - **L2** no turn stays `finishing` forever;
@@ -133,8 +137,8 @@ within the crash bound (Proposed, needs sign-off: P37):
 Model-based integration tests SHALL drive real Junior wiring, faking only
 Slack and the LLM. After each step they SHALL compare user-visible outcomes
 and the durable records the specs name (turn row, request record, delivery)
-with the model. They SHALL NOT mock Junior modules or use test-only
-mutation APIs (Proposed, needs sign-off: P38).
+with the model. They SHALL NOT mock Junior modules. Crashes SHALL come
+from the one `faults` port (Decided: P38, P42).
 
 #### Scenario: Code drifts from the model
 
@@ -147,19 +151,32 @@ mutation APIs (Proposed, needs sign-off: P38).
 - **WHEN** the checker finds a counterexample
 - **THEN** its trace is added as a fixed conformance run.
 
-### Requirement: Crash Points From Real Boundaries
+### Requirement: Crash Points From One Faults Port
 
-Generated runs SHALL crash a worker after each durable write, each Redis
-operation and each post, and where the provider accepted a post but the
-reply was lost. They SHALL also use queue redelivery, lock expiry under a
-controlled clock, and two concurrent workers on real Postgres. A seam
-SHALL only be an existing adapter boundary (Proposed, needs sign-off: P42).
+Runs SHALL crash a worker at named fault points: after each SQL write,
+Redis operation and post, and where the provider accepted a post but the
+reply was lost. One optional `faults` port SHALL supply them through the
+existing dependency wiring, as a no-op when absent. Production SHALL never
+pass it, and it SHALL have no global, singleton or test-only module API.
+Point names SHALL match model crash actions (Decided: P42).
 
 #### Scenario: Crash between commit and inbox removal
 
 - **WHEN** a run kills the worker after `startTurn` commits
 - **THEN** after the next worker, the turn row and history match the
   model: one prompt, the message gone from the inbox.
+
+#### Scenario: Fault point with no model action
+
+- **WHEN** a fault point name has no crash action in the model, or a model
+  crash action has no fault point
+- **THEN** the trace check fails and names it.
+
+### Requirement: Races From Real Boundaries
+
+Generated runs SHALL also use queue redelivery, lock expiry under the
+database clock, the Slack fake for a lost reply, and two real workers on
+real Postgres for the lock compare-and-set (Decided: P38, P42).
 
 #### Scenario: Reply lost after the provider accepted
 
@@ -170,7 +187,7 @@ SHALL only be an existing adapter boundary (Proposed, needs sign-off: P42).
 ### Requirement: Single Writer Rules
 
 Code checks SHALL enforce, and each failure SHALL name the requirement it
-protects (Proposed, needs sign-off: P39):
+protects (Decided: P39):
 
 - **S1** only `finishTurn` writes a final turn status or moves a request
   record out of `open` (turn-lifecycle: One Way To End A Turn);
@@ -187,7 +204,7 @@ protects (Proposed, needs sign-off: P39):
 ### Requirement: Trusted Construction Rules
 
 Types, an import-boundary check and runtime asserts SHALL enforce
-(Proposed, needs sign-off: P39):
+(Decided: P39):
 
 - **S3** only core person ingress makes a `VerifiedPersonActor`, and a
   person-actor record needs one (conversation-inbox: Core Mints Request
@@ -205,7 +222,7 @@ Types, an import-boundary check and runtime asserts SHALL enforce
 ### Requirement: Turn Row Access Rules
 
 Code checks SHALL enforce, and each failure SHALL name the requirement it
-protects (Proposed, needs sign-off: P39):
+protects (Decided: P39):
 
 - **S5** every turn or request record status write goes through the
   lock-version helper (turn-lifecycle: Worker Lock And Lock Version);
@@ -221,10 +238,10 @@ protects (Proposed, needs sign-off: P39):
 ### Requirement: Traceability
 
 Every scenario in `specs/` other than this spec's SHALL map to a test id, a
-model invariant or trace, or a structural rule. The scenario-id list and
-the check SHALL live in `verification/`, not in this plan. CI SHALL fail on
-an unmapped scenario, and on a mapping to a scenario that no longer exists
-(Proposed, needs sign-off: P40).
+model invariant or trace, or a structural rule. The scenario-id list and the
+check SHALL live in `packages/junior/verification/`, not in this plan. CI SHALL
+fail on an unmapped scenario, and on a mapping to a scenario that no longer
+exists (Decided: P40).
 
 #### Scenario: New scenario without a check
 
@@ -245,9 +262,9 @@ an unmapped scenario, and on a mapping to a scenario that no longer exists
 
 "The output adheres to the design" SHALL mean: the model check, the
 conformance tests and the structural rules are green, the trace check shows
-no gap, and the guardian evals for P15 and P20 pass. The gate SHALL be
-green before the cutover release, and every later release SHALL keep it
-green (Proposed, needs sign-off: P41).
+no gap, and the guardian evals for P15 and P20 pass. The gate SHALL ship
+before the build steps, SHALL be green before the cutover release, and
+every later release SHALL keep it green (Decided: P41).
 
 #### Scenario: A step breaks an invariant
 

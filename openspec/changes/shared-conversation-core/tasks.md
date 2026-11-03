@@ -3,7 +3,9 @@
 ## How To Use This Plan
 
 - Full design first (Decided: P1). Three phases:
-  1. Pre-work: steps 1, 2 and G. Each ships alone and rolls back alone.
+  1. Pre-work: step G (the gate), then step 2 (words). Each ships alone and
+     rolls back alone. #2556 is not a step: it is a reviewed PR for a live
+     bug and lands on its own, ungated. Step 1 is retired.
   2. Build: steps 3 to 13 build the new core beside today's code. It is not
      wired to production traffic. The conformance tests and the gate run
      against it. A build step changes no production behavior, so its
@@ -19,9 +21,9 @@
   (`policies/testing.md`). Fake only Slack and LLMs.
 - "Needs" lists the decisions (`design.md`, Decisions Needed) that must be
   signed off first. A change to a decided rule needs David's OK.
-- Gate timing (Proposed, needs sign-off: P41): step G, with the model
-  complete (G.1a–G.1f), must be green before the cutover release (step 15).
-  A build step merges only when the checks its Verify line names are green
+- Gate timing (Decided: P41): step G ships first. With the model complete
+  (G.1a–G.1f), it must be green before the cutover release (step 15). A
+  build step merges only when the checks its Verify line names are green
   against the new core.
 - "Verify" names the invariants (I), liveness properties (L), rules (S),
   traces and scenarios that must be green after the step
@@ -32,12 +34,41 @@
 
 ## Pre-Work
 
-### 1. Retried prompt keeps its author
+### G. Verification gate
 
-- [ ] 1.1 Land #2556 (still open). A retried turn does not change the author
-      or the sender check of a saved message.
-- Verify: its scenario test for a redelivered prompt (turn E1).
-- Rollback: revert #2556.
+- [ ] G.0 Amend `policies/testing.md` to allow one injected `faults` port:
+      passed through existing dependency wiring, optional and a no-op when
+      absent, never passed in production, with no global, singleton or
+      test-only module API. Reason: decided for the verification gate
+      (P42).
+- [ ] G.1 Add the TLA+ model in `packages/junior/verification/` (P37, P40),
+      ported from the Quint drafts on branch
+      `spec/shared-conversation-core-model` (7ca64c2: `worker_lock.qnt`,
+      `stop_clock.qnt`, `FINDINGS.md`, `traces/`). CI runs TLC for safety
+      and liveness, and every worked example as a named trace.
+- [ ] G.1a Model parent and child conversations and the system actor.
+- [ ] G.1b Model the adversarial `send`.
+- [ ] G.1c Model request-record matching: I5, I6, I9 and I12.
+- [ ] G.1d Model tree-stop results: I8, and P35 on the receive clock (P44).
+- [ ] G.1e Model sandbox process tags: I13.
+- [ ] G.1f Grow the bound toward the P37 target bound, and model the P44
+      receive clock: every input and stop stamped at receive, with late
+      delivery.
+- [ ] G.2 Add the scenario-id list and the trace check there. At the gate, a
+      scenario may map only to a model invariant or trace. The step that
+      builds the behavior adds its test id. The check also matches each
+      fault point name with a model crash action, both ways.
+- [ ] G.3 Add the conformance harness (P38) on the integration harness,
+      with the `faults` port (P42): one named point for each crash-point
+      item, named like the model's crash actions, and a two-worker suite on
+      real Postgres for the lock compare-and-set. It runs against the new
+      core as each build step lands.
+- [ ] G.4 Add the structural check runner. Each rule lands with the step
+      that makes it true.
+- Verify: the model holds I1–I14 and L1–L3 within the bound; every scenario
+  maps. Step G is not green until G.1a to G.1f are modeled, and it is green
+  before the cutover release (step 15).
+- Rollback: CI and test wiring only. Remove the jobs.
 
 ### 2. Words
 
@@ -45,39 +76,9 @@
 - Verify: docs only.
 - Rollback: revert.
 
-### G. Verification gate
-
-Needs: P37, P38, P39, P40, P41, P42, P44.
-
-- [ ] G.1 Merge repo-root `verification/` (P40) from branch
-      `spec/shared-conversation-core-model` (7ca64c2: `worker_lock.qnt`,
-      `stop_clock.qnt`, `FINDINGS.md`, `traces/`). CI runs `check.sh` with
-      TLC for safety and liveness, and every worked example as a named
-      trace.
-- [ ] G.1a Model parent and child conversations and the system actor.
-- [ ] G.1b Model the adversarial `send`.
-- [ ] G.1c Model request-record matching: I5, I6, I9 and I12.
-- [ ] G.1d Model tree-stop results: I8, and P35 on one clock (P44).
-- [ ] G.1e Model sandbox process tags: I13.
-- [ ] G.1f Grow the bound toward the P37 target bound, and model the P44
-      choice for cross-clock stops.
-- [ ] G.2 Add the scenario-id list and the trace check there. At the gate, a
-      scenario may map only to a model invariant or trace. The step that
-      builds the behavior adds its test id.
-- [ ] G.3 Add the conformance harness (P38, P42) on the integration harness.
-      It runs against the new core as each build step lands.
-- [ ] G.4 Add the structural check runner. Each rule lands with the step
-      that makes it true.
-- Verify: the model holds I1–I14 and L1–L3 within the bound; every scenario
-  maps. Step G is not green until G.1a to G.1f are modeled, and it is green
-  before the cutover release (step 15).
-- Rollback: CI only. Remove the jobs.
-
 ## Build The New Core
 
 ### 3. SQL worker lock, lock version and wake time
-
-Needs: P32.
 
 - [ ] 3.1 Add lock token, expiry and version to the conversation row. Take
       the lock with the compare-and-set. Check in and release with the
@@ -99,9 +100,7 @@ Needs: P32.
 
 ### 4. Turn rows
 
-Needs: P10, P30, P31, P34.
-
-- [ ] 4.1 Add the turn table (with `oldestInputCreatedAtMs`) and the
+- [ ] 4.1 Add the turn table (with `oldestInputReceivedAtMs`) and the
       one-open index. `startTurn` in one transaction, fenced
       `saveCheckpoint`, a finished guard.
 - [ ] 4.2 Every turn state: `finishing`, `error_retry`, the five pause
@@ -112,8 +111,6 @@ Needs: P10, P30, P31, P34.
   Crash between commit and inbox removal; trace turn E1.
 
 ### 5. Request records and `send()`
-
-Needs: P9, P23, P26, P39.
 
 - [ ] 5.1 `createRequest` mints the record, then binds the subject (P17).
       Core ingress, `askChild` and `startPluginAgent` mint records.
@@ -127,8 +124,6 @@ Needs: P9, P23, P26, P39.
   E1 and E5.
 
 ### 6. `work()`
-
-Needs: P7, P9, P30.
 
 - [ ] 6.1 `work()` takes the lock and runs the first case that applies.
       `selectTurnInput` runs the match check and groups input by actor,
@@ -145,8 +140,6 @@ Needs: P7, P9, P30.
 
 ### 7. Delivery records
 
-Needs: P10, P11.
-
 - [ ] 7.1 Give each response a fixed delivery id. Before each post, save a
       checkpoint that commits the response to history and records the
       intent with its text. Check `find` before a repeat post. Send the
@@ -158,25 +151,25 @@ Needs: P10, P11.
 
 ### 8. `finishTurn()`
 
-Needs: P4, P8, P12, P22, P30, P31, P33.
-
 - [ ] 8.1 Add `finishTurn` (resumable through `finishing`, using step 7's
       delivery ids). The reply target is data, with no branch on kind.
 - [ ] 8.2 Errors pause `error_retry`. A turn is lost only when `running`
-      under an expired lock. The timer job only notifies a worker.
+      under an expired lock. Its one restart counts one error; one failure
+      counts once (P4). An error before `startTurn` commits counts a
+      delivery attempt, not a turn error (P22). The timer job only
+      notifies a worker.
 - [ ] 8.3 Delivery attempts and backoff while finishing. A permanent
       provider error fails the delivery at once.
 - [ ] 8.4 Write one `turn.terminal` event per turn end.
 - [ ] 8.5 Test: dead worker (turn E2), retries running out (turn E4) and
       stuck delivery (turn E6).
 - Verify: I2, I4 and S1; L2; turn-lifecycle › Crash during finish, Retries
-  run out, Error message cannot be posted; traces turn E2, E4, E6.
+  run out, An error is not a lost worker, Lost twice, Failures before the
+  turn started, Error message cannot be posted; traces turn E2, E4, E6.
 
 ### 9. Stop
 
-Needs: P34, P44.
-
-- [ ] 9.1 `stop()` saves the stop input's `createdAtMs` as the stop time on
+- [ ] 9.1 `stop()` saves its database `now()` as the stop time on
       the conversation and every conversation below it, and notifies each
       worker. Slack stop, dashboard stop, ACP stop and thread opt-out all
       call it.
@@ -184,7 +177,8 @@ Needs: P34, P44.
       than the stop time. `startTurn` and joins refuse older input. Every
       fenced save and intent save of a turn under the stop refuses.
       `finishTurn(stopped)` puts newer taken-in input back in the inbox.
-- [ ] 9.3 Cross-clock stops, as P44 decides.
+- [ ] 9.3 Stamp every input at inbox append, and core-minted input and
+      records in their own transaction, with database `now()` (P44).
 - [ ] 9.4 Test: top-level stop of a tree (agents E3); stop of a paused
       plugin-started agent.
 - Verify: I8, I10, I11 (with joins) and I14; L1 under stop; turn-stop ›
@@ -192,11 +186,9 @@ Needs: P34, P44.
   to join, Newer input joined before the stop, Stop during a pause; traces
   turn E5, agents E3 and E4, and the `stop_*` traces; turn-stop › Late
   result after a tree stop, Late result after stopAgent, Result in flight
-  at the stop, Dashboard stop of a child.
+  at the stop, Dashboard stop of a child, Slack message received late.
 
 ### 10. Sign-in
-
-Needs: P13.
 
 - [ ] 10.1 Same-person input supersedes; others wait until sign-in or
       expiry. System-actor turns end `blocked`.
@@ -221,7 +213,7 @@ Needs: P13.
 
 ### 12. Plugin-started agents
 
-Needs: P14, P18, P21.
+Needs: P18 (the rest: where the result comes from).
 
 - [ ] 12.1 Plugin-started runs use `work()`. An Automation run has
       `replyTo: stored` and `outcomes` on its record; `finishTurn` delivers
@@ -234,16 +226,13 @@ Needs: P14, P18, P21.
 
 ### 13. Credentials and the sandbox pass
 
-Needs: P36, and the shared-file decision (Decisions Needed 29).
-
 - [ ] 13.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
       run). Check at every start and resume.
 - [ ] 13.2 One pass per turn on the turn row. The proxy checks it against
       the open turn, `running`, with a live lock. No-credentials policy at
       finish and at the listed pauses. Kill user processes when the actor
       or access changes.
-- [ ] 13.3 The shared-file mitigations, as decided.
-- [ ] 13.4 Test: background process after the turn (access E5).
+- [ ] 13.3 Test: background process after the turn (access E5).
 - Verify: I5 for credentials and I13; S2; turn-access › Background process
   after the turn, Pass from an older turn; traces access E4, E5.
 
@@ -279,12 +268,17 @@ Needs: P45.
       after a crash does nothing new.
 - [ ] 15.3 Report or move live `replaced` requests before the cutover.
 - [ ] 15.4 Set the `maxAgentDepth` default to 1 (Decided).
-- [ ] 15.5 Document one sandbox per conversation in the user docs.
+- [ ] 15.5 Document one sandbox per conversation in the user docs, on the
+      sandbox section of `packages/docs` (`concepts/security-and-authority.md`):
+      a file that one person's turn leaves in the sandbox can run in a
+      later person's turn with that person's access. Short and factual, no
+      exploit steps (P36).
 - [ ] 15.6 Test: a conversation with an open Redis turn cursor and a
       running child agent moves on its first lock take.
 - Verify: the gate is green; I1 holds across the move; turn-lifecycle ›
   Cutover from the old turn cursor; agent-tree › Grandchild spawns;
-  conversation-inbox › Duplicate CLI input.
+  conversation-inbox › Duplicate CLI input; turn-access › Docs state the
+  shared-file limit.
 - Rollback (P45): switch the cutover off. No more conversations move, and
   each new-core conversation goes back to today's workers at its next lock
   take once it has no open turn and no open record. Open new-core work
@@ -329,7 +323,8 @@ Needs: P45.
       and the old tables after a dry run. Step 15 code still selects the
       columns while step 16 deploys.
 - [ ] 17.2 Move lasting rules into code, tests and policies. Delete this
-      plan. CI keeps running `verification/`, which reads nothing here.
+      plan. CI keeps running `packages/junior/verification/`, which reads
+      nothing here.
 - Verify: every check from steps G to 16 is still green.
 - Rollback: a column or table drop cannot be undone; the dry run comes
   first.

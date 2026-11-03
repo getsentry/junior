@@ -20,8 +20,8 @@ type Conversation = {
   lockToken?: string;
   lockExpiresAtMs?: number;
   lockVersion: number;
-  /** Set by stop() (P34). A turn that took in input older than it is
-   * stopped. Which clock stamps it is P44. */
+  /** Database now() of the stop() transaction (P34, P44). A turn that
+   * took in input received before it is stopped. */
   stopAtMs?: number;
   /** Who stopped it. finishTurn reads it to choose the child result. */
   stopBy?: StopBy["kind"];
@@ -74,7 +74,8 @@ type InboundMessage = {
   join: "now" | "wait";
   /** When it was sent. Orders input. */
   createdAtMs: number;
-  /** When Junior got it. Drives the event window. */
+  /** Database now() at inbox append. Drives the event window and judges
+   * stops (P44). */
   receivedAtMs: number;
   /** Delivery attempts before a turn takes it in. Limit 5. */
   attemptCount: number;
@@ -126,6 +127,7 @@ type RequestRecord = {
     refusedAtMs?: number;
     gaveUpAtMs?: number;
   };
+  /** Database now() of the transaction that mints it (P44). */
   createdAtMs: number;
 };
 
@@ -270,7 +272,7 @@ Before: T1 running for A. A posts a plain thread reply (`join: wait`).
 1. `canJoin(T1, reply)` is false: Slack's `joinRule` is `now`.
 2. The reply waits. When T1 ends, T2 starts with it (Decided).
 
-### E5. A message that points at another record (P26, Proposed)
+### E5. A message that points at another record (P26, Decided)
 
 Before: conversation X's inbox gets `m9` with `requestId: req_7`. `req_7`
 belongs to conversation Y and has A's delegated subject.

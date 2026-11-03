@@ -245,6 +245,5 @@ applies the no-credentials policy. Later T2 for B starts.
 If T2 were also A's, step 2 would not kill the process. It would then run
 with A's access during T2 (P36, limit).
 
-Files stay. A git hook or `PATH` shim from T1 could run in T2 under B's
-pass; B's commands run with hooks and package scripts off and a clean
-`HOME` and `PATH` (P36, shared files; needs David).
+Files stay. A file that T1 left can run in T2 with B's access. This is
+the accepted, documented limit (P36, Decided).

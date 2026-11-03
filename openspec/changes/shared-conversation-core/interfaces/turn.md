@@ -74,17 +74,20 @@ type TurnRecord = {
   /** Database now() at startTurn (rule 13). Never compared with stopAtMs. */
   startedAtMs: number;
   /**
-   * The oldest createdAtMs of any input this turn took in, at start or by
+   * The oldest receivedAtMs of any input this turn took in, at start or by
    * join. The turn is under the stop when this is older than stopAtMs (P34).
    */
-  oldestInputCreatedAtMs: number;
+  oldestInputReceivedAtMs: number;
   status: "running" | "paused" | "finishing" | Outcome;
   pause?: TurnPause;
   /** Set with "finishing". finishTurn reads it when it runs again. */
   outcome?: TurnOutcome;
-  /** Turn errors after take-in. Limit 5 (Proposed, P4). */
+  /**
+   * Errors after take-in plus lost-worker restarts. Limit 5 (Decided, P4).
+   * One failure counts once.
+   */
   errors: number;
-  /** Restarts after a lost worker. Limit 1 (Decided). */
+  /** Lost-worker restarts. Limit 1. Only enforces the one restart (P4). */
   restarts: number;
   totals: {
     attempts: number;
@@ -119,8 +122,8 @@ type TurnOutcome =
     };
 
 type FailReason =
-  | "error" // the last of 5 turn errors
-  | "lost_worker" // lost again after its one restart
+  | "error" // the fifth error, restarts included
+  | "lost_worker" // lost after its one restart, or as the fifth error
   | "no_progress"
   | "limit" // attempts, tool calls or cost; first try
   | "post_failed" // a post_retry delivery hit its own limit
@@ -191,10 +194,10 @@ without adding it again (E1).
  * The only worker. Every kind uses it. Takes the lock, then does the first
  * that applies:
  * 1. open turn "finishing": run finishTurn again with the saved outcome;
- * 2. the open turn is under the stop (oldestInputCreatedAtMs older than
+ * 2. the open turn is under the stop (oldestInputReceivedAtMs older than
  *    stopAtMs): finishTurn(stopped);
- * 3. open turn "running": the last worker was lost (P8). Restart once, or
- *    finishTurn(failed: lost_worker);
+ * 3. open turn "running": the last worker was lost (P8). Restart once,
+ *    counting one error (P4), or finishTurn(failed: lost_worker);
  * 4. open turn "paused": resume it, or handle sign-in (access.md);
  * 5. no open turn: run selectTurnInput. Close dropped or stop-cut input
  *    with closeInput, and records the repair job flagged. Then startTurn.
@@ -225,8 +228,9 @@ function deliver(
  * Resumable through "finishing":
  * 1. save "finishing" and the outcome (fenced);
  * 2. send the error message, ending note, child result or the
- *    Automation result to each outcome (P18), with fixed delivery ids; retry with backoff up to 5 attempts,
- *    or fail at once on a permanent provider error (P33). A child result
+ *    Automation result to each outcome (P18), with fixed delivery ids;
+ *    retry with backoff up to 5 attempts, or fail at once on a permanent
+ *    provider error (P33). A child result
  *    first mints its record in the parent, in this transaction (P26);
  * 3. move each taken-in record from open to answered or stopped
  *    (WHERE status = 'open'). For finishTurn(stopped), input not older
@@ -255,7 +259,7 @@ function closeInput(
 
 ```ts
 /**
- * Save stopAtMs = the stop input's createdAtMs (clock: P44), and stopBy,
+ * Save stopAtMs = database now() of this transaction (P44), and stopBy,
  * on the conversation and on every conversation below it, then notify each
  * worker (P34). Writes no turn row
  * and no request record (rule 7). A top-level stop is always a tree stop
@@ -277,8 +281,7 @@ type StopBy =
 the stop was explicit for the parent: `stopBy` is `stop_agent`, or the
 parent's own stop time is after the record's `createdAtMs` (a tree stop).
 Then the outcome is recorded on the asked record and no turn starts (P35,
-Decided). The record and the stop must be
-stamped on one clock for this to be exact (P44).
+Decided). Both stamps are database `now()` (P44).
 
 ## Examples
 
@@ -292,7 +295,8 @@ Before: inbox `[m1 (req_1)]`. No open turn. Lock version 6.
 3. The lock expires. The queue redelivers. W2 takes the lock (v8).
 4. `work()` finds T1 `running` (case 3) and `m1` in the inbox. `req_1` is in
    `T1.requestIds`, so W2 removes `m1` and does not add it again.
-5. `restarts: 0`, so W2 restarts T1 from its checkpoint, `restarts: 1`.
+5. `restarts: 0`, so W2 restarts T1 from its checkpoint: `restarts: 1`,
+   `errors: 1` (P4).
 
 After: one copy of the prompt in history. The sender check does not run
 again on a saved message.
@@ -306,7 +310,7 @@ Before: T1 `running`, lock v7, last checkpoint at 12:00:00.
    `running` turn with an expired lock and notifies a worker. It writes
    nothing.
 3. W2's compare-and-set takes the lock (v8). T1 is `running`: lost.
-   `restarts: 1`. W2 continues from the 12:00:00 checkpoint.
+   `restarts: 1`, `errors: 1`. W2 continues from the 12:00:00 checkpoint.
 4. A delivery saved as `intended` between 12:00:00 and 12:00:20 is sent
    again from its saved text, after `find` shows it did not land.
 
@@ -332,7 +336,8 @@ wait).
 
 1. Attempt 1 throws after take-in. The worker saves `paused: error_retry`,
    `errors: 1`, and releases the lock cleanly. `work()` case 4 resumes it
-   next. Case 3 does not fire, so the restart is not used.
+   next. Case 3 does not fire, so the restart is not used and the error
+   counts once.
 2. Attempts 2–5 fail the same way. On `errors: 5` the worker calls
    `finishTurn(failed: error)`.
 3. A's thread gets the error message. `req_a1` becomes `answered`,

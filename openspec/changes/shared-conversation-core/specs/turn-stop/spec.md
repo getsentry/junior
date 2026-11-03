@@ -4,10 +4,10 @@
 
 ### Requirement: A Stop Saves A Stop Time
 
-A stop SHALL save the stop input's own `createdAtMs` as the stop time on
-the conversation and notify a worker. It SHALL NOT write a turn row or a
-request record (Proposed, needs sign-off: P34). A turn SHALL be under the
-stop when any input it took in has `createdAtMs` older than the stop time;
+A stop SHALL save the database `now()` of its own transaction as the stop
+time on the conversation and notify a worker. It SHALL NOT write a turn row
+or a request record (Decided: P34, P44). A turn SHALL be under the stop
+when Junior received any input it took in before the stop time;
 a worker SHALL stop it. `startTurn` and a join SHALL refuse input older
 than the stop time. A new turn after the stop SHALL run normally.
 
@@ -51,8 +51,15 @@ than the stop time. A new turn after the stop SHALL run normally.
 
 Every fenced save and every delivery intent save of a turn under the stop
 SHALL refuse, except the saves of `finishTurn(stopped)`. The stop SHALL be
-compared only with input `createdAtMs`, never with a server time (Proposed,
-needs sign-off: P34). Stops across clocks are P44.
+compared only with the receive stamp of input, database `now()` at inbox
+append, or of its own transaction for core-minted input (Decided: P34,
+P44).
+
+#### Scenario: Slack message received late
+
+- **WHEN** a person sends a message, clicks stop, and Junior receives the
+  message after the stop, after a Slack retry
+- **THEN** the message counts as newer than the stop and runs.
 
 #### Scenario: Intent after the stop
 
@@ -66,7 +73,7 @@ needs sign-off: P34). Stops across clocks are P44.
 Person input older than the stop SHALL NOT run. It SHALL be saved to history
 as not run, so the person can see it and ask again. Event and agent input
 older than the stop SHALL be dropped. Both SHALL end through a closing turn
-(Proposed, needs sign-off: P30, P34).
+(Decided: P30, P34).
 
 #### Scenario: Event before the stop
 

@@ -18,17 +18,17 @@ inbox, set the wake time and notify a worker.
 
 - **WHEN** the save works but the queue send fails
 - **THEN** the input stays, and the repair job notifies a worker
-  (Proposed, needs sign-off: P7, P32).
+  (Decided: P7, P32).
 
 ### Requirement: Core Mints Request Records
 
 Core SHALL mint a request record for every input, with an id in its own
-namespace (Proposed, needs sign-off: P23, P26). The record SHALL store the
+namespace (Decided: P23, P26). The record SHALL store the
 conversation id and the inbound message id. Only core person ingress
 (Slack, web, ACP, CLI) SHALL make a record with a person actor. A child
 result or parent message SHALL get its own record in the receiving
 conversation, minted in the child's transaction, with `answers` and
-`sentBy` (Proposed, needs sign-off: P26).
+`sentBy` (Decided: P26).
 
 #### Scenario: Message points at another record
 
@@ -72,7 +72,7 @@ SHALL come from the source's own id.
 
 An inbound message SHALL carry its source, `join` (`now` or `wait`), sent
 time, arrival time, delivery attempt count, event kind and request id
-(Proposed, needs sign-off: P9).
+(Decided: P9).
 
 #### Scenario: Ordering reads only these fields
 
@@ -198,7 +198,7 @@ A joined web message SHALL NOT start a second turn.
 release, a worker SHALL set the wake time to its next run time, with a
 compare-and-set on the inbox counter. It SHALL release the lock, then read
 again with the same runnable test as `work()`, and notify a worker when
-work is due (Proposed, needs sign-off: P32).
+work is due (Decided: P32).
 
 #### Scenario: Message while the lock is held
 

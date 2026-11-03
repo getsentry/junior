@@ -118,7 +118,7 @@ A parent SHALL accept a result or child message only when its own record
 in the parent matches the message, the `sentBy` turn row belongs to a child
 of the parent, and every `answers` record belongs to that child and names
 the parent as its reply target. Message fields SHALL NOT decide it
-(Proposed, needs sign-off: P26). Only core agent code SHALL make
+(Decided: P26). Only core agent code SHALL make
 `source: "agent"` messages.
 
 #### Scenario: Forged result
@@ -169,11 +169,10 @@ toward it (Decided).
 
 ### Requirement: A Child Can Message Its Parent
 
-A child message to its parent SHALL reach the parent as agent input, marked
-as not from a person, acting for the child turn's actor. It SHALL have its
-own record in the parent, minted in a fenced save of the child (Proposed,
-needs sign-off: P26). With no open record on the child's turn, the send
-SHALL fail.
+A child message to its parent SHALL reach the parent as agent input, marked as
+not from a person, acting for the child turn's actor. It SHALL have its own
+record in the parent, minted in a fenced save of the child (Decided: P26). With
+no open record on the child's turn, the send SHALL fail.
 
 #### Scenario: Message with no open record
 
