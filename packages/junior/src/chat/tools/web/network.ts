@@ -340,8 +340,9 @@ export async function fetchTextWithRedirects(
 }
 
 /**
- * Read at most `maxBytes` of a response body. A longer body is cut at the
- * limit and the rest is canceled, so one large page cannot fill memory.
+ * Read at most `maxBytes` of a response body within the fetch timeout. A
+ * longer body is cut at the limit, and a slow body fails. Both cancel the rest
+ * of the body, so the connection stops downloading.
  */
 export async function readResponseBytes(
   response: Response,
@@ -354,20 +355,33 @@ export async function readResponseBytes(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    // Cancel ends the pending read. A cancel failure must not hide the timeout.
+    reader.cancel().catch(() => undefined);
+  }, FETCH_TIMEOUT_MS);
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      return { bytes: Buffer.concat(chunks), truncated: false };
-    }
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (timedOut) {
+        throw new Error("read timed out");
+      }
+      if (done) {
+        return { bytes: Buffer.concat(chunks), truncated: false };
+      }
 
-    const room = maxBytes - total;
-    if (value.byteLength > room) {
-      chunks.push(value.subarray(0, room));
-      await reader.cancel();
-      return { bytes: Buffer.concat(chunks), truncated: true };
+      const room = maxBytes - total;
+      if (value.byteLength > room) {
+        chunks.push(value.subarray(0, room));
+        await reader.cancel();
+        return { bytes: Buffer.concat(chunks), truncated: true };
+      }
+      chunks.push(value);
+      total += value.byteLength;
     }
-    chunks.push(value);
-    total += value.byteLength;
+  } finally {
+    clearTimeout(timer);
   }
 }

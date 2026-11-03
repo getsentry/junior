@@ -1,12 +1,11 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import {
   DEFAULT_MAX_CHARS,
-  FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
   MAX_FETCH_CHARS,
 } from "@/chat/tools/web/constants";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { readResponseBytes, withTimeout } from "@/chat/tools/web/network";
+import { readResponseBytes } from "@/chat/tools/web/network";
 
 export { MAX_FETCH_CHARS };
 
@@ -268,10 +267,9 @@ export async function extractWebFetchResponse(
 
   // A page over the byte limit is cut, not rejected. Extraction keeps what was
   // read, and the result says that the page stops early.
-  const { bytes, truncated: sourceTruncated } = await withTimeout(
-    readResponseBytes(response, MAX_FETCH_BYTES),
-    FETCH_TIMEOUT_MS,
-    "read",
+  const { bytes, truncated: sourceTruncated } = await readResponseBytes(
+    response,
+    MAX_FETCH_BYTES,
   );
   const body = new TextDecoder().decode(bytes);
   const extracted = extractContentDetails(body, contentType, safeMaxChars);

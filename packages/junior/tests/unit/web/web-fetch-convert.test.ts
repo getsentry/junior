@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
+import { describe, expect, it, vi } from "vitest";
+import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
 import {
   extractContent,
   extractContentDetails,
@@ -139,6 +139,33 @@ describe("web fetch content conversion", () => {
     expect(result.source_bytes).toBe(MAX_FETCH_BYTES);
     expect(result.truncated).toBe(true);
     expect(result.source_truncated).toBe(true);
+  });
+
+  it("cancels a body that stalls past the read timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("<html><body>"));
+        },
+        cancel,
+      });
+
+      const read = extractWebFetchResponse(
+        new URL("https://docs.example.com/stalled"),
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      ).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS);
+
+      expect(await read).toMatchObject({ message: "read timed out" });
+      expect(cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports client-side fetch failures as repairable tool errors", async () => {
