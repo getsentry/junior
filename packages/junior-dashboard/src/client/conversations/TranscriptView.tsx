@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 
 import type {
   ConversationTranscript,
@@ -8,11 +8,6 @@ import type {
 } from "../types";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
@@ -191,33 +186,21 @@ function JumpToLatestButton(props: {
 }) {
   if (!props.visible) return null;
 
-  const label = props.hasPendingUpdate
-    ? "Jump to latest update"
-    : "Jump to latest";
-
   return (
-    <div className="pointer-events-none sticky bottom-3 z-20 flex h-0 justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:h-auto md:justify-end md:px-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={label}
-              className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
-              onClick={props.onClick}
-              size="icon"
-            >
-              <ArrowDownToLine aria-hidden="true" size={16} strokeWidth={2} />
-              {props.hasPendingUpdate ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 size-2 bg-emerald-300"
-                />
-              ) : null}
-            </Button>
-          }
-        />
-        <TooltipContent size="compact">{label}</TooltipContent>
-      </Tooltip>
+    // Sticky offsets count from inside the scroll region's bottom padding
+    // (pb-4 / md:pb-6). The negative offsets cancel most of it, so the pill
+    // sits 12px (16px on md) above the composer, centered on the transcript.
+    <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center md:-bottom-5">
+      <Button
+        aria-label={
+          props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
+        }
+        className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+        onClick={props.onClick}
+      >
+        <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
+        Jump to latest
+      </Button>
     </div>
   );
 }
