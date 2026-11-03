@@ -238,7 +238,7 @@ an unmapped scenario, and on a mapping to a scenario that no longer exists
 
 #### Scenario: Plan deleted
 
-- **WHEN** this plan folder is deleted after step 22
+- **WHEN** this plan folder is deleted after the last step
 - **THEN** every verification job still runs.
 
 ### Requirement: The Sign-Off Gate
@@ -246,8 +246,8 @@ an unmapped scenario, and on a mapping to a scenario that no longer exists
 "The output adheres to the design" SHALL mean: the model check, the
 conformance tests and the structural rules are green, the trace check shows
 no gap, and the guardian evals for P15 and P20 pass. The gate SHALL be
-green before the first step that changes the protocol, and every later step
-SHALL keep it green (Proposed, needs sign-off: P41).
+green before the cutover release, and every later release SHALL keep it
+green (Proposed, needs sign-off: P41).
 
 #### Scenario: A step breaks an invariant
 

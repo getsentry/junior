@@ -5,7 +5,7 @@
 ### Requirement: One Open Turn Per Conversation
 
 A conversation SHALL have at most one turn that is `running`, `paused` or
-`finishing`. The store SHALL enforce it (Proposed, needs sign-off: P2).
+`finishing`. The store SHALL enforce it (Decided: P2).
 
 #### Scenario: Second start
 
@@ -22,7 +22,7 @@ A conversation SHALL have at most one turn that is `running`, `paused` or
 
 The turn row SHALL be the only turn status. It SHALL list the request
 records it took in. Other views SHALL compute status from turn rows and
-request records (Proposed, needs sign-off: P2, P3).
+request records (Decided: P2, P3).
 
 #### Scenario: Dashboard status
 
@@ -42,7 +42,7 @@ change. Only `finishTurn` SHALL write those statuses.
 ### Requirement: Worker Lock And Lock Version
 
 A worker SHALL take the lock with one compare-and-set on the conversation
-row that raises the lock version (Proposed, needs sign-off: P5). Every turn
+row that raises the lock version (Decided: P5). Every turn
 save, history commit and delivery intent SHALL check the token and version
 in the same write. A worker whose check fails SHALL stop (Decided). The lock
 version SHALL never go down.
@@ -183,7 +183,7 @@ Each response SHALL have a fixed delivery id. The worker SHALL check in,
 save a checkpoint that commits the response to history and records the
 intent with its text, post, then save the provider message id. A later
 worker SHALL check for the delivery id before it posts again, and SHALL send
-the saved text, not new text (Proposed, needs sign-off: P5). A repeat post
+the saved text, not new text (Decided: P5). A repeat post
 SHALL be detected; it is not prevented.
 
 #### Scenario: Two outcomes, second fails

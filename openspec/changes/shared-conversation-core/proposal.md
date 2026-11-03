@@ -52,7 +52,7 @@ requirements. `tasks.md` has the migration steps.
 - The sandbox pass ends with its turn, and the credential proxy checks it
   against the open turn.
 - A machine-checked model, conformance tests, structural rules and a trace
-  check gate every step from step 5 on. They live in `verification/` at the
+  check gate the new core, and are green before the cutover release. They live in `verification/` at the
   repo root, not in this plan (`design.md`, Verification).
 
 ## Decided And Proposed

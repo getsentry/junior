@@ -274,25 +274,26 @@ Watch or Automation grant, and never joins.
 Each item is **Proposed, needs sign-off** unless it says Decided. Numbers
 stay stable across reviews. Retired numbers say where they went.
 
-### P1. Which ships first (Q13)
+### P1. Which ships first (Q13) — Decided
 
-- **Proposal:** neither as an either/or. The smaller option's fixes (finish
-  every turn in one place, fenced saves, one open turn, one stop) ship first
-  as steps of the full design, for today's workers. Later steps move each
-  worker onto `work()` and delete it. The end state has one worker and no
-  per-kind last-try branch.
-- **Why:** an early version of #2499 added a shared layer (seven callbacks,
-  copies kept) and dropped it before merge. Fixes that lasted kept one owner
-  and deleted a copy. Each step here deletes a copy.
-- **Alternatives:** full design first (large cutover, no early bug fixes);
-  smaller option only (keeps four workers and their join and lookup copies).
-- **Evidence:** #2567, Why it keeps happening; #2499 PR body.
+- **Decided:** full design first. Source: the planning thread.
+- **Detail:** pre-work ships first: #2556 (an open PR for a live bug), the
+  `TERMINOLOGY.md` words (P16) and the verification gate with the full
+  model (step G). Then the new core is built beside today's code. It is not
+  wired to production traffic; the conformance tests and the gate run
+  against it. One cutover release routes every kind through `work()`
+  (P45). A later release deletes today's workers and their records. The
+  end state has one worker and no per-kind last-try branch.
+- **Risk:** one large cutover, and no smaller-option fixes for today's
+  workers before it.
 
-### P2. Where turn status lives (Q6)
+### P2. Where turn status lives (Q6) — Decided
 
-- **Proposal:** a SQL turn row is the only turn status. A partial unique
+- **Decided:** a SQL turn row is the only turn status, with one open row
+  per conversation (unique index). Source: the planning thread.
+- **Detail:** a SQL turn row is the only turn status. A partial unique
   index allows one open row per conversation. `currentTurn` reads that row;
-  there is no separate pointer. At cutover, a worker that takes the lock and
+  there is no separate pointer. At cutover (P45), a worker that takes the lock and
   finds an open Redis turn cursor moves it into a SQL row and deletes the
   cursor in the same locked step. There is no read fallback, so two open
   turns can never exist.
@@ -305,11 +306,14 @@ stay stable across reviews. Retired numbers say where they went.
   `TURN_CURSOR_TERMINAL_TTL_MS`, `upsertTurnRecordLocked` has no finished
   guard); `conversations/projection.ts` (`commitMessages`).
 
-### P3. SQL status column (Q5)
+### P3. SQL status column (Q5) — Decided
 
-- **Proposal:** remove the copied `execution_status` and `run_id` columns.
+- **Decided:** remove the copied SQL status columns; reporting reads turn
+  rows. Source: the planning thread.
+- **Detail:** the copied columns are `execution_status` and `run_id`.
   Reporting, the dashboard and `listAgents` read the open turn row and the
-  last finished turn row.
+  last finished turn row. The delete release removes their code, and the
+  columns drop one release later (`tasks.md` steps 16 and 17).
 - **Alternatives:** keep one column with one writer.
 - **Evidence:** `conversations/sql/store.ts` (`recordExecution`).
 
@@ -325,11 +329,22 @@ stay stable across reviews. Retired numbers say where they went.
 - **Evidence:** `task-execution/paused-turn.ts` (`MAX_LOST_WORKER_RESUMES`);
   `task-execution/state.ts` (`CONVERSATION_WORK_MAX_RETRIES = 5`).
 
-### P5. Worker lock, fencing and lock order (gap 2)
+### P5. Worker lock, fencing and lock order (gap 2) — Decided
 
 - **Decided:** every save and post checks the lock version. A worker that
-  lost its lock stops on its next check-in, save or post.
-- **Proposal:**
+  lost its lock stops on its next check-in, save or post. The lock is a SQL
+  worker lock taken with a compare-and-set (with P43). Source: #2567 and
+  the planning thread.
+- **The lock version, in plain words:** each time a worker takes the lock,
+  the version goes up by one. Every save and post carries the version that
+  the worker was given. The database refuses a write with an old version,
+  so a worker that paused and lost its lock cannot overwrite the new
+  worker's work.
+- **Why not a plain Redis lock:** it stops two workers from starting at
+  once. It cannot stop a worker that already holds a stale lock from
+  committing a SQL write after the lock expired. Only a check inside the
+  same SQL write can.
+- **Detail:**
   - The worker lock lives on the SQL conversation row. The version only
     goes up. A Redis expiry cannot reset it.
 
@@ -641,7 +656,7 @@ turn".
     `wakeAtMs`, so a link expiry or backoff fires without the repair job.
   - It releases the lock, then reads the inbox record again (inbox,
     `inboxSeq`, `wakeAtMs`). When `wakeAtMs <= now`, it notifies a worker.
-  - Ships in step 5, with the SQL lock.
+  - Built in step 3, with the SQL lock.
   - Model check: without the `recordSignIn` change and the delayed notify,
     a sign-in during a held lock drops its notify, and L3 fails without
     the repair job (`verification/traces/wake_l3NoRepair_signInDuringLock.txt`).
@@ -731,13 +746,13 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   turned off (`core.hooksPath=/dev/null`), package scripts turned off, and
   a clean `HOME` and `PATH`. They lower the risk; they do not remove it.
   This needs David: accept the shared-file risk with these mitigations, or
-  reopen sandbox sharing (Decisions Needed 35).
+  reopen sandbox sharing (Decisions Needed 31).
 - **Alternatives:** a new pass per attempt (old P29); a sandbox per actor.
 
-### P43. SQL lock or Redis lock with a SQL counter (from review)
+### P43. SQL lock or Redis lock with a SQL counter (from review) — Decided
 
-- **Proposal:** keep the SQL lock (P5). Cost, as an estimate to measure in
-  step 5: one indexed `UPDATE` per running turn every 15 s (300 running
+- **Decided:** the SQL lock (P5). Source: the planning thread.
+- **Cost:** an estimate to measure in step 3 (`tasks.md`): one indexed `UPDATE` per running turn every 15 s (300 running
   turns is 20 writes per second), and one indexed read per credentialed
   proxy call.
 - **Why:** the lock, the version and the stop time sit on one row. Each
@@ -746,8 +761,8 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   that goes up at each take. Check-ins cost no SQL write, and fencing still
   holds at the SQL save. But the proxy and the save check read two stores,
   and a take is two writes that a crash can split.
-- **Switch rule:** if step 5 shows the check-in load is a problem, switch.
-  Only the lock module changes.
+- **Note, switch rule:** if the step 3 measurement shows the check-in load
+  is a problem, switch. Only the lock module changes.
 
 ### P44. One clock for a stop and the input it judges (from the model)
 
@@ -783,8 +798,40 @@ came before (check `stop_seq_same`).
   only core stamps under one row lock, so they follow Junior's real order.
   Only a cross-source stop on person input (a dashboard stop on a Slack
   thread) keeps option 1's gap for a late message. Inference: not modeled
-  yet; G.1f models it before step 11.
+  yet; G.1f models it before step 9.
 - **Needs:** David's decision.
+
+### P45. A cutover that is safe under a rolling deploy (from P1)
+
+Old and new workers run at once during each deploy.
+
+- **Proposal:**
+  - The conversation row gets a `core` field (`old` or `new`). The SQL
+    lock take decides the path per conversation and sets `core` in the
+    same compare-and-set. The reader release before the cutover (`tasks.md`
+    step 14) teaches today's workers to read it: they refuse a conversation
+    that the new core owns.
+  - The first new-core lock take of a conversation also takes today's
+    Redis lease, so it waits while an old worker is mid-turn. Then, in one
+    locked step, it moves the state: an open Redis turn cursor into a turn
+    row keyed by its turn id, active Agent invocation rows and dispatch
+    records into request records, and Slack `activeTurnId` and
+    `pendingAuth` into the turn row. Each move inserts once and then
+    deletes the old state, so a repeat after a crash does nothing new.
+  - A cutover switch decides whether a lock take on an old-core
+    conversation moves it. The cutover release turns it on.
+- **Rollback of the cutover release:** turn the switch off. No more
+  conversations move. A new-core conversation goes back to today's workers
+  at its next lock take once it has no open turn and no open record; open
+  new-core work finishes on the new core first. History is already in SQL,
+  so nothing moves back. When a count shows no new-core conversation,
+  revert to the reader release.
+- **What rollback cannot undo after the delete release:** today's workers
+  and the move-back path are gone, so no conversation can go back. The
+  moved Redis cursors, Agent invocation rows and dispatch records are not
+  made again. After the columns and old tables drop, only fix forward.
+- **Why:** the lock take is already the one place a worker decides to run
+  a conversation, so the owner check costs no extra read.
 
 ## Verification
 
@@ -889,9 +936,10 @@ code follows this design. Four layers catch different drift.
   the conformance tests and the structural rules are green, the trace check
   shows no gap, and the `guardian` eval suite passes for the P15 outside
   text and the P20 "never approval" rules.
-- **Timing:** steps 1 to 4 (bug fixes and words) may ship first with their
-  own scenario tests. Step G is green before step 5, the first step that
-  changes the protocol. Every later step keeps it green.
+- **Timing:** steps 1, 2 and G are pre-work. Each build step merges when
+  the checks its Verify line names are green against the new core. Step G,
+  with the model complete (G.1a–G.1f), is green before the cutover release
+  (step 15). Every later release keeps it green.
 
 ### P42. Crash points without new seams
 
@@ -937,49 +985,46 @@ test-only mutation APIs, so each point needs a real boundary.
 
 Every item is **Proposed, needs sign-off**.
 
-1. P1: smaller-option fixes ship first; end state has one worker (Q13).
-2. P2: SQL turn row; migrate open cursors on lock take; no fallback (Q6).
-3. P3: remove the copied SQL status columns (Q5).
-4. P4: a restart does not count against the retry limit; error limit 5 (Q3).
-5. P5: SQL worker lock with compare-and-set; fenced saves; delivery intent
-   with saved text before every post.
-6. P6: "answered", follow-ups, and where a result turn replies.
-7. P7: one repair job: resend, stamp, cap, notify; never writes status.
-8. P8: lost only when `running` under an expired lock.
-9. P9: inbound message fields; `join` replaces `delivery`.
-10. P10: five pause reasons.
-11. P11: no-progress rule; `post_retry` has its own limit.
-12. P12: per-turn limits end the turn on the first try.
-13. P13: sign-in only for person actors; system actors end `blocked`.
-14. P14: one conversation per plugin-started agent (Q9).
-15. P16: `TERMINOLOGY.md` first (Q16).
-16. P18: `replyTo.responses` decides what is posted.
-17. P21: plugin view computed from the record.
-18. P22: errors before take-in count delivery attempts.
-19. P23: one kind of request record, minted by core for every input.
-20. P26: core-minted ids, match check, provenance; a result has its own
+1. P4: a restart does not count against the retry limit; error limit 5 (Q3).
+2. P6: "answered", follow-ups, and where a result turn replies.
+3. P7: one repair job: resend, stamp, cap, notify; never writes status.
+4. P8: lost only when `running` under an expired lock.
+5. P9: inbound message fields; `join` replaces `delivery`.
+6. P10: five pause reasons.
+7. P11: no-progress rule; `post_retry` has its own limit.
+8. P12: per-turn limits end the turn on the first try.
+9. P13: sign-in only for person actors; system actors end `blocked`.
+10. P14: one conversation per plugin-started agent (Q9).
+11. P16: `TERMINOLOGY.md` first (Q16).
+12. P18: `replyTo.responses` decides what is posted.
+13. P21: plugin view computed from the record.
+14. P22: errors before take-in count delivery attempts.
+15. P23: one kind of request record, minted by core for every input.
+16. P26: core-minted ids, match check, provenance; a result has its own
     record in the parent, and its sender comes from the child's turn row.
-21. P30: closing turns.
-22. P31: `error_retry` pause.
-23. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
+17. P30: closing turns.
+18. P31: `error_retry` pause.
+19. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
     notify; `recordSignIn` raises `inboxSeq`; release, then read the inbox
     record again.
-24. P33: delivery attempts and backoff while finishing; permanent errors
+20. P33: delivery attempts and backoff while finishing; permanent errors
     skip backoff.
-25. P34: a stop judges input `createdAtMs`; joins refuse older input;
+21. P34: a stop judges input `createdAtMs`; joins refuse older input;
     newer taken-in input goes back to the inbox.
-26. P35: no parent turn for results under a tree stop.
-27. P36: sandbox pass lifecycle; the proxy needs a live lock.
-28. P37: Quint model; TLC for safety and liveness; the bound;
+22. P35: no parent turn for results under a tree stop.
+23. P36: sandbox pass lifecycle; the proxy needs a live lock.
+24. P37: Quint model; TLC for safety and liveness; the bound;
     worked examples as traces.
-29. P38: conformance tests on records and visible outcomes, with no new
+25. P38: conformance tests on records and visible outcomes, with no new
     seams.
-30. P39: structural rules S1–S6 as types, import checks and ast-grep.
-31. P40: `verification/` at the repo root; a two-way trace check.
-32. P41: the gate, including guardian evals; green before step 5.
-33. P42: crash points only at existing boundaries.
-34. P43: SQL lock rather than a Redis lock with a SQL counter.
-35. Needs David: accept the shared-file risk with the P36 mitigations, or
+26. P39: structural rules S1–S6 as types, import checks and ast-grep.
+27. P40: `verification/` at the repo root; a two-way trace check.
+28. P41: the gate, including guardian evals; green before the cutover
+    release.
+29. P42: crash points only at existing boundaries.
+30. P45: the `core` owner field, state moved on the first new-core lock
+    take, a cutover switch and its rollback.
+31. Needs David: accept the shared-file risk with the P36 mitigations, or
     reopen sandbox sharing.
-36. P44, needs David: which clock judges a stop against input from another
+32. P44, needs David: which clock judges a stop against input from another
     source or from core.
