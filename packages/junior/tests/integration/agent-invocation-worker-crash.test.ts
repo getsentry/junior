@@ -5,11 +5,12 @@ import {
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
 import {
+  buildAgentInvocationInboundMessage,
   createAndEnqueueAgentInvocation,
-  enqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
@@ -65,8 +66,11 @@ describe("agent invocation worker crash", () => {
             parentConversationId,
             parentToolCallId: "call-message",
           });
-          await enqueueAgentInvocation(invocation, {
+          // Injected fault: the enqueue dies after its mailbox write, before
+          // it marks the invocation appended. No harness fault stops it there.
+          await appendAndEnqueueInboundMessage({
             conversationStore,
+            message: buildAgentInvocationInboundMessage(invocation),
             queue,
             state,
           });

@@ -507,13 +507,20 @@ async function endOtherActiveAgentInvocation(
  */
 export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
+  inboundMessageIds: readonly string[],
 ): Promise<void> {
   for (const invocation of await listAgentInvocationsForConversation(
     conversationId,
     NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   )) {
     // Its append runs after the stop and starts new work for the child.
-    if (invocation.mailboxStatus === "pending") continue;
+    if (
+      !inboundMessageIds.includes(
+        getAgentInvocationMessageId(invocation.invocationId),
+      )
+    ) {
+      continue;
+    }
     const terminal =
       (await projectTerminalTurn(invocation, { reportNow: true })) ??
       (await completeAgentInvocation({
