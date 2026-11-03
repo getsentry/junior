@@ -627,7 +627,9 @@ describe("github plugin", () => {
     expect(events?.events).toMatchObject({
       "pull_request.checks.failed": {
         reach: { anyOf: ["repo"] },
-        guidance: "Inspect the failed checks.",
+        guidance: expect.stringMatching(
+          /^Fix only failures .* Inspect the failed checks\.$/,
+        ),
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
