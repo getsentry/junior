@@ -50,7 +50,7 @@ type GitHubStack = z.infer<typeof stackSchema>;
 /** The stack that a created pull request joined. */
 export interface GitHubPullRequestStack {
   number: number;
-  pullRequests: number[];
+  pull_requests: number[];
 }
 
 /**
@@ -108,7 +108,7 @@ export async function stackGitHubPullRequest(
   };
   const result = (stack: GitHubStack): GitHubPullRequestStack => ({
     number: stack.number,
-    pullRequests: stack.pull_requests.map((pullRequest) => pullRequest.number),
+    pull_requests: stack.pull_requests.map((pullRequest) => pullRequest.number),
   });
 
   try {

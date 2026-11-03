@@ -1844,7 +1844,7 @@ Conversation: \`local:test:old-conversation\`
         ),
       ).resolves.toMatchObject({
         number: 701,
-        stack: { number: 9, pullRequests: stack },
+        stack: { number: 9, pull_requests: stack },
       });
       const stackWrite = ctx.egressRequests().at(-1)!;
       expect(stackWrite).toMatchObject({ operation: write.operation });
