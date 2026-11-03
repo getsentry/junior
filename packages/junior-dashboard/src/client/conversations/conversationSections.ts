@@ -7,13 +7,18 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Sorts before every time section.
+const ATTENTION_SECTION = {
+  key: "attention",
+  label: "Needs attention",
+  order: Number.NEGATIVE_INFINITY,
+};
 
 /**
- * Group conversations by last activity: Today, Yesterday, Previous 7 days,
- * Previous 30 days, then one section per month.
+ * Group conversations into Needs attention, then by last activity: Today,
+ * Yesterday, Previous 7 days, Previous 30 days, then one section per month.
  *
- * Conversations in `attentionIds` lead their section, so unread and waiting
- * rows sit above read rows without leaving their time group.
+ * Conversations in `attentionIds` go to Needs attention, newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
@@ -25,20 +30,19 @@ export function buildConversationSections(
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
   const sections = new Map<string, ConversationSection & { order: number }>();
-  const byActivity = [...conversations].sort(
+  const sorted = [...conversations].sort(
     (left, right) => activityTime(right) - activityTime(left),
   );
-  const sorted = options.attentionIds
-    ? attentionFirst(byActivity, options.attentionIds)
-    : byActivity;
 
   for (const conversation of sorted) {
-    const section = conversationSection(
-      activityTime(conversation),
-      nowDay,
-      options.nowMs,
-      options.timeZone,
-    );
+    const section = options.attentionIds?.has(conversation.id)
+      ? ATTENTION_SECTION
+      : conversationSection(
+          activityTime(conversation),
+          nowDay,
+          options.nowMs,
+          options.timeZone,
+        );
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
