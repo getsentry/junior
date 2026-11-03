@@ -400,7 +400,7 @@ test("groups the signed-in profile and session actions in the nav rail", async (
 }) => {
   await page.goto(dashboard.baseURL);
 
-  const rail = page.getByRole("complementary").filter({
+  const rail = page.locator('[data-slot="sidebar"]').filter({
     has: page.getByRole("navigation", { name: "Primary" }),
   });
   const trigger = rail.getByRole("button", {

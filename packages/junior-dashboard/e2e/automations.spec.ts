@@ -583,7 +583,7 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   ).toBeVisible();
 
   // Rows open run details. The row link still opens the Conversation.
-  const firstRow = page.getByRole("listitem").first();
+  const firstRow = page.locator("[data-run-id]").first();
   const runId = await firstRow.getAttribute("data-run-id");
   await expect(
     firstRow.getByRole("link", { name: "Open conversation" }),
