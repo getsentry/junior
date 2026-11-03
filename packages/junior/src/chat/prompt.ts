@@ -32,6 +32,7 @@ import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
+import type { Workspace } from "@/chat/workspaces/types";
 import type {
   Destination,
   Platform,
@@ -211,6 +212,30 @@ function formatActiveMcpCatalogsForPrompt(
       `    <available_tool_count>${catalog.available_tool_count}</available_tool_count>`,
     );
     lines.push("  </catalog>");
+  }
+  return lines.join("\n");
+}
+
+type PromptWorkspace = Pick<Workspace, "name" | "repos">;
+
+/**
+ * Context message block that names each Workspace and its repositories, so
+ * the agent can pick `switchWorkspace` before it starts sandbox work instead
+ * of finding the Workspace through a rejected clone. Facts only: rules for
+ * when to switch belong in the Workspace and clone tool contracts.
+ */
+function formatWorkspacesForPrompt(
+  workspaces: PromptWorkspace[],
+): string | null {
+  if (workspaces.length === 0) {
+    return null;
+  }
+  const lines = [
+    "Named Sandbox recipes. After `switchWorkspace`, their repositories are already checked out.",
+  ];
+  for (const workspace of workspaces) {
+    const repos = workspace.repos.map((repo) => escapeXml(repo.repo));
+    lines.push(`- ${escapeXml(workspace.name)}: ${repos.join(", ")}`);
   }
   return lines.join("\n");
 }
@@ -513,6 +538,7 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
   toolGuidance?: ToolPromptContext[];
+  workspaces?: PromptWorkspace[];
 }): string | null {
   const blocks: string[] = [];
   const availableSkills = formatAvailableSkillsForPrompt(
@@ -532,6 +558,11 @@ function buildCapabilitiesSection(params: {
   const toolGuidance = formatToolGuidanceForPrompt(params.toolGuidance ?? []);
   if (toolGuidance) {
     blocks.push(renderTagBlock("tool-guidance", toolGuidance));
+  }
+
+  const workspaces = formatWorkspacesForPrompt(params.workspaces ?? []);
+  if (workspaces) {
+    blocks.push(renderTagBlock("workspaces", workspaces));
   }
 
   if (blocks.length === 0) {
@@ -667,6 +698,7 @@ type TurnContextPromptInput = {
   toolGuidance?: ToolPromptContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
+  workspaces?: PromptWorkspace[];
   runtime?: {
     conversationId?: string;
     slackConversation?: SlackConversationContext;
@@ -766,6 +798,7 @@ export function buildTurnContextPrompt(
           availableSkills: params.availableSkills,
           activeMcpCatalogs: params.activeMcpCatalogs ?? [],
           toolGuidance: params.toolGuidance ?? [],
+          workspaces: params.workspaces,
         })
       : null,
     pluginPromptContributions,
