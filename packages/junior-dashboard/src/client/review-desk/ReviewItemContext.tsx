@@ -76,7 +76,10 @@ export function ReviewItemContext(props: {
   const loadPreviousPageRef = useRef(detail.loadPreviousPage);
   loadPreviousPageRef.current = detail.loadPreviousPage;
   const oldest = events?.[0]?.createdAt;
+  // Redacted or expired history has no messages to wait for.
+  const available = data?.eventHistory.status === "available";
   const missingEarlier =
+    available &&
     oldest !== undefined &&
     Date.parse(oldest) > Date.parse(props.item.createdAt) &&
     detail.hasPreviousPage;
@@ -92,8 +95,8 @@ export function ReviewItemContext(props: {
   if (
     !data ||
     !excerpt ||
+    !available ||
     missingEarlier ||
-    data.eventHistory.status !== "available" ||
     excerpt.before.length + excerpt.after.length === 0
   ) {
     return props.fallback;
