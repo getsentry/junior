@@ -153,13 +153,20 @@ export function useReviewItemAction() {
   });
 }
 
-const NO_CONVERSATIONS: ReadonlySet<string> = new Set();
+/** Newest open Review item title and item count for one waiting Conversation. */
+export type WaitingConversation = { count: number; title: string };
+
+const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
 /**
- * Return the Conversations that wait on the viewer. Today only the review
- * desk sets this: a linked open action item assigned to the viewer.
+ * Return the Conversations that wait on the viewer, by Conversation id. Today
+ * only the review desk sets this: a linked open action item assigned to the
+ * viewer.
  */
-export function useWaitingConversationIds(): ReadonlySet<string> {
+export function useWaitingConversations(): ReadonlyMap<
+  string,
+  WaitingConversation
+> {
   const query = useQuery({
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
     queryFn: ({ signal }) =>
@@ -171,6 +178,23 @@ export function useWaitingConversationIds(): ReadonlySet<string> {
     refetchInterval: COUNT_REFRESH_MS,
     retry: false,
   });
-  const ids = query.data?.conversationIds;
-  return useMemo(() => (ids ? new Set(ids) : NO_CONVERSATIONS), [ids]);
+  const conversations = query.data?.conversations;
+  return useMemo(
+    () =>
+      conversations
+        ? new Map(
+            conversations.map(({ conversationId, count, title }) => [
+              conversationId,
+              { count, title },
+            ]),
+          )
+        : NO_WAITING,
+    [conversations],
+  );
+}
+
+/** Return the ids of the Conversations that wait on the viewer. */
+export function useWaitingConversationIds(): ReadonlySet<string> {
+  const waiting = useWaitingConversations();
+  return useMemo(() => new Set(waiting.keys()), [waiting]);
 }

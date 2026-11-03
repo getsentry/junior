@@ -616,23 +616,49 @@ export async function searchReviewItems(
   return await hydrate(db, rows);
 }
 
+/** One Conversation that waits on a User, with its newest open Review item. */
+export type WaitingConversation = {
+  conversationId: string;
+  /** Title of the newest open Review item that needs the User. */
+  title: string;
+  /** Open Review items on this Conversation that need the User. */
+  count: number;
+};
+
 /**
  * List the Conversations that wait on a User: each is linked to an open item
  * that needs the User (`reviewItemNeedsUser`).
  */
-export async function listWaitingConversationIds(
+export async function listWaitingConversations(
   db: JuniorDatabase,
   userId: string,
-): Promise<string[]> {
+): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
       conversationId: juniorReviewItemConversations.conversationId,
+      itemId: juniorReviewItems.id,
+      title: juniorReviewItems.title,
+      createdAt: juniorReviewItems.createdAt,
     })
     .from(juniorReviewItemConversations)
     .innerJoin(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
     )
-    .where(reviewItemNeedsUser(userId));
-  return rows.map((row) => row.conversationId).sort();
+    .where(reviewItemNeedsUser(userId))
+    .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
+  const waiting = new Map<string, WaitingConversation>();
+  for (const row of rows) {
+    const current = waiting.get(row.conversationId);
+    if (current) current.count += 1;
+    else
+      waiting.set(row.conversationId, {
+        conversationId: row.conversationId,
+        title: row.title,
+        count: 1,
+      });
+  }
+  return [...waiting.values()].sort((left, right) =>
+    left.conversationId.localeCompare(right.conversationId),
+  );
 }

@@ -29,7 +29,7 @@ import {
 } from "@/chat/review-items/actions";
 import {
   countReviewItemsNeedingUser,
-  listWaitingConversationIds,
+  listWaitingConversations,
   searchReviewItems,
   type ReviewItem,
   type ReviewItemFilters,
@@ -221,7 +221,7 @@ export function createReviewItemRoutes(services: {
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversationIds: await listWaitingConversationIds(getDb(), viewer.id),
+      conversations: await listWaitingConversations(getDb(), viewer.id),
     });
   });
   app.get(

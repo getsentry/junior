@@ -107,9 +107,22 @@ export const reviewItemCountSchema = z
   })
   .strict();
 
-/** Conversations linked to an open action item assigned to the viewer. */
+/**
+ * Conversations linked to an open action item assigned to the viewer. `title`
+ * is the newest such item; `count` is how many there are.
+ */
 export const reviewItemWaitingConversationsSchema = z
-  .object({ conversationIds: z.array(z.string().min(1)) })
+  .object({
+    conversations: z.array(
+      z
+        .object({
+          conversationId: z.string().min(1),
+          title: z.string().min(1),
+          count: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+  })
   .strict();
 
 export const reviewItemParamsSchema = z

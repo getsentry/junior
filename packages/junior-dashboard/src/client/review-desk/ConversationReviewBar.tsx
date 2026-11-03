@@ -1,10 +1,14 @@
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { Drawer } from "../components/Drawer";
 import { LoadMorePagination } from "../components/Pagination";
 import { ReviewItemCard } from "./ReviewItemCard";
 import { useReviewItemsData } from "./queries";
+import {
+  CONVERSATION_REVIEW_OPEN,
+  CONVERSATION_REVIEW_PARAM,
+} from "../conversations/conversationRoutes";
 
 /** `more` marks a count of the loaded pages only, such as "50+". */
 function itemCountLabel(count: number, more: boolean): string {
@@ -15,9 +19,23 @@ function itemCountLabel(count: number, more: boolean): string {
 /**
  * Show how many open Review items are linked to a Conversation, above its
  * message box. The bar opens a side panel where the viewer can act on each.
+ * The URL owns the panel, so a sidebar link can open it.
  */
 export function ConversationReviewBar(props: { conversationId: string }) {
-  const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const open =
+    searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
+  const setOpen = (value: boolean) =>
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value)
+          next.set(CONVERSATION_REVIEW_PARAM, CONVERSATION_REVIEW_OPEN);
+        else next.delete(CONVERSATION_REVIEW_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
   const { items, query } = useReviewItemsData({
     conversationId: props.conversationId,
   });

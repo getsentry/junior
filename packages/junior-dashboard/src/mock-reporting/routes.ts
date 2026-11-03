@@ -331,7 +331,7 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(reviewItemCountSchema, { needsViewer: 0 }),
   );
   app.get("/review-items/waiting-conversations", () =>
-    jsonResponse(reviewItemWaitingConversationsSchema, { conversationIds: [] }),
+    jsonResponse(reviewItemWaitingConversationsSchema, { conversations: [] }),
   );
   app.get("/review-items/:id", () =>
     errorResponse("Review item not found.", 404),

@@ -24,7 +24,10 @@ import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
-import { useWaitingConversationIds } from "../review-desk/queries";
+import {
+  useWaitingConversationIds,
+  useWaitingConversations,
+} from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
@@ -56,8 +59,9 @@ export function ConversationWorkspace() {
     if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
+  const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
-  const { finishedConversationIds, markRead } =
+  const { finishedConversationIds, heldConversationId, markRead } =
     useConversationFinishedIndicators(
       conversations,
       selectedId,
@@ -149,13 +153,14 @@ export function ConversationWorkspace() {
           conversations={conversations}
           error={feed.error?.message}
           finishedConversationIds={finishedConversationIds}
+          heldConversationId={heldConversationId}
           loading={feed.isPending}
           onNewConversation={openCreate}
           onQueryChange={setQuery}
           query={query}
           selectedId={selectedId}
           timeZone={getDashboardTimeZone()}
-          waitingConversationIds={waitingConversationIds}
+          waitingConversations={waitingConversations}
         />
       </div>
       <section
