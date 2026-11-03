@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { stopConversationTurn } from "@/chat/conversations/stop";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -73,14 +73,14 @@ function viewerWebMessages(
   messages: readonly InboundMessage[],
   viewer: User,
 ): StopConversationTurnResponse["stoppedMessages"] {
-  const viewerUserId = webActorFromEmail(viewer.email).userId;
+  const viewerUserIds = webActorUserIds(viewer);
   return messages.flatMap((message) => {
     if (message.source !== "web") return [];
     const metadata = legacyWebMailboxMetadataSchema.safeParse(
       message.input.metadata,
     );
     if (!metadata.success) return [];
-    if (metadata.data.authorUserId !== viewerUserId) return [];
+    if (!viewerUserIds.includes(metadata.data.authorUserId)) return [];
     const text = message.input.text.trim();
     return text ? [{ inboundMessageId: message.inboundMessageId, text }] : [];
   });

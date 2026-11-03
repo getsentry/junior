@@ -521,7 +521,7 @@ export async function cancelHumanFacingPendingMessages(args: {
 
 /** Mark one author's queued web messages as interrupts. */
 export async function steerWebPendingMessages(args: {
-  authorId: string;
+  authorIds: readonly string[];
   conversationId: string;
   inboundMessageIds: readonly string[];
   nowMs?: number;

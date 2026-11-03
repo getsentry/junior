@@ -12,7 +12,6 @@ import { executeAgentRun } from "@/chat/agent";
 import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
-  webActorFromEmail,
 } from "@/chat/conversations/web-input";
 import {
   createConversationWork,
@@ -35,13 +34,14 @@ import {
   streamReplies,
   type ConversationWorkQueueTestAdapter,
 } from "./conversation-work";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { testViewer } from "./user";
 
 /** Default verified web Actor for Conversation tests. */
 const WEB_TEST_EMAIL = "alice@example.com";
 export const webTestActor = {
   platform: "web" as const,
-  userId: webActorFromEmail(WEB_TEST_EMAIL).userId,
+  userId: testViewer(WEB_TEST_EMAIL).id,
   email: WEB_TEST_EMAIL,
   fullName: "Alice Example",
   userName: "alice",
@@ -151,10 +151,13 @@ export async function createConversationWebHarness(
     queue,
     state,
   });
-  const actor = webTestActor;
+  // Sign in like the dashboard and ACP, so the web Actor id is the User id.
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected a web test viewer");
+  const actor = { ...webTestActor, userId: viewer.id };
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(actor.email));
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());

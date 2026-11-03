@@ -3,7 +3,7 @@ import { and, inArray, isNull } from "drizzle-orm";
 import {
   acceptsWebMessages,
   appendAndEnqueueWebMessage,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
@@ -133,11 +133,7 @@ async function sendOne(args: {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {
-          actor: webActorFromEmail(args.change.user.email, {
-            ...(args.change.user.displayName
-              ? { fullName: args.change.user.displayName }
-              : undefined),
-          }),
+          actor: webActorFromUser(args.change.user),
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,

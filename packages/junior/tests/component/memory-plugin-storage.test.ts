@@ -16,7 +16,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
   createConversationId,
   recordWebConversationActivity,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
@@ -487,7 +487,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       });
 
       // The same User on the dashboard resolves through the web identity.
-      const webActor = webActorFromEmail("memory-viewer@example.com");
+      const webActor = webActorFromUser({
+        email: "memory-viewer@example.com",
+        id: viewer.user.id,
+      });
       const webConversationId = createConversationId({
         actorEmail: "memory-viewer@example.com",
         idempotencyKey: "web-memory",

@@ -5,8 +5,9 @@ import { stopConversationTurnResponseSchema } from "@/api/schema";
 import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   ackMessages,
   startConversationWork,
@@ -70,7 +71,17 @@ describe("conversation stop API", () => {
       },
       { conversationStore, queue, state },
     );
-    const otherActor = webActorFromEmail("bob@example.com");
+    // Input queued before web Actors used the User id stores the legacy id.
+    const legacyQueued = await appendAndEnqueueWebMessage(
+      {
+        actor: { ...actor, userId: legacyWebActorUserId(actor.email) },
+        conversationId: created.conversationId,
+        idempotencyKey: "stop-queued-legacy",
+        message: "Queued before the deploy.",
+      },
+      { conversationStore, queue, state },
+    );
+    const otherActor = webActorFromUser(testViewer("bob@example.com"));
     const otherQueued = await appendAndEnqueueWebMessage(
       {
         actor: otherActor,
@@ -99,9 +110,17 @@ describe("conversation stop API", () => {
     ).toEqual({
       conversationId: created.conversationId,
       status: "requested",
-      stoppedInboundMessageIds: [queued.messageId, otherQueued.messageId],
+      stoppedInboundMessageIds: [
+        queued.messageId,
+        legacyQueued.messageId,
+        otherQueued.messageId,
+      ],
       stoppedMessages: [
         { inboundMessageId: queued.messageId, text: "Queued while running." },
+        {
+          inboundMessageId: legacyQueued.messageId,
+          text: "Queued before the deploy.",
+        },
       ],
     });
   });

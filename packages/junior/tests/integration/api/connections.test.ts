@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { connectionListSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
+import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { GET as handleOAuthCallback } from "@/handlers/oauth-callback";
 import {
   getCapturedSlackApiCalls,
@@ -143,7 +145,7 @@ describe("connections API", () => {
       },
     ]);
     const storedTokens = await createUserTokenStore().get(
-      webActorFromEmail("person@example.com").userId,
+      viewer!.id,
       "eval-oauth",
     );
     expect(storedTokens?.account).toEqual({
@@ -161,6 +163,41 @@ describe("connections API", () => {
       expect.objectContaining({ connected: false, provider: "eval-oauth" }),
     ]);
     expect(await evalOAuthIdentities()).toEqual([]);
+  });
+
+  it("keeps a connection saved under the legacy web Actor id", async () => {
+    const app = authenticatedApi("person@example.com");
+    const viewer = await resolveViewerUser("person@example.com");
+    const legacyUserId = legacyWebActorUserId("person@example.com");
+    // Read the raw keys: the runtime store moves legacy tokens on read.
+    const rawStore = new StateAdapterTokenStore(getStateAdapter());
+    await rawStore.set(legacyUserId, "eval-oauth", {
+      accessToken: "legacy-access",
+      account: { id: "eval-account-1", label: "person" },
+      refreshToken: "legacy-refresh",
+      scope: "read",
+    });
+
+    expect(await listConnections(app)).toEqual([
+      expect.objectContaining({
+        account: { label: "person" },
+        connected: true,
+        provider: "eval-oauth",
+      }),
+    ]);
+    expect(await rawStore.get(legacyUserId, "eval-oauth")).toBeUndefined();
+    expect(await rawStore.get(viewer!.id, "eval-oauth")).toMatchObject({
+      accessToken: "legacy-access",
+    });
+
+    const disconnectResponse = await app.request(
+      "http://localhost/api/connections/eval-oauth",
+      { method: "DELETE" },
+    );
+    expect(disconnectResponse.status).toBe(200);
+    expect(await listConnections(app)).toEqual([
+      expect.objectContaining({ connected: false, provider: "eval-oauth" }),
+    ]);
   });
 
   it("rejects providers without user OAuth", async () => {

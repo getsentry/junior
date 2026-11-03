@@ -9,6 +9,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -357,9 +358,20 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseStoredCredentials(
+  const stored = parseStoredCredentials(
     await stateAdapter.get(credentialsKey(userId, provider)),
   );
+  if (stored) return stored;
+  // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
+  // remain. Web Actors saved them before they used the User id, so move them.
+  const legacyUserId = await findLegacyWebActorUserId(userId);
+  if (!legacyUserId) return undefined;
+  const legacyKey = credentialsKey(legacyUserId, provider);
+  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  if (!legacy) return undefined;
+  await putMcpStoredOAuthCredentials(userId, provider, legacy);
+  await stateAdapter.delete(legacyKey);
+  return legacy;
 }
 
 export async function putMcpStoredOAuthCredentials(
