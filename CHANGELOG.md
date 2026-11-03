@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.274.0
+
+### New Features ✨
+
+#### Conversations
+
+- Add readConversationEvent tool by @sentry-junior in [#2601](https://github.com/getsentry/junior/pull/2601)
+- Read background compaction events and check history version on replace by @sentry-junior in [#2600](https://github.com/getsentry/junior/pull/2600)
+
+#### Dashboard
+
+- Add per-browser autocorrect setting for the composer by @BYK with @sentry-junior in [#2575](https://github.com/getsentry/junior/pull/2575)
+- Group conversation sidebar by time with review chips by @sentry-junior in [#2594](https://github.com/getsentry/junior/pull/2594)
+
+#### Other
+
+- (github) Restack stacked pull requests after a merge by @BYK with @sentry-junior in [#2597](https://github.com/getsentry/junior/pull/2597)
+
+### Internal Changes 🔧
+
+- (memory) Use the HNSW index for public memory recall by @sentry-junior in [#2596](https://github.com/getsentry/junior/pull/2596)
+- (telemetry) Give each context compaction its own span by @sentry-junior in [#2599](https://github.com/getsentry/junior/pull/2599)
+
 ## 0.273.0
 
 ### New Features ✨
