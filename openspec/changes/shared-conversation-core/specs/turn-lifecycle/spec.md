@@ -154,6 +154,12 @@ P4).
 - **WHEN** the worker is lost again after the restart, or no attempt is left
 - **THEN** the turn ends `failed: lost_worker` with a visible error message.
 
+#### Scenario: Pause save fails
+
+- **WHEN** a worker's pause save fails while the turn is `running`
+- **THEN** it does not release the lock, the lock expires, and the repair
+  job notifies a worker on its next pass (Proposed, needs sign-off: P8).
+
 ### Requirement: The Response Rule
 
 Junior SHALL send each assistant response when it is produced, as
@@ -174,10 +180,11 @@ SHALL NOT split, merge or rewrite responses.
 ### Requirement: Detect Repeat Posts
 
 Each response SHALL have a fixed delivery id. The worker SHALL check in,
-save the intent with the response text, post, then save the provider message
-id. A later worker SHALL check for the delivery id before it posts again,
-and SHALL send the saved text, not new text (Proposed, needs sign-off: P5).
-A repeat post SHALL be detected; it is not prevented.
+save a checkpoint that commits the response to history and records the
+intent with its text, post, then save the provider message id. A later
+worker SHALL check for the delivery id before it posts again, and SHALL send
+the saved text, not new text (Proposed, needs sign-off: P5). A repeat post
+SHALL be detected; it is not prevented.
 
 #### Scenario: Two outcomes, second fails
 
@@ -203,7 +210,8 @@ be resumable.
 #### Scenario: Crash during finish
 
 - **WHEN** a worker dies with the turn `finishing`
-- **THEN** the next worker runs `finishTurn` again and sends nothing twice.
+- **THEN** the next worker runs `finishTurn` again, checks each saved
+  delivery id before it posts, and a repeat post is detected.
 
 #### Scenario: Next turn after a failure
 
@@ -213,8 +221,9 @@ be resumable.
 ### Requirement: Finishing Always Ends
 
 A delivery that fails while finishing SHALL retry with backoff, up to 5
-attempts. Then it SHALL be `failed`, and the turn SHALL finish anyway
-(Proposed, needs sign-off: P33).
+attempts. A permanent provider error SHALL fail it at once. Then it SHALL
+be `failed`, and the turn SHALL finish anyway (Proposed, needs sign-off:
+P33).
 
 #### Scenario: Error message cannot be posted
 
@@ -237,8 +246,9 @@ without the agent (Proposed, needs sign-off: P30).
 
 One repair job SHALL resend lost input, stamp records on `accepted`,
 `duplicate` or `refused`, stop after 5 attempts or 24 h, and notify workers
-for flagged records, past wake times and idle open turns. It SHALL write no
-status (Proposed, needs sign-off: P7).
+for flagged records, past wake times (from a wake-time index) and
+`running` turns whose lock expired. It SHALL write no status (Proposed,
+needs sign-off: P7).
 
 #### Scenario: Parent turn fails after saving the record
 

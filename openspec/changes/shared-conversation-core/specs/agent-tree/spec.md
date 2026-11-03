@@ -114,15 +114,23 @@ answered and siblings still working. Only its outcome SHALL be trusted.
 
 ### Requirement: Only Matching Results Are Accepted
 
-A parent SHALL accept a result only when its record's reply target is that
-parent and its record belongs to the sending child (Proposed, needs
-sign-off: P26). Only core agent code SHALL make `source: "agent"` messages.
+A parent SHALL accept a result or child message only when its own record
+in the parent matches the message, the `sentBy` turn row belongs to a child
+of the parent, and every `answers` record belongs to that child and names
+the parent as its reply target. Message fields SHALL NOT decide it
+(Proposed, needs sign-off: P26). Only core agent code SHALL make
+`source: "agent"` messages.
 
 #### Scenario: Forged result
 
-- **WHEN** a result names a record whose reply target is another
-  conversation
+- **WHEN** a result names a record in another conversation
 - **THEN** it is dropped with a recorded reason and starts no turn.
+
+#### Scenario: Sender is not a child
+
+- **WHEN** a result's record names a `sentBy` turn outside the parent's
+  children
+- **THEN** it is dropped with reason `sender_mismatch`.
 
 ### Requirement: What Answered Means
 
@@ -154,8 +162,10 @@ automated-turn check but count toward it (Decided).
 ### Requirement: A Child Can Message Its Parent
 
 A child message to its parent SHALL reach the parent as agent input, marked
-as not from a person, acting for the child turn's actor. With no open record
-on the child's turn, the send SHALL fail.
+as not from a person, acting for the child turn's actor. It SHALL have its
+own record in the parent, minted in a fenced save of the child (Proposed,
+needs sign-off: P26). With no open record on the child's turn, the send
+SHALL fail.
 
 #### Scenario: Message with no open record
 

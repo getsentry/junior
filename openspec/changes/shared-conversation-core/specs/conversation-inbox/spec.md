@@ -25,7 +25,10 @@ inbox, set the wake time and notify a worker.
 Core SHALL mint a request record for every input, with an id in its own
 namespace (Proposed, needs sign-off: P23, P26). The record SHALL store the
 conversation id and the inbound message id. Only core person ingress
-(Slack, web, ACP, CLI) SHALL make a record with a person actor.
+(Slack, web, ACP, CLI) SHALL make a record with a person actor. A child
+result or parent message SHALL get its own record in the receiving
+conversation, minted in the child's transaction, with `answers` and
+`sentBy` (Proposed, needs sign-off: P26).
 
 #### Scenario: Message points at another record
 
@@ -39,6 +42,12 @@ conversation id and the inbound message id. Only core person ingress
 - **WHEN** a message's record does not exist
 - **THEN** the message is dropped with a recorded reason
 - **AND** no actor is filled in from another source.
+
+#### Scenario: Result record
+
+- **WHEN** a child turn ends with a result for its parent
+- **THEN** the parent gets one record in its own conversation, with
+  `answers` naming the asked records and `sentBy` naming the child's turn.
 
 ### Requirement: Accept Each Message Once
 
@@ -184,14 +193,23 @@ A joined web message SHALL NOT start a second turn.
 
 ### Requirement: No Lost Wakes
 
-`send()` SHALL set the wake time to now. A worker SHALL release the lock and
-then read the inbox, and notify a worker when work is left (Proposed, needs
-sign-off: P32).
+`send()` SHALL raise the inbox counter and set the wake time to now. Before
+release, a worker SHALL set the wake time to its next run time, with a
+compare-and-set on the inbox counter. It SHALL release the lock, then read
+again with the same runnable test as `work()`, and notify a worker when
+work is due (Proposed, needs sign-off: P32).
 
 #### Scenario: Message while the lock is held
 
 - **WHEN** a message arrives while another worker holds the lock
 - **THEN** that worker sees it after release and notifies a worker.
+
+#### Scenario: Message during the wake-time set
+
+- **WHEN** a message arrives after the worker read the inbox and before it
+  set a later wake time
+- **THEN** the compare-and-set fails, the worker reads again, and the wake
+  time stays now.
 
 ### Requirement: Limit On Automated Turns
 

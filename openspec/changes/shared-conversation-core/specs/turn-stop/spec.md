@@ -4,11 +4,11 @@
 
 ### Requirement: A Stop Saves A Stop Time
 
-A stop SHALL save a stop time on the conversation and notify a worker. It
-SHALL NOT write a turn row or a request record (Proposed, needs sign-off:
-P34). A worker SHALL stop an open turn that started before the stop time.
-`startTurn` SHALL refuse input older than the stop time in its transaction.
-A new turn after the stop SHALL run normally.
+A stop SHALL save the stop input's own `createdAtMs` as the stop time on
+the conversation and notify a worker. It SHALL NOT write a turn row or a
+request record (Proposed, needs sign-off: P34). A worker SHALL stop an open
+turn that started before the stop time. `startTurn` SHALL refuse input
+older than it. A new turn after the stop SHALL run normally.
 
 #### Scenario: Slack stop button
 
@@ -25,6 +25,20 @@ A new turn after the stop SHALL run normally.
 
 - **WHEN** a stop is saved while a worker starts a turn with older input
 - **THEN** the start transaction sees the stop time and refuses that input.
+
+### Requirement: Saves Refuse Under A Stop
+
+Every fenced save and every delivery intent save SHALL refuse when the
+stop time is after the turn's start, except the saves of
+`finishTurn(stopped)`. Server times SHALL come from database `now()`
+(Proposed, needs sign-off: P34).
+
+#### Scenario: Intent after the stop
+
+- **WHEN** a running worker tries to save a delivery intent after a stop
+  was saved
+- **THEN** the save is refused, nothing is posted, and the worker calls
+  `finishTurn(stopped)`.
 
 ### Requirement: Input Older Than A Stop
 
@@ -74,9 +88,14 @@ conversation's `finishTurn` and closing turns SHALL mark its records
 
 #### Scenario: Late child result
 
-- **WHEN** a child result arrives after a tree stop
-- **THEN** it is recorded on its request record and starts no parent turn
-  (Proposed, needs sign-off: P35).
+- **WHEN** a child turn ends after a tree stop
+- **THEN** its asked record is `stopped`, no result record is minted, and
+  no parent turn starts (Proposed, needs sign-off: P35).
+
+#### Scenario: Result in flight at the stop
+
+- **WHEN** a result minted before a tree stop reaches the parent after it
+- **THEN** a closing turn drops it and no parent turn starts.
 
 ### Requirement: Stopping A Child
 

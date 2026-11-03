@@ -174,7 +174,7 @@ Each fact has one owner and one store.
 | -------------------------------------------------- | -------------- | -------------------------- |
 | Worker lock token, expiry and lock version         | worker lock    | SQL conversation row (P5)  |
 | Stop time                                          | stop module    | SQL conversation row (P34) |
-| Inbox, duplicate check, wake time                  | inbox module   | Redis conversation record  |
+| Inbox, duplicate check, `inboxSeq`, wake time      | inbox module   | Redis conversation record  |
 | Request records                                    | request module | SQL                        |
 | Turn status, requests taken in, totals, deliveries | turn module    | SQL turn row (P2)          |
 | Agent history and `turn_*` events                  | history module | SQL conversation events    |
@@ -194,10 +194,12 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
 2. A finished turn (`completed`, `failed`, `blocked`, `stopped`) never
    changes.
 3. Every turn save, history commit and delivery intent carries the lock
-   token and version, and checks them in the same SQL write (P5).
+   token and version, and checks them in the same SQL write (P5). It also
+   refuses when the stop time is after the turn's start, except the saves
+   of `finishTurn(stopped)` (P34).
 4. A turn acts for one actor and one whose-access, taken from its starting
-   request record. Input that joins must have the same actor and exactly the
-   same signed subject (Decided; P20 for "exactly").
+   request record. Input that joins must have the same actor, exactly the
+   same signed subject and the same source (Decided; P20 for "exactly").
 5. Another person's message never joins a running turn. Events never join
    (Decided). Results never join (today's rule).
 6. A message is taken into a turn only after the turn row lists its request
@@ -209,13 +211,21 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
 8. Only `credentialsForTurn` builds credentials.
 9. A request record has no run status: `open`, `answered` or `stopped`.
 10. Inbox entries hold no access. Core mints request ids. Access lives only
-    on a request record whose `conversationId` and `inboundMessageId` match
-    the message (P26).
+    on a request record in the receiving conversation whose
+    `conversationId` and `inboundMessageId` match the message. A result or
+    a message to the parent has its own record there, minted in the child's
+    transaction. Its sender comes from the child's turn row, never from
+    message fields (P26).
 11. What differs by kind is stored data. The core takes no per-kind
     callbacks and has no per-kind branch.
-12. Only core person ingress (Slack, web, ACP, CLI) makes a person-actor
-    request record. Only the core agent module (`finishTurn`, `askChild`,
-    `messageParent`) makes `source: "agent"` messages (P26).
+12. Only core person ingress (Slack, web, ACP, CLI) makes a
+    `VerifiedPersonActor`, and a person-actor record needs one. Only the
+    core agent module (`finishTurn`, `askChild`, `messageParent`) makes
+    `source: "agent"` messages and their records (P26, P39).
+13. Server times (lock expiry, turn start, wake time) come from database
+    `now()`. A stop time is the stop input's own `createdAtMs` (P34).
+14. A worker never releases the lock while its turn is `running`. When the
+    pause save fails, the lock expires instead (P8).
 
 ### Lock Order (Proposed, needs sign-off; P5)
 
@@ -229,12 +239,13 @@ conversation's worker lock:
 3. Redis inbox writes happen only after the SQL transaction commits. They
    are never inside one.
 
-Writes to another conversation are only `send()` calls, which touch only
-the target's Redis record. `askChild` takes the parent conversation row
-`FOR UPDATE` for the caps and the stop check, inserts the child conversation
-and request record, commits, then calls `send()`. This removes the per-turn
-Redis mutation lock (`task-execution/turn-cursor.ts`,
-`withTurnCursorMutation`).
+Writes to another conversation are `send()` calls, which touch only the
+target's Redis record, and the insert of a result record in the child's save
+transaction, which takes no lock on the parent's row. `askChild` takes the
+parent conversation row `FOR UPDATE` for the caps and the stop check,
+inserts the child conversation and request record, commits, then calls
+`send()`. This removes the per-turn Redis mutation lock
+(`task-execution/turn-cursor.ts`, `withTurnCursorMutation`).
 
 ### What Differs By Kind
 
@@ -339,8 +350,9 @@ stay stable across reviews. Retired numbers say where they went.
   - Every save transaction first reads the row with the same `WHERE` and
     throws `LockLostError` on no match. Turn row, history and delivery
     intent writes are in that transaction.
-  - Before each post, the worker checks in, saves a delivery intent with the
-    response text, posts with the delivery id attached (Slack: message
+  - Before each post, the worker checks in, then saves a checkpoint that
+    commits the response to history and records the delivery intent with
+    its id and text. It posts with the delivery id attached (Slack: message
     metadata), then saves the provider message id.
   - An expired lock needs no clearing: the next compare-and-set takes it.
     The timer job only notifies a worker.
@@ -348,9 +360,10 @@ stay stable across reviews. Retired numbers say where they went.
 - **Limit:** a post is not in a transaction. A worker that saved its intent
   and then stalls past 90 s can still post once after a new worker checked.
   A double post is detected, not prevented.
-- **Alternatives:** Redis lock plus a Redis counter that SQL writes only
-  when higher (two stores to reason about); checking only at check-in
-  (leaves a 90 s window).
+- **Alternatives:** a Redis lock with a SQL version counter (P43); a
+  Redis lock plus a Redis counter that SQL writes only when higher (two
+  stores to reason about); checking only at check-in (leaves a 90 s
+  window).
 - **Evidence:** `task-execution/state.ts` (`extendLock` then a separate
   `SET`; `CONVERSATION_WORK_LEASE_TTL_MS = 90_000`); `state/ttl.ts` (7-day
   record expiry); `providers/slack/turn.ts` (post before commit).
@@ -375,8 +388,12 @@ stay stable across reviews. Retired numbers say where they went.
      `duplicate`, stamp `inputAppendedAtMs`. On `refused`, stamp
      `refusedAtMs`. After 5 attempts or 24 h, stamp `gaveUpAtMs`.
   2. Notify a worker for: a conversation with a refused or given-up record;
-     a conversation with no live lock whose `wakeAtMs` passed more than
-     60 s ago; an open turn with no live lock for 5 minutes.
+     a conversation with no live lock whose `wakeAtMs` has passed; a
+     `running` turn whose lock expired, on the first pass after expiry.
+     A Redis sorted set (member: conversation id, score: `wakeAtMs`) is
+     the wake-time index. `send()` and the pre-release set write it. An
+     index on `lock_expires_at` for conversations with an open turn finds
+     expired locks.
   3. Nothing else. The worker, not the job, closes records through a
      closing turn (P30), so `finishTurn` stays the only status writer.
 - **Why:** a record and its inbox entry are in two stores. Lost wakes leave
@@ -391,7 +408,9 @@ stay stable across reviews. Retired numbers say where they went.
   `running` and the worker just took an expired lock. Every clean end of an
   attempt leaves the turn `paused` (P10) or finished, never `running`. A
   lost turn with `restarts: 0` restarts from its checkpoint; otherwise
-  `finishTurn(failed: lost_worker)`.
+  `finishTurn(failed: lost_worker)`. A worker saves its pause before it
+  releases. If that save fails, it does not release: the lock expires, and
+  the next worker treats the turn as lost.
 - **Why:** #2298 made a live turn whose lock expired wait for one restart.
   With fenced saves, the old worker cannot save or post after the takeover.
 - **Evidence:** `task-execution/paused-turn.ts` (`pauseLostWorkerTurn`).
@@ -454,8 +473,9 @@ stay stable across reviews. Retired numbers say where they went.
 - **Proposal:** a result acts for the actor and whose-access of the request
   record it answers. A grandchild's record stores the child turn's actor,
   which came from the record that turn answered. In a result turn, messages
-  from other actors after the record's `createdAtMs` reach the model marked
-  as outside text, and do not count as approval.
+  from other actors reach the model marked as outside text, from before or
+  after the record's `createdAtMs`. They do not count as approval. The
+  `guardian` evals cover it (P41).
 - **Why:** deletes "copy the latest request" (bug 12).
 - **Evidence:** `agent-invocations/store.ts` (`createAgentInvocationFromLatest`).
 
@@ -469,7 +489,9 @@ stay stable across reviews. Retired numbers say where they went.
 - **Proposal:** a plugin passes an unbound subject. Core binds and signs it,
   as on `main`. The signature covers kind, scope, `userId`, `teamId`,
   `dmChannelId` and the request id of the run (today it does not cover the
-  run). `credentialsForTurn` checks it at every turn start and resume.
+  run). `createRequest` takes the unbound subject, mints the request id,
+  then calls `bindSubject`. `credentialsForTurn` checks it at every turn
+  start and resume.
 - **Evidence:** `agent-dispatch/context.ts` (`bindDispatchCredentialSubject`
   refuses a plugin binding); `credentials/subject.ts` (signs `allowedWhen`,
   `teamId`, `channelId`, `userId`).
@@ -524,7 +546,8 @@ stay stable across reviews. Retired numbers say where they went.
 ### P24. Order after a supersede — Decided
 
 The same person's new message ends the paused turn with a note and runs
-next. Others wait. Not open.
+next. Others wait. Not open. Source: decision comment 3 on #2567 ("Then
+the new message runs").
 
 ### P25. Retired
 
@@ -541,9 +564,15 @@ Title lookups keep today's rule: a system actor with no user credentials
     match both, with a recorded reason. It never fills in an actor.
   - Only core person ingress makes person-actor records. Only `finishTurn`,
     `askChild` and `messageParent` make `source: "agent"` messages.
-  - A result is accepted only when its record has `replyTo.kind = "parent"`,
-    `replyTo.parentConversationId` = the receiving conversation, and
-    `conversationId` = the child that sent it.
+  - A child result and a `messageParent` call each get their own record in
+    the parent conversation. The child's `finishTurn` (or the fenced save
+    of the `messageParent` call) mints it in the child's transaction, with
+    `answers` naming the asked records and `sentBy` naming the child's
+    turn. `send()` follows the commit; the repair job resends a lost one.
+  - The parent accepts it only when the record matches the message (rule
+    10), the `sentBy` turn row belongs to a child of the parent, and every
+    `answers` record has that child as `conversationId` and the parent as
+    `replyTo.parentConversationId`. Message fields are never trusted.
 - **Evidence:** `task-execution/paused-turn.ts` (actor fallbacks, fixed five
   times).
 
@@ -578,16 +607,24 @@ turn".
 
 ### P32. No lost wakes
 
-- **Proposal:** `send()` sets `wakeAtMs = now` after its append, then
-  notifies. A worker releases the lock first, then reads the Redis record;
-  if the inbox has work or `wakeAtMs <= now`, it notifies a worker. P7 part
-  2 catches anything left.
+- **Proposal:**
+  - `send()` appends, raises `inboxSeq`, sets `wakeAtMs = now`, writes the
+    wake-time index (P7), then notifies.
+  - `nextRunAtMs(state)` is the one runnable test. `work()` uses it to
+    choose what runs, and the release uses it too.
+  - Before release, the worker reads the inbox and `inboxSeq`, computes
+    `nextRunAtMs` (for example the link expiry, a delivery's
+    `nextAttemptAtMs` or an event window end) and sets `wakeAtMs` to it
+    with a compare-and-set on `inboxSeq`. When `inboxSeq` changed, it reads
+    again.
+  - It releases the lock, then reads again. When `nextRunAtMs <= now`, it
+    notifies a worker. P7 part 2 catches anything left.
+  - Ships in step 5, with the SQL lock.
 - **Why:** a notification that arrives while the lock is held is dropped.
-  The release-then-read order means one of the two sides always sees the
-  other: if the new worker failed to take the lock, the release came after,
-  so the read after the release sees the append. Release and re-check
-  cannot be one atomic step across SQL and Redis; this order gives the same
-  result.
+  The compare-and-set stops a later wake time from hiding a new message.
+  The release-then-read order means one side always sees the other: if the
+  new worker failed to take the lock, the release came after, so the read
+  after the release sees the append.
 - **Alternatives:** move the inbox to SQL (one transaction, more SQL load).
 
 ### P33. Delivery failure while finishing
@@ -595,25 +632,33 @@ turn".
 - **Proposal:** each delivery has `attempts` and `nextAttemptAtMs`. A
   `finishing` turn retries with backoff, up to 5 attempts. Then the delivery
   is `failed`, and `finishTurn` ends the turn anyway with
-  `deliveryFailed: true` on `turn.terminal`.
+  `deliveryFailed: true` on `turn.terminal`. A permanent provider error
+  (for example a missing channel) fails the delivery at once, with no
+  backoff.
 - **Why:** a turn must not stay `finishing` forever.
 
 ### P34. Stop time
 
 - **Proposal:** `stop()` saves a stop time on the conversation row (and on
-  every conversation below it for a tree stop) and notifies each worker. It
-  writes no turn row and no request record. A worker stops an open turn that
-  started before the stop time. `startTurn` checks the stop time in its
-  transaction and refuses input older than it. Person input older than the
-  stop is saved to history as "not run" through a closing turn, so the
-  person sees it and can ask again. Event and agent input older than the
-  stop is dropped through a closing turn with no history.
+  every conversation below it for a tree stop) and notifies each worker. The
+  stop time is the stop input's own `createdAtMs`; other server times use
+  database `now()`. It writes no turn row and no request record. A worker
+  stops an open turn that started before the stop time. `startTurn` checks
+  the stop time in its transaction and refuses input older than it. Every
+  fenced save and every delivery intent save refuses when the stop time is
+  after the turn's `startedAtMs`, except the saves of `finishTurn(stopped)`.
+  Person input older than the stop is saved to history as "not run" through
+  a closing turn, so the person sees it and can ask again. Event and agent
+  input older than the stop is dropped through a closing turn with no
+  history.
 - **Why:** one rule, no race between stop and turn start.
 
 ### P35. Results under a tree stop
 
-- **Proposal:** under a tree stop, a child's `stopped` result is recorded on
-  its request record but starts no parent turn. This is a proposed reading
+- **Proposal:** under a tree stop, a child's `stopped` outcome is recorded
+  on its asked request record. The child mints no result record, so no
+  parent turn starts. A result minted before the stop is older than the
+  stop time, so a closing turn drops it (P34). This is a proposed reading
   of the decision "a child stopped by something other than `stopAgent`
   sends its parent `stopped`": the parent is stopped too, so nobody is there
   to tell. A child stopped alone (dashboard) still sends the result.
@@ -630,9 +675,10 @@ not to one process (`sandbox/egress/session.ts`, module overview;
     expiry (capped near the attempt limit). A soft-time-limit continuation
     or a restart keeps the same pass.
   - The proxy fails closed unless the pass id equals the open turn's
-    `sandboxPassId` in SQL and that turn is `running`. Between attempts the
-    proxy refuses it, so nothing runs with credentials while no worker
-    watches the turn.
+    `sandboxPassId` in SQL, that turn is `running`, and the conversation's
+    `lockExpiresAtMs > now()`. Between attempts, and after a lost worker's
+    lock expires, the proxy refuses it, so nothing runs with credentials
+    while no worker watches the turn.
   - On `finishTurn`, and on `sign_in`, `post_retry` and `error_retry`
     pauses, the worker applies a no-credentials policy.
   - When a turn's actor or access differs from the last pass's turn, the
@@ -640,85 +686,160 @@ not to one process (`sandbox/egress/session.ts`, module overview;
     (Decided: one sandbox per conversation, sharing explicit).
 - **Limit:** processes from an earlier turn of the same actor and access
   keep running under the new pass. That is the same person's access.
+- **Limit, shared files:** files stay across actors (Decided: one sandbox
+  per conversation). A file that A's turn plants (a git hook, a shell rc
+  file, a `PATH` shim, a `postinstall` script) runs again in B's turn,
+  under B's pass. Proposed mitigations: B's commands run with git hooks
+  turned off (`core.hooksPath=/dev/null`), package scripts turned off, and
+  a clean `HOME` and `PATH`. They lower the risk; they do not remove it.
+  This needs David: accept the shared-file risk with these mitigations, or
+  reopen sandbox sharing (Decisions Needed 39).
 - **Alternatives:** a new pass per attempt (old P29); a sandbox per actor.
+
+### P43. SQL lock or Redis lock with a SQL counter (from review)
+
+- **Proposal:** keep the SQL lock (P5). Cost, as an estimate to measure in
+  step 5: one indexed `UPDATE` per running turn every 15 s (300 running
+  turns is 20 writes per second), and one indexed read per credentialed
+  proxy call.
+- **Why:** the lock, the version and the stop time sit on one row. Each
+  save, the proxy and `startTurn` check them with one read in one store.
+- **Alternative:** a Redis lock for take and check-in, plus a SQL version
+  that goes up at each take. Check-ins cost no SQL write, and fencing still
+  holds at the SQL save. But the proxy and the save check read two stores,
+  and a take is two writes that a crash can split.
+- **Switch rule:** if step 5 shows the check-in load is a problem, switch.
+  Only the lock module changes.
 
 ## Verification
 
-David asked for formal checks that the code follows this design. Four
-layers catch different drift. `specs/verification/spec.md` has the
-requirements. The model itself lives in `verification/`, drafted
-separately. Every item is **Proposed, needs sign-off**.
+Requested by the maintainer in the planning thread: formal checks that the
+code follows this design. Four layers catch different drift.
+`specs/verification/spec.md` has the requirements. Every item is
+**Proposed, needs sign-off**.
 
-| Layer             | Catches                                        | Runs                |
-| ----------------- | ---------------------------------------------- | ------------------- |
-| Protocol model    | a design rule that cannot hold (races, orders) | model checker in CI |
-| Conformance tests | code that does not do what the model does      | integration tests   |
-| Structural rules  | a second writer or a bypass of a single owner  | ast-grep, lint      |
-| Traceability      | a requirement with no check, or a stale check  | CI script           |
+| Layer             | Catches                                        | Runs                       |
+| ----------------- | ---------------------------------------------- | -------------------------- |
+| Protocol model    | a design rule that cannot hold (races, orders) | Apalache and TLC in CI     |
+| Conformance tests | code that does not do what the model does      | integration tests          |
+| Structural rules  | a second writer or a bypass of a single owner  | types, import checks, lint |
+| Traceability      | a requirement with no check, or a stale check  | CI script                  |
 
 ### P37. Protocol model
 
-- **Proposal:** Quint, checked with Apalache (bounded, symbolic) and TLC
-  where state spaces are small. The model covers the items in
-  `specs/verification/spec.md` and checks invariants I1–I8 and liveness
-  L1–L3. Each worked example in `interfaces/*.md` is a named trace (for
-  example `turn_E3_slow_worker`).
+- **Proposal:** Quint. Apalache checks the safety invariants (I1–I13) with
+  bounded symbolic runs. TLC checks the liveness properties (L1–L3),
+  because Apalache is bounded. Each worked example in `interfaces/*.md` is
+  a named trace (for example `turn_E3_slow_worker`).
+- **Bound:** 2 conversations (a parent and a child), 2 person actors and
+  the system actor, 4 inputs, 2 worker crashes, 2 lock expiries and 2
+  delivery attempts per run.
+- **Adversary:** a `send` action that puts any message with any request id
+  in any inbox, so I9 and the E5 traces are not vacuous.
+- **Processes:** each sandbox process carries its creator's (actor,
+  subject). The proxy invariant I13 then covers access E5. Files are not
+  modeled; the shared-file risk is a P36 limit.
 - **Alternatives:**
-  - Quint: typed, TypeScript-like syntax that this team reads easily; younger
-    tooling.
+  - Quint: typed, TypeScript-like syntax that this team reads easily;
+    younger tooling.
   - TLA+: the most mature tools and literature; syntax few here read.
   - P: state machines close to code and good for testing; weaker for
     liveness and exhaustive checks.
-- **Scope limit:** the model treats the sandbox as "pass applied" or "no
-  credentials". It does not model processes or files.
 
 ### P38. Conformance tests
 
-- **Proposal:** fast-check model-based tests (`fc.commands`) drive real
-  Junior wiring with fake Slack and a fake LLM (`policies/testing.md`).
-  Each command is a model action (send, work, crash after write N, expire
-  lock, stop, sign in, post fails). After each command, the test compares
-  the turn rows, request records, inbox and deliveries with the model
-  state. Counterexample traces from the checker are added as fixed runs.
-- **Today's code:** step 0 adds the harness. An invariant that today's code
-  breaks is listed as "expected to fail" with the step that fixes it. That
-  step makes it required. The traceability check refuses a step that
-  claims an invariant and leaves it expected to fail.
+- **Proposal:** fast-check model-based runs (`fc.commands`) on the
+  integration harness: real Junior wiring, real Postgres and Redis, the
+  Slack fake and the LLM fake (`policies/testing.md`). Each command is a
+  model action. After each command, the run compares what the person sees
+  (posts, reactions, history) and the durable records the specs name (turn
+  row, request record, delivery) with the model. It does not check internal
+  steps.
+- **No new seams:** no mocks of Junior modules and no test-only mutation
+  APIs. Crashes and races come from P42.
+- **Today's code:** the gate's first suite checks only what today's code
+  already holds. Each step's Verify line adds what must be green after it.
 - **Alternatives:** hand-written scenario tests only (cannot find
   interleavings); replaying model traces only (no generated crashes).
 
 ### P39. Structural rules
 
-- **Proposal:** ast-grep rules in `ast-grep/rules/`, like the existing
-  `no-raw-slack-turn-post.yml`, for S1–S6. Each rule's message names the
-  requirement it protects. Import boundaries that ast-grep cannot see use
-  the existing `scripts/check-test-architecture.mjs` pattern.
+- **Proposal:** each rule uses the strongest check that can see it, and
+  its message names the requirement it protects.
+  - S1, S5: ast-grep rules in `ast-grep/rules/`, like
+    `no-raw-slack-turn-post.yml`.
+  - S2: `TurnCredentials` is a branded type whose constructor only
+    `credentialsForTurn` has. An import rule keeps the low-level credential
+    resolvers private to its module.
+  - S3, S4: `VerifiedPersonActor` and the agent-message type are branded,
+    made only in core ingress and the core agent module. An import-boundary
+    check keeps `createRequest` and `send` out of plugin reach. The record
+    write asserts the brand at run time too.
+  - S6: an import rule in `scripts/check-test-architecture.mjs`.
 
-### P40. Traceability
+### P40. Traceability and where the checks live
 
-- **Proposal:** each scenario has an id: capability, requirement and
-  scenario titles in kebab case. Tests carry it in their name or a
-  `// spec:` comment; ast-grep rules carry it in their `note`; model
-  invariants carry it in a comment. A CI script reads the spec headings and
-  these tags and fails on gaps either way.
-- **Conflict to settle:** repo rule says a finished plan is deleted, and
-  lasting rules move to code, tests and policies. Proposed: at step 22 the
-  model moves out of the change folder, and the scenario ids move to a
-  policy file that the trace check then reads.
+- **Proposal:** the checks live in `verification/` at the repo root from
+  day one: the model, the scenario-id list and the trace check. This plan
+  only links to them, so deleting it removes nothing that CI needs.
+- Each scenario id is capability, requirement and scenario titles in kebab
+  case. Tests carry it in their name or a `// spec:` comment; rules in
+  their `note`; model invariants in a comment. While this plan exists, the
+  check also reads `specs/`, so the list cannot drift from it.
+- The scenarios of `specs/verification/` are exempt: the gate itself
+  checks them.
+- **Alternatives:** `packages/junior/verification/` (closer to the code,
+  but the model is not package code).
 
 ### P41. The sign-off gate
 
 - **Proposal:** "the output adheres to the design" means the model check,
-  conformance tests and structural rules are green, and traceability shows
-  no gap. Step 0 ships before any step that changes protocol code. Every
-  later step keeps the gate green.
+  the conformance tests and the structural rules are green, the trace check
+  shows no gap, and the `guardian` eval suite passes for the P15 outside
+  text and the P20 "never approval" rules.
+- **Timing:** steps 1 to 4 (bug fixes and words) may ship first with their
+  own scenario tests. Step G is green before step 5, the first step that
+  changes the protocol. Every later step keeps it green.
+
+### P42. Crash points without new seams
+
+The crash-point list: after each durable SQL write, after each Redis
+operation, after each post, and "the provider accepted a post but the reply
+was lost". `policies/testing.md` forbids mocks of Junior modules and
+test-only mutation APIs, so each point needs a real boundary.
+
+- **Proposal:** use only boundaries that exist.
+  - Queue redelivery: the queue provider adapter (`queue/provider.ts`)
+    redelivers an unacked message.
+  - Lock expiry: the SQL fixture's database clock. All server times come
+    from database `now()`, so one clock moves the lock, the turn start and
+    the wake time. Inference: a test schema `now()` ahead of `pg_catalog`
+    on the fixture's search path does it without Junior code.
+  - Crash after a write: the worker runs in a child process. The fake at
+    the next boundary (state adapter `state/adapter.ts`, queue provider,
+    Slack fake, or a SQL row lock the test holds) blocks the call, and the
+    test kills the process.
+  - Reply lost: the Slack fake accepts the post and drops the reply.
+  - Compare-and-set contention: one suite runs two real workers on real
+    Postgres.
+- **Alternatives:**
+  - A named fault-injection hook in Junior's stores: every point, but a
+    test-only API, so it needs a policy exception.
+  - Boundaries only, and points with no boundary are model-only: the
+    smallest change, and the model covers the rest.
+- **Recommendation:** the proposal. A save is one transaction (rule 3), so
+  there is no crash point inside a save, and every point between saves is
+  at one of these boundaries. If one is not, it is model-only.
 
 ## Later, Not Needed For This Change
 
 - **P27. Bot loops.** Count Slack bot input toward the automated-turn limit.
   No requirement here depends on it.
-- **P28. Children of a turn with delegated access.** Until decided, a child
-  gets the parent turn's actor but no delegated subject. It fails closed.
+- **P28. Children of a turn with delegated access.** Until decided, keep
+  today's behavior: the child's record gets the parent turn's actor and
+  delegated subject (`agent-invocations/spawn.ts`, `credentialContext`
+  copied to the child). Core binds the subject again for the child's
+  request id (P17).
 
 ## Decisions Needed
 
@@ -739,8 +860,8 @@ Every item is **Proposed, needs sign-off**.
 12. P12: per-turn limits end the turn on the first try.
 13. P13: sign-in only for person actors; system actors end `blocked`.
 14. P14: one conversation per plugin-started agent (Q9).
-15. P15: results act for the record's actor; later messages are outside
-    text (Q11).
+15. P15: results act for the record's actor; other actors' messages are
+    outside text (Q11).
 16. P16: `TERMINOLOGY.md` first (Q16).
 17. P17: core binds and signs delegated access, including the run id;
     checked at every start and resume (Q17, J).
@@ -750,18 +871,25 @@ Every item is **Proposed, needs sign-off**.
 21. P21: plugin view computed from the record.
 22. P22: errors before take-in count delivery attempts.
 23. P23: one kind of request record, minted by core for every input.
-24. P26: core-minted ids, match check, provenance and result checks.
+24. P26: core-minted ids, match check, provenance; a result has its own
+    record in the parent, and its sender comes from the child's turn row.
 25. P30: closing turns.
 26. P31: `error_retry` pause.
-27. P32: release, then re-check; `wakeAtMs`.
-28. P33: delivery attempts and backoff while finishing.
-29. P34: stop time on the conversation.
+27. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq`; release,
+    then re-check with `nextRunAtMs`.
+28. P33: delivery attempts and backoff while finishing; permanent errors
+    skip backoff.
+29. P34: stop time on the conversation; saves refuse under it.
 30. P35: no parent turn for results under a tree stop.
-31. P36: sandbox pass lifecycle.
-32. P37: Quint model with Apalache and TLC; worked examples as traces.
-33. P38: fast-check conformance tests; expected-to-fail list per step.
-34. P39: ast-grep rules S1–S6, each naming its requirement.
-35. P40: scenario ids and a two-way trace check; where they live after the
-    plan is deleted.
-36. P41: the gate is model, conformance and structural rules green, with no
-    trace gap.
+31. P36: sandbox pass lifecycle; the proxy needs a live lock.
+32. P37: Quint model; Apalache for safety, TLC for liveness; the bound;
+    worked examples as traces.
+33. P38: conformance tests on records and visible outcomes, with no new
+    seams.
+34. P39: structural rules S1–S6 as types, import checks and ast-grep.
+35. P40: `verification/` at the repo root; a two-way trace check.
+36. P41: the gate, including guardian evals; green before step 5.
+37. P42: crash points only at existing boundaries.
+38. P43: SQL lock rather than a Redis lock with a SQL counter.
+39. Needs David: accept the shared-file risk with the P36 mitigations, or
+    reopen sandbox sharing.

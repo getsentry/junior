@@ -52,7 +52,13 @@ type ConversationInbox = {
   inbox: InboundMessage[];
   /** Duplicate check. Kept 7 days. */
   seenInboundMessageIds: string[];
-  /** Next wake. send() sets it to now (P32). */
+  /** Raised by every send(). The pre-release wake set compares it (P32). */
+  inboxSeq: number;
+  /**
+   * Next wake. send() sets it to now; before release, a worker sets it to
+   * nextRunAtMs with a compare-and-set on inboxSeq. Mirrored in the
+   * wake-time index, a Redis sorted set the repair job reads (P7, P32).
+   */
   wakeAtMs?: number;
 };
 
@@ -91,13 +97,19 @@ type RequestRecord = {
   inboundMessageId: string;
   /** Same key with other input throws. Example: parent turnId + toolCallId. */
   idempotencyKey: string;
-  /** A person actor only from core person ingress (rule 12). */
+  /** A person actor needs a VerifiedPersonActor, which only core person
+   * ingress makes (rule 12, P39). The record write asserts it. */
   actor: Actor;
   /** Only with a system actor. Bound and signed by core (P17). */
   credentialSubject?: SignedCredentialSubject;
   replyTo: ReplyTarget;
   /** The record whose turn created this one. Result turns reply there (P6). */
   onBehalfOf?: RequestId;
+  /** Result and parent-message records only (P26). The asked records. */
+  answers?: RequestId[];
+  /** Result and parent-message records only. Read from the child's own
+   * save, never from a message. The parent checks this turn row. */
+  sentBy?: { conversationId: ConversationId; turnId: TurnId };
   /** Child agents: what the parent asked for. */
   task?: { title: string; text: string; agentType: string; route: TurnRoute };
   /** Only finishTurn changes it, with `WHERE status = 'open'` (rule 7). */
@@ -130,9 +142,9 @@ type ReplyTarget =
 
 ```ts
 /**
- * Add one message to a conversation's inbox, set wakeAtMs to now, and
- * notify a worker. Never runs work. The same inboundMessageId is accepted
- * once.
+ * Core only; plugins cannot import it (P39). Add one message to a
+ * conversation's inbox, raise inboxSeq, set wakeAtMs to now, and notify a
+ * worker. Never runs work. The same inboundMessageId is accepted once.
  */
 function send(message: InboundMessage): Promise<SendResult>;
 
@@ -142,16 +154,22 @@ type SendResult =
   | { status: "refused"; reason: "busy" | "automated_turn_limit" | "stopped" };
 
 /**
- * Core only. Mint the request id, save the record, then send its message.
- * Safe to retry with the same idempotency key. Stamps inputAppendedAtMs on
- * accepted or duplicate. On refused, stamps refusedAtMs; the worker closes
- * the record (P30).
+ * Core only; plugins cannot import it (P39). Mint the request id, bind the
+ * unbound subject to it (bindSubject, P17), save the record, then send its
+ * message. Safe to retry with the same idempotency key. Stamps
+ * inputAppendedAtMs on accepted or duplicate. On refused, stamps
+ * refusedAtMs; the worker closes the record (P30).
  */
 function createRequest(
   record: Omit<
     RequestRecord,
-    "requestId" | "status" | "repair" | "createdAtMs"
-  >,
+    "requestId" | "status" | "repair" | "createdAtMs" | "credentialSubject"
+  > & {
+    subject?: {
+      unbound: UnboundCredentialSubject;
+      scope: SignedCredentialSubject["scope"];
+    };
+  },
   input: Omit<InboundMessage, "requestId">,
 ): Promise<{ record: RequestRecord; send: SendResult }>;
 
@@ -159,12 +177,15 @@ function createRequest(
  * Pure. Pick the next turn's input: one contiguous run with one actor, one
  * exact signed subject and one source. Join now before wait, people before
  * events, then createdAtMs, receivedAtMs, id. Events wait for their window.
- * Returns the messages to drop: no record, or a record whose
- * conversationId or inboundMessageId does not match (P26).
+ * Returns the messages to drop: no record, a record whose conversationId or
+ * inboundMessageId does not match (`record_mismatch`), or a result whose
+ * sentBy turn row is not in a child of this conversation or whose answers
+ * do not name this parent (`sender_mismatch`) (P26).
  */
 function selectTurnInput(
   inbox: ConversationInbox,
   records: ReadonlyMap<RequestId, RequestRecord>,
+  senders: ReadonlyMap<TurnId, TurnRecord>,
   nowMs: number,
 ): {
   take: InboundMessage[];

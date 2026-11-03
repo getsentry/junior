@@ -35,7 +35,8 @@ SHALL never reach the sandbox, files, arguments, logs or model context.
 
 A plugin SHALL pass only an unbound subject. Core SHALL bind and sign it. The
 signature SHALL cover kind, scope, user id, team id, DM channel id and the
-request id of the run (Proposed, needs sign-off: P17). A delegated subject
+request id of the run. `createRequest` SHALL take the unbound subject, mint
+the id, then bind it (Proposed, needs sign-off: P17). A delegated subject
 SHALL be used only with a system actor. `credentialsForTurn` SHALL check it
 at every turn start and resume (Proposed, needs sign-off: P17).
 
@@ -58,8 +59,9 @@ at every turn start and resume (Proposed, needs sign-off: P17).
 ### Requirement: Timer Grants Come From A Person's Turn
 
 A timer Watch SHALL carry its creator's grant only when a person's turn made
-it, bound to that conversation and Watch. A child of a turn with a grant
-SHALL get the actor but no delegated subject until P28 is decided.
+it, bound to that conversation and Watch. Until P28 is decided, a child of
+a turn with a grant SHALL get the parent turn's actor and delegated
+subject, as today, bound again for the child's record.
 
 #### Scenario: System turn sets a timer
 
@@ -70,8 +72,8 @@ SHALL get the actor but no delegated subject until P28 is decided.
 
 A result or agent message SHALL act for the actor and whose-access of the
 request record it answers, never the child's latest request. In a result
-turn, messages from other actors after the record was made SHALL reach the
-model as outside text (Proposed, needs sign-off: P15).
+turn, messages from other actors SHALL reach the model as outside text,
+from before or after the record was made (Proposed, needs sign-off: P15).
 
 #### Scenario: Grandchild result after another person messaged the child
 
@@ -130,19 +132,30 @@ actor with no user credentials, as today.
 A turn SHALL have at most one pass, saved on its turn row (Decided: ends
 with its turn). Each attempt SHALL renew the same pass, with an expiry
 capped near the attempt limit. `finishTurn` and the `sign_in`, `post_retry`
-and `error_retry` pauses SHALL apply a no-credentials policy. The proxy
-SHALL add credentials only when the pass is the open turn's pass and that
-turn is running, plus today's checks (Proposed, needs sign-off: P36).
-Undeclared hosts SHALL stay open with no credentials (Decided).
+and `error_retry` pauses SHALL apply a no-credentials policy (Proposed,
+needs sign-off: P36). Undeclared hosts SHALL stay open with no credentials
+(Decided).
 
 #### Scenario: Background process after the turn
 
 - **WHEN** a process from an ended turn calls a declared domain
 - **THEN** no credentials are added.
 
+### Requirement: The Proxy Checks The Running Turn
+
+The proxy SHALL add credentials only when the pass is the open turn's pass,
+that turn is running and its lock is live, plus today's checks (Proposed,
+needs sign-off: P36).
+
 #### Scenario: Pass from an older turn
 
 - **WHEN** a request carries a pass that is not the open turn's pass
+- **THEN** the proxy refuses it.
+
+#### Scenario: Lost worker's lock expired
+
+- **WHEN** a lost worker's process calls a declared domain after the lock
+  expired and before a new worker took it
 - **THEN** the proxy refuses it.
 
 ### Requirement: One Sandbox Per Conversation
@@ -159,6 +172,20 @@ sandbox. The user docs SHALL say so.
   sandbox
 - **THEN** the process is killed before B's pass is applied, and A's files
   stay.
+
+### Requirement: Shared Files Run Under The Next Pass
+
+Files that one actor's turn leaves (git hooks, shell rc files, `PATH`
+shims, package scripts) SHALL be named as a risk: they can run again under
+the next actor's pass. B's commands SHALL run with git hooks and package
+scripts turned off and with a clean `HOME` and `PATH` (Proposed, needs
+sign-off: P36). It needs David's decision: accept the risk, or reopen
+sandbox sharing.
+
+#### Scenario: Planted git hook
+
+- **WHEN** A's turn writes a git hook and B's turn runs `git commit`
+- **THEN** the hook does not run.
 
 ### Requirement: Signals Belong To Their Turn
 

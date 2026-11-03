@@ -26,10 +26,23 @@ function acquireWorkerLock(
 function checkIn(lock: WorkerLock): Promise<boolean>;
 
 /**
- * Clear the token (same match as checkIn), then read the Redis record. If
- * the inbox has work or wakeAtMs <= now, notify a worker (P32).
+ * Never called while the turn is running: the pause or finish is saved
+ * first, and if that save fails the lock is left to expire (P8). Set
+ * wakeAtMs to nextRunAtMs with a compare-and-set on inboxSeq (read again
+ * if it changed). Clear the token (same match as checkIn). Then read again;
+ * if nextRunAtMs <= now, notify a worker (P32).
  */
 function releaseWorkerLock(lock: WorkerLock): Promise<void>;
+
+/**
+ * Pure. The one runnable test: the earliest time this conversation has
+ * work (now, a link expiry, a delivery's nextAttemptAtMs, an event window
+ * end), or undefined. work() and releaseWorkerLock both use it.
+ */
+function nextRunAtMs(
+  state: { turn?: TurnRecord; inbox: ConversationInbox },
+  nowMs: number,
+): number | undefined;
 
 /** Thrown by any save that does not match the held token and version. */
 type LockLostError = Error & {
@@ -57,6 +70,7 @@ type TurnRecord = {
   source: InboundMessage["source"];
   /** Model profile and reasoning, chosen at start, kept on resume. */
   route: TurnRoute;
+  /** Database now() at startTurn (rule 13). Compared with stopAtMs. */
   startedAtMs: number;
   status: "running" | "paused" | "finishing" | Outcome;
   pause?: TurnPause;
@@ -143,9 +157,10 @@ function startTurn(
 ): Promise<TurnRecord>;
 
 /**
- * One transaction: check the lock, append history, update the turn row,
- * add takeIn request ids. Then remove taken-in messages from the inbox.
- * The only history write. Throws LockLostError.
+ * One transaction: check the lock and the stop time, append history,
+ * update the turn row, add takeIn request ids. Then remove taken-in
+ * messages from the inbox. The only history write. Throws LockLostError,
+ * or StoppedError when stopAtMs is after startedAtMs (P34).
  */
 function saveCheckpoint(
   lock: WorkerLock,
@@ -185,9 +200,11 @@ function work(conversationId: ConversationId): Promise<void>;
 ```ts
 /**
  * Send one response to each distinct reply target of the turn's records,
- * as replyTo.responses allows (P18). Checks in, saves the intent with the
- * text (fenced), posts, saves the provider message id. Uses
- * replyTargets[target.kind] (edges.md); no branch on kind here.
+ * as replyTo.responses allows (P18). Checks in, then saves a checkpoint
+ * that commits the response to history and records the intent with its
+ * delivery id and text (fenced, refused under a stop). Posts, then saves
+ * the provider message id. Uses replyTargets[target.kind] (edges.md); no
+ * branch on kind here.
  */
 function deliver(
   lock: WorkerLock,
@@ -201,7 +218,8 @@ function deliver(
  * 1. save "finishing" and the outcome (fenced);
  * 2. send the error message, ending note, child result or declared
  *    outcome, with fixed delivery ids; retry with backoff up to 5 attempts,
- *    then mark the delivery failed (P33);
+ *    or fail at once on a permanent provider error (P33). A child result
+ *    first mints its record in the parent, in this transaction (P26);
  * 3. move each taken-in record from open to answered or stopped
  *    (WHERE status = 'open');
  * 4. apply the no-credentials sandbox policy (P36);
@@ -228,8 +246,9 @@ function closeInput(
 
 ```ts
 /**
- * Save stopAtMs = now and stopBy on the conversation and on every
- * conversation below it, then notify each worker (P34). Writes no turn row
+ * Save stopAtMs = the stop input's createdAtMs, and stopBy, on the
+ * conversation and on every conversation below it, then notify each
+ * worker (P34). Writes no turn row
  * and no request record (rule 7). A top-level stop is always a tree stop
  * (Decided). Input from a person older than the stop is kept in history as
  * "not run".
@@ -271,8 +290,9 @@ again on a saved message.
 Before: T1 `running`, lock v7, last checkpoint at 12:00:00.
 
 1. W1 checks in at 12:00:10 and dies at 12:00:20.
-2. At 12:01:40 the lock is expired. Within 5 minutes the repair job sees an
-   open turn with no live lock and notifies a worker. It writes nothing.
+2. At 12:01:40 the lock is expired. On its next pass, the repair job sees a
+   `running` turn with an expired lock and notifies a worker. It writes
+   nothing.
 3. W2's compare-and-set takes the lock (v8). T1 is `running`: lost.
    `restarts: 1`. W2 continues from the 12:00:00 checkpoint.
 4. A delivery saved as `intended` between 12:00:00 and 12:00:20 is sent
@@ -336,11 +356,14 @@ T1 does not stay `finishing`, and the next turn can start.
 
 ### E7. A message that arrives while the lock is held
 
-1. W1 holds the lock and is about to finish T1.
-2. B's message `b1` arrives. `send()` appends it, sets `wakeAtMs = now`,
-   and notifies. W2 fails to take the lock and exits.
-3. W1 releases the lock, then reads the Redis record. It sees `b1` and
+1. W1 holds the lock, has finished T1, and reads the inbox: empty,
+   `inboxSeq: 4`. `nextRunAtMs` is undefined.
+2. B's message `b1` arrives. `send()` appends it, sets `inboxSeq: 5` and
+   `wakeAtMs = now`, and notifies. W2 fails to take the lock and exits.
+3. W1's compare-and-set of `wakeAtMs` expects `inboxSeq: 4` and fails. W1
+   reads again: `b1` is runnable, so `wakeAtMs` stays now.
+4. W1 releases the lock, then reads again. `nextRunAtMs <= now`, so it
    notifies a worker. W3 runs T2 for B.
 
-If W1 died before step 3, the repair job sees `wakeAtMs` in the past and no
-lock, and notifies a worker.
+If W1 died before step 4, the repair job finds `wakeAtMs` in the past in
+the wake-time index, sees no live lock, and notifies a worker.

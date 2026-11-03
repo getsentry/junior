@@ -44,13 +44,16 @@ requirements. `tasks.md` has the migration steps.
 - A request record holds who asked, with whose access, and where results go.
   Core mints one for every input. It has no run status. `spawnAgent` and `messageAgent` save one and put one
   message in the child's inbox. They never start a second runner.
-- A child's turn result goes to the parent's inbox as new input.
+- A child's turn result goes to the parent's inbox as new input, with its
+  own record in the parent. The parent checks the sender from the child's
+  turn row.
 - A stop saves a stop time on the conversation. Stopping a top-level agent
   stops its whole tree.
 - The sandbox pass ends with its turn, and the credential proxy checks it
   against the open turn.
 - A machine-checked model, conformance tests, structural rules and a trace
-  check gate every step (`design.md`, Verification).
+  check gate every step from step 5 on. They live in `verification/` at the
+  repo root, not in this plan (`design.md`, Verification).
 
 ## Decided And Proposed
 

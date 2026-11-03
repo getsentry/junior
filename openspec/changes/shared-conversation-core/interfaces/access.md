@@ -27,7 +27,10 @@ type SignedCredentialSubject = UnboundCredentialSubject & {
   signature: string;
 };
 
-/** Core only. Throws if the plugin passed a binding (as on main). */
+/**
+ * Core only. Throws if the plugin passed a binding (as on main).
+ * createRequest calls it after it mints the request id (P17).
+ */
 function bindSubject(
   subject: UnboundCredentialSubject,
   scope: SignedCredentialSubject["scope"],
@@ -108,9 +111,10 @@ function applyNoCredentialsPolicy(sandbox: SandboxRef): Promise<void>;
 /**
  * The credential proxy, before it adds credentials: the VM token matches
  * pass.vmId; the signature and expiry are good; the pass id equals the
- * sandboxPassId of the conversation's open turn in SQL, and that turn is
- * running; a plugin declares the host. Anything else fails closed.
- * Undeclared hosts pass with no credentials (Decided).
+ * sandboxPassId of the conversation's open turn in SQL, that turn is
+ * running, and lockExpiresAtMs > now() (P36); a plugin declares the host.
+ * Anything else fails closed. Undeclared hosts pass with no credentials
+ * (Decided).
  */
 function checkProxyRequest(
   request: ProxyRequest,
@@ -126,6 +130,7 @@ type ProxyDecision =
         | "vm_mismatch"
         | "not_current_pass"
         | "turn_not_running"
+        | "lock_expired"
         | "expired"
         | "bad_signature";
     };
@@ -141,7 +146,8 @@ A sign-in-needed or permission-denied signal from the proxy is saved under
  * Pause for sign-in at a safe point. Needs policy.canAskUser and a person
  * actor (P13); otherwise the turn ends blocked. Sends the private link (10
  * minutes, one use, bound to actor and turnId) and the short thread notice.
- * Applies the no-credentials policy. Sets wakeAtMs to the link expiry.
+ * Applies the no-credentials policy. Its nextRunAtMs is the link expiry,
+ * so the release sets wakeAtMs to it (P32).
  */
 function pauseForSignIn(
   lock: WorkerLock,
@@ -192,7 +198,10 @@ finished. A's account stays connected.
 Before: T1 for A, paused `sign_in`, link expires 12:10. B posts `b1` at
 12:03.
 
-1. `work()` at 12:03: input from B, so it waits. `wakeAtMs` stays 12:10.
+1. `send(b1)` sets `wakeAtMs` to now, so a worker runs at 12:03. Input is
+   from B, so it waits. Before release, `nextRunAtMs` is the link expiry,
+   so the worker sets `wakeAtMs` to 12:10 (compare-and-set on
+   `inboxSeq`).
 2. 12:10: a worker runs. `finishTurn(T1, stopped: sign_in_expired)`. The
    thread gets the short ending note.
 3. T2 starts for B with `[b1]`.
@@ -213,9 +222,11 @@ Before: T1 for A, attempt 1 on W1 (v7), pass `p1` applied.
 1. W1 is lost. W2 takes the lock (v8) and restarts T1.
 2. `applySandboxPass` finds `sandboxPassId: p1` on T1 and the same actor.
    It renews `p1`'s expiry. No processes are killed.
-3. Between W1's loss and W2's restart, T1 stayed `running`, so the proxy
-   still allowed `p1`. Inference: W1's processes kept A's access for up to
-   the lock expiry. That is the same turn and the same person.
+3. Between W1's loss and W2's restart, T1 stayed `running`. The proxy
+   allowed `p1` only while W1's lock was live (`lockExpiresAtMs > now()`),
+   so W1's processes kept A's access for at most 90 s after its last
+   check-in. From the expiry until W2 took the lock, the proxy refused
+   `p1` (`lock_expired`).
 
 ### E5. Background process after the turn ends
 
@@ -231,3 +242,7 @@ applies the no-credentials policy. Later T2 for B starts.
 
 If T2 were also A's, step 2 would not kill the process. It would then run
 with A's access during T2 (P36, limit).
+
+Files stay. A git hook or `PATH` shim from T1 could run in T2 under B's
+pass; B's commands run with hooks and package scripts off and a clean
+`HOME` and `PATH` (P36, shared files; needs David).

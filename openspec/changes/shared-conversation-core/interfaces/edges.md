@@ -21,8 +21,9 @@ decides admission before `createRequest`. It never runs work.
 ```ts
 /**
  * One per source. A drop is recorded with its reason. Only core person
- * ingress (Slack, web, ACP, CLI) may return a person actor (rule 12).
- * Event ingress always returns the system actor.
+ * ingress (Slack, web, ACP, CLI) can make a VerifiedPersonActor, so only
+ * it can return a person actor (rule 12, P39). Event ingress always
+ * returns the system actor.
  */
 type Ingress<Raw> = (raw: Raw) => Promise<IngressResult>;
 
