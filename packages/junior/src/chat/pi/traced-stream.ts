@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -135,6 +136,10 @@ function buildChatEndAttributes(
     attributes["gen_ai.response.model"] = message.model;
   }
 
+  if (message.responseId) {
+    attributes["gen_ai.response.id"] = message.responseId;
+  }
+
   if (message.stopReason === "error") {
     const providerError = createProviderError(message.errorMessage ?? "");
     Object.assign(attributes, getProviderErrorAttributes(providerError));
@@ -183,6 +188,38 @@ function createResponseTiming(requestStartedAtMs: number): {
             }
           : undefined),
       };
+    },
+  };
+}
+
+// Wraps `onResponse`, which Pi calls when the response headers arrive. It
+// records the Vercel edge request id (its POP chain) and the event loop
+// utilization since the span started. High utilization means a busy event
+// loop could have delayed the request on Junior's side.
+function traceResponseHeaders(
+  span: Sentry.Span,
+  options: Parameters<StreamFn>[2],
+): Parameters<StreamFn>[2] {
+  const eventLoopStart = performance.eventLoopUtilization();
+  const onResponse = options?.onResponse;
+  return {
+    ...options,
+    onResponse: async (response, model) => {
+      try {
+        const vercelId = response.headers["x-vercel-id"];
+        if (vercelId) {
+          span.setAttribute("app.ai.gateway.vercel_id", vercelId);
+        }
+        const { utilization } =
+          performance.eventLoopUtilization(eventLoopStart);
+        span.setAttribute(
+          "app.ai.event_loop.utilization",
+          Math.round(utilization * 1000) / 1000,
+        );
+      } catch {
+        // Diagnostic only.
+      }
+      await onResponse?.(response, model);
     },
   };
 }
@@ -268,7 +305,9 @@ export function createTracedStreamFn(
     try {
       const requestStartedAtMs = Date.now();
       const stream = await Sentry.withActiveSpan(span, () =>
-        Promise.resolve(base(model, context, options)),
+        Promise.resolve(
+          base(model, context, traceResponseHeaders(span, options)),
+        ),
       );
       const responseTiming = createResponseTiming(requestStartedAtMs);
       const relay = relayStream(stream, responseTiming.observe);
