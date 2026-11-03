@@ -51,21 +51,22 @@ export interface EventDoneBy {
 /**
  * Connect the mention to the provider handle in the Event text. Without this,
  * the agent can mention a person and then name them again by handle as if
- * they were someone else.
+ * they were someone else. The "you" rule also applies when the doer is not in
+ * People involved, because instructions can still ask the agent to mention
+ * them, such as a requester who reviews their own pull request.
  */
 function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
   const mention = oneLine(doneBy.mention);
   const handle = doneBy.handle ? oneLine(doneBy.handle) : undefined;
+  const asYou = `as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`;
   return [
     `Done by: ${mention}. This person did what this Event describes.`,
     ...(handle
       ? [`The Event calls them "${handle}". That is the same person.`]
       : []),
-    ...(people.includes(mention)
-      ? [
-          `They are also in People involved. Write to them as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`,
-        ]
-      : []),
+    people.includes(mention)
+      ? `They are also in People involved. Write to them ${asYou}`
+      : `If you mention them, write to them ${asYou}`,
   ].join(" ");
 }
 
