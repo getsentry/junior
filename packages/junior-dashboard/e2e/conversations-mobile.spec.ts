@@ -261,9 +261,8 @@ test("opens and closes a conversation on mobile", async ({
     .click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(details).toHaveAttribute("aria-modal", "true");
-  await expect(
-    details.getByRole("tab", { name: "Summary", exact: true }),
-  ).toBeFocused();
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
   await page.keyboard.press("Shift+Tab");
   await expect(details.locator(":focus")).toHaveCount(1);
   await screenshot(page, "conversation-details-sheet", {
@@ -285,9 +284,8 @@ test("opens and closes a conversation on mobile", async ({
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
-  await expect(
-    details.getByRole("tab", { name: "Summary", exact: true }),
-  ).toBeFocused();
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
   await page.mouse.click(8, 8);
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();

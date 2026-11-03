@@ -491,15 +491,15 @@ test("inspects and copies a child agent transcript", async ({
     name: "Conversation details",
     exact: true,
   });
-  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
-  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
-  await subagentsTab.click();
+  await expect(
+    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+  ).toBeVisible();
   const subagents = details.getByRole("list", { name: "Subagents" });
   await expect(subagents.getByRole("listitem")).toHaveCount(2);
   await expect(subagents.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
-  await screenshot(page, "conversation-subagents-tab");
+  await screenshot(page, "conversation-subagents");
   // A row opens the same child transcript drawer as the transcript row.
   await subagents
     .getByRole("button", {

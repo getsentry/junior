@@ -174,12 +174,12 @@ test.describe("conversation time sections", () => {
     ).toHaveCount(0);
   });
 
-  test("the sidebar review chip opens the Review items panel", async ({
+  test("the sidebar review chip opens details at Needs you", async ({
     page,
     dashboard,
   }) => {
-    // The mock waiting conversation has an expired transcript and no message
-    // box, so use one that can show the Review items bar.
+    // The mock waiting conversation has an expired transcript, so use one
+    // with live history.
     await mockWaitingConversation(page, ACTIVE_CONVERSATION_ID);
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(WAITING_CONVERSATION_ID)}`,
@@ -209,11 +209,20 @@ test.describe("conversation time sections", () => {
         decodeURIComponent(url.pathname).endsWith(ACTIVE_CONVERSATION_ID) &&
         url.searchParams.get("review") === "open",
     );
-    const panel = page.getByRole("dialog", { name: "Review items" });
-    await expect(panel.getByText("Merge the checkout fix?")).toBeVisible();
+    const details = page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    });
+    await expect(
+      details
+        .getByRole("region", { name: "Needs you" })
+        .getByText("Merge the checkout fix?"),
+    ).toBeVisible();
 
-    await panel.getByRole("button", { name: "Close review items" }).click();
-    await expect(panel).toHaveCount(0);
+    await details
+      .getByRole("button", { name: "Close conversation details" })
+      .click();
+    await expect(details).toHaveCount(0);
     await expect(page).not.toHaveURL(/review=/);
 
     const today = sidebar.getByRole("button", { name: "Today" });

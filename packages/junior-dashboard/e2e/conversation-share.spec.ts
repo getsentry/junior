@@ -35,17 +35,12 @@ for (const touch of [false, true]) {
               ).recordShare(data),
           });
         });
+        // Share sits in the title bar on a tablet and in the menu on a phone.
         if (!touch) {
           await page.getByRole("button", { name: "Conversation menu" }).click();
         }
-        await page
-          .getByRole("button", { name: "Conversation details", exact: true })
-          .click();
-        const details = page.getByRole("dialog", {
-          name: "Conversation details",
-        });
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
-        const shareButton = details.getByRole("button", {
+        const shareButton = page.getByRole("button", {
           name: "Share",
           exact: true,
         });
@@ -67,7 +62,9 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(shareButton).toBeEnabled();
-          await expect(details.getByRole("status")).toBeEmpty();
+          await expect(
+            page.getByRole("status").filter({ hasText: /share|copy/i }),
+          ).toHaveCount(0);
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
           ).toBe("unchanged");
@@ -82,7 +79,7 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(
-            details.getByRole("button", { name: "Share failed — retry" }),
+            page.getByRole("button", { name: "Share failed — retry" }),
           ).toBeEnabled();
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
@@ -95,14 +92,14 @@ for (const touch of [false, true]) {
               value: undefined,
             });
           });
-          await details
+          await page
             .getByRole("button", { name: "Share failed — retry" })
             .click();
         } else {
           expect(shared).toEqual([]);
         }
         await expect(
-          details.getByRole("button", { name: "Link copied" }),
+          page.getByRole("button", { name: "Link copied" }),
         ).toBeVisible();
         const copied = await page.evaluate(() =>
           navigator.clipboard.readText(),

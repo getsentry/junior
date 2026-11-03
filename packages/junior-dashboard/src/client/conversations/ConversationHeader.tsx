@@ -1,13 +1,5 @@
-import {
-  cloneElement,
-  isValidElement,
-  useEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { Ellipsis, Menu } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu, PanelRight, ScrollText, X } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
@@ -20,15 +12,21 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
-  TranscriptViewToggle,
+  TranscriptSearchToggle,
   type ConversationArchiveAction,
 } from "./ConversationHeaderActions";
+import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
+import { ShareConversationButton } from "./ShareConversationButton";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
-/** Show the conversation title, search, and details. */
+/**
+ * Show the conversation title bar: where it runs, the title, and actions.
+ * Run facts, linked work, and the Brief live in Conversation details.
+ */
 export function ConversationHeader(props: {
   /** Parent chain of a child Conversation. Root Conversations omit it. */
   agentTree?: ReactNode;
+  /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
   archive: ConversationArchiveAction;
   conversationId: string;
@@ -36,13 +34,16 @@ export function ConversationHeader(props: {
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
+  /** Mobile only. Desktop shows linked work in Conversation details. */
   linkedWork?: ReactNode;
   live: boolean;
-  meta?: ReactNode;
+  /** Where the conversation runs, such as a Slack channel. */
+  location?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
   search: string;
+  sentryConversationUrl?: string;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -51,9 +52,7 @@ export function ConversationHeader(props: {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const searchOpenVisible =
     props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
@@ -77,27 +76,6 @@ export function ConversationHeader(props: {
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!mobileMenuRef.current?.contains(event.target as Node)) {
-        setMobileMenuOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileMenuOpen]);
-
   const toggleSearch = () => {
     if (searchOpenVisible) {
       setSearchOpen(false);
@@ -107,64 +85,29 @@ export function ConversationHeader(props: {
     setSearchOpen(true);
   };
 
-  const menuCopyAction =
-    isValidElement(props.copyAction) &&
-    typeof props.copyAction.type !== "string"
-      ? cloneElement(
-          props.copyAction as ReactElement<{ layout?: "icon" | "menu" }>,
-          { layout: "menu" },
-        )
-      : props.copyAction;
-
-  const mobileOverflow = (
-    <div className="relative" ref={mobileMenuRef}>
-      <HeaderIconButton
-        ref={menuButtonRef}
-        label={mobileMenuOpen ? "Close conversation menu" : "Conversation menu"}
-        onClick={() => setMobileMenuOpen((open) => !open)}
-        pressed={mobileMenuOpen}
-      >
-        <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
-      </HeaderIconButton>
-      {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={menuCopyAction}
-            detailsOpen={detailsOpen}
-            layout="menu"
-            onDetailsClick={() => {
-              setMobileMenuOpen(false);
-              props.onDetailsClick();
-            }}
-            onSearchClick={() => {
-              setMobileMenuOpen(false);
-              toggleSearch();
-            }}
-            onViewChange={(value) => {
-              setMobileMenuOpen(false);
-              props.onViewChange(value);
-            }}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
-          {openMobileNavigation ? (
-            <Button
-              className="mt-0.5"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openMobileNavigation();
-              }}
-              size="menu"
-            >
-              <Menu aria-hidden="true" size={16} strokeWidth={2} />
-              App menu
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+  const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
+    <ConversationHeaderActions
+      archive={props.archive}
+      conversationId={props.conversationId}
+      copyAction={props.copyAction}
+      detailsOpen={detailsOpen}
+      onDetailsClick={() => {
+        close();
+        props.onDetailsClick();
+      }}
+      onSearchClick={() => {
+        close();
+        toggleSearch();
+      }}
+      onViewChange={(value) => {
+        close();
+        props.onViewChange(value);
+      }}
+      placement={placement}
+      searchOpen={searchOpenVisible}
+      sentryConversationUrl={props.sentryConversationUrl}
+      view={props.view}
+    />
   );
 
   const showMobileHeader =
@@ -184,48 +127,98 @@ export function ConversationHeader(props: {
 
   return (
     <>
-      <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
+      <MobileHeaderActionsPortal>
+        <ConversationOverflowMenu buttonRef={menuButtonRef}>
+          {(close) => (
+            <>
+              {menuActions("mobile", close)}
+              {openMobileNavigation ? (
+                <Button
+                  className="mt-0.5"
+                  onClick={() => {
+                    close();
+                    openMobileNavigation();
+                  }}
+                  size="menu"
+                >
+                  <Menu aria-hidden="true" size={16} strokeWidth={2} />
+                  App menu
+                </Button>
+              ) : null}
+            </>
+          )}
+        </ConversationOverflowMenu>
+      </MobileHeaderActionsPortal>
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
+      {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
+          covers it. Mobile: below the app header, which holds the menu. */}
       <header
         className={cn(
-          "relative z-10 border-b border-dashboard-border bg-dashboard-bg",
+          "relative z-10 border-b md:z-30 border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
-          <div className="min-w-0">
+        <div className="hidden h-12 min-w-0 items-center justify-between gap-4 pl-7 pr-4 md:flex">
+          <div className="flex min-w-0 items-center gap-2">
             {props.agentTree ? (
-              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+              <div className="min-w-0 shrink-[2]">{props.agentTree}</div>
+            ) : props.location ? (
+              <span className="shrink-0 text-sm text-dashboard-text-muted">
+                {props.location}
+              </span>
             ) : null}
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
-                {props.title}
-              </h2>
-              {liveIndicator}
-              <span className="shrink-0">{props.privacy}</span>
-            </div>
-            {props.meta ? (
-              <div className="mt-2 min-w-0 text-xs leading-snug text-dashboard-text-muted">
-                {props.meta}
-              </div>
+            {props.agentTree || props.location ? (
+              <span aria-hidden="true" className="text-dashboard-text-faint">
+                ›
+              </span>
             ) : null}
-            {props.forks ? (
-              <div className="mt-1.5 min-w-0">{props.forks}</div>
-            ) : null}
+            <h2 className="m-0 line-clamp-1 min-w-0 font-display text-base font-medium leading-tight tracking-tight">
+              {props.title}
+            </h2>
+            {liveIndicator}
+            <span className="shrink-0">{props.privacy}</span>
           </div>
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={props.copyAction}
-            detailsOpen={detailsOpen}
-            detailsButtonRef={detailsButtonRef}
-            onDetailsClick={props.onDetailsClick}
-            onSearchClick={toggleSearch}
-            onViewChange={props.onViewChange}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
+          <div className="flex shrink-0 items-center gap-0.5">
+            {props.view === "raw" ? (
+              // Event log is a debug view reached from the menu. Say which
+              // view this is, and give one click back.
+              <Button
+                aria-label="Close event log"
+                className="mr-1 h-8 px-2.5"
+                onClick={() => props.onViewChange("rich")}
+                variant="quiet"
+              >
+                <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
+                Event log
+                <X aria-hidden="true" size={14} strokeWidth={2} />
+              </Button>
+            ) : (
+              <TranscriptSearchToggle
+                onClick={toggleSearch}
+                open={searchOpenVisible}
+              />
+            )}
+            <ShareConversationButton
+              key={props.conversationId}
+              conversationId={props.conversationId}
+              layout="icon"
+            />
+            <ConversationOverflowMenu>
+              {(close) => menuActions("desktop", close)}
+            </ConversationOverflowMenu>
+            <HeaderIconButton
+              ref={detailsButtonRef}
+              label="Conversation details"
+              onClick={props.onDetailsClick}
+              pressed={detailsOpen}
+            >
+              <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+            </HeaderIconButton>
+          </div>
         </div>
+        {props.forks ? (
+          <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
+        ) : null}
         {props.agentTree ? (
           <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
         ) : null}
@@ -235,18 +228,11 @@ export function ConversationHeader(props: {
         {props.linkedWork ? (
           <div
             aria-label="Linked work"
-            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
+            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:hidden"
           >
             {props.linkedWork}
           </div>
         ) : null}
-        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
-          <TranscriptViewToggle
-            labelled
-            onChange={props.onViewChange}
-            value={props.view}
-          />
-        </div>
         {searchOpenVisible ? (
           <div className="px-4 py-3 md:px-7">
             <SearchInput
