@@ -57,6 +57,7 @@ import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-r
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
   coerceThreadConversationState,
+  type ConversationMessage,
   type ThreadConversationState,
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -83,8 +84,9 @@ import {
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
 import {
-  batchReviewItemIds,
   joinMailboxText,
+  savedTurnInputMessages,
+  webConversationMessage,
 } from "@/chat/task-execution/mailbox-input";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -243,7 +245,7 @@ export function createConversationTurnWorker(
     let event: EventMailboxMetadata["event"] | undefined;
     let batchEvents: ConversationMessageEvent[] = [];
     let authorIdentityId: string | undefined;
-    let reviewItemIds: string[] | undefined;
+    let webInputMessages: ConversationMessage[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -269,7 +271,9 @@ export function createConversationTurnWorker(
         batchEvents = eventBatchMessageEvents(messages);
       } else {
         text = joinMailboxText(messages);
-        reviewItemIds = batchReviewItemIds(messages);
+        webInputMessages = resolved.batch.map((entry) =>
+          webConversationMessage(entry.message, entry.author),
+        );
       }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
@@ -314,11 +318,22 @@ export function createConversationTurnWorker(
         savedSource: savedTurn?.source,
         visibility: storedConversation?.visibility,
       });
+      // Rebuild the joined input from every saved input Message.
+      const turnInputs = savedTurnInputMessages(
+        conversation,
+        userMessage,
+        await lifecycle.loadInputMessageIds(context.conversationId, turnId),
+      );
       userMessageId = userMessage.id;
-      text = userMessage.text;
-      attachments = userMessage.meta?.attachments ?? [];
+      text = turnInputs
+        .map((message) => message.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      attachments = turnInputs.flatMap(
+        (message) => message.meta?.attachments ?? [],
+      );
       startedAtMs = userMessage.createdAtMs;
-      inputMessageIds = [userMessageId];
+      inputMessageIds = turnInputs.map((message) => message.id);
     }
     if (!turnInputFacts) {
       throw new Error(
@@ -417,35 +432,44 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
         } else {
-          upsertConversationMessage(conversation, {
-            id: userMessageId,
-            role: "user",
-            text: normalizeConversationText(text),
-            createdAtMs: startedAtMs,
-            author,
-            ...(authorIdentityId ? { authorIdentityId } : undefined),
-            meta: {
-              ...(attachments.length ? { attachments } : undefined),
-              explicitMention: true,
-              replied: false,
-              ...(source.kind === "web"
-                ? { source: "web" as const }
-                : undefined),
-              ...(reviewItemIds ? { reviewItemIds } : undefined),
-              ...(event
-                ? {
-                    eventType: event.eventType,
-                    eventObjectType: event.objectType,
-                    ...(event.trustedSummary
-                      ? { trustedSummary: event.trustedSummary }
-                      : undefined),
-                    ...(batchEvents.length > 1
-                      ? { events: batchEvents }
-                      : undefined),
-                  }
-                : undefined),
-            },
-          });
+          // Save each web Message apart, so an answer in a batch stays an
+          // answer in the transcript. The model still gets one joined prompt.
+          for (const [index, message] of webInputMessages.entries()) {
+            upsertConversationMessage(
+              conversation,
+              index === 0
+                ? { ...message, meta: { ...message.meta, replied: false } }
+                : message,
+            );
+          }
+          // An Event batch saves one Message with the rendered Events.
+          if (webInputMessages.length === 0) {
+            upsertConversationMessage(conversation, {
+              id: userMessageId,
+              role: "user",
+              text: normalizeConversationText(text),
+              createdAtMs: startedAtMs,
+              author,
+              ...(authorIdentityId ? { authorIdentityId } : undefined),
+              meta: {
+                ...(attachments.length ? { attachments } : undefined),
+                explicitMention: true,
+                replied: false,
+                ...(event
+                  ? {
+                      eventType: event.eventType,
+                      eventObjectType: event.objectType,
+                      ...(event.trustedSummary
+                        ? { trustedSummary: event.trustedSummary }
+                        : undefined),
+                      ...(batchEvents.length > 1
+                        ? { events: batchEvents }
+                        : undefined),
+                    }
+                  : undefined),
+              },
+            });
+          }
           await persistConversationMessages({
             conversation,
             conversationId: context.conversationId,
@@ -585,7 +609,7 @@ export function createConversationTurnWorker(
                 text,
                 storedAttachments: attachments,
                 context: buildConversationContext(conversation, {
-                  excludeMessageId: userMessageId,
+                  excludeMessageIds: inputMessageIds,
                 }),
               },
               history: piMessages,

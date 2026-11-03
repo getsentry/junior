@@ -5,7 +5,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../components/StatusChip";
 import { AnswerSummary } from "./ReviewItemActions";
-import { useReviewItemsByIdData } from "./queries";
+import { useReviewItemData } from "./queries";
 import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
 
 function AnswerRow(props: { item: ReviewItemPayload }) {
@@ -39,24 +39,17 @@ function AnswerRow(props: { item: ReviewItemPayload }) {
 }
 
 /**
- * Show a person message that reports Review item answers as one row for each
- * item. Shows `fallback`, the message text, when the viewer cannot read an
+ * Show a person message that reports a Review item answer as one row for the
+ * item. Shows `fallback`, the message text, when the viewer cannot read the
  * item.
  */
-export function ReviewItemAnswers(props: {
+export function ReviewItemAnswer(props: {
   fallback: ReactNode;
-  itemIds: readonly string[];
+  itemId: string;
 }) {
-  const results = useReviewItemsByIdData(props.itemIds);
-  if (results.some((result) => result.isError)) return props.fallback;
-  const items = results.flatMap((result) => (result.data ? [result.data] : []));
-  // The rows replace the text, so wait for every item before showing them.
-  if (items.length < props.itemIds.length) return null;
-  return (
-    <div className="grid min-w-0 gap-2">
-      {items.map((item) => (
-        <AnswerRow item={item} key={item.id} />
-      ))}
-    </div>
-  );
+  const { data, isError } = useReviewItemData(props.itemId);
+  if (isError) return props.fallback;
+  // The row replaces the text, so wait for the item before showing it.
+  if (!data) return null;
+  return <AnswerRow item={data} />;
 }

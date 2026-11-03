@@ -42,8 +42,8 @@ export interface ConversationMessageMeta {
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   replied?: boolean;
-  /** Review items whose answers or actions this person message reports. */
-  reviewItemIds?: string[];
+  /** Review item whose answer or action this person message reports. */
+  reviewItemId?: string;
   slackTs?: string;
   skippedReason?: string;
 }

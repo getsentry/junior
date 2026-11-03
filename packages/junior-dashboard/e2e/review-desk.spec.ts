@@ -286,7 +286,7 @@ test("answers show as rows, not as context for other items", async ({
         data: {
           type: "message",
           messageId: "answer-initech",
-          reviewItemIds: [answered.id],
+          reviewItemId: answered.id,
           role: "user",
           source: "web",
           text: answerText,

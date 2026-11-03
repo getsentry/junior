@@ -31,7 +31,7 @@ function conversationExcerpt(
     (event) =>
       event.data.type === "message" &&
       event.data.role !== "system" &&
-      !event.data.reviewItemIds,
+      !event.data.reviewItemId,
   );
   return {
     after: messages

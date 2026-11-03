@@ -128,7 +128,7 @@ async function projectPendingMessage(
             text,
             ...(attachments.length ? { attachments } : undefined),
             ...(metadata.data.reviewItemId
-              ? { reviewItemIds: [metadata.data.reviewItemId] }
+              ? { reviewItemId: metadata.data.reviewItemId }
               : undefined),
           }
         : { redacted: true as const }),
