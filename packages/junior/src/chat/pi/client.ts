@@ -254,7 +254,12 @@ export function resolveGatewayModel(modelId: string): Model<any> {
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
-  return matched;
+  // AI Gateway groups requests into a session by `x-session-affinity`. Pi
+  // sends it only for calls that pass a `sessionId`.
+  return {
+    ...matched,
+    compat: { ...matched.compat, sendSessionAffinityHeaders: true },
+  };
 }
 
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
