@@ -18,9 +18,14 @@ import {
 } from "./check-suite.js";
 import {
   definedValues,
+  gitHubDoneBy,
   gitHubEventKey,
+  nonBlank,
+  providerTime,
   pullRequestTargets,
+  titleAndBodyText,
 } from "./event-targets.js";
+import { normalizeIssueUpdateEvents } from "./issue-update.js";
 import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
@@ -37,19 +42,6 @@ export {
   parseCheckSuitePublishTargets,
   selectFailingChecks,
 } from "./check-suite.js";
-
-/** The GitHub user who did what an Event describes, when GitHub names one. */
-function gitHubDoneBy(
-  login: string | undefined,
-): Pick<EventInput, "doneBy"> | undefined {
-  const handle = login?.trim();
-  return handle ? { doneBy: { provider: "github", handle } } : undefined;
-}
-
-/** The text of a webhook value, or undefined when it is missing or blank. */
-function nonBlank(value: string | null | undefined): string | undefined {
-  return value?.trim() || undefined;
-}
 
 const repositorySchema = z
   .object({ full_name: z.string().min(1) })
@@ -485,20 +477,14 @@ const issueWebhookSchema = z.object({
   repository: repositorySchema,
 });
 
-/** The title and body of an issue or pull request, as untrusted text. */
-function titleAndBodyText(item: {
-  body?: string | null;
-  title?: string;
-}): string | undefined {
-  const parts = [
-    item.title ? `Title: ${item.title}` : undefined,
-    nonBlank(item.body),
-  ].filter((part): part is string => part !== undefined);
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
-}
-
-/** Normalize issue lifecycle changes for the issue and its repository. */
-function normalizeIssueEvents(deliveryId: string, body: unknown): EventInput[] {
+/** Normalize issue lifecycle changes and updates for the issue and its repository. */
+function normalizeIssueEvents(
+  deliveryId: string,
+  body: unknown,
+  botEmail: string | undefined,
+): EventInput[] {
+  const updates = normalizeIssueUpdateEvents(deliveryId, body, botEmail);
+  if (updates) return updates;
   const parsed = issueWebhookSchema.safeParse(body);
   if (!parsed.success) return [];
   const state =
@@ -674,13 +660,6 @@ const pullRequestWebhookSchema = z.object({
   }),
   repository: repositorySchema,
 });
-
-/** Convert an optional provider timestamp for receipt-time fallback ordering. */
-function providerTime(value: string | null | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 /** Normalize pull request opened, ready-for-review, and terminal lifecycle events. */
 function normalizePullRequestEvent(
@@ -879,7 +858,7 @@ export function normalizeGitHubEvents(args: {
     case "pull_request":
       return normalizePullRequestEvent(args.deliveryId, args.body);
     case "issues":
-      return normalizeIssueEvents(args.deliveryId, args.body);
+      return normalizeIssueEvents(args.deliveryId, args.body, args.botEmail);
     case "pull_request_review":
       return normalizePullRequestReviewEvent(
         args.deliveryId,

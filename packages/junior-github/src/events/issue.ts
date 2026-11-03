@@ -10,11 +10,13 @@ export const GITHUB_ISSUE_EVENTS = [
   "issue.opened",
   "issue.closed",
   "issue.reopened",
+  "issue.updated",
 ];
 export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
   "issue.comment.created",
   "issue.closed",
   "issue.reopened",
+  "issue.updated",
 ];
 
 /**

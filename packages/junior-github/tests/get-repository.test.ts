@@ -64,6 +64,7 @@ describe("getRepository", () => {
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "issue.updated",
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",

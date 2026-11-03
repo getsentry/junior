@@ -120,9 +120,9 @@ function fixtureDeliveries(
         },
       }),
     ),
-    ...["opened", "closed", "reopened"].map((action) => ({
+    ...["opened", "closed", "reopened", "labeled"].map((action) => ({
       eventName: "issues",
-      body: { action, issue: { number: scope.issue }, repository },
+      body: { action, issue: { number: scope.issue }, repository, sender },
     })),
     {
       eventName: "issue_comment",
