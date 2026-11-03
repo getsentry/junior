@@ -31,6 +31,7 @@ import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
 import {
   SEARCH_TOOLS_NAME,
   summarizeModelVisibleDescription,
@@ -147,9 +148,16 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
     "declare const tools: {",
     ...shown.map((entry) => entry.text),
     "};",
+    // The catalog tools are `modelOnly`. Models still call them from scripts.
     ...(omitted > 0
       ? [
-          `${omitted} more tools are not declared here. Each ${SEARCH_TOOLS_NAME} result is also callable as \`tools.<tool_name>(args)\`, with its input_schema.`,
+          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
+        ]
+      : []),
+    // MCP tools are not script tools. Only `callMcpTool` reaches them.
+    ...(Object.hasOwn(tools, "callMcpTool")
+      ? [
+          "Call an MCP tool as `tools.callMcpTool({ tool_name, arguments })`. `tools.mcp__<provider>__<tool>` does not exist.",
         ]
       : []),
   ].join("\n");
