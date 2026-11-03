@@ -1466,14 +1466,29 @@ export function createMemoryStore(
     const probePrivate =
       vectorMaxDistance !== undefined && privateScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
-    let queryEmbedding: MemoryEmbedding | undefined;
-    if (embedder && query) {
-      try {
-        queryEmbedding = await embedOne(embedder, query, "query");
-      } catch {
-        queryEmbedding = undefined;
+    // Embed once for both vector probes. A failed embed means lexical-only.
+    const queryEmbedding =
+      embedder && query
+        ? embedOne(embedder, query, "query").catch(() => undefined)
+        : Promise.resolve(undefined);
+    const vectorMatches = async (
+      vectorScopes: ResolvedMemoryScope[],
+    ): Promise<MemoryMatch[]> => {
+      const embedding = await queryEmbedding;
+      if (!embedding) {
+        return [];
       }
-    }
+      return await searchVisibleVectorMemories({
+        db,
+        embedding,
+        limit: candidateLimit,
+        ...(vectorMaxDistance !== undefined
+          ? { maxDistance: vectorMaxDistance }
+          : undefined),
+        nowMs,
+        scopes: vectorScopes,
+      });
+    };
     const emptyMatches = Promise.resolve([] as MemoryMatch[]);
     const lexicalArgs = {
       db,
@@ -1483,34 +1498,14 @@ export function createMemoryStore(
     };
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
-    // Embed once up front; vector probes only run when that embedding exists.
+    // Lexical probes do not need the embedding, so they start while it runs.
     const matches = await Promise.all([
-      queryEmbedding
-        ? searchVisibleVectorMemories({
-            db,
-            embedding: queryEmbedding,
-            limit: candidateLimit,
-            ...(vectorMaxDistance !== undefined
-              ? { maxDistance: vectorMaxDistance }
-              : undefined),
-            nowMs,
-            scopes,
-          })
-        : emptyMatches,
+      vectorMatches(scopes),
       searchVisibleLexicalMemories({
         ...lexicalArgs,
         scopes,
       }),
-      queryEmbedding && probePrivate
-        ? searchVisibleVectorMemories({
-            db,
-            embedding: queryEmbedding,
-            limit: candidateLimit,
-            maxDistance: vectorMaxDistance,
-            nowMs,
-            scopes: privateScopes,
-          })
-        : emptyMatches,
+      probePrivate ? vectorMatches(privateScopes) : emptyMatches,
       probePrivate
         ? searchVisibleLexicalMemories({
             ...lexicalArgs,
