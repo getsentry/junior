@@ -40,6 +40,7 @@ import {
   type MemoryReviewer,
 } from "../src/tools";
 import { listMemories } from "../src/viewer";
+import { hashEmbeddedContent } from "../src/embedding";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
@@ -3164,6 +3165,127 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       await fixture.close();
     }
   }, 15_000);
+
+  it("searches the HNSW index for public recall with exact-search results", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      // Production embeds with a 1024-dimensional model, the only size with an
+      // HNSW index. Each memory has cosine `cosine` to the query, so the exact
+      // distance order is known. Vectors lie on a 3-dimensional sphere: HNSW
+      // cannot navigate vectors that are all at the same distance from each
+      // other.
+      const dimensions = 1024;
+      const query = "nearest neighbor probe";
+      const context = slackContext();
+      const ownerScopeKey = context.userId;
+      const otherScopeKey = "user:T123:U999";
+      const seeds: Array<{
+        cosine: number;
+        id: string;
+        scope: "private" | "public";
+        scopeKey: string;
+      }> = [
+        // Other Users' private memories are closest, so they use part of the
+        // HNSW candidate budget before visibility filters them out.
+        ...Array.from({ length: 100 }, (_, index) => ({
+          cosine: 0.99 - index * 0.0001,
+          id: `mem_hnsw_other_${index}`,
+          scope: "private" as const,
+          scopeKey: otherScopeKey,
+        })),
+        ...Array.from({ length: 300 }, (_, index) => ({
+          cosine: 0.98 - index * 0.003,
+          id: `mem_hnsw_public_${index}`,
+          scope: "public" as const,
+          scopeKey: "public",
+        })),
+        {
+          cosine: 0.9765,
+          id: "mem_hnsw_owner_close",
+          scope: "private",
+          scopeKey: ownerScopeKey,
+        },
+        // More than the HNSW candidate budget is closer than this memory.
+        {
+          cosine: 0.6,
+          id: "mem_hnsw_owner_far",
+          scope: "private",
+          scopeKey: ownerScopeKey,
+        },
+      ];
+      const db = memoryDb(fixture);
+      await db.insert(memorySqlSchema.juniorMemoryMemories).values(
+        seeds.map((seed) => ({
+          content: `Seeded memory ${seed.id}.`,
+          createdAtMs: TEST_NOW_MS,
+          id: seed.id,
+          kind: "knowledge" as const,
+          observedAtMs: TEST_NOW_MS,
+          scope: seed.scope,
+          scopeKey: seed.scopeKey,
+          sourceKey: "slack:T123:C123:1718800000.000000",
+          sourcePlatform: "slack" as const,
+          subjectType: "general" as const,
+        })),
+      );
+      await db.insert(memorySqlSchema.juniorMemoryEmbeddings).values(
+        seeds.map((seed, index) => {
+          const sine = Math.sqrt(1 - seed.cosine * seed.cosine);
+          const angle = index * 2.399963;
+          const embedding = unitEmbedding(0, dimensions);
+          embedding[0] = seed.cosine;
+          embedding[1] = sine * Math.cos(angle);
+          embedding[2] = sine * Math.sin(angle);
+          return {
+            contentHash: hashEmbeddedContent(`Seeded memory ${seed.id}.`),
+            createdAtMs: TEST_NOW_MS,
+            dimensions,
+            embedding,
+            memoryId: seed.id,
+            metric: "cosine" as const,
+            model: "test-embedding-model",
+            provider: "test-embedding-provider",
+          };
+        }),
+      );
+      const store = createMemoryStore(db, context, {
+        embedder: createTestEmbedder(
+          { [query]: unitEmbedding(0, dimensions) },
+          { dimensions },
+        ),
+        now: () => TEST_NOW_MS,
+      });
+      const visibleByDistance = seeds
+        .filter((seed) => seed.scopeKey !== otherScopeKey)
+        .sort((left, right) => right.cosine - left.cosine)
+        .map((seed) => seed.id);
+      const ids = (memories: Array<{ id: string }>) =>
+        memories.map((memory) => memory.id);
+
+      await expect(
+        store.searchMemories({ limit: 10, query }).then(ids),
+      ).resolves.toEqual(visibleByDistance.slice(0, 10));
+      // The private search is exact, so it finds the far private memory.
+      await expect(
+        store.recallMemories({ limit: 5, query }).then(ids),
+      ).resolves.toContain("mem_hnsw_owner_far");
+      // The recall cutoff keeps cosine >= 0.55 (distance <= 0.45) only.
+      const withinCutoff = seeds
+        .filter(
+          (seed) => seed.scopeKey !== otherScopeKey && seed.cosine >= 0.55,
+        )
+        .map((seed) => seed.id)
+        .sort();
+      await expect(
+        store
+          .recallMemories({ limit: 200, query })
+          .then((memories) => ids(memories).sort()),
+      ).resolves.toEqual(withinCutoff);
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
 
   it("keeps lexical recall when an acceptable vector distractor exists", async () => {
     const fixture = await createMemoryFixture();

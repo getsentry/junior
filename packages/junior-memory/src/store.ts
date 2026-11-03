@@ -36,9 +36,11 @@ import {
   EMBEDDING_METRIC,
   embeddingDistance,
   embeddingWithinDistance,
+  hasHnswIndex,
   hashEmbeddedContent,
   parseEmbeddingBatch,
   sameEmbeddingModel,
+  sameEmbeddingSize,
   type MemoryEmbedding,
   type MemoryEmbeddingProvider,
 } from "./embedding";
@@ -78,6 +80,10 @@ const RECALL_RETRIEVAL_OVERFETCH = 2;
  * single healthy leg can still fill the caller's requested result window.
  */
 const MAX_RETRIEVAL_LEG_CANDIDATES = 200;
+/** Smallest HNSW candidate budget. 200 kept the exact top 40 on prod data. */
+const HNSW_MIN_CANDIDATES = 200;
+/** HNSW candidates per requested result. pgvector caps ef_search at 1,000. */
+const HNSW_CANDIDATES_PER_RESULT = 5;
 /** Cap ts_rank_cd work after GIN filtering; ranking is not indexable. */
 const MAX_LEXICAL_RANK_CANDIDATES = 200;
 /** Expand the GIN match window before ts_rank_cd, still under the hard cap. */
@@ -1126,6 +1132,112 @@ async function searchVisibleLexicalMemories(args: {
   );
 }
 
+interface VectorSearchArgs {
+  db: MemoryDb;
+  embedding: MemoryEmbedding;
+  limit: number;
+  maxDistance?: number;
+  predicate: SQL;
+}
+
+/** Search every visible vector of the query model. Exact, but reads each one. */
+async function searchExactVectorRows(args: VectorSearchArgs) {
+  const embedding = args.embedding;
+  const distance = embeddingDistance(embedding);
+  // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
+  const distancePredicate =
+    args.maxDistance === undefined
+      ? undefined
+      : embeddingWithinDistance(embedding, args.maxDistance);
+  return await args.db
+    .select({
+      contentHash: juniorMemoryEmbeddings.contentHash,
+      distance,
+      memory: juniorMemoryMemories,
+    })
+    .from(juniorMemoryMemories)
+    .innerJoin(
+      juniorMemoryEmbeddings,
+      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
+    )
+    .where(
+      and(
+        args.predicate,
+        sameEmbeddingModel(embedding),
+        ...(distancePredicate ? [distancePredicate] : []),
+      ),
+    )
+    .orderBy(
+      distance,
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(args.limit);
+}
+
+/**
+ * Take the nearest vectors of the query size from the HNSW index, then apply
+ * the model, visibility, and cutoff filters to those candidates only.
+ */
+async function searchHnswVectorRows(args: VectorSearchArgs) {
+  const embedding = args.embedding;
+  // Other Users' private memories and vectors of other models use part of the
+  // budget before the filters run, so it is larger than the limit.
+  const candidateLimit = Math.max(
+    HNSW_MIN_CANDIDATES,
+    args.limit * HNSW_CANDIDATES_PER_RESULT,
+  );
+  return await args.db.transaction(async (tx) => {
+    // Stored vectors are TOASTed, and the planner does not cost TOAST reads.
+    // So it picks an exact scan of every visible vector over the index. Turn
+    // off the other scans for this transaction only. Do not turn on
+    // hnsw.iterative_scan: with the cutoff it can scan the whole index.
+    await tx.execute(
+      sql`SELECT set_config('enable_seqscan', 'off', true), set_config('enable_bitmapscan', 'off', true), set_config('hnsw.ef_search', ${String(candidateLimit)}, true)`,
+    );
+    // The index predicate must be the only filter, or Postgres does not use
+    // the index for the ORDER BY.
+    const candidates = tx
+      .select({
+        contentHash: juniorMemoryEmbeddings.contentHash,
+        dimensions: juniorMemoryEmbeddings.dimensions,
+        distance: sql<number>`${embeddingDistance(embedding)}`.as("distance"),
+        memoryId: juniorMemoryEmbeddings.memoryId,
+        metric: juniorMemoryEmbeddings.metric,
+        model: juniorMemoryEmbeddings.model,
+        provider: juniorMemoryEmbeddings.provider,
+      })
+      .from(juniorMemoryEmbeddings)
+      .where(sameEmbeddingSize(embedding))
+      .orderBy(sql`distance`)
+      .limit(candidateLimit)
+      .as("hnsw_candidates");
+    return await tx
+      .select({
+        contentHash: candidates.contentHash,
+        distance: candidates.distance,
+        memory: juniorMemoryMemories,
+      })
+      .from(juniorMemoryMemories)
+      .innerJoin(candidates, eq(candidates.memoryId, juniorMemoryMemories.id))
+      .where(
+        and(
+          args.predicate,
+          sameEmbeddingModel(embedding, candidates),
+          ...(args.maxDistance === undefined
+            ? []
+            : [lte(candidates.distance, args.maxDistance)]),
+        ),
+      )
+      .orderBy(
+        candidates.distance,
+        desc(juniorMemoryMemories.createdAtMs),
+        asc(juniorMemoryMemories.id),
+      )
+      .limit(args.limit);
+  });
+}
+
 /** Search active visible records with pgvector cosine distance. */
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
@@ -1139,37 +1251,16 @@ async function searchVisibleVectorMemories(args: {
   if (!predicate) {
     return [];
   }
-  const embedding = args.embedding;
-  const distance = embeddingDistance(embedding);
-  // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
-  const distancePredicate =
-    args.maxDistance === undefined
-      ? undefined
-      : embeddingWithinDistance(embedding, args.maxDistance);
-  const rows = await args.db
-    .select({
-      contentHash: juniorMemoryEmbeddings.contentHash,
-      distance,
-      memory: juniorMemoryMemories,
-    })
-    .from(juniorMemoryMemories)
-    .innerJoin(
-      juniorMemoryEmbeddings,
-      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-    )
-    .where(
-      and(
-        predicate,
-        sameEmbeddingModel(embedding),
-        ...(distancePredicate ? [distancePredicate] : []),
-      ),
-    )
-    .orderBy(
-      distance,
-      desc(juniorMemoryMemories.createdAtMs),
-      asc(juniorMemoryMemories.id),
-    )
-    .limit(args.limit);
+  // Public memory makes the visible set large, so the exact search is slow.
+  // Without it the visible set is one User's private memory: the exact search
+  // is fast, and a shared nearest-vector budget could miss all of it.
+  const useHnsw =
+    hasHnswIndex(args.embedding) &&
+    args.scopes.some((scope) => scope.scope === "public");
+  const searchArgs = { ...args, predicate };
+  const rows = useHnsw
+    ? await searchHnswVectorRows(searchArgs)
+    : await searchExactVectorRows(searchArgs);
   return withDenseRanks(rows, (row) => Number(row.distance)).flatMap(
     ({ rank, value: row }) => {
       const distanceValue = Number(row.distance);
