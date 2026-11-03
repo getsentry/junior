@@ -121,10 +121,9 @@ export function createWebFetchTool(
 
       if (response.ok && contentType.startsWith("image/")) {
         // A cut image is not usable, so an image over the limit fails.
-        const { bytes, truncated } = await withTimeout(
-          readResponseBytes(response, MAX_FETCH_BYTES),
-          FETCH_TIMEOUT_MS,
-          "read",
+        const { bytes, truncated } = await readResponseBytes(
+          response,
+          MAX_FETCH_BYTES,
         );
         if (truncated) {
           throw new ToolInputError("image response body too large");
