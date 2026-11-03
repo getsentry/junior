@@ -210,10 +210,12 @@ function readEventTaskFacts(
  * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
- * their own inputs after the task.
+ * their own inputs after the task. `rendered` replaces the text of an entry
+ * by inbound message id, such as a relayed Review item change.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
+  rendered: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   const groups = new Map<
     string,
@@ -256,7 +258,8 @@ export function renderEventBatchInputs(
     });
   }
 
-  const ownText = (message: InboundMessage) => message.input.text.trim();
+  const ownText = (message: InboundMessage) =>
+    rendered.get(message.inboundMessageId) ?? message.input.text.trim();
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
     return messages.map(ownText).filter(Boolean);

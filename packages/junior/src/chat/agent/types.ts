@@ -125,12 +125,13 @@ export type MessageAgent = (
 
 /**
  * One input of a Turn. Each input is its own prompt content part, in order.
- * A `person` input is words that a person wrote; the prompt shows it in
- * `<current-instruction>`. A `runtime` input is one that the runtime created,
- * already rendered as its own tag, such as `<task>` or `<agent-result>`.
+ * A `person` input is words that a person typed; the prompt shows it in
+ * `<current-instruction>` with the Actor of the instruction. A `runtime`
+ * input is already rendered as its own tag by the runtime, such as `<task>`,
+ * `<agent-result>`, or `<review-item-answer>`.
  */
 export type AgentInstructionInput =
-  | { kind: "person"; text: string; actor?: AgentInstructionActor }
+  | { kind: "person"; text: string }
   | { kind: "runtime"; text: string };
 
 /** Current user instruction for one agent-run slice. */

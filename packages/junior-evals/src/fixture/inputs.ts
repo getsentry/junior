@@ -85,6 +85,38 @@ export interface WebMessageInput {
   text: string;
 }
 
+/**
+ * A person's answer or dismiss on the review desk, through
+ * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
+ * web Conversation and assigns it to the person, as `addReviewItem` would.
+ */
+export interface ReviewItemActionInput {
+  kind: "review_item_action";
+  action: "submit" | "dismiss";
+  item: ReviewDeskItem;
+  /** The answer, by field id. */
+  values?: Record<string, string[]>;
+}
+
+/** An open item that a `ReviewItemActionInput` acts on. */
+export interface ReviewDeskItem {
+  body: string;
+  /** Without a request, the item is a notice. */
+  request?: {
+    question: string;
+    fields: (
+      | {
+          id: string;
+          kind: "choice";
+          label: string;
+          options: { label: string }[];
+        }
+      | { id: string; kind: "text"; label: string }
+    )[];
+  };
+  title: string;
+}
+
 /** The authenticated heartbeat route, which runs due automations. */
 export interface HeartbeatInput {
   kind: "heartbeat";
@@ -119,6 +151,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
 export type Input =
   | MessageInput
+  | ReviewItemActionInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -199,6 +232,19 @@ export function webMessage(
   options: { images?: FileInput[]; steer?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
+}
+
+/** Answer a review desk item from the dashboard, by field id. */
+export function reviewItemAnswer(
+  item: ReviewDeskItem,
+  values: Record<string, string[]>,
+): ReviewItemActionInput {
+  return { kind: "review_item_action", action: "submit", item, values };
+}
+
+/** Dismiss a review desk item from the dashboard. */
+export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
+  return { kind: "review_item_action", action: "dismiss", item };
 }
 
 /** A file for `files` or `images`. A string is the text of the file. */

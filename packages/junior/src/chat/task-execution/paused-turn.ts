@@ -6,7 +6,7 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
@@ -629,12 +629,11 @@ async function runPausedTurnInContext(
                 : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
-              // A dispatch input is an Automation `<task>`, not a person.
-              ...(dispatchId
-                ? instructionForInputs([
-                    { kind: "runtime", text: userMessage.text },
-                  ])
-                : { text: userMessage.text }),
+              ...(await savedInputInstruction({
+                dispatch: Boolean(dispatchId),
+                reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
+                text: userMessage.text,
+              })),
             },
             // A dispatch reads only history saved for this Turn. Other input
             // must not become part of a system Turn. Other Turns read

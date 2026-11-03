@@ -12,14 +12,20 @@ const RUNTIME_INPUT_TAGS = [
   "agent-result",
   "agent-message",
   "parent-agent-task",
+  "review-item-answer",
+  "review-item-dismissed",
+  "relayed-review-item-answer",
+  "relayed-review-item-dismissed",
 ] as const;
 
 type TagAttrs = Record<string, string | number | undefined>;
 
-// Escape text that an agent or an external source wrote, for a tag body.
-// Quotes stay as they are. Escaping `<` also keeps the text from imitating
-// one of our tags.
-function escapeTagText(value: string): string {
+/**
+ * Escape text that a person, an agent, or an external source wrote, for a
+ * tag body. Quotes stay as they are. Escaping `<` also keeps the text from
+ * imitating one of our tags.
+ */
+export function escapeTagText(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -99,8 +105,8 @@ export function renderChildTag(name: string, text: string): string {
 
 /**
  * Return whether a prompt text part is a runtime-created input. Only the
- * runtime writes a part that starts with one of these tags: person text is
- * always inside `<current-instruction>`.
+ * runtime writes a part that starts with one of these tags: typed person
+ * text is always inside `<current-instruction>`.
  */
 export function isRuntimeInputText(text: string): boolean {
   return RUNTIME_INPUT_TAGS.some(

@@ -5,7 +5,11 @@ import {
   appendAndEnqueueWebMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getDb } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -109,12 +113,51 @@ async function openConversationIds(
   return rows.map((row) => row.conversationId).sort();
 }
 
-function messageKey(item: ReviewItem, change: ReviewItemChange): string {
-  // Only the first close wins, so one close message per item is enough. Each
-  // take is a new change.
-  return change.kind === "taken"
-    ? `review-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
-    : `review-item:${item.id}:closed`;
+function takeMessageId(item: ReviewItem, user: User): string {
+  return `review-item:${item.id}:taken:${user.id}:${item.updatedAt.getTime()}`;
+}
+
+/**
+ * Save a take as a handled Message in one Conversation. A take does not
+ * start a Turn or reach the model: the agent has nothing to do until the
+ * person answers. The dashboard shows the Message from its record. A retry
+ * is safe, because the Message id is the take key.
+ */
+async function recordReviewItemTake(args: {
+  conversationId: string;
+  item: ReviewItem;
+  nowMs: number;
+  user: User;
+}): Promise<void> {
+  const change: ReviewItemChange = { kind: "taken", user: args.user };
+  const messageId = takeMessageId(args.item, args.user);
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      idempotencyKey: `message:${messageId}`,
+      createdAtMs: args.nowMs,
+      data: {
+        type: "message",
+        messageId,
+        role: "user",
+        text: renderReviewItemMessage(args.item, change),
+        meta: {
+          author: {
+            email: args.user.email,
+            ...(args.user.displayName
+              ? { fullName: args.user.displayName }
+              : undefined),
+          },
+          replied: false,
+          reviewItemChanges: [reviewItemChangeRecord(args.item, change)],
+        },
+      },
+    },
+    {
+      idempotencyKey: `message:${messageId}:handled`,
+      createdAtMs: args.nowMs,
+      data: { type: "message_handled", messageId },
+    },
+  ]);
 }
 
 function eventMessageText(text: string, change: ReviewItemChange): string {
@@ -138,7 +181,17 @@ async function sendOne(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  const key = messageKey(args.item, args.change);
+  if (args.change.kind === "taken") {
+    await recordReviewItemTake({
+      conversationId: args.conversationId,
+      item: args.item,
+      nowMs: args.nowMs,
+      user: args.change.user,
+    });
+    return;
+  }
+  // Only the first close wins, so one close message per item is enough.
+  const key = `review-item:${args.item.id}:closed`;
   const record = reviewItemChangeRecord(args.item, args.change);
   if ("user" in args.change) {
     const conversation = await getConversationStore().get({
@@ -194,7 +247,8 @@ async function sendOne(args: {
  * Send one change to every open linked Conversation, except the
  * Conversation that made the change. A Conversation is open until Junior
  * purges its transcript; archive is only a per-viewer list state. Each
- * message starts a new Turn. Repeat calls for the same change are safe.
+ * message starts a new Turn, except a take, which is only recorded. Repeat
+ * calls for the same change are safe.
  */
 export async function sendReviewItemMessages(args: {
   change: ReviewItemChange;

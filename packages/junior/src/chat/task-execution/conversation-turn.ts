@@ -104,6 +104,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import { relayedReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -270,13 +271,13 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(messages).map((text) => ({
-          kind: "runtime",
-          text,
-        }));
+        inputs = renderEventBatchInputs(
+          messages,
+          await relayedReviewItemInputs(messages),
+        ).map((text) => ({ kind: "runtime", text }));
         eventMeta = eventBatchMessageMeta(messages);
       } else {
-        inputs = webTurnInputs(messages.map((message) => message.input));
+        inputs = await webTurnInputs(messages.map((message) => message.input));
         webInputMessages = resolved.batch.map((entry) =>
           webConversationMessage(entry.message, entry.author),
         );
@@ -336,7 +337,12 @@ export function createConversationTurnWorker(
       userMessageId = userMessage.id;
       inputs = savedMessageIsEvent
         ? [{ kind: "runtime", text: userMessage.text }]
-        : webTurnInputs(turnInputs);
+        : await webTurnInputs(
+            turnInputs.map((message) => ({
+              reviewItemChange: message.meta?.reviewItemChanges?.[0],
+              text: message.text,
+            })),
+          );
       attachments = turnInputs.flatMap(
         (message) => message.meta?.attachments ?? [],
       );

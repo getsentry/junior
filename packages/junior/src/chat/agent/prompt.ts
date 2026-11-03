@@ -149,17 +149,14 @@ export function instructionForInputs(
 }
 
 // Render one prompt text part per input, in order. Inputs are never joined.
+// A batch has one Actor, so every person part has the same attributes.
 function renderInputParts(instruction: AgentInstruction): string[] {
   const inputs = instruction.inputs ?? [
-    {
-      kind: "person" as const,
-      text: instruction.text,
-      actor: instruction.actor,
-    },
+    { kind: "person" as const, text: instruction.text },
   ];
   return inputs.map((input) =>
     input.kind === "person"
-      ? buildUserTurnText(input.text, input.actor)
+      ? buildUserTurnText(input.text, instruction.actor)
       : input.text.trim(),
   );
 }

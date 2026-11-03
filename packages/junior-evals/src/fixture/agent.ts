@@ -24,12 +24,14 @@ import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import {
+  actOnReviewItem,
   expectAccepted,
   jsonRequest,
   steerQueuedWebMessage,
   webImage,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
+import { insertWebReviewItem } from "./insert";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -38,6 +40,7 @@ import type {
   Input,
   MentionInput,
   MessageInput,
+  ReviewItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -398,6 +401,15 @@ export async function createFixtureAgent(
       });
       return;
     }
+    if (input.kind === "review_item_action") {
+      if (record.surface !== "web" || !record.started) {
+        throw new Error("A review item action continues a web Conversation");
+      }
+      const { viewerEmail } = record;
+      const { id } = await insertWebReviewItem({ ...input, ...record });
+      await actOnReviewItem(api, { ...input, id, viewerEmail });
+      return;
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -484,10 +496,11 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: MessageInput,
+    first: MessageInput | ReviewItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    if (first.kind === "web_message") {
+    // A review desk action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "review_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
