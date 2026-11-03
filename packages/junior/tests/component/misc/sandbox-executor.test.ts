@@ -2840,9 +2840,28 @@ describe("createTestSandbox", () => {
 
     expect(error).toBeInstanceOf(ToolInputError);
     expect(error).toMatchObject({
-      message: "Path must stay within /vercel/sandbox: /etc/passwd",
+      message: "Path must stay within /vercel/sandbox or /tmp: /etc/passwd",
     });
     expect(sandbox.fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("allows writeFile scratch files in /tmp", async () => {
+    const sandbox = makeSandbox("sbx_write_file_tmp");
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "writeFile",
+      input: { path: "/tmp/scratch.py", content: "print(1)" },
+    });
+
+    expect(sandbox.fs.writeFile).toHaveBeenCalledWith(
+      "/tmp/scratch.py",
+      "print(1)",
+      expect.anything(),
+    );
   });
 
   it("syncs sandbox files once when the first tool call initializes the sandbox", async () => {
