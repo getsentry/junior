@@ -1,0 +1,56 @@
+# TLC results, 2026-11-03, plan 5ed29c2. Quint 0.33.1, Apalache 0.62.4 (TLC from its jar), Java 21.
+# PASS: the result matches checks.txt. Columns: instance, property, expected, got, wall time, distinct states.
+# The two wake_design rows marked * ran before the checkIn guard (a change that only removes behaviors), so 'holds' still stands.
+PASS stop_design_same                   i10_noOlderIntentAfterStop         violated  violated       9s 2418 states
+PASS stop_design_same                   i11_noOlderStartAfterStop          holds     holds          9s 148603 states
+PASS stop_design_same                   i11j_noOlderJoinAfterStop          violated  violated       8s 11114 states
+PASS stop_design_same                   spareNewerTurn                     holds     holds          9s 148603 states
+PASS stop_design_same                   spareNewerInput                    violated  violated       8s 40289 states
+PASS stop_design_ahead                  i10_noOlderIntentAfterStop         violated  violated       6s 11397 states
+PASS stop_design_ahead                  spareNewerTurn                     violated  violated       7s 1435 states
+PASS stop_design_behind                 i10_noOlderIntentAfterStop         violated  violated       6s 2727 states
+PASS stop_design_behind                 spareNewerTurn                     holds     holds          8s 152253 states
+PASS stop_input_same                    i10_noOlderIntentAfterStop         violated  violated       7s 21576 states
+PASS stop_input_same                    spareNewerInput                    violated  violated       8s 23797 states
+PASS stop_seq_same                      i11_noOlderStartAfterStop          violated  violated       7s 1068 states
+PASS stop_seq_same                      spareNewerTurn                     violated  violated       6s 2187 states
+PASS stop_proposed_same                 safety                             holds     holds          9s 144375 states
+PASS stop_proposed_ahead                safety                             holds     holds          9s 144375 states
+PASS stop_proposed_behind               safety                             holds     holds         10s 144375 states
+PASS stop_proposed_crossAhead           spareNewerTurn                     violated  violated       7s 2626 states
+PASS stop_proposed_crossAhead           i10_noOlderIntentAfterStop         holds     holds         10s 139697 states
+PASS stop_proposed_crossBehind          i11_noOlderStartAfterStop          violated  violated       7s 1189 states
+PASS stop_proposed_crossBehind          spareNewerTurn                     holds     holds         10s 178957 states
+PASS stop_proposed_same                 ex_turn_E5_stopAfterPost           violated  violated       8s 11136 states
+PASS stop_proposed_same                 ex_stop_refusesOlderInput          violated  violated       6s 972 states
+PASS stop_proposed_same                 ex_stop_newerTurnRuns              violated  violated       8s 7487 states
+PASS lock_design                        safety                             holds     holds         28s 256100 states
+PASS lock_design                        l1_requestsEnd                     holds     holds         59s 256100 states
+PASS delivery_design                    l1_requestsEnd                     holds     holds         28s 30003 states
+PASS delivery_design                    l2_finishingEnds                   holds     holds         27s 30003 states
+PASS delivery_priorDraft                l2_finishingEnds                   violated  violated      26s 21174 states
+PASS wakeLive_design                    l3_pausedResumed                   holds     holds         32s 61069 states
+PASS wakeLive_design                    l3_pausedResumedNoRepair           violated  violated      27s 17817 states
+PASS wakeLive_proposed                  l3_pausedResumedNoRepair           holds     holds         33s 63979 states
+PASS lock_design                        lostTurnPickedUpNoRepair           violated  violated      25s 20689 states
+PASS wakeLive_rev2                      quiesces                           violated  violated      26s 31610 states
+PASS wakeLive_design                    quiesces                           holds     holds         29s 61069 states
+PASS errors_design                      safety                             holds     holds         37s 833189 states
+PASS delivery_design                    safety                             holds     holds         23s 30003 states
+PASS lock_priorDraft                    i3_noStaleSave                     violated  violated      22s 662 states
+PASS lock_priorDraft                    versionFollowsLock                 violated  violated      23s 291 states
+PASS errors_priorDraft                  restartOnlyAfterLoss               violated  violated      23s 1455 states
+PASS lock_design                        i3_noStalePost                     violated  violated      22s 871 states
+PASS wake_rev2                          noWakeLoopWhileBlocked             violated  violated      22s 861 states
+PASS lock_design                        ex_turn_E1_redeliveredPrompt       violated  violated      22s 206 states
+PASS lock_design                        ex_turn_E2_deadWorker              violated  violated      22s 327 states
+PASS lock_design                        ex_turn_E2_lostTwice               violated  violated      23s 2921 states
+PASS lock_design                        ex_turn_E3_slowWorker              violated  violated      22s 81 states
+PASS lock_design                        ex_turn_E7_messageWhileLocked      violated  violated      23s 9697 states
+PASS errors_design                      ex_turn_E4_retriesRunOut           violated  violated      23s 29853 states
+PASS delivery_design                    ex_turn_E6_finishingDeliveryFails  violated  violated      23s 13212 states
+PASS delivery_design                    ex_edges_E1_findBeforeRepost       violated  violated      24s 782 states
+PASS wake_design                        ex_access_E2_linkExpires           violated  violated      24s 43182 states
+PASS wake_design                        ex_signInResumes                   violated  violated      22s 1458 states
+PASS wake_design                        safety                             holds     holds        427s 20712769 states *
+PASS wake_design                        noWakeLoopWhileBlocked             holds     holds        378s 20712769 states *

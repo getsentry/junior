@@ -1,0 +1,10 @@
+# Proposed rule, two clocks: stop clock 2 ticks behind. A message sent before the click starts and posts after stop(). Caught by I11 and I10.
+# quint verify --max-steps 12 --main stop_proposed_crossBehind --invariant i10_noOlderIntentAfterStop stop_clock.qnt (Apalache; shortest)
+# step: msgs (real time, createdAtMs) | stop | turns | ghost flags
+ 0 now=0 |  |  |  | 
+ 1 now=1 | m2(real 0, created 0) |  |  | 
+ 2 now=2 | m2(real 0, created 0) | stop(real 1, created -2, stopAtMs -) |  | 
+ 3 now=2 | m2(real 0, created 0, inbox) | stop(real 1, created -2, stopAtMs -) |  | 
+ 4 now=2 | m2(real 0, created 0, inbox) | stop(real 1, created -2, stopAtMs -2) |  | 
+ 5 now=2 | m2(real 0, created 0) | stop(real 1, created -2, stopAtMs -2) | T1[running first=m2 inputs=m2 startedAtMs=5 intents=0 posted=0] | olderStartedAfterStop
+ 6 now=2 | m2(real 0, created 0) | stop(real 1, created -2, stopAtMs -2) | T1[running first=m2 inputs=m2 startedAtMs=5 intents=1 posted=0] | olderIntentAfterStop,olderStartedAfterStop

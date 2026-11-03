@@ -1,0 +1,10 @@
+# Proposed rule, two clocks: stop clock 2 ticks ahead of the input clock. A message sent after the click is stopped. Caught by spareNewerTurn.
+# quint verify --max-steps 12 --main stop_proposed_crossAhead --invariant spareNewerTurn stop_clock.qnt (Apalache; shortest)
+# step: msgs (real time, createdAtMs) | stop | turns | ghost flags
+ 0 now=0 |  |  |  | 
+ 1 now=1 |  | stop(real 0, created 4, stopAtMs -) |  | 
+ 2 now=2 | m2(real 1, created 2) | stop(real 0, created 4, stopAtMs -) |  | 
+ 3 now=2 | m2(real 1, created 2, inbox) | stop(real 0, created 4, stopAtMs -) |  | 
+ 4 now=2 | m2(real 1, created 2) | stop(real 0, created 4, stopAtMs -) | T1[running first=m2 inputs=m2 startedAtMs=5 intents=0 posted=0] | 
+ 5 now=2 | m2(real 1, created 2) | stop(real 0, created 4, stopAtMs 4) | T1[running first=m2 inputs=m2 startedAtMs=5 intents=0 posted=0] | 
+ 6 now=2 | m2(real 1, created 2, stopped) | stop(real 0, created 4, stopAtMs 4) | T1[stopped first=m2 inputs=m2 startedAtMs=5 intents=0 posted=0] | newerInputStopped,newerTurnStopped
