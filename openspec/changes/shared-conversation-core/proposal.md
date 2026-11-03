@@ -49,6 +49,8 @@ requirements. `tasks.md` has the migration steps.
   stops its whole tree.
 - The sandbox pass ends with its turn, and the credential proxy checks it
   against the open turn.
+- A machine-checked model, conformance tests, structural rules and a trace
+  check gate every step (`design.md`, Verification).
 
 ## Decided And Proposed
 
@@ -63,10 +65,10 @@ requirements. `tasks.md` has the migration steps.
 ## Specs
 
 One spec per capability: `conversation-inbox`, `turn-lifecycle`,
-`turn-stop`, `turn-access`, `agent-tree` and `plugin-started-agents`. They
-are built from the 3 behavior story comments on #2567. A requirement with no
-label keeps today's behavior. **(Decided)** and **(Proposed, needs
-sign-off: Pn)** point to `design.md`.
+`turn-stop`, `turn-access`, `agent-tree`, `plugin-started-agents` and
+`verification`. They are built from the 3 behavior story comments on #2567.
+A requirement with no label keeps today's behavior. **(Decided)** and
+**(Proposed, needs sign-off: Pn)** point to `design.md`.
 
 ## Non-Goals
 

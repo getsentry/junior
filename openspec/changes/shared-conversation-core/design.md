@@ -642,6 +642,77 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   keep running under the new pass. That is the same person's access.
 - **Alternatives:** a new pass per attempt (old P29); a sandbox per actor.
 
+## Verification
+
+David asked for formal checks that the code follows this design. Four
+layers catch different drift. `specs/verification/spec.md` has the
+requirements. The model itself lives in `verification/`, drafted
+separately. Every item is **Proposed, needs sign-off**.
+
+| Layer             | Catches                                        | Runs                |
+| ----------------- | ---------------------------------------------- | ------------------- |
+| Protocol model    | a design rule that cannot hold (races, orders) | model checker in CI |
+| Conformance tests | code that does not do what the model does      | integration tests   |
+| Structural rules  | a second writer or a bypass of a single owner  | ast-grep, lint      |
+| Traceability      | a requirement with no check, or a stale check  | CI script           |
+
+### P37. Protocol model
+
+- **Proposal:** Quint, checked with Apalache (bounded, symbolic) and TLC
+  where state spaces are small. The model covers the items in
+  `specs/verification/spec.md` and checks invariants I1–I8 and liveness
+  L1–L3. Each worked example in `interfaces/*.md` is a named trace (for
+  example `turn_E3_slow_worker`).
+- **Alternatives:**
+  - Quint: typed, TypeScript-like syntax that this team reads easily; younger
+    tooling.
+  - TLA+: the most mature tools and literature; syntax few here read.
+  - P: state machines close to code and good for testing; weaker for
+    liveness and exhaustive checks.
+- **Scope limit:** the model treats the sandbox as "pass applied" or "no
+  credentials". It does not model processes or files.
+
+### P38. Conformance tests
+
+- **Proposal:** fast-check model-based tests (`fc.commands`) drive real
+  Junior wiring with fake Slack and a fake LLM (`policies/testing.md`).
+  Each command is a model action (send, work, crash after write N, expire
+  lock, stop, sign in, post fails). After each command, the test compares
+  the turn rows, request records, inbox and deliveries with the model
+  state. Counterexample traces from the checker are added as fixed runs.
+- **Today's code:** step 0 adds the harness. An invariant that today's code
+  breaks is listed as "expected to fail" with the step that fixes it. That
+  step makes it required. The traceability check refuses a step that
+  claims an invariant and leaves it expected to fail.
+- **Alternatives:** hand-written scenario tests only (cannot find
+  interleavings); replaying model traces only (no generated crashes).
+
+### P39. Structural rules
+
+- **Proposal:** ast-grep rules in `ast-grep/rules/`, like the existing
+  `no-raw-slack-turn-post.yml`, for S1–S6. Each rule's message names the
+  requirement it protects. Import boundaries that ast-grep cannot see use
+  the existing `scripts/check-test-architecture.mjs` pattern.
+
+### P40. Traceability
+
+- **Proposal:** each scenario has an id: capability, requirement and
+  scenario titles in kebab case. Tests carry it in their name or a
+  `// spec:` comment; ast-grep rules carry it in their `note`; model
+  invariants carry it in a comment. A CI script reads the spec headings and
+  these tags and fails on gaps either way.
+- **Conflict to settle:** repo rule says a finished plan is deleted, and
+  lasting rules move to code, tests and policies. Proposed: at step 22 the
+  model moves out of the change folder, and the scenario ids move to a
+  policy file that the trace check then reads.
+
+### P41. The sign-off gate
+
+- **Proposal:** "the output adheres to the design" means the model check,
+  conformance tests and structural rules are green, and traceability shows
+  no gap. Step 0 ships before any step that changes protocol code. Every
+  later step keeps the gate green.
+
 ## Later, Not Needed For This Change
 
 - **P27. Bot loops.** Count Slack bot input toward the automated-turn limit.
@@ -687,3 +758,10 @@ Every item is **Proposed, needs sign-off**.
 29. P34: stop time on the conversation.
 30. P35: no parent turn for results under a tree stop.
 31. P36: sandbox pass lifecycle.
+32. P37: Quint model with Apalache and TLC; worked examples as traces.
+33. P38: fast-check conformance tests; expected-to-fail list per step.
+34. P39: ast-grep rules S1–S6, each naming its requirement.
+35. P40: scenario ids and a two-way trace check; where they live after the
+    plan is deleted.
+36. P41: the gate is model, conformance and structural rules green, with no
+    trace gap.
