@@ -36,7 +36,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { ShimmerText } from "../components/ShimmerText";
+import { Spinner } from "../components/ui/spinner";
 import type { WaitingConversation } from "../review-desk/queries";
 
 type ConversationSidebarEntry =
@@ -443,12 +443,10 @@ function ConversationRowState(props: {
 }) {
   if (props.status === "active") {
     return (
-      <ShimmerText
-        active
-        className="font-sans text-xs text-dashboard-text-muted"
-      >
-        Running
-      </ShimmerText>
+      <Spinner
+        aria-label="Running"
+        className="size-3.5 text-dashboard-text-muted"
+      />
     );
   }
   if (props.status === "failed") {
