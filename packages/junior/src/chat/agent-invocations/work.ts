@@ -500,9 +500,10 @@ async function endOtherActiveAgentInvocation(
 }
 
 /**
- * End every unfinished agent invocation of a child whose last attempt lost its
- * worker. The worker ran no failure path, and the stop drops the child's
- * mailbox, so none of them can run. The heartbeat sends each result.
+ * End every agent invocation of a child whose last attempt lost its worker and
+ * whose input reached the child's mailbox. The worker ran no failure path, and
+ * the stop drops the mailbox, so none of them can run. The heartbeat sends
+ * each result.
  */
 export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
@@ -511,6 +512,8 @@ export async function endAgentInvocationsOfStoppedWork(
     conversationId,
     NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   )) {
+    // Its append runs after the stop and starts new work for the child.
+    if (invocation.mailboxStatus === "pending") continue;
     const terminal =
       (await projectTerminalTurn(invocation, { reportNow: true })) ??
       (await completeAgentInvocation({

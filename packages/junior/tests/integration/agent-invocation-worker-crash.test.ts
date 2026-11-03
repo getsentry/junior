@@ -49,6 +49,7 @@ describe("agent invocation worker crash", () => {
       const { childConversationId, invocationId } = created;
 
       let followUpId = "";
+      let unappendedId = "";
       for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
         // Injected fault: the worker of this try is killed mid-run.
         await killWorker(queue.takeMessageFor(childConversationId));
@@ -70,13 +71,38 @@ describe("agent invocation worker crash", () => {
             state,
           });
           followUpId = invocation.invocationId;
+          // A task whose append has not run yet starts new work instead.
+          const { invocation: unappended } =
+            await createAgentInvocationForMessage({
+              actor: invocationInput.actor,
+              childConversationId,
+              destination: invocationInput.destination,
+              idempotencyKey: "crash-unappended",
+              input: "Then check the docs.",
+              parentConversationId,
+              parentToolCallId: "call-message-2",
+            });
+          unappendedId = unappended.invocationId;
         }
         await runHeartbeatAfterLeasesExpire(queue);
       }
 
-      await expect(
-        getConversationWorkState({ conversationId: childConversationId }),
-      ).resolves.toMatchObject({ execution: { status: "failed" } });
+      const child = await getConversationWorkState({
+        conversationId: childConversationId,
+      });
+      expect(child?.execution.pendingMessages).toEqual([
+        expect.objectContaining({
+          input: expect.objectContaining({
+            metadata: expect.objectContaining({
+              agentInvocationId: unappendedId,
+            }),
+          }),
+        }),
+      ]);
+      await expect(getAgentInvocation(unappendedId)).resolves.toMatchObject({
+        mailboxStatus: "appended",
+        status: "pending",
+      });
       for (const id of [invocationId, followUpId]) {
         await expect(getAgentInvocation(id)).resolves.toMatchObject({
           parentMailboxStatus: "appended",
