@@ -78,9 +78,9 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
+  canReadImages,
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
-  isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
 import { resolveConversationTitle } from "@/chat/services/conversation-title";
@@ -476,7 +476,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 text: queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
-                  !isVisionEnabled() && hasPotentialImageAttachment(attachments)
+                  !canReadImages() && hasPotentialImageAttachment(attachments)
                     ? countPotentialImageAttachments(attachments)
                     : 0,
                 attachments: await deps.resolveUserAttachments(attachments, {
@@ -743,7 +743,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           },
         );
         const omittedImageAttachmentCount =
-          !isVisionEnabled() && hasPotentialImageAttachment(turnAttachments)
+          !canReadImages() && hasPotentialImageAttachment(turnAttachments)
             ? countPotentialImageAttachments(turnAttachments)
             : 0;
         const status = createSlackAdapterAssistantStatusSession({

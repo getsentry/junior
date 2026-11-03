@@ -1,10 +1,13 @@
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import type { completeText } from "@/chat/pi/client";
+import { resolveGatewayModel, type completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { getSqlExecutor } from "@/chat/db";
-import { isVisionImageMediaType } from "@/chat/attachments/media";
+import {
+  detectImageMediaType,
+  isVisionImageMediaType,
+} from "@/chat/attachments/media";
 import { storeAttachment } from "@/chat/attachments/store";
 import {
   readAttachmentVisionSummary,
@@ -113,6 +116,22 @@ export function countPotentialImageAttachments(
 /** Report whether a dedicated vision model is configured for image analysis. */
 export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
+}
+
+/**
+ * Report whether every profile model accepts image input. The router picks the
+ * profile after attachments resolve, so native images need every profile to
+ * read them.
+ */
+function profileModelsAcceptImages(): boolean {
+  return Object.values(botConfig.profiles).every((profile) =>
+    resolveGatewayModel(profile.modelId).input.includes("image"),
+  );
+}
+
+/** Report whether the agent can read current-message images by any path. */
+export function canReadImages(): boolean {
+  return isVisionEnabled() || profileModelsAcceptImages();
 }
 
 class ImageAttachmentProcessingError extends Error {
@@ -382,6 +401,21 @@ async function resolveUserAttachmentsWithDeps(
         });
         results.push(resolvedAttachment);
       }
+      continue;
+    }
+
+    // Providers reject an image whose bytes do not match its media type, so
+    // send the detected type. Slack's declared type can be wrong.
+    const nativeImageMediaType =
+      isImageAttachment && profileModelsAcceptImages()
+        ? detectImageMediaType(data)
+        : undefined;
+    if (nativeImageMediaType) {
+      // Keep later cached summaries aligned with their attachment positions.
+      nextCachedImageSummaryIndex += 1;
+      resolvedAttachment.mediaType = nativeImageMediaType;
+      resolvedAttachment.data = data;
+      results.push(resolvedAttachment);
       continue;
     }
 
