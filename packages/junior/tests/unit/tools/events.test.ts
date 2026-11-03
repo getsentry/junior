@@ -99,6 +99,7 @@ describe("event tools", () => {
       ),
     ).resolves.toMatchObject({
       subscription_status: "active",
+      expires_at: "2027-01-15T08:00:00.000Z",
       stop_watching: {
         execution_tool: "executeTool",
         execution_example: {
@@ -183,18 +184,18 @@ describe("event tools", () => {
       tools.searchEventTypes!.execute!({ query: "review changes events" }, {}),
     ).resolves.toMatchObject({
       namespace: null,
-      totalMatches: 1,
-      resourceTypes: [
+      total_matches: 1,
+      resource_types: [
         {
           namespace: "github",
           type: "pull_request",
-          supportedEvents: [
+          supported_events: [
             "pull_request.checks.failed",
             "pull_request.review.changes_requested",
           ],
-          suggestedEvents: ["pull_request.checks.failed"],
+          suggested_events: ["pull_request.checks.failed"],
           // The agent needs `events` to pick events that the filter matches.
-          matchFields: { authors },
+          match_fields: { authors },
         },
       ],
       // The reach of each event is given once for its namespace.

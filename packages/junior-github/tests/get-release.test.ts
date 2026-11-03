@@ -44,8 +44,8 @@ describe("getRelease", () => {
       tag: "0.129.0",
       subscribable: {
         identifier: "release-source:getsentry/junior:0.129.0",
-        suggestedEvents: ["release.published"],
-        supportedEvents: ["release.published"],
+        suggested_events: ["release.published"],
+        supported_events: ["release.published"],
         type: "release_source",
       },
     });

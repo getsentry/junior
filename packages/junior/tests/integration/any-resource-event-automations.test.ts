@@ -83,7 +83,7 @@ describe("event automations with no identifier", () => {
         ) as Promise<{
           automation: {
             id: string;
-            trigger: { identifier: unknown; resourceType: unknown };
+            trigger: { identifier: unknown; resource_type: unknown };
           };
         }>;
       const trigger = {
@@ -115,7 +115,7 @@ describe("event automations with no identifier", () => {
       );
       expect(created.automation.trigger).toMatchObject({
         identifier: null,
-        resourceType: null,
+        resource_type: null,
         match: { repo: "getsentry/junior" },
       });
       const [row] = await fixture.sql
@@ -282,7 +282,7 @@ describe("event automations with no identifier", () => {
         automation: {
           trigger: {
             identifier: "getsentry/junior#9",
-            resourceType: "pull_request",
+            resource_type: "pull_request",
           },
         },
       });

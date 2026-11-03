@@ -57,11 +57,11 @@ describe("Event automation management", () => {
       completedToolCalls("searchEventTypes", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
-        resourceTypes: expect.arrayContaining([
+        resource_types: expect.arrayContaining([
           expect.objectContaining({
             namespace: "github",
             type: "issue",
-            supportedEvents: expect.arrayContaining([
+            supported_events: expect.arrayContaining([
               "issue.closed",
               "issue.reopened",
             ]),

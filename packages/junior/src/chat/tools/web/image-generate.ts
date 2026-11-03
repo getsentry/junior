@@ -39,7 +39,7 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
   .extend({
     model: z.string(),
     prompt: z.string(),
-    enrichedPrompt: z.string(),
+    enriched_prompt: z.string(),
     image_count: z.number().int().nonnegative(),
     images: z.array(generatedArtifactFileRefSchema),
     delivery: z.string(),
@@ -267,7 +267,7 @@ export function createImageGenerateTool(
         return {
           model,
           prompt,
-          enrichedPrompt,
+          enriched_prompt: enrichedPrompt,
           image_count: artifactRefs.length,
           images: artifactRefs,
           ...resizeResult,
@@ -280,7 +280,7 @@ export function createImageGenerateTool(
       return {
         model,
         prompt,
-        enrichedPrompt,
+        enriched_prompt: enrichedPrompt,
         image_count: 0,
         images: [],
         ...resizeResult,

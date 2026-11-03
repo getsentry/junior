@@ -107,8 +107,8 @@ export function vercelDeploymentSubscribable(input: {
         ? { commitSha: input.commitSha.toLowerCase() }
         : undefined),
     },
-    suggestedEvents: VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
-    supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
+    suggested_events: VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
+    supported_events: [...VERCEL_DEPLOYMENT_EVENTS],
     type: "deployment",
   };
 }

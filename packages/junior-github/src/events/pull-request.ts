@@ -255,9 +255,9 @@ export function gitHubPullRequestSubscribable(input: {
       pullRequest: input.number,
     },
     ...(suggestedEvents.length > 0
-      ? { suggestedEvents: [...suggestedEvents] }
+      ? { suggested_events: [...suggestedEvents] }
       : undefined),
-    supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
+    supported_events: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };
 }

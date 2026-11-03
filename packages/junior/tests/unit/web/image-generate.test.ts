@@ -183,7 +183,7 @@ describe("createImageGenerateTool", () => {
     );
     expect(result).toMatchObject({
       prompt: "draw a dog",
-      enrichedPrompt: "a dark, high-contrast dog with glowing eyes",
+      enriched_prompt: "a dark, high-contrast dog with glowing eyes",
     });
   });
 
@@ -200,7 +200,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
-    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
+    expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("falls back to raw prompt when enrichment fails", async () => {
@@ -216,7 +216,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
-    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
+    expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("sends input images with the unchanged prompt", async () => {
@@ -243,7 +243,7 @@ describe("createImageGenerateTool", () => {
       expect.objectContaining({ data: PNG_BYTES.toString("base64") }),
     ]);
     expect(result).toMatchObject({
-      enrichedPrompt: "change the sign text",
+      enriched_prompt: "change the sign text",
       image_count: 1,
     });
   });

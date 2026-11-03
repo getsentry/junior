@@ -194,7 +194,7 @@ export function registeredEventMatchSchema() {
   return eventMatchSchema
     .optional()
     .describe(
-      "Optional filters: exact values for the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional filters: exact values for the resource type match_fields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 

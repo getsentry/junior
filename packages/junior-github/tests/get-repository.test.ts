@@ -36,7 +36,7 @@ describe("getRepository", () => {
         identifier: "getsentry/junior",
         label: "GitHub repository GetSentry/Junior",
         namespace: "github",
-        suggestedEvents: [
+        suggested_events: [
           "issue.opened",
           "pull_request.opened",
           "issue.comment.created",
@@ -52,7 +52,7 @@ describe("getRepository", () => {
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
           "deployment.created",
           "deployment.queued",
           "deployment.pending",

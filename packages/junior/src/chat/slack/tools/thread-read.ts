@@ -63,7 +63,7 @@ function sanitizeMessage(
   const files = collectMessageFiles(msg);
 
   return {
-    ts: msg.ts,
+    slack_ts: msg.ts,
     user: msg.user,
     text: msg.text,
     thread_ts: msg.thread_ts,

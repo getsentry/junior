@@ -71,7 +71,7 @@ describe("getDeployment", () => {
           commitSha: COMMIT_SHA,
           environment: "production",
         },
-        suggestedEvents: [
+        suggested_events: [
           "deployment.succeeded",
           "deployment.failed",
           "deployment.error",

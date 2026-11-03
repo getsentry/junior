@@ -48,11 +48,12 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   const input = { afterMs: 60_000, intent: "Check the deployment." };
   const timer = (await execute(tools.watchTimer!, input, "timer-1")) as {
     id: string;
-    firesAtMs: number;
+    fires_at: string;
   };
+  const firesAtMs = clock() + 60_000;
   expect(timer).toEqual({
     id: expect.any(String),
-    firesAtMs: clock() + 60_000,
+    fires_at: new Date(firesAtMs).toISOString(),
   });
   clock.mockReturnValue(clock() + 10_000);
   expect(await execute(tools.watchTimer!, input, "timer-1")).toEqual(timer);
@@ -63,15 +64,15 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   )) as { id: string };
   await execute(tools.stopWatchingResources!, { id: cancelled.id });
   expect(await execute(tools.listWatches!, {})).toMatchObject({
-    subscriptions: [{ id: timer.id, firesAtMs: timer.firesAtMs }],
+    subscriptions: [{ id: timer.id, fires_at: timer.fires_at }],
   });
   await runHeartbeat({
-    nowMs: timer.firesAtMs - 1,
+    nowMs: firesAtMs - 1,
     conversationWorkQueue: queue,
   });
   expect(queue.sentRecords()).toHaveLength(0);
 
-  clock.mockReturnValue(timer.firesAtMs);
+  clock.mockReturnValue(firesAtMs);
   await runHeartbeat({ nowMs: clock(), conversationWorkQueue: queue });
   expect(queue.sentRecords()).toEqual([
     expect.objectContaining({ conversationId, delayMs: 30_000 }),

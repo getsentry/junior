@@ -117,9 +117,9 @@ describe("Event automation credentials", () => {
       expect.objectContaining({
         automations: [
           expect.objectContaining({
-            createdBy: expect.objectContaining({ username: "alice" }),
+            created_by: expect.objectContaining({ username: "alice" }),
             id,
-            isCreator: false,
+            is_creator: false,
           }),
         ],
       }),
@@ -160,9 +160,9 @@ describe("Event automation credentials", () => {
       expect.objectContaining({
         automations: [
           expect.objectContaining({
-            createdBy: expect.objectContaining({ username: "alice" }),
+            created_by: expect.objectContaining({ username: "alice" }),
             id,
-            isCreator: true,
+            is_creator: true,
           }),
         ],
       }),

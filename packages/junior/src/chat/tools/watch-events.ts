@@ -86,7 +86,7 @@ const resultDataSchema = z
     identifier: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
     match: z.record(z.string(), z.unknown()).optional(),
-    expiresAtMs: z.number().finite(),
+    expires_at: z.string().datetime(),
     stop_watching: stopWatchingActionSchema,
   })
   .strict();
@@ -162,7 +162,7 @@ export function createWatchEventsTool(
         identifier: subscription.identifier,
         events: subscription.events,
         ...(subscription.match ? { match: subscription.match } : undefined),
-        expiresAtMs: subscription.expiresAtMs,
+        expires_at: new Date(subscription.expiresAtMs).toISOString(),
         stop_watching: {
           execution_tool: "executeTool" as const,
           execution_example: {

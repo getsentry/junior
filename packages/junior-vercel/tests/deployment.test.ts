@@ -39,7 +39,7 @@ describe("Vercel deployment", () => {
       subscribable: {
         namespace: "vercel",
         identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
-        suggestedEvents: [
+        suggested_events: [
           "deployment.succeeded",
           "deployment.error",
           "deployment.canceled",

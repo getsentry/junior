@@ -114,7 +114,10 @@ describe("slackThreadRead", () => {
     });
     expect(result).not.toHaveProperty("conversation_ids");
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[0].text).toBe("root message");
+    expect(result.messages[0]).toMatchObject({
+      slack_ts: "1700000000.123456",
+      text: "root message",
+    });
     expect(result.messages[1].text).toBe("reply message");
 
     // Live channel metadata may be fetched even when persisted public visibility exists.

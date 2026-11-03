@@ -31,7 +31,9 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
           .describe("What to do when the timer fires."),
       })
       .strict(),
-    outputSchema: z.object({ id: z.string(), firesAtMs: z.number() }).strict(),
+    outputSchema: z
+      .object({ id: z.string(), fires_at: z.string().datetime() })
+      .strict(),
     async execute(input, options) {
       if (!options.toolCallId)
         throw new Error("Timer creation requires a tool-call identity");
@@ -46,7 +48,10 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
       });
-      return { id: watch.id, firesAtMs: watch.firesAtMs! };
+      return {
+        id: watch.id,
+        fires_at: new Date(watch.firesAtMs!).toISOString(),
+      };
     },
   });
 }

@@ -102,8 +102,8 @@ export function gitHubDeploymentSourceSubscribable(input: {
       commitSha: gitHubCommitShaDataSchema.parse(input.commitSha),
       ...(environment ? { environment } : undefined),
     },
-    suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
-    supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
+    suggested_events: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
+    supported_events: [...GITHUB_DEPLOYMENT_EVENTS],
     type: "deployment_source",
   };
 }

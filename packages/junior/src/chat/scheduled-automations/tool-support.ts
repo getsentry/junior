@@ -20,15 +20,17 @@ export const compactTaskResultSchema = z
     id: z.string(),
     title: z.string().nullable(),
     status: z.enum(["active", "blocked", "paused", "completed", "deleted"]),
-    statusReason: z.string().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-    originalRequest: z.string().nullable(),
+    status_reason: z.string().nullable(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    original_request: z.string().nullable(),
     instruction: z.string(),
     schedule: z.string(),
     timezone: z.string(),
+    // Keeps the camelCase keys of the schedule input, so the model can pass
+    // the recurrence back to the Automation tools unchanged.
     recurrence: z.unknown().nullable(),
-    nextRunAt: z.string().nullable(),
+    next_run_at: z.string().nullable(),
     destination: z
       .object({
         id: z.string().min(1),
@@ -36,15 +38,15 @@ export const compactTaskResultSchema = z
         thread: z.string().min(1).nullable(),
       })
       .strict(),
-    conversationAccess: z
+    conversation_access: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
         visibility: z.enum(["private", "public"]),
       })
       .strict(),
-    credentialMode: z.enum(["system", "creator"]),
-    isCreator: z.boolean(),
-    createdBy: z
+    credential_mode: z.enum(["system", "creator"]),
+    is_creator: z.boolean(),
+    created_by: z
       .object({
         name: z.string().min(1).nullable(),
         username: z.string().min(1).nullable(),
@@ -65,9 +67,9 @@ export const compactTaskResultSchema = z
           .strict(),
       )
       .max(5),
-    dashboardUrl: z.string().url().nullable(),
-    lastRunAt: z.string().nullable(),
-    runNowAt: z.string().nullable(),
+    dashboard_url: z.string().url().nullable(),
+    last_run_at: z.string().nullable(),
+    run_now_at: z.string().nullable(),
   })
   .strict();
 
@@ -98,10 +100,10 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
     id: task.id,
     title: task.title?.trim() || null,
     status: task.status,
-    statusReason: task.statusReason ?? null,
-    createdAt: new Date(task.createdAtMs).toISOString(),
-    updatedAt: new Date(task.updatedAtMs).toISOString(),
-    originalRequest: task.originalRequest ?? null,
+    status_reason: task.statusReason ?? null,
+    created_at: new Date(task.createdAtMs).toISOString(),
+    updated_at: new Date(task.updatedAtMs).toISOString(),
+    original_request: task.originalRequest ?? null,
     instruction: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
@@ -116,7 +118,7 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
           dayOfMonth: task.schedule.recurrence.dayOfMonth,
         }
       : null,
-    nextRunAt: task.nextRunAtMs
+    next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     destination: {
@@ -124,10 +126,10 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
       channel: task.destination.channelId,
       thread: null,
     },
-    conversationAccess: task.conversationAccess,
-    credentialMode: task.credentialMode,
-    isCreator,
-    createdBy: {
+    conversation_access: task.conversationAccess,
+    credential_mode: task.credentialMode,
+    is_creator: isCreator,
+    created_by: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,
     },
@@ -140,11 +142,13 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
         },
       }),
     ),
-    dashboardUrl: getDashboardTaskLink(task.id) ?? null,
-    lastRunAt: task.lastRunAtMs
+    dashboard_url: getDashboardTaskLink(task.id) ?? null,
+    last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,
-    runNowAt: task.runNowAtMs ? new Date(task.runNowAtMs).toISOString() : null,
+    run_now_at: task.runNowAtMs
+      ? new Date(task.runNowAtMs).toISOString()
+      : null,
   });
 }
 
@@ -164,7 +168,7 @@ export async function scheduleAutomationToolResult(
     label: title,
     key: task.id,
     title,
-    url: automation.dashboardUrl,
+    url: automation.dashboard_url,
     description: automation.instruction,
     status: automation.status,
     trigger:
@@ -177,7 +181,7 @@ export async function scheduleAutomationToolResult(
         : automation.schedule,
     warning:
       automation.status === "blocked"
-        ? (automation.statusReason ?? "This automation is blocked.")
+        ? (automation.status_reason ?? "This automation is blocked.")
         : automation.status === "completed"
           ? "This automation has completed."
           : undefined,

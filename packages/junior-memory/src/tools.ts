@@ -298,9 +298,9 @@ const memoryToolProjectionSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     content: Type.String({ minLength: 1 }),
-    createdAtMs: Type.Number(),
-    observedAtMs: Type.Number(),
-    expiresAtMs: Type.Optional(Type.Number()),
+    created_at: Type.String(),
+    observed_at: Type.String(),
+    expires_at: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
@@ -315,9 +315,9 @@ type MemoryStructuredToolResult<TData extends Record<string, unknown>> =
 const memoryProjectionOutputSchema = z.object({
   id: z.string(),
   content: z.string(),
-  createdAtMs: z.number(),
-  observedAtMs: z.number(),
-  expiresAtMs: z.number().optional(),
+  created_at: z.string(),
+  observed_at: z.string(),
+  expires_at: z.string().optional(),
 });
 
 const memoryCreateOutputSchema = pluginToolOutputSchema.extend({
@@ -381,10 +381,10 @@ function compactMemory(memory: MemoryRecord): MemoryToolProjection {
   return Value.Parse(memoryToolProjectionSchema, {
     id: memory.id,
     content: memory.content,
-    createdAtMs: memory.createdAtMs,
-    observedAtMs: memory.observedAtMs,
+    created_at: new Date(memory.createdAtMs).toISOString(),
+    observed_at: new Date(memory.observedAtMs).toISOString(),
     ...(memory.expiresAtMs !== undefined
-      ? { expiresAtMs: memory.expiresAtMs }
+      ? { expires_at: new Date(memory.expiresAtMs).toISOString() }
       : undefined),
   });
 }

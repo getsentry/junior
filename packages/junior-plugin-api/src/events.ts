@@ -521,8 +521,9 @@ export const subscribableResourceSchema = z
      */
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
-    suggestedEvents: z.array(eventTypeSchema).optional(),
-    supportedEvents: z.array(eventTypeSchema),
+    // Snake case: the model reads this object in tool results.
+    suggested_events: z.array(eventTypeSchema).optional(),
+    supported_events: z.array(eventTypeSchema),
     type: resourceTypeSchema,
   })
   .strict();
