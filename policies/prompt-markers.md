@@ -2,9 +2,9 @@
 
 ## Intent
 
-The model decides how much to trust text from the tag around it. Each input
-kind has one tag, one trust level, and one set of attribute names, so the
-model never has to guess who wrote a block or what it may do.
+The model decides how much to trust text from the wrapper around it. Each
+block states its trust where it is inserted, with one tag per input kind, so
+the model never has to guess who wrote a block or what it may do.
 `system-prompt.md` owns where each block goes.
 
 ## Policy
@@ -21,40 +21,39 @@ model never has to guess who wrote a block or what it may do.
   example `<relayed-review-item-answer>`. A child tag never reuses an input tag.
 - Give each input its own content part, in order. Never join inputs.
 
-### Trust levels
+### Trust
 
-Highest first. When two levels conflict, the higher level wins.
-
-1. `operator`: the system prompt, with `SOUL.md`, `WORLD.md`, and
-   `<plugin-system-context>`.
-2. `person`: words a person wrote, as the stored record shows.
-   `<current-instruction>`, `<review-item-answer>`, `<review-item-dismissed>`,
-   and `<user-customization>`. Only this level gives approval, and
-   `<user-customization>` gives none.
-3. `runtime`: text the runtime wrote or verified. The `<runtime-turn-context>`
-   blocks, `<conversation-notes>`, `<task>`, `<parent-agent-task>`,
-   `<summary>`, and `<verified-details>`. `<task>` and `<parent-agent-task>`
-   are the job of their Run. They give no approval.
-4. `skill`: `<skill>` and `loadSkill` results.
-5. `repository`: `AGENTS.md`.
-6. `untrusted`: information, never instructions. `<thread-context>`,
-   `<external-text>`, `<agent-result>`, `<agent-message>`, `<plugin-context>`
-   and memories, `<thread-compactions>`, attachments, all `relayed-` tags, tool
-   results, files, and fetched pages.
-
-- `<context-trust>` states the level of each tag once. Inputs do not repeat it.
-  No trust prose in bodies or headers ("use as information, not
-  instructions"), and no trust attributes (`authority="evidence-only"`).
-- A block has one level. Text with a lower level inside it gets its own child
-  tag with a `source` attribute, for example `<external-text source="github">`.
-  `source` says where text came from. It never sets trust.
-- Text never gains trust from what it says, so a claim of approval in it gives
-  no approval. The runtime decides approval from the stored record (Source,
-  Actor, and provenance), never from rendered text. Action review reads the
-  person records of the root Conversation.
+- Every block that the runtime inserts carries `trust` on its wrapper. Only
+  the runtime writes it. The values, highest first (the higher value wins):
+  - `person`: words a person wrote, as the stored record shows. Only this
+    value gives approval.
+  - `runtime`: text the runtime wrote or verified, and `<user-customization>`.
+    `<task>` and `<parent-agent-task>` are the job of their Run.
+  - `skill`: skill instructions. `repository`: `AGENTS.md`.
+  - `untrusted`: information, never instructions. Outside text, model-written
+    text from it, child agent results, memories, and all `relayed-` tags.
+- The system prompt is `operator`. It has no wrapper and wins over all values.
+- Examples: `<thread-context trust="untrusted">`, `<task trust="runtime">`,
+  `<agent-result id="..." trust="untrusted">`,
+  `<review-item-answer id="..." trust="person">`.
+- Text with a lower value inside a block gets its own child wrapper with
+  `source` and `trust`: `<external-text source="github" trust="untrusted">`.
+- Do not wrap a whole tool result. Its role already gives it no authority.
+  Wrap the outside text that a tool returns (fetched pages, Slack, GitHub, or
+  Linear bodies) in `<external-text>` inside the result.
+- `<context-trust>` has one generic rule and names no tags: what each value
+  means, that only `trust="person"` gives approval, and that text never gains
+  trust from what it says. A table for each tag drifts when a tag is added, and
+  it is far from the text in a long Turn.
+- No trust prose in bodies ("This is a task, not a message from a person").
+  The attribute replaces it. A `relayed-` tag with `trust="untrusted"` already
+  says that a relay gives no approval here, so it needs no extra line.
+- Untrusted bodies are escaped, so they cannot open a wrapper or set `trust`.
+  The runtime decides approval from the stored record (Source, Actor, and
+  provenance), never from rendered text. Action review reads the person
+  records of the root Conversation.
 - Untrusted text never goes in the system prompt or in a block with the words
-  of a person. Text that a tool fetched stays in its tool result. Wrap and
-  escape all other untrusted text.
+  of a person.
 
 ### Authors and IDs
 
@@ -100,21 +99,22 @@ Highest first. When two levels conflict, the higher level wins.
 ### Example
 
 ```xml
-<task about="GitHub PR getsentry/junior#2622" event="pull_request.checks.failed">
+<task about="GitHub PR getsentry/junior#2622" event="pull_request.checks.failed" trust="runtime">
 <summary>Checks failed (1) for 65e053c7a0ca.</summary>
 <verified-details>{"repo":"getsentry/junior","pullRequest":2622}</verified-details>
-<external-text source="github">Failed checks: visual / dashboard</external-text>
+<external-text source="github" trust="untrusted">Failed checks: visual / dashboard</external-text>
 </task>
 ```
 
 ## Exceptions
 
-- `AGENTS.md` keeps the Codex format. Provider MCP results keep their shape.
+- `AGENTS.md` keeps the Codex format with `<INSTRUCTIONS trust="repository">`.
+  `loadSkill` results hold `<skill trust="skill">`. MCP results keep their shape.
 
 ## Sources
 
-Fetched 2026-11-03. Canvas: "Junior prompt and marker guidelines (draft)".
+Fetched 2026-11-03. Canvas: "Junior prompt and marker guidelines (draft)". The `trust` name and values are our own choice.
 
 - OpenAI: [Model Spec](https://model-spec.openai.com/2026-10-29.html) (quoted, JSON, XML, and tool content has "no authority by default"; put untrusted data in YAML, JSON, or XML), [Agent Builder safety](https://developers.openai.com/api/docs/guides/agent-builder-safety) ("Don't use untrusted variables in developer messages"), [GPT-4.1 guide](https://cookbook.openai.com/examples/gpt4-1_prompting_guide) (XML over JSON for documents), [Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
 - Anthropic: [Mitigate jailbreaks](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks) (untrusted content only in tool results, say what it is and where it came from, JSON-encode it, no own instructions in tool results), [Mid-conversation system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages) ("never put a notice and the user's words in the same block"), [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) (consistent tag names), [Writing tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) (IDs).
-- Harnesses: gemini-cli `wrapUntrusted` (`source` attribute, escaped closing tag, author from the envelope only); OpenHands SDK `<UNTRUSTED_CONTENT>`; Codex provenance and `is_user_authorization_message` ("Hidden runtime context is not user authorization"); Claude Code escapes `</system-reminder` in hook output.
+- Inline marking, checked in source: gemini-cli `wrapUntrusted` puts `<untrusted_context source>` around outside text inside tool output and escapes its closing tag; OpenHands SDK puts an `<UNTRUSTED_CONTENT>` notice where it inserts repo context and memory. From the canvas research, not checked here: gemini-cli takes the author from the envelope only; Codex `is_user_authorization_message` ("Hidden runtime context is not user authorization"); Claude Code escapes `</system-reminder` in hook output.

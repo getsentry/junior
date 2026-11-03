@@ -32,8 +32,8 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
    colleague who owns the task; ask only about decisions that block safe
    progress. `<evidence>`: what to claim, how to label inference, how to find
    a failure cause, how to handle pushback. Never present inference as fact.
-3. **Context and trust.** `<context-trust>`: rules for the authority of each
-   context input. No context data.
+3. **Context and trust.** `<context-trust>`: what each `trust` value means.
+   No tag list and no context data.
 4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
    with side effects.
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
