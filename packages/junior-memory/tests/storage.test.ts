@@ -4157,6 +4157,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           (content) => (content === personal.memory.content ? 0.9 : 0.7),
           0.0042,
         ),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
       });
@@ -4250,6 +4251,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         model: recallOnlyModel,
         plugin: { name: "memory" },
         reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Walk through the deploy checklist steps.",
       });
@@ -4304,6 +4306,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         model: recallOnlyModel,
         plugin: { name: "memory" },
         reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Where do release notes live?",
       });
@@ -4380,6 +4383,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           if (content === relevant.memory.content) return 0.8;
           return content === vocabulary.memory.content ? 0.4 : 0.3;
         }),
+        setSpanAttributes() {},
         state: memoryState,
         text: "How does CI work in getsentry/junior?",
       });
@@ -4430,6 +4434,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           model: recallOnlyModel,
           plugin: { name: "memory" },
           reranker: testReranker(() => 0.2, 0.0017),
+          setSpanAttributes() {},
           state: memoryState,
           text: "How do autofix PR tests use the dashboard workflow?",
         }),
@@ -4473,6 +4478,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           reranker: testReranker(() => {
             throw new Error("Reranker should not run without candidates");
           }),
+          setSpanAttributes() {},
           state: memoryState,
           text: "Where do release notes live?",
         }),
@@ -4526,6 +4532,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           reranker: testReranker(() => {
             throw new Error("reranker unavailable");
           }),
+          setSpanAttributes() {},
           state: memoryState,
           text: "Where do release notes live?",
         }),
@@ -4559,6 +4566,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           model: recallOnlyModel,
           plugin: { name: "memory" },
           reranker: testReranker(),
+          setSpanAttributes() {},
           state: memoryState,
           text: "   ",
         }),
@@ -4599,6 +4607,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         model: recallOnlyModel,
         plugin: { name: "memory" },
         reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: query,
       });

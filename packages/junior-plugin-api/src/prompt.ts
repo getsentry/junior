@@ -89,6 +89,12 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   model: PluginModel;
   /** Host reranker bound to the configured reranking model. */
   reranker: PluginReranker;
+  /**
+   * Record numeric diagnostics on the host span for this hook. Keys must
+   * start with `app.<plugin name>.`; the host drops other keys and
+   * non-finite values.
+   */
+  setSpanAttributes(attributes: Record<string, number>): void;
   /** Location associated with this Conversation. */
   locationId?: string;
   actor?: Actor;

@@ -41,6 +41,7 @@ export interface MemoryRecallContext {
   locationId?: string;
   actor?: Actor;
   reranker: PluginReranker;
+  setSpanAttributes(attributes: Record<string, number>): void;
   source: Source;
   text: string;
   users: {
@@ -193,16 +194,24 @@ export async function createMemoryPromptContributions(
     });
     return undefined;
   }
+  // Counts and scores only: recall diagnostics never carry query or memory
+  // text. They sit on the `plugin.hook userPrompt` span next to its latency.
+  context.setSpanAttributes({
+    "app.memory.recall.candidate.count": candidates.length,
+  });
   let rerank: { costUsd?: number; scores: number[] };
   try {
     rerank = await context.reranker.rerank({
       documents: candidates.map(({ content }) => content),
       query: context.text,
     });
-  } catch {
+  } catch (error) {
     // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
-    context.log.warn("memory_recall_rerank_failed");
+    // Log only the error class; provider messages can echo request text.
+    context.log.warn("memory_recall_rerank_failed", {
+      "error.type": error instanceof Error ? error.name : typeof error,
+    });
     return undefined;
   }
   const { scores } = rerank;
@@ -213,6 +222,11 @@ export async function createMemoryPromptContributions(
     .sort((left, right) => right.score - left.score)
     .map(({ memory }) => memory);
   const selected = selectPromptMemories(relevant);
+  context.setSpanAttributes({
+    "app.memory.recall.admitted.count": relevant.length,
+    "app.memory.recall.injected.count": selected.length,
+    "app.memory.recall.score.max": Math.max(...scores),
+  });
   const costUsd = addUsd(embeddingCostUsd, rerank.costUsd);
   await emitRecallOutcome({
     ...(costUsd !== undefined ? { costUsd } : undefined),

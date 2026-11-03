@@ -208,6 +208,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                   : undefined),
                 log: ctx.log,
                 reranker: ctx.reranker,
+                setSpanAttributes: ctx.setSpanAttributes,
                 source: ctx.source,
                 text: ctx.text,
                 users: ctx.users,
