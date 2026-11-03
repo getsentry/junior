@@ -149,6 +149,12 @@ async function projectConversationEventRows(
           subagentInvocationIds: endedInvocationIds,
           types: ["subagent_started"],
         });
+  const [firstTurnStartRow] = await readConversationEventRows(executor, {
+    conversationId: args.conversationId,
+    direction: "forward",
+    limit: 1,
+    types: ["turn_started"],
+  });
   const toolResultIds = conversationReportToolResultIds(events);
   const toolStartRows =
     toolResultIds.length === 0
@@ -168,6 +174,9 @@ async function projectConversationEventRows(
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
     events,
+    ...(firstTurnStartRow
+      ? { firstTurnStart: eventFromRow(firstTurnStartRow) }
+      : undefined),
     subagentStartEvents: subagentStartRows.map(eventFromRow),
     toolStartEvents: toolStartRows.map(eventFromRow),
     modelContextEvents: modelContextRows.map(eventFromRow),

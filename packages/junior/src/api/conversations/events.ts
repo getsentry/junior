@@ -1,4 +1,5 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -513,6 +514,8 @@ function reportSubagentLabel(
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
+  /** `turn_started` of the Conversation's first Turn. */
+  firstTurnStart?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -550,6 +553,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -559,6 +563,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);

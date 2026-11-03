@@ -394,6 +394,89 @@ describe("dashboard canonical event reporting", () => {
     ]);
   });
 
+  it("leaves out history a fork child inherited from its parent", async () => {
+    const rootConversationId = "slack:C-reporting:fork-child";
+    const childConversationId = "agent:reporting-fork-child";
+    await recordRoot(rootConversationId, "public");
+    await appendVisibleHistory(rootConversationId);
+    const { getConversationEventStore, getDb } = await import("@/chat/db");
+    const childAt = new Date(100);
+    await getDb().insert(juniorConversations).values({
+      conversationId: childConversationId,
+      parentConversationId: rootConversationId,
+      rootConversationId,
+      createdAt: childAt,
+      lastActivityAt: childAt,
+      updatedAt: childAt,
+      executionStatus: "idle",
+    });
+    const assistant = (timestamp: number, totalTokens: number) =>
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      ({
+        role: "assistant",
+        api: "responses",
+        provider: "openai",
+        model: "gpt-5",
+        content: [],
+        stopReason: "stop",
+        timestamp,
+        usage: { totalTokens, cost: { total: 0 } },
+      }) as PiMessage;
+    // The child's first checkpoint commits the parent's history with the
+    // parent's timestamps, then its own work.
+    await getConversationEventStore().append(childConversationId, [
+      {
+        data: {
+          type: "turn_started",
+          turnId: "child-turn",
+          inputMessageIds: ["child-input"],
+          surface: "internal",
+        },
+        createdAtMs: 100,
+      },
+      {
+        data: historyItemFromPiMessage(assistant(11, 15), {
+          authority: "context",
+        }),
+        createdAtMs: 11,
+      },
+      {
+        data: {
+          type: "tool_result",
+          toolCallId: "parent-tool-call",
+          toolName: "search",
+          content: [{ type: "text", text: "parent result" }],
+          isError: false,
+          timestamp: 12,
+        },
+        createdAtMs: 12,
+      },
+      {
+        data: historyItemFromPiMessage(assistant(200, 7), {
+          authority: "context",
+        }),
+        createdAtMs: 200,
+      },
+    ]);
+
+    const childDetail = await requireDetail(childConversationId);
+    expect(JSON.stringify(childDetail.events)).not.toContain(
+      "parent-tool-call",
+    );
+    expect(childDetail.modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 7 }),
+      },
+    ]);
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 22 }),
+      },
+    ]);
+  });
+
   it("redacts visible content for a private root while retaining structure", async () => {
     const conversationId = "slack:C-reporting:private-detail";
     await recordRoot(conversationId, "private");
