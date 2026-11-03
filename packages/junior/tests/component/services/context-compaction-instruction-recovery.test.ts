@@ -69,6 +69,7 @@ describe("active context compaction instruction recovery", () => {
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
+        mode: "active",
         modelId: "openai/gpt-5.4",
         modelProfile: "standard",
         piMessages: [
@@ -84,9 +85,7 @@ describe("active context compaction instruction recovery", () => {
           } as PiMessage,
         ],
       },
-      {
-        completeText: async () => ({ text: "No outstanding asks." }) as never,
-      },
+      async () => "No outstanding asks.",
     );
 
     expect(result.compacted).toBe(true);

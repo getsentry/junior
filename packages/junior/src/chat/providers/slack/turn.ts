@@ -9,12 +9,7 @@ import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import {
-  boundProfile,
-  defaultModelId,
-  modelIdForProfile,
-  type ModelProfile,
-} from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
@@ -82,16 +77,12 @@ import {
   recordDeliveredAssistantMessage,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import type { ContextCompactor } from "@/chat/services/context-compaction";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
-import {
-  createSlackAdapterAssistantStatusSession,
-  type AssistantStatusSpec,
-} from "@/chat/slack/assistant-thread/status";
+import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
 import { resolveConversationTitle } from "@/chat/services/conversation-title";
 import { maybeSyncAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
@@ -185,14 +176,13 @@ async function persistThreadRuntimeStateWithRetry(
 }
 
 interface LoadedPiMessagesForTurn {
-  canCompact?: boolean;
-  modelProfile?: ModelProfile;
   piMessages?: PiMessage[];
 }
 
 /**
  * Resolve the Pi history for this Slack turn from the most precise durable
- * boundary available: active turn record first, then compactable projection.
+ * boundary available: active turn record first, then the projection. The
+ * agent compacts it before its first model request.
  * Both are SQL-backed; there is no thread-state fallback.
  */
 async function loadPiMessagesForTurn(args: {
@@ -219,18 +209,13 @@ async function loadPiMessagesForTurn(args: {
     conversationId: args.conversationId,
   });
   if (projection.messages.length > 0) {
-    return {
-      canCompact: true,
-      modelProfile: projection.modelProfile,
-      piMessages: projection.messages,
-    };
+    return { piMessages: projection.messages };
   }
 
   return {};
 }
 
 interface SlackTurnDeps {
-  contextCompactor: ContextCompactor;
   /** Keeps background work, such as title projection, alive after the turn. */
   waitUntil?: (task: Promise<unknown>) => void;
   executeTurn: ExecuteTurn;
@@ -766,9 +751,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           threadTs: assistantThreadContext?.threadTs,
           getSlackAdapter: deps.getSlackAdapter,
         });
-        const compactingStatus: AssistantStatusSpec = {
-          text: "Compacting context",
-        };
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
         // Once model output is settled, later commit errors must not trigger a
@@ -970,38 +952,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             activeTurnId,
           });
           let piMessages = loadedPiMessages.piMessages;
-          if (
-            conversationId &&
-            loadedPiMessages.canCompact &&
-            piMessages?.length
-          ) {
-            const compaction = await deps.contextCompactor.maybeCompact({
-              conversation: preparedState.conversation,
-              conversationContext: preparedState.conversationContext,
-              conversationId,
-              metadata: {
-                threadId,
-                actorId: slackActorId,
-                channelId,
-                runId,
-              },
-              onCompactionStart: () => status.update(compactingStatus),
-              piMessages,
-              modelId: modelIdForProfile(
-                botConfig,
-                boundProfile(
-                  botConfig,
-                  loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
-                ),
-              ),
-            });
-            if (compaction.compacted) {
-              piMessages = compaction.piMessages;
-              await persistThreadStateById(conversationId, {
-                conversation: preparedState.conversation,
-              });
-            }
-          }
           const hasDurablePromptHistory = Boolean(piMessages?.length);
           // Each batched steering message keeps its own Actor and authority.
           const batchedSteeringMessages = (

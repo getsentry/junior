@@ -27,7 +27,7 @@ import {
 } from "@/chat/pi/transcript";
 import {
   compactContextForHandoff,
-  type CompactContextArgs,
+  type CompactionMetadata,
 } from "@/chat/services/context-compaction";
 import {
   toPiReasoningLevel,
@@ -150,7 +150,7 @@ export async function commitHandoff(args: {
   beforeMessageCount: number;
   conversationContext?: string;
   conversationId: string;
-  metadata?: CompactContextArgs["metadata"];
+  metadata?: CompactionMetadata;
   onStatus?: (status: { text: string }) => void | Promise<void>;
   profile: ModelProfile;
   runtimeContextSourceMessages?: PiMessage[];

@@ -58,9 +58,35 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   };
 });
 
+/** Answer a capacity compaction summary request like the agent model. */
+function summaryStream(model: { id: string }) {
+  observations.summaryCalls += 1;
+  const text = `<summary>${observations.summaryText}</summary>`;
+  const message = {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    stopReason: "stop",
+    api: "test",
+    provider: "test",
+    model: model.id,
+    timestamp: Date.now(),
+    usage: { input: 2, output: 1, totalTokens: 3 },
+  };
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { type: "done", reason: "stop", message };
+    },
+    result: async () => message,
+  };
+}
+
 vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn:
-    () => async (model: any, context: any, options: any) => {
+    (traceOptions?: { promptName?: string }) =>
+    async (model: any, context: any, options: any) => {
+      if (traceOptions?.promptName) {
+        return summaryStream(model);
+      }
       observations.providerCalls += 1;
       observations.handoffDescriptions.push(
         (context.tools ?? []).find(

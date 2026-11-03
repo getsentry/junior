@@ -88,140 +88,69 @@ describe("context compaction projection reset", () => {
     await expect(loadProjection({ conversationId })).resolves.toHaveLength(3);
   });
 
-  it("automatic compaction replaces the conversation projection without a synthetic session", async () => {
-    const { createContextCompactor } =
+  it("keeps earlier user asks before the summary at Turn start", async () => {
+    const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const { commitMessages, loadConversationProjection, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
-
-    const priorMessages = [
-      user("Please remember the deploy blocker.", 1),
-      assistant("The blocker is missing migration approval.", 2),
-    ];
-    await commitMessages({
-      conversationId: "conversation-1",
-      messages: priorMessages,
-      newMessageProvenance: {
-        authority: "instruction",
-        actor: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "alice",
-          fullName: "Alice Example",
-          email: "alice@sentry.io",
-        },
-      },
-    });
-    const conversation = coerceThreadConversationState({});
-
-    const compactor = createContextCompactor({
-      completeText: async () =>
-        ({
-          text: "Outstanding ask: continue tracking migration approval.",
-        }) as never,
-      autoCompactionTriggerTokens: 0,
-    });
-
-    const result = await compactor.maybeCompact({
-      conversation,
-      conversationId: "conversation-1",
-      modelId: "openai/gpt-5.4",
-      piMessages: priorMessages,
-    });
-
-    expect(result.compacted).toBe(true);
-    expect(result).not.toHaveProperty("sessionId");
-    const compactedMessages = result.piMessages ?? [];
-    expect(compactedMessages.map(textOf).join("\n")).toContain(
-      "Another language model started to solve this problem",
-    );
-    expect(compactedMessages.map(textOf).join("\n")).toContain(
-      "migration approval",
-    );
-    await expect(
-      loadProjection({ conversationId: "conversation-1" }),
-    ).resolves.toEqual(compactedMessages);
-    const projection = await loadConversationProjection({
-      conversationId: "conversation-1",
-    });
-    expect(projection.messages).toEqual(compactedMessages);
-    const instructionActor = projection.provenance
-      .filter((entry) => entry.authority === "instruction" && entry.actor)
-      .at(-1)?.actor;
-    expect(instructionActor).toMatchObject({
+    const conversationId = "conversation-turn-start-retained";
+    const alice = {
       platform: "slack",
       teamId: "T123",
       userId: "U123",
       userName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
-    });
-  });
-
-  it("summarizes model-visible tool calls and results", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages } = await import("@/chat/conversations/projection");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const conversationId = "conversation-tool-summary";
-    const messages = [
-      user("Implement the change.", 1),
-      {
-        ...assistant("", 2),
-        content: [
-          {
-            type: "toolCall",
-            id: "plan-1",
-            name: "updatePlan",
-            arguments: {
-              plan: [{ step: "Run focused tests", status: "in_progress" }],
-            },
-          },
-        ],
-        stopReason: "toolUse",
-      } as PiMessage,
+    } as const;
+    const history = [
+      user("Please remember the deploy blocker.", 1),
+      assistant("The blocker is missing migration approval.", 2),
+      user("Also track the rollback plan.", 3),
       {
         role: "toolResult",
-        toolCallId: "plan-1",
-        toolName: "updatePlan",
-        content: [{ type: "text", text: "Plan updated" }],
+        toolCallId: "tool-1",
+        toolName: "oversized",
+        content: [{ type: "text", text: "x".repeat(1_600_000) }],
         isError: false,
-        timestamp: 3,
+        timestamp: 4,
       } as PiMessage,
+      assistant("Tracking both.", 5),
     ];
-    await commitMessages({ conversationId, messages });
-    const completeText = vi.fn(
-      async (_input: unknown) =>
-        ({ text: "Continue with focused tests." }) as never,
-    );
-
-    const result = await createContextCompactor({
-      completeText,
-      autoCompactionTriggerTokens: 0,
-    }).maybeCompact({
-      conversation: coerceThreadConversationState({}),
+    const prompt = user("What is still open?", 6);
+    // The Turn commits its instruction before the agent compacts.
+    await commitMessages({
       conversationId,
-      modelId: "openai/gpt-5.4",
-      piMessages: messages,
+      messages: [...history, prompt],
+      newMessageProvenance: { authority: "instruction", actor: alice },
     });
+    const askProvenance = (await loadConversationProjection({ conversationId }))
+      .provenance[2];
 
-    expect(textOf(result.piMessages!.at(-1)!)).toContain(
-      '<open-plan>\n[{"step":"Run focused tests","status":"in_progress"}]\n</open-plan>',
+    const result = await compactActiveContextIfNeeded(
+      {
+        conversationId,
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        pendingMessages: [
+          { message: prompt, provenance: { authority: "instruction" } },
+        ],
+        piMessages: history,
+        mode: "blocking",
+      },
+      async () => "Open: migration approval and rollback plan.",
     );
-    expect(completeText).toHaveBeenCalledWith(
-      expect.objectContaining({ cacheRetention: "none" }),
-    );
-    const summaryInput = completeText.mock.calls[0]?.[0] as
-      | { messages: PiMessage[] }
-      | undefined;
-    expect(summaryInput?.messages.slice(0, -1)).toEqual(messages);
-    expect(textOf(summaryInput!.messages.at(-1)!)).toContain(
-      "CONTEXT CHECKPOINT COMPACTION",
-    );
+
+    expect(result.compacted).toBe(true);
+    const texts = result.piMessages!.map(textOf);
+    expect(texts.slice(0, 2)).toEqual([
+      "Please remember the deploy blocker.",
+      "Also track the rollback plan.",
+    ]);
+    expect(texts[2]).toContain("Open: migration approval and rollback plan.");
+    expect(result.piMessages!.at(-1)).toEqual(prompt);
+    const projection = await loadConversationProjection({ conversationId });
+    expect(projection.messages).toEqual(result.piMessages);
+    expect(projection.provenance[1]).toEqual(askProvenance);
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
@@ -237,6 +166,7 @@ describe("context compaction projection reset", () => {
       compactActiveContextIfNeeded(
         {
           conversationId,
+          mode: "active",
           modelId: "openai/gpt-5.4",
           modelProfile: "standard",
           pendingMessages: [
@@ -270,9 +200,7 @@ describe("context compaction projection reset", () => {
             } as PiMessage,
           ],
         },
-        {
-          completeText: async () => ({ text: "Short summary." }) as never,
-        },
+        async () => "Short summary.",
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
@@ -350,6 +278,7 @@ describe("context compaction projection reset", () => {
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
+        mode: "active",
         modelId: "openai/gpt-5.4",
         modelProfile: "standard",
         pendingMessages: [
@@ -375,9 +304,7 @@ describe("context compaction projection reset", () => {
         ],
         turnStartMessageIndex: earlierTurns.length,
       },
-      {
-        completeText: async () => ({ text: "Short summary." }) as never,
-      },
+      async () => "Short summary.",
     );
 
     expect(result.compacted).toBe(true);
@@ -411,6 +338,7 @@ describe("context compaction projection reset", () => {
       compactActiveContextIfNeeded(
         {
           conversationId,
+          mode: "active",
           modelId: "openai/gpt-5.4",
           modelProfile: "standard",
           piMessages: [
@@ -425,23 +353,19 @@ describe("context compaction projection reset", () => {
             } as PiMessage,
           ],
         },
-        {
-          completeText: async () => {
-            throw new Error("summary provider unavailable");
-          },
+        async () => {
+          throw new Error("summary provider unavailable");
         },
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
   });
 
-  it("handoff binds its named profile and later projection replacements inherit it", async () => {
-    const { compactContextForHandoff, createContextCompactor } =
+  it("handoff binds its named profile", async () => {
+    const { compactContextForHandoff } =
       await import("@/chat/services/context-compaction");
     const { commitMessages, loadConversationProjection, loadProjection } =
       await import("@/chat/conversations/projection");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
     const { getConversationEventStore } = await import("@/chat/db");
     const { botConfig } = await import("@/chat/config");
     const conversationId = "conversation-handoff";
@@ -543,22 +467,6 @@ describe("context compaction projection reset", () => {
       })),
     });
 
-    const compactor = createContextCompactor({
-      completeText: async () =>
-        ({ text: "Continue the handed-off implementation." }) as never,
-      autoCompactionTriggerTokens: 0,
-    });
-    const compacted = await compactor.maybeCompact({
-      conversation: coerceThreadConversationState({}),
-      conversationId,
-      modelId: botConfig.profiles.handoff!.modelId,
-      piMessages: handoffMessages,
-    });
-    expect(compacted.compacted).toBe(true);
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-
     await expect(
       commitMessages({
         conversationId,
@@ -568,34 +476,6 @@ describe("context compaction projection reset", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const replacements = (
-      await getConversationEventStore().loadHistory(conversationId)
-    )
-      .map((event) => event.data)
-      .filter(
-        (entry) => entry.type === "handoff" || entry.type === "compaction",
-      );
-    expect(
-      replacements.map(({ type, modelProfile, modelId, summary }) => ({
-        type,
-        modelProfile,
-        modelId,
-        summary,
-      })),
-    ).toEqual([
-      {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: botConfig.profiles.handoff!.modelId,
-        summary: "Continue the multi-file implementation.",
-      },
-      {
-        type: "compaction",
-        modelProfile: "handoff",
-        modelId: botConfig.profiles.handoff!.modelId,
-        summary: "Continue the handed-off implementation.",
-      },
-    ]);
   });
 
   it("leaves the standard projection untouched when handoff summarization fails", async () => {
@@ -755,213 +635,5 @@ describe("context compaction projection reset", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("standard");
-  });
-
-  it("preserves retained user provenance positionally when authors send identical text", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const { commitMessages, loadConversationProjection } =
-      await import("@/chat/conversations/projection");
-
-    const alice = {
-      platform: "slack" as const,
-      teamId: "T123",
-      userId: "U_ALICE",
-      userName: "alice",
-    };
-    const bob = {
-      platform: "slack" as const,
-      teamId: "T123",
-      userId: "U_BOB",
-      userName: "bob",
-    };
-    const priorMessages = [user("same request", 1), user("same request", 2)];
-
-    await commitMessages({
-      conversationId: "conversation-identical-retained-text",
-      messages: priorMessages,
-      provenance: [
-        { authority: "instruction", actor: alice },
-        { authority: "instruction", actor: bob },
-      ],
-    });
-
-    const compactor = createContextCompactor({
-      completeText: async () =>
-        ({ text: "Both matching requests remain distinct." }) as never,
-      autoCompactionTriggerTokens: 0,
-    });
-
-    const result = await compactor.maybeCompact({
-      conversation: coerceThreadConversationState({}),
-      conversationId: "conversation-identical-retained-text",
-      modelId: "openai/gpt-5.4",
-      piMessages: priorMessages,
-    });
-
-    expect(result.compacted).toBe(true);
-    const projection = await loadConversationProjection({
-      conversationId: "conversation-identical-retained-text",
-    });
-    expect(projection.messages.slice(0, 2).map(textOf)).toEqual([
-      "same request",
-      "same request",
-    ]);
-    expect(projection.provenance.slice(0, 2)).toEqual([
-      { authority: "instruction", actor: alice },
-      { authority: "instruction", actor: bob },
-    ]);
-  });
-
-  it("summarizes the full model-visible history", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const { commitMessages } = await import("@/chat/conversations/projection");
-
-    const priorMessages = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nbootstrap instructions that must not be summarized\n</runtime-turn-context>",
-          },
-          { type: "text", text: "first actual request" },
-        ],
-        timestamp: 1,
-      } as PiMessage,
-      ...Array.from({ length: 35 }, (_, index) =>
-        user(`old-${index.toString().padStart(2, "0")} ${"x".repeat(5_000)}`),
-      ),
-      user("recent-critical-marker keep the rollback plan"),
-    ];
-    await commitMessages({
-      conversationId: "conversation-large",
-      messages: priorMessages,
-    });
-    const conversation = coerceThreadConversationState({});
-    let capturedMessages: PiMessage[] = [];
-    let capturedMessageAttributeMode: unknown;
-    const compactor = createContextCompactor({
-      completeText: async (params) => {
-        capturedMessages = params.messages as PiMessage[];
-        capturedMessageAttributeMode = params.messageAttributeMode;
-        return { text: "Summary keeps the rollback plan." } as never;
-      },
-      autoCompactionTriggerTokens: 0,
-    });
-
-    await compactor.maybeCompact({
-      conversation,
-      conversationId: "conversation-large",
-      modelId: "openai/gpt-5.4",
-      piMessages: priorMessages,
-      conversationContext:
-        "<thread-context>\nBackground incident discussion\n</thread-context>",
-    });
-
-    expect(capturedMessageAttributeMode).toBe("metadata");
-    const capturedText = capturedMessages.map(textOf).join("\n");
-    expect(capturedText).toContain("old-00");
-    expect(capturedText).not.toContain("bootstrap instructions");
-    expect(capturedText).not.toContain("<runtime-turn-context>");
-    expect(capturedText).toContain("recent-critical-marker");
-    expect(textOf(capturedMessages.at(-2)!)).toBe(
-      "<visible-thread-context>\n<thread-context>\nBackground incident discussion\n</thread-context>\n</visible-thread-context>",
-    );
-    expect(textOf(capturedMessages.at(-1)!)).toContain(
-      "CONTEXT CHECKPOINT COMPACTION",
-    );
-  });
-
-  it("counts structured tool context when deciding whether to compact", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const { commitMessages } = await import("@/chat/conversations/projection");
-
-    const priorMessages = [
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "tool-call-1",
-            name: "readFile",
-            arguments: { path: "src/large-file.ts", limit: 10_000 },
-          },
-        ],
-        api: "openai-responses",
-        provider: "openai",
-        model: "test-model",
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0,
-          },
-        },
-        stopReason: "toolUse",
-        timestamp: 1,
-      },
-    ] as PiMessage[];
-    await commitMessages({
-      conversationId: "conversation-tool-context",
-      messages: priorMessages,
-    });
-    const conversation = coerceThreadConversationState({});
-    let summarized = false;
-    const compactor = createContextCompactor({
-      completeText: async () => {
-        summarized = true;
-        return { text: "Tool context was compacted." } as never;
-      },
-      autoCompactionTriggerTokens: 1,
-    });
-
-    const result = await compactor.maybeCompact({
-      conversation,
-      conversationId: "conversation-tool-context",
-      modelId: "openai/gpt-5.4",
-      piMessages: priorMessages,
-    });
-
-    expect(result.compacted).toBe(true);
-    expect(summarized).toBe(true);
-  });
-
-  it("does not compact when there is no reusable conversation projection", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-
-    const completeText = vi.fn(async () => ({ text: "should not run" }));
-    const conversation = coerceThreadConversationState({});
-    const compactor = createContextCompactor({
-      completeText: completeText as never,
-    });
-
-    await expect(
-      compactor.maybeCompact({
-        conversation,
-        conversationId: "conversation-missing",
-        modelId: "openai/gpt-5.4",
-        piMessages: [],
-      }),
-    ).resolves.toEqual({ compacted: false, reason: "missing_context" });
-    expect(completeText).not.toHaveBeenCalled();
   });
 });

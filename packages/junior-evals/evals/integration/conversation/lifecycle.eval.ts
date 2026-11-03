@@ -81,8 +81,8 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.title).toMatch(/safari|checkout/i);
   });
 
-  // A Slack turn compacts history before the agent starts. A web turn
-  // compacts it in the agent, before the first model request.
+  // Both surfaces compact history in the agent, before the first model
+  // request, with the agent model and its cached request prefix.
   test.for([
     { surface: "a Slack thread", message: slackMention },
     { surface: "a web conversation", message: webMessage },

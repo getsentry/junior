@@ -65,7 +65,6 @@ import {
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
-  completeText,
   getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
@@ -163,6 +162,11 @@ import {
   type ModelProfile,
 } from "@/chat/model-profile";
 import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
+import {
+  buildAgentModelRequest,
+  CONTEXT_COMPACTION_PROMPT_NAME,
+  requestContextSummary,
+} from "@/chat/agent/context-summary";
 import {
   applyHandoff,
   commitHandoff,
@@ -1010,6 +1014,13 @@ async function executeAgentRunInPrivacyContext(
       shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
+    // The same stream as the agent loop, so the summary request reaches the
+    // provider like an agent call. Only its span gets the prompt name.
+    const summaryStreamFn = createTracedStreamFn({
+      conversationPrivacy,
+      promptName: CONTEXT_COMPACTION_PROMPT_NAME,
+      ...(streamFn ? { base: streamFn } : undefined),
+    });
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -1020,22 +1031,17 @@ async function executeAgentRunInPrivacyContext(
       }>,
       clearSteeringQueueOnCommit = false,
       pairPendingRuntimeContext = false,
+      mode: "blocking" | "active" = "active",
     ): Promise<AgentLoopTurnUpdate | undefined> => {
       const compaction = await compactActiveContextIfNeeded(
         {
-          conversationContext: input.conversationContext,
           conversationId,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackChannelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
           modelId: activeModelId,
           modelProfile: activeModelProfile,
           onCompactionStart: () =>
             observers.onStatus?.({ text: "Compacting context" }),
           pendingMessages,
+          mode,
           piMessages: messages,
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
@@ -1048,9 +1054,15 @@ async function executeAgentRunInPrivacyContext(
           signal: hookSignal,
           turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
-        {
-          completeText: (args) => completeText(args),
-        },
+        async (summaryMessages, summarySignal) =>
+          await requestContextSummary(
+            await buildAgentModelRequest(
+              agent!,
+              summaryMessages,
+              summarySignal,
+            ),
+            summaryStreamFn,
+          ),
       );
       if (!compaction.compacted || !compaction.piMessages) {
         return undefined;
@@ -1591,6 +1603,8 @@ async function executeAgentRunInPrivacyContext(
                 : undefined,
               false,
               Boolean(contextMessage),
+              // The person waits on this one, before the first model request.
+              "blocking",
             ),
             () => compactionAbortController.abort(),
           );
