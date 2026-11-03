@@ -7,21 +7,13 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SECTION_ORDER = [
-  "attention",
-  "priority",
-  "today",
-  "yesterday",
-  "last-week",
-  "2-weeks",
-  "3-weeks",
-  "older",
-] as const;
 
 /**
- * Group conversations into progressively broader activity sections.
+ * Group conversations by last activity: Today, Yesterday, Previous 7 days,
+ * Previous 30 days, then one section per month.
  *
- * Conversations in `attentionIds` go to the first section, before Priority.
+ * Conversations in `attentionIds` lead their section, so unread and waiting
+ * rows sit above read rows without leaving their time group.
  */
 export function buildConversationSections(
   conversations: Conversation[],
@@ -32,16 +24,21 @@ export function buildConversationSections(
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
-  const sections = new Map<string, ConversationSection>();
-  const sorted = [...conversations].sort(
+  const sections = new Map<string, ConversationSection & { order: number }>();
+  const byActivity = [...conversations].sort(
     (left, right) => activityTime(right) - activityTime(left),
   );
+  const sorted = options.attentionIds
+    ? attentionFirst(byActivity, options.attentionIds)
+    : byActivity;
 
   for (const conversation of sorted) {
-    const time = activityTime(conversation);
-    const section = options.attentionIds?.has(conversation.id)
-      ? { key: "attention", label: "Needs attention" }
-      : conversationSection(conversation, time, nowDay, options.timeZone);
+    const section = conversationSection(
+      activityTime(conversation),
+      nowDay,
+      options.nowMs,
+      options.timeZone,
+    );
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -50,9 +47,9 @@ export function buildConversationSections(
     }
   }
 
-  return [...sections.values()].sort(
-    (left, right) => sectionRank(left.key) - sectionRank(right.key),
-  );
+  return [...sections.values()]
+    .sort((left, right) => left.order - right.order)
+    .map(({ order: _order, ...section }) => section);
 }
 
 /** Join the conversations that wait on the viewer or finished unseen. */
@@ -82,44 +79,61 @@ function activityTime(conversation: Conversation): number {
   return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 }
 
+/**
+ * Pick the section for an activity time. `order` sorts sections newest
+ * first.
+ */
 function conversationSection(
-  conversation: Conversation,
   time: number,
   nowDay: number,
+  nowMs: number,
   timeZone: string,
-): Pick<ConversationSection, "key" | "label"> {
-  if (!Number.isFinite(time)) return { key: "older", label: "Older" };
-
-  // Priority membership is decided by the conversation feed API.
-  if (conversation.isPriority) {
-    return { key: "priority", label: "Priority" };
+): Pick<ConversationSection, "key" | "label"> & { order: number } {
+  if (!Number.isFinite(time)) {
+    return { key: "older", label: "Older", order: Number.POSITIVE_INFINITY };
   }
 
-  const day = calendarDay(time, timeZone);
-  const ageInDays = Math.max(0, Math.floor((nowDay - day) / DAY_MS));
-  if (ageInDays === 0) return { key: "today", label: "Today" };
-  if (ageInDays === 1) return { key: "yesterday", label: "Yesterday" };
-  if (ageInDays < 7) {
-    return {
-      key: `day-${day}`,
-      label: new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        weekday: "long",
-      }).format(time),
-    };
+  const ageInDays = Math.max(
+    0,
+    Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS),
+  );
+  if (ageInDays === 0) return { key: "today", label: "Today", order: 0 };
+  if (ageInDays === 1) {
+    return { key: "yesterday", label: "Yesterday", order: 1 };
   }
-  if (ageInDays < 14) return { key: "last-week", label: "Last week" };
-  if (ageInDays < 21) return { key: "2-weeks", label: "2 weeks ago" };
-  if (ageInDays < 28) return { key: "3-weeks", label: "3 weeks ago" };
-  return { key: "older", label: "Older" };
+  if (ageInDays <= 7) {
+    return { key: "previous-7-days", label: "Previous 7 days", order: 2 };
+  }
+  if (ageInDays <= 30) {
+    return { key: "previous-30-days", label: "Previous 30 days", order: 3 };
+  }
+
+  const month = yearMonth(time, timeZone);
+  const nowMonth = yearMonth(nowMs, timeZone);
+  return {
+    key: `month-${month.year}-${month.month}`,
+    label: new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      timeZone,
+      ...(month.year === nowMonth.year ? undefined : { year: "numeric" }),
+    }).format(time),
+    // Month sections follow the rolling windows, newest month first.
+    order:
+      4 + (nowMonth.year - month.year) * 12 + (nowMonth.month - month.month),
+  };
 }
 
-function sectionRank(key: string): number {
-  const known = SECTION_ORDER.indexOf(key as (typeof SECTION_ORDER)[number]);
-  if (known >= 0) return known;
-  // Weekday buckets sit between Yesterday and Last week.
-  if (key.startsWith("day-")) return SECTION_ORDER.indexOf("yesterday") + 0.5;
-  return SECTION_ORDER.length;
+function yearMonth(
+  time: number,
+  timeZone: string,
+): { month: number; year: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    month: "numeric",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(time);
+  const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
+  return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
 }
 
 function calendarDay(time: number, timeZone: string): number {

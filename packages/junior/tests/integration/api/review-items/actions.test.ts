@@ -99,6 +99,42 @@ describe("review item actions API", () => {
     await closeConversationFixture();
   });
 
+  it("lists each waiting conversation once, with its newest item", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation("slack:CPUB:1.000001");
+    const ana = await user("ana@example.com");
+    await addItem({
+      kind: "action",
+      title: "Review acme entry",
+      body: "The acme entry changed its license.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "fair-source:entry:acme",
+      request: REQUEST,
+    });
+    // Created later, so it is the newest item.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await addItem({
+      kind: "action",
+      title: "Review globex entry",
+      body: "The globex entry changed its license.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "fair-source:entry:globex",
+      request: REQUEST,
+    });
+
+    expect(
+      await (await api(fixture, ana).get("/waiting-conversations")).json(),
+    ).toEqual({
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          title: "Review globex entry",
+          count: 2,
+        },
+      ],
+    });
+  });
+
   it("closes an action item for every assignee on the first submit", async () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
@@ -132,11 +168,22 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
     ).toEqual({
-      conversationIds: ["slack:CPUB:1.000001", "slack:CPUB:1.000002"],
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          title: "Review acme entry",
+          count: 1,
+        },
+        {
+          conversationId: "slack:CPUB:1.000002",
+          title: "Review acme entry",
+          count: 1,
+        },
+      ],
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
     const calList = await (await api(fixture, cal).get("")).json();
     expect(calList.items).toHaveLength(2);
     expect(calList.items).toEqual(
@@ -198,7 +245,7 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
     // The list still shows every open item that Ben can see.
     expect(
       (await (await api(fixture, ben).get("")).json()).items,
@@ -235,7 +282,7 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
 
     // The next item is created later, so the list order is fixed.
     await new Promise((resolve) => setTimeout(resolve, 2));
@@ -286,7 +333,15 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: ["slack:CPUB:1.000001"] });
+    ).toEqual({
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          title: "Pull request needs review",
+          count: 1,
+        },
+      ],
+    });
     const texts = await pendingTexts("slack:CPUB:1.000001");
     expect(texts).toEqual([
       expect.stringContaining("cal@example.com took review item"),

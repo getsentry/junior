@@ -2,16 +2,21 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 /**
  * Build the dashboard route for a conversation id. A `turnId` opens the
- * start of that Turn in the event log.
+ * start of that Turn in the event log. `reviewItems` opens the Review items
+ * panel.
  */
 export function conversationPath(
   conversationId: string,
-  options?: { turnId?: string },
+  options?: { reviewItems?: boolean; turnId?: string },
 ): string {
   const path = `/conversations/${encodeURIComponent(conversationId)}`;
-  return options?.turnId
-    ? `${path}?${CONVERSATION_TURN_PARAM}=${encodeURIComponent(options.turnId)}`
-    : path;
+  const params = new URLSearchParams();
+  if (options?.turnId) params.set(CONVERSATION_TURN_PARAM, options.turnId);
+  if (options?.reviewItems) {
+    params.set(CONVERSATION_REVIEW_PARAM, CONVERSATION_REVIEW_OPEN);
+  }
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
 }
 
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
@@ -31,6 +36,10 @@ export function parseConversationEventSeq(
 ): number | undefined {
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
 }
+
+/** Query param that opens the Review items panel of a Conversation. */
+export const CONVERSATION_REVIEW_PARAM = "review";
+export const CONVERSATION_REVIEW_OPEN = "open";
 
 /** Query param that opens the start of one Turn in the event log. */
 export const CONVERSATION_TURN_PARAM = "turn";
