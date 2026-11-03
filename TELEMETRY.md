@@ -208,6 +208,7 @@ attributes. Nested logs and spans inherit them.
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
+| Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
 
 ## Code Mode
@@ -292,6 +293,56 @@ compare the phases:
   at the Vercel edge. Use `app.ai.gateway.vercel_id` with Vercel.
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
+
+## Context Compaction
+
+A compaction replaces the history when its estimate is above the threshold.
+`chat/services/context-compaction-telemetry.ts` owns the span.
+
+- Each compaction has one `agent.context_compaction` span. Its child
+  `gen_ai.chat` span, with `gen_ai.prompt.name:junior.context_compaction`, is
+  the summary call. It has the `gen_ai.usage.*` attributes.
+- The span and all its children have `app.compaction.mode`. Group the summary
+  `gen_ai.chat` spans by mode to compare duration and cache reads.
+- `app.turn.compaction_wait_ms` on `chat.turn` is the time that the Turn
+  waited on compaction in this execution slice. It is absent when no
+  compaction ran.
+- Sentry data scrubbing removes the values of attribute keys that contain
+  `token`. So these keys do not contain it, but the estimates count tokens.
+
+Attributes on the `agent.context_compaction` span:
+
+| Attribute                             | Type   | Meaning                                       |
+| ------------------------------------- | ------ | --------------------------------------------- |
+| `app.compaction.mode`                 | string | `blocking`, `active`, or `handoff`            |
+| `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
+| `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
+| `app.compaction.replacement.estimate` | int    | estimated history tokens after compaction     |
+| `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
+| `app.compaction.input_limit`          | int    | most estimated input tokens that a model gets |
+| `app.compaction.input_messages`       | int    | history messages before compaction            |
+| `app.compaction.retained_messages`    | int    | messages kept before the summary              |
+| `app.compaction.summary_chars`        | int    | summary length in characters                  |
+
+- `blocking` runs at Turn start. `active` runs between model calls in a Turn.
+  `handoff` runs for a model handoff.
+- A `handoff` span has only `app.compaction.mode`. A failed handoff or an
+  input above the limit sets `error.type`.
+
+Summary call latency and cache reads by mode. In queries, a numeric `app.*`
+attribute needs the `tags[<key>,number]` form.
+
+```text
+dataset=spans query='span.op:gen_ai.chat gen_ai.prompt.name:junior.context_compaction'
+fields=app.compaction.mode,count(),p50(span.duration),p95(span.duration),sum(gen_ai.usage.input_tokens),sum(gen_ai.usage.cache_read.input_tokens)
+```
+
+Turn wait on compaction.
+
+```text
+dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,number]'
+fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
+```
 
 ## Invariants
 

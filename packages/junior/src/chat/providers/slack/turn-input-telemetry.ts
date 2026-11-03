@@ -4,6 +4,7 @@ import {
   type SetSpanAttributes,
 } from "@/chat/logging";
 import { continueTrace, getActiveSpan } from "@/chat/sentry";
+import { measureTurnCompactionWait } from "@/chat/services/context-compaction-telemetry";
 import type { TraceContext } from "@/chat/task-execution/state";
 
 /** Mailbox timing facts for the input messages that start a Slack turn. */
@@ -33,7 +34,8 @@ function spanLinks({ sentryTrace }: TraceContext) {
  *
  * The span links to the other trace contexts and to the span that was active,
  * such as the worker span. Without a trace context, the span is a child of the
- * active span. A malformed trace context starts a new trace.
+ * active span. A malformed trace context starts a new trace. The span records
+ * how long the Turn waited on context compaction.
  */
 export async function withTurnSpan<T>(
   context: LogContext,
@@ -42,7 +44,9 @@ export async function withTurnSpan<T>(
 ): Promise<T> {
   const [parent, ...others] = input?.traceContexts ?? [];
   if (!parent) {
-    return await withSpan("chat.turn", "chat.turn", context, callback);
+    return await withSpan("chat.turn", "chat.turn", context, (set) =>
+      measureTurnCompactionWait(set, () => callback(set)),
+    );
   }
   const activeSpan = getActiveSpan();
   const links = [
@@ -53,7 +57,9 @@ export async function withTurnSpan<T>(
   return await continueTrace({ baggage, sentryTrace }, () =>
     withSpan("chat.turn", "chat.turn", context, async (setSpanAttributes) => {
       getActiveSpan()?.addLinks(links);
-      return await callback(setSpanAttributes);
+      return await measureTurnCompactionWait(setSpanAttributes, () =>
+        callback(setSpanAttributes),
+      );
     }),
   );
 }
