@@ -31,8 +31,7 @@ import {
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
-  listRepositoryDirectories,
-  resolveRepositoryInstructionsForDirectories,
+  readRepositoryInstructions,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
@@ -868,7 +867,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (!runtime.sandboxRef()) {
         return undefined;
       }
-      const { fs } = await runtime.tools();
+      const { runCommand } = await runtime.tools();
       const workspaceDirectories =
         activeWorkspace?.repos
           .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
@@ -882,14 +881,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         "sandbox.repository_instructions.read",
         {},
         async (setSpanAttributes) => {
-          const directories =
-            workspaceDirectories.length > 0
-              ? workspaceDirectories
-              : await listRepositoryDirectories(fs);
-          const instructions =
-            await resolveRepositoryInstructionsForDirectories({
-              directories,
-              fs,
+          const { directories, instructions } =
+            await readRepositoryInstructions({
+              ...(workspaceDirectories.length > 0
+                ? { directories: workspaceDirectories }
+                : undefined),
+              runCommand,
             });
           setSpanAttributes({
             "app.repository_instructions.repo_count": directories.length,
