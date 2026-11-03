@@ -14,7 +14,6 @@ import type {
   ConversationMessageEvent,
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -206,16 +205,16 @@ function readEventTaskFacts(
 }
 
 /**
- * Write the agent input for an Event batch.
+ * Write the agent inputs for an Event batch, one prompt content part each.
  *
- * One Event keeps its own text. Several Watch Events become one task message
+ * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
- * without task facts, such as child agent results, keep their own text after
- * the task message.
+ * without task facts, such as child agent results, keep their own text as
+ * their own inputs after the task.
  */
-export function renderEventBatchText(
+export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
-): string {
+): string[] {
   const groups = new Map<
     string,
     {
@@ -249,6 +248,7 @@ export function renderEventBatchText(
     group.events.push({
       eventType: metadata.event.eventType,
       guidance: facts.guidance,
+      source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
       externalText: facts.externalText,
@@ -256,16 +256,15 @@ export function renderEventBatchText(
     });
   }
 
+  const ownText = (message: InboundMessage) => message.input.text.trim();
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
-    return joinMailboxText(messages);
+    return messages.map(ownText).filter(Boolean);
   }
   return [
     renderTaskBatchInput({ groups: [...groups.values()] }),
-    joinMailboxText(others),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    ...others.map(ownText).filter(Boolean),
+  ];
 }
 
 /** Return the conversation message entry for one Event input. */
@@ -435,7 +434,11 @@ export async function enqueueEventNotification(args: {
         id: args.subscription.id,
       },
       task,
-      text: renderTaskInput(task),
+      text: renderTaskInput({
+        ...task,
+        event: args.event.eventType,
+        source: args.event.namespace,
+      }),
     }),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,

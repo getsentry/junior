@@ -28,6 +28,7 @@ import {
 } from "@/chat/slack/errors";
 import {
   buildSteeringPiMessage,
+  instructionForInputs,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import {
@@ -1068,7 +1069,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : undefined),
               },
               includeConversationContextWithHistory: hasDurablePromptHistory,
-              text: effectiveUserText,
+              // A dispatch input is an Automation `<task>`, not a person.
+              ...(options.execution?.dispatch
+                ? instructionForInputs([
+                    { kind: "runtime", text: effectiveUserText },
+                  ])
+                : { text: effectiveUserText }),
               context: promptConversationContext,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,

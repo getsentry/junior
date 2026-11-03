@@ -48,6 +48,7 @@ import type {
   AgentAttachment,
   AgentInstruction,
   AgentInstructionActor,
+  AgentInstructionInput,
   AgentRun,
   AgentSteeringMessage,
 } from "@/chat/agent/types";
@@ -131,6 +132,38 @@ export function buildUserTurnText(
   return renderCurrentInstruction(userInput, actor);
 }
 
+/**
+ * Build the instruction for Turn inputs. Each input keeps its own prompt
+ * content part, and `text` joins them for action review.
+ */
+export function instructionForInputs(
+  inputs: readonly AgentInstructionInput[],
+): Pick<AgentInstruction, "inputs" | "text"> {
+  return {
+    inputs,
+    text: inputs
+      .map((input) => input.text.trim())
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+// Render one prompt text part per input, in order. Inputs are never joined.
+function renderInputParts(instruction: AgentInstruction): string[] {
+  const inputs = instruction.inputs ?? [
+    {
+      kind: "person" as const,
+      text: instruction.text,
+      actor: instruction.actor,
+    },
+  ];
+  return inputs.map((input) =>
+    input.kind === "person"
+      ? buildUserTurnText(input.text, input.actor)
+      : input.text.trim(),
+  );
+}
+
 /** Render an explicitly selected skill as instructions for the current turn. */
 export function renderExplicitSkillInstructions(skill: Skill): string {
   return [
@@ -199,13 +232,14 @@ function buildOmittedImageAttachmentNotice(count: number): string {
 }
 
 function buildUserTurnInput(args: {
+  inputParts: readonly string[];
   omittedImageAttachmentCount: number;
   userAttachments?: AgentAttachment[];
-  userTurnText: string;
 }): PromptInput {
-  const userContentParts: UserContentPart[] = [
-    { type: "text", text: args.userTurnText },
-  ];
+  const userContentParts: UserContentPart[] = args.inputParts.map((text) => ({
+    type: "text",
+    text,
+  }));
 
   if (args.omittedImageAttachmentCount > 0) {
     const omittedImagesNotice = buildOmittedImageAttachmentNotice(
@@ -276,7 +310,7 @@ export function buildPromptInput(args: {
     userAttachments: instruction.attachments
       ? [...instruction.attachments]
       : undefined,
-    userTurnText: buildUserTurnText(instruction.text, instruction.actor),
+    inputParts: renderInputParts(instruction),
   });
   const trimmedContext = promptConversationContext?.trim();
   return {
@@ -296,7 +330,11 @@ export function buildSteeringPiMessage(
   message: AgentSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: buildUserTurnText(message.text, message.actor),
+    inputParts: [
+      message.kind === "runtime"
+        ? message.text.trim()
+        : buildUserTurnText(message.text, message.actor),
+    ],
     userAttachments: message.attachments ? [...message.attachments] : undefined,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });

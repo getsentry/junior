@@ -5,14 +5,22 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
+import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
-/** Join non-empty mailbox Message text for one Turn. */
-export function joinMailboxText(messages: readonly InboundMessage[]): string {
-  return messages
-    .map((message) => message.input.text.trim())
-    .filter(Boolean)
-    .join("\n\n");
+/**
+ * Return the Turn inputs of web Messages, one per non-empty Message, in
+ * order. Each one becomes its own prompt content part. A batch with only
+ * attachments keeps one empty input, so the prompt still has an instruction.
+ */
+export function webTurnInputs(
+  messages: readonly { text: string }[],
+): AgentInstructionInput[] {
+  const inputs = messages.flatMap((message) => {
+    const text = message.text.trim();
+    return text ? [{ kind: "person" as const, text }] : [];
+  });
+  return inputs.length ? inputs : [{ kind: "person", text: "" }];
 }
 
 /**

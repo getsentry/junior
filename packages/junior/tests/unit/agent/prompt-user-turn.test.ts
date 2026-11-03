@@ -108,7 +108,32 @@ describe("buildUserTurnText", () => {
     });
   });
 
-  it("marks unstructured thread background as evidence only", () => {
+  it("gives each Turn input its own content part, in order", () => {
+    const input = buildPromptInput({
+      instruction: {
+        text: "joined",
+        inputs: [
+          { kind: "runtime", text: "<task>\nwatch\n</task>" },
+          { kind: "person", text: "ship <it>" },
+          { kind: "person", text: "after lunch" },
+        ],
+      },
+    });
+
+    expect(input.userContentParts).toEqual([
+      { type: "text", text: "<task>\nwatch\n</task>" },
+      {
+        type: "text",
+        text: "<current-instruction>\nship &lt;it&gt;\n</current-instruction>",
+      },
+      {
+        type: "text",
+        text: "<current-instruction>\nafter lunch\n</current-instruction>",
+      },
+    ]);
+  });
+
+  it("marks unstructured thread background as untrusted", () => {
     const input = buildPromptInput({
       instruction: {
         text: "summarize",

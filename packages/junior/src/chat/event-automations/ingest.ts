@@ -62,6 +62,8 @@ function eventInput(
   const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
     about: task.trigger.label,
+    event: event.eventType,
+    source: event.namespace,
     creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
     outcomes,
