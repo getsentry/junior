@@ -210,10 +210,17 @@ async function requestAboveMark(args: {
   ) {
     return;
   }
-  const markSeq = projectConversationEvents(events, {
+  const projection = projectConversationEvents(events, {
     defaultProfile: botConfig.defaultProfile,
-  }).seqs.at(-1);
-  if (markSeq === undefined) {
+  });
+  // Messages of a replacement carry the seqs of their source events, which
+  // are older than the replacement event. The job reads events up to the
+  // mark, so the mark must not fall before the replacement.
+  const markSeq = Math.max(
+    projection.seqs.at(-1) ?? -1,
+    projection.replacementSeq ?? -1,
+  );
+  if (markSeq < 0) {
     return;
   }
 
@@ -354,11 +361,22 @@ async function prepareSummary(
     return "duplicate";
   }
 
+  // Write the result once. The history can be replaced while the summary
+  // call runs, so check the History version again first. A replacement
+  // between this check and the append is still possible; readers match
+  // `historyVersion`, so that event is never used.
   const writePrepared = async (
     result:
       | { outcome: "ready"; summary: string }
       | { outcome: "failed"; errorType: string },
-  ): Promise<void> => {
+  ): Promise<JobOutcome> => {
+    const currentVersion = await eventStore.loadCurrentHistoryVersion(
+      message.conversationId,
+    );
+    if (currentVersion !== message.historyVersion) {
+      await state.delete(snapshotKey(message));
+      return "stale";
+    }
     await eventStore.append(
       message.conversationId,
       [
@@ -381,17 +399,19 @@ async function prepareSummary(
     if (result.outcome === "failed") {
       setSpanAttributes({ "error.type": result.errorType });
     }
+    return result.outcome;
   };
 
   const remainingMs = request.createdAtMs + REQUEST_TIMEOUT_MS - Date.now();
   if (remainingMs <= 0) {
-    await writePrepared({ outcome: "failed", errorType: "timeout" });
-    return "failed";
+    return await writePrepared({ outcome: "failed", errorType: "timeout" });
   }
   const snapshot = await state.get<RequestSnapshot>(snapshotKey(message));
   if (!snapshot) {
-    await writePrepared({ outcome: "failed", errorType: "snapshot_missing" });
-    return "failed";
+    return await writePrepared({
+      outcome: "failed",
+      errorType: "snapshot_missing",
+    });
   }
   setSpanAttributes({ "app.compaction.input.size": snapshot.inputSize });
   const projection = projectConversationEvents(events, {
@@ -435,16 +455,17 @@ async function prepareSummary(
       },
     );
   } catch (error) {
-    await writePrepared({
+    return await writePrepared({
       outcome: "failed",
       errorType: failureLabel(error, signal),
     });
-    return "failed";
   }
-  await writePrepared({ outcome: "ready", summary });
-  setSpanAttributes({
-    "app.compaction.summary_chars": summary.length,
-    "app.compaction.ready_ms": Date.now() - request.createdAtMs,
-  });
-  return "ready";
+  const outcome = await writePrepared({ outcome: "ready", summary });
+  if (outcome === "ready") {
+    setSpanAttributes({
+      "app.compaction.summary_chars": summary.length,
+      "app.compaction.ready_ms": Date.now() - request.createdAtMs,
+    });
+  }
+  return outcome;
 }

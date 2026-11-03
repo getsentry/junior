@@ -403,4 +403,68 @@ describe("background compaction job", () => {
     expect(model.calls).toHaveLength(0);
     await expect(bookkeeping()).resolves.toEqual([]);
   });
+
+  it("writes nothing when the history is replaced during the summary call", async () => {
+    const events = getConversationEventStore();
+    await events.append(CONVERSATION_ID, [
+      { createdAtMs: 1, data: userMessage("First question.", 1) },
+    ]);
+    const [job] = await completeTurn(
+      liveAgent(getAgentBackgroundCompactionMarkTokens(MODEL_ID)),
+    );
+    const model = replies(["<summary>Late.</summary>"]);
+    const streamFn: StreamFn = async (...args) => {
+      await events.replaceHistory(CONVERSATION_ID, compaction("Foreground."));
+      return await model.streamFn(...args);
+    };
+
+    await processBackgroundCompaction(job!, { streamFn });
+
+    expect(model.calls).toHaveLength(1);
+    await expect(bookkeeping()).resolves.toEqual([]);
+  });
+
+  it("summarizes the replacement history when it keeps older messages", async () => {
+    const events = getConversationEventStore();
+    const [first] = await events.append(CONVERSATION_ID, [
+      { createdAtMs: 1, data: userMessage("Remember the blue option.", 1) },
+    ]);
+    // The replacement keeps the first message, so that message keeps the
+    // seq of its source event, which is older than the replacement event.
+    await events.replaceHistory(CONVERSATION_ID, {
+      createdAtMs: 10,
+      data: {
+        type: "compaction",
+        modelProfile: botConfig.defaultProfile,
+        modelId: MODEL_ID,
+        replacementHistory: [
+          {
+            item: userMessage("Remember the blue option.", 1),
+            sourceEventSeq: first!.seq,
+          },
+        ],
+      },
+    });
+    const [replacement] = await events.loadCurrentHistory(CONVERSATION_ID);
+
+    const [job] = await completeTurn(
+      liveAgent(getAgentBackgroundCompactionMarkTokens(MODEL_ID)),
+    );
+    expect(job).toEqual({
+      conversationId: CONVERSATION_ID,
+      historyVersion: 1,
+      markSeq: replacement!.seq,
+    });
+    const model = replies(["<summary>The person picked blue.</summary>"]);
+    await processBackgroundCompaction(job!, { streamFn: model.streamFn });
+
+    expect(model.calls[0]!.messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "Remember the blue option." }],
+    });
+    await expect(bookkeeping()).resolves.toMatchObject([
+      { type: "compaction_requested" },
+      { type: "compaction_prepared", outcome: "ready" },
+    ]);
+  });
 });
