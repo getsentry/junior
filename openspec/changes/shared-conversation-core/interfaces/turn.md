@@ -208,7 +208,7 @@ function work(conversationId: ConversationId): Promise<void>;
 ```ts
 /**
  * Send one response to each distinct reply target of the turn's records,
- * as replyTo.responses allows (P18). Checks in, then saves a checkpoint
+ * as its kind allows (edges.md). Checks in, then saves a checkpoint
  * that commits the response to history and records the intent with its
  * delivery id and text (fenced, refused under a stop). Posts, then saves
  * the provider message id. Uses replyTargets[target.kind] (edges.md); no
@@ -224,8 +224,8 @@ function deliver(
  * The only way a turn ends, and the only writer of request status.
  * Resumable through "finishing":
  * 1. save "finishing" and the outcome (fenced);
- * 2. send the error message, ending note, child result or declared
- *    outcome, with fixed delivery ids; retry with backoff up to 5 attempts,
+ * 2. send the error message, ending note, child result or the
+ *    Automation result to each outcome (P18), with fixed delivery ids; retry with backoff up to 5 attempts,
  *    or fail at once on a permanent provider error (P33). A child result
  *    first mints its record in the parent, in this transaction (P26);
  * 3. move each taken-in record from open to answered or stopped
@@ -274,8 +274,10 @@ type StopBy =
 ```
 
 `finishTurn` in a stopped child sends its parent a `stopped` result unless
-`stopBy` is `stop_agent`, or the parent's own stop time is after the
-record's `createdAtMs` (a tree stop, P35). The record and the stop must be
+the stop was explicit for the parent: `stopBy` is `stop_agent`, or the
+parent's own stop time is after the record's `createdAtMs` (a tree stop).
+Then the outcome is recorded on the asked record and no turn starts (P35,
+Decided). The record and the stop must be
 stamped on one clock for this to be exact (P44).
 
 ## Examples

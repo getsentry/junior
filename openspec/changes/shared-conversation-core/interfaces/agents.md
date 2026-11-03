@@ -35,8 +35,7 @@ The record it saves:
 - `actor` from `parentTurn` (P15); the parent turn's delegated subject,
   bound again for this record's id, as today until P28 is decided;
 - `onBehalfOf`: the parent turn's starting request id;
-- `replyTo: { kind: "parent", responses: "result", parentConversationId,
-toolCallId }`.
+- `replyTo: { kind: "parent", parentConversationId, toolCallId }`.
 
 `maxAgentDepth` defaults to 1 (Decided): a child can start children, one
 level down.
@@ -104,9 +103,11 @@ message (rule 10), the `sentBy` turn row is in a child of the parent, and
 every `answers` record has that child as `conversationId` and the parent as
 `replyTo.parentConversationId` (P26).
 
-A result never joins a running parent turn. It waits for the event window,
-so sibling results share a turn. It skips the automated-turn check but
-counts toward it (Decided).
+A result is ordinary inbox input to the parent and wakes it like any other
+event (P35, Decided). Like an event, it never joins a running parent turn
+and waits for the event window, so sibling results share a turn. It skips
+the automated-turn check but counts toward it (Decided). After an explicit
+stop, a late result is recorded and never starts a turn.
 
 ## Plugin-Started Agents
 
@@ -123,13 +124,9 @@ function startPluginAgent(args: {
   location: Location;
   instruction: string;
   subject?: UnboundCredentialSubject;
-  replyTo:
-    | { kind: "location"; responses: "each" }
-    | {
-        kind: "automation_run";
-        responses: "declared";
-        automationRunId: string;
-      };
+  /** Automation runs: replyTo is stored, and outcomes get the result (P18). */
+  replyTo: { kind: "location" } | { kind: "stored" };
+  outcomes?: TaskOutcome[];
 }): Promise<{ id: RequestId; created: boolean }>;
 
 /** What a plugin sees (P21). Computed from the record and its turn. */
@@ -189,8 +186,8 @@ Before: P (top-level) runs T for A. C1 runs T1; C2 is idle with `m` waiting
 3. C2's worker finds `m` older than 12:10. It is agent input, so
    `closeInput` ends it with no history. `req_c2` becomes `stopped`.
 4. C1's and G's asked records are `stopped`. Their parents' stop times are
-   after those records were made, so they mint no result records and no
-   parent turn starts (P35).
+   after those records were made: an explicit stop, so they mint no result
+   records and no turn starts (P35, Decided).
 5. P's Slack thread gets the "Stopped." note from the stop command.
 
 ### E4. A child stopped another way

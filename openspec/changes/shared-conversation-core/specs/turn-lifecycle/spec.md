@@ -162,8 +162,8 @@ P4).
 
 ### Requirement: The Response Rule
 
-Junior SHALL send each assistant response when it is produced, as
-`replyTo.responses` allows. A failed turn SHALL send an error message. Every
+Junior SHALL send each assistant response when it is produced, as its reply
+target kind allows. A failed turn SHALL send an error message. Every
 turn SHALL end with something the person can see (Decided). The runtime
 SHALL NOT split, merge or rewrite responses.
 

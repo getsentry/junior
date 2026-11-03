@@ -255,15 +255,15 @@ record (`replyTo`). There is no `kind` field: the rows below differ only in
 these values. The only per-kind code is at the edges: ingress parsing, and
 one delivery adapter per `replyTo.kind` (`interfaces/edges.md`).
 
-| Kind           | Actor from                     | `canAskUser` | `joinRule`    | `whenBusy` | Default `replyTo`            |
-| -------------- | ------------------------------ | ------------ | ------------- | ---------- | ---------------------------- |
-| Slack          | verified message author        | yes          | `now`         | `wait`     | `location`, `each`           |
-| Web            | session user                   | yes          | `now`         | `wait`     | `stored`, `each`             |
-| ACP            | session user                   | yes          | `now`         | `refuse`   | `stored`, `each`             |
-| CLI            | local CLI user                 | yes          | `now`         | `wait`     | `stored`, `each`             |
-| Child agent    | request record from the parent | no           | `now_or_wait` | `wait`     | `parent`, `result`           |
-| Plugin-started | request record, system actor   | no           | `now`         | `wait`     | `location`, `each`           |
-| Automation run | request record, system actor   | no           | `now`         | `wait`     | `automation_run`, `declared` |
+| Kind           | Actor from                     | `canAskUser` | `joinRule`    | `whenBusy` | Default `replyTo`         |
+| -------------- | ------------------------------ | ------------ | ------------- | ---------- | ------------------------- |
+| Slack          | verified message author        | yes          | `now`         | `wait`     | `location`                |
+| Web            | session user                   | yes          | `now`         | `wait`     | `stored`                  |
+| ACP            | session user                   | yes          | `now`         | `refuse`   | `stored`                  |
+| CLI            | local CLI user                 | yes          | `now`         | `wait`     | `stored`                  |
+| Child agent    | request record from the parent | no           | `now_or_wait` | `wait`     | `parent`                  |
+| Plugin-started | request record, system actor   | no           | `now`         | `wait`     | `location`                |
+| Automation run | request record, system actor   | no           | `now`         | `wait`     | `stored`, plus `outcomes` |
 
 `canAskUser` applies only when the turn's actor is a person (P13). Events
 reach any kind. An event runs as the system actor, with access only from its
@@ -384,11 +384,13 @@ stay stable across reviews. Retired numbers say where they went.
   `SET`; `CONVERSATION_WORK_LEASE_TTL_MS = 90_000`); `state/ttl.ts` (7-day
   record expiry); `providers/slack/turn.ts` (post before commit).
 
-### P6. What "answered" means (gap 1)
+### P6. What "answered" means (gap 1) — Decided
 
 - **Decided:** a turn answers the request records it took in. A later input,
-  such as a grandchild result, starts a new turn.
-- **Proposal:** `finishTurn` marks a record `answered` once its deliveries
+  such as a grandchild result, starts a new turn. A request is answered when
+  its posts are sent or failed; later output for it is a follow-up; no
+  follow-up after a stop. Source: #2567 and the planning thread.
+- **Detail:** `finishTurn` marks a record `answered` once its deliveries
   are `sent` or `failed` (P33). A later turn's output for an answered record
   goes as a follow-up. No follow-up for a `stopped` record. A turn started by
   a result for record `r` replies to the reply target of `r.onBehalfOf`.
@@ -520,14 +522,51 @@ stay stable across reviews. Retired numbers say where they went.
   refuses a plugin binding); `credentials/subject.ts` (signs `allowedWhen`,
   `teamId`, `channelId`, `userId`).
 
-### P18. Automation results (Q17)
+### P18. Automation results (Q17) — Decided in part
 
-- **Proposal:** `replyTo.responses` says which responses are posted:
-  `each`, `result` (one child result) or `declared` (only
-  `finishAutomationRun` outcomes; other text is saved only). `deliver`
-  reads the field; it has no branch on kind. A run with no declared outcome
-  fails and shows on the Automation.
-- **Evidence:** `automation-result.ts`.
+- **Decided:** an Automation run is a conversation with no Slack reply
+  target (`replyTo: stored`). Its responses go only to the web and dashboard
+  view, like any conversation without a Slack Location. The run also makes
+  one result, and the Automation's outcomes deliver it. Source: the
+  planning thread.
+- **Today** (`main` at `742ce0a`): a run is a dispatch record with
+  `declaresResult` and up to 5 stored outcomes (`agent-dispatch/store.ts`).
+  Each outcome is `send_message` to a Slack Destination:
+  `current_conversation` is the Automation's Destination, and
+  `task_creator` is a DM with the creator, opened when the outcome is saved
+  (`task-outcomes.ts`, `resolveTaskOutcomes`). The run's final text is never
+  posted (`deliversFinalText`). The run ends with `finishAutomationRun`:
+  `send_message`, `no_action` or `misconfigured`; with no outcomes, the
+  tool offers only the last two. After the run, `finishedRunReply` returns
+  the declared message only for a successful `send_message`, and the Slack
+  turn posts it to each outcome Destination in order
+  (`providers/slack/turn.ts:821`). `runDispatchOutcome` maps
+  `misconfigured` to `blocked` with the reason, a failed run to `failed`,
+  and everything else to `completed`. A failure is never posted to the
+  outcomes; it shows on the Automation. A run that stops with no result gets
+  one reminder (`remindMissingAutomationResult`). If it still declares
+  none, it ends `completed` and posts nothing.
+- **Proposal (the rest):** David: "it's ok for this to vary."
+  - The result comes from the finished run by default: a completed turn's
+    final response is a `send_message` result, and a completed turn with
+    no response is `no_action`. A `finishAutomationRun` call, when made,
+    sets the result instead, so the source can vary. The missing-result
+    reminder goes.
+  - `send_message`: `finishTurn` delivers the message to each outcome, in
+    order, with its own delivery id (P33). The run ends `completed`.
+  - `no_action`: nothing is posted. The reason is saved on the run, which
+    ends `completed`.
+  - `misconfigured`: nothing is posted. The run ends `blocked` with the
+    reason, and the Automation is blocked (plugin-started-agents › A Blocked
+    Run Blocks Its Automation). A turn that ends `blocked` for a missing
+    credential maps to the same.
+  - A `failed` or `stopped` run posts nothing to the outcomes.
+  - The request record carries `outcomes`. The `each | result | declared`
+    field on the reply target goes: each reply target kind already fixes
+    what it gets (`interfaces/edges.md`).
+- **Evidence:** `automation-result.ts` (`finishedRunReply`,
+  `runDispatchOutcome`); `tools/runtime/finish-automation-run.ts`; its
+  TODO asks for the declared result to become the run's output format.
 
 ### P19. Untrusted event authors (Q17) — Decided
 
@@ -584,9 +623,10 @@ The same person's new message ends the paused turn with a note and runs
 next. Others wait. Not open. Source: decision comment 3 on #2567 ("Then
 the new message runs").
 
-### P25. Retired
+### P25. Retired — Decided
 
-Title lookups keep today's rule: a system actor with no user credentials
+Title lookups keep today's rule (Decided, the planning thread): no user
+credentials outside a turn. A title lookup runs as a system actor
 (`plugins/conversation-title-context.ts`).
 
 ### P26. Request ids and provenance
@@ -626,7 +666,7 @@ turn".
   calls `closeInput`: `startTurn` and `finishTurn` in one locked step,
   without the agent. Used for: input older than a stop (P34), input past
   its delivery attempts (P22), records the repair job refused or gave up on
-  (P7), and a result for a stopped tree (P35).
+  (P7), and a late result after an explicit stop (P35).
 - **Why:** `finishTurn` stays the only writer of request status, and every
   input has a recorded end.
 - **Alternatives:** a second writer (`dropRequest`) for records no turn
@@ -705,16 +745,19 @@ turn".
   above passes every stop check at skew 0 and ±3 (`stop_proposed_*`), when
   the stop and the input share a clock. P44 covers stops that do not.
 
-### P35. Results under a tree stop
+### P35. Results after a stop — Decided
 
-- **Proposal:** under a tree stop, a child's `stopped` outcome is recorded
-  on its asked request record. The child mints no result record, so no
-  parent turn starts. A result minted before the stop is older than the
-  stop time, so a closing turn drops it (P34). Comparing the parent's stop
-  time with a record's `createdAtMs` mixes clocks too (P44). This is a
-  proposed reading of the decision "a child stopped by something other than `stopAgent`
-  sends its parent `stopped`": the parent is stopped too, so nobody is there
-  to tell. A child stopped alone (dashboard) still sends the result.
+- **Decided:** an explicit stop stays stopped, everywhere. After a stop of
+  the top-level agent's tree, or a parent's `stopAgent` on its child, a
+  late result is recorded but never starts a turn. With no explicit stop, a
+  child result is ordinary inbox input to the parent and wakes it like any
+  other event. Source: the planning thread.
+- **Detail:** the child's outcome goes on its asked request record, and the
+  child mints no result record. A result already in the parent's inbox is
+  older than the stop, so a closing turn records it (P30, P34). A child
+  stopped alone, for example from the dashboard, is not a stop of the
+  parent: its `stopped` result wakes the parent. Comparing the parent's
+  stop time with a record's `createdAtMs` mixes clocks (P44).
 
 ### P36. Sandbox pass lifecycle (gap from review)
 
@@ -746,7 +789,7 @@ not to one process (`sandbox/egress/session.ts`, module overview;
   turned off (`core.hooksPath=/dev/null`), package scripts turned off, and
   a clean `HOME` and `PATH`. They lower the risk; they do not remove it.
   This needs David: accept the shared-file risk with these mitigations, or
-  reopen sandbox sharing (Decisions Needed 31).
+  reopen sandbox sharing (Decisions Needed 29).
 - **Alternatives:** a new pass per attempt (old P29); a sandbox per actor.
 
 ### P43. SQL lock or Redis lock with a SQL counter (from review) — Decided
@@ -975,6 +1018,10 @@ test-only mutation APIs, so each point needs a real boundary.
 
 - **P27. Bot loops.** Count Slack bot input toward the automated-turn limit.
   No requirement here depends on it.
+- **Input that does not start a turn.** A possible input mode that puts a
+  message or event into history without starting a turn. David: "we MAY
+  need a mode that doesnt force a turn... but i cant think of a reason
+  yet." No design.
 - **P28. Children of a turn with delegated access.** Until decided, keep
   today's behavior: the child's record gets the parent turn's actor and
   delegated subject (`agent-invocations/spawn.ts`, `credentialContext`
@@ -986,45 +1033,45 @@ test-only mutation APIs, so each point needs a real boundary.
 Every item is **Proposed, needs sign-off**.
 
 1. P4: a restart does not count against the retry limit; error limit 5 (Q3).
-2. P6: "answered", follow-ups, and where a result turn replies.
-3. P7: one repair job: resend, stamp, cap, notify; never writes status.
-4. P8: lost only when `running` under an expired lock.
-5. P9: inbound message fields; `join` replaces `delivery`.
-6. P10: five pause reasons.
-7. P11: no-progress rule; `post_retry` has its own limit.
-8. P12: per-turn limits end the turn on the first try.
-9. P13: sign-in only for person actors; system actors end `blocked`.
-10. P14: one conversation per plugin-started agent (Q9).
-11. P16: `TERMINOLOGY.md` first (Q16).
-12. P18: `replyTo.responses` decides what is posted.
-13. P21: plugin view computed from the record.
-14. P22: errors before take-in count delivery attempts.
-15. P23: one kind of request record, minted by core for every input.
-16. P26: core-minted ids, match check, provenance; a result has its own
+2. P7: one repair job: resend, stamp, cap, notify; never writes status.
+3. P8: lost only when `running` under an expired lock.
+4. P9: inbound message fields; `join` replaces `delivery`.
+5. P10: five pause reasons.
+6. P11: no-progress rule; `post_retry` has its own limit.
+7. P12: per-turn limits end the turn on the first try.
+8. P13: sign-in only for person actors; system actors end `blocked`.
+9. P14: one conversation per plugin-started agent (Q9).
+10. P16: `TERMINOLOGY.md` first (Q16).
+11. P18: the result source (final response by default, or
+    `finishAutomationRun`), the result mapping, and `outcomes` on the
+    request record.
+12. P21: plugin view computed from the record.
+13. P22: errors before take-in count delivery attempts.
+14. P23: one kind of request record, minted by core for every input.
+15. P26: core-minted ids, match check, provenance; a result has its own
     record in the parent, and its sender comes from the child's turn row.
-17. P30: closing turns.
-18. P31: `error_retry` pause.
-19. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
+16. P30: closing turns.
+17. P31: `error_retry` pause.
+18. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
     notify; `recordSignIn` raises `inboxSeq`; release, then read the inbox
     record again.
-20. P33: delivery attempts and backoff while finishing; permanent errors
+19. P33: delivery attempts and backoff while finishing; permanent errors
     skip backoff.
-21. P34: a stop judges input `createdAtMs`; joins refuse older input;
+20. P34: a stop judges input `createdAtMs`; joins refuse older input;
     newer taken-in input goes back to the inbox.
-22. P35: no parent turn for results under a tree stop.
-23. P36: sandbox pass lifecycle; the proxy needs a live lock.
-24. P37: Quint model; TLC for safety and liveness; the bound;
+21. P36: sandbox pass lifecycle; the proxy needs a live lock.
+22. P37: Quint model; TLC for safety and liveness; the bound;
     worked examples as traces.
-25. P38: conformance tests on records and visible outcomes, with no new
+23. P38: conformance tests on records and visible outcomes, with no new
     seams.
-26. P39: structural rules S1–S6 as types, import checks and ast-grep.
-27. P40: `verification/` at the repo root; a two-way trace check.
-28. P41: the gate, including guardian evals; green before the cutover
+24. P39: structural rules S1–S6 as types, import checks and ast-grep.
+25. P40: `verification/` at the repo root; a two-way trace check.
+26. P41: the gate, including guardian evals; green before the cutover
     release.
-29. P42: crash points only at existing boundaries.
-30. P45: the `core` owner field, state moved on the first new-core lock
+27. P42: crash points only at existing boundaries.
+28. P45: the `core` owner field, state moved on the first new-core lock
     take, a cutover switch and its rollback.
-31. Needs David: accept the shared-file risk with the P36 mitigations, or
+29. Needs David: accept the shared-file risk with the P36 mitigations, or
     reopen sandbox sharing.
-32. P44, needs David: which clock judges a stop against input from another
+30. P44, needs David: which clock judges a stop against input from another
     source or from core.

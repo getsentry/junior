@@ -104,6 +104,9 @@ type RequestRecord = {
   /** Only with a system actor. Bound and signed by core (P17). */
   credentialSubject?: SignedCredentialSubject;
   replyTo: ReplyTarget;
+  /** Automation runs only (P18). finishTurn delivers the run's one result
+   * to each, in order. */
+  outcomes?: TaskOutcome[];
   /** The record whose turn created this one. Result turns reply there (P6). */
   onBehalfOf?: RequestId;
   /** Result and parent-message records only (P26). The asked records. */
@@ -126,17 +129,16 @@ type RequestRecord = {
   createdAtMs: number;
 };
 
-/** Where a turn's responses go, and which ones (P18). Never inferred. */
+/** Where a turn's responses go. Never inferred. The kind fixes what it
+ * gets (edges.md, P18). */
 type ReplyTarget =
-  | { kind: "location"; responses: "each" } // the conversation's Slack thread
-  | { kind: "stored"; responses: "each" } // web, ACP, CLI: history only
+  | { kind: "location" } // the conversation's Slack thread
+  | { kind: "stored" } // web, ACP, CLI, Automation runs: history only
   | {
       kind: "parent";
-      responses: "result";
       parentConversationId: ConversationId;
       toolCallId: string;
-    }
-  | { kind: "automation_run"; responses: "declared"; automationRunId: string };
+    };
 ```
 
 ## Functions

@@ -11,7 +11,7 @@ data, and per-kind code runs only at two edges.
 | ---------------------------- | --------------------------- | ----------------------------------- |
 | `ConversationPolicy`         | conversation row, at create | `canJoin`, `send`, `pauseForSignIn` |
 | `actor`, `credentialSubject` | request record              | `startTurn`, `credentialsForTurn`   |
-| `replyTo` with `responses`   | request record              | `deliver`, `finishTurn`             |
+| `replyTo`, `outcomes`        | request record              | `deliver`, `finishTurn`             |
 
 ## Edge 1: Ingress
 
@@ -45,9 +45,9 @@ an `Ingress`; they call `startPluginAgent`, which fixes the system actor.
 
 ## Edge 2: Delivery
 
-One plain object per `replyTo.kind`. `deliver` looks it up by kind and
-reads `responses` to decide what to post. It does not branch on the kind of
-conversation.
+One plain object per `replyTo.kind`. `deliver` looks it up by kind. The
+kind fixes which bodies the target gets (P18); there is no separate
+`responses` field. `deliver` does not branch on the kind of conversation.
 
 ```ts
 /**
@@ -71,31 +71,32 @@ const replyTargets: Record<ReplyTarget["kind"], ReplyTargetAdapter>;
 
 /** Pure. Which bodies a reply target gets (P18). */
 function shouldPost(target: ReplyTarget, body: ResponseBody): boolean {
-  if (body.kind === "error" || body.kind === "ending_note")
-    return target.responses !== "result";
-  if (target.responses === "each") return body.kind === "assistant";
-  if (target.responses === "result") return body.kind === "child_result";
-  return body.kind === "declared_outcome"; // "declared"
+  if (target.kind === "parent") return body.kind === "child_result";
+  return body.kind !== "child_result"; // location posts; stored saves
 }
+
+/** One adapter for Automation outcomes. finishTurn calls it once per
+ * outcome, in order, with the run's one result (P18). */
+const outcomeTarget: ReplyTargetAdapter;
 ```
 
 - `location`: Slack post in the thread. `find` reads message metadata.
-- `stored`: no post. History is the delivery. `find` reads history.
+- `stored`: no post. History is the delivery, shown in the web and
+  dashboard view. `find` reads history. An Automation run uses it.
 - `parent`: `send()` to the parent inbox. `find` is the inbox duplicate
-  check.
-- `automation_run`: posts the declared outcomes in order. An error or
-  ending note is saved on the Automation run and is not posted to the
-  outcomes.
+  check. A parent gets errors inside the child result, so it gets no
+  separate error post.
+- Outcomes: a record with `outcomes` gets its one result posted to each
+  outcome Destination once. A `failed` or `stopped` run, `no_action` and
+  `misconfigured` post nothing there; the run shows on the Automation.
 
-`ResponseBody` is `assistant`, `error`, `ending_note`, `child_result` or
-`declared_outcome`. A parent target gets errors inside the child result, so
-`result` targets skip a separate error post. The adapter cannot tell a
-turn to retry, stop or join.
+`ResponseBody` is `assistant`, `error`, `ending_note` or `child_result`.
+The adapter cannot tell a turn to retry, stop or join.
 
 ## The CLI
 
 `pnpm cli -- chat` uses core person ingress with the local CLI user and
-`replyTo: { kind: "stored", responses: "each" }`. It calls `createRequest`,
+`replyTo: { kind: "stored" }`. It calls `createRequest`,
 then runs `work()` in the same process with the local store, until the
 conversation has no runnable work. The terminal prints new history items.
 Same dedupe, batching and join rules as other kinds (Decided).
@@ -104,15 +105,17 @@ Same dedupe, batching and join rules as other kinds (Decided).
 
 ### E1. One Automation run, two outcomes, second post fails
 
-Before: run R. `replyTo: automation_run, declared`. Outcomes:
-`current_conversation` then `task_creator`.
+Before: run R. `replyTo: stored`. Outcomes: `current_conversation` then
+`task_creator`.
 
-1. The agent writes a draft (assistant text). `shouldPost` is false: it is
-   saved only.
-2. The agent calls `finishAutomationRun(send_message, "Report")`.
-3. `deliver` saves intent `d1` with the text and posts it. Saves `sent`.
+1. The agent writes a draft (assistant text). It is saved to history and
+   shows in the web view. Nothing is posted to Slack.
+2. The run ends with the final response "Report", or with
+   `finishAutomationRun(send_message, "Report")`. That is the result (P18).
+3. `finishTurn` saves intent `d1` with the text and posts it to the
+   Automation's Destination. Saves `sent`.
 4. It saves `d2` (creator DM) with the text. The post fails, retryable.
-   The turn pauses `post_retry`.
+   The turn stays `finishing` and backs off (P33).
 5. The next attempt skips `d1` (`sent`), calls `find(d2)`: not found. It
    posts `d2`'s saved text.
 
@@ -137,7 +140,7 @@ conversations:
 |             | Web                                        | Slack                                 |
 | ----------- | ------------------------------------------ | ------------------------------------- |
 | policy      | `canAskUser`, `joinRule: now`, `wait`      | `canAskUser`, `joinRule: now`, `wait` |
-| record      | person, `stored`, `each`                   | person, `location`, `each`            |
+| record      | person, `stored`                           | person, `location`                    |
 | failed turn | error message saved; message marked failed | error message posted in the thread    |
 
 Both run the same `work()` and `finishTurn`. Only `replyTargets[kind]`

@@ -56,28 +56,55 @@ P21).
 - **WHEN** the turn already has a sent delivery
 - **THEN** the run is `completed` and the agent does not run again.
 
-### Requirement: An Automation Run Says How It Ends
+### Requirement: An Automation Run Makes One Result
 
-An Automation run SHALL end with `finishAutomationRun`: `send_message`,
-`no_action` or `misconfigured`. Its reply target SHALL post only declared
-outcomes; other assistant text SHALL be saved only (Proposed, needs
-sign-off: P18). `send_message` and `no_action` SHALL end `completed`;
-`misconfigured` SHALL end `blocked`.
+An Automation run SHALL be a conversation with no Slack reply target. Its
+responses SHALL go only to the web and dashboard view. The run SHALL make
+one result, which its outcomes deliver (Decided: P18). A `failed` or
+`stopped` run SHALL post nothing to the outcomes.
 
-#### Scenario: No declared outcome
+#### Scenario: Draft stays in the web view
 
-- **WHEN** the model stops without the call
-- **THEN** the runtime adds one reminder, then the run fails and the failure
-  shows on the Automation.
+- **WHEN** the run writes a draft before its result
+- **THEN** the draft shows only in the web view and nothing is posted.
+
+### Requirement: Where The Result Comes From
+
+The result SHALL come from the finished run: its final response, or a
+`finishAutomationRun` call when the run makes one (Proposed, needs
+sign-off: P18).
+
+#### Scenario: Result from the final response
+
+- **WHEN** the run completes with a final response and no
+  `finishAutomationRun` call
+- **THEN** that response is the result, and each outcome gets it.
+
+#### Scenario: Result from the tool call
+
+- **WHEN** the run calls `finishAutomationRun(send_message, text)`
+- **THEN** `text` is the result.
+
+### Requirement: What A Result Ends As
+
+`send_message` and `no_action` SHALL end the run `completed`.
+`misconfigured` SHALL end it `blocked`.
+
+#### Scenario: No action
+
+- **WHEN** the result is `no_action`
+- **THEN** nothing is posted, the reason is saved, and the run is
+  `completed`.
 
 #### Scenario: Misconfigured
 
 - **WHEN** the result is `misconfigured`
-- **THEN** the run is `blocked`.
+- **THEN** nothing is posted and the run is `blocked`.
 
 ### Requirement: Outcomes
 
-A run SHALL post only to its stored outcomes, in order, once each.
+A run SHALL post its result only to its stored outcomes, in order, once
+each.
 `current_conversation` SHALL be the Automation's Location. `task_creator`
 SHALL be the creator's DM. An empty list SHALL post nothing. A failure SHALL
 NOT be posted to the outcomes.

@@ -174,7 +174,7 @@ Needs: P4, P8, P12, P22, P30, P31, P33.
 
 ### 9. Stop
 
-Needs: P34, P35, P44.
+Needs: P34, P44.
 
 - [ ] 9.1 `stop()` saves the stop input's `createdAtMs` as the stop time on
       the conversation and every conversation below it, and notifies each
@@ -190,7 +190,9 @@ Needs: P34, P35, P44.
 - Verify: I8, I10, I11 (with joins) and I14; L1 under stop; turn-stop ›
   Stop races a turn start, Turn started after the click, Older input tries
   to join, Newer input joined before the stop, Stop during a pause; traces
-  turn E5, agents E3 and E4, and the `stop_*` traces.
+  turn E5, agents E3 and E4, and the `stop_*` traces; turn-stop › Late
+  result after a tree stop, Late result after stopAgent, Result in flight
+  at the stop, Dashboard stop of a child.
 
 ### 10. Sign-in
 
@@ -204,8 +206,6 @@ Needs: P13.
 
 ### 11. Child agents and results
 
-Needs: P6.
-
 - [ ] 11.1 `askChild` only sends. Child turns run in `work()`. `finishTurn`
       and `messageParent` mint result records in the parent, in the child's
       transaction.
@@ -214,7 +214,8 @@ Needs: P6.
 - [ ] 11.3 Test: busy child (agents E1), grandchild result (agents E2) and
       a forged result (agents E5).
 - Verify: I5 for records, I8 and I9; L1 for children; agent-tree › Same
-  actor, Grandchild result after the child's turn ended, Forged result;
+  actor, Grandchild result after the child's turn ended, Forged result,
+  Result wakes an idle parent, Two siblings finish together;
   turn-access › Grandchild result after another person messaged the child;
   traces agents E1, E2, E5 and edges E2; the guardian cases.
 
@@ -222,15 +223,18 @@ Needs: P6.
 
 Needs: P14, P18, P21.
 
-- [ ] 12.1 Plugin-started runs use `work()`. `deliver` reads
-      `replyTo.responses`. Plugins read the computed view.
-- [ ] 12.2 Test: an Automation run through `finishTurn`.
-- Verify: L1 for plugin-started runs; plugin-started-agents › No declared
-  outcome, Result already sent; trace edges E1.
+- [ ] 12.1 Plugin-started runs use `work()`. An Automation run has
+      `replyTo: stored` and `outcomes` on its record; `finishTurn` delivers
+      its one result to each outcome (P18). Plugins read the computed view.
+- [ ] 12.2 Test: an Automation run through `finishTurn` (edges E1).
+- Verify: L1 for plugin-started runs; plugin-started-agents › Draft stays
+  in the web view, Result from the final response, Result from the tool
+  call, No action, Misconfigured, Empty outcomes, Result already sent;
+  trace edges E1.
 
 ### 13. Credentials and the sandbox pass
 
-Needs: P36, and the shared-file decision (Decisions Needed 31).
+Needs: P36, and the shared-file decision (Decisions Needed 29).
 
 - [ ] 13.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
       run). Check at every start and resume.

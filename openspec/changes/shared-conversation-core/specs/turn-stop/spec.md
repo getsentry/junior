@@ -108,28 +108,31 @@ Slack stop, dashboard stop, ACP stop and thread opt-out (Decided). Each
 conversation's `finishTurn` and closing turns SHALL mark its records
 `stopped`.
 
-#### Scenario: Late child result
+#### Scenario: Late result after a tree stop
 
 - **WHEN** a child turn ends after a tree stop
 - **THEN** its asked record is `stopped`, no result record is minted, and
-  no parent turn starts (Proposed, needs sign-off: P35).
+  no turn starts (Decided: P35).
 
 #### Scenario: Result in flight at the stop
 
 - **WHEN** a result minted before a tree stop reaches the parent after it
-- **THEN** a closing turn drops it and no parent turn starts.
+- **THEN** a closing turn records it and no turn starts.
 
 ### Requirement: Stopping A Child
 
-A child stopped by `stopAgent` SHALL send no result (Decided). A child
-stopped any other way SHALL send its parent a `stopped` result (Decided),
-unless the parent is stopped too (Proposed, needs sign-off: P35). Stopping a
-child SHALL stop its own children and cancel its Watches.
+An explicit stop SHALL stay stopped: after a tree stop or a parent's
+`stopAgent`, a late result SHALL be recorded and SHALL never start a turn
+(Decided: P35). A child stopped any other way SHALL send its parent a
+`stopped` result, which wakes the parent like any other event (Decided).
+Stopping a child SHALL stop its own children and cancel its Watches.
 
-#### Scenario: stopAgent
+#### Scenario: Late result after stopAgent
 
-- **WHEN** the parent stops a child with `stopAgent`
-- **THEN** the parent gets no result.
+- **WHEN** the parent stops a child with `stopAgent` and the child's turn
+  ends later
+- **THEN** the outcome is recorded on the asked record, the parent gets no
+  result, and no turn starts.
 
 #### Scenario: Dashboard stop of a child
 

@@ -137,7 +137,7 @@ the parent as its reply target. Message fields SHALL NOT decide it
 `finishTurn` SHALL mark a record `answered` once its deliveries are sent or
 failed. A later turn's output for it SHALL go as a follow-up, to the reply
 target of the record it was made for. No follow-up SHALL go for a `stopped`
-record (Proposed, needs sign-off: P6).
+record (Decided: P6).
 
 #### Scenario: Grandchild result after the child's turn ended
 
@@ -149,10 +149,18 @@ record (Proposed, needs sign-off: P6).
 
 ### Requirement: Result Turns In The Parent
 
-A result SHALL start a new parent turn after the event window, so sibling
-results share a turn. Results for different actors SHALL NOT share a turn. A
-result SHALL never join a running parent turn. Results SHALL skip the
-automated-turn check but count toward it (Decided).
+A child result with no explicit stop SHALL be ordinary inbox input to the
+parent and wake it like any other event (Decided: P35). Like an event, it
+SHALL wait for the event window, so sibling results share a turn. Results
+for different actors SHALL NOT share a turn. A result SHALL never join a
+running parent turn. Results SHALL skip the automated-turn check but count
+toward it (Decided).
+
+#### Scenario: Result wakes an idle parent
+
+- **WHEN** a child result reaches an idle parent that is not stopped
+- **THEN** it starts a parent turn after the event window, like any other
+  event.
 
 #### Scenario: Two siblings finish together
 
