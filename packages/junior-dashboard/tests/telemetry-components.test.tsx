@@ -361,34 +361,36 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("5.0s · 5kb");
   });
 
-  it("exposes pressed state for transcript view controls", () => {
+  it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <ConversationHeader
-        archive={{
-          archived: false,
-          disabled: false,
-          error: false,
-          onClick: () => {},
-          pending: false,
-        }}
-        conversationId="conversation-1"
-        detailsOpen={false}
-        onDetailsClick={() => {}}
-        live={false}
-        onSearchChange={() => {}}
-        onViewChange={() => {}}
-        privacy={null}
-        search=""
-        title="Header QA"
-        view="raw"
-      />,
+      <MemoryRouter>
+        <ConversationHeader
+          archive={{
+            archived: false,
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            pending: false,
+          }}
+          conversationId="conversation-1"
+          detailsOpen={false}
+          onDetailsClick={() => {}}
+          live={false}
+          onSearchChange={() => {}}
+          onViewChange={() => {}}
+          privacy={null}
+          search=""
+          title="Header QA"
+          view="raw"
+        />
+      </MemoryRouter>,
     );
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Conversation"');
-    expect(html).toContain('aria-label="Event log"');
+    expect(html).toContain('aria-label="Close event log"');
     expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
-    expect(html).toContain('aria-label="Archive"');
+    expect(html).toContain('aria-label="Conversation menu"');
+    // Archive and the view switch wait in the closed menu.
+    expect(html).not.toContain('aria-label="Archive"');
   });
 
   it("shows responding state independently from live transcript following", () => {

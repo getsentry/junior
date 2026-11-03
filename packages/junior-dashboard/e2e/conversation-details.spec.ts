@@ -48,9 +48,7 @@ test("opens conversation details beside the chat", async ({
   });
   // Wide viewports open details beside the chat by default.
   await expect(details).toBeVisible();
-  await detailsButton.click();
-  await expect(details).toBeHidden();
-
+  // Run facts live in details only, not in the title bar.
   const costMetric = page
     .getByRole("main")
     .locator('span[tabindex="0"]')
@@ -67,10 +65,14 @@ test("opens conversation details beside the chat", async ({
   await expect(costMetric).toHaveAttribute("aria-describedby", tooltipId!);
   await page.keyboard.press("Escape");
   await expect(costTooltip).toBeHidden();
+  await expect(details).toBeVisible();
 
   await expect(
-    page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
-  ).toBeVisible();
+    details.getByRole("link", { name: /getsentry\/payments#77/ }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+  await detailsButton.click();
+  await expect(details).toBeHidden();
+  await expect(costMetric).toHaveCount(0);
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: dashboard.baseURL,
   });
@@ -81,15 +83,6 @@ test("opens conversation details beside the chat", async ({
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Hide search" }).click();
-  await detailsButton.click();
-  await expect(details).toBeHidden();
-  await detailsButton.click();
-  await expect(
-    details.getByRole("tabpanel", { name: "Summary", exact: true }),
-  ).toBeVisible();
-  await expect(
-    details.getByRole("link", { name: /getsentry\/payments#77/ }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
   await screenshot(page, "conversation-share-details");
   // Clipboard denial must show a failure and allow another attempt.
   await page.evaluate(() => {
@@ -99,47 +92,36 @@ test("opens conversation details beside the chat", async ({
         Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
     });
   });
-  await details.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(details.getByRole("status")).toContainText(
-    "Could not copy the link",
-  );
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Could not copy the link" }),
+  ).toBeAttached();
   await page.evaluate(() =>
     Reflect.deleteProperty(navigator.clipboard, "writeText"),
   );
-  await details.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(
-    details.getByRole("button", { name: "Link copied" }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy failed — retry" }).click();
+  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );
 
-  const summaryTab = details.getByRole("tab", { name: "Summary", exact: true });
-  const memoriesTab = details.getByRole("tab", { name: "Memories" });
-  await summaryTab.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(memoriesTab).toBeFocused();
-  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
-  await expect(
-    details.getByRole("tabpanel", { name: "Memories" }),
-  ).toContainText("Use pnpm for repository commands.");
+  // Memories stay collapsed until the reader asks for them.
+  const memories = details.getByText("Use pnpm for repository commands.");
+  await expect(memories).toBeHidden();
+  await details.getByRole("button", { name: "Show memories" }).click();
+  await expect(memories).toBeVisible();
   await page.setViewportSize({ width: 1024, height: 900 });
   const sheet = page.getByRole("dialog", { name: "Conversation details" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("tab", { name: "Memories" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(
+    sheet.getByRole("link", { name: /getsentry\/payments#77/ }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(sheet).toBeHidden();
   await expect(details).toBeVisible();
   await expect(
     details.getByRole("button", { name: "Close conversation details" }),
   ).toBeFocused();
-  await details.getByRole("tab", { name: "Memories" }).focus();
-  await page.keyboard.press("Home");
-  await expect(summaryTab).toBeFocused();
-  await expect(summaryTab).toHaveAttribute("aria-selected", "true");
   // The pointer still rests on the header Share icon. Move it off so Escape
   // closes the panel, not the icon tooltip.
   await page.mouse.move(800, 600);
