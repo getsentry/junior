@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.273.0
+
+### New Features ✨
+
+- (dashboard) Move desktop primary navigation into an icon rail by @thomasjiangcy with @sentry-junior in [#2583](https://github.com/getsentry/junior/pull/2583)
+- (mcp) Add scoped read tools for conversations, review items, and automations by @dcramer with @sentry-junior in [#2573](https://github.com/getsentry/junior/pull/2573)
+- (memory) Rank automatic recall with a reranker by @thomasjiangcy with @sentry-junior in [#2585](https://github.com/getsentry/junior/pull/2585)
+- (telemetry) Record AI Gateway request phases on chat spans by @sentry-junior in [#2589](https://github.com/getsentry/junior/pull/2589)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Hide agent history a fork child inherited from its parent by @sentry-junior in [#2582](https://github.com/getsentry/junior/pull/2582)
+- Hide items assigned only to others from the inbox by @sentry-junior in [#2581](https://github.com/getsentry/junior/pull/2581)
+- Show author photos and names on transcript messages by @BYK with @sentry-junior in [#2557](https://github.com/getsentry/junior/pull/2557)
+
+#### Other
+
+- (codemode) Say how scripts reach catalog and MCP tools by @thomasjiangcy with @sentry-junior in [#2578](https://github.com/getsentry/junior/pull/2578)
+- (gateway) Send the conversation ID as the AI Gateway session ID by @thomasjiangcy with @sentry-junior in [#2590](https://github.com/getsentry/junior/pull/2590)
+- (github) Act on feedback in pull request approvals by @dcramer with @sentry-junior in [#2577](https://github.com/getsentry/junior/pull/2577)
+- (guardian) Count one model tool call as one rejection attempt by @dcramer with @sentry-junior in [#2553](https://github.com/getsentry/junior/pull/2553)
+- (slack) Keep each Turn to a single Actor by @dcramer with @sentry-junior in [#2574](https://github.com/getsentry/junior/pull/2574)
+
+### Internal Changes 🔧
+
+#### Memory
+
+- Start lexical search while the query embeds by @thomasjiangcy with @sentry-junior in [#2579](https://github.com/getsentry/junior/pull/2579)
+- Archive expired memories in the heartbeat by @thomasjiangcy with @sentry-junior in [#2580](https://github.com/getsentry/junior/pull/2580)
+
+#### Sandbox
+
+- Skip the reuse probe right after resume or create by @thomasjiangcy with @sentry-junior in [#2587](https://github.com/getsentry/junior/pull/2587)
+- Prepare a resumed sandbox while its network policy applies by @thomasjiangcy with @sentry-junior in [#2591](https://github.com/getsentry/junior/pull/2591)
+- Read repository instructions with one command by @thomasjiangcy with @sentry-junior in [#2592](https://github.com/getsentry/junior/pull/2592)
+
+#### Other
+
+- (dashboard) Build the nav rail on the shadcn Sidebar by @thomasjiangcy with @sentry-junior in [#2586](https://github.com/getsentry/junior/pull/2586)
+- (github) Prepare sandbox Git in one command by @thomasjiangcy with @sentry-junior in [#2588](https://github.com/getsentry/junior/pull/2588)
+
 ## 0.272.0
 
 ### New Features ✨
