@@ -105,8 +105,8 @@ function RailNavItem(props: { item: DashboardHeaderNavItem }) {
 }
 
 /**
- * Desktop primary navigation as a shadcn icon sidebar. Mobile keeps the top
- * bar and navigation sheet in `DashboardHeader`.
+ * Desktop primary navigation as a shadcn icon sidebar on short windows. Tall
+ * desktop windows and mobile use `DashboardHeader`.
  */
 export function NavRail(props: {
   navItems: DashboardHeaderNavItem[];
@@ -114,43 +114,46 @@ export function NavRail(props: {
   workspaceActive: boolean;
 }) {
   return (
-    <Sidebar
-      className="border-dashboard-border-strong pt-[env(safe-area-inset-top)]"
-      collapsible="icon"
-    >
-      <SidebarHeader className="items-center pt-3 pb-4">
-        <Link
-          aria-label={`${getDashboardAgentName()} home`}
-          className="grid place-items-center text-inherit no-underline"
-          to="/"
-        >
-          <JuniorLogo />
-        </Link>
-      </SidebarHeader>
-      {/* Stock icon mode hides overflow; the rail stays collapsed, so let
+    // Tall windows use the top bar in `DashboardHeader` instead.
+    <div className="contents md:tall:hidden">
+      <Sidebar
+        className="border-dashboard-border-strong pt-[env(safe-area-inset-top)]"
+        collapsible="icon"
+      >
+        <SidebarHeader className="items-center pt-3 pb-4">
+          <Link
+            aria-label={`${getDashboardAgentName()} home`}
+            className="grid place-items-center text-inherit no-underline"
+            to="/"
+          >
+            <JuniorLogo />
+          </Link>
+        </SidebarHeader>
+        {/* Stock icon mode hides overflow; the rail stays collapsed, so let
           plugin pages scroll on short windows. */}
-      <SidebarContent className="group-data-[collapsible=icon]:overflow-auto">
-        <SidebarGroup className="items-center py-0">
-          <nav aria-label="Primary" className="w-full">
-            <SidebarMenu className="items-center gap-1.5">
-              <RailItem
-                active={props.workspaceActive}
-                icon={MessagesSquare}
-                label="Conversations"
-                to="/"
-              />
-              {props.navItems.map((item) => (
-                <RailNavItem item={item} key={item.key} />
-              ))}
-            </SidebarMenu>
-          </nav>
-        </SidebarGroup>
-      </SidebarContent>
-      {props.profile ? (
-        <SidebarFooter className="items-center pb-3">
-          {props.profile}
-        </SidebarFooter>
-      ) : null}
-    </Sidebar>
+        <SidebarContent className="group-data-[collapsible=icon]:overflow-auto">
+          <SidebarGroup className="items-center py-0">
+            <nav aria-label="Primary" className="w-full">
+              <SidebarMenu className="items-center gap-1.5">
+                <RailItem
+                  active={props.workspaceActive}
+                  icon={MessagesSquare}
+                  label="Conversations"
+                  to="/"
+                />
+                {props.navItems.map((item) => (
+                  <RailNavItem item={item} key={item.key} />
+                ))}
+              </SidebarMenu>
+            </nav>
+          </SidebarGroup>
+        </SidebarContent>
+        {props.profile ? (
+          <SidebarFooter className="items-center pb-3">
+            {props.profile}
+          </SidebarFooter>
+        ) : null}
+      </Sidebar>
+    </div>
   );
 }

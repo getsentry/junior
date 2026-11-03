@@ -294,6 +294,10 @@
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
+/* Desktop windows tall enough to afford the top bar. Shorter windows, such as
+   most laptops, keep the nav rail so conversations get the height. */
+@custom-variant tall (@media (min-height: 62.5rem));
+
 @layer base {
   :root {
     color-scheme: var(--dashboard-color-scheme, dark);
