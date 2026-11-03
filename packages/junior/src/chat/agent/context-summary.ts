@@ -64,7 +64,7 @@ export interface AgentModelRequest {
 type SummaryFailure = "empty" | "max_tokens" | "missing_summary" | "tool_call";
 
 /** Raised when the model returns no usable summary after one nudge. */
-class ContextSummaryError extends Error {
+export class ContextSummaryError extends Error {
   readonly failure: SummaryFailure;
 
   constructor(failure: SummaryFailure) {

@@ -12,6 +12,8 @@ export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";
 export const JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE =
   "/api/internal/workspace/snapshots";
+export const JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE =
+  "/api/internal/context/compactions";
 export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =
   "api/internal/agent/continue.ts";
 

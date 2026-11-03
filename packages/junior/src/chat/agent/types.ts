@@ -34,6 +34,7 @@ import type {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -225,6 +226,8 @@ export type AgentEvent =
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
   attachmentStorage?: AttachmentStorage;
+  /** Queue for background compaction jobs. Without it, Turns request none. */
+  backgroundCompactionQueue?: BackgroundCompactionQueue;
   configuration?: Record<string, unknown>;
   /** Queue of the app, for tools that wake other Conversations. */
   conversationWorkQueue?: ConversationWorkQueue;

@@ -314,7 +314,7 @@ Attributes on the `agent.context_compaction` span:
 
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
-| `app.compaction.mode`                 | string | `blocking`, `active`, or `handoff`            |
+| `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
 | `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated history tokens after compaction     |
@@ -355,6 +355,32 @@ result.
   `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
 - A `handoff` span has only `app.compaction.mode`. A failed handoff or an
   input above the limit sets `error.type`.
+
+### Background Compaction
+
+A Turn whose last model request had a provider-reported input at or above
+the mark writes `compaction_requested` and logs
+`context_compaction.background.requested`. The mark is 70% of the compaction
+threshold. A queue job then writes `compaction_prepared`. The job has its own
+`agent.context_compaction` span with `app.compaction.mode:background`. It runs
+in a new trace and adds no `app.turn.compaction_wait_ms`.
+
+| Attribute                        | Type   | Meaning                                          |
+| -------------------------------- | ------ | ------------------------------------------------ |
+| `app.compaction.outcome`         | string | `ready`, `failed`, `stale`, or `duplicate`       |
+| `app.compaction.mark_seq`        | int    | last event seq that the summary covers           |
+| `app.compaction.history_version` | int    | History version of the request                   |
+| `app.compaction.input.size`      | int    | provider-reported input of the marked request    |
+| `app.compaction.queue_wait_ms`   | int    | time from queue send to job start                |
+| `app.compaction.ready_ms`        | int    | time from request to ready summary               |
+| `app.compaction.summary_chars`   | int    | summary length in characters                     |
+| `error.type`                     | string | failure label, also stored on the `failed` event |
+
+- `stale`: the History was replaced before the job ran. `duplicate`: the
+  request already has a result. Both write nothing.
+- Failure labels: `timeout`, `snapshot_missing`, `provider_<kind>`,
+  `summary_error`, and the summary failures `empty`, `max_tokens`,
+  `missing_summary`, `tool_call`.
 
 Summary call latency and cache reads by mode. In queries, a numeric `app.*`
 attribute needs the `tags[<key>,number]` form.

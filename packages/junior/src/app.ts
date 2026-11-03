@@ -72,6 +72,7 @@ import {
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -100,6 +101,17 @@ import {
   registerVercelWorkspaceSnapshotJobDevConsumer,
   workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
+import {
+  backgroundCompactionQueueConsumer,
+  createVercelBackgroundCompactionCallback,
+  registerVercelBackgroundCompactionDevConsumer,
+} from "@/chat/services/background-compaction-callback";
+import { processBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  vercelBackgroundCompactionQueue,
+  type BackgroundCompactionMessage,
+  type BackgroundCompactionQueue,
+} from "@/chat/services/background-compaction-queue";
 import {
   getQueueProvider,
   type QueueConsumer,
@@ -235,6 +247,13 @@ export interface JuniorAppOptions extends BotModelConfig {
   pluginTaskQueue?: (
     consume: (message: PluginTaskQueueMessage) => Promise<void>,
   ) => { send(message: PluginTaskQueueMessage): Promise<void> };
+  /**
+   * Replace the Vercel Queue transport for background compaction jobs, for
+   * example with an in-process queue. `consume` runs one job.
+   */
+  backgroundCompactionQueue?: (
+    consume: (message: BackgroundCompactionMessage) => Promise<void>,
+  ) => BackgroundCompactionQueue;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -588,9 +607,14 @@ export async function createApp(
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const backgroundCompactionQueue =
+    options?.backgroundCompactionQueue?.((message) =>
+      processBackgroundCompaction(message),
+    ) ?? vercelBackgroundCompactionQueue;
   const attachmentStorage = getAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
+    backgroundCompactionQueue,
     bindMessageAgent: (request) =>
       bindMessageAgent(request, { queue: conversationWorkQueue }),
     bindSpawnAgent: (request) =>
@@ -808,6 +832,7 @@ export async function createApp(
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
+    registerVercelBackgroundCompactionDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -825,6 +850,13 @@ export async function createApp(
   app.post(JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE, (c) => {
     workspaceSnapshotJobPOST ??= createVercelWorkspaceSnapshotJobCallback();
     return workspaceSnapshotJobPOST(c.req.raw);
+  });
+  let backgroundCompactionPOST:
+    | ReturnType<typeof createVercelBackgroundCompactionCallback>
+    | undefined;
+  app.post(JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE, (c) => {
+    backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
+    return backgroundCompactionPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -852,6 +884,7 @@ export async function createApp(
           conversationWorkQueueConsumer(getConversationWorkOptions()),
           pluginTaskQueueConsumer(),
           workspaceSnapshotJobQueueConsumer(),
+          backgroundCompactionQueueConsumer(),
         ],
         backgroundWork,
       ),
