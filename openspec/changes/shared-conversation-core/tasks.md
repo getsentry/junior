@@ -7,16 +7,22 @@
      rolls back alone. #2556 is not a step: it is a reviewed PR for a live
      bug and lands on its own, ungated. Step 1 is retired.
   2. Build: steps 3 to 13 build the new core beside today's code. It is not
-     wired to production traffic: entry-point wiring and the load
-     measurement wait for step 15. The conformance tests and the gate run
+     wired to production traffic: entry-point wiring and the check-in
+     metric come in step 15. The conformance tests and the gate run
      against it. A build step changes no production behavior, so its
      rollback is a revert.
   3. Cut over and delete: step 14 teaches today's code to read the new
      core, step 15 routes every kind through `work()`, step 16 deletes
      today's workers and records, and step 17 deletes this plan.
 - Rolling deploy: old and new workers run at the same time. Readers ship one
-  release before writers. A "writer" step starts only after its reader step
-  is fully deployed. P45 says how the cutover stays safe.
+  release before writers. A writer's new path turns itself on when the
+  deploy record shows no live deployment without its reader (P45). P45 says
+  how the cutover stays safe.
+- No manual intervention (Decided: P47): every release, revert and
+  migration runs through normal CI/CD with zero downtime. No step has an
+  operator flag, a count to watch or a command to run once. A release that
+  needs earlier state to drain carries a guard migration that fails, so
+  CI/CD stops it.
 - At the start of each step, check this plan against current `main`.
 - Each step adds or extends an integration test through the real worker
   (`policies/testing.md`). Fake only Slack and LLMs.
@@ -37,13 +43,14 @@
 
 ### G. Verification gate
 
-Needs: P46 (G.1f models the choice).
-
 - [ ] G.0 Amend `policies/testing.md` to allow one injected `faults` port:
       passed through existing dependency wiring, optional and a no-op when
       absent, never passed in production, with no global, singleton or
       test-only module API. Reason: decided for the verification gate
       (P42).
+- [ ] G.0b Amend `policies/serverless-background-work.md` with one rule:
+      rollouts and migrations must not require manual intervention and
+      must work with CI/CD. Reason: decided as P47.
 - [x] G.1 The TLA+ model is in `packages/junior/verification/` (P37, P40):
       `WorkerLock.tla`, `StopClock.tla`, `Cutover.tla`, `cfg/`,
       `checks.txt` and `check.sh`. `check.sh` runs every check in
@@ -56,10 +63,13 @@ Needs: P46 (G.1f models the choice).
 - [ ] G.1e Model sandbox process tags: I13.
 - [ ] G.1f Grow the bound toward the P37 target bound. In `Cutover.tla`,
       model the inbox move, a parent with a child, and `o1` with no fence
-      (`OldOk(w) == w = "o1" \/ ~OLD_FENCED \/ lease = w`), plus the P45
-      deploy gate: once the switch is on, `o1` cannot take the lease or
-      keep running. Add I15 (P45): a moved turn or record has the verified
-      old actor and subject, or it is closed. Model the P46 choice.
+      (`OldOk(w) == w = "o1" \/ ~OLD_FENCED \/ lease = w`). Replace the
+      switch flips with deploys and reverts that change the deploy record,
+      and the P45 gate: while moves can happen, `o1` cannot take the lease
+      or keep running. Model the revert and the automatic move back. Add
+      I15 (P45): a moved turn or record has the verified old actor and
+      subject, or it is closed. Model the P46 drop with the repair job as
+      the backstop.
 - [ ] G.1g Run `check.sh` in CI when `packages/junior/verification/**`
       changes, and once a week. The larger G.1f bound runs only in the
       weekly job. Every worked example is an `ex_*` check.
@@ -106,8 +116,6 @@ Needs: P46 (G.1f models the choice).
 
 ### 3. SQL worker lock, lock version and wake time
 
-Needs: P46.
-
 - [ ] 3.1 Add lock token, expiry and version to the conversation row. Take
       the lock with the compare-and-set. Check in and release with the
       token and version. All lock times use database `now()`.
@@ -117,14 +125,21 @@ Needs: P46.
       release while the turn is `running`.
 - [ ] 3.3 `recordSignIn` raises `inboxSeq` and sets `wakeAtMs` to now
       before it notifies.
-- [ ] 3.4 A notify that finds a live lock, as P46 decides.
-- [ ] 3.5 Test: a slow worker after a takeover cannot check in (turn E3); a
+- [ ] 3.4 A notify that finds a live lock is dropped; the repair job is the
+      backstop (P46).
+- [ ] 3.5 Each deployment writes its deploy record (P45): deployment id,
+      release, capabilities, `firstSeenAtMs` on its first request, and
+      `lastSeenAtMs` from worker check-ins, all with database `now()`. It
+      changes no user-visible behavior. From here on, every deployment,
+      including a revert, is visible to the cutover gate.
+- [ ] 3.6 Test: a slow worker after a takeover cannot check in (turn E3); a
       message while the lock is held (turn E7); a sign-in while the lock is
       held.
 - Verify: I3 for lock take and check-in; L3 without repair fairness; S5 for
   lock writes; turn-lifecycle › Slow worker save; conversation-inbox ›
   Message while the lock is held; traces turn E3, E7, access E2 and
-  `wakeLive_design l3_pausedResumedNoRepair`; P46 as decided.
+  `wakeLive_design l3_pausedResumedNoRepair`; L3 with the repair job after
+  a lost notify (P46).
 
 ### 4. Turn rows
 
@@ -265,40 +280,40 @@ Needs: P46.
 
 ### 14. Cutover reader release
 
-Needs: P45.
-
 - [ ] 14.1 Add the `core` owner field to the conversation row (P45). The
       root conversation decides it, and a child inherits it. Today's
-      workers read `core` and the cutover switch, and refuse a
-      conversation that the new core owns. They read `core` without taking
-      a pinned lease. Only when the switch is off, they move an idle
-      new-core conversation back to today's workers and replace the pin
-      (the rollback path; `Cutover.tla:127,144`).
+      workers read `core` and refuse a conversation that the new core
+      owns. They read `core` without taking a pinned lease.
 - [ ] 14.2 Today's turn cursor writes check the Redis lease token, not
       only the per-turn mutation lock (P45, C3).
 - [ ] 14.3 Readers (`listAgents`, the dashboard, reporting, result handling
       and the plugin view) read turn rows and request records for a
       new-core conversation, else today's rows.
-- [ ] 14.4 The deploy job writes the reader-release marker when this
-      release is promoted and the earlier deployment takes no new
-      requests. A deploy of an older release clears it (P45 deploy gate).
-- [ ] 14.5 Test: an old worker refuses a new-core conversation; a cursor
-      write after its lease expired is refused; a move back runs only with
-      the switch off.
+- [ ] 14.4 The automatic move back (P45 revert): when no deployment with
+      `new_core` is current or live, a lock take on a new-core conversation
+      runs the new core's `work()` until the conversation has no open turn
+      and no open record, then clears the pin and sets `core = old`.
+      Today's timer job notifies each new-core conversation whose
+      `wakeAtMs` has passed. No flag turns this on.
+- [ ] 14.5 The deploy record of this release has `reader`.
+- [ ] 14.6 Test: an old worker refuses a new-core conversation; a cursor
+      write after its lease expired is refused; after a revert, a paused
+      new-core turn finishes and moves back with no new input; no move back
+      while a `new_core` deployment is live.
 - Verify: every check from steps G to 13; `cutover_oldFenced safety`;
-  turn-lifecycle › Old worker refuses a new-core conversation, Move back
-  only with the switch off.
+  turn-lifecycle › Old worker refuses a new-core conversation, Revert moves
+  conversations back.
 - Rollback: revert. No conversation is new core yet.
 
 ### 15. Cutover release
-
-Needs: P45.
 
 - [ ] 15.1 Every kind runs through `work()`: Slack, web and ACP, events,
       Automations, plugin-started agents, child agents and the CLI
       (`pnpm cli -- chat` uses core ingress and runs `work()` locally).
       Core ingress, `askChild` and `startPluginAgent` mint records. Slack
       stop, dashboard stop, ACP stop and thread opt-out call `stop()`.
+      Until the gate opens (15.4), input takes today's path, as in the
+      step 14 release.
 - [ ] 15.2 Every new-core lock take that finds today's state moves it
       (P45): it pins today's lease (`MAX_SAFE_INTEGER`, fixed token) and
       refreshes the record's 7-day TTL, then in one locked step moves an
@@ -307,8 +322,9 @@ Needs: P45.
       on `(conversationId, inboundMessageId)`, `inboundMessageIds`
       copied, admission run again), and Slack `activeTurnId` and
       `pendingAuth` into the turn row. Active Agent invocation rows and
-      dispatch records move only when the child is new-core or idle. A
-      repeat after a crash inserts nothing new and only deletes.
+      dispatch records move only when the child is new-core or idle; a
+      live `replaced` row is first reported to its parent as a `failed`
+      result. A repeat after a crash inserts nothing new and only deletes.
 - [ ] 15.3 Moved authority (P45, I15): verify each old subject with
       today's `verify*` check, then `bindSubject` with the P45 mapping
       table, then `credentialsForTurn` before the first resume. A moved
@@ -318,46 +334,50 @@ Needs: P45.
       a failed check closes the turn or record with a visible note. A
       system actor's `pendingAuth` ends `blocked`; a person's old sign-in
       link expires or is bound to the turn id.
-- [ ] 15.4 The cutover switch refuses to turn on until the reader-release
-      marker is at least 6.5 minutes old (P45 deploy gate).
-- [ ] 15.5 Report or move live `replaced` requests before the cutover.
-- [ ] 15.6 Set the `maxAgentDepth` default to 1 (Decided).
-- [ ] 15.7 Measure the check-in load (P43 switch rule).
-- [ ] 15.8 Document one sandbox per conversation in the user docs, on the
+- [ ] 15.4 The automatic gate (P45): a new-core worker moves a
+      conversation only when its deployment is current, has been current
+      for 6.5 minutes, and no live deployment lacks `reader`. The deploy
+      record of this release has `new_core`. No operator switch.
+- [ ] 15.5 The background sweep (P45): the repair job runs the same move
+      on each conversation in today's Redis conversation indexes that
+      still holds today's state, and notifies the parent of each active
+      Agent invocation row on an old-core conversation. When a sweep finds
+      nothing and this release has been current for 7 days, it saves
+      `oldStateDrainedAtMs`.
+- [ ] 15.6 Put the gate, move, pin, move back and sweep in one feature
+      directory, `chat/cutover/`, so step 16 deletes it whole.
+- [ ] 15.7 Set the `maxAgentDepth` default to 1 (Decided).
+- [ ] 15.8 Emit the lock check-in rate as a metric (`TELEMETRY.md`), the
+      input to the P43 switch rule.
+- [ ] 15.9 Document one sandbox per conversation in the user docs, on the
       sandbox section of `packages/docs` (`concepts/security-and-authority.md`):
       a file that one person's turn leaves in the sandbox can run in a
       later person's turn with that person's access. Short and factual, no
       exploit steps (P36).
-- [ ] 15.9 Test: a conversation with an open Redis turn cursor and a
+- [ ] 15.10 Test: a conversation with an open Redis turn cursor and a
       running child agent moves on its first lock take; a repeat after a
       crash in the move mints no second record; a Slack retry after the
       move is a duplicate; a moved turn whose subject fails its check is
-      closed.
+      closed; no move while a deployment without `reader` is live; the
+      sweep moves an idle conversation with no new input.
 - Verify: the gate is green, with I15; the G.1f cutover checks
-  (`safety`, `noDuplicateTurn`, I15) with `o1` unfenced and the deploy
-  gate; I1 holds across the move; turn-lifecycle › Cutover from the old
-  turn cursor, Switch waits for the drained deploy, Pin outlives the move,
-  Inbox move after a crash, Moved authority not verified; agent-tree ›
-  Grandchild spawns; conversation-inbox › Duplicate CLI input; turn-access
-  › Docs state the shared-file limit.
-- Rollback (P45): switch the cutover off. No more conversations move, and
-  each new-core conversation goes back to today's workers at its next lock
-  take once it has no open turn and no open record. Open new-core work
-  finishes on the new core first. When a count shows no new-core
-  conversation, revert to the step 14 release.
+  (`safety`, `noDuplicateTurn`, I15) with `o1` unfenced, the deploy gate
+  and the revert; I1 holds across the move; turn-lifecycle › Cutover from
+  the old turn cursor, Moves wait for the drained deploy, Pin outlives the
+  move, Inbox move after a crash, Moved authority not verified, Repair job
+  moves leftover state; agent-tree › Grandchild spawns;
+  conversation-inbox › Duplicate CLI input; turn-access › Docs state the
+  shared-file limit.
+- Rollback (P45): a revert deploy. Moves stop at once. Each new-core
+  conversation finishes its open work and moves back by itself (14.4).
 
 ### 16. Delete release
 
-- [ ] 16.1 Ships after a count shows no old-core conversation that still
-      holds today's Redis state, no open Redis turn cursor and no worker
-      older than step 15. Today's Redis state expires 7 days after its
-      last write (`JUNIOR_THREAD_STATE_TTL_MS`, `state/ttl.ts`), so the
-      count reaches zero without a backfill. A later lock take on an idle
-      old-core conversation sets `core = new` with nothing to move. Active
-      Agent invocation rows are in SQL with no TTL
-      (`agent-invocations/store.ts`), so the count includes them. If it
-      does not reach zero, a one-time sweep notifies each such parent, and
-      its next take moves them.
+- [ ] 16.1 A guard migration fails unless `oldStateDrainedAtMs` is set, no
+      live deployment lacks `new_core`, and no active Agent invocation row
+      is on an old-core conversation (P45 delete guard). `junior upgrade`
+      runs it before the deploy, so CI/CD stops the release while old
+      state remains; the next deploy checks again.
 - [ ] 16.2 Delete today's workers: `task-execution/slack-work.ts`, the web
       and event paths in `task-execution/conversation-turn.ts` and
       `mailbox-turn.ts`, `task-execution/web-steering.ts`, the child runner
@@ -370,8 +390,9 @@ Needs: P45.
       `activeTurnId` and `pendingAuth`.
 - [ ] 16.4 Delete the repair sweeps: the result sweep, the outbox sweep, the
       24 h failure rule and the lost-worker fallback in the timer job.
-- [ ] 16.5 Delete the cutover code: the move (15.2, 15.3), the lease pin,
-      the cutover switch, the reader-release marker and every `core` check.
+- [ ] 16.5 Delete the shim: `chat/cutover/` (gate, move, pin, move back,
+      sweep) and every `core` check. The deploy record of this release has
+      `old_core_deleted`.
 - [ ] 16.6 Delete the copies: every reader and writer of the copied
       `execution_status` and `run_id` columns (P3), the second
       status-to-end mapping, the step 14 fallback reads, the
@@ -379,23 +400,31 @@ Needs: P45.
       variants per entry point, the other credential builders, the pass
       that lasts for the sandbox timeout, the silent web supersede, the
       "newer sign-in replaces" path and "copy the latest request".
+- [ ] 16.7 Test: the guard migration fails with old state left and passes
+      without it.
 - Verify: S1 has no exceptions left; S6 forbids the old cursor; every check
-  from steps G to 15 is still green.
+  from steps G to 15 is still green; turn-lifecycle › Delete release
+  blocked while old state remains.
 - Rollback: a revert to the step 15 release works, but nothing moves back.
-  No conversation can go back to today's workers, because the move-back
-  path is gone, and the state that step 15 moved (Redis turn cursors,
-  active Agent invocation rows, dispatch records) is not made again. After
-  step 17, fix forward only.
+  No conversation can go back to today's workers, because the move back is
+  gone, and the state that step 15 moved (Redis turn cursors, active Agent
+  invocation rows, dispatch records) is not made again. After step 17, fix
+  forward only.
 
 ### 17. Clean up
 
-- [ ] 17.1 One release after step 16, drop `execution_status`, `run_id`,
-      the `core` column and the old tables after a dry run. Step 15 code
-      still selects the columns while step 16 deploys.
+- [ ] 17.1 Drop `execution_status`, `run_id`, the `core` column and the old
+      tables in one migration. It first checks that no live deployment
+      lacks `old_core_deleted`, since step 15 code still selects the
+      columns, and fails otherwise, so CI/CD stops the release. The schema
+      checks (`pnpm migration-metadata:check`) run on it in CI.
 - [ ] 17.2 Move lasting rules into code, tests and policies. Delete this
       plan. CI keeps running `packages/junior/verification/`, which reads
       nothing here. From then on, its scenario-id list is the only source
       for the trace check (P40).
-- Verify: every check from steps G to 16 is still green.
-- Rollback: a column or table drop cannot be undone; the dry run comes
-  first.
+- [ ] 17.3 Test: the drop migration fails while a deployment without
+      `old_core_deleted` is live.
+- Verify: every check from steps G to 16 is still green; turn-lifecycle ›
+  Column drop blocked while older code is live.
+- Rollback: a column or table drop cannot be undone. The guard checks
+  first; after the drop, fix forward only.

@@ -21,35 +21,40 @@ A conversation SHALL have at most one turn that is `running`, `paused` or
 ### Requirement: Cutover Under A Rolling Deploy
 
 The cutover SHALL run a conversation on one core at a time while old and
-new workers run together (Proposed, needs sign-off: P45). The root
-conversation SHALL decide `core`, and a child SHALL inherit it. The cutover
-switch SHALL turn on only after the reader release runs on every worker and
-old in-flight attempts have drained.
+new workers run together, with no operator step (Decided: P45, P47). The
+root conversation SHALL decide `core`, and a child SHALL inherit it. Moves
+SHALL start only when the deploy record shows the reader release on every
+live deployment for the attempt limit plus 90 s. A revert deploy SHALL move
+new-core conversations back by itself.
 
 #### Scenario: Old worker refuses a new-core conversation
 
 - **WHEN** a worker with the reader release takes work for a new-core
-  conversation
-- **THEN** it refuses it and runs nothing (Proposed: P45).
+  conversation while a new-core deployment is current
+- **THEN** it refuses it and runs nothing.
 
 #### Scenario: Pin outlives the move
 
 - **WHEN** the move has run and an old worker reads today's lease
 - **THEN** it finds the pin (`expiresAtMs = Number.MAX_SAFE_INTEGER`, a
   fixed token) live, and each new-core lock take refreshes the record's
-  7-day TTL (Proposed: P45).
+  7-day TTL.
 
-#### Scenario: Switch waits for the drained deploy
+#### Scenario: Moves wait for the drained deploy
 
-- **WHEN** someone turns the switch on less than the attempt limit plus
-  90 s after the reader-release marker, or with no marker
-- **THEN** the switch stays off (Proposed: P45).
+- **WHEN** a deployment without the reader release was live less than 6.5
+  minutes ago, or the cutover release has been current for less than 6.5
+  minutes
+- **THEN** no conversation moves, and input takes today's path.
 
-#### Scenario: Move back only with the switch off
+#### Scenario: Revert moves conversations back
 
-- **WHEN** an idle new-core conversation is taken by a worker with the
-  reader release while the switch is on
-- **THEN** it does not move back (Proposed: P45).
+- **WHEN** a revert deploy makes the reader release current, and no
+  new-core deployment has been live for 6.5 minutes
+- **THEN** the next lock take on each new-core conversation finishes its
+  open turn and records with the new core's `work()`, then sets
+  `core = old`, and today's timer job wakes paused new-core turns so this
+  needs no new input.
 
 #### Scenario: Inbox move after a crash
 
@@ -57,14 +62,35 @@ old in-flight attempts have drained.
   it again
 - **THEN** each moved input has one request record, unique on
   `(conversationId, inboundMessageId)`, and a Slack retry of a moved
-  message is a duplicate (Proposed: P45).
+  message is a duplicate.
 
 #### Scenario: Moved authority not verified
 
 - **WHEN** a moved turn or record has no actor, or its old subject fails
   today's check
 - **THEN** the move closes it with a visible note and fills in no actor
-  from another source (Proposed: P45, I15).
+  from another source (I15).
+
+#### Scenario: Repair job moves leftover state
+
+- **WHEN** an idle old-core conversation still holds today's state and gets
+  no new input
+- **THEN** the repair job runs the same move on it, and notifies the parent
+  of each active Agent invocation row left on an old-core conversation.
+
+#### Scenario: Delete release blocked while old state remains
+
+- **WHEN** the delete release deploys before the repair job has saved
+  `oldStateDrainedAtMs`, or while a deployment without the new core is live
+- **THEN** its guard migration fails, CI/CD stops the deploy, and the next
+  deploy checks again.
+
+#### Scenario: Column drop blocked while older code is live
+
+- **WHEN** the release that drops the `core`, `execution_status` and
+  `run_id` columns deploys while a deployment that still reads them is live
+- **THEN** its migration fails before it drops anything, and CI/CD stops
+  the deploy.
 
 ### Requirement: The Turn Row Owns Turn Status
 

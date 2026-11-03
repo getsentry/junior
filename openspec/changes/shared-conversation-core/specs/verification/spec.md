@@ -81,8 +81,7 @@ The model SHALL check (Decided: P37):
 ### Requirement: Moved State Invariant
 
 The model SHALL check **I15**: a turn or record that the cutover moves has
-the verified old actor and subject, or it is closed (Proposed, needs
-sign-off: P45). The gate SHALL hold it before the cutover release.
+the verified old actor and subject, or it is closed (Decided: P45). The gate SHALL hold it before the cutover release.
 
 #### Scenario: Move without a verified subject
 
@@ -151,7 +150,7 @@ within the crash bound (Decided: P37):
 - **L3** a paused turn with work left is eventually resumed or finished.
   In runs with no lost notify, this holds without fairness for the repair
   job (needs the P32 sign-in and delayed notify fix). After a lost notify,
-  it holds with the repair job (Proposed, needs sign-off: P46).
+  it holds with the repair job (Decided: P46).
 
 #### Scenario: Delivery never succeeds
 
