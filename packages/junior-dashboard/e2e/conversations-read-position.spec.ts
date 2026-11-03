@@ -28,6 +28,8 @@ async function mockReadPositionConversation(
     eventCount: input.eventCount,
     /** Holds detail responses until it resolves. */
     detailGate: Promise.resolve(),
+    /** Holds `after` page responses until it resolves. */
+    newerGate: Promise.resolve(),
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     reported: [] as number[],
@@ -87,6 +89,7 @@ async function mockReadPositionConversation(
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
+      if (after) await state.newerGate;
       const latestSeq = state.eventCount - 1;
       const from = after
         ? Number(after) + 1
@@ -180,7 +183,8 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
 
   // More than a page arrives while the reader is away. The reopen shows the
   // cached copy first. The fetch then brings the read position's cursor,
-  // although the cached copy has none, and the transcript opens there.
+  // although the cached copy has none. The cached copy stays until the page
+  // after the read position loads, and the transcript opens there.
   await page.getByRole("link", { name: "Back to conversations" }).click();
   mock.eventCount = 120;
   mock.pagedDetail = true;
@@ -188,6 +192,13 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   mock.detailGate = new Promise((resolve) => {
     releaseDetail = resolve;
   });
+  let releaseNewer = () => {};
+  mock.newerGate = new Promise((resolve) => {
+    releaseNewer = resolve;
+  });
+  const newerRequest = page.waitForRequest((request) =>
+    request.url().includes("/events?after="),
+  );
   await page
     .getByRole("link", { name: /Read position/ })
     .first()
@@ -195,6 +206,10 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
   await expect(marker).toHaveCount(0);
   releaseDetail();
+  await newerRequest;
+  await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
+  await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(0);
+  releaseNewer();
   await expect(marker).toBeInViewport();
   await expect(transcript.getByText("Transcript message 40 ")).toBeInViewport();
   await expect(

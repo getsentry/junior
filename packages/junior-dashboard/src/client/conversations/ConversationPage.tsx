@@ -180,17 +180,20 @@ export function ConversationPage(props: {
     detail: detail.data,
     unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
   });
+  // The page is keyed by Conversation, so this is the cached copy at open.
+  const [cachedAtOpen] = useState(() => detail.data);
   // A reader far behind sees the events from their read position. Others
   // see the latest page and the pages before it. When the cached transcript
-  // already shows the latest page, it stays until the unread events load.
-  // Then the transcript opens at the "New" marker, if the reader has not
-  // moved.
-  const showUnreadHistory =
-    unreadHistory &&
-    !(readAtOpen.unreadCursorAfterCache && unreadHistory.isPending)
-      ? unreadHistory
-      : undefined;
-  const history: TranscriptHistory = showUnreadHistory ?? detail;
+  // is already on screen, it stays until the unread events load, because the
+  // fetch that brings the cursor replaces it with the latest page. Then the
+  // transcript opens at the "New" marker, if the reader has not moved.
+  const holdCachedTranscript = Boolean(
+    readAtOpen.unreadCursorAfterCache && unreadHistory?.isPending,
+  );
+  const showUnreadHistory = holdCachedTranscript ? undefined : unreadHistory;
+  const history: TranscriptHistory =
+    showUnreadHistory ??
+    (holdCachedTranscript ? { ...detail, data: cachedAtOpen } : detail);
   const transcriptPending =
     detail.isPending || Boolean(showUnreadHistory?.isPending);
   const feedConversation = conversations.find(
