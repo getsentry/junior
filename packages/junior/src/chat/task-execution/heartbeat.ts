@@ -4,7 +4,6 @@ import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
   clearExpiredConversationLease,
-  CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   ensureConversationWake,
   getConversationWorkState,
@@ -96,16 +95,8 @@ export async function recoverConversationWork(args: {
           work.execution.lease &&
           work.execution.lease.expiresAtMs <= args.nowMs
         ) {
-          // A lost worker runs no failure path. This runs before the stop, so
-          // when it throws, the lease stays expired and the next heartbeat
-          // runs it again.
-          if (
-            (work.execution.retryCount ?? 0) + 1 >=
-            CONVERSATION_WORK_MAX_RETRIES
-          ) {
-            await args.beforeWorkStops?.(conversationId);
-          }
           const recovery = await clearExpiredConversationLease({
+            beforeWorkStops: args.beforeWorkStops,
             conversationId,
             nowMs: args.nowMs,
             state: args.state,
