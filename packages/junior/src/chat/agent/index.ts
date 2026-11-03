@@ -1797,6 +1797,7 @@ async function executeAgentRunInPrivacyContext(
       modelId: activeModelId,
       modelProfile: activeModelProfile,
       queue: run.environment?.backgroundCompactionQueue,
+      turnStartedAtMs: replyStartedAtMs,
     });
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the

@@ -53,7 +53,10 @@ import {
   type BackgroundCompactionQueue,
 } from "./background-compaction-queue";
 
-/** Failed attempts for one History version before background tries stop. */
+/**
+ * Failed or discarded attempts for one History version before background
+ * tries stop.
+ */
 const MAX_FAILED_ATTEMPTS = 2;
 /**
  * A request without a prepared result after this long counts as a failed
@@ -95,22 +98,34 @@ function lastRequestInputSize(messages: AgentMessage[]): number | undefined {
 
 /**
  * Return whether a Turn may request a background summary for this History
- * version. It may not while a request is pending, when a summary is ready, or
- * after the failure limit. A ready summary stays usable for the version, so
- * one is enough.
+ * version. It may not while a request is pending, while a ready summary is
+ * still unused, or after the attempt limit.
+ *
+ * A Turn swaps a ready summary in before its first model request. A swap
+ * makes a new History version. So a ready summary of this version that was
+ * prepared before the Turn started was discarded, for example because the
+ * history after its mark is too large now. It counts as a failed attempt, so
+ * a new request can replace it.
  */
 function mayRequest(
   events: ConversationEvent[],
   historyVersion: number,
   nowMs: number,
+  turnStartedAtMs: number,
 ): boolean {
-  const outcomes = new Map<number, "ready" | "failed">();
+  const outcomes = new Map<
+    number,
+    { outcome: "ready" | "failed"; createdAtMs: number }
+  >();
   for (const event of events) {
     if (
       event.data.type === "compaction_prepared" &&
       event.data.historyVersion === historyVersion
     ) {
-      outcomes.set(event.data.markSeq, event.data.outcome);
+      outcomes.set(event.data.markSeq, {
+        outcome: event.data.outcome,
+        createdAtMs: event.createdAtMs,
+      });
     }
   }
   let failed = 0;
@@ -121,14 +136,14 @@ function mayRequest(
     ) {
       continue;
     }
-    const outcome = outcomes.get(event.data.markSeq);
-    if (outcome === "ready") {
+    const prepared = outcomes.get(event.data.markSeq);
+    if (
+      prepared?.outcome === "ready" &&
+      prepared.createdAtMs >= turnStartedAtMs
+    ) {
       return false;
     }
-    if (
-      outcome === "failed" ||
-      nowMs - event.createdAtMs >= REQUEST_TIMEOUT_MS
-    ) {
+    if (prepared || nowMs - event.createdAtMs >= REQUEST_TIMEOUT_MS) {
       failed += 1;
     } else {
       return false;
@@ -141,7 +156,8 @@ function mayRequest(
  * Request a background summary when the last model request of a completed
  * Turn was at or above the mark.
  *
- * Without a queue or below the mark, it does nothing. A failure here leaves
+ * `turnStartedAtMs` is when this execution slice started, before its first
+ * model request. Without a queue or below the mark, it does nothing. A failure here leaves
  * blocking compaction as the fallback, so it is logged and does not fail the
  * Turn. When the send fails after the request is written, the request times
  * out and counts as a failed attempt.
@@ -153,6 +169,7 @@ export async function requestBackgroundCompaction(args: {
   modelId: string;
   modelProfile: ModelProfile;
   queue: BackgroundCompactionQueue | undefined;
+  turnStartedAtMs: number;
 }): Promise<void> {
   if (!args.queue) {
     return;
@@ -181,6 +198,7 @@ async function requestAboveMark(args: {
   modelId: string;
   modelProfile: ModelProfile;
   queue: BackgroundCompactionQueue;
+  turnStartedAtMs: number;
 }): Promise<void> {
   const nowMs = Date.now();
   const eventStore = getConversationEventStore();
@@ -188,16 +206,14 @@ async function requestAboveMark(args: {
   const historyVersion = events[0]?.historyVersion;
   if (
     historyVersion === undefined ||
-    !mayRequest(events, historyVersion, nowMs)
+    !mayRequest(events, historyVersion, nowMs, args.turnStartedAtMs)
   ) {
     return;
   }
-  const projection = projectConversationEvents(events, {
+  const markSeq = projectConversationEvents(events, {
     defaultProfile: botConfig.defaultProfile,
-  });
-  const markSeq = projection.seqs.at(-1);
-  // After a handoff, the history belongs to another Model profile.
-  if (markSeq === undefined || projection.modelProfile !== args.modelProfile) {
+  }).seqs.at(-1);
+  if (markSeq === undefined) {
     return;
   }
 
