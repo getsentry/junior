@@ -859,111 +859,44 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 
 Old and new workers run at once during each deploy. Model: `Cutover.tla`
 (P37). The first draft failed two of three checks; this design folds in the
-four model fixes (C1 to C4) and the durability and trust reviews.
+four model fixes (C1 to C4), the durability and trust reviews, and the
+shape review.
 
-- **Decided:** a switch gated on a drained deploy. Under P47 the switch is
-  not an operator switch: the deploy record opens it. Source: the planning
-  thread. David: "i think what id prefer is just a simple shim that we
-  remove in a follow-up commit so it can be zero downtime and theres no
-  manual intervention."
-- **Deploy record.** From step 3, each deployment upserts one SQL row: its
-  deployment id (the platform's id, for example `VERCEL_DEPLOYMENT_ID`),
-  its release, its capabilities (`reader`, `new_core`, `old_core_deleted`;
-  a later release keeps the earlier ones) and its own `maxDuration`. It
-  keeps four stamps, all database `now()`:
-  - `firstSeenAtMs`: the first write.
-  - `lastSeenAtMs`: each invocation that runs work, at most once per 15 s
-    per instance.
-  - `lastCronAtMs`: each run of the heartbeat cron.
-  - `lastPublishAtMs`: before a queue send, when this instance last wrote
-    it more than 60 s ago. If the write fails, the send fails.
-- **Current.** The current deployment is the row with the newest
-  `lastCronAtMs`. Vercel sends cron requests only to the production
-  deployment, and the heartbeat cron runs every minute
-  (`deployment.ts:4-5`, emitted by `nitro.ts:166-175`). So a promote or an
-  Instant Rollback changes the current deployment within about a minute.
-  The newest `firstSeenAtMs` does not see an Instant Rollback.
-- **Live.** A deployment that is not current is live until its drain end:
-  `max(lastSeenAtMs + maxDuration + 105 s, lastPublishAtMs + 3720 s +
-maxDuration)`. With the default `maxDuration` of 300 s, that is 6.75
-  minutes after its last check-in and 67 minutes after its last publish.
-  Each term comes from `main` at `0dbbec3` or the Vercel Queues docs
-  (concepts, "Deployments and versioning"):
-  - Vercel delivers a message only to the deployment that published it.
-    A promote or a rollback does not stop those deliveries. Only a delete
-    does. `queue/vercel.ts:10-15` keeps this default pinning when
-    `VERCEL_DEPLOYMENT_ID` is set. Cron and webhook requests go to the
-    current deployment. So a deployment that is not current runs only its
-    own messages and its invocations in flight.
-  - The instance sends at most 60 s after its last `lastPublishAtMs` write.
-  - Each consumer verifies the signature before it runs
-    (`queue/callback.ts:52-70`). It rejects a message signed more than 1 h
-    ago (`queue/sign.ts:5,129-132`; conversation work uses the same 1 h,
-    `task-execution/queue-signing.ts:20-21`), acks it and runs nothing.
-    The 1 h retention that Junior sets on each send drops the message
-    too, and the queue counts the delay inside it
-    (`task-execution/vercel-queue.ts:15-16,64-70`,
-    `plugins/task-queue.ts:131`, `sandbox/snapshot/job-queue.ts:68`,
-    `services/background-compaction-queue.ts:77`). The longest delay
-    Junior sets is 60 s (`task-execution/mailbox-turn.ts:256-258`).
-  - Retry counts do not bound it. Junior's push triggers set only a type
-    and a topic (`nitro.ts:206-212,229-235,256-262`), so Vercel retries
-    every 60 s with no `maxDeliveries`. Conversation work and snapshot
-    jobs ack on no count (`maxDeliveries: null`,
-    `task-execution/vercel-callback.ts:185`,
-    `sandbox/snapshot/job-callback.ts:33`).
-  - A delivery runs at most `maxDuration` (`nitro.ts:157-158,205`).
-  - 60 s covers clock skew between the app and the database. The 105 s
-    is the 90 s lock (`task-execution/state.ts:59`) plus the 15 s cadence.
-- **Chains.** A delivery can send the next message to its own deployment:
-  today's busy defer every 15 s while another worker holds the lease
-  (`task-execution/worker.ts:433-443`), and turn continuations. Each send
-  moves `lastPublishAtMs`, so the drain end moves with it. On today's
-  path, Junior's settings do not bound how long a chain runs. The gate
-  waits, safe and with no operator step. A new-core worker on a deployment
-  that is not current takes no lock and sends nothing: it acks the
-  notify, and the repair job on the current deployment (P7) runs the
-  conversation. So a new-core deployment drains at most about 73 minutes
-  after it stops being current: 1 minute to the next cron, 15 s, one
-  `maxDuration` in flight, then 67 minutes.
-- **Automatic gate.** A new-core worker moves a conversation only when its
-  own deployment is current and no live deployment lacks `reader`.
-  Reason: a worker without the reader release has no lease fence. If it
-  stalls past its lease, the new core runs the same turn again. The gate
-  makes sure no such worker runs while moves happen. Until the gate opens,
-  the cutover release routes input through today's path, as the step 14
-  release does. Worst case: 67 minutes after the last publish of the last
-  deployment without `reader`.
-- **Stale lease fence.** A deployment from before step 3 writes no record,
-  so the gate cannot see it, and a chain can keep it invoked. So the move
-  takes an expired today's lease only after `acquiredAtMs + maxDuration +
-60 s`. Otherwise the take sets `wakeAtMs` to that time and ends. On
-  `main`, one take mints the token and `acquiredAtMs`
-  (`task-execution/state.ts:1561-1566`), only that holder checks in
-  (`state.ts:1593-1604`), and Vercel ends the invocation at
-  `maxDuration`. After that time, no worker that held the lease still
-  runs, and the pin stops a later take. A conversation with no lease moves
-  at once.
+- **Decided:** a small shim that a later release deletes. Source: the
+  planning thread. David: "i think what id prefer is just a simple shim
+  that we remove in a follow-up commit so it can be zero downtime and
+  theres no manual intervention."
+- **Safety in one rule.** The new core runs a conversation only after the
+  move, and the move runs only when no old worker can still hold today's
+  lease: the lease is absent, or the stale lease fence has passed, and the
+  pin then stops any later old take. This holds for a worker of any
+  version, so the plan has no reader gate and no per-deployment record.
 - **Owner field.** The conversation row gets a `core` field (`old` or
-  `new`). The root conversation's SQL lock take decides it and sets it in
-  the same compare-and-set. A child conversation inherits its root's
-  `core`. The reader release (`tasks.md` step 14) teaches today's workers
-  to read `core`: they refuse a conversation that the new core owns. A
-  refusal acks and sends nothing, so it does not busy-defer on the pin.
-- **Cursor writes fenced by the lease** (C3). Today each cursor write takes
-  only a per-turn mutation lock (`task-execution/turn-cursor.ts`,
-  `withTurnCursorMutation` on `turnCursorMutationKey`; `main` at
-  `0dbbec3`), not the conversation lease. The reader release makes them
-  check the lease token too. This covers a stalled worker that has the
-  reader release. It can still post until its next check-in: the same
-  window as P5 "Limit".
-- **Move on every new-core take** (C1, C2). Every new-core lock take that
-  finds today's state runs the move, not only the take that set `core`. It
-  takes today's lease (`execution.lease`), so it waits while an old worker
-  is mid-turn. Then, in one locked step, it moves an open Redis turn cursor
-  into a turn row keyed by its turn id, and Slack `activeTurnId` and
-  `pendingAuth` into that turn row. A repeat after a crash inserts nothing
-  new and only deletes.
+  `new`). The root conversation's SQL lock take sets `core = new` in the
+  same compare-and-set. A child conversation inherits its root's `core`.
+- **Stale lease fence.** The move takes an expired today's lease only after
+  `staleAtMs`, which is the larger of `lease.acquiredAtMs` and
+  `staleLeaseAcquiredAtMs`, plus `maxDuration` and 60 s. Until then it
+  sets `wakeAtMs` to `staleAtMs` and ends. With no lease and no
+  `staleLeaseAcquiredAtMs` later than `maxDuration` plus 60 s ago, it
+  moves at once. Why this stops the old worker (`main` at `0dbbec3`):
+  - One take mints the token and `acquiredAtMs`
+    (`task-execution/state.ts:1561-1566`). A check-in keeps both and
+    extends only the expiry (`state.ts:1593-1616`), and only the holder of
+    the token checks in (`state.ts:1602`). The queue message carries no
+    lease or token (`task-execution/queue.ts:6-11`), so a redelivery or a
+    continuation takes a new lease (`worker.ts:418-423`).
+  - The holder runs inside the invocation that took the lease, which
+    started before `acquiredAtMs`. Vercel ends an invocation at
+    `maxDuration`, `waitUntil` work included (see Host assumptions).
+  - Two paths remove an expired lease while its holder may still run: the
+    heartbeat clear (`task-execution/heartbeat.ts:92-100`,
+    `state.ts:2319-2353`) and a new take of an expired lease
+    (`state.ts:1551-1575`). From step 3 each of them first saves the old
+    `acquiredAtMs` as `staleLeaseAcquiredAtMs` (the larger value) on the
+    SQL conversation row. The heartbeat runs only on the current
+    deployment, so it always has this code.
+  - 60 s covers clock skew between the app and the database.
 - **Pin** (C4). Before the insert, the move writes today's lease with
   `expiresAtMs = Number.MAX_SAFE_INTEGER` and a fixed token, and leaves it
   there. A no-expiry value does not work on `main`: `normalizeLease`
@@ -973,9 +906,15 @@ maxDuration)`. With the default `maxDuration` of 300 s, that is 6.75
   so `isLeaseActive` (`state.ts:606-607`) keeps it live. The lease is a
   field of the conversation record, which each write saves with the 7-day
   `JUNIOR_THREAD_STATE_TTL_MS` (`state.ts:1054-1058`). Each new-core lock
-  take refreshes that TTL while `core = new`. Not in SQL: only a worker
-  without the reader release needs the pin, and it reads only Redis.
-  Reader-release workers read `core` in SQL, which does not expire.
+  take refreshes that TTL while `core = new`. The pin is not in SQL: only
+  a worker from before step 3 needs it, and that worker reads only Redis.
+- **Move on every new-core take** (C1, C2). Every new-core lock take that
+  finds today's state runs the move, not only the take that set `core`.
+  After the fence, in one locked step that also holds each moved turn's
+  cursor mutation lock (`withTurnCursorMutation`), it moves an open Redis
+  turn cursor into a turn row keyed by its turn id, and Slack
+  `activeTurnId` and `pendingAuth` into that turn row. A repeat after a
+  crash inserts nothing new and only deletes.
 - **Inbox move, safe to repeat.** Today's waiting input (`pendingMessages`)
   moves in the same locked step into inbox entries with core-minted
   request records. The record is unique on
@@ -1021,6 +960,63 @@ maxDuration)`. With the default `maxDuration` of 300 s, that is 6.75
   dispatch into a DM (`agent-dispatch/context.ts:49`) has no kind or scope
   in `interfaces/access.md` yet. Step 15 adds one, or the move closes those
   records with a note.
+- **Old-core writes without a lease.** These run outside a leased worker
+  run on `main` and touch a turn. None opens a turn or changes its
+  content:
+  - `abandonTurnRecord`, `failTurnRecord` and `completeTurnRecord` set an
+    end status only, and do nothing when the cursor is gone
+    (`task-execution/turn-cursor.ts:1146-1154,1177-1186,1209-1218`).
+    Lease-less callers: the OAuth callbacks through `wakePausedTurn`
+    (`handlers/oauth-callback.ts:486-520`,
+    `handlers/mcp-oauth-callback.ts:353-376`,
+    `task-execution/turn-wake.ts:81`) and a replaced sign-in
+    (`services/pending-auth.ts:97-113`). Before the move they end old
+    state, which the move then reads as closed. After it they find no
+    cursor. `agent-invocations/work.ts:406,435` runs inside the child's
+    leased run (`work.ts:626-647`), so the fence covers it.
+  - `recordTurnSummary` writes the summary index and activity metadata,
+    not the cursor (`turn-cursor.ts:1066,1084-1102`). After the move it
+    can leave a stale summary in reporting, which reads turn rows for a
+    new-core conversation (step 14).
+  - The OAuth callbacks delete the web sign-in prompt and record the
+    completed sign-in (`oauth-callback.ts:494-510`). The move rebinds or
+    expires that sign-in (Authority of moved state).
+  - Ingress input, the web interrupt mark and the pending cancel
+    (`state.ts:1877`, `web-steering.ts`) change waiting input only. The
+    move moves that input in its locked step.
+  - Wake fields (`markConversationWorkEnqueued`, `state.ts:1481`;
+    `ensureConversationWake`) only send a notify. The plugin task runner
+    only reads turn records (`plugins/task-runner.ts:336,472`).
+- **Reader and move back, from step 3.** Today's workers read `core`. They
+  refuse a conversation with `core = new`: they ack and send nothing.
+  Neither the refusal nor the move back is a safety gate; the fence and
+  the pin are. The refusal ends busy-defer chains on a pin, and the move
+  back gives every release from step 3 on as a revert target.
+- **Current deployment.** One SQL row with `deploymentId`,
+  `capabilities`, `maxDurationSeconds` and `currentSinceAtMs`. The
+  heartbeat cron upserts it each minute (`deployment.ts:4-5`, emitted by
+  `nitro.ts:166-175`), and sets `currentSinceAtMs` when `deploymentId`
+  changes. Vercel sends cron requests only to the production deployment,
+  so a promote or an Instant Rollback shows within about a minute.
+  Capabilities: `new_core` (step 15 on) and `old_core_deleted` (step 16
+  on).
+  - A new-core worker on any other deployment takes no lock and acks. The
+    repair job on the current deployment (P7) runs the conversation. So a
+    deployment that is not current sends no new-core work to itself.
+  - A move back runs when the current deployment lacks `new_core`: a lock
+    take on a `core = new` conversation runs the new core's `work()` until
+    the conversation has no open turn and no open record, then clears the
+    pin and sets `core = old`. From step 14 the release has `work()`; an
+    earlier release moves back only a conversation with no open turn and
+    no open record, and refuses the rest until a forward deploy. Today's
+    timer job notifies each new-core conversation whose `wakeAtMs` has
+    passed, so a paused or waiting new-core turn moves back with no new
+    input. History is already in SQL, so no history moves back.
+- **Rollback is a revert deploy.** A revert of step 15 makes a release
+  without `new_core` current. Moves stop within about a minute, when the
+  cron updates the current row. Then the move back runs as above. A
+  new-core conversation with no work stays `core = new` until its next
+  lock take; nothing runs for it until then, so this is safe.
 - **Background sweep.** From step 15, the repair job (P7) also runs the
   same move on each conversation in today's Redis conversation indexes
   that still holds today's state, and notifies the parent of each active
@@ -1029,84 +1025,71 @@ maxDuration)`. With the default `maxDuration` of 300 s, that is 6.75
   days after its last write. Today's state means an open turn cursor,
   waiting input, `activeTurnId`, `pendingAuth` or an active Agent
   invocation or dispatch row; wake fields alone do not count. When a sweep
-  finds nothing left and the cutover release has been current for 7 days,
-  the job saves `oldStateDrainedAtMs`.
-- **Limit: a chain from before step 3.** Such a deployment has no record.
-  If one of its chains reaches a pinned conversation, it busy-defers every
-  15 s (`task-execution/worker.ts:433-443`) and never takes the pin. It
-  stops only when the app deletes that deployment. It runs no turn, and
-  its wake fields do not block `oldStateDrainedAtMs`.
-- **Rollback is a revert deploy.** A revert of step 15 makes the step 14
-  release current. That release has the reader and the new core's `work()`
-  (built in steps 3 to 13), but not `new_core`. Then:
-  1. Moves stop at once: no new-core deployment is current.
-  2. While a `new_core` deployment is still live, today's workers keep
-     refusing new-core conversations. Its new-core workers stop taking
-     locks once it is not current (Chains), so this lasts at most about 73
-     minutes after the revert becomes current.
-  3. After that, a lock take on a new-core conversation runs the new core's
-     `work()` under the same SQL lock until the conversation has no open
-     turn and no open record. Then it moves back: it clears the pin and
-     sets `core = old`. Input that today's ingress saved meanwhile is in
-     `pendingMessages` and runs on today's workers.
-  4. Today's timer job notifies each new-core conversation whose
-     `wakeAtMs` has passed, so a paused or waiting new-core turn finishes
-     and moves back with no new input.
-  5. A new-core conversation with no work stays `core = new` until its
-     next lock take. Nothing runs for it until then, so this is safe.
-     History is already in SQL, so no history moves back.
-- **Shim.** The cutover code is a shim that the delete release (step 16)
-  removes: the gate, the move on take with its authority checks, the pin
-  and its TTL refresh, the move back, the background sweep, the `core`
-  checks and the lease-token check on today's cursor writes. The gate,
-  move, pin, move back and sweep live in one feature directory,
-  `chat/cutover/`. The `core` check and the cursor fence live in today's
-  worker modules, which step 16 deletes. Step 17 drops the `core` column.
-  The deploy record stays: P47 uses it for every reader-before-writer
-  step.
+  finds nothing left and every current deployment has had `new_core` for
+  7 days, the job saves `oldStateDrainedAtMs`.
+- **Shim.** The gate-free cutover lives in one feature directory,
+  `chat/cutover/`: the fence, the move with its authority checks, the pin
+  and its TTL refresh, the move back, the sweep and the current row. The
+  `core` check and the `staleLeaseAcquiredAtMs` writes live in today's
+  worker modules. Step 16 deletes all of it with today's workers. Step 17
+  drops the `core` column, `staleLeaseAcquiredAtMs` and the current row.
 - **Delete guard.** The delete release carries a migration that fails
-  unless `oldStateDrainedAtMs` is set, no live deployment lacks
-  `new_core`, and no active Agent invocation row is on an old-core
-  conversation. `junior upgrade` applies migrations before the deploy
-  (`cli/upgrade.ts:77,117`; the example app's build command,
+  unless `oldStateDrainedAtMs` is set and no active Agent invocation row is
+  on an old-core conversation. `junior upgrade` applies migrations before
+  the deploy (`cli/upgrade.ts:77,117`; the example app's build command,
   `apps/example/vercel.json:3`), so CI/CD stops the deploy, and the next
-  deploy checks again. The 7 days of `oldStateDrainedAtMs` cover the
-  drain end of every deployment without `new_core`, unless a chain still
-  runs. Step 17's migration that drops the columns fails while a live
-  deployment lacks `old_core_deleted`. Those deployments are new core, so
-  that is at most about 73 minutes after the step 16 release becomes
-  current. Each guard reads liveness with database `now()`.
+  deploy checks again.
+- **Column-drop guard.** Step 17's migration fails unless the current row
+  has `old_core_deleted` and `currentSinceAtMs` is at least 1 h plus two
+  `maxDuration` plus 2 min old: 1 h 12 min with the default 300 s, and
+  under 2 h for any `maxDuration` up to 1,740 s. Reason: a step 15 deployment
+  reads the columns. Once it is not current, it sends nothing new: its
+  new-core workers ack, and its today's workers find no old-core work or
+  refuse `core = new`. That takes one cron run and one `maxDuration` in
+  flight. Its last message stops being delivered 1 h after it was sent:
+  the 1 h retention Junior sets on each send and the 1 h signature age
+  (`queue/sign.ts:5,129-132`) both count from the send, so they do not
+  add up. Then one more `maxDuration` for that delivery.
+- **What this design gives up:**
+  - Safety rests on an invocation ending at `maxDuration`. A host that
+    lets a worker run past it breaks the fence.
+  - A chain from before step 3 that reaches a pin busy-defers every 15 s
+    (`task-execution/worker.ts:433-443`), because that code has no
+    refusal. It never takes the pin and runs no turn, and its wake fields
+    do not block `oldStateDrainedAtMs`. It stops only when the app deletes
+    that deployment.
+  - A worker from before step 3 that takes over an expired lease saves no
+    `staleLeaseAcquiredAtMs`. If it then releases before the first
+    holder's `maxDuration` has passed, the move can start while that
+    holder still runs. Only a chain from before step 3 does such a take,
+    because the heartbeat clear always runs current code.
 - **Host assumptions.** Vercel is the only deploy host: BullMQ is for
   local development only
   (`packages/docs/src/content/docs/reference/config-and-env.md:53`).
 
-| Assumption                                                                       | Source                                                                                              | If it does not hold                                                                                  |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| A message goes only to the deployment that sent it, until it is acked or expires | Vercel Queues docs, "Deployments and versioning"; `queue/vercel.ts:10-15`                           | Another host must bound its own drain.                                                               |
-| Only deleting a deployment stops its consumers                                   | Vercel Queues docs, "Stopping deliveries to a deployment"                                           | Covered: the drain end does not need a delete.                                                       |
-| The queue drops a message at its retention, delay included                       | Vercel Queues docs, "Delayed delivery"; Junior sets 1 h on each send                                | The signature age check still rejects it after 1 h (`queue/sign.ts:129-132`).                        |
-| An invocation ends at `maxDuration`                                              | Vercel Queues docs, "Visibility timeout" and "Retries"; `nitro.ts:157-158,205`                      | The drain end and the stale lease fence do not hold.                                                 |
-| Cron requests go only to the production deployment                               | Vercel Cron Jobs docs; heartbeat every minute, `deployment.ts:4-5`                                  | "Current" is wrong. With crons turned off, no deployment is current, so no move runs: safe, no move. |
-| An Instant Rollback makes an older deployment current with no build              | Vercel Instant Rollback docs                                                                        | Seen through `lastCronAtMs`. P47 rollbacks are revert deploys.                                       |
-| `VERCEL_DEPLOYMENT_ID` names the deployment                                      | `queue/vercel.ts:11`, `deployment.ts:48`                                                            | With no id, the queue does not pin (`queue/vercel.ts:14`), as in local development.                  |
-| The app's CI/CD runs `junior upgrade` before the build                           | `apps/example/vercel.json:3`, `cli/upgrade.ts:117`                                                  | The guard migrations do not run, so the delete and drop releases are not stopped.                    |
-| BullMQ has one shared queue per topic and no deployment pin                      | `queue/bullmq.ts:14-16,188`; retention checked on receive from `job.timestamp`, `bullmq.ts:110-116` | Not a deploy host. Any worker takes any job, so the dev worker drains on restart.                    |
-| App clocks are within 60 s of the database clock                                 | Assumption                                                                                          | The drain end is short by the extra skew.                                                            |
+| Assumption                                                                                   | Source                                                                                                          | If it does not hold                                                         |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| An invocation ends at `maxDuration`, its `waitUntil` work included                           | Vercel Functions docs: "Max duration", `waitUntil` ("the same timeout as the function itself"), `getDeadline`   | The fence does not hold.                                                    |
+| With fluid compute, each invocation in a shared instance still ends at its own `maxDuration` | Vercel docs, "Configuring Maximum Duration" ("more time before Vercel terminates it") and Fluid compute         | The fence does not hold. The docs do not say how one invocation is stopped. |
+| A message goes back only to the deployment that sent it, until acked or expired              | Vercel Queues docs, "Deployments and versioning"; `queue/vercel.ts:10-15`                                       | Column-drop guard only: its wait is too short.                              |
+| Junior's retention and signature age are 1 h from the send                                   | `task-execution/vercel-queue.ts:15-16,64-70`; `queue/sign.ts:5,129-132`; Vercel Queues docs, "Delayed delivery" | Column-drop guard only.                                                     |
+| Cron requests go only to the production deployment                                           | Vercel Cron Jobs docs; heartbeat every minute, `deployment.ts:4-5`                                              | The current row is wrong. With crons off, no move or move back runs.        |
+| The app's CI/CD runs `junior upgrade` before the build                                       | `apps/example/vercel.json:3`, `cli/upgrade.ts:117`                                                              | The guard migrations do not run.                                            |
+| App clocks are within 60 s of the database clock                                             | Assumption                                                                                                      | The fence is short by the extra skew.                                       |
 
 - **Not chosen:**
-  - A time-based fence on every move (each move waits about 6.5 minutes,
-    and it depends on every old worker keeping the attempt limit). The
-    stale lease fence waits only on a lease that expired recently.
+  - A reader gate and a per-deployment record with a drain end (the
+    90bbd9b draft): more machinery than the fence, and the fence alone
+    stops the stalled old worker for any version.
+  - A lease-token check on today's cursor writes (C3): the fence makes the
+    stalled writer dead before the move.
+  - A time-based fence on every move: the stale lease fence waits only on
+    a lease that expired recently.
   - A hard cutover (needs downtime, which P47 rules out).
-  - "Live means a check-in in the last 6.5 minutes": a deployment that is
-    not current gets its own messages up to their retention, so it can be
-    quiet for longer and then run again.
-  - A drain from `maxDeliveries` times the backoff: Junior's triggers set
-    no `maxDeliveries`, and conversation work uses `null`.
   - The cutover deploy deletes older deployments: Junior is a library.
-    Each app would need a Vercel token that can delete deployments in its
-    CI/CD, it works only on Vercel, and a delete drops the unacked
-    messages of that deployment.
+    Each app would need a Vercel token that can delete deployments, it
+    works only on Vercel, and a delete drops that deployment's unacked
+    messages.
 - **Checks:**
   - First draft: `cutover_design noStrandedCursor` (a crash after the core
     switch strands the open turn) and
@@ -1114,19 +1097,20 @@ maxDuration)`. With the default `maxDuration` of 300 s, that is 6.75
     runs a turn twice after a rollback) fail.
   - Move on every take, cursor writes not fenced:
     `cutover_always noCrossCoreDuplicate` fails (an expired lease is not a
-    stopped old worker).
+    stopped old worker). The stale lease fence closes it.
   - Fenced, not pinned: `cutover_midDeployFenced oneCoreLive` fails (a
-    worker without the reader release takes the lease after the move).
+    worker from before step 3 takes the lease after the move).
   - `cutover_midDeployPinnedFenced` holds `safety` and `noDuplicateTurn`
     only because `Cutover.tla:153` fences `o1` too. With `o1` unfenced, as
     in reality, the durability review reports a 13-step `safety`
     counterexample: `o1` stalls, its lease expires, the new core pins and
-    inserts, then both run T1. The gate closes it; the model fix is step G.
-- **Model gap:** the gate from the deploy record (the model's switch flips
-  become deploys and reverts), with the drain end, the current deployment
-  from the cron and a new-core worker that stops when its deployment is
-  not current; the stale lease fence; the unfenced `o1`; the inbox move; a
-  parent with a child; the revert and move back; and I15 (step G, G.1f).
+    inserts, then both run T1. The stale lease fence closes it; the model
+    fix is step G.
+- **Model gap:** `maxDuration` and the stale lease fence (with the
+  heartbeat clear and the takeover that save `staleLeaseAcquiredAtMs`),
+  the unfenced `o1`, the switch flips as deploys and reverts with the
+  current row, the inbox move, a parent with a child, the revert and move
+  back, and I15 (step G, G.1f).
 - **What a revert cannot undo after the delete release:** today's workers
   and the move back are gone, so no conversation can go back. The moved
   Redis cursors, Agent invocation rows and dispatch records are not made
@@ -1168,17 +1152,11 @@ job, L3 holds (`errors_design l3_pausedResumed`).
   to run once. Source: the planning thread. David: "hard policy might be
   'shouldnt require manual intervention; must work with CI/CD'".
 - **How:**
-  - A writer path that needs its reader on every worker turns itself on
-    from the deploy record (P45).
   - A release that needs earlier state to drain carries a guard migration
     that fails while the state remains, so CI/CD stops the deploy. The
     repair job drains the state in the background.
   - A rollback is a revert deploy. Any state that must move back moves
     back by itself (P45).
-  - "Live" is the drain end from the deploy record (P45), not a recent
-    check-in. A wait for a new-core deployment ends at most about 73
-    minutes after it stops being current. A wait on today's path ends 67
-    minutes after the last publish of its last chain.
 - **Limit:** a stopped deploy goes ahead on the next deploy of the app. If
   no later deploy comes, someone must run the pipeline again.
 - **Policy:** step G amends `policies/serverless-background-work.md` (G.0b).

@@ -22,16 +22,15 @@ A conversation SHALL have at most one turn that is `running`, `paused` or
 
 The cutover SHALL run a conversation on one core at a time while old and
 new workers run together, with no operator step (Decided: P45, P47). The
-root conversation SHALL decide `core`, and a child SHALL inherit it. Moves
-SHALL start only when the deploy record shows the reader release on every
-live deployment (see Deployment Drain End). A revert deploy SHALL move
-new-core conversations back by itself.
+root conversation SHALL decide `core`, and a child SHALL inherit it. A move
+SHALL start only after the stale lease fence, and then SHALL pin today's
+lease. A revert deploy SHALL move new-core conversations back by itself.
 
 #### Scenario: Old worker refuses a new-core conversation
 
-- **WHEN** a worker with the reader release takes work for a new-core
+- **WHEN** a today's worker from step 3 on takes work for a new-core
   conversation while a new-core deployment is current
-- **THEN** it refuses it and runs nothing.
+- **THEN** it refuses it, acks, runs nothing and sends nothing.
 
 #### Scenario: Pin outlives the move
 
@@ -40,17 +39,17 @@ new-core conversations back by itself.
   fixed token) live, and each new-core lock take refreshes the record's
   7-day TTL.
 
-#### Scenario: Moves wait for the drained deploy
+#### Scenario: New-core worker on a deployment that is not current
 
-- **WHEN** a deployment without the reader release has not reached its
-  drain end, even if it has been quiet for more than 6.5 minutes, or the
-  cutover deployment does not have the newest heartbeat cron run
-- **THEN** no conversation moves, and input takes today's path.
+- **WHEN** a new-core worker gets a notify on a deployment that is not in
+  the current-deployment row
+- **THEN** it takes no lock, sends nothing and acks, and the repair job on
+  the current deployment runs the conversation.
 
 #### Scenario: Revert moves conversations back
 
-- **WHEN** a revert deploy makes the reader release current, and every
-  new-core deployment has reached its drain end
+- **WHEN** a revert deploy makes a release without `new_core` current, and
+  the heartbeat cron has written it to the current-deployment row
 - **THEN** the next lock take on each new-core conversation finishes its
   open turn and records with the new core's `work()`, then sets
   `core = old`, and today's timer job wakes paused new-core turns so this
@@ -81,48 +80,41 @@ new-core conversations back by itself.
 #### Scenario: Delete release blocked while old state remains
 
 - **WHEN** the delete release deploys before the repair job has saved
-  `oldStateDrainedAtMs`, or while a deployment without the new core has
-  not reached its drain end
+  `oldStateDrainedAtMs`, or while an active Agent invocation row is on an
+  old-core conversation
 - **THEN** its guard migration fails, CI/CD stops the deploy, and the next
   deploy checks again.
 
 #### Scenario: Column drop blocked while older code is live
 
 - **WHEN** the release that drops the `core`, `execution_status` and
-  `run_id` columns deploys while a deployment that still reads them has
-  not reached its drain end
+  `run_id` columns deploys before the step 16 release has been current for
+  `1 h + 2 × maxDuration + 2 min`
 - **THEN** its migration fails before it drops anything, and CI/CD stops
   the deploy.
 
-### Requirement: Deployment Drain End
+### Requirement: Stale Lease Fence
 
-A deployment that is not current SHALL count as live until its drain end:
-its last check-in plus `maxDuration` plus 105 s, or its last publish plus
-3720 s plus `maxDuration`, whichever is later (Decided: P45). The current
-deployment SHALL be the one with the newest heartbeat cron run. A move
-SHALL take an expired old lease only after its `acquiredAtMs` plus
-`maxDuration` plus 60 s.
+The move SHALL take an expired today's lease only after
+`max(acquiredAtMs, staleLeaseAcquiredAtMs) + maxDuration + 60 s` (Decided:
+P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or
+a take over an expired lease SHALL first save the old `acquiredAtMs` as
+`staleLeaseAcquiredAtMs`.
 
-#### Scenario: Quiet deployment still live
-
-- **WHEN** a deployment that is not current has not checked in for 10
-  minutes, and it published a message 30 minutes ago
-- **THEN** it is live, because the queue can still deliver that message to
-  it.
-
-#### Scenario: New-core worker on a deployment that is not current
-
-- **WHEN** a new-core worker gets a notify on a deployment without the
-  newest heartbeat cron run
-- **THEN** it takes no lock, sends nothing and acks, and the repair job on
-  the current deployment runs the conversation.
-
-#### Scenario: Expired lease from a worker with no record
+#### Scenario: Expired lease waits out the old worker
 
 - **WHEN** the move finds today's lease expired, and less than
   `maxDuration` plus 60 s has passed since its `acquiredAtMs`
 - **THEN** it does not take the lease, and it sets `wakeAtMs` to that
   time.
+
+#### Scenario: Cleared lease waits out the old worker
+
+- **WHEN** the heartbeat cleared an expired lease, or another worker took
+  over and released it, less than `maxDuration` plus 60 s after the first
+  holder's `acquiredAtMs`
+- **THEN** the move waits until `staleLeaseAcquiredAtMs` plus
+  `maxDuration` plus 60 s, though the conversation has no lease.
 
 ### Requirement: The Turn Row Owns Turn Status
 
