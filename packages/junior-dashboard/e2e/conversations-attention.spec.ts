@@ -81,8 +81,8 @@ async function mockWaitingConversation(
   });
 }
 
-test.describe("conversation time sections", () => {
-  test("puts waiting conversations first in their time section", async ({
+test.describe("conversation sections", () => {
+  test("puts waiting conversations in Needs attention first", async ({
     page,
     dashboard,
   }) => {
@@ -90,29 +90,31 @@ test.describe("conversation time sections", () => {
     await page.goto(dashboard.baseURL);
 
     const list = page.getByRole("list", { name: "Your conversations" });
-    const today = list.getByRole("button", { name: "Today" });
+    const attention = list.getByRole("button", { name: "Needs attention" });
     const waitingCard = list.getByRole("listitem").filter({
       has: page.getByRole("heading", { name: "Checkout latency triage" }),
     });
-    await expect(list.getByRole("button").first()).toHaveText(/^Today/);
+    await expect(list.getByRole("button").first()).toHaveText(
+      /^Needs attention/,
+    );
     await expect(list.getByRole("listitem").first()).toContainText(
       "Checkout latency triage",
     );
     await expect(
       waitingCard.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
-    await screenshot(page, "conversations-waiting-first");
+    await screenshot(page, "conversations-needs-attention");
 
-    await today.click();
-    await expect(today).toHaveAttribute("aria-expanded", "false");
+    await attention.click();
+    await expect(attention).toHaveAttribute("aria-expanded", "false");
     await expect(waitingCard).toHaveCount(0);
     await screenshot(page, "conversations-sections-collapsed");
 
     await page.reload();
-    await expect(today).toHaveAttribute("aria-expanded", "false");
+    await expect(attention).toHaveAttribute("aria-expanded", "false");
     await expect(waitingCard).toHaveCount(0);
 
-    await today.click();
+    await attention.click();
     await expect(waitingCard).toBeVisible();
   });
 
@@ -193,7 +195,9 @@ test.describe("conversation time sections", () => {
     const chip = sidebar.getByRole("link", {
       name: /Approve the checkout fix/,
     });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Today/);
+    await expect(sidebar.getByRole("button").first()).toHaveText(
+      /^Needs attention/,
+    );
     await expect(
       waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
@@ -239,9 +243,9 @@ test.describe("conversation time sections", () => {
       .getByRole("button", { name: "Close conversation details" })
       .click();
 
-    const today = sidebar.getByRole("button", { name: "Today" });
-    await today.click();
-    await expect(today).toHaveAttribute("aria-expanded", "false");
+    const attention = sidebar.getByRole("button", { name: "Needs attention" });
+    await attention.click();
+    await expect(attention).toHaveAttribute("aria-expanded", "false");
     await expect(waitingRow).toHaveCount(0);
   });
 });

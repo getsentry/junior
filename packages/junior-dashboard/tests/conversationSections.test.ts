@@ -60,7 +60,7 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts attention conversations first inside their own time section", () => {
+  it("puts attention conversations in Needs attention before Today", () => {
     const sections = buildConversationSections(
       [
         conversation("today", "2026-08-03T11:00:00-07:00"),
@@ -73,12 +73,13 @@ describe("conversation activity sections", () => {
     );
 
     expect(sectionIds(sections)).toEqual([
-      { conversations: ["today-unread", "today"], label: "Today" },
-      { conversations: ["yesterday"], label: "Yesterday" },
       {
-        conversations: ["waiting-old", "saturday"],
-        label: "Previous 7 days",
+        conversations: ["today-unread", "waiting-old"],
+        label: "Needs attention",
       },
+      { conversations: ["today"], label: "Today" },
+      { conversations: ["yesterday"], label: "Yesterday" },
+      { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
   });
 
