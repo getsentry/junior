@@ -80,9 +80,9 @@ class ContextSummaryError extends Error {
  * This repeats the steps of pi-agent-core before each model call
  * (`streamAssistantResponse` and `createLoopConfig`, which Pi does not
  * export): transform and convert the messages, then read the model,
- * reasoning, tools, and request options from the agent. An integration test
- * compares the provider request bytes with a real agent call, so it fails
- * when Pi changes these steps.
+ * reasoning, tools, and request options from the agent. A unit test compares
+ * this request with the one that a real Pi `Agent` loop passes to `streamFn`,
+ * so it fails when Pi changes these steps.
  */
 export async function buildAgentModelRequest(
   agent: Agent,

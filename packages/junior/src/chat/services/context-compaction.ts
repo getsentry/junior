@@ -28,6 +28,7 @@ import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
+  isStandaloneRuntimeContextMessage,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -373,6 +374,10 @@ function selectRetainedUserMessageEntries(
     sourceIndex >= 0;
     sourceIndex -= 1
   ) {
+    // Check the pair in place: alone, a context message looks like an ask.
+    if (isStandaloneRuntimeContextMessage(messages, sourceIndex)) {
+      continue;
+    }
     const stripped = stripRuntimeTurnContext([messages[sourceIndex]!]);
     const message = stripped[0];
     if (
@@ -433,12 +438,19 @@ async function loadRetainedUserMessages(
   pendingMessages: PiMessage[],
 ) {
   const projection = await loadConversationProjection({ conversationId });
-  // The Turn can commit its new instruction before compaction. It follows
-  // the summary, so leave it and everything after it out of the selection.
+  // The Turn can commit its context and new instruction before compaction.
+  // They follow the summary, so leave them and everything after them out of
+  // the selection.
   const pendingKeys = new Set(pendingMessages.map(retainedMessageKey));
-  const pendingStart = projection.messages.findIndex((message) =>
+  let pendingStart = projection.messages.findIndex((message) =>
     pendingKeys.has(retainedMessageKey(message)),
   );
+  if (
+    pendingStart > 0 &&
+    isStandaloneRuntimeContextMessage(projection.messages, pendingStart - 1)
+  ) {
+    pendingStart -= 1;
+  }
   const history =
     pendingStart === -1
       ? projection.messages

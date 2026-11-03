@@ -105,7 +105,12 @@ describe("context compaction projection reset", () => {
     const history = [
       user("Please remember the deploy blocker.", 1),
       assistant("The blocker is missing migration approval.", 2),
-      user("Also track the rollback plan.", 3),
+      // A Turn's context is its own message, paired with the instruction.
+      user("<thread-context>Earlier thread.</thread-context>", 3),
+      user(
+        "<current-instruction>Also track the rollback plan.</current-instruction>",
+        3,
+      ),
       {
         role: "toolResult",
         toolCallId: "tool-1",
@@ -116,15 +121,19 @@ describe("context compaction projection reset", () => {
       } as PiMessage,
       assistant("Tracking both.", 5),
     ];
-    const prompt = user("What is still open?", 6);
-    // The Turn commits its instruction before the agent compacts.
+    const context = user("<thread-context>New thread.</thread-context>", 6);
+    const prompt = user(
+      "<current-instruction>What is still open?</current-instruction>",
+      6,
+    );
+    // The Turn commits its context and instruction before the agent compacts.
     await commitMessages({
       conversationId,
-      messages: [...history, prompt],
+      messages: [...history, context, prompt],
       newMessageProvenance: { authority: "instruction", actor: alice },
     });
     const askProvenance = (await loadConversationProjection({ conversationId }))
-      .provenance[2];
+      .provenance[3];
 
     const result = await compactActiveContextIfNeeded(
       {
@@ -134,7 +143,8 @@ describe("context compaction projection reset", () => {
         pendingMessages: [
           { message: prompt, provenance: { authority: "instruction" } },
         ],
-        piMessages: history,
+        piMessages: [...history, context],
+        runtimeContextMessages: [...history, context, prompt],
         mode: "blocking",
       },
       async () => "Open: migration approval and rollback plan.",
@@ -144,7 +154,7 @@ describe("context compaction projection reset", () => {
     const texts = result.piMessages!.map(textOf);
     expect(texts.slice(0, 2)).toEqual([
       "Please remember the deploy blocker.",
-      "Also track the rollback plan.",
+      "<current-instruction>Also track the rollback plan.</current-instruction>",
     ]);
     expect(texts[2]).toContain("Open: migration approval and rollback plan.");
     expect(result.piMessages!.at(-1)).toEqual(prompt);
