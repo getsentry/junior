@@ -26,6 +26,16 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
 
+/**
+ * A stack merges only with a linear history, so a stacked pull request is
+ * rebased, never merged with its base. GitHub rebases the next pull request
+ * after a merge, but it stops at a conflict and sends no event for it.
+ */
+const STACK_CHECK =
+  "Check if the pull request is in a stack: `gh api 'repos/OWNER/REPO/stacks?pull_request=NUMBER'`.";
+const STACK_CONFLICT_STEPS =
+  "run `gh stack rebase`, resolve each conflict so that both changes stay intact, stage the files, and run `gh stack rebase --continue`. Run the checks again, run `gh stack push`, and confirm that each open pull request in the stack can merge. Report the files that had conflicts.";
+
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
@@ -39,8 +49,7 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
     'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined".',
   "pull_request.review_comment.created":
     'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
-  "pull_request.merge_conflict":
-    "Fetch baseBranch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.",
+  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch baseBranch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.`,
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
@@ -75,12 +84,13 @@ export interface GitHubPullRequestSubscriptionConfig {
  * Watch guidance for outcomes that the people involved need to hear about.
  * The Watch made after Junior creates a pull request always receives these
  * events. The webhook adds the people involved in the pull request to them.
+ * A merge also restacks the open pull requests above it, because Junior owns
+ * that stack and GitHub sends them no event when its own rebase stops.
  */
 const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
   "pull_request.review.approved":
     "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked.",
-  "pull_request.merged":
-    "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
+  "pull_request.merged": `${STACK_CHECK} If open pull requests in the stack remain above it and Junior pushed their branches, restack them before you reply. Do not ask first. Run \`gh stack checkout NUMBER\` with the lowest open pull request, then \`gh stack sync\`. If sync reports a conflict, ${STACK_CONFLICT_STEPS} Then mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it. When you restacked, say so in the same reply.`,
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
 /** Build the Watch created after Junior creates a pull request. */

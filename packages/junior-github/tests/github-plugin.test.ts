@@ -1627,7 +1627,8 @@ Conversation: \`local:test:old-conversation\`
     });
     // Merge conflicts always reach the Watch, so Junior keeps its pull
     // request ready to merge. Approval and merge always reach the people
-    // involved, so the Watch stores guidance for those outcomes.
+    // involved, so the Watch stores guidance for those outcomes. A merge
+    // restacks the open pull requests above it first.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
@@ -1640,8 +1641,8 @@ Conversation: \`local:test:old-conversation\`
         "pull_request.review.approved": expect.stringContaining(
           "Mention each person in People involved",
         ),
-        "pull_request.merged": expect.stringContaining(
-          "Mention each person in People involved",
+        "pull_request.merged": expect.stringMatching(
+          /gh stack sync[\s\S]*mention each person in People involved/,
         ),
       },
       intent: "Report failed checks and requested changes.",

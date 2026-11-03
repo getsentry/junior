@@ -177,7 +177,7 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice. When the merged pull request is in a stack, Junior also restacks the open pull requests above it whose branches it pushed, and resolves conflicts. GitHub rebases the next pull request in a stack after a merge, but it stops at a conflict and sends no event for it.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
@@ -532,7 +532,9 @@ read can be unknown, and a later event reads it again. A pull request that gets
 no other events is not checked. Trusted data includes `baseBranch`, `headSha`,
 and `url`. Filters can match only `repo` and `pullRequest`. The watch that
 Junior creates after it opens a pull request always gets this event, and the
-default guidance tells the agent to merge the base branch, not rebase.
+default guidance tells the agent to merge the base branch, not rebase. For a
+pull request in a stack, the guidance tells the agent to restack with
+`gh stack rebase`, because a stack merges only with a linear history.
 
 </details>
 
