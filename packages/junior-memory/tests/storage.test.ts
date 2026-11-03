@@ -16,7 +16,7 @@ import {
   type Actor,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
@@ -67,6 +67,30 @@ const memoryState: PluginState = {
     return await callback();
   },
 };
+
+function memoryHeartbeatContext(args: {
+  embedder: HeartbeatHookContext["embedder"];
+  fixture: MemoryFixture;
+  nowMs: number;
+}): HeartbeatHookContext {
+  return {
+    agent: {
+      dispatch: vi.fn(),
+      get: vi.fn(),
+    },
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+    },
+    db: memoryDb(args.fixture),
+    embedder: args.embedder,
+    log: noopLogger,
+    nowMs: args.nowMs,
+    plugin: { name: "memory" },
+    state: memoryState,
+  };
+}
 
 function createMemoryState(): PluginState {
   const values = new Map<string, unknown>();
@@ -3096,23 +3120,11 @@ WHERE id = '${expired.memory.id}'
         },
         { dimensions: 1024, model: "new-model" },
       );
-      const heartbeatContext: HeartbeatHookContext = {
-        agent: {
-          dispatch: vi.fn(),
-          get: vi.fn(),
-        },
-        cache: {
-          async getOrLoad(_key, load) {
-            return (await load()).value;
-          },
-        },
-        db: memoryDb(fixture),
+      const heartbeatContext = memoryHeartbeatContext({
         embedder: newEmbedder,
-        log: noopLogger,
+        fixture,
         nowMs: TEST_NOW_MS,
-        plugin: { name: "memory" },
-        state: memoryState,
-      };
+      });
       await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
       expect(newEmbedder.inputTypes).toEqual(["document"]);
       expect(newEmbedder.calls.map((texts) => [...texts].sort())).toEqual([
@@ -3714,29 +3726,43 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("archives expired visible memories during reads", async () => {
+  it("hides expired memories from reads and archives them in the heartbeat", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       const expiredContent = "Temporary CLI memory should expire cleanly.";
+      const privateContent = "Temporary CLI memory from a private DM.";
       const activeContent = "Persistent CLI memory should remain visible.";
       const supersededContent = "Superseded CLI memory stays superseded.";
       const embedder = createTestEmbedder({
         [expiredContent]: unitEmbedding(1),
+        [privateContent]: unitEmbedding(1),
         [activeContent]: unitEmbedding(2),
         [supersededContent]: unitEmbedding(3),
+        "Temporary CLI memory": unitEmbedding(1),
       });
       let nowMs = TEST_NOW_MS;
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
+      const privateStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123", userId: "U999" }),
+        { embedder, now: () => nowMs },
+      );
 
       const expired = await store.createMemory({
         content: expiredContent,
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:read-expired",
+      });
+      const privateExpired = await privateStore.createMemory({
+        content: privateContent,
+        kind: "preference",
+        expiresAtMs: TEST_NOW_MS + 10,
+        idempotencyKey: "memory-test:read-expired-private",
       });
       const active = await store.createMemory({
         content: activeContent,
@@ -3755,38 +3781,55 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         .where(
           eq(memorySqlSchema.juniorMemoryMemories.id, superseded.memory.id),
         );
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toHaveLength(3);
 
       nowMs = TEST_NOW_MS + 11;
+      const query = "Temporary CLI memory";
       await expect(store.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: active.memory.id }),
       ]);
-      await expect(
-        memoryDb(fixture)
-          .select()
-          .from(memorySqlSchema.juniorMemoryMemories)
-          .where(
-            eq(memorySqlSchema.juniorMemoryMemories.id, expired.memory.id),
-          ),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          archiveReason: "expired",
-          archivedAtMs: TEST_NOW_MS + 11,
-        }),
+      await expect(store.searchMemories({ query })).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
       ]);
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ memoryId: active.memory.id }),
-          expect.objectContaining({ memoryId: superseded.memory.id }),
-        ]),
+      await expect(store.recallMemories({ query })).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
+      ]);
+      await expect(privateStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
+      ]);
+      const archived = async () =>
+        (
+          await memoryDb(fixture)
+            .select()
+            .from(memorySqlSchema.juniorMemoryMemories)
+            .where(isNotNull(memorySqlSchema.juniorMemoryMemories.archivedAtMs))
+        )
+          .map((row) => `${row.id}:${row.archiveReason}:${row.archivedAtMs}`)
+          .sort();
+      const vectorMemoryIds = async () =>
+        (
+          await memoryDb(fixture)
+            .select()
+            .from(memorySqlSchema.juniorMemoryEmbeddings)
+        )
+          .map((row) => row.memoryId)
+          .sort();
+      // Reads leave expired rows for the heartbeat to archive.
+      await expect(archived()).resolves.toEqual([]);
+      await expect(vectorMemoryIds()).resolves.toHaveLength(4);
+
+      await memoryPlugin().hooks!.heartbeat!(
+        memoryHeartbeatContext({ embedder, fixture, nowMs }),
       );
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toHaveLength(2);
+
+      await expect(archived()).resolves.toEqual(
+        [
+          `${expired.memory.id}:expired:${TEST_NOW_MS + 11}`,
+          `${privateExpired.memory.id}:expired:${TEST_NOW_MS + 11}`,
+        ].sort(),
+      );
+      await expect(vectorMemoryIds()).resolves.toEqual(
+        [active.memory.id, superseded.memory.id].sort(),
+      );
       await expect(
         memoryDb(fixture)
           .select()

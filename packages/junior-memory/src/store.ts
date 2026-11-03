@@ -549,7 +549,8 @@ async function findByIdempotencyKey(args: {
 }
 
 /**
- * Archive a bounded batch of expired active rows and remove their derived vectors.
+ * Archive a bounded batch of expired active rows in the given scopes and
+ * remove their derived vectors.
  */
 export async function archiveExpiredMemoryBatch(args: {
   db: MemoryDb;
@@ -562,18 +563,44 @@ export async function archiveExpiredMemoryBatch(args: {
   if (!scopePredicate) {
     return { archivedCount: 0 };
   }
+  const filters: SQL[] = [scopePredicate];
+  if (args.idempotencyKey !== undefined) {
+    filters.push(eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey));
+  }
+  return await archiveExpiredRows({
+    db: args.db,
+    filters,
+    limit: args.limit,
+    nowMs: args.nowMs,
+  });
+}
+
+/**
+ * Archive a bounded batch of expired active rows in every scope and remove
+ * their derived vectors. Reads already hide expired rows, so this is cleanup
+ * that the memory heartbeat owns.
+ */
+export async function archiveExpiredMemoriesInAllScopes(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+}): Promise<ArchiveExpiredMemoriesResult> {
+  return await archiveExpiredRows({ ...args, filters: [] });
+}
+
+async function archiveExpiredRows(args: {
+  db: MemoryDb;
+  filters: SQL[];
+  limit?: number;
+  nowMs: number;
+}): Promise<ArchiveExpiredMemoriesResult> {
   const predicates: SQL[] = [
-    scopePredicate,
+    ...args.filters,
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
     lte(juniorMemoryMemories.expiresAtMs, args.nowMs),
   ];
-  if (args.idempotencyKey !== undefined) {
-    predicates.push(
-      eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
-    );
-  }
 
   const archivedIds = await args.db.transaction(async (tx) => {
     const expired = await tx
@@ -1234,11 +1261,9 @@ export function createMemoryStore(
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }
-    await archiveExpiredMemoryBatch({
-      db,
-      nowMs,
-      scopes: [scope],
-    });
+    // An expired row still holds its idempotency key in the unique index, so
+    // archive it first. Otherwise a retry with the same key cannot recreate
+    // the memory. Other expired rows are left to the heartbeat.
     await archiveExpiredMemoryBatch({
       db,
       idempotencyKey: input.idempotencyKey,
@@ -1449,11 +1474,6 @@ export function createMemoryStore(
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const scopes = deriveVisibleMemoryScopes(runtimeContext);
-    await archiveExpiredMemoryBatch({
-      db,
-      nowMs,
-      scopes,
-    });
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
     const overfetch =
       vectorMaxDistance === undefined
@@ -1546,11 +1566,6 @@ export function createMemoryStore(
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      await archiveExpiredMemoryBatch({
-        db,
-        nowMs,
-        scopes,
-      });
       return await listVisibleMemories({
         db,
         limit: input.limit,
