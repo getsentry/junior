@@ -1,67 +1,92 @@
-import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENTS_REMOVAL_NOTICE,
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
-  findSingleRepositoryDirectory,
-  listRepositoryDirectories,
+  readRepositoryInstructions,
   renderAgentsInstructions,
-  resolveRepositoryInstructions,
-  resolveRepositoryInstructionsForDirectories,
 } from "@/chat/repository-instructions";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type {
-  SandboxFileStat,
-  SandboxFileSystem,
+  SandboxCommandInput,
+  SandboxCommandResult,
 } from "@/chat/sandbox/workspace";
 
-class MemoryFileSystem implements SandboxFileSystem {
-  readonly directories = new Set<string>();
-  readonly files = new Map<string, string>();
+const hostRoots: string[] = [];
 
-  directory(path: string): this {
-    this.directories.add(path);
+afterEach(() => {
+  for (const root of hostRoots.splice(0)) {
+    fs.rmSync(root, { force: true, recursive: true });
+  }
+});
+
+/**
+ * A sandbox workspace root in a host temp directory. Commands run on the host
+ * with the temp directory as their cwd, so the read runs its real script.
+ */
+class HostSandbox {
+  commandCount = 0;
+  private readonly root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "junior-repository-instructions-"),
+  );
+
+  constructor() {
+    hostRoots.push(this.root);
+  }
+
+  directory(sandboxPath: string): this {
+    fs.mkdirSync(this.hostPath(sandboxPath), { recursive: true });
     return this;
   }
 
-  file(path: string, content: string): this {
-    this.files.set(path, content);
+  file(sandboxPath: string, content: string): this {
+    const hostPath = this.hostPath(sandboxPath);
+    fs.mkdirSync(path.dirname(hostPath), { recursive: true });
+    fs.writeFileSync(hostPath, content);
     return this;
   }
 
-  async readFile(filePath: string): Promise<string> {
-    const content = this.files.get(filePath);
-    if (content === undefined) throw missing(filePath);
-    return content;
+  /** Link `sandboxPath` to `target`, which is relative to the link. */
+  symlink(sandboxPath: string, target: string): this {
+    const hostPath = this.hostPath(sandboxPath);
+    fs.mkdirSync(path.dirname(hostPath), { recursive: true });
+    fs.symlinkSync(target, hostPath);
+    return this;
   }
 
-  async writeFile(): Promise<void> {
-    throw new Error("not implemented");
+  async read(directories?: string[]) {
+    return await readRepositoryInstructions({
+      ...(directories ? { directories } : undefined),
+      runCommand: async (input) => this.runCommand(input),
+    });
   }
 
-  async readdir(filePath: string): Promise<string[]> {
-    if (!this.directories.has(filePath)) throw missing(filePath);
-    const prefix = `${filePath}/`;
-    return [...this.directories, ...this.files.keys()]
-      .filter((candidate) => candidate.startsWith(prefix))
-      .map((candidate) => candidate.slice(prefix.length).split("/", 1)[0]!)
-      .filter((entry, index, entries) => entries.indexOf(entry) === index);
-  }
-
-  async stat(filePath: string): Promise<SandboxFileStat> {
-    if (this.directories.has(filePath)) {
-      return { isDirectory: () => true };
+  private runCommand(input: SandboxCommandInput): SandboxCommandResult {
+    this.commandCount += 1;
+    if (input.cwd !== SANDBOX_WORKSPACE_ROOT) {
+      throw new Error(`unexpected command cwd: ${input.cwd}`);
     }
-    if (this.files.has(filePath)) {
-      return { isDirectory: () => false };
-    }
-    throw missing(filePath);
+    const result = spawnSync(input.cmd, input.args ?? [], {
+      cwd: this.root,
+      encoding: "utf8",
+    });
+    return {
+      exitCode: result.status ?? 1,
+      stderr: result.stderr,
+      stdout: result.stdout,
+    };
   }
-}
 
-function missing(path: string): NodeJS.ErrnoException {
-  return Object.assign(new Error(`File not found: ${path}`), {
-    code: "ENOENT",
-  });
+  private hostPath(sandboxPath: string): string {
+    return path.join(
+      this.root,
+      path.posix.relative(SANDBOX_WORKSPACE_ROOT, sandboxPath),
+    );
+  }
 }
 
 describe("repository instructions", () => {
@@ -87,7 +112,7 @@ describe("repository instructions", () => {
   });
 
   it("loads AGENTS.md files from the Git root through the selected cwd", async () => {
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repo")
       .directory("/vercel/sandbox/repo/.git")
@@ -96,10 +121,9 @@ describe("repository instructions", () => {
       .file("/vercel/sandbox/repo/AGENTS.md", "root rules")
       .file("/vercel/sandbox/repo/packages/api/AGENTS.md", "api rules");
 
-    const instructions = await resolveRepositoryInstructions({
-      cwd: "/vercel/sandbox/repo/packages/api",
-      fs,
-    });
+    const { instructions } = await sandbox.read([
+      "/vercel/sandbox/repo/packages/api",
+    ]);
 
     expect(instructions).toMatchObject({
       directory: "/vercel/sandbox/repo/packages/api",
@@ -120,7 +144,7 @@ describe("repository instructions", () => {
   });
 
   it("loads AGENTS.md from each selected repository directory", async () => {
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repos")
       .directory("/vercel/sandbox/repos/sentry")
@@ -130,13 +154,10 @@ describe("repository instructions", () => {
       .file("/vercel/sandbox/repos/sentry/AGENTS.md", "sentry rules")
       .file("/vercel/sandbox/repos/relay/AGENTS.md", "relay rules");
 
-    const instructions = await resolveRepositoryInstructionsForDirectories({
-      directories: [
-        "/vercel/sandbox/repos/sentry",
-        "/vercel/sandbox/repos/relay",
-      ],
-      fs,
-    });
+    const { instructions } = await sandbox.read([
+      "/vercel/sandbox/repos/sentry",
+      "/vercel/sandbox/repos/relay",
+    ]);
 
     expect(instructions).toMatchObject({
       text: [
@@ -154,12 +175,13 @@ describe("repository instructions", () => {
       ],
     });
     expect(instructions?.directory).toBeUndefined();
+    expect(sandbox.commandCount).toBe(1);
   });
 
   it("lists model-invocable repository skills after AGENTS.md", async () => {
     const skill = (name: string, extra = "") =>
       `---\nname: ${name}\ndescription: >-\n  Use for ${name}\n  work.\n${extra}---\n\nBody.`;
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repos")
       .directory("/vercel/sandbox/repos/sdk")
@@ -194,10 +216,7 @@ describe("repository instructions", () => {
         skill("add-bundle"),
       );
 
-    const instructions = await resolveRepositoryInstructionsForDirectories({
-      directories: ["/vercel/sandbox/repos/sdk"],
-      fs,
-    });
+    const { instructions } = await sandbox.read(["/vercel/sandbox/repos/sdk"]);
 
     expect(instructions?.skills).toEqual([
       {
@@ -218,7 +237,7 @@ describe("repository instructions", () => {
   });
 
   it("lists repository skills when the repository has no AGENTS.md", async () => {
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repo")
       .directory("/vercel/sandbox/repo/.git")
@@ -229,39 +248,36 @@ describe("repository instructions", () => {
         "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
       );
 
-    const instructions = await resolveRepositoryInstructions({
-      cwd: "/vercel/sandbox/repo",
-      fs,
-    });
+    const { instructions } = await sandbox.read(["/vercel/sandbox/repo"]);
 
     expect(instructions?.sources).toEqual([]);
     expect(instructions?.text).toMatch(/^## Repository skills\n/);
   });
 
   it("gives repository skills only the budget left after AGENTS.md", async () => {
-    const fs = new MemoryFileSystem()
-      .directory("/vercel/sandbox")
-      .directory("/vercel/sandbox/repo")
-      .directory("/vercel/sandbox/repo/.git")
-      .directory("/vercel/sandbox/repo/.agents/skills")
-      .directory("/vercel/sandbox/repo/.agents/skills/e2e")
-      .file("/vercel/sandbox/repo/AGENTS.md", "a".repeat(32 * 1024 - 10))
-      .file(
-        "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
-        "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
-      );
+    const entry =
+      "- `e2e` (`/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md`): Run e2e tests.";
+    const agentsBytesThatFit = 32 * 1024 - Buffer.byteLength(`${entry}\n`);
+    const read = async (agentsBytes: number) =>
+      await new HostSandbox()
+        .directory("/vercel/sandbox/repo/.git")
+        .file("/vercel/sandbox/repo/AGENTS.md", "a".repeat(agentsBytes))
+        .file(
+          "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+          "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
+        )
+        .read(["/vercel/sandbox/repo"]);
 
-    const instructions = await resolveRepositoryInstructions({
-      cwd: "/vercel/sandbox/repo",
-      fs,
-    });
+    const fits = await read(agentsBytesThatFit);
+    const over = await read(agentsBytesThatFit + 1);
 
-    expect(instructions?.skills).toBeUndefined();
-    expect(instructions?.text).not.toContain("Repository skills");
+    expect(fits.instructions?.text).toContain(entry);
+    expect(over.instructions?.skills).toBeUndefined();
+    expect(over.instructions?.text).not.toContain("Repository skills");
   });
 
   it("keeps every AGENTS.md ahead of repository skills from earlier repositories", async () => {
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repos")
       .directory("/vercel/sandbox/repos/alpha")
@@ -279,13 +295,10 @@ describe("repository instructions", () => {
         "b".repeat(32 * 1024 - 500),
       );
 
-    const instructions = await resolveRepositoryInstructionsForDirectories({
-      directories: [
-        "/vercel/sandbox/repos/alpha",
-        "/vercel/sandbox/repos/beta",
-      ],
-      fs,
-    });
+    const { instructions } = await sandbox.read([
+      "/vercel/sandbox/repos/alpha",
+      "/vercel/sandbox/repos/beta",
+    ]);
 
     expect(instructions?.sources[0]?.content.length).toBe(32 * 1024 - 500);
     expect(instructions?.skills).toBeUndefined();
@@ -294,7 +307,7 @@ describe("repository instructions", () => {
   it("shares one AGENTS.md byte budget across selected repositories", async () => {
     const first = "a".repeat(30 * 1024);
     const second = "b".repeat(8 * 1024);
-    const fs = new MemoryFileSystem()
+    const sandbox = new HostSandbox()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repos")
       .directory("/vercel/sandbox/repos/alpha")
@@ -304,13 +317,10 @@ describe("repository instructions", () => {
       .file("/vercel/sandbox/repos/alpha/AGENTS.md", first)
       .file("/vercel/sandbox/repos/beta/AGENTS.md", second);
 
-    const instructions = await resolveRepositoryInstructionsForDirectories({
-      directories: [
-        "/vercel/sandbox/repos/alpha",
-        "/vercel/sandbox/repos/beta",
-      ],
-      fs,
-    });
+    const { instructions } = await sandbox.read([
+      "/vercel/sandbox/repos/alpha",
+      "/vercel/sandbox/repos/beta",
+    ]);
 
     expect(instructions?.sources).toHaveLength(2);
     expect(instructions?.sources[0]?.content).toBe(first);
@@ -320,36 +330,112 @@ describe("repository instructions", () => {
     );
   });
 
-  it("lists Git worktrees under repos/", async () => {
-    const fs = new MemoryFileSystem()
-      .directory("/vercel/sandbox")
-      .directory("/vercel/sandbox/repos")
-      .directory("/vercel/sandbox/repos/repo")
-      .file("/vercel/sandbox/repos/repo/.git", "gitdir: elsewhere");
+  it("cuts AGENTS.md at the budget and lists skills with a large SKILL.md", async () => {
+    const agents = `${"a".repeat(32 * 1024 - 1)}é${"b".repeat(1024)}`;
+    const sandbox = new HostSandbox()
+      .directory("/vercel/sandbox/repos/rules/.git")
+      .file("/vercel/sandbox/repos/rules/AGENTS.md", agents)
+      .directory("/vercel/sandbox/repos/tools/.git")
+      .file(
+        "/vercel/sandbox/repos/tools/.agents/skills/e2e/SKILL.md",
+        `---\nname: e2e\ndescription: Run e2e tests.\n---\n\n${"x".repeat(40 * 1024)}`,
+      );
 
-    expect(await listRepositoryDirectories(fs)).toEqual([
-      "/vercel/sandbox/repos/repo",
+    const rules = await sandbox.read(["/vercel/sandbox/repos/rules"]);
+    const tools = await sandbox.read(["/vercel/sandbox/repos/tools"]);
+
+    // The cut splits the two-byte character, as a full read would.
+    expect(rules.instructions?.sources[0]?.content).toBe(
+      Buffer.from(agents, "utf8")
+        .subarray(0, 32 * 1024)
+        .toString("utf8"),
+    );
+    expect(tools.instructions?.skills).toEqual([
+      {
+        description: "Run e2e tests.",
+        name: "e2e",
+        path: "/vercel/sandbox/repos/tools/.agents/skills/e2e/SKILL.md",
+      },
     ]);
-    expect(await findSingleRepositoryDirectory(fs)).toBe(
-      "/vercel/sandbox/repos/repo",
-    );
+  });
 
-    fs.directory("/vercel/sandbox/repos/other").directory(
-      "/vercel/sandbox/repos/other/.git",
-    );
-    expect(await listRepositoryDirectories(fs)).toEqual([
+  it("follows symlinked AGENTS.md files and skill roots", async () => {
+    const sandbox = new HostSandbox()
+      .directory("/vercel/sandbox/repo/.git")
+      .file("/vercel/sandbox/repo/docs/agents.md", "linked rules")
+      .symlink("/vercel/sandbox/repo/AGENTS.md", "docs/agents.md")
+      .file(
+        "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+        "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
+      )
+      .symlink("/vercel/sandbox/repo/.agents/skills/gone", "missing")
+      .symlink("/vercel/sandbox/repo/.claude/skills", "../.agents/skills");
+
+    const { instructions } = await sandbox.read(["/vercel/sandbox/repo"]);
+
+    expect(instructions?.sources).toEqual([
+      { content: "linked rules", path: "/vercel/sandbox/repo/AGENTS.md" },
+    ]);
+    expect(instructions?.skills).toEqual([
+      {
+        description: "Run e2e tests.",
+        name: "e2e",
+        path: "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+      },
+    ]);
+  });
+
+  it("skips skill entries whose names hold a line break", async () => {
+    const sandbox = new HostSandbox()
+      .directory("/vercel/sandbox/repo/.git")
+      .directory("/vercel/sandbox/repo/.agents/skills/bad\nname")
+      .file(
+        "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+        "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
+      );
+
+    const { instructions } = await sandbox.read(["/vercel/sandbox/repo"]);
+
+    expect(instructions?.skills?.map((skill) => skill.name)).toEqual(["e2e"]);
+  });
+
+  it("reads every Git worktree under repos/ with one command", async () => {
+    const sandbox = new HostSandbox()
+      .file("/vercel/sandbox/repos/repo/.git", "gitdir: elsewhere")
+      .file("/vercel/sandbox/repos/repo/AGENTS.md", "repo rules")
+      .directory("/vercel/sandbox/repos/other/.git")
+      .file("/vercel/sandbox/repos/other/AGENTS.md", "other rules")
+      .file("/vercel/sandbox/repos/plain/AGENTS.md", "not a worktree")
+      .file("/vercel/sandbox/repos/notes.txt", "not a directory");
+
+    const { directories, instructions } = await sandbox.read();
+
+    expect(directories).toEqual([
       "/vercel/sandbox/repos/other",
       "/vercel/sandbox/repos/repo",
     ]);
-    expect(await findSingleRepositoryDirectory(fs)).toBeUndefined();
+    expect(instructions?.text).toBe(
+      [
+        "## /vercel/sandbox/repos/other",
+        "",
+        "other rules",
+        "",
+        "## /vercel/sandbox/repos/repo",
+        "",
+        "repo rules",
+      ].join("\n"),
+    );
+    expect(sandbox.commandCount).toBe(1);
   });
 
-  it("ignores root-level clones outside repos/", async () => {
-    const fs = new MemoryFileSystem()
-      .directory("/vercel/sandbox")
-      .directory("/vercel/sandbox/repo")
-      .file("/vercel/sandbox/repo/.git", "gitdir: elsewhere");
+  it("finds no worktrees when repos/ is missing", async () => {
+    const sandbox = new HostSandbox()
+      .file("/vercel/sandbox/repo/.git", "gitdir: elsewhere")
+      .file("/vercel/sandbox/repo/AGENTS.md", "root-level clone");
 
-    expect(await findSingleRepositoryDirectory(fs)).toBeUndefined();
+    expect(await sandbox.read()).toEqual({
+      directories: [],
+      instructions: undefined,
+    });
   });
 });
