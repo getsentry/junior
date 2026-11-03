@@ -30,6 +30,8 @@ async function mockReadPositionConversation(
     detailGate: Promise.resolve(),
     /** Holds `after` page responses until it resolves. */
     newerGate: Promise.resolve(),
+    /** The first `after` cursor that `newerGate` holds. */
+    newerGateAfter: 0,
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     reported: [] as number[],
@@ -89,7 +91,9 @@ async function mockReadPositionConversation(
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
-      if (after) await state.newerGate;
+      if (after && Number(after) >= state.newerGateAfter) {
+        await state.newerGate;
+      }
       const latestSeq = state.eventCount - 1;
       const from = after
         ? Number(after) + 1
@@ -223,6 +227,38 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   await expect
     .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
     .toBeGreaterThanOrEqual(52);
+});
+
+test("opens a linked event that newer pages have not loaded yet", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 10,
+  });
+  mock.pagedDetail = true;
+  // The first page after the read position loads. The next one waits.
+  mock.newerGateAfter = 11;
+  let releaseNewer = () => {};
+  mock.newerGate = new Promise((resolve) => {
+    releaseNewer = resolve;
+  });
+  const heldRequest = page.waitForRequest((request) =>
+    request.url().includes("/events?after=50"),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?event=70`,
+  );
+  const linked = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await heldRequest;
+  await expect(linked).toBeVisible();
+  releaseNewer();
+  await expect(linked).toContainText("Transcript message 70 ");
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({

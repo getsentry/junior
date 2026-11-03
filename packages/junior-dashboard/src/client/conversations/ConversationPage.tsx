@@ -191,9 +191,19 @@ export function ConversationPage(props: {
     readAtOpen.unreadCursorAfterCache && unreadHistory?.isPending,
   );
   const showUnreadHistory = holdCachedTranscript ? undefined : unreadHistory;
+  // The held copy loads no earlier pages: they would come from before the
+  // latest page, not before the cached rows.
   const history: TranscriptHistory =
     showUnreadHistory ??
-    (holdCachedTranscript ? { ...detail, data: cachedAtOpen } : detail);
+    (holdCachedTranscript
+      ? {
+          ...detail,
+          data: cachedAtOpen,
+          hasPreviousPage: false,
+          isLoadingPreviousPage: false,
+          loadPreviousPage: () => {},
+        }
+      : detail);
   const transcriptPending =
     detail.isPending || Boolean(showUnreadHistory?.isPending);
   const feedConversation = conversations.find(
@@ -275,12 +285,22 @@ export function ConversationPage(props: {
   const loadPreviousPageRef = useRef(history.loadPreviousPage);
   loadPreviousPageRef.current = history.loadPreviousPage;
   const oldestLoadedSeq = transcript?.events[0]?.seq;
-  const linkedEventMissing =
+  const linkedEventEarlier =
     selectedEventSeq !== undefined &&
     oldestLoadedSeq !== undefined &&
     selectedEventSeq < oldestLoadedSeq;
+  // From the read position, newer pages load by themselves until they reach
+  // the latest page. A linked event or Turn after them waits for them.
+  const newerPending =
+    holdCachedTranscript || Boolean(history.newer && !history.newer.error);
+  const newestLoadedSeq = transcript?.events.at(-1)?.seq;
+  const linkedEventNewer =
+    newerPending &&
+    selectedEventSeq !== undefined &&
+    newestLoadedSeq !== undefined &&
+    selectedEventSeq > newestLoadedSeq;
   const loadLinkedEvent =
-    linkedEventMissing &&
+    linkedEventEarlier &&
     history.hasPreviousPage &&
     !history.isLoadingPreviousPage &&
     !history.historyError;
@@ -305,6 +325,7 @@ export function ConversationPage(props: {
     !history.historyError;
   const linkedTurnNotFound =
     linkedTurnMissing &&
+    !newerPending &&
     !history.hasPreviousPage &&
     !history.isLoadingPreviousPage;
   useEffect(() => {
@@ -321,9 +342,10 @@ export function ConversationPage(props: {
     !selectedEvent &&
     (transcriptPending ||
       linkedTurnSeq !== undefined ||
-      ((linkedEventMissing || linkedTurnMissing) &&
+      ((linkedEventEarlier || linkedTurnMissing) &&
         (history.hasPreviousPage || history.isLoadingPreviousPage) &&
-        !history.historyError));
+        !history.historyError) ||
+      ((linkedEventNewer || linkedTurnMissing) && newerPending));
   const showEvent = Boolean(selectedEvent) || eventLoading;
   // Step through the same filtered rows that the event log shows.
   const events = transcript?.events;
