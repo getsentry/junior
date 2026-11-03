@@ -156,8 +156,10 @@ function pauseForSignIn(
 ): Promise<TurnRecord>;
 
 /**
- * Sign-in callback. Saves turn_authorized for (turnId, provider), then
- * notifies a worker. Writes no history. Only work() resumes the turn.
+ * Sign-in callback. Saves turn_authorized for (turnId, provider), raises
+ * inboxSeq and sets wakeAtMs to now (P32), then notifies a worker. A
+ * worker that holds the lock then sees the change before it releases.
+ * Writes no history. Only work() resumes the turn.
  */
 function recordSignIn(
   turnId: TurnId,
@@ -170,7 +172,7 @@ Inside `work()`, for an open turn paused for sign-in:
 
 | Found                                          | Action                                                               |
 | ---------------------------------------------- | -------------------------------------------------------------------- |
-| a stop time after the turn started             | `finishTurn(stopped: person)`                                        |
+| the turn is under the stop (P34)               | `finishTurn(stopped: person)`                                        |
 | `turn_authorized` for this turn                | resume the turn                                                      |
 | new input whose actor is the same person (P13) | `finishTurn(stopped: superseded)`, then a turn for it next (Decided) |
 | input from another person, or any system actor | wait (Decided)                                                       |

@@ -43,8 +43,8 @@ These are the #2567 words, plus three that this plan adds (marked).
   with the turn.
 - **sender check:** the check of who sent a saved message.
 - **action review:** the check that runs before a risky tool call.
-- **stop time:** saved on a conversation by a stop. A turn that started
-  before it is stopped. (Added.)
+- **stop time:** saved on a conversation by a stop. A turn that took in
+  input older than it is stopped. (Added.)
 - **closing turn:** a turn row that takes in input and ends at once, without
   the agent. It records input that will not run. (Added, P30.)
 
@@ -195,8 +195,8 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
    changes.
 3. Every turn save, history commit and delivery intent carries the lock
    token and version, and checks them in the same SQL write (P5). It also
-   refuses when the stop time is after the turn's start, except the saves
-   of `finishTurn(stopped)` (P34).
+   refuses when the turn is under the stop, except the saves of
+   `finishTurn(stopped)` (P34).
 4. A turn acts for one actor and one whose-access, taken from its starting
    request record. Input that joins must have the same actor, exactly the
    same signed subject and the same source (Decided; P20 for "exactly").
@@ -223,7 +223,8 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
     core agent module (`finishTurn`, `askChild`, `messageParent`) makes
     `source: "agent"` messages and their records (P26, P39).
 13. Server times (lock expiry, turn start, wake time) come from database
-    `now()`. A stop time is the stop input's own `createdAtMs` (P34).
+    `now()`. A stop is compared with input `createdAtMs`, never with a
+    server time (P34). Which clock stamps both is P44.
 14. A worker never releases the lock while its turn is `running`. When the
     pause save fails, the lock expires instead (P8).
 
@@ -391,9 +392,11 @@ stay stable across reviews. Retired numbers say where they went.
      a conversation with no live lock whose `wakeAtMs` has passed; a
      `running` turn whose lock expired, on the first pass after expiry.
      A Redis sorted set (member: conversation id, score: `wakeAtMs`) is
-     the wake-time index. `send()` and the pre-release set write it. An
-     index on `lock_expires_at` for conversations with an open turn finds
-     expired locks.
+     the wake-time index. `send()`, `recordSignIn` and the pre-release set
+     write it. An index on `lock_expires_at` for conversations with an open
+     turn finds expired locks. With P32's delayed notify, the job is a
+     backstop for wakes: L3 holds without it. A `running` turn whose worker
+     died still waits for this job.
   3. Nothing else. The worker, not the job, closes records through a
      closing turn (P30), so `finishTurn` stays the only status writer.
 - **Why:** a record and its inbox entry are in two stores. Lost wakes leave
@@ -609,17 +612,22 @@ turn".
 
 - **Proposal:**
   - `send()` appends, raises `inboxSeq`, sets `wakeAtMs = now`, writes the
-    wake-time index (P7), then notifies.
+    wake-time index (P7), then notifies. `recordSignIn` does the same
+    before it notifies, without an append.
   - `nextRunAtMs(state)` is the one runnable test. `work()` uses it to
     choose what runs, and the release uses it too.
   - Before release, the worker reads the inbox and `inboxSeq`, computes
     `nextRunAtMs` (for example the link expiry, a delivery's
     `nextAttemptAtMs` or an event window end) and sets `wakeAtMs` to it
     with a compare-and-set on `inboxSeq`. When `inboxSeq` changed, it reads
-    again.
-  - It releases the lock, then reads again. When `nextRunAtMs <= now`, it
-    notifies a worker. P7 part 2 catches anything left.
+    the inbox record again. The same set queues a delayed notify for
+    `wakeAtMs`, so a link expiry or backoff fires without the repair job.
+  - It releases the lock, then reads the inbox record again (inbox,
+    `inboxSeq`, `wakeAtMs`). When `wakeAtMs <= now`, it notifies a worker.
   - Ships in step 5, with the SQL lock.
+  - Model check: without the `recordSignIn` change and the delayed notify,
+    a sign-in during a held lock drops its notify, and L3 fails without
+    the repair job (`verification/traces/wake_l3NoRepair_signInDuringLock.txt`).
 - **Why:** a notification that arrives while the lock is held is dropped.
   The compare-and-set stops a later wake time from hiding a new message.
   The release-then-read order means one side always sees the other: if the
@@ -639,27 +647,40 @@ turn".
 
 ### P34. Stop time
 
-- **Proposal:** `stop()` saves a stop time on the conversation row (and on
-  every conversation below it for a tree stop) and notifies each worker. The
-  stop time is the stop input's own `createdAtMs`; other server times use
-  database `now()`. It writes no turn row and no request record. A worker
-  stops an open turn that started before the stop time. `startTurn` checks
-  the stop time in its transaction and refuses input older than it. Every
-  fenced save and every delivery intent save refuses when the stop time is
-  after the turn's `startedAtMs`, except the saves of `finishTurn(stopped)`.
-  Person input older than the stop is saved to history as "not run" through
-  a closing turn, so the person sees it and can ask again. Event and agent
-  input older than the stop is dropped through a closing turn with no
-  history.
-- **Why:** one rule, no race between stop and turn start.
+- **Proposal:** `stop()` saves the stop input's `createdAtMs` as the stop
+  time on the conversation row (and on every conversation below it for a
+  tree stop) and notifies each worker. It writes no turn row and no request
+  record. Both sides of every compare are input `createdAtMs` values:
+  1. A turn is under the stop when any input it took in has `createdAtMs`
+     older than the stop time. The turn row keeps
+     `oldestInputCreatedAtMs`.
+  2. `startTurn` and a join (`saveCheckpoint` with `takeIn`) refuse input
+     older than the stop time.
+  3. Every fenced save and every delivery intent save of a turn under the
+     stop refuses, except the saves of `finishTurn(stopped)`.
+  4. `finishTurn(stopped)` puts taken-in input that is not older than the
+     stop time back in the inbox. Its request record stays `open`.
+  5. Person input older than the stop is saved to history as "not run"
+     through a closing turn, so the person sees it and can ask again. Event
+     and agent input older than the stop is dropped through a closing turn
+     with no history.
+- **Why:** a stop ends what the person sent before it, and nothing newer.
+  The 5ed29c2 rule compared the stop with the turn's database
+  `startedAtMs`. The model found it wrong both ways: a turn that started
+  after the click but before `stop()` saved kept posting
+  (`stop_turnBeforeStopKeepsPosting`), and with the source clock ahead, a
+  newer message's turn was stopped (`stop_stopKillsNewerTurn`). The rule
+  above passes every stop check at skew 0 and ±3 (`stop_proposed_*`), when
+  the stop and the input share a clock. P44 covers stops that do not.
 
 ### P35. Results under a tree stop
 
 - **Proposal:** under a tree stop, a child's `stopped` outcome is recorded
   on its asked request record. The child mints no result record, so no
   parent turn starts. A result minted before the stop is older than the
-  stop time, so a closing turn drops it (P34). This is a proposed reading
-  of the decision "a child stopped by something other than `stopAgent`
+  stop time, so a closing turn drops it (P34). Comparing the parent's stop
+  time with a record's `createdAtMs` mixes clocks too (P44). This is a
+  proposed reading of the decision "a child stopped by something other than `stopAgent`
   sends its parent `stopped`": the parent is stopped too, so nobody is there
   to tell. A child stopped alone (dashboard) still sends the result.
 
@@ -711,6 +732,43 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 - **Switch rule:** if step 5 shows the check-in load is a problem, switch.
   Only the lock module changes.
 
+### P44. One clock for a stop and the input it judges (from the model)
+
+P34 is exact only when the stop and the input share a clock. Two cases do
+not: a dashboard stop on a Slack thread (dashboard clock against Slack
+`ts`), and a tree stop into a child whose input core mints (stop clock
+against database `now()`). The model shows both failing (checks
+`stop_proposed_crossAhead` and `stop_proposed_crossBehind`, traces
+`stop_crossClockAhead.txt` and `stop_crossClockBehind.txt`). P35 compares a
+stop with a record's `createdAtMs` and has the same risk. An inbox sequence
+number alone also fails: a late message gets a later number than a stop it
+came before (check `stop_seq_same`).
+
+- **Options:**
+  1. One clock everywhere: core stamps every input (at inbox append) and
+     every stop (in the `stop()` transaction) with database `now()`, and
+     "older" means "Junior received it earlier". Simple and exact for Junior's own order, but a Slack
+     message delivered late (after a retry) counts as newer than a stop
+     the person clicked after sending it, so it runs.
+  2. Keep source clocks and accept the cross-source gap. No change, but a
+     dashboard stop can spare older Slack input or stop newer input by up
+     to the clock skew.
+  3. Two stamps, compare on a shared clock. Every input and every stop
+     keeps its source `createdAtMs` and also gets a database stamp when
+     core receives it (inbox append for input, the `stop()` transaction
+     for a stop). Core-minted input (child messages, results) gets the
+     database stamp of the transaction that mints it, taken with
+     `clock_timestamp()` under the conversation row lock, so stamps follow
+     commit order. A stop and input from the same source compare source
+     times. Any other pair compares database stamps.
+- **Recommendation:** option 3. Same-source stops stay exact, including a
+  late Slack delivery. Tree stops into children and P35 result checks use
+  only core stamps under one row lock, so they follow Junior's real order.
+  Only a cross-source stop on person input (a dashboard stop on a Slack
+  thread) keeps option 1's gap for a late message. Inference: not modeled
+  yet; G.1f models it before step 11.
+- **Needs:** David's decision.
+
 ## Verification
 
 Requested by the maintainer in the planning thread: formal checks that the
@@ -727,13 +785,27 @@ code follows this design. Four layers catch different drift.
 
 ### P37. Protocol model
 
-- **Proposal:** Quint. Apalache checks the safety invariants (I1–I13) with
-  bounded symbolic runs. TLC checks the liveness properties (L1–L3),
-  because Apalache is bounded. Each worked example in `interfaces/*.md` is
-  a named trace (for example `turn_E3_slow_worker`).
-- **Bound:** 2 conversations (a parent and a child), 2 person actors and
-  the system actor, 4 inputs, 2 worker crashes, 2 lock expiries and 2
+- **Proposal:** Quint. TLC checks the safety invariants (I1–I14) and the
+  liveness properties (L1–L3) exhaustively within the bound. Apalache only
+  prints shortest counterexample traces; no property rests on it alone.
+  Each worked example in `interfaces/*.md` is a named trace (for example
+  `turn_E3_slow_worker`).
+- **Target bound:** 2 conversations (a parent and a child), 2 person actors
+  and the system actor, 4 inputs, 2 worker crashes, 2 lock expiries and 2
   delivery attempts per run.
+- **Checked so far** (TLC, exhaustive; repo-root `verification/` on
+  branch `spec/shared-conversation-core-model` at 7ca64c2):
+  - worker lock model (`worker_lock.qnt`): 1 conversation, 2 workers, 2
+    person actors, 2 inputs, at most 2 crashes and lock expiries combined,
+    2 post attempts per delivery, 2 turn errors;
+  - wake liveness (`wakeLive_*`): the same model with no crashes or
+    expiries and no soft pause;
+  - stop model (`stop_clock.qnt`): 1 conversation, 1 person actor, 2
+    inputs, 1 stop, 2 turns, 6 clock ticks, skew 0 and ±3.
+- **Not modeled yet** (step G tasks G.1a–G.1f): parent and child
+  conversations, the system actor, the adversarial `send`, request-record
+  matching (I5, I6, I9, I12), tree-stop results (I8), sandbox process tags
+  (I13), and the P44 clock. Until then, these invariants are not checked.
 - **Adversary:** a `send` action that puts any message with any request id
   in any inbox, so I9 and the E5 traces are not vacuous.
 - **Processes:** each sandbox process carries its creator's (actor,
@@ -781,7 +853,10 @@ code follows this design. Four layers catch different drift.
 
 - **Proposal:** the checks live in `verification/` at the repo root from
   day one: the model, the scenario-id list and the trace check. This plan
-  only links to them, so deleting it removes nothing that CI needs.
+  only links to them, so deleting it removes nothing that CI needs. The
+  model is drafted in repo-root `verification/` on branch
+  `spec/shared-conversation-core-model` (`README.md`, `FINDINGS.md`,
+  `traces/`) and merges with step G.1.
 - Each scenario id is capability, requirement and scenario titles in kebab
   case. Tests carry it in their name or a `// spec:` comment; rules in
   their `note`; model invariants in a comment. While this plan exists, the
@@ -875,14 +950,16 @@ Every item is **Proposed, needs sign-off**.
     record in the parent, and its sender comes from the child's turn row.
 25. P30: closing turns.
 26. P31: `error_retry` pause.
-27. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq`; release,
-    then re-check with `nextRunAtMs`.
+27. P32: `wakeAtMs` set with a compare-and-set on `inboxSeq` and a delayed
+    notify; `recordSignIn` raises `inboxSeq`; release, then read the inbox
+    record again.
 28. P33: delivery attempts and backoff while finishing; permanent errors
     skip backoff.
-29. P34: stop time on the conversation; saves refuse under it.
+29. P34: a stop judges input `createdAtMs`; joins refuse older input;
+    newer taken-in input goes back to the inbox.
 30. P35: no parent turn for results under a tree stop.
 31. P36: sandbox pass lifecycle; the proxy needs a live lock.
-32. P37: Quint model; Apalache for safety, TLC for liveness; the bound;
+32. P37: Quint model; TLC for safety and liveness; the bound;
     worked examples as traces.
 33. P38: conformance tests on records and visible outcomes, with no new
     seams.
@@ -893,3 +970,5 @@ Every item is **Proposed, needs sign-off**.
 38. P43: SQL lock rather than a Redis lock with a SQL counter.
 39. Needs David: accept the shared-file risk with the P36 mitigations, or
     reopen sandbox sharing.
+40. P44, needs David: which clock judges a stop against input from another
+    source or from core.

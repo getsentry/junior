@@ -61,12 +61,19 @@
 
 ### G. Verification gate
 
-Needs: P37, P38, P39, P40, P41, P42.
+Needs: P37, P38, P39, P40, P41, P42, P44.
 
-- [ ] G.1 Add `verification/` at the repo root (P40) with the model from
-      the `core-model` draft. CI runs Apalache for the safety invariants,
-      TLC for the liveness properties, and every worked example as a named
-      trace.
+- [ ] G.1 Merge repo-root `verification/` (P40) from branch
+      `spec/shared-conversation-core-model` (7ca64c2: `worker_lock.qnt`,
+      `stop_clock.qnt`, `FINDINGS.md`, `traces/`). CI runs `check.sh` with TLC for safety and liveness, and
+      every worked example as a named trace.
+- [ ] G.1a Model parent and child conversations and the system actor.
+- [ ] G.1b Model the adversarial `send`.
+- [ ] G.1c Model request-record matching: I5, I6, I9 and I12.
+- [ ] G.1d Model tree-stop results: I8, and P35 on one clock (P44).
+- [ ] G.1e Model sandbox process tags: I13.
+- [ ] G.1f Grow the bound toward the P37 target bound, and model the P44
+      choice for cross-clock stops.
 - [ ] G.2 Add the scenario-id list and the trace check there. At the gate, a
       scenario may map only to a model invariant or trace. The step that
       builds the behavior adds its test id.
@@ -74,8 +81,9 @@ Needs: P37, P38, P39, P40, P41, P42.
       Its first suite checks only what today's code already holds.
 - [ ] G.4 Add the structural check runner. Each rule lands with the step
       that makes it true.
-- Verify: the model holds I1–I13 and L1–L3 within the bound; every scenario
-  maps; the conformance suite is green.
+- Verify: the model holds I1–I14 and L1–L3 within the bound; every scenario
+  maps; the conformance suite is green. Step G is not green until G.1a to
+  G.1e are modeled.
 - Rollback: CI only. Remove the jobs.
 
 ### 5. SQL worker lock, lock version and wake time
@@ -88,13 +96,18 @@ Needs: P5, P32, P43.
 - [ ] 5.2 Workers hold the SQL lock and today's Redis lease together, so
       old workers stay excluded.
 - [ ] 5.3 Add `nextRunAtMs`, the one runnable test. Before release, set
-      `wakeAtMs` with a compare-and-set on `inboxSeq`. Release, then
-      re-check. Never release while the turn is `running`.
-- [ ] 5.4 Test: a slow worker after a takeover cannot check in (turn E3); a
-      message while the lock is held (turn E7).
+      `wakeAtMs` with a compare-and-set on `inboxSeq` and queue a delayed
+      notify for it. Release, then read the inbox record again. Never
+      release while the turn is `running`.
+- [ ] 5.4 `recordSignIn` raises `inboxSeq` and sets `wakeAtMs` to now
+      before it notifies.
+- [ ] 5.5 Test: a slow worker after a takeover cannot check in (turn E3); a
+      message while the lock is held (turn E7); a sign-in while the lock is
+      held.
 - Verify: I3 for lock take and check-in; L3 without repair fairness; S5 for
   lock writes; turn-lifecycle › Slow worker save; conversation-inbox ›
-  Message while the lock is held; traces turn E3, E7 and access E2.
+  Message while the lock is held; traces turn E3, E7, access E2 and
+  `wake_l3NoRepair_signInDuringLock` (now holds).
 - Rollback: the Redis lease still guards. The columns go unused. Old
   workers ignore `inboxSeq`; `send()` still sets `wakeAtMs`.
 
@@ -102,8 +115,8 @@ Needs: P5, P32, P43.
 
 Needs: P2, P10, P30, P31, P34.
 
-- [ ] 6.1 Add the turn table and the one-open index. Workers run a turn
-      stored as a row: `startTurn` in one transaction, fenced
+- [ ] 6.1 Add the turn table (with `oldestInputCreatedAtMs`) and the
+      one-open index. Workers run a turn stored as a row: `startTurn` in one transaction, fenced
       `saveCheckpoint`, a finished guard.
 - [ ] 6.2 Readers for every state a later step writes: `finishing`,
       `error_retry`, the renamed pause reasons and the stop time.
@@ -178,20 +191,25 @@ Needs: P4, P8, P12, P22, P30, P31, P33.
 
 ### 11. One stop
 
-Needs: P34, P35.
+Needs: P34, P35, P44.
 
 - [ ] 11.1 `stop()` saves the stop input's `createdAtMs` as the stop time on
       the conversation and every conversation below it, and notifies each
       worker. Slack stop, dashboard stop, ACP stop and thread opt-out all
       call it.
-- [ ] 11.2 `startTurn`, every fenced save and every intent save refuse when
-      the stop time is after the turn start. Today's child worker reads the
-      stop time.
-- [ ] 11.3 Test: top-level stop of a tree (agents E3).
-- [ ] 11.4 Delete: the opt-out-only tree walk and the stop variants per
+- [ ] 11.2 A turn is under the stop when its oldest taken-in input is older
+      than the stop time. `startTurn` and joins refuse older input. Every
+      fenced save and intent save of a turn under the stop refuses.
+      `finishTurn(stopped)` puts newer taken-in input back in the inbox.
+      Today's child worker reads the stop time.
+- [ ] 11.3 Cross-clock stops, as P44 decides.
+- [ ] 11.4 Test: top-level stop of a tree (agents E3).
+- [ ] 11.5 Delete: the opt-out-only tree walk and the stop variants per
       entry point.
-- Verify: I8 for today's child results, I10 and I11; L1 under stop;
-  turn-stop › Stop races a turn start; traces turn E5, agents E3 and E4.
+- Verify: I8 for today's child results, I10, I11 (with joins) and I14; L1
+  under stop; turn-stop › Stop races a turn start, Turn started after the
+  click, Older input tries to join, Newer input joined before the stop;
+  traces turn E5, agents E3 and E4, and the `stop_*` traces.
 - Rollback: revert. Saved stop times stay readable by step 6 readers.
 
 ### 12. One credential builder and the sandbox pass

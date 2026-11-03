@@ -28,9 +28,10 @@ function checkIn(lock: WorkerLock): Promise<boolean>;
 /**
  * Never called while the turn is running: the pause or finish is saved
  * first, and if that save fails the lock is left to expire (P8). Set
- * wakeAtMs to nextRunAtMs with a compare-and-set on inboxSeq (read again
- * if it changed). Clear the token (same match as checkIn). Then read again;
- * if nextRunAtMs <= now, notify a worker (P32).
+ * wakeAtMs to nextRunAtMs with a compare-and-set on inboxSeq (read the
+ * inbox record again if it changed), and queue a delayed notify for
+ * wakeAtMs. Clear the token (same match as checkIn). Then read the inbox
+ * record again; if wakeAtMs <= now, notify a worker (P32).
  */
 function releaseWorkerLock(lock: WorkerLock): Promise<void>;
 
@@ -70,8 +71,13 @@ type TurnRecord = {
   source: InboundMessage["source"];
   /** Model profile and reasoning, chosen at start, kept on resume. */
   route: TurnRoute;
-  /** Database now() at startTurn (rule 13). Compared with stopAtMs. */
+  /** Database now() at startTurn (rule 13). Never compared with stopAtMs. */
   startedAtMs: number;
+  /**
+   * The oldest createdAtMs of any input this turn took in, at start or by
+   * join. The turn is under the stop when this is older than stopAtMs (P34).
+   */
+  oldestInputCreatedAtMs: number;
   status: "running" | "paused" | "finishing" | Outcome;
   pause?: TurnPause;
   /** Set with "finishing". finishTurn reads it when it runs again. */
@@ -160,7 +166,8 @@ function startTurn(
  * One transaction: check the lock and the stop time, append history,
  * update the turn row, add takeIn request ids. Then remove taken-in
  * messages from the inbox. The only history write. Throws LockLostError,
- * or StoppedError when stopAtMs is after startedAtMs (P34).
+ * or StoppedError when the turn is under the stop. A takeIn refuses input
+ * older than stopAtMs, like startTurn (P34).
  */
 function saveCheckpoint(
   lock: WorkerLock,
@@ -184,7 +191,8 @@ without adding it again (E1).
  * The only worker. Every kind uses it. Takes the lock, then does the first
  * that applies:
  * 1. open turn "finishing": run finishTurn again with the saved outcome;
- * 2. stopAtMs is after the open turn's startedAtMs: finishTurn(stopped);
+ * 2. the open turn is under the stop (oldestInputCreatedAtMs older than
+ *    stopAtMs): finishTurn(stopped);
  * 3. open turn "running": the last worker was lost (P8). Restart once, or
  *    finishTurn(failed: lost_worker);
  * 4. open turn "paused": resume it, or handle sign-in (access.md);
@@ -221,7 +229,8 @@ function deliver(
  *    or fail at once on a permanent provider error (P33). A child result
  *    first mints its record in the parent, in this transaction (P26);
  * 3. move each taken-in record from open to answered or stopped
- *    (WHERE status = 'open');
+ *    (WHERE status = 'open'). For finishTurn(stopped), input not older
+ *    than stopAtMs goes back in the inbox and its record stays open (P34);
  * 4. apply the no-credentials sandbox policy (P36);
  * 5. save the finished status and write one turn.terminal event.
  */
@@ -246,8 +255,8 @@ function closeInput(
 
 ```ts
 /**
- * Save stopAtMs = the stop input's createdAtMs, and stopBy, on the
- * conversation and on every conversation below it, then notify each
+ * Save stopAtMs = the stop input's createdAtMs (clock: P44), and stopBy,
+ * on the conversation and on every conversation below it, then notify each
  * worker (P34). Writes no turn row
  * and no request record (rule 7). A top-level stop is always a tree stop
  * (Decided). Input from a person older than the stop is kept in history as
@@ -266,7 +275,8 @@ type StopBy =
 
 `finishTurn` in a stopped child sends its parent a `stopped` result unless
 `stopBy` is `stop_agent`, or the parent's own stop time is after the
-record's `createdAtMs` (a tree stop, P35).
+record's `createdAtMs` (a tree stop, P35). The record and the stop must be
+stamped on one clock for this to be exact (P44).
 
 ## Examples
 
@@ -336,8 +346,8 @@ Before: T1 for A (started 12:00) posted response 1 (`sent`).
 
 1. A clicks stop at 12:02. `stop()` sets `stopAtMs` on the conversation
    and notifies a worker. It does not touch T1's row.
-2. The running worker sees the stop time at its next safe point
-   and calls `finishTurn(stopped: person)`.
+2. The running worker sees that T1 is under the stop (its input is older
+   than 12:02) at its next safe point and calls `finishTurn(stopped: person)`.
 3. Response 1 stays. No more responses (Decided).
 
 ### E6. A delivery that keeps failing while finishing
@@ -361,9 +371,11 @@ T1 does not stay `finishing`, and the next turn can start.
 2. B's message `b1` arrives. `send()` appends it, sets `inboxSeq: 5` and
    `wakeAtMs = now`, and notifies. W2 fails to take the lock and exits.
 3. W1's compare-and-set of `wakeAtMs` expects `inboxSeq: 4` and fails. W1
-   reads again: `b1` is runnable, so `wakeAtMs` stays now.
-4. W1 releases the lock, then reads again. `nextRunAtMs <= now`, so it
-   notifies a worker. W3 runs T2 for B.
+   reads the inbox record again: `b1` is runnable, so `wakeAtMs` stays
+   now, and W1 queues a delayed notify for it.
+4. W1 releases the lock, then reads the inbox record again. `wakeAtMs` is
+   not after now, so it notifies a worker. W3 runs T2 for B.
 
-If W1 died before step 4, the repair job finds `wakeAtMs` in the past in
+If W1 died before step 4, the delayed notify fires. If W1 died before
+step 3 saved, the repair job finds `wakeAtMs` in the past in
 the wake-time index, sees no live lock, and notifies a worker.

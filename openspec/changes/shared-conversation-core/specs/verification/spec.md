@@ -68,21 +68,40 @@ actor and subject (Proposed, needs sign-off: P37).
 - **THEN** no credentials are added, or the checker reports a
   counterexample for I13.
 
-### Requirement: Delivery And Stop Invariants
+### Requirement: Delivery Invariants
 
 The model SHALL check (Proposed, needs sign-off: P37):
 
 - **I7** each delivery id is posted at most once, unless a takeover
   happened between its intent and its post;
-- **I8** no parent turn starts from a child result after a tree stop;
-- **I10** after a stop time, a turn that started before it posts only from
-  intents saved before it;
-- **I11** no turn starts with input older than the stop time.
+- **I8** no parent turn starts from a child result after a tree stop.
+
+#### Scenario: Takeover between intent and post
+
+- **WHEN** a slow worker posts after a new worker took the lock
+- **THEN** the repeat is the one I7 allows, and `find` detects it.
+
+### Requirement: Stop Invariants
+
+The model SHALL check these against the person's real order of actions,
+not the design's own stop test (Proposed, needs sign-off: P37):
+
+- **I10** after the stop, no intent is saved for input sent before it;
+- **I11** no turn starts with, and no join takes in, input older than the
+  stop (`i11j` for joins);
+- **I14** a stop never stops a turn or input newer than it
+  (`spareNewerTurn`, `spareNewerInput`).
 
 #### Scenario: Stop races a post
 
 - **WHEN** a stop is saved between a turn's intent save and its post
 - **THEN** the post is the one allowed, and no later intent is saved.
+
+#### Scenario: Turn started after the click
+
+- **WHEN** a turn for older input starts after the click and before the
+  stop is saved
+- **THEN** I10 holds: the turn is under the stop.
 
 ### Requirement: Liveness Under Fairness
 
@@ -92,7 +111,8 @@ within the crash bound (Proposed, needs sign-off: P37):
 - **L1** every request record ends `answered` or `stopped`;
 - **L2** no turn stays `finishing` forever;
 - **L3** a paused turn with work left is eventually resumed or finished,
-  without fairness for the repair job.
+  without fairness for the repair job (needs the P32 sign-in and delayed
+  notify fix).
 
 #### Scenario: Delivery never succeeds
 

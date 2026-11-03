@@ -7,8 +7,8 @@ Sketches for review, not final code. Labels follow `../design.md`.
 ```ts
 /**
  * spawnAgent and messageAgent both call this. One SQL transaction under the
- * parent conversation row (FOR UPDATE): refuse if the parent turn started
- * before the parent's stopAtMs; check the caps (8 children with open work,
+ * parent conversation row (FOR UPDATE): refuse if the parent turn is
+ * under the parent's stop (P34); check the caps (8 children with open work,
  * 4 open records per child); create the child conversation and binding if
  * new; insert the request record. Commit, then send(). Keyed by parent
  * turnId + toolCallId, so a retried tool call returns the first result.
@@ -183,8 +183,9 @@ Before: P (top-level) runs T for A. C1 runs T1; C2 is idle with `m` waiting
 
 1. A clicks stop at 12:10. `stop(P)` sets `stopAtMs = 12:10` on P, C1, C2
    and G, and notifies each worker. It writes no turn row and no record.
-2. Each worker sees a turn that started before 12:10 and calls
-   `finishTurn(stopped: tree)`. T, T1 and TG mark their records `stopped`.
+2. Each worker sees a turn under the stop (its input is older than 12:10)
+   and calls `finishTurn(stopped: tree)`. T, T1 and TG mark their records
+   `stopped`.
 3. C2's worker finds `m` older than 12:10. It is agent input, so
    `closeInput` ends it with no history. `req_c2` becomes `stopped`.
 4. C1's and G's asked records are `stopped`. Their parents' stop times are

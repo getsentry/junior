@@ -20,7 +20,8 @@ type Conversation = {
   lockToken?: string;
   lockExpiresAtMs?: number;
   lockVersion: number;
-  /** Set by stop() (P34). A turn that started before it is stopped. */
+  /** Set by stop() (P34). A turn that took in input older than it is
+   * stopped. Which clock stamps it is P44. */
   stopAtMs?: number;
   /** Who stopped it. finishTurn reads it to choose the child result. */
   stopBy?: StopBy["kind"];

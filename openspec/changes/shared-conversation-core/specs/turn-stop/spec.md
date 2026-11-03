@@ -6,9 +6,10 @@
 
 A stop SHALL save the stop input's own `createdAtMs` as the stop time on
 the conversation and notify a worker. It SHALL NOT write a turn row or a
-request record (Proposed, needs sign-off: P34). A worker SHALL stop an open
-turn that started before the stop time. `startTurn` SHALL refuse input
-older than it. A new turn after the stop SHALL run normally.
+request record (Proposed, needs sign-off: P34). A turn SHALL be under the
+stop when any input it took in has `createdAtMs` older than the stop time;
+a worker SHALL stop it. `startTurn` and a join SHALL refuse input older
+than the stop time. A new turn after the stop SHALL run normally.
 
 #### Scenario: Slack stop button
 
@@ -26,12 +27,32 @@ older than it. A new turn after the stop SHALL run normally.
 - **WHEN** a stop is saved while a worker starts a turn with older input
 - **THEN** the start transaction sees the stop time and refuses that input.
 
+#### Scenario: Turn started after the click
+
+- **WHEN** a person sends a message, clicks stop, and the turn for that
+  message starts before `stop()` saves
+- **THEN** the turn is under the stop, because its input is older than the
+  stop time, and it posts nothing more.
+
+#### Scenario: Older input tries to join
+
+- **WHEN** input older than the stop time reaches a running turn's join
+  after the stop is saved
+- **THEN** the join refuses it.
+
+#### Scenario: Newer input joined before the stop
+
+- **WHEN** a turn under the stop took in a message newer than the stop
+  time
+- **THEN** `finishTurn(stopped)` puts that message back in the inbox, its
+  record stays `open`, and it runs in a later turn.
+
 ### Requirement: Saves Refuse Under A Stop
 
-Every fenced save and every delivery intent save SHALL refuse when the
-stop time is after the turn's start, except the saves of
-`finishTurn(stopped)`. Server times SHALL come from database `now()`
-(Proposed, needs sign-off: P34).
+Every fenced save and every delivery intent save of a turn under the stop
+SHALL refuse, except the saves of `finishTurn(stopped)`. The stop SHALL be
+compared only with input `createdAtMs`, never with a server time (Proposed,
+needs sign-off: P34). Stops across clocks are P44.
 
 #### Scenario: Intent after the stop
 
@@ -77,7 +98,8 @@ thread.
 #### Scenario: Older stop
 
 - **WHEN** a stop is older than a newer mention
-- **THEN** it does nothing to the newer turn.
+- **THEN** it does nothing to the newer turn or to newer input that a
+  stopped turn took in (I14).
 
 ### Requirement: Top-Level Stop Stops The Tree
 
