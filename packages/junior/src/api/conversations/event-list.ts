@@ -2,7 +2,10 @@ import type { User } from "@sentry/junior-plugin-api";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
-import { readConversationEventPage } from "./event-page";
+import {
+  readConversationEventPage,
+  readConversationEventPageAfter,
+} from "./event-page";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
@@ -12,10 +15,10 @@ import {
   type ConversationEventPage,
 } from "../schema/conversation";
 
-/** Read one bounded page of reporting events before a signed cursor. */
+/** Read one bounded page of reporting events before or after a signed cursor. */
 export async function readConversationEvents(
   conversationId: string,
-  beforeValue: string,
+  boundary: { after: string } | { before: string },
   options: {
     limit?: number;
     viewer?: User;
@@ -24,11 +27,11 @@ export async function readConversationEvents(
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
-  const before = decodeConversationCursor({
+  const cursor = decodeConversationCursor({
     conversationId,
-    cursor: beforeValue,
+    cursor: "after" in boundary ? boundary.after : boundary.before,
   });
-  if (!before) throwApiError(400, "Invalid conversation cursor.");
+  if (!cursor) throwApiError(400, "Invalid conversation cursor.");
 
   const accessByConversation = await readConversationAccessFromSql(
     getDb(),
@@ -38,15 +41,25 @@ export async function readConversationEvents(
   const access = accessByConversation.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
   const transcriptPurgedAtMs = record.conversation.transcriptPurgedAtMs;
-  const page =
-    transcriptPurgedAtMs === undefined
-      ? await readConversationEventPage(getSqlExecutor(), {
-          beforeSeq: before.seq,
-          canExposePayload,
-          conversationId,
-          limit: options.limit ?? 500,
-        })
-      : { events: [] };
+  const pageArgs = {
+    canExposePayload,
+    conversationId,
+    limit: options.limit ?? 500,
+  };
+  const page: Awaited<ReturnType<typeof readConversationEventPageAfter>> =
+    transcriptPurgedAtMs !== undefined
+      ? { events: [] }
+      : "after" in boundary
+        ? await readConversationEventPageAfter(getSqlExecutor(), {
+            ...pageArgs,
+            afterSeq: cursor.seq,
+          })
+        : await readConversationEventPage(getSqlExecutor(), {
+            ...pageArgs,
+            beforeSeq: cursor.seq,
+          });
+  const cursorAt = (seq: number) =>
+    encodeConversationCursor({ conversationId, seq });
 
   return conversationEventPageSchema.parse({
     events: (
@@ -62,12 +75,10 @@ export async function readConversationEvents(
     }),
     ...(page.previousSeq === undefined
       ? undefined
-      : {
-          previousCursor: encodeConversationCursor({
-            conversationId,
-            seq: page.previousSeq,
-          }),
-        }),
+      : { previousCursor: cursorAt(page.previousSeq) }),
+    ...(page.nextSeq === undefined
+      ? undefined
+      : { nextCursor: cursorAt(page.nextSeq) }),
     generatedAt: new Date().toISOString(),
   });
 }

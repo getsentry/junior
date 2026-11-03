@@ -190,7 +190,9 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    if (!query.success) {
+    // Mock details fit one page and have no unread cursor, so mock history
+    // only pages backward.
+    if (!query.success || !("before" in query.data)) {
       return errorResponse("Invalid query parameters.", 400);
     }
     if (!readMockConversationDetail(params.data.conversationId)) {

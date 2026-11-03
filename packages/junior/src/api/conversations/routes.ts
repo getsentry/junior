@@ -248,9 +248,9 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const { conversationId } = context.req.valid("param");
-      const { before, limit } = context.req.valid("query");
+      const { limit, ...boundary } = context.req.valid("query");
       const viewer = context.get("viewer");
-      const report = await readConversationEvents(conversationId, before, {
+      const report = await readConversationEvents(conversationId, boundary, {
         limit,
         ...(viewer ? { viewer } : undefined),
       });

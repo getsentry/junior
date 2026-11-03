@@ -247,10 +247,26 @@ export async function readConversationDetail(
       ? readConversationReadPosition(options.viewer, conversationId)
       : undefined,
   ]);
+  // Events hold the latest page. A reader who is further behind starts from
+  // their read position instead, so they need a cursor there.
+  const firstSeq = report.events[0]?.seq;
+  const unreadStartsEarlier =
+    readPosition !== undefined &&
+    report.previousCursor !== undefined &&
+    firstSeq !== undefined &&
+    readPosition.lastReadSeq + 1 < firstSeq;
   return conversationDetailReportSchema.parse({
     ...report,
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
     ...(readPosition ? { readPosition } : undefined),
+    ...(unreadStartsEarlier
+      ? {
+          unreadCursor: encodeConversationCursor({
+            conversationId,
+            seq: readPosition.lastReadSeq,
+          }),
+        }
+      : undefined),
   });
 }

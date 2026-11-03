@@ -199,7 +199,8 @@ export function conversationDetailQueryOptions(
 
 /**
  * Read positions only move forward. A poll that started before a read report
- * finished must not put an older position back in the cache.
+ * finished must not put an older position back in the cache, nor the unread
+ * cursor of that older position.
  */
 function keepLatestReadPosition(
   previous: ConversationSnapshot,
@@ -208,7 +209,8 @@ function keepLatestReadPosition(
   const kept = previous.readPosition;
   if (!kept) return next;
   if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
-  return { ...next, readPosition: kept };
+  const { unreadCursor: _olderCursor, ...rest } = next;
+  return { ...rest, readPosition: kept };
 }
 
 /** Create one dashboard conversation and refresh the personal feed. */

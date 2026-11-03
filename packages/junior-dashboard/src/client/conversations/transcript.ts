@@ -13,22 +13,8 @@ export function buildConversationTranscript(
   detail: ConversationDetailReport,
   historyPages: ConversationHistoryPage[],
 ): ConversationDetailReport {
-  if (detail.eventHistory.status !== "available") {
-    return withoutModelUsage(detail);
-  }
-
-  const restrictedHistory = historyPages.find(
-    (page) => page.eventHistory.status !== "available",
-  );
-  if (restrictedHistory) {
-    return withoutModelUsage({
-      ...detail,
-      eventHistory: restrictedHistory.eventHistory,
-      events: restrictedHistory.events,
-      previousCursor: restrictedHistory.previousCursor,
-    });
-  }
-
+  const restricted = restrictedTranscript(detail, historyPages);
+  if (restricted) return restricted;
   if (historyPages.length === 0) return detail;
 
   return {
@@ -42,6 +28,30 @@ export function buildConversationTranscript(
       (historyPages.length
         ? oldestPreviousCursor(historyPages)
         : detail.previousCursor),
+  };
+}
+
+/**
+ * Build a transcript that opens at the read position.
+ *
+ * `pages` hold one unbroken range of events around the read position. The
+ * latest events in `detail` join only when `reachesLatest` is true, so the
+ * transcript never shows a gap between the two.
+ */
+export function buildUnreadConversationTranscript(
+  detail: ConversationDetailReport,
+  pages: ConversationEventPage[],
+  reachesLatest: boolean,
+): ConversationDetailReport {
+  const restricted = restrictedTranscript(detail, pages);
+  if (restricted) return restricted;
+  return {
+    ...detail,
+    events: orderedEvents([
+      ...pages.flatMap((page) => page.events),
+      ...(reachesLatest ? detail.events : []),
+    ]),
+    previousCursor: oldestPreviousCursor(pages),
   };
 }
 
@@ -196,6 +206,26 @@ function orderedEvents(
   return [...new Map(events.map((event) => [event.seq, event])).values()].sort(
     (left, right) => left.seq - right.seq,
   );
+}
+
+/** Show only what restricted history allows, from detail or from a page. */
+function restrictedTranscript(
+  detail: ConversationDetailReport,
+  pages: ConversationEventPage[],
+): ConversationDetailReport | undefined {
+  if (detail.eventHistory.status !== "available") {
+    return withoutModelUsage(detail);
+  }
+  const restrictedPage = pages.find(
+    (page) => page.eventHistory.status !== "available",
+  );
+  if (!restrictedPage) return undefined;
+  return withoutModelUsage({
+    ...detail,
+    eventHistory: restrictedPage.eventHistory,
+    events: restrictedPage.events,
+    previousCursor: restrictedPage.previousCursor,
+  });
 }
 
 function withoutModelUsage(

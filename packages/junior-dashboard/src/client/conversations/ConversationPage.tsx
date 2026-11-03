@@ -82,6 +82,10 @@ import {
   useReadPositionAtOpen,
 } from "./transcriptReadPosition";
 import { TranscriptLoading } from "./TranscriptLoading";
+import {
+  useUnreadHistory,
+  type TranscriptHistory,
+} from "./transcriptUnreadHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
   SubagentTranscriptDrawer,
@@ -170,6 +174,17 @@ export function ConversationPage(props: {
   const archive = useArchiveConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
+  const startAtUnread = readConversationStartPosition() === "unread";
+  const unreadHistory = useUnreadHistory({
+    conversationId,
+    detail: detail.data,
+    unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
+  });
+  // A reader far behind sees the events from their read position. Others
+  // see the latest page and the pages before it.
+  const history: TranscriptHistory = unreadHistory ?? detail;
+  const transcriptPending =
+    detail.isPending || Boolean(unreadHistory?.isPending);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -192,7 +207,7 @@ export function ConversationPage(props: {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
-  const transcript = detail.data;
+  const transcript = history.data;
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -246,8 +261,8 @@ export function ConversationPage(props: {
   );
   // A linked event can be older than the first page. Load earlier pages until
   // it is present or history ends.
-  const loadPreviousPageRef = useRef(detail.loadPreviousPage);
-  loadPreviousPageRef.current = detail.loadPreviousPage;
+  const loadPreviousPageRef = useRef(history.loadPreviousPage);
+  loadPreviousPageRef.current = history.loadPreviousPage;
   const oldestLoadedSeq = transcript?.events[0]?.seq;
   const linkedEventMissing =
     selectedEventSeq !== undefined &&
@@ -255,9 +270,9 @@ export function ConversationPage(props: {
     selectedEventSeq < oldestLoadedSeq;
   const loadLinkedEvent =
     linkedEventMissing &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
+    history.hasPreviousPage &&
+    !history.isLoadingPreviousPage &&
+    !history.historyError;
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
@@ -274,13 +289,13 @@ export function ConversationPage(props: {
     transcript !== undefined;
   const loadLinkedTurn =
     linkedTurnMissing &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
+    history.hasPreviousPage &&
+    !history.isLoadingPreviousPage &&
+    !history.historyError;
   const linkedTurnNotFound =
     linkedTurnMissing &&
-    !detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage;
+    !history.hasPreviousPage &&
+    !history.isLoadingPreviousPage;
   useEffect(() => {
     if (loadLinkedTurn) loadPreviousPageRef.current();
   }, [loadLinkedTurn, oldestLoadedSeq]);
@@ -293,11 +308,11 @@ export function ConversationPage(props: {
   const eventLoading =
     eventOpen &&
     !selectedEvent &&
-    (detail.isPending ||
+    (transcriptPending ||
       linkedTurnSeq !== undefined ||
       ((linkedEventMissing || linkedTurnMissing) &&
-        (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
-        !detail.historyError));
+        (history.hasPreviousPage || history.isLoadingPreviousPage) &&
+        !history.historyError));
   const showEvent = Boolean(selectedEvent) || eventLoading;
   // Step through the same filtered rows that the event log shows.
   const events = transcript?.events;
@@ -452,7 +467,7 @@ export function ConversationPage(props: {
                   : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
               }
             >
-              {detail.isPending ? (
+              {transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -471,25 +486,29 @@ export function ConversationPage(props: {
                     </div>
                   ) : null}
                   <Transcript
-                    hasPreviousPage={detail.hasPreviousPage}
-                    historyError={detail.historyError}
-                    historyVersion={detail.historyVersion}
+                    hasPreviousPage={history.hasPreviousPage}
+                    historyError={history.historyError}
+                    historyVersion={history.historyVersion}
                     lastReadSeq={readAtOpen.lastReadSeq}
                     live={live}
-                    loadingPreviousPage={detail.isLoadingPreviousPage}
-                    onLoadPreviousPage={detail.loadPreviousPage}
+                    loadingPreviousPage={history.isLoadingPreviousPage}
+                    newerHistory={history.newer}
+                    onLoadPreviousPage={history.loadPreviousPage}
                     onRead={markRead}
                     onSelectedEventSeqChange={setSelectedEventSeq}
                     pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
+                    // The thinking row belongs after the latest event.
                     responding={
-                      !detail.error && conversationIsResponding(transcript)
+                      !detail.error &&
+                      !history.newer &&
+                      conversationIsResponding(detail.data)
                     }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
                     onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
-                    startAtUnread={readConversationStartPosition() === "unread"}
+                    startAtUnread={startAtUnread}
                     transcript={transcript}
                     turnContextPanel={turnContextPanel}
                     unread={readAtOpen.unread}

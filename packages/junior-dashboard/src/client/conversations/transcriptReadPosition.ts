@@ -42,6 +42,8 @@ export type TranscriptUnreadRange = { afterSeq: number; throughSeq: number };
 export type ReadPositionAtOpen = {
   lastReadSeq?: number;
   unread?: TranscriptUnreadRange;
+  /** Set when unread events start before the latest page. */
+  unreadCursor?: string;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -82,25 +84,37 @@ export function useReadPositionAtOpen(
   fetched: DetailAtOpen | undefined,
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
-  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [opened, setOpened] = useState<{
+    lastReadSeq?: number;
+    unreadCursor?: string;
+  }>();
   const [fetchedEnd, setFetchedEnd] = useState<{ throughSeq?: number }>();
   const read =
     opened ??
-    (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
+    (detail
+      ? {
+          lastReadSeq: detail.readPosition?.lastReadSeq,
+          unreadCursor: detail.unreadCursor,
+        }
+      : undefined);
   if (!opened && read) setOpened(read);
   const end =
     fetchedEnd ??
     (fetched ? { throughSeq: fetched.events.at(-1)?.seq } : undefined);
   if (!fetchedEnd && end) setFetchedEnd(end);
-  return readPositionAtOpen(
-    read?.lastReadSeq,
-    end ? end.throughSeq : detail?.events.at(-1)?.seq,
-  );
+  return {
+    ...readPositionAtOpen(
+      read?.lastReadSeq,
+      end ? end.throughSeq : detail?.events.at(-1)?.seq,
+    ),
+    ...(read?.unreadCursor ? { unreadCursor: read.unreadCursor } : undefined),
+  };
 }
 
 type DetailAtOpen = {
   events: readonly { seq: number }[];
   readPosition?: ConversationReadPosition;
+  unreadCursor?: string;
 };
 
 /** Find the rows after the read position, through the last row at open. */
@@ -131,9 +145,15 @@ export function useMarkConversationRead(conversationId: string) {
         { lastReadSeq },
       ),
     onSuccess: (readPosition) => {
+      // The unread cursor belongs to the old position. The next visit that
+      // opens from this cache starts at the latest page instead.
       queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
-        (detail) => (detail ? { ...detail, readPosition } : detail),
+        (detail) => {
+          if (!detail) return detail;
+          const { unreadCursor: _unreadCursor, ...rest } = detail;
+          return { ...rest, readPosition };
+        },
       );
     },
   });

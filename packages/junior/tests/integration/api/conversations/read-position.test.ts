@@ -5,9 +5,15 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
+  conversationEventPageSchema,
   conversationReadPositionSchema,
 } from "@/api/schema";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents } from "@/db/schema";
 
@@ -23,7 +29,7 @@ async function authenticatedApi(email: string) {
   return { app, viewer };
 }
 
-async function seedConversation(conversationId: string, eventCount: number) {
+async function recordConversation(conversationId: string) {
   await getConversationStore().recordActivity({
     destination: { platform: "local" as const, conversationId },
     conversationId,
@@ -31,6 +37,10 @@ async function seedConversation(conversationId: string, eventCount: number) {
     source: "internal",
     title: "Read position",
   });
+}
+
+async function seedConversation(conversationId: string, eventCount: number) {
+  await recordConversation(conversationId);
   await getDb()
     .insert(juniorConversationEvents)
     .values(
@@ -108,6 +118,68 @@ describe("conversation read position API", () => {
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer: otherViewer }),
       ).readPosition,
+    ).toBeUndefined();
+  });
+
+  it("pages both ways from a read position that is older than the latest page", async () => {
+    const conversationId = "local:test:read-position-paging";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 30 }, (_, seq) => ({
+        createdAtMs: 1_000 + seq,
+        data: {
+          type: "message" as const,
+          messageId: `message-${seq}`,
+          role: "assistant" as const,
+          text: `Message ${seq}`,
+        },
+      })),
+    );
+    const { app, viewer } = await authenticatedApi("reader@example.com");
+    await putReadPosition(app, conversationId, 5);
+
+    const detail = conversationDetailReportSchema.parse(
+      await readConversationDetail(conversationId, { limit: 10, viewer }),
+    );
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 20 + index),
+    );
+    expect(detail.unreadCursor).toBeDefined();
+
+    const readPage = async (query: string) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/events?${query}&limit=10`,
+      );
+      expect(response.status).toBe(200);
+      return conversationEventPageSchema.parse(await response.json());
+    };
+    const unread = await readPage(
+      `after=${encodeURIComponent(detail.unreadCursor!)}`,
+    );
+    const newer: number[] = [];
+    let page = unread;
+    while (true) {
+      newer.push(...page.events.map((event) => event.seq));
+      if (!page.nextCursor) break;
+      page = await readPage(`after=${encodeURIComponent(page.nextCursor)}`);
+    }
+    expect(newer).toEqual(Array.from({ length: 24 }, (_, index) => 6 + index));
+
+    const earlier = await readPage(
+      `before=${encodeURIComponent(unread.previousCursor!)}`,
+    );
+    expect(earlier.events.map((event) => event.seq)).toEqual([
+      0, 1, 2, 3, 4, 5,
+    ]);
+    expect(earlier.previousCursor).toBeUndefined();
+
+    // Once the reader is inside the latest page, it opens there.
+    await putReadPosition(app, conversationId, 25);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { limit: 10, viewer }),
+      ).unreadCursor,
     ).toBeUndefined();
   });
 

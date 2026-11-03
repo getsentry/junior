@@ -60,12 +60,22 @@ export const conversationDetailQuerySchema = z
   })
   .strict();
 
-export const conversationEventsQuerySchema = z
-  .object({
-    before: z.string().min(1),
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
-  })
-  .strict();
+const conversationEventsLimitSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(1_000)
+  .default(500);
+
+/** Page toward the start with `before`, or toward the latest with `after`. */
+export const conversationEventsQuerySchema = z.union([
+  z
+    .object({ before: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ after: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+]);
 
 export const conversationFeedQuerySchema = z
   .object({
@@ -844,6 +854,11 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
+    /**
+     * Pass as `after` to the events API to read from the read position.
+     * Present only when unread events start before `events`.
+     */
+    unreadCursor: z.string().min(1).optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
@@ -880,6 +895,8 @@ export const conversationEventPageSchema = z
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),
+    /** Present on `after` pages when newer events follow the page. */
+    nextCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
   })
   .strict()
