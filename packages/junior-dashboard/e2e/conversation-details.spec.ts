@@ -131,6 +131,16 @@ test("opens conversation details beside the chat", async ({
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
+  // With the `⋯` menu open, Escape closes the menu and leaves details open.
+  await detailsButton.click();
+  await expect(details).toBeVisible();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Event log" })).toBeHidden();
+  await expect(details).toBeVisible();
+  await detailsButton.click();
+  await expect(details).toBeHidden();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Conversation menu" }).click();

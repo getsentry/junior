@@ -264,6 +264,8 @@ test("opens and closes a conversation on mobile", async ({
   // The sheet moves focus inside it.
   await expect(details.locator(":focus")).toHaveCount(1);
   await page.keyboard.press("Shift+Tab");
+  // Mobile hides the title bar, so the sheet names the location.
+  await expect(details.getByText("Location", { exact: true })).toBeVisible();
   await expect(details.locator(":focus")).toHaveCount(1);
   await screenshot(page, "conversation-details-sheet", {
     lightTheme: true,

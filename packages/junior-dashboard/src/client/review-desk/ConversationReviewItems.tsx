@@ -69,6 +69,10 @@ function ReviewItemRow(props: {
   item: ReviewItemPayload;
 }) {
   const [expanded, setExpanded] = useState(props.defaultExpanded);
+  // Details can already be open when a sidebar review chip highlights it.
+  useEffect(() => {
+    if (props.defaultExpanded) setExpanded(true);
+  }, [props.defaultExpanded]);
   return (
     <>
       <DetailsRow
