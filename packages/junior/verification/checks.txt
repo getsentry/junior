@@ -1,36 +1,31 @@
-# module instance spec kind property expected
+# The CI set: design configs only. `evidence.txt` has the draft and failing
+# variants (FINDINGS.md). Columns: module instance spec kind property expected.
 # instance: cfg/<instance>.cfg. property: one name, or names joined by commas
 # (one TLC run checks them all). spec: Spec (safety), SpecFairCore (weak
-# fairness for workers, time and the ab76f5d timer job) or SpecFairRepair
-# (also the repair job). kind: INVARIANT or PROPERTY.
-# expected "violated" is a known counterexample, a worked example that must
-# be reachable (ex_*), or accepted behavior (acc_*). See README.md.
+# fairness for workers, Slack, time and the ab76f5d timer job) or
+# SpecFairRepair (also the repair job). kind: INVARIANT or PROPERTY.
+# expected "violated" is a worked example that must be reachable (ex_*) or
+# accepted behavior (acc_*, the P5 "Limit" checks and the documented limits
+# named below).
 
 # Model 1: worker lock, turn row, deliveries, wake-ups. Plan: design.
 WorkerLock lock_design Spec INVARIANT safety holds
 WorkerLock errors_design Spec INVARIANT safety holds
 WorkerLock delivery_design Spec INVARIANT safety holds
 WorkerLock wake_design Spec INVARIANT safety,noWakeLoopWhileBlocked holds
+# P5 "Limit": a stalled worker can post until its next check-in.
 WorkerLock lock_design Spec INVARIANT i3_noStalePost violated
-# P4 (decided): a restart uses one of the turn's errors. `safety` has
-# errorBudget and oneChargePerAttempt.
 WorkerLock errors_design Spec INVARIANT ex_restartUsesLastError violated
-WorkerLock errors_rev3 Spec INVARIANT errorBudget violated
-WorkerLock errors_noPause Spec INVARIANT oneChargePerAttempt violated
 # Liveness. L3 and lostTurnPickedUp without fairness for the repair job.
 WorkerLock lock_design SpecFairRepair PROPERTY l1_requestsEnd holds
-WorkerLock errors_design SpecFairRepair PROPERTY l1_requestsEnd holds
-WorkerLock errors_design SpecFairRepair PROPERTY l2_finishingEnds holds
-WorkerLock errors_design SpecFairRepair PROPERTY l3_pausedResumed holds
-# A worker whose lock expires between its pause save and its release never
-# notifies; the notify it made another worker drop is gone. Only the repair
-# job (P7 part 2) wakes the turn, as for a lost running turn.
-WorkerLock errors_design SpecFairCore PROPERTY l3_pausedResumedNoRepair violated
-WorkerLock delivery_design SpecFairRepair PROPERTY l1_requestsEnd holds
-WorkerLock delivery_design SpecFairRepair PROPERTY l2_finishingEnds holds
-WorkerLock wakeLive_design SpecFairRepair PROPERTY l3_pausedResumed holds
+WorkerLock errors_design SpecFairRepair PROPERTY l1_requestsEnd,l2_finishingEnds,l3_pausedResumed holds
+WorkerLock delivery_design SpecFairRepair PROPERTY l1_requestsEnd,l2_finishingEnds holds
+WorkerLock wakeLive_design SpecFairRepair PROPERTY l3_pausedResumed,quiesces holds
 WorkerLock wakeLive_design SpecFairCore PROPERTY l3_pausedResumedNoRepair holds
-WorkerLock wakeLive_design SpecFairRepair PROPERTY quiesces holds
+# Documented limits (P46 decided: keep the drop; P7 part 2): after a lost
+# notify a paused turn, and after a lost worker a running turn, waits for
+# the repair job.
+WorkerLock errors_design SpecFairCore PROPERTY l3_pausedResumedNoRepair violated
 WorkerLock lock_design SpecFairCore PROPERTY lostTurnPickedUpNoRepair violated
 # Worked examples (reachable).
 WorkerLock lock_design Spec INVARIANT ex_turn_E1_redeliveredPrompt violated
@@ -38,19 +33,13 @@ WorkerLock lock_design Spec INVARIANT ex_turn_E2_deadWorker violated
 WorkerLock lock_design Spec INVARIANT ex_turn_E2_lostTwice violated
 WorkerLock lock_design Spec INVARIANT ex_turn_E3_slowWorker violated
 WorkerLock lock_design Spec INVARIANT ex_turn_E7_messageWhileLocked violated
+WorkerLock lock_design Spec INVARIANT ex_notifyPileUp violated
+WorkerLock lock_design Spec INVARIANT ex_sendResumedAfterCrash violated
 WorkerLock errors_design Spec INVARIANT ex_turn_E4_retriesRunOut violated
 WorkerLock delivery_design Spec INVARIANT ex_turn_E6_finishingDeliveryFails violated
 WorkerLock delivery_design Spec INVARIANT ex_edges_E1_findBeforeRepost violated
 WorkerLock wake_design Spec INVARIANT ex_access_E2_linkExpires violated
 WorkerLock wake_design Spec INVARIANT ex_signInResumes violated
-# Earlier plan revisions: the bugs that later revisions fixed.
-WorkerLock lock_priorDraft Spec INVARIANT i3_noStaleSave violated
-WorkerLock lock_priorDraft Spec INVARIANT versionFollowsLock violated
-WorkerLock errors_priorDraft Spec INVARIANT restartOnlyAfterLoss violated
-WorkerLock delivery_priorDraft SpecFairRepair PROPERTY l2_finishingEnds violated
-WorkerLock wake_rev2 Spec INVARIANT noWakeLoopWhileBlocked violated
-WorkerLock wakeLive_rev2 SpecFairRepair PROPERTY quiesces violated
-WorkerLock wakeLive_rev3 SpecFairCore PROPERTY l3_pausedResumedNoRepair violated
 
 # Model 2: the stop time on one receive clock (P34, P44 option 1).
 StopClock stop_receive_same Spec INVARIANT safety holds
@@ -58,10 +47,6 @@ StopClock stop_receive_ahead Spec INVARIANT safety holds
 StopClock stop_receive_behind Spec INVARIANT safety holds
 StopClock stop_receive_crossAhead Spec INVARIANT safety holds
 StopClock stop_receive_crossBehind Spec INVARIANT safety holds
-StopClock stop_receive_noJoinFix Spec INVARIANT i10_noOlderIntentAfterStop holds
-StopClock stop_receive_noJoinFix Spec INVARIANT i11_noOlderStartAfterStop holds
-StopClock stop_receive_noJoinFix Spec INVARIANT i11j_noOlderJoinAfterStop violated
-StopClock stop_receive_noJoinFix Spec INVARIANT spareNewerInput violated
 StopClock stop_receive_same Spec INVARIANT ex_turn_E5_stopAfterPost violated
 StopClock stop_receive_same Spec INVARIANT ex_stop_refusesOlderInput violated
 StopClock stop_receive_same Spec INVARIANT ex_stop_newerTurnRuns violated
@@ -70,24 +55,47 @@ StopClock stop_receive_same Spec INVARIANT ex_stop_newerInputRequeued violated
 StopClock stop_receive_same Spec INVARIANT acc_lateSentBeforeStopRuns violated
 StopClock stop_receive_same Spec INVARIANT acc_earlySentAfterStopNotRun violated
 
-# Model 3: the cutover under a rolling deploy (P45, plan 6c7ab79).
-# As written: the move runs only on the take that sets core new.
-Cutover cutover_design Spec INVARIANT noStrandedCursor violated
-Cutover cutover_designNoStall Spec INVARIANT noCrossCoreDuplicate violated
-# Every new-core take moves leftover Redis state; today's cursor writes are
-# not fenced by the lease (today), then fenced.
-Cutover cutover_always Spec INVARIANT noCrossCoreDuplicate violated
-Cutover cutover_oldFenced Spec INVARIANT safety holds
-Cutover cutover_oldFenced Spec INVARIANT noDuplicateTurn holds
-Cutover cutover_oldFenced Spec INVARIANT oneCore violated
-# A worker without the reader release takes the lease after the move.
-Cutover cutover_midDeployFenced Spec INVARIANT oneCoreLive violated
-Cutover cutover_midDeployPinnedFenced Spec INVARIANT safety holds
-Cutover cutover_midDeployPinnedFenced Spec INVARIANT noDuplicateTurn holds
+# Model 3: the inbox move and Slack ingress at the cutover (P45), with the
+# proposed ingress fix (FINDINGS.md C5, C6): every ingress path adds the
+# id to inboundMessageIds first.
+Cutover cutover_inboxShared Spec INVARIANT safety,noDuplicateTurn,acceptedOnce holds
+Cutover cutover_inboxShared Spec INVARIANT ex_inboxMovedThenRunOnNew violated
+Cutover cutover_inboxShared Spec INVARIANT ex_retryRefused violated
+Cutover cutover_inboxShared Spec INVARIANT ex_oldWriteAfterMove violated
+Cutover cutover_inboxShared Spec INVARIANT ex_dropped violated
+
+# Model 4: a parent and a child at the cutover (P45), with the proposed
+# result-write fence (FINDINGS.md C7).
+CutoverTree tree_fenced Spec INVARIANT resultNotLost,resultOneOwner holds
+CutoverTree tree_fenced Spec INVARIANT ex_childMovedThenAnsweredOnNew violated
+CutoverTree tree_fenced Spec INVARIANT ex_resultMovedAnswered violated
+CutoverTree tree_fenced Spec INVARIANT ex_moveWaitsForBusyChild violated
+
+# Model 5: the P45 shim (plan 170f513). The stale lease fence with the
+# tombstone, the pin, a step 3 worker and a worker from before step 3 (no
+# reader, no tombstone; it takes only an absent lease), 2 crashes, 2
+# stalls, a revert, and the proposed move-back fix (FINDINGS.md C10).
+CutoverShim shim_design Spec INVARIANT safety holds
+CutoverShim shim_design Spec INVARIANT oneCore holds
+# The lease-less abandonTurnRecord against the move.
+CutoverShim shim_abandon Spec INVARIANT safety holds
+# Documented limit (the plan's give-up, :1061-1065): a worker from before
+# step 3 takes over an expired lease and releases early.
+CutoverShim shim_gap Spec INVARIANT noDuplicateTurn violated
 # Worked examples (reachable).
-Cutover cutover_oldFenced Spec INVARIANT ex_movedBack violated
-Cutover cutover_oldFenced Spec INVARIANT ex_moveRepeatedAfterCrash violated
-Cutover cutover_oldFenced Spec INVARIANT ex_movedThenFinishedOnNew violated
-Cutover cutover_oldFenced Spec INVARIANT ex_refusedByReader violated
-Cutover cutover_midDeployPinnedFenced Spec INVARIANT ex_movedBack violated
-Cutover cutover_midDeployPinnedFenced Spec INVARIANT ex_refusedByReader violated
+CutoverShim shim_examples Spec INVARIANT ex_moveWaitsForFence violated
+CutoverShim shim_examples Spec INVARIANT ex_moveWaitsForTombstone violated
+CutoverShim shim_examples Spec INVARIANT ex_takeoverTombstone violated
+CutoverShim shim_examples Spec INVARIANT ex_heartbeatCleared violated
+CutoverShim shim_examples Spec INVARIANT ex_refused violated
+CutoverShim shim_examples Spec INVARIANT ex_busyDeferOnPin violated
+CutoverShim shim_examples Spec INVARIANT ex_nonCurrentNoLock violated
+CutoverShim shim_examples Spec INVARIANT ex_movedBack violated
+CutoverShim shim_examples Spec INVARIANT ex_moveLockBusy violated
+CutoverShim shim_examples Spec INVARIANT ex_movedThenFinishedOnNew violated
+CutoverShim shim_examples Spec INVARIANT ex_abandonFoundNoCursor violated
+CutoverShim shim_examples Spec INVARIANT ex_abandonedHalfMoved violated
+
+# Model 6: the P45 column-drop guard (plan 170f513, step 17).
+DropGuard drop_design Spec INVARIANT noReadAfterDrop holds
+DropGuard drop_design Spec INVARIANT ex_dropped violated

@@ -1,0 +1,76 @@
+# Evidence for FINDINGS.md: earlier plan revisions and failing variants.
+# Not in CI. Run: CHECKS=evidence.txt ./check.sh
+# Same columns as checks.txt.
+
+# Model 1, earlier revisions: the bugs that later revisions fixed.
+WorkerLock lock_priorDraft Spec INVARIANT i3_noStaleSave violated
+WorkerLock lock_priorDraft Spec INVARIANT versionFollowsLock violated
+WorkerLock errors_priorDraft Spec INVARIANT restartOnlyAfterLoss violated
+WorkerLock delivery_priorDraft SpecFairRepair PROPERTY l2_finishingEnds violated
+WorkerLock wake_rev2 Spec INVARIANT noWakeLoopWhileBlocked violated
+WorkerLock wakeLive_rev2 SpecFairRepair PROPERTY quiesces violated
+WorkerLock wakeLive_rev3 SpecFairCore PROPERTY l3_pausedResumedNoRepair violated
+WorkerLock errors_rev3 Spec INVARIANT errorBudget violated
+WorkerLock errors_noPause Spec INVARIANT oneChargePerAttempt violated
+
+# Model 2: without the join fix.
+StopClock stop_receive_noJoinFix Spec INVARIANT i10_noOlderIntentAfterStop holds
+StopClock stop_receive_noJoinFix Spec INVARIANT i11_noOlderStartAfterStop holds
+StopClock stop_receive_noJoinFix Spec INVARIANT i11j_noOlderJoinAfterStop violated
+StopClock stop_receive_noJoinFix Spec INVARIANT spareNewerInput violated
+
+# Model 3: the cutover drafts (C1 to C4) and the inbox move as written.
+Cutover cutover_design Spec INVARIANT noStrandedCursor violated
+Cutover cutover_designNoStall Spec INVARIANT noCrossCoreDuplicate violated
+Cutover cutover_always Spec INVARIANT noCrossCoreDuplicate violated
+Cutover cutover_midDeployFenced Spec INVARIANT oneCoreLive violated
+Cutover cutover_midDeployPinnedFenced Spec INVARIANT safety violated
+Cutover cutover_inbox Spec INVARIANT noCrossCoreDuplicate violated
+Cutover cutover_inbox Spec INVARIANT retryAfterMoveIsDuplicate violated
+Cutover cutover_inbox Spec INVARIANT acceptedOnce violated
+Cutover cutover_inboxBoth Spec INVARIANT noCrossCoreDuplicate violated
+# The 01e2234 gate ("no check-in for 6.5 minutes") with o1's own queue
+# deliveries (C9). oneCoreLive holds: o1 runs only after its lease expired.
+Cutover cutover_gatedSeen Spec INVARIANT noDuplicateTurn violated
+Cutover cutover_gatedSeen Spec INVARIANT noCrossCoreDuplicate violated
+Cutover cutover_gatedSeen Spec INVARIANT oneCoreLive holds
+# The delete release guard alone (C8): a today's-path ingress in flight
+# writes after the check.
+Cutover cutover_inboxShared Spec INVARIANT noOldStateAfterDelete violated
+
+# Model 3: the deploy gate cutover (plans 01e2234 and 90bbd9b, replaced by
+# the shim in 170f513):
+# the four fixes, o1 with no fence and its own queue deliveries, the
+# automatic deploy gate on o1's last publish plus the queue retention (C9;
+# no operator switch; a revert deploy turns it off), the repair job sweep,
+# and the delete release with the drop release after it (C8).
+Cutover cutover_gated Spec INVARIANT safety,noDuplicateTurn holds
+Cutover cutover_gated SpecFairSweep PROPERTY sweepMoves holds
+# P5 "Limit": a stalled worker with the reader release runs until its next
+# cursor write.
+Cutover cutover_gated Spec INVARIANT oneCore violated
+Cutover cutover_gated Spec INVARIANT ex_movedBack violated
+Cutover cutover_gated Spec INVARIANT ex_moveRepeatedAfterCrash violated
+Cutover cutover_gated Spec INVARIANT ex_movedThenFinishedOnNew violated
+Cutover cutover_gated Spec INVARIANT ex_refusedByReader violated
+Cutover cutover_gated Spec INVARIANT ex_revertedAfterMove violated
+Cutover cutover_gated Spec INVARIANT ex_dropped violated
+
+# Model 4: the parent and child move as written.
+CutoverTree tree_plan Spec INVARIANT resultNotLost violated
+
+# Model 5: the shim as written, and variants.
+# C10: the move back after a crashed move, as written (:1006-1014, :916-917).
+CutoverShim shim_plan Spec INVARIANT safety violated
+CutoverShim shim_plan Spec INVARIANT noDuplicateTurn violated
+# The plan's give-up (:1061-1065): the first violated safety check.
+CutoverShim shim_gap Spec INVARIANT safety violated
+# Without the stale lease fence.
+CutoverShim shim_noFence Spec INVARIANT noDuplicateTurn violated
+# C11: the move reads the tombstone before the lease step.
+CutoverShim shim_earlyTomb Spec INVARIANT noDuplicateTurn violated
+
+# Model 6: the column-drop guard with one maxDuration, and with only the
+# skew (1 h + 2 maxDuration + 1 min; fails within the model's rounding).
+DropGuard drop_oneMax Spec INVARIANT noReadAfterDrop violated
+DropGuard drop_noSpare Spec INVARIANT noReadAfterDrop violated

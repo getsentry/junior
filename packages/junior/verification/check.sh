@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Run the TLC checks in checks.txt and compare each result with its expected
-# result. Usage: ./check.sh [filter-regex]. Needs Java 11+. Set TLA2TOOLS to
-# a tla2tools.jar, or the script downloads the pinned release. A violated
-# check writes its trace to .out/<instance>.<property>.trace.json; print it
-# with trace.py.
+# Run the TLC checks in checks.txt (the CI set) and compare each result with
+# its expected result. Usage: ./check.sh [filter-regex]. CHECKS=evidence.txt
+# runs the evidence list instead (FINDINGS.md). Needs Java 11+. Set TLA2TOOLS to
+# a tla2tools.jar, or the script downloads the pinned release (v1.7.4: the
+# v1.8.0 tag is a rolling build whose jar changes). A violated check's trace
+# is in .out/<instance>.<property>.log; print it with trace.py.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 out="${OUT:-$here/.out}"
 filter="${1:-.}"
-version=1.8.0
-sha=c57d4d7bbee3ed2c89c32cb9c60cac728f751e80e2570bc4b7368ae39291fc21
+version=1.7.4
+sha=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 jar="${TLA2TOOLS:-$here/.cache/tla2tools-$version.jar}"
 mkdir -p "$out"
 
@@ -21,18 +22,19 @@ if [ ! -f "$jar" ]; then
 fi
 
 : >"$out/summary.txt"
-grep -vE '^\s*(#|$)' "$here/checks.txt" | grep -E "$filter" |
+checks="${CHECKS:-checks.txt}"
+[ -f "$checks" ] || checks="$here/$checks"
+grep -vE '^\s*(#|$)' "$checks" | grep -E "$filter" |
 while read -r module instance spec kind prop expect; do
   name="$instance.$prop"
   dir="$out/work/$name"
-  rm -rf "$dir" "$out/$name.trace.json" && mkdir -p "$dir"
+  rm -rf "$dir" && mkdir -p "$dir"
   cp "$here/$module.tla" "$dir/"
   { cat "$here/cfg/$instance.cfg"; echo "SPECIFICATION $spec"
     for p in ${prop//,/ }; do echo "$kind $p"; done; } >"$dir/check.cfg"
   start=$(date +%s)
   (cd "$dir" && timeout "${TIMEOUT:-3600}" java -XX:+UseParallelGC -Xmx"${HEAP:-6g}" \
     -cp "$jar" tlc2.TLC -deadlock -workers "${WORKERS:-auto}" -cleanup \
-    -dumpTrace json "$out/$name.trace.json" \
     -config check.cfg "$module.tla") >"$out/$name.log" 2>&1 </dev/null
   code=$?
   secs=$(($(date +%s) - start))

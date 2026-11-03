@@ -29,6 +29,8 @@ CONSTANTS
     WAKE_RULE,         \* "prior" (ab76f5d), "p32" (5122bb7), "seq" (5ed29c2 on)
     SIGN_IN_WAKES,     \* recordSignIn raises inboxSeq and sets wakeAtMs (P32)
     DELAYED_NOTIFY,    \* the pre-release wake time also queues a delayed notify
+    SEND_STEPS,        \* send() runs as its P32 steps, each with a crash point;
+                       \* FALSE: one atomic step (a smaller bound)
     RESTART_IS_ERROR,  \* P4 (decided): a restart uses one of the turn's errors
     ERROR_LIMIT,       \* abstracts the limit of 5 turn errors
     WITH_M2,           \* person B may send m2
@@ -45,7 +47,6 @@ Msgs == {"m1", "m2"}
 DeliveryIds == TurnIds \X {0, 1}
 POST_LIMIT == 2          \* abstracts the limit of 5 post attempts
 RESTART_LIMIT == 1
-QUEUE_CAP == 2
 Open == {"running", "paused", "finishing"}
 Final == {"completed", "failed", "stopped"}
 
@@ -65,7 +66,16 @@ NoTurn == [status |-> "none", msg |-> "", errors |-> 0, restarts |-> 0,
 (* Helpers. Each takes a state record and returns a value or a new state.  *)
 (***************************************************************************)
 Max(a, b) == IF a > b THEN a ELSE b
-Inc(q) == IF q < QUEUE_CAP THEN q + 1 ELSE q
+\* The queue is a count of notify messages (they carry no payload, so it is
+\* a multiset of one kind). Inc never drops one and has no cap. The count
+\* stays finite with no state constraint: a release's notify follows a
+\* take that used one, and every other send is a bounded event (send(), a
+\* sign-in, a link expiry, a loss, the repair job).
+Inc(q) == q + 1
+
+\* wakeAtMs and the wake-time index (P7) change together, except inside
+\* send() (P32 steps).
+Wake(st, v) == [st EXCEPT !.wake = v, !.idx = v]
 
 \* Replace each value >= 1 by its rank among the values in use. 0 keeps
 \* meaning "none". Ranking keeps "equal" and "older", so this is exact.
@@ -132,6 +142,9 @@ CanRestart(tu) == tu.restarts < RESTART_LIMIT /\ ~(RESTART_IS_ERROR /\ Used(tu) 
 Init ==
     s = [holder |-> 0, holderLive |-> FALSE, sqlVer |-> 1, queue |-> 1,
          wake |-> "due",        \* Redis wakeAtMs: "none", "due", "link"
+         idx |-> "due",         \* the wake-time index entry (P7), same values
+         send |-> "none",       \* send() of m2: the last P32 step done
+         sendDown |-> FALSE,    \* the sender crashed; Slack redelivers
          dirty |-> TRUE,        \* inboxSeq changed since the last worker read
          freshSend |-> TRUE,    \* ghost: a send() came after the last release
          inbox |-> {"m1"}, arrived |-> {"m1"},
@@ -152,13 +165,31 @@ Init ==
 (* Environment                                                             *)
 (***************************************************************************)
 
-\* Person B sends m2: append, raise inboxSeq, set wakeAtMs to now, notify.
-SendM2 ==
-    /\ WITH_M2
-    /\ "m2" \notin s.arrived
-    /\ s' = [s EXCEPT !.arrived = @ \cup {"m2"}, !.inbox = @ \cup {"m2"},
-                      !.requests["m2"] = "open", !.queue = Inc(@), !.wake = "due",
-                      !.dirty = TRUE, !.freshSend = TRUE]
+\* Person B sends m2: send() runs the P32 steps one at a time. The sender
+\* can crash after each one (Crash_AfterRecordInsert and on). Slack then
+\* delivers again, and send() runs again: each step is safe to repeat (the
+\* record insert is unique on the inbound message id and the rest goes on),
+\* so a redelivery resumes after the last step done.
+SendNext ==
+    CASE s.send = "none"   -> [s EXCEPT !.send = "record", !.arrived = @ \cup {"m2"},
+                                        !.requests["m2"] = "open"]
+      [] s.send = "record" -> [s EXCEPT !.send = "append", !.inbox = @ \cup {"m2"}]
+      [] s.send = "append" -> [s EXCEPT !.send = "seq", !.wake = "due", !.dirty = TRUE,
+                                        !.freshSend = TRUE]
+      [] s.send = "seq"    -> [s EXCEPT !.send = "index", !.idx = "due"]
+      [] s.send = "index"  -> [s EXCEPT !.send = "done", !.queue = Inc(@)]
+SendAtomic ==
+    [s EXCEPT !.send = "done", !.arrived = @ \cup {"m2"}, !.requests["m2"] = "open",
+              !.inbox = @ \cup {"m2"}, !.wake = "due", !.idx = "due", !.dirty = TRUE,
+              !.freshSend = TRUE, !.queue = Inc(@)]
+SendEn == WITH_M2 /\ s.send # "done" /\ ~s.sendDown
+SendStep == SendEn /\ s' = IF SEND_STEPS THEN SendNext ELSE SendAtomic
+SendPoint == CASE s.send = "none" -> "AfterRecordInsert" [] s.send = "record" -> "AfterAppend"
+                [] s.send = "append" -> "AfterWakeSet" [] s.send = "seq" -> "AfterWakeIndex"
+                [] OTHER -> ""
+
+\* Slack delivers the message again after the sender crashed.
+SendRedeliver == s.sendDown /\ s' = Flag([s EXCEPT !.sendDown = FALSE], "sendResumed")
 
 \* A live worker stalls past 90 s with no check-in. Its lock expires. It
 \* keeps running and learns of the loss only at its next check-in or write.
@@ -190,6 +221,7 @@ LinkExpires(t) ==
     /\ ~s.turns[t].linkExpired
     /\ s' = [s EXCEPT !.turns[t].linkExpired = TRUE,
                       !.wake = IF @ = "link" THEN "due" ELSE @,
+                      !.idx = IF @ = "link" THEN "due" ELSE @,
                       !.queue = IF DELAYED_NOTIFY /\ s.wake = "link" THEN Inc(@) ELSE @]
 
 \* The person signs in. recordSignIn saves turn_authorized and notifies.
@@ -198,6 +230,7 @@ SignIn(t) ==
     /\ ~s.turns[t].granted
     /\ s' = [s EXCEPT !.turns[t].granted = TRUE, !.queue = Inc(@),
                       !.wake = IF SIGN_IN_WAKES THEN "due" ELSE @,
+                      !.idx = IF SIGN_IN_WAKES THEN "due" ELSE @,
                       !.dirty = @ \/ SIGN_IN_WAKES, !.freshSend = TRUE]
 
 \* ab76f5d only: the timer job clears an expired Redis lock and notifies.
@@ -210,7 +243,7 @@ TimerJob ==
 RepairJob ==
     /\ LOCK_CAS
     /\ s.holder = 0 \/ ~s.holderLive
-    /\ s.wake = "due" \/ OpenTurnOf(s) # 0
+    /\ s.idx = "due" \/ OpenTurnOf(s) # 0
     /\ s.queue = 0
     /\ s' = [s EXCEPT !.queue = Inc(@)]
 
@@ -226,7 +259,8 @@ LockFree == s.holder = 0 \/ ~s.holderLive
 AcquireNext(w) ==
     LET q == [s EXCEPT !.queue = @ - 1]
         seq == s.lastSeq + 1
-    IN IF ~LockFree THEN q   \* a live lock is held: the notification is dropped
+    IN IF ~LockFree
+       THEN q   \* A live lock is held: the notify is dropped (P32, P46 decided).
        ELSE IF LOCK_CAS
        THEN SetW([q EXCEPT !.holder = seq, !.holderLive = TRUE, !.lastSeq = seq,
                            !.sqlVer = s.sqlVer + 1, !.maxRaisedSeq = seq],
@@ -365,7 +399,7 @@ PostFailedRunning(st, w, t) ==
             THEN Fenced(st, w, SetPc(SetTurn([st EXCEPT !.attempts[d] = a, !.delivery[d] = "failed"],
                                              t, [tu EXCEPT !.status = "finishing", !.outcome = "post_failed"]),
                                      w, "fin"))
-            ELSE Fenced(st, w, SetPc(SetTurn([st EXCEPT !.attempts[d] = a, !.wake = "due"],
+            ELSE Fenced(st, w, SetPc(SetTurn(Wake([st EXCEPT !.attempts[d] = a], "due"),
                                              t, [tu EXCEPT !.status = "paused", !.pause = "post_retry"]),
                                      w, "rcheck"))
        ELSE IF tu.resumedFrom = "post_retry"
@@ -417,7 +451,7 @@ RunSoftPauseNext(w) ==
 RunSignInEn(w) == WITH_SIGNIN /\ RunPre(w) /\ ~s.turns[TurnOf(w)].signUsed
 RunSignInNext(w) ==
     LET t == TurnOf(w)
-    IN Fenced(s, w, SetPc(SetTurn([s EXCEPT !.wake = "link"], t,
+    IN Fenced(s, w, SetPc(SetTurn(Wake(s, "link"), t,
                                   [s.turns[t] EXCEPT !.status = "paused", !.pause = "sign_in",
                                                      !.signUsed = TRUE]), w, "rcheck"))
 
@@ -458,7 +492,7 @@ PostFailedFinishing(st, w, t) ==
     IN IF DELIVERY_LIMIT
        THEN IF a >= POST_LIMIT
             THEN Fenced(st, w, SetPc([st EXCEPT !.attempts[d] = a, !.delivery[d] = "failed"], w, "fin"))
-            ELSE Fenced(st, w, SetPc([st EXCEPT !.attempts[d] = a, !.wake = "due"], w, "rcheck"))
+            ELSE Fenced(st, w, SetPc(Wake([st EXCEPT !.attempts[d] = a], "due"), w, "rcheck"))
        ELSE SetPc(st, w, "rcheck")
 
 Post1En(w) == s.workers[w].pc = "post1"
@@ -518,7 +552,7 @@ RCheckNext(w) ==
         s1 == IF t > 0 /\ s.turns[t].status = "running" /\ s.sqlVer = x.ver
               THEN [s EXCEPT !.turns[t].handedOff = TRUE] ELSE s
         s2 == IF WAKE_RULE = "seq" /\ TokenOk(s, w)
-              THEN [s1 EXCEPT !.wake = NextWake(s1), !.dirty = FALSE] ELSE s1
+              THEN [Wake(s1, NextWake(s1)) EXCEPT !.dirty = FALSE] ELSE s1
         \* Ghost: the holder's release starts a new window for the wake-loop check.
         s3 == IF TokenOk(s, w) THEN [s2 EXCEPT !.freshSend = FALSE] ELSE s2
     IN SetW(s3, w, [x EXCEPT !.pc = "rel", !.workLeft = WorkLeftIn(s)])
@@ -642,6 +676,15 @@ Crash_AfterWakeCompareAndSet(w)   == CrashAt("AfterWakeCompareAndSet", w)
 Crash_AfterInboxRead(w)           == CrashAt("AfterInboxRead", w)
 \* Posts.
 Crash_AfterPost(w)                == CrashAt("AfterPost", w)
+\* send() (P32 steps). The step's write, then the sender dies.
+CrashSend(p) ==
+    /\ SEND_STEPS /\ SendEn /\ SendPoint = p /\ s.lossBudget > 0
+    /\ s' = [SendNext EXCEPT !.sendDown = TRUE, !.lossBudget = @ - 1]
+Crash_AfterRecordInsert == CrashSend("AfterRecordInsert")
+Crash_AfterAppend       == CrashSend("AfterAppend")
+Crash_AfterWakeSet      == CrashSend("AfterWakeSet")
+Crash_AfterWakeIndex    == CrashSend("AfterWakeIndex")
+CrashSender == Crash_AfterRecordInsert \/ Crash_AfterAppend \/ Crash_AfterWakeSet \/ Crash_AfterWakeIndex
 \* The provider accepted the post, but the reply was lost with the worker.
 Crash_PostAcceptedReplyLost(w) ==
     \/ /\ Post0OkEn(w) /\ s.lossBudget > 0
@@ -659,20 +702,26 @@ Crash(w) ==
     \/ Crash_AfterInboxRead(w) \/ Crash_AfterPost(w) \/ Crash_PostAcceptedReplyLost(w)
 
 Fault ==
-    \/ SendM2 \/ BreakTarget
+    \/ BreakTarget \/ CrashSender
     \/ \E t \in TurnIds : SignIn(t)
     \/ \E w \in Workers : Crash(w) \/ LockExpires(w) \/ CheckIn(w)
 
 Time == ExpireDead \/ \E t \in TurnIds : LinkExpires(t)
 
+\* Person B and Slack: send() goes on, and Slack delivers again after a
+\* sender crash until the send is acked.
+Sender == SendStep \/ SendRedeliver
+
 Next ==
     \/ \E w \in Workers : Progress(w)
-    \/ Time \/ TimerJob \/ RepairJob \/ Fault
+    \/ Sender \/ Time \/ TimerJob \/ RepairJob \/ Fault
 
 vars == s
 
 Spec == Init /\ [][Next]_vars
+
 FairCore == WF_vars(Progress("w1")) /\ WF_vars(Progress("w2")) /\ WF_vars(Time) /\ WF_vars(TimerJob)
+            /\ WF_vars(Sender)
 SpecFairCore == Spec /\ FairCore
 SpecFairRepair == Spec /\ FairCore /\ WF_vars(RepairJob)
 
@@ -755,6 +804,10 @@ ex_turn_E7_messageWhileLocked ==
 ex_edges_E1_findBeforeRepost == "foundOnRecover" \notin s.ex
 ex_access_E2_linkExpires == ~(s.turns[1].outcome = "sign_in_expired" /\ s.turns[1].status = "stopped")
 ex_signInResumes == "resumedAfterSignIn" \notin s.ex
+\* Notifies pile up in the queue (the count has no cap).
+ex_notifyPileUp == s.queue < 3
+\* A redelivery resumes send() after a sender crash.
+ex_sendResumedAfterCrash == ~(s.send = "done" /\ "sendResumed" \in s.ex)
 \* P4: the restart after a lost worker uses the turn's last error.
 ex_restartUsesLastError == "restartUsedLastError" \notin s.ex
 
@@ -771,8 +824,10 @@ l2_finishingEnds == \A t \in TurnIds : [](s.turns[t].status = "finishing" => <>(
 
 \* L3: a paused turn is eventually resumed or finished.
 l3_pausedResumed == \A t \in TurnIds : [](s.turns[t].status = "paused" => <>(s.turns[t].status # "paused"))
-\* L3 as the spec requires it: run with SpecFairCore, no fairness for the
-\* repair job.
+\* L3 with no fairness for the repair job (SpecFairCore). It holds in runs
+\* with no lost notify (wakeLive_design). Documented limit (P46, decided):
+\* after a lost notify a paused turn waits for the repair job, as a lost
+\* running turn does (errors_design: expected to fail).
 l3_pausedResumedNoRepair == l3_pausedResumed
 
 \* A running turn whose worker was lost is picked up. Run with SpecFairCore.
