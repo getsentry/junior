@@ -53,8 +53,8 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 ### Context inputs
 
 - `<context>`, `<configuration>`, `<runtime>`, `<disabled-tools>`,
-  `<available-skills>`, `<active-mcp-catalogs>`, `<tool-guidance>`: context
-  message; runtime facts.
+  `<available-skills>`, `<active-mcp-catalogs>`, `<tool-guidance>`,
+  `<workspaces>`: context message; runtime facts.
 - `<conversation-notes>`: context message; runtime facts, not instructions, no
   approval.
 - `<plugin-context>` and recalled memories: context message; can be stale.

@@ -24,6 +24,7 @@ import {
   getPluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -40,6 +41,8 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
+import { listWorkspaces } from "@/chat/workspaces/store";
+import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
 import type {
   AgentAttachment,
@@ -93,6 +96,7 @@ export interface PromptTurnContext {
     ReturnType<typeof getPluginUserPromptContributions>
   >;
   userCustomization?: string;
+  workspaces?: Workspace[];
 }
 
 interface PromptReplayArgs {
@@ -575,24 +579,30 @@ export async function loadPromptTurnContext(
   if (!planPromptReplay(args).loadsTurnContext) {
     return { pluginUserPromptContributions: [] };
   }
-  const [pluginUserPromptContributions, conversationNotes, userCustomization] =
-    await Promise.all([
-      getPluginUserPromptContributions({
-        context: args.context,
-        turnId: args.turnId,
-      }),
-      loadTurnConversationNotes({
-        conversationId: args.context.conversationId,
-        turnId: args.turnId,
-      }),
-      isUserActor(args.currentActor)
-        ? loadUserCustomization(args.context)
-        : undefined,
-    ]);
+  const [
+    pluginUserPromptContributions,
+    conversationNotes,
+    userCustomization,
+    workspaces,
+  ] = await Promise.all([
+    getPluginUserPromptContributions({
+      context: args.context,
+      turnId: args.turnId,
+    }),
+    loadTurnConversationNotes({
+      conversationId: args.context.conversationId,
+      turnId: args.turnId,
+    }),
+    isUserActor(args.currentActor)
+      ? loadUserCustomization(args.context)
+      : undefined,
+    listWorkspaces(getDb()),
+  ]);
   return {
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
+    workspaces,
   };
 }
 
@@ -678,6 +688,7 @@ export async function assemblePrompt(args: {
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
+    workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
   const turnContextPrompt =
@@ -695,6 +706,7 @@ export async function assemblePrompt(args: {
           pluginPromptContributions: pluginUserPromptContributions,
           toolGuidance: args.toolGuidance,
           userCustomization,
+          workspaces,
           runtime: {
             conversationId: args.spanContext.conversationId,
             slackConversation: args.run.slackConversation,
