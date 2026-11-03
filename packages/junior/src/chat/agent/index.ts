@@ -162,6 +162,7 @@ import {
   type ModelProfile,
 } from "@/chat/model-profile";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
+import { requestBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -1789,6 +1790,14 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
+    await requestBackgroundCompaction({
+      agent,
+      conversationId,
+      conversationPrivacy,
+      modelId: activeModelId,
+      modelProfile: activeModelProfile,
+      queue: run.environment?.backgroundCompactionQueue,
+    });
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
     // completed session record after assistant output handling settles, so a

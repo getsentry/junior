@@ -15,9 +15,10 @@ import { withSpan, type SetSpanAttributes } from "@/chat/logging";
 
 /**
  * Where a compaction runs: `blocking` at Turn start, `active` between model
- * calls in a Turn, `handoff` for a model handoff.
+ * calls in a Turn, `handoff` for a model handoff, `background` in a job after
+ * a Turn.
  */
-export type CompactionMode = "blocking" | "active" | "handoff";
+export type CompactionMode = "blocking" | "active" | "handoff" | "background";
 
 interface TurnCompactionWait {
   ms: number;
@@ -41,7 +42,7 @@ export async function withCompactionSpan<T>(
       ),
     );
   } finally {
-    // Every mode runs on the critical path of the Turn today.
+    // A background job runs outside a Turn, so it has no Turn wait.
     const wait = turnCompactionWait.getStore();
     if (wait) {
       wait.ms += performance.now() - startedAtMs;

@@ -225,6 +225,10 @@ export async function createFixtureAgent(
     pluginTaskQueue: (consume) => ({
       send: async (message) => track(consume(message)),
     }),
+    // Background compaction jobs also run in process.
+    backgroundCompactionQueue: (consume) => ({
+      send: async (message) => track(consume(message)),
+    }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in

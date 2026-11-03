@@ -14,6 +14,7 @@ import {
 } from "@/build/virtual-config";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -23,6 +24,7 @@ import {
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -259,6 +261,32 @@ function configureVercelDeployment(
       },
     ],
   };
+
+  const existingCompactionRule =
+    nitro.options.vercel.functionRules[
+      JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE
+    ] ?? {};
+  const existingCompactionTriggers = Array.isArray(
+    existingCompactionRule.experimentalTriggers,
+  )
+    ? existingCompactionRule.experimentalTriggers
+    : [];
+  const otherCompactionTriggers = existingCompactionTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+
+  nitro.options.vercel.functionRules[JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE] =
+    {
+      ...existingCompactionRule,
+      maxDuration: defaultMaxDuration,
+      experimentalTriggers: [
+        ...otherCompactionTriggers,
+        {
+          type: VERCEL_QUEUE_TRIGGER_TYPE,
+          topic: BACKGROUND_COMPACTION_QUEUE_TOPIC,
+        },
+      ],
+    };
 
   return defaultMaxDuration;
 }
