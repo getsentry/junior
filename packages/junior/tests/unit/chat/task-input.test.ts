@@ -37,8 +37,8 @@ describe("renderTaskInput", () => {
 
       About: GitHub PR getsentry/junior#691
       Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.
-      People involved: <@U456>
-      Done by: <@U456>. This person did what this Event describes. The Event calls them "octocat". That is the same person. They are also in People involved. Write to them as "you", and do not also call them "octocat".
+      People involved: <@U456> (did what this Event describes; called "octocat" in the Event data)
+      If you mention <@U456>, write to them as "you", and do not also call them "octocat".
       Instructions: Fix failed checks on this PR.
 
       Trusted summary: CI failed on workflow test.
@@ -65,7 +65,11 @@ describe("renderTaskInput", () => {
     });
 
     expect(text).toContain(
-      'Done by: <@U456>. This person did what this Event describes. The Event calls them "octocat". That is the same person. If you mention them, write to them as "you", and do not also call them "octocat".\n',
+      [
+        'Done by: <@U456> (did what this Event describes; called "octocat" in the Event data)',
+        'If you mention <@U456>, write to them as "you", and do not also call them "octocat".',
+        "Instructions:",
+      ].join("\n"),
     );
   });
 
@@ -146,7 +150,8 @@ describe("renderTaskBatchInput", () => {
       You received 4 events.
 
       About: GitHub PR getsentry/junior#2245
-      People involved: <@U123>
+      People involved: <@U123> (did Event 1; called "dcramer" in the Event data)
+      If you mention <@U123>, write to them as "you", and do not also call them "dcramer".
       Instructions: Maintain this pull request.
 
       Additional guidance:
@@ -155,7 +160,6 @@ describe("renderTaskBatchInput", () => {
       - pull_request.review_comment.created: Resolve the thread after a fix.
 
       Event 1: pull_request.review.approved
-      Done by: <@U123>. This person did what this Event describes. The Event calls them "dcramer". That is the same person. They are also in People involved. Write to them as "you", and do not also call them "dcramer".
       Trusted summary: Approved by dcramer.
 
       Event 2: pull_request.review_comment.created
