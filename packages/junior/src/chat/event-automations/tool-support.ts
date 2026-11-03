@@ -1,5 +1,7 @@
 import {
+  eventMatchSchema,
   eventTriggerText,
+  type EventMatch,
   type EventTriggerDescription,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
@@ -8,17 +10,13 @@ import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import type { StoredEventAutomation } from "@/chat/event-automations/store";
-import {
-  EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
-  type EventAutomation,
-} from "@/chat/event-automations/types";
+import type { EventAutomation } from "@/chat/event-automations/types";
 import {
   eventNamespaceSchema,
   automationEventCatalog,
   describeRegisteredEventTrigger,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
-  registeredResourceTypeSchema,
   requireEventIdentifier,
   requireValidEventTrigger,
   type EventCatalog,
@@ -88,27 +86,53 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
   return z
     .object({
       namespace: eventNamespaceSchema(plugins),
-      identifier: z
-        .string()
-        .trim()
-        .min(1)
-        .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
-        .nullable()
-        .describe(
-          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier.',
-        )
-        .optional(),
-      resourceType: registeredResourceTypeSchema(plugins)
-        .nullable()
-        .describe(
-          "Resource type of the identifier. Use null when identifier is null. When updating, omit it to keep the saved resource type.",
-        )
-        .optional(),
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(plugins)).min(1),
-      match: registeredEventMatchSchema(),
+      match: registeredEventMatchSchema().describe(
+        "Filters that select the events, from the matchFields of the namespace. Use the match of a subscribable tool result to select one resource, such as { repo, pullRequest } for one pull request. Leave it out to run for every resource, when the reach of each event allows that. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry.",
+      ),
     })
     .strict();
+}
+
+/**
+ * Filter changes of an update. A value sets the filter, and null removes it.
+ * A filter that is left out keeps its saved value, so an update cannot make
+ * a trigger broader by leaving out a filter.
+ */
+const eventMatchChangesSchema = z
+  .record(z.string(), z.union([eventMatchSchema.valueType, z.null()]))
+  .optional()
+  .describe(
+    "Filter changes, from the matchFields of the namespace. A value sets the filter, null removes it, and a filter that is left out keeps its saved value. When the namespace changes, the saved filters are dropped.",
+  );
+
+/** Build the event trigger that the update tool accepts. */
+export function registeredEventAutomationTriggerChangesSchema(
+  catalog: EventCatalog,
+) {
+  return registeredEventAutomationTriggerSchema(catalog).extend({
+    match: eventMatchChangesSchema,
+  });
+}
+
+/**
+ * Apply filter changes to the saved trigger, key by key. A change to another
+ * namespace starts from no filters.
+ */
+export function changedEventMatch(
+  saved: Pick<EventAutomation["trigger"], "match" | "namespace">,
+  namespace: string,
+  changes: z.output<typeof eventMatchChangesSchema>,
+): EventMatch | undefined {
+  const match: EventMatch = {
+    ...(namespace === saved.namespace ? saved.match : undefined),
+  };
+  for (const [key, value] of Object.entries(changes ?? {})) {
+    if (value === null) delete match[key];
+    else match[key] = value;
+  }
+  return Object.keys(match).length > 0 ? match : undefined;
 }
 
 /**

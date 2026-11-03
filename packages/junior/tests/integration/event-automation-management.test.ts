@@ -7,12 +7,13 @@ import {
   context,
   createTask,
   execute,
-  EVENT_CATALOG,
+  useGitHubEvents,
   teamId,
 } from "../fixtures/event-automations";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { eq } from "drizzle-orm";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
@@ -44,9 +45,11 @@ describe("event automation management", () => {
       source: "local",
       nowMs: Date.now(),
     });
+    await useGitHubEvents();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     const db = fixture.sql.db();
     await db
       .delete(juniorAutomations)
@@ -78,7 +81,7 @@ describe("event automation management", () => {
         automationToolContext(
           context("U999", "C123", "public", "1700000000.200000"),
         ),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {},
     )) as {
@@ -99,7 +102,7 @@ describe("event automation management", () => {
         (await execute(
           createSearchAutomationsTool(
             automationToolContext(context("U999", "COTHER")),
-            EVENT_CATALOG,
+            getEventCatalog(),
           ),
           input,
         )) as { automations: Array<{ id: string }> }
@@ -116,7 +119,7 @@ describe("event automation management", () => {
       execute(
         createRunAutomationNowTool(
           automationToolContext(context("U999", "COTHER")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         { automationId: created.automation.id },
       ),
@@ -125,7 +128,7 @@ describe("event automation management", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999", "COTHER")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         { automationId: created.automation.id, ...input },
       );
@@ -150,7 +153,7 @@ describe("event automation management", () => {
     await execute(
       createDeleteAutomationTool(
         automationToolContext(context("U999", "COTHER")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       { automationId: created.automation.id },
     );
@@ -171,7 +174,7 @@ describe("event automation management", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999", "COTHER", "public")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: created.automation.id,
@@ -213,7 +216,7 @@ describe("event automation management", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: created.automation.id,
@@ -226,15 +229,13 @@ describe("event automation management", () => {
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context("U999")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
         trigger: {
           type: "event",
           namespace: "github",
-          identifier: "getsentry/junior#1174",
-          resourceType: "review_target",
           label: "Updated GitHub PR label",
           events: ["pull_request.review.changes_requested"],
         },
@@ -246,24 +247,23 @@ describe("event automation management", () => {
       credentialMode: "creator",
       trigger: {
         label: "Updated GitHub PR label",
-        resourceType: "review_target",
+        match: { repo: "getsentry/junior", pullRequest: 1174 },
       },
     });
 
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context("U999")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
         trigger: {
           type: "event",
           namespace: "github",
-          identifier: "getsentry/junior#1176",
-          resourceType: "pull_request",
           label: "GitHub PR getsentry/junior#1176",
           events: ["pull_request.review.changes_requested"],
+          match: { pullRequest: 1176 },
         },
       },
     );
@@ -271,13 +271,13 @@ describe("event automation management", () => {
       await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
-      trigger: { identifier: "getsentry/junior#1176" },
+      trigger: { match: { repo: "getsentry/junior", pullRequest: 1176 } },
     });
 
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context()),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
@@ -289,7 +289,7 @@ describe("event automation management", () => {
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context("U999")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
@@ -304,7 +304,7 @@ describe("event automation management", () => {
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context("U999")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
@@ -328,7 +328,7 @@ describe("event automation management", () => {
     const deleted = await execute(
       createDeleteAutomationTool(
         automationToolContext(context("U999")),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
         automationId: created.automation.id,
@@ -368,7 +368,7 @@ describe("event automation management", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
           automationId: created.automation.id,
@@ -379,7 +379,7 @@ describe("event automation management", () => {
     const listed = (await execute(
       createSearchAutomationsTool(
         automationToolContext(context()),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {},
     )) as {

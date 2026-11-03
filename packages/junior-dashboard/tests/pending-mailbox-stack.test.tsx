@@ -174,6 +174,23 @@ describe("PendingMailboxStack remove control", () => {
     expect(html.match(/aria-label="Edit queued message"/g)).toHaveLength(1);
   });
 
+  it("draws each row author from the Conversation authors", () => {
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        authors={{ "identity-web": { fullName: "Owner Person" } }}
+        messages={[
+          message({
+            actorIdentity: { email: "owner@example.com" },
+            actorIdentityId: "identity-web",
+          }),
+        ]}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Owner Person"');
+    expect(html).not.toContain("owner@example.com");
+  });
+
   it("hides mailbox rows already present in committed history", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack

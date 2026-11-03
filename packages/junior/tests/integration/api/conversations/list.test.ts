@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { avatarPath } from "../../../fixtures/avatar";
 import { describe, expect, test } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { testViewer } from "../../../fixtures/user";
@@ -831,12 +832,12 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
-            avatarUrl: "/api/people/avatars/identity-google-owner",
+            avatarUrl: avatarPath("identity-google-owner"),
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
-            avatarUrl: "/api/people/avatars/identity-participant-slack",
+            avatarUrl: avatarPath("identity-participant-slack"),
             email: "participant@example.com",
             fullName: "Participant",
             slackUserId: "UPARTICIPANT1",
@@ -938,21 +939,37 @@ describe("conversation list API", () => {
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 
-      const participantRows = await fixture.sql
-        .db()
-        .select({
-          userId: juniorConversationParticipants.userId,
-        })
-        .from(juniorConversationParticipants)
-        .where(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            "slack:C1:dashboard-author",
-          ),
-        );
-      expect(participantRows.map((row) => row.userId)).toContain(
-        participantUserId,
-      );
+      const readParticipantUserIds = async () =>
+        (
+          await fixture.sql
+            .db()
+            .select({
+              userId: juniorConversationParticipants.userId,
+            })
+            .from(juniorConversationParticipants)
+            .where(
+              eq(
+                juniorConversationParticipants.rootConversationId,
+                "slack:C1:dashboard-author",
+              ),
+            )
+        ).map((row) => row.userId);
+      // A message that does not start a Turn is context, not membership.
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
+
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_600,
+          data: {
+            inputMessageIds: ["dashboard-msg-1"],
+            surface: "api",
+            turnId: "turn-dashboard-msg-1",
+            type: "turn_started",
+          },
+          idempotencyKey: "turn:turn-dashboard-msg-1:started",
+        },
+      ]);
+      expect(await readParticipantUserIds()).toContain(participantUserId);
 
       const feed = await readConversationFeedFromSql({
         viewer: {

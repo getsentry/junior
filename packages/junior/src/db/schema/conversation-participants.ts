@@ -5,8 +5,8 @@ import { timestamptz } from "./timestamps";
 
 /**
  * Materialized personal-feed membership for one linked user on one root
- * conversation. Rows come from the root actor and from durable human user
- * message authors.
+ * conversation. Rows come from the root actor and from the authors of Turn
+ * input messages. Thread context authors do not get a row.
  */
 export const juniorConversationParticipants = pgTable(
   "junior_conversation_participants",

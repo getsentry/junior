@@ -46,7 +46,10 @@ import {
 import { scheduledAutomationAttributes } from "@/chat/scheduled-automations/telemetry";
 import { getConversationAccess } from "@/chat/scheduled-automations/tool-support";
 import { SCHEDULED_AUTOMATION_SYSTEM_ACTOR } from "@/chat/scheduled-automations/types";
-import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
+import {
+  requireSlackChannelMessageScope,
+  slackChannelMessageTrigger,
+} from "@/chat/slack/channel-message-events";
 import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
@@ -254,7 +257,10 @@ export function createAutomationTool(
       });
       const eventTrigger =
         input.trigger.type === "event"
-          ? requireEventAutomationTrigger(catalog, input.trigger)
+          ? requireEventAutomationTrigger(
+              catalog,
+              slackChannelMessageTrigger(input.trigger, destination.channelId),
+            )
           : undefined;
       const toolCallId = options.toolCallId?.trim();
       if (!toolCallId) {

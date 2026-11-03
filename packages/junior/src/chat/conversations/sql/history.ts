@@ -114,7 +114,7 @@ function insertFromEvent(
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
-function eventFromRow(row: ConversationEventRow): ConversationEvent {
+export function eventFromRow(row: ConversationEventRow): ConversationEvent {
   const payload =
     row.actorIdentityId &&
     typeof row.payload === "object" &&
@@ -239,22 +239,57 @@ class SqlConversationEventStore implements ConversationEventStore {
               actorIdentityId,
             ),
           );
-          if (actorIdentityId) {
-            await recordConversationParticipant(this.executor, {
-              actorIdentityId,
-              conversationId,
-              atMs: event.createdAtMs,
-              restoreArchive: eventUnarchivesConversation(event.data),
-            });
-          }
         }
         await this.executor.db().insert(juniorConversationEvents).values(rows);
+        for (const event of pending) {
+          if (event.data.type === "turn_started") {
+            await this.recordTurnInputParticipants(
+              conversationId,
+              event.data.inputMessageIds,
+            );
+          }
+        }
         return rows.map((row) => ({
           seq: row.seq,
           historyVersion: row.historyVersion,
         }));
       },
     );
+  }
+
+  /**
+   * Add the authors of Turn input messages to the conversation.
+   * Only people who start a Turn join it. Thread context, such as backfilled
+   * or skipped messages, keeps its author without membership.
+   */
+  private async recordTurnInputParticipants(
+    conversationId: string,
+    inputMessageIds: readonly string[],
+  ): Promise<void> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "message"),
+          inArray(
+            sql<string>`${juniorConversationEvents.payload}->>'messageId'`,
+            [...inputMessageIds],
+          ),
+        ),
+      );
+    for (const row of rows) {
+      const { data } = eventFromRow(row);
+      if (!row.actorIdentityId || data.type !== "message") continue;
+      await recordConversationParticipant(this.executor, {
+        actorIdentityId: row.actorIdentityId,
+        conversationId,
+        atMs: row.createdAt.getTime(),
+        restoreArchive: eventUnarchivesConversation(data),
+      });
+    }
   }
 
   async replaceHistory(

@@ -40,6 +40,9 @@ export const TranscriptMessageView = memo(
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
+        avatarUrl={
+          transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+        }
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
@@ -97,7 +100,8 @@ export const TranscriptMessageView = memo(
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
     previous.conversation.canFork === next.conversation.canFork &&
-    previous.conversation.actorIdentity === next.conversation.actorIdentity,
+    previous.conversation.actorIdentity === next.conversation.actorIdentity &&
+    previous.conversation.authors === next.conversation.authors,
 );
 
 /** Render a redacted primary chat message without exposing body content. */
@@ -109,6 +113,9 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
+      avatarUrl={
+        transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+      }
     >
       <TranscriptMessageHeader
         message={props.message}

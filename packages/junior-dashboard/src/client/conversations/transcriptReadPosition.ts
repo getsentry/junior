@@ -1,0 +1,267 @@
+/**
+ * Track how far the reader has read a Conversation transcript.
+ *
+ * Rows from stored events carry `data-transcript-seq`. While the page is
+ * visible, the reporter sends the sequence of the last row that has reached
+ * the viewport. The server keeps the highest value, so every client of the
+ * same user shares one position. Detail polls bring it back to other clients.
+ *
+ * The page reads the position once when a Conversation opens. That value
+ * places the "New" marker and, by the reader's preference, where the
+ * transcript starts. It does not move during the visit, like Slack.
+ */
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocalStorage } from "@uidotdev/usehooks";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  conversationReadPositionSchema,
+  type ConversationDetailReport,
+  type ConversationReadPosition,
+} from "@sentry/junior/api/schema";
+import { put } from "../http";
+import { conversationDetailQueryKey } from "./queries";
+import { scrollRootFor } from "./transcriptBottomPinning";
+
+const READ_REPORT_DELAY_MS = 750;
+const SEQ_ATTRIBUTE = "data-transcript-seq";
+const ROW_SELECTOR = `[${SEQ_ATTRIBUTE}]`;
+const START_POSITION_STORAGE_KEY = "junior:conversation:start-position";
+
+/** Where a Conversation opens: at the first unread row or at the latest. */
+export type ConversationStartPosition = "unread" | "latest";
+
+/**
+ * Event sequences that were unread when the Conversation opened. Rows that
+ * arrive later are not in it, so a reader who follows new replies gets no
+ * marker for them.
+ */
+export type TranscriptUnreadRange = { afterSeq: number; throughSeq: number };
+
+/** The read state when the Conversation opened. */
+export type ReadPositionAtOpen = {
+  lastReadSeq?: number;
+  unread?: TranscriptUnreadRange;
+};
+
+/** Edit the browser-only preference for where Conversations open. */
+export function useConversationStartPosition() {
+  return useLocalStorage<ConversationStartPosition>(
+    START_POSITION_STORAGE_KEY,
+    "unread",
+  );
+}
+
+/**
+ * Read the start preference without subscribing. A Conversation reads it once
+ * when it opens, and this works where `useLocalStorage` cannot, such as
+ * server rendering.
+ */
+export function readConversationStartPosition(): ConversationStartPosition {
+  if (typeof window === "undefined") return "unread";
+  try {
+    const stored = window.localStorage.getItem(START_POSITION_STORAGE_KEY);
+    return stored && JSON.parse(stored) === "latest" ? "latest" : "unread";
+  } catch {
+    return "unread";
+  }
+}
+
+/**
+ * Keep the read state from when the reader opened the Conversation. The page
+ * is keyed by Conversation, so this runs once for each visit.
+ *
+ * The read position comes from the first detail, which can be a cached copy.
+ * The last unread row comes from the first detail fetched in this visit, so a
+ * stale cache cannot hide messages that arrived while the reader was away,
+ * and later polls cannot add rows that arrived after open.
+ */
+export function useReadPositionAtOpen(
+  detail: DetailAtOpen | undefined,
+  /** The first detail fetched in this visit, not only read from the cache. */
+  fetched: DetailAtOpen | undefined,
+): ReadPositionAtOpen {
+  // Store derived state during render so the first transcript render has it.
+  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [fetchedEnd, setFetchedEnd] = useState<{ throughSeq?: number }>();
+  const read =
+    opened ??
+    (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
+  if (!opened && read) setOpened(read);
+  const end =
+    fetchedEnd ??
+    (fetched ? { throughSeq: fetched.events.at(-1)?.seq } : undefined);
+  if (!fetchedEnd && end) setFetchedEnd(end);
+  return readPositionAtOpen(
+    read?.lastReadSeq,
+    end ? end.throughSeq : detail?.events.at(-1)?.seq,
+  );
+}
+
+type DetailAtOpen = {
+  events: readonly { seq: number }[];
+  readPosition?: ConversationReadPosition;
+};
+
+/** Find the rows after the read position, through the last row at open. */
+function readPositionAtOpen(
+  lastReadSeq: number | undefined,
+  throughSeq: number | undefined,
+): ReadPositionAtOpen {
+  if (lastReadSeq === undefined) return {};
+  if (throughSeq === undefined || throughSeq <= lastReadSeq) {
+    return { lastReadSeq };
+  }
+  return { lastReadSeq, unread: { afterSeq: lastReadSeq, throughSeq } };
+}
+
+/**
+ * Send read positions for one Conversation. A position at or before the one
+ * in the cached detail is not sent, because the server already has it. The
+ * cached detail keeps the stored value, so the next visit in this session
+ * opens at the right place.
+ */
+export function useMarkConversationRead(conversationId: string) {
+  const queryClient = useQueryClient();
+  const { mutate } = useMutation({
+    mutationFn: (lastReadSeq: number) =>
+      put(
+        conversationReadPositionSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
+        { lastReadSeq },
+      ),
+    onSuccess: (readPosition) => {
+      queryClient.setQueryData<ConversationDetailReport>(
+        conversationDetailQueryKey(conversationId),
+        (detail) => (detail ? { ...detail, readPosition } : detail),
+      );
+    },
+  });
+  return useCallback(
+    (lastReadSeq: number) => {
+      const stored = queryClient.getQueryData<ConversationDetailReport>(
+        conversationDetailQueryKey(conversationId),
+      )?.readPosition?.lastReadSeq;
+      if (stored !== undefined && lastReadSeq <= stored) return;
+      mutate(lastReadSeq);
+    },
+    [conversationId, mutate, queryClient],
+  );
+}
+
+/**
+ * Report the last transcript row that the reader saw.
+ *
+ * An IntersectionObserver keeps the set of rows in the viewport, so a scroll
+ * does not measure rows. Reports send the highest seq in that set. They wait
+ * a short time and only move forward. A hidden or paused page does not
+ * report. Leaving the page or hiding it sends the pending row at once, so a
+ * quick exit keeps progress.
+ */
+export function useTranscriptReadReporter(input: {
+  content: HTMLElement | null;
+  /** The stored position when the Conversation opened. */
+  lastReadSeq?: number;
+  onRead?: (seq: number) => void;
+  /**
+   * Stop reporting while the rows are not in reading order, such as search
+   * results. This is read when a report is scheduled, so the render that
+   * changes the rows also stops their report.
+   */
+  paused?: boolean;
+}): void {
+  const onReadRef = useRef(input.onRead);
+  onReadRef.current = input.onRead;
+  const pausedRef = useRef(input.paused);
+  pausedRef.current = input.paused;
+  const reportedRef = useRef(input.lastReadSeq ?? -1);
+  const enabled = Boolean(input.onRead);
+
+  useEffect(() => {
+    const content = input.content;
+    const root = scrollRootFor(content);
+    if (!enabled || !content || !root) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const visibleRows = new Set<HTMLElement>();
+    let timer: number | undefined;
+    let seenSeq: number | null = null;
+    const send = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      const seq = seenSeq;
+      seenSeq = null;
+      if (seq === null || seq <= reportedRef.current) return;
+      reportedRef.current = seq;
+      onReadRef.current?.(seq);
+    };
+    const schedule = () => {
+      if (pausedRef.current || document.visibilityState !== "visible") return;
+      // Read the seq now: an activity group row moves its seq as it grows.
+      for (const row of visibleRows) {
+        const seq = Number(row.dataset.transcriptSeq);
+        if (Number.isSafeInteger(seq)) seenSeq = Math.max(seenSeq ?? -1, seq);
+      }
+      if (seenSeq === null) return;
+      timer ??= window.setTimeout(send, READ_REPORT_DELAY_MS);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") schedule();
+      else send();
+    };
+
+    const intersections = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const row = entry.target as HTMLElement;
+          if (entry.isIntersecting && row.isConnected) visibleRows.add(row);
+          else visibleRows.delete(row);
+        }
+        schedule();
+      },
+      { root: root === window ? null : (root as HTMLElement) },
+    );
+    const rowsIn = (node: Node): HTMLElement[] => {
+      if (!(node instanceof HTMLElement)) return [];
+      const rows = [...node.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
+      return node.matches(ROW_SELECTOR) ? [node, ...rows] : rows;
+    };
+    const observeRows = (node: Node) => {
+      for (const row of rowsIn(node)) intersections.observe(row);
+    };
+    const forgetRows = (node: Node) => {
+      for (const row of rowsIn(node)) {
+        intersections.unobserve(row);
+        visibleRows.delete(row);
+      }
+    };
+    // Rows mount and unmount as history loads and replies arrive. An
+    // activity group row keeps its node and raises its seq as tools arrive.
+    const mutations = new MutationObserver((records) => {
+      let seqChanged = false;
+      for (const record of records) {
+        record.addedNodes.forEach(observeRows);
+        record.removedNodes.forEach(forgetRows);
+        if (record.type === "attributes") {
+          const row = record.target as HTMLElement;
+          intersections.observe(row);
+          seqChanged ||= visibleRows.has(row);
+        }
+      }
+      if (seqChanged) schedule();
+    });
+    mutations.observe(content, {
+      attributeFilter: [SEQ_ATTRIBUTE],
+      childList: true,
+      subtree: true,
+    });
+    observeRows(content);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      send();
+      intersections.disconnect();
+      mutations.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [enabled, input.content]);
+}

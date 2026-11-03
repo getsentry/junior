@@ -3,7 +3,7 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { gitHubCommentMatchFields } from "./comment.js";
-import { gitHubRepoMatchFields } from "./scope.js";
+import { gitHubRepoDataSchema, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -63,6 +63,10 @@ export function gitHubIssueSubscribable(input: {
   if (!input.canSubscribe) return undefined;
   return {
     ...gitHubIssueResource(input),
+    match: {
+      repo: gitHubRepoDataSchema.parse(input.repo),
+      issue: input.number,
+    },
     suggestedEvents: GITHUB_ISSUE_SUGGESTED_EVENTS,
     supportedEvents: GITHUB_ISSUE_EVENTS,
     type: "issue",

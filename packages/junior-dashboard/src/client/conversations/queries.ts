@@ -1,7 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
-  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useMutationState,
@@ -9,7 +8,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
-  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -30,7 +28,6 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
-import type { DashboardCoreData } from "../types";
 import {
   DashboardApiError,
   del,
@@ -45,6 +42,7 @@ import {
   failConversationOutboxMessage,
   isInlineOutboxMessage,
   mergeConversationMailboxMessages,
+  outboxActorIdentity,
   acceptConversationOutboxMessage,
   reuseConversationMailboxMessages,
   splitInlineMailboxMessages,
@@ -178,9 +176,12 @@ export function conversationDetailQueryOptions(
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
-      return reuseConversationEventReferences(
+      return keepLatestReadPosition(
         previous as ConversationSnapshot,
-        next as ConversationSnapshot,
+        reuseConversationEventReferences(
+          previous as ConversationSnapshot,
+          next as ConversationSnapshot,
+        ),
       );
     },
     refetchInterval: (query) =>
@@ -196,18 +197,18 @@ export function conversationDetailQueryOptions(
   });
 }
 
-function outboxActorIdentity(
-  queryClient: QueryClient,
-): ActorIdentity | undefined {
-  const user = queryClient.getQueryData<DashboardCoreData>([
-    "dashboard",
-    "core",
-  ])?.me.user;
-  if (!user?.email) return undefined;
-  return {
-    email: user.email,
-    fullName: user.name || undefined,
-  };
+/**
+ * Read positions only move forward. A poll that started before a read report
+ * finished must not put an older position back in the cache.
+ */
+function keepLatestReadPosition(
+  previous: ConversationSnapshot,
+  next: ConversationSnapshot,
+): ConversationSnapshot {
+  const kept = previous.readPosition;
+  if (!kept) return next;
+  if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
+  return { ...next, readPosition: kept };
 }
 
 /** Create one dashboard conversation and refresh the personal feed. */
@@ -704,14 +705,17 @@ export function useConversationData(conversationId: string | undefined) {
     0,
     ...awaitingRows.map((message) => Date.parse(message.createdAt)),
   );
-  const detail = useQuery(
-    conversationDetailQueryOptions(conversationId, {
+  const detail = useQuery({
+    ...conversationDetailQueryOptions(conversationId, {
       awaitingMessage: awaitingRows.length > 0,
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
     }),
-  );
+    // A reopened Conversation shows the cached copy at once, but it can miss
+    // messages that arrived while the reader was away. Fetch it each visit.
+    refetchOnMount: "always",
+  });
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -893,6 +897,11 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The latest detail after a fetch in this visit, before it is deferred. */
+    fetchedDetail:
+      detail.isFetchedAfterMount && !detail.isFetching
+        ? detail.data
+        : undefined,
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,

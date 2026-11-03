@@ -12,12 +12,10 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
-  setCrossActorMidRunMode,
   setProfiles,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
-  type CrossActorMidRunMode,
   type RuntimeLimits,
   setSlackReactionConfig,
 } from "@/chat/config";
@@ -200,12 +198,6 @@ export interface JuniorAppOptions extends BotModelConfig {
     processingReactionEmoji?: string;
     /** Slack emoji shown after a turn completes. Defaults to `white_check_mark`. */
     completedReactionEmoji?: string;
-    /**
-     * What a mention from another person does while a turn runs: `follow_up`
-     * waits for its own turn, `steer` joins the running turn. Defaults to
-     * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
-     */
-    crossActorMidRunMode?: CrossActorMidRunMode;
     /**
      * Slack user IDs of bots that may start a Turn from a mention or DM. Bots
      * have no profile email, so `allowedDomains` blocks them otherwise.
@@ -549,9 +541,6 @@ export async function createApp(
     setBotModelConfig(options ?? {});
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
-    if (options?.slack?.crossActorMidRunMode) {
-      setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
-    }
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = resolveAllowedDomains(options?.allowedDomains);

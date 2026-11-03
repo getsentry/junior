@@ -3,7 +3,11 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { gitHubCommentMatchFields } from "./comment.js";
-import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
+import {
+  gitHubCommitMatchFields,
+  gitHubRepoDataSchema,
+  gitHubRepoMatchFields,
+} from "./scope.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -25,6 +29,12 @@ export type GitHubPullRequestEvent =
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
+  "pull_request.checks.failed":
+    "Fix only failures that the pull request causes. Do not skip, disable, or weaken a check to make it pass.",
+  // An approval with a body also arrives as review.commented in the same
+  // Turn, so this guidance must not tell the agent to hold off on that body.
+  "pull_request.review.approved":
+    "When the approval includes actionable feedback, address it like any other review feedback.",
   "pull_request.comment.created":
     'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined".',
   "pull_request.review_comment.created":
@@ -230,6 +240,10 @@ export function gitHubPullRequestSubscribable(input: {
   );
   return {
     ...gitHubPullRequestResource(input),
+    match: {
+      repo: gitHubRepoDataSchema.parse(input.repo),
+      pullRequest: input.number,
+    },
     ...(suggestedEvents.length > 0
       ? { suggestedEvents: [...suggestedEvents] }
       : undefined),

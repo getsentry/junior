@@ -230,16 +230,23 @@ export async function readConversationPendingMessages(
       : undefined;
 
   const work = await getConversation({ conversationId });
+  const pendingMessages = work?.execution.pendingMessages ?? [];
   const projectedMessages = await Promise.all(
-    (work?.execution.pendingMessages ?? []).map((message) =>
+    pendingMessages.map((message) =>
       projectPendingMessage(message, canExposePayload),
     ),
   );
   const messages = await attachPendingMentions(
     conversationId,
-    projectedMessages.filter((message): message is ConversationPendingMessage =>
-      Boolean(message),
-    ),
+    projectedMessages.flatMap((message, index) => {
+      if (!message) return [];
+      const actorIdentityId = pendingMessages[index]!.input.authorIdentityId;
+      return [
+        canExposePayload && actorIdentityId
+          ? { ...message, actorIdentityId }
+          : message,
+      ];
+    }),
   );
 
   return conversationPendingMessagesReportSchema.parse({

@@ -24,6 +24,7 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
@@ -45,6 +46,7 @@ import { readConversationDetail } from "./detail";
 import { forkConversationForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { markConversationRead } from "./read-position";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -204,6 +206,30 @@ export function createConversationRoutes(
       return jsonResponse(
         archiveConversationResponseSchema,
         await archiveConversation(viewer, conversationId, body),
+      );
+    },
+  );
+
+  app.put(
+    "/:conversationId/read-position",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationReadPositionSchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        conversationReadPositionSchema,
+        await markConversationRead(viewer, conversationId, body),
       );
     },
   );

@@ -98,6 +98,11 @@ import {
 } from "../review-desk/reviewItemFormat";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { Transcript } from "./TranscriptView";
+import {
+  readConversationStartPosition,
+  useMarkConversationRead,
+  useReadPositionAtOpen,
+} from "./transcriptReadPosition";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
@@ -166,6 +171,8 @@ export function ConversationPage(props: {
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
+  const markRead = useMarkConversationRead(conversationId);
+  const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -484,9 +491,11 @@ export function ConversationPage(props: {
                     hasPreviousPage={detail.hasPreviousPage}
                     historyError={detail.historyError}
                     historyVersion={detail.historyVersion}
+                    lastReadSeq={readAtOpen.lastReadSeq}
                     live={live}
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
+                    onRead={markRead}
                     onSelectedEventSeqChange={setSelectedEventSeq}
                     pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
@@ -497,8 +506,10 @@ export function ConversationPage(props: {
                     search={search}
                     onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
+                    startAtUnread={readConversationStartPosition() === "unread"}
                     transcript={transcript}
                     turnContextPanel={turnContextPanel}
+                    unread={readAtOpen.unread}
                     view={view}
                   />
                 </>
@@ -511,6 +522,7 @@ export function ConversationPage(props: {
           // runs without interactive auth, so it has no approval to show.
           view === "rich" && detail.data?.isParticipant && !agentTree ? (
             <ConversationReplyFooter
+              authors={detail.data.authors}
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
               // too large to re-enter the footer on every live poll while typing.
@@ -609,6 +621,7 @@ export function ConversationPage(props: {
  * footer tree. Fast chat UIs isolate the composer the same way.
  */
 const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
+  authors?: ConversationDetailReport["authors"];
   committedMessageIds: readonly string[];
   conversationId: string;
   onPinRequest: () => void;
@@ -863,6 +876,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           >
             <ConversationReviewBar conversationId={props.conversationId} />
             <PendingMailboxStack
+              authors={props.authors}
               cancelError={cancelError}
               cancelPending={cancelPendingMessages.isPending}
               cancelTargetInboundMessageId={cancelTargetInboundMessageId}

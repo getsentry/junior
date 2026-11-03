@@ -101,7 +101,6 @@ export interface BotModelConfig {
 
 export interface BotConfig {
   contextWindowTokens: number;
-  crossActorMidRunMode: CrossActorMidRunMode;
   decisionModelId: string;
   defaultProfile: ModelProfile;
   embeddingModelId: string;
@@ -123,8 +122,6 @@ export interface BotConfig {
   userName: string;
   webSearchModelId: string;
 }
-
-export type CrossActorMidRunMode = "follow_up" | "steer";
 
 export type SqlDriver = "neon" | "postgres";
 
@@ -247,16 +244,6 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
 }
 
-function parseCrossActorMidRunMode(
-  rawValue: string | undefined,
-): CrossActorMidRunMode {
-  const value = toOptionalTrimmed(rawValue) ?? "follow_up";
-  if (value === "follow_up" || value === "steer") {
-    return value;
-  }
-  throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
-}
-
 const DEFAULT_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.standard.modelId,
 ).id;
@@ -268,7 +255,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
-const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -495,9 +482,6 @@ function readBotConfig(
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     defaultProfile: "standard",
-    crossActorMidRunMode: parseCrossActorMidRunMode(
-      env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
-    ),
     profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
     contextWindowTokens:
       parseOptionalPositiveInteger(
@@ -796,11 +780,6 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
       resolveMaxTurnTimeoutMs(chatConfig.functionMaxDurationSeconds),
     );
   }
-}
-
-/** Apply the Slack cross-actor steering mode from createApp(). */
-export function setCrossActorMidRunMode(mode: CrossActorMidRunMode): void {
-  chatConfig.bot.crossActorMidRunMode = parseCrossActorMidRunMode(mode);
 }
 
 /** Return the chat configuration (parsed once at startup). */

@@ -52,14 +52,16 @@ whenever a new issue is created in Linear team SRE, investigate it and comment f
 when someone posts a new message in this channel, answer it if you can, otherwise tag me
 ```
 
-An event automation can also run for every resource of a plugin, with no exact resource. Filters then narrow it:
+An event automation selects its events with filters. Filters such as `repo` and `pullRequest` select one resource. Fewer filters run it for more resources:
 
 ```text
 whenever any Sentry metric alert for project javascript goes critical, summarize it here
 whenever a pull request opens in getsentry/junior, review it
 ```
 
-Each plugin decides which events can run this way, and each plugin page lists them. Some events need a filter. For example, GitHub issue, pull request, and release events need a `repo` filter, and Linear issue events need a `teamKey` or `issueIdentifier` filter. Junior names the missing filter when it cannot save the automation. Junior saves filter values in the case that event data uses, so `getsentry/Junior` matches `getsentry/junior`. One event runs the automation once, even when the plugin publishes the event for more than one resource, such as each project of a metric alert. Slack channel-message automations always need their own channel.
+Automations that were saved with an exact resource keep it. Junior does not change it when you edit them.
+
+Each plugin decides which events can run for every resource, and each plugin page lists them. Some events need a filter. For example, GitHub issue, pull request, and release events need a `repo` filter, and Linear issue events need a `teamKey` or `issueIdentifier` filter. Junior names the missing filter when it cannot save the automation. Junior saves filter values in the case that event data uses, so `getsentry/Junior` matches `getsentry/junior`. One event runs the automation once, even when the plugin publishes the event for more than one resource, such as each project of a metric alert. Slack channel-message automations always need their own channel.
 
 A required filter limits how much an automation covers and how noisy it is. It is not access control. Junior does not check that the person who creates the automation can see the repository, project, or team in the filter. An automation with no exact resource posts what it receives to its destination channel. For example, a broad Sentry trigger or GitHub deployment trigger can post private project or repository names in that channel. Create broad automations only in channels where everyone can see those resources.
 

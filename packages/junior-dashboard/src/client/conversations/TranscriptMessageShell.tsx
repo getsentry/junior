@@ -1,10 +1,13 @@
 import type { ClipboardEventHandler, ReactNode } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
 
 /** Align message text and attachments beside their avatars. */
 export function TranscriptMessageShell(props: {
   actor: string;
+  /** Junior API path of the author photo. Initials show without it. */
+  avatarUrl?: string;
   children: ReactNode;
   onCopy?: ClipboardEventHandler<HTMLElement>;
   role: string;
@@ -36,14 +39,22 @@ export function TranscriptMessageShell(props: {
               src="/_junior/dashboard/avatar.png"
             />
           ) : (
-            <span className="grid size-8 place-items-center rounded-full bg-violet-300 font-sans text-xs font-semibold text-dashboard-text-inverse">
-              {props.actor
-                .split(/\s+/)
-                .map((word) => word[0])
-                .slice(0, 2)
-                .join("")
-                .toUpperCase()}
-            </span>
+            <Avatar className="size-8 border-0 bg-violet-300 shadow-none">
+              <AvatarImage
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                src={props.avatarUrl}
+              />
+              <AvatarFallback>
+                {props.actor
+                  .split(/\s+/)
+                  .map((word) => word[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           )}
         </div>
       ) : null}

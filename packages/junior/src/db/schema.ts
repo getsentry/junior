@@ -8,6 +8,7 @@ import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
+import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
 import {
   juniorAgentBindings,
@@ -44,6 +45,7 @@ export {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -76,6 +78,7 @@ export const juniorSqlSchema = {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,

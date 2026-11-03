@@ -6,6 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -144,6 +145,8 @@ export const conversationPendingMessageDeliverySchema = z.enum([
 export const conversationPendingMessageSchema = z
   .object({
     actorIdentity: actorIdentitySchema.optional(),
+    /** Identity id of the author. Detail `authors` maps it to the person. */
+    actorIdentityId: z.string().min(1).optional(),
     createdAt: z.string().datetime(),
     delivery: conversationPendingMessageDeliverySchema,
     inboundMessageId: z.string().min(1),
@@ -355,6 +358,8 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
+    /** Identity id of the author. Detail `authors` maps it to the person. */
+    actorIdentityId: z.string().min(1).optional(),
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
@@ -837,6 +842,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
+    /** How far the signed-in viewer has read. Absent until they read. */
+    readPosition: conversationReadPositionSchema.optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
@@ -852,6 +859,12 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
       .strict()
       .optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
+    /**
+     * Each person who wrote in the Conversation, by each of their Identity
+     * ids. Messages and pending messages name their author with
+     * `actorIdentityId`.
+     */
+    authors: z.record(z.string(), actorIdentitySchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),

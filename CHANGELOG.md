@@ -1,4 +1,32 @@
 # Changelog
+
+## 0.272.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Keep each reader's place in a Conversation by @BYK with @sentry-junior in [#2513](https://github.com/getsentry/junior/pull/2513)
+- Show archived inbox items only in search by @dcramer with @sentry-junior in [#2564](https://github.com/getsentry/junior/pull/2564)
+
+#### Other
+
+- (agents) Let top-level agents message each other by @dcramer with @sentry-junior in [#2566](https://github.com/getsentry/junior/pull/2566)
+- (automations) Select event automation resources with match filters by @dcramer with @sentry-junior in [#2572](https://github.com/getsentry/junior/pull/2572)
+- (images) Generate images with GPT Image through the AI SDK by @gricha with @sentry-junior in [#2317](https://github.com/getsentry/junior/pull/2317)
+
+### Bug Fixes 🐛
+
+- (agent-invocations) Keep one active agent invocation per child by @dcramer with @sentry-junior in [#2558](https://github.com/getsentry/junior/pull/2558)
+- (automations) Let anyone manage public automations and move them to a named channel by @dcramer and @geoffg-sentry with @sentry-junior in [#2561](https://github.com/getsentry/junior/pull/2561)
+- (conversations) Add participants only when they start a Turn by @dcramer with @sentry-junior in [#2571](https://github.com/getsentry/junior/pull/2571)
+- (review-items) Let a person only dismiss a notice by @dcramer with @sentry-junior in [#2563](https://github.com/getsentry/junior/pull/2563)
+- (task-execution) Supersede stale mailbox Turns on new input by @BYK with @sentry-junior in [#2562](https://github.com/getsentry/junior/pull/2562)
+
+### Documentation 📚
+
+- (agents) Remove directory AGENTS.md files by @dcramer with @sentry-junior in [#2569](https://github.com/getsentry/junior/pull/2569)
+
 ## 0.271.0
 
 ### New Features ✨

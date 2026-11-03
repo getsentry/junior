@@ -66,7 +66,7 @@ describe("Event automation credentials", () => {
         type: "event",
         events: ["pull_request.review.changes_requested"],
         namespace: "github",
-        identifier: "getsentry/junior#691",
+        match: { repo: "getsentry/junior", pullRequest: 691 },
       },
     });
     expect([undefined, "creator"]).toContain(credentialMode(creates[0]));

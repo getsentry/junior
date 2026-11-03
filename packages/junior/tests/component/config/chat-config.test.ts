@@ -286,7 +286,7 @@ describe("chat config", () => {
     process.env.AI_IMAGE_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.imageGenerationModelId).toBe("google/gemini-3-pro-image");
+    expect(botConfig.imageGenerationModelId).toBe("openai/gpt-image-2");
   });
 
   it("uses AI_IMAGE_MODEL when configured", async () => {
@@ -566,25 +566,6 @@ describe("chat config", () => {
     expect(getChatConfig().slack.processingReactionEmoji).toBe("eyes");
     expect(getChatConfig().slack.completedReactionEmoji).toBe(
       "white_check_mark",
-    );
-  });
-
-  it("defaults cross-actor mid-run messages to follow-up", async () => {
-    delete process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE;
-    const { botConfig } = await loadConfig();
-    expect(botConfig.crossActorMidRunMode).toBe("follow_up");
-  });
-
-  it("supports collaborative cross-actor steering", async () => {
-    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "steer";
-    const { botConfig } = await loadConfig();
-    expect(botConfig.crossActorMidRunMode).toBe("steer");
-  });
-
-  it("rejects unsupported cross-actor mid-run modes", async () => {
-    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "router";
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer",
     );
   });
 
