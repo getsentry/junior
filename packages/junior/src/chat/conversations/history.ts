@@ -114,6 +114,14 @@ export const historyReplacementSchema = z
 /** One atomically persisted model-history replacement. */
 export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
 
+/**
+ * Result of a history replacement. `historyVersion` is the new version when
+ * replaced, or the current version that did not match when in conflict.
+ */
+export type HistoryReplacementResult =
+  | { status: "replaced"; historyVersion: number }
+  | { status: "conflict"; historyVersion: number };
+
 const mcpProviderConnectedEventDataSchema = z
   .object({
     type: z.literal("mcp_provider_connected"),
@@ -398,6 +406,36 @@ const subagentEndedEventDataSchema = z
   })
   .strict();
 
+// Background compaction bookkeeping. A request marks the history that a
+// prepared summary covers. A later Turn swaps the summary in only when the
+// History version and Model profile still match. Neither event is model context.
+const compactionRequestedEventDataSchema = z
+  .object({
+    type: z.literal("compaction_requested"),
+    // Last event seq that the summary covers.
+    markSeq: z.number().int().nonnegative(),
+    historyVersion: z.number().int().nonnegative(),
+    modelProfile: modelProfileSchema,
+    modelId: z.string().min(1),
+  })
+  .strict();
+
+const compactionPreparedFields = compactionRequestedEventDataSchema.extend({
+  type: z.literal("compaction_prepared"),
+});
+
+const compactionPreparedEventDataSchema = z.discriminatedUnion("outcome", [
+  compactionPreparedFields.extend({
+    outcome: z.literal("ready"),
+    summary: z.string().min(1),
+  }),
+  compactionPreparedFields.extend({
+    outcome: z.literal("failed"),
+    // A fixed label only. Do not store raw exception text.
+    errorType: z.string().min(1).max(64),
+  }),
+]);
+
 /** Prevent ordinary appends from bypassing history-replacement validation. */
 const appendableConversationEventDataSchema = z.union([
   messageEventDataSchema,
@@ -419,6 +457,8 @@ const appendableConversationEventDataSchema = z.union([
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
+  compactionRequestedEventDataSchema,
+  compactionPreparedEventDataSchema,
 ]);
 
 /** Strict event-data contract reused by the SQL row codec. */
@@ -461,6 +501,8 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "subagent_ended",
   "handoff",
   "compaction",
+  "compaction_requested",
+  "compaction_prepared",
 ] as const;
 
 /** One known durable conversation event type name. */
@@ -609,11 +651,16 @@ export interface ConversationEventStore {
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
   ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
-  /** Replace active model history with a compaction or handoff event. */
+  /**
+   * Replace active model history with a compaction or handoff event.
+   * With `expectedHistoryVersion`, write nothing and return a conflict when
+   * the current History version differs.
+   */
   replaceHistory(
     conversationId: string,
     replacement: HistoryReplacement,
-  ): Promise<void>;
+    options?: { expectedHistoryVersion?: number },
+  ): Promise<HistoryReplacementResult>;
   /** One event selected by its retry-stable key across history versions. */
   loadByIdempotencyKey(
     conversationId: string,

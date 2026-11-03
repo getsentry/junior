@@ -45,6 +45,10 @@ export const UNCOPIED_EVENT_TYPES: ReadonlySet<string> = new Set<
 >([
   "authorization_completed",
   "authorization_requested",
+  // A copied request would look like a pending job that never runs for the
+  // fork. The fork requests its own compaction.
+  "compaction_prepared",
+  "compaction_requested",
   "guardian_action_reviewed",
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",

@@ -22,6 +22,7 @@ import {
   type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
+  type HistoryReplacementResult,
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
@@ -295,24 +296,42 @@ class SqlConversationEventStore implements ConversationEventStore {
   async replaceHistory(
     conversationId: string,
     replacement: HistoryReplacement,
-  ): Promise<void> {
+    options: { expectedHistoryVersion?: number } = {},
+  ): Promise<HistoryReplacementResult> {
     const parsed = historyReplacementSchema.parse(replacement);
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      await ensureConversationRow(this.executor, conversationId, Date.now());
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
-      await this.executor
-        .db()
-        .insert(juniorConversationEvents)
-        .values(
-          insertFromEvent(
-            conversationId,
-            cursor.nextSeq,
-            historyVersion,
-            parsed,
-          ),
-        );
-    });
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const cursor = await this.readCursor(conversationId);
+        const currentHistoryVersion = cursor.maxHistoryVersion ?? 0;
+        // Checked under the event lock so a concurrent replacement or a newer
+        // compaction cannot slip in between the check and the write.
+        if (
+          options.expectedHistoryVersion !== undefined &&
+          options.expectedHistoryVersion !== currentHistoryVersion
+        ) {
+          return {
+            status: "conflict" as const,
+            historyVersion: currentHistoryVersion,
+          };
+        }
+        await ensureConversationRow(this.executor, conversationId, Date.now());
+        const historyVersion = currentHistoryVersion + 1;
+        await this.executor
+          .db()
+          .insert(juniorConversationEvents)
+          .values(
+            insertFromEvent(
+              conversationId,
+              cursor.nextSeq,
+              historyVersion,
+              parsed,
+            ),
+          );
+        return { status: "replaced" as const, historyVersion };
+      },
+    );
   }
 
   async loadCurrentHistoryVersion(conversationId: string): Promise<number> {
