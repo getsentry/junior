@@ -1774,6 +1774,88 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it.each([
+    {
+      name: "creates a stack with the pull request below",
+      stacks: [],
+      write: {
+        operation: "github.stack.create",
+        url: "https://api.github.com/repos/getsentry/junior/stacks",
+        pullRequests: [700, 701],
+      },
+      stack: [700, 701],
+    },
+    {
+      name: "adds to the stack whose top is the pull request below",
+      stacks: [
+        { number: 9, pull_requests: [{ number: 699 }, { number: 700 }] },
+      ],
+      write: {
+        operation: "github.stack.add",
+        url: "https://api.github.com/repos/getsentry/junior/stacks/9/add",
+        pullRequests: [701],
+      },
+      stack: [699, 700, 701],
+    },
+  ])(
+    "links a pull request based on another pull request branch: $name",
+    async ({ stack, stacks, write }) => {
+      const repo = { default_branch: "main", full_name: "getsentry/junior" };
+      const ctx = githubToolsContext({
+        egressFetch: async ({ operation, request }) => {
+          if (operation === "github.pull.create") {
+            return Response.json(
+              {
+                number: 701,
+                html_url: "https://github.com/getsentry/junior/pull/701",
+                head: { ref: "feat/top", repo },
+                base: { ref: "feat/bottom", repo },
+              },
+              { status: 201 },
+            );
+          }
+          if (operation === "github.pull.list") {
+            // Only feat/bottom has an open pull request, so main is the trunk.
+            return Response.json(
+              new URL(request.url).searchParams.get("head") ===
+                "getsentry:feat/bottom"
+                ? [{ number: 700, base: { ref: "main" } }]
+                : [],
+            );
+          }
+          if (operation === "github.stack.read") return Response.json(stacks);
+          return Response.json({
+            number: 9,
+            pull_requests: stack.map((number) => ({ number })),
+          });
+        },
+      });
+      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Top of the stack",
+            head: "feat/top",
+            base: "feat/bottom",
+          },
+          { toolCallId: "call-create-stacked-pull-request" },
+        ),
+      ).resolves.toMatchObject({
+        number: 701,
+        stack: { number: 9, pullRequests: stack },
+      });
+      const stackWrite = ctx.egressRequests().at(-1)!;
+      expect(stackWrite).toMatchObject({ operation: write.operation });
+      expect(stackWrite.request.method).toBe("POST");
+      expect(stackWrite.request.url).toBe(write.url);
+      await expect(stackWrite.request.json()).resolves.toEqual({
+        pull_requests: write.pullRequests,
+      });
+    },
+  );
+
   it("omits requester attribution when identity and actor names are unresolved", async () => {
     const ctx = githubToolsContext({
       actor: {
