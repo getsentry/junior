@@ -145,6 +145,13 @@ describe("review item actions API", () => {
         expect.objectContaining({ id, canAct: false }),
       ]),
     );
+    // The inbox list drops the items that are assigned only to others.
+    expect(
+      (await (await api(fixture, cal).get("?for=viewer")).json()).items,
+    ).toEqual([]);
+    expect(
+      (await (await api(fixture, ana).get("?for=viewer")).json()).items,
+    ).toHaveLength(2);
     // A person outside the Slack workspace does not see the public item.
     const outsider = { ...cal, identities: [] };
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
@@ -254,6 +261,14 @@ describe("review item actions API", () => {
     expect(
       (await api(fixture, cal).get(`?q=pull&limit=1&cursor=${cursor}`)).status,
     ).toBe(400);
+    expect(
+      (await api(fixture, cal).get(`?for=viewer&limit=1&cursor=${cursor}`))
+        .status,
+    ).toBe(400);
+    // Items for Everyone stay in the inbox list.
+    expect(
+      (await (await api(fixture, cal).get("?for=viewer")).json()).items,
+    ).toMatchObject([{ id }, { id: otherId }]);
 
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.

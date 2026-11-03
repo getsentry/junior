@@ -26,6 +26,7 @@ import type {
 } from "@/chat/tools/runtime/user-input-request";
 import {
   reviewItemAssignedTo,
+  reviewItemForUser,
   reviewItemLinkedTo,
   reviewItemNeedsUser,
   reviewItemVisibleTo,
@@ -510,6 +511,11 @@ export interface ReviewItemFilters {
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
   conversationId?: string;
+  /**
+   * Drop the items that are assigned only to other people
+   * (`reviewItemForUser`).
+   */
+  forUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
@@ -556,6 +562,9 @@ function searchConditions(
         ? eq(juniorReviewItems.assignedToEveryone, true)
         : reviewItemAssignedTo(filters.assignee.userId),
     );
+  }
+  if (filters.forUserId) {
+    conditions.push(reviewItemForUser(filters.forUserId));
   }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
