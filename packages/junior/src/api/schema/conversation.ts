@@ -5,6 +5,7 @@ import {
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { z } from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
@@ -158,8 +159,8 @@ export const conversationPendingMessageSchema = z
     /** People mentioned in the text, resolved at read time. */
     mentions: z.array(actorIdentitySchema).optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
-    /** Review item whose answer or action this person message reports. */
-    reviewItemId: z.string().min(1).optional(),
+    /** Review item change that this Message records. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -175,7 +176,7 @@ export const conversationPendingMessageSchema = z
       (data.actorIdentity ||
         data.attachments ||
         data.mentions ||
-        data.reviewItemId)
+        data.reviewItemChange)
     ) {
       context.addIssue({
         code: "custom",
@@ -352,6 +353,8 @@ export const conversationReportMessageEventSchema = z
     eventType: z.string().min(1),
     label: z.string().min(1).optional(),
     objectType: objectTypeSchema.optional(),
+    /** Review item change that this Event relays. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     trustedSummary: z.string().min(1).optional(),
   })
   .strict();
@@ -374,8 +377,8 @@ const conversationReportMessageEventDataSchema = z
     /** Every Event when several arrived together in one message. */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
-    /** Review item whose answer or action this person message reports. */
-    reviewItemId: z.string().min(1).optional(),
+    /** Review item change that this Message records. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -394,7 +397,7 @@ const conversationReportMessageEventDataSchema = z
         data.cards ||
         data.attachments ||
         data.events ||
-        data.reviewItemId)
+        data.reviewItemChange)
     ) {
       context.addIssue({
         code: "custom",

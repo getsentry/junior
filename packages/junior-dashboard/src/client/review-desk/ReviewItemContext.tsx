@@ -9,6 +9,7 @@ import { ConversationTranscriptView } from "../conversations/ConversationTranscr
 import { TranscriptLoading } from "../conversations/TranscriptLoading";
 import { useConversationData } from "../conversations/queries";
 import type { ConversationTranscript } from "../types";
+import { onlyRecordsReviewItemChanges } from "./reviewItemFormat";
 
 /** Messages before the item that the excerpt shows. */
 const BEFORE_COUNT = 3;
@@ -26,12 +27,12 @@ function conversationExcerpt(
 ): { after: ConversationReportEvent[]; before: ConversationReportEvent[] } {
   const askedAt = Date.parse(item.createdAt);
   const closedAt = item.closedAt ? Date.parse(item.closedAt) : Infinity;
-  // Answers to items show on their cards, not as context for this one.
+  // Changes to items show on their cards, not as context for this one.
   const messages = events.filter(
     (event) =>
       event.data.type === "message" &&
       event.data.role !== "system" &&
-      !event.data.reviewItemId,
+      !onlyRecordsReviewItemChanges(event.data),
   );
   return {
     after: messages

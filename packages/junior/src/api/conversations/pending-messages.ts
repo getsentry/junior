@@ -127,8 +127,8 @@ async function projectPendingMessage(
             actorIdentity: actorIdentityFromWebMetadata(metadata.data),
             text,
             ...(attachments.length ? { attachments } : undefined),
-            ...(metadata.data.reviewItemId
-              ? { reviewItemId: metadata.data.reviewItemId }
+            ...(message.input.reviewItemChange
+              ? { reviewItemChange: message.input.reviewItemChange }
               : undefined),
           }
         : { redacted: true as const }),
@@ -173,6 +173,9 @@ async function projectPendingMessage(
       role: "user",
       source: "slack",
       ...(actorIdentity ? { actorIdentity } : undefined),
+      ...(message.input.reviewItemChange
+        ? { reviewItemChange: message.input.reviewItemChange }
+        : undefined),
       text,
     };
   }

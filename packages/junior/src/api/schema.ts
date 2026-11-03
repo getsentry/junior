@@ -292,5 +292,6 @@ export {
 } from "./schema/review-item";
 export type {
   ReviewItemActionBody,
+  ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";

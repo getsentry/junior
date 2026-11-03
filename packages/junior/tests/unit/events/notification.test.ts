@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import {
   createEventInboundMessage,
+  eventBatchMessageMeta,
   eventTaskFacts,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import { renderTaskInput } from "@/chat/task-input";
 
 describe("event notification framing", () => {
@@ -82,5 +85,55 @@ describe("timer Watch credential subject", () => {
         timerMessage("timer-1", "U123"),
       ]),
     ).toBeUndefined();
+  });
+});
+
+describe("event batch message meta", () => {
+  const relay = (record: ReviewItemChangeRecord): InboundMessage => ({
+    conversationId: "local:cli:relay",
+    createdAtMs: 1,
+    delivery: "defer",
+    inboundMessageId: `relay:${record.kind}`,
+    input: {
+      metadata: {
+        kind: "event",
+        event: {
+          eventKey: `review-item:${record.kind}`,
+          eventType: `review_item.${record.kind}`,
+          identifier: record.reviewItemId,
+          namespace: "junior",
+          trustedSummary: `Review item "Ship it" changed: ${record.kind}.`,
+        },
+      },
+      reviewItemChange: record,
+      text: "relay",
+    },
+    receivedAtMs: 1,
+    source: "event",
+  });
+  const taken = { kind: "taken", reviewItemId: "item-1" } as const;
+  const submitted = { kind: "submitted", reviewItemId: "item-1" } as const;
+
+  it("keeps the record on the Message of one relay", () => {
+    expect(eventBatchMessageMeta([relay(taken)])).toEqual({
+      reviewItemChange: taken,
+    });
+  });
+
+  // A take and the later answer can share a Turn. Each Event keeps its own
+  // change, so the take does not read as the answer.
+  it("lists each relay of a batch with its own record", () => {
+    expect(eventBatchMessageMeta([relay(taken), relay(submitted)])).toEqual({
+      events: [
+        expect.objectContaining({
+          eventType: "review_item.taken",
+          reviewItemChange: taken,
+        }),
+        expect.objectContaining({
+          eventType: "review_item.submitted",
+          reviewItemChange: submitted,
+        }),
+      ],
+    });
   });
 });

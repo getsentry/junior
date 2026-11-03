@@ -11,8 +11,6 @@ export const legacyWebMailboxMetadataSchema = z
     authorUserName: z.string().min(1).optional(),
     kind: z.literal("api_turn"),
     messageId: z.string().min(1),
-    /** Review item whose answer or action this Message reports. */
-    reviewItemId: z.string().min(1).optional(),
   })
   .strict();
 

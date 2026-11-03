@@ -2,6 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -19,6 +20,8 @@ export interface ConversationMessageEvent {
   /** Resource label, used to group Events under one heading. */
   label?: string;
   objectType?: ObjectType;
+  /** Review item change that this Event relays. */
+  reviewItemChange?: ReviewItemChangeRecord;
   trustedSummary?: string;
 }
 
@@ -42,8 +45,8 @@ export interface ConversationMessageMeta {
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   replied?: boolean;
-  /** Review item whose answer or action this person message reports. */
-  reviewItemId?: string;
+  /** Review item change that this Message records. */
+  reviewItemChange?: ReviewItemChangeRecord;
   slackTs?: string;
   skippedReason?: string;
 }

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
+import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { messageReviewItemChanges } from "../review-desk/reviewItemFormat";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -82,6 +84,8 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     </span>
   );
 
+  const changes = messageReviewItemChanges(props.message);
+
   return (
     <div className="min-w-0 py-1">
       {text ? (
@@ -120,6 +124,15 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
           ) : null}
         </>
       )}
+      {changes.length ? (
+        // A relay of a person change links to its item, like the person's
+        // own message would.
+        <div className="mt-2 grid min-w-0 gap-2">
+          {changes.map((record, index) => (
+            <ReviewItemChangeRow fallback={null} key={index} record={record} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

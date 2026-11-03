@@ -91,13 +91,12 @@ import {
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  eventBatchMessageEvents,
+  eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -243,7 +242,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
-    let batchEvents: ConversationMessageEvent[] = [];
+    let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
 
@@ -268,7 +267,7 @@ export function createConversationTurnWorker(
       if (isEventMailboxMetadata(firstMetadata)) {
         text = renderEventBatchText(messages);
         event = firstMetadata.event;
-        batchEvents = eventBatchMessageEvents(messages);
+        eventMeta = eventBatchMessageMeta(messages);
       } else {
         text = joinMailboxText(messages);
         webInputMessages = resolved.batch.map((entry) =>
@@ -462,9 +461,7 @@ export function createConversationTurnWorker(
                       ...(event.trustedSummary
                         ? { trustedSummary: event.trustedSummary }
                         : undefined),
-                      ...(batchEvents.length > 1
-                        ? { events: batchEvents }
-                        : undefined),
+                      ...eventMeta,
                     }
                   : undefined),
               },

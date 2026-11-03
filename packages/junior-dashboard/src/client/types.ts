@@ -15,6 +15,7 @@ import type {
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
+  ReviewItemChangeRecord,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -134,8 +135,8 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
-  /** Review item whose answer or action this person message reports. */
-  reviewItemId?: string;
+  /** Review item change that this message records. */
+  reviewItemChange?: ReviewItemChangeRecord;
   /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */

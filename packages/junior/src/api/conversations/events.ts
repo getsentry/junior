@@ -6,6 +6,10 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import {
+  readReviewItemChangeRecord,
+  type ReviewItemChangeRecord,
+} from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
@@ -314,12 +318,12 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-/** Read the Review item whose answer a person message reports. */
-function reportReviewItemId(
+/** Read the Review item change that a message records. */
+function reportReviewItemChange(
   meta: Record<string, unknown> | undefined,
-): { reviewItemId: string } | undefined {
-  const parsed = z.string().min(1).safeParse(meta?.reviewItemId);
-  return parsed.success ? { reviewItemId: parsed.data } : undefined;
+): { reviewItemChange: ReviewItemChangeRecord } | undefined {
+  const record = readReviewItemChangeRecord(meta?.reviewItemChange);
+  return record ? { reviewItemChange: record } : undefined;
 }
 
 // The report has no `cancelled` state. A cancelled Turn has no reply.
@@ -376,7 +380,9 @@ function reportEventData(args: {
         ...(typeof data.meta?.agentInvocationId === "string"
           ? { agentInvocationId: data.meta.agentInvocationId }
           : undefined),
-        ...(args.canExposePayload ? reportReviewItemId(data.meta) : undefined),
+        ...(args.canExposePayload
+          ? reportReviewItemChange(data.meta)
+          : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
         ...(typeof data.meta?.eventType === "string"

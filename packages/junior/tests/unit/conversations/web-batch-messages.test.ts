@@ -3,6 +3,7 @@ import {
   buildWebInboundMessage,
   webActorFromEmail,
 } from "@/chat/conversations/web-input";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   savedTurnInputMessages,
@@ -12,33 +13,38 @@ import {
 const actor = webActorFromEmail("alice@example.com");
 const author = { email: actor.email, userName: "alice" };
 
-function webMessage(messageId: string, reviewItemId?: string) {
+function webMessage(
+  messageId: string,
+  reviewItemChange?: ReviewItemChangeRecord,
+) {
   return webConversationMessage(
     buildWebInboundMessage({
       actor,
       conversationId: "local:web:batch",
       message: `Message ${messageId}`,
       messageId,
-      ...(reviewItemId ? { reviewItemId } : undefined),
+      ...(reviewItemChange ? { reviewItemChange } : undefined),
     }),
     author,
   );
 }
 
 describe("webConversationMessage", () => {
-  // A batch can mix answers and typed Messages. Only the answer is marked.
-  it("marks only the Message that answers a Review item", () => {
-    expect(webMessage("a", "item-a").meta).toMatchObject({
-      reviewItemId: "item-a",
-    });
-    expect(webMessage("b").meta).not.toHaveProperty("reviewItemId");
+  // A batch can mix changes and typed Messages. Each keeps its own record.
+  it("keeps the Review item change record of each Message", () => {
+    const taken = { kind: "taken", reviewItemId: "item-a" } as const;
+    expect(webMessage("a", taken).meta?.reviewItemChange).toEqual(taken);
+    expect(webMessage("b").meta).not.toHaveProperty("reviewItemChange");
   });
 });
 
 describe("savedTurnInputMessages", () => {
   it("returns every saved input Message of the Turn in input order", () => {
     const first = webMessage("a");
-    const answer = webMessage("b", "item-b");
+    const answer = webMessage("b", {
+      kind: "submitted",
+      reviewItemId: "item-b",
+    });
     const conversation = coerceThreadConversationState({});
     conversation.messages.push(answer, first);
 

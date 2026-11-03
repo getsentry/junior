@@ -1,5 +1,4 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
-import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type {
   ConversationAuthor,
@@ -18,17 +17,15 @@ export function joinMailboxText(messages: readonly InboundMessage[]): string {
 
 /**
  * Build the transcript Message for one web mailbox Message. Each web Message
- * keeps its own transcript Message, so the dashboard can show a Review item
- * answer as an answer even when it arrives with other Messages.
+ * keeps its own transcript Message and Review item change record, so the
+ * dashboard shows what each Message did even when several share a Turn.
  */
 export function webConversationMessage(
   message: InboundMessage,
   author: ConversationAuthor,
 ): ConversationMessage {
   const attachments = readMessageAttachments(message.input.attachments);
-  const reviewItemId = legacyWebMailboxMetadataSchema.safeParse(
-    message.input.metadata,
-  ).data?.reviewItemId;
+  const { reviewItemChange } = message.input;
   return {
     id: message.inboundMessageId,
     role: "user",
@@ -41,7 +38,7 @@ export function webConversationMessage(
     meta: {
       ...(attachments.length ? { attachments } : undefined),
       explicitMention: true,
-      ...(reviewItemId ? { reviewItemId } : undefined),
+      ...(reviewItemChange ? { reviewItemChange } : undefined),
       source: "web",
     },
   };

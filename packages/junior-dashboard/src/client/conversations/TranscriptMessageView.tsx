@@ -5,7 +5,7 @@ import {
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
-import { ReviewItemAnswer } from "../review-desk/ReviewItemAnswer";
+import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
@@ -74,10 +74,10 @@ export const TranscriptMessageView = memo(
           message={props.message}
           conversation={props.conversation}
         />
-        {props.message.reviewItemId ? (
-          <ReviewItemAnswer
+        {props.message.reviewItemChange ? (
+          <ReviewItemChangeRow
             fallback={text}
-            itemId={props.message.reviewItemId}
+            record={props.message.reviewItemChange}
           />
         ) : (
           text

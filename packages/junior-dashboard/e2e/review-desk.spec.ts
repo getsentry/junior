@@ -265,12 +265,14 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
 });
 
-test("answers show as rows, not as context for other items", async ({
+test("review item changes show as rows, not as context for other items", async ({
   dashboard,
   page,
 }) => {
   await mockReviewItems(page);
-  // The person answered another item right after Junior asked for this one.
+  // Right after Junior asked for this item, the person took another item and
+  // then answered it.
+  const takeText = `Dashboard User took review item "${answered.title}".`;
   const answerText = `Dashboard User answered review item "${answered.title}".`;
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}`,
@@ -279,26 +281,37 @@ test("answers show as rows, not as context for other items", async ({
         headers: { ...route.request().headers(), "if-none-match": "" },
       });
       const detail = await response.json();
-      const answerAt = Date.parse(rollout.createdAt) + 10_000;
-      const answer = {
-        seq: 100_000,
-        createdAt: new Date(answerAt).toISOString(),
+      const askedAt = Date.parse(rollout.createdAt);
+      const change = (
+        seq: number,
+        kind: "submitted" | "taken",
+        text: string,
+      ) => ({
+        seq,
+        createdAt: new Date(askedAt + seq - 99_990).toISOString(),
         data: {
           type: "message",
-          messageId: "answer-initech",
-          reviewItemId: answered.id,
+          messageId: `${kind}-initech`,
+          reviewItemChange: { kind, reviewItemId: answered.id },
           role: "user",
           source: "web",
-          text: answerText,
+          text,
         },
-      };
-      // The answer is the only message after the ask.
+      });
+      // The changes are the only messages after the ask.
       const before = (detail.events as { createdAt: string }[]).filter(
-        (event) => Date.parse(event.createdAt) <= Date.parse(rollout.createdAt),
+        (event) => Date.parse(event.createdAt) <= askedAt,
       );
       await route.fulfill({
         response,
-        json: { ...detail, events: [...before, answer] },
+        json: {
+          ...detail,
+          events: [
+            ...before,
+            change(100_000, "taken", takeText),
+            change(100_001, "submitted", answerText),
+          ],
+        },
       });
     },
   );
@@ -308,14 +321,24 @@ test("answers show as rows, not as context for other items", async ({
   await expect(
     detail.getByText("Find the slow checkout requests"),
   ).toBeVisible();
-  const answerName = `Answer: ${answered.title}`;
-  await expect(detail.getByRole("region", { name: answerName })).toHaveCount(0);
+  await expect(
+    detail.getByRole("region", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
 
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const answer = page.getByRole("region", { name: answerName });
+  // Each message shows its own change. The take stays a take after the
+  // answer closed the item.
+  const take = page.getByRole("region", { name: `Took ${answered.title}` });
+  const answer = page.getByRole("region", {
+    name: `Answered ${answered.title}`,
+  });
   await expect(answer.getByText("MIT license, no change.")).toBeVisible();
+  await expect(take).toBeVisible();
+  await expect(take.getByText("MIT license, no change.")).toHaveCount(0);
+  await expect(take.getByText("Done")).toHaveCount(0);
+  await expect(page.getByText(takeText)).toHaveCount(0);
   await expect(page.getByText(answerText)).toHaveCount(0);
 });
 

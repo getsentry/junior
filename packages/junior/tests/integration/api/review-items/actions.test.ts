@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { takeReviewItem } from "@/chat/review-items/store";
+import { sendReviewItemMessages } from "@/chat/review-items/messages";
+import { getReviewItem, takeReviewItem } from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -14,6 +15,8 @@ import {
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+
+const RELAY_CONVERSATION_ID = "local:cli:relay";
 
 const REQUEST = {
   question: "Approve or reject this entry?",
@@ -238,10 +241,10 @@ describe("review item actions API", () => {
       expect(texts).toHaveLength(1);
       expect(texts[0]).toContain("ana@example.com answered review item");
       expect(texts[0]).toContain("Not fair source");
-      // The answer names its item, so the dashboard shows it as an answer.
+      // The message records the answer, so the dashboard shows it as one.
       expect(
-        (await pendingMessages(conversationId))[0]?.input.metadata,
-      ).toMatchObject({ reviewItemId: id });
+        (await pendingMessages(conversationId))[0]?.input.reviewItemChange,
+      ).toEqual({ kind: "submitted", reviewItemId: id });
     }
 
     // Ben is too late, and the item leaves the open views.
@@ -354,9 +357,46 @@ describe("review item actions API", () => {
     expect(texts).toEqual([
       expect.stringContaining("cal@example.com took review item"),
     ]);
-    // Only an answer names its item. A take stays text in the transcript.
+    // The take records a take, so a later answer does not change what this
+    // message shows.
     const [takeMessage] = await pendingMessages("slack:CPUB:1.000001");
     expect(takeMessage?.source).toBe("web");
-    expect(takeMessage?.input.metadata).not.toHaveProperty("reviewItemId");
+    expect(takeMessage?.input.reviewItemChange).toEqual({
+      kind: "taken",
+      reviewItemId: id,
+    });
+    // A local CLI Conversation takes no web Messages. It gets the change as
+    // a relayed event with the same record.
+    await getConversationStore().recordActivity({
+      conversationId: RELAY_CONVERSATION_ID,
+      destination: { platform: "local", conversationId: RELAY_CONVERSATION_ID },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "local",
+      visibility: "public",
+    });
+    const item = await getReviewItem(getDb(), id);
+    await sendReviewItemMessages({
+      change: { kind: "taken", user: cal },
+      item: { ...item!, conversationIds: [RELAY_CONVERSATION_ID] },
+      nowMs: Date.now(),
+      queue: fixture.queue,
+    });
+    const [relayed] = await pendingMessages(RELAY_CONVERSATION_ID);
+    expect(relayed?.source).toBe("event");
+    expect(relayed?.input.reviewItemChange).toEqual({
+      kind: "taken",
+      reviewItemId: id,
+    });
+
+    const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
+    expect(dismissed.status).toBe(200);
+    expect(
+      (await pendingMessages("slack:CPUB:1.000001")).map(
+        (message) => message.input.reviewItemChange,
+      ),
+    ).toEqual([
+      { kind: "taken", reviewItemId: id },
+      { kind: "dismissed", reviewItemId: id },
+    ]);
   });
 });

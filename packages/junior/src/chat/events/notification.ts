@@ -10,7 +10,10 @@ import {
   type EventDoneBy,
   type TaskBatchEvent,
 } from "@/chat/task-input";
-import type { ConversationMessageEvent } from "@/chat/state/conversation";
+import type {
+  ConversationMessageEvent,
+  ConversationMessageMeta,
+} from "@/chat/state/conversation";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -266,30 +269,61 @@ export function renderEventBatchText(
 }
 
 /**
- * List the Watch Events in a batch for the conversation message. These are the
- * Events that the task message counts, so the list and the count agree.
+ * List the Events in a batch for the conversation message: the Watch Events
+ * that the task message counts, and each Review item relay with its record.
+ * A relay keeps its own text, but the transcript must still show its change.
  */
-export function eventBatchMessageEvents(
+function eventBatchMessageEvents(
   messages: readonly InboundMessage[],
 ): ConversationMessageEvent[] {
-  return messages.flatMap((message) => {
+  return messages.flatMap((message): ConversationMessageEvent[] => {
     const saved = readEventTaskFacts(message);
-    if (!saved) return [];
-    const { metadata } = saved;
-    const label = saved.facts.about;
+    if (saved) {
+      const { metadata } = saved;
+      const label = saved.facts.about;
+      return [
+        {
+          eventType: metadata.event.eventType,
+          ...(label ? { label } : undefined),
+          ...(metadata.event.objectType
+            ? { objectType: metadata.event.objectType }
+            : undefined),
+          ...(metadata.event.trustedSummary
+            ? { trustedSummary: metadata.event.trustedSummary }
+            : undefined),
+        },
+      ];
+    }
+    const metadata = message.input.metadata;
+    const record = message.input.reviewItemChange;
+    if (!record || !isEventMailboxMetadata(metadata)) return [];
     return [
       {
         eventType: metadata.event.eventType,
-        ...(label ? { label } : undefined),
-        ...(metadata.event.objectType
-          ? { objectType: metadata.event.objectType }
-          : undefined),
+        reviewItemChange: record,
         ...(metadata.event.trustedSummary
           ? { trustedSummary: metadata.event.trustedSummary }
           : undefined),
       },
     ];
   });
+}
+
+/**
+ * Return the saved Message fields for an Event batch. One input keeps its
+ * Review item change record on the Message. A batch lists its Events, each
+ * relay with its own record.
+ */
+export function eventBatchMessageMeta(
+  messages: readonly InboundMessage[],
+): Pick<ConversationMessageMeta, "events" | "reviewItemChange"> {
+  const record =
+    messages.length === 1 ? messages[0]!.input.reviewItemChange : undefined;
+  if (record) return { reviewItemChange: record };
+  const events = eventBatchMessageEvents(messages);
+  return events.length > 1 || events.some((entry) => entry.reviewItemChange)
+    ? { events }
+    : {};
 }
 
 /** Build plain conversation mailbox input for one matched watch. */

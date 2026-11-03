@@ -195,14 +195,14 @@ describe("conversation report event projection", () => {
       text: "audit the repo",
       meta: { agentInvocationId: "invocation-1" },
     });
-    // Review item answers name their items, so the dashboard can show them
-    // as answers.
+    // Each Review item change keeps its own record, so the dashboard shows
+    // what the message did, not the item's current state.
     const answer = event(3, {
       type: "message",
       messageId: "answer-1",
       role: "user",
       text: "Alice answered review item item-1.",
-      meta: { reviewItemId: "item-1" },
+      meta: { reviewItemChange: { kind: "submitted", reviewItemId: "item-1" } },
     });
 
     expect(
@@ -244,7 +244,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "answer-1",
           role: "user",
-          reviewItemId: "item-1",
+          reviewItemChange: { kind: "submitted", reviewItemId: "item-1" },
           text: "Alice answered review item item-1.",
         },
       },

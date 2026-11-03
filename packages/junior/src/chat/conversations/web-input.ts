@@ -12,6 +12,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -48,8 +49,8 @@ export interface AppendWebMessageInput {
   message: string;
   images?: SandboxFileUpload[];
   idempotencyKey: string;
-  /** Review item whose answer or action this Message reports. */
-  reviewItemId?: string;
+  /** Review item change that this Message reports. */
+  reviewItemChange?: ReviewItemChangeRecord;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -153,7 +154,7 @@ export function buildWebInboundMessage(args: {
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
-  reviewItemId?: string;
+  reviewItemChange?: ReviewItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -184,6 +185,9 @@ export function buildWebInboundMessage(args: {
       ...(args.attachments?.length
         ? { attachments: args.attachments }
         : undefined),
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
+        : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
         ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
@@ -193,7 +197,6 @@ export function buildWebInboundMessage(args: {
         // Inbound message Source.kind to identify web input.
         kind: "api_turn",
         messageId: args.messageId,
-        ...(args.reviewItemId && { reviewItemId: args.reviewItemId }),
       } satisfies LegacyWebMailboxMetadata,
     },
     receivedAtMs: nowMs,
@@ -323,7 +326,9 @@ export async function appendAndEnqueueWebMessage(
       attachments,
       messageId,
       nowMs,
-      ...(input.reviewItemId && { reviewItemId: input.reviewItemId }),
+      ...(input.reviewItemChange && {
+        reviewItemChange: input.reviewItemChange,
+      }),
     }),
     conversationStore: options.conversationStore,
     nowMs,
