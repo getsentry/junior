@@ -354,9 +354,20 @@ export interface MemoryStore {
    * Retrieve a broad relevance-ranked candidate window for automatic recall.
    * Prompt admission remains owned by the recall boundary.
    */
-  recallMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
+  recallMemories(input: SearchMemoriesInput): Promise<RecallCandidate[]>;
   /** Search active memories visible in the current runtime context. */
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
+}
+
+/** One automatic recall candidate with the retrieval evidence that ranked it. */
+export interface RecallCandidate {
+  /** Dense rank in the lexical search, when the lexical search matched. */
+  lexicalRank?: number;
+  memory: MemoryRecord;
+  /** 1-based position after rank fusion. */
+  rank: number;
+  /** Cosine distance, when the vector search matched. */
+  vectorDistance?: number;
 }
 
 /** Collapse whitespace the same way for stored, embedded, and searched text. */
@@ -1157,6 +1168,7 @@ async function searchVisibleVectorMemories(args: {
         {
           memory: parseMemoryRow(row.memory),
           vector: {
+            distance: distanceValue,
             rank,
           },
         },
@@ -1445,7 +1457,7 @@ export function createMemoryStore(
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
     vectorMaxDistance: number | undefined,
-  ): Promise<MemoryRecord[]> {
+  ): Promise<MemoryMatch[]> {
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const scopes = deriveVisibleMemoryScopes(runtimeContext);
@@ -1524,9 +1536,7 @@ export function createMemoryStore(
       ...(vectorMaxDistance === undefined
         ? undefined
         : { lexicalWeight: 1, vectorWeight: 0.85 }),
-    })
-      .slice(0, limit)
-      .map(({ memory }) => memory);
+    }).slice(0, limit);
   }
 
   return {
@@ -1560,11 +1570,21 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(input, RECALL_MAX_VECTOR_DISTANCE);
+      const matches = await retrieveVisibleMemories(
+        input,
+        RECALL_MAX_VECTOR_DISTANCE,
+      );
+      return matches.map(({ lexical, memory, vector }, index) => ({
+        memory,
+        rank: index + 1,
+        ...(lexical ? { lexicalRank: lexical.rank } : undefined),
+        ...(vector ? { vectorDistance: vector.distance } : undefined),
+      }));
     },
 
     async searchMemories(input) {
-      return await retrieveVisibleMemories(input, undefined);
+      const matches = await retrieveVisibleMemories(input, undefined);
+      return matches.map(({ memory }) => memory);
     },
 
     async archiveMemory(input) {

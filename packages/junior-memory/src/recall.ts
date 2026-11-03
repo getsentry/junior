@@ -16,10 +16,10 @@ import {
   type MemoryDb,
   type MemoryEmbeddingProvider,
   type MemoryRecord,
+  type RecallCandidate,
 } from "./store";
-import { memoryRuntimeContextSchema } from "./types";
+import { memoryRuntimeContextSchema, RECALL_CANDIDATE_LIMIT } from "./types";
 
-const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
 
@@ -118,16 +118,35 @@ function addUsd(
   return Math.round((left + right) * 1e12) / 1e12;
 }
 
+function candidateEvidence({ memory, ...evidence }: RecallCandidate) {
+  return { id: memory.id, scope: memory.scope, ...evidence };
+}
+
 async function emitRecallOutcome(args: {
-  costUsd?: number;
+  candidates: RecallCandidate[];
+  costUsd: number | undefined;
   events?: PluginConversationEvents;
   memories: string[];
+  /** Selector picks, or `undefined` when selection failed. */
+  relevantIds: ReadonlySet<string> | undefined;
 }): Promise<void> {
+  const cost =
+    args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined;
+  const relevantIds = args.relevantIds;
+  const candidates = args.candidates.map(candidateEvidence);
   await args.events?.emit(
-    memoriesRecalledEvent({
-      memories: args.memories,
-      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-    }),
+    memoriesRecalledEvent(
+      relevantIds
+        ? {
+            ...cost,
+            candidates: candidates.map((candidate) => ({
+              ...candidate,
+              selected: relevantIds.has(candidate.id),
+            })),
+            memories: args.memories,
+          }
+        : { ...cost, candidates, memories: [], selectionFailed: true },
+    ),
   );
 }
 
@@ -176,28 +195,38 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined
-        ? { costUsd: embeddingCostUsd }
-        : undefined),
+      candidates,
+      costUsd: embeddingCostUsd,
       events: context.events,
       memories: [],
+      relevantIds: new Set(),
     });
     return undefined;
   }
   let recall: MemoryRecallResult;
   try {
     recall = await context.agent.selectRelevantMemories({
-      candidates: candidates.map(({ content, id }) => ({ content, id })),
+      candidates: candidates.map(({ memory: { content, id } }) => ({
+        content,
+        id,
+      })),
       userRequest: context.text,
     });
   } catch {
     // Automatic recall is optional context; a relevance-model failure must not
     // prevent the user's turn from continuing without recalled memory.
     context.log.warn("memory_recall_selection_failed");
+    await emitRecallOutcome({
+      candidates,
+      costUsd: embeddingCostUsd,
+      events: context.events,
+      memories: [],
+      relevantIds: undefined,
+    });
     return undefined;
   }
   const candidatesById = new Map(
-    candidates.map((memory) => [memory.id, memory]),
+    candidates.map(({ memory }) => [memory.id, memory]),
   );
   const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
@@ -205,9 +234,11 @@ export async function createMemoryPromptContributions(
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({
-    ...(costUsd !== undefined ? { costUsd } : undefined),
+    candidates,
+    costUsd,
     events: context.events,
     memories: selected.map(({ id }) => id),
+    relevantIds: new Set(recall.relevantIds),
   });
   if (selected.length === 0) {
     return undefined;

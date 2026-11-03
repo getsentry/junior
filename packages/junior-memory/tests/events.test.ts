@@ -3,6 +3,7 @@ import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
   memoriesRecalledEvent,
+  memoriesRecalledEventV1,
 } from "../src/events";
 
 describe("memory conversation events", () => {
@@ -49,7 +50,14 @@ describe("memory conversation events", () => {
 
   it("keeps automatic recall outcomes out of transcript presentation", () => {
     expect(
+      memoriesRecalledEventV1.renderEvent({
+        costUsd: 0.0042,
+        memories: [],
+      }),
+    ).toBeUndefined();
+    expect(
       memoriesRecalledEvent.renderEvent({
+        candidates: [],
         costUsd: 0.0042,
         memories: [],
       }),

@@ -10,6 +10,8 @@ export interface MemoryMatch {
   };
   memory: MemoryRecord;
   vector?: {
+    /** Cosine distance. Ranking uses only `rank`. */
+    distance: number;
     rank: number;
   };
 }
@@ -81,7 +83,9 @@ export function rankMemoryMatches(
       ...(!existing.lexical && match.lexical
         ? { lexical: match.lexical }
         : undefined),
-      ...(!existing.vector && match.vector ? { vector: match.vector } : undefined),
+      ...(!existing.vector && match.vector
+        ? { vector: match.vector }
+        : undefined),
     });
   }
   return [...byId.values()].sort((left, right) => {

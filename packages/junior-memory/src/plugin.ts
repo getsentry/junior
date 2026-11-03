@@ -19,6 +19,7 @@ import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
   memoriesRecalledEvent,
+  memoriesRecalledEventV1,
 } from "./events";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
@@ -106,6 +107,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     conversationEvents: [
       memoriesCapturedEventV1,
       memoriesCapturedEvent,
+      memoriesRecalledEventV1,
       memoriesRecalledEvent,
     ],
     cli: {

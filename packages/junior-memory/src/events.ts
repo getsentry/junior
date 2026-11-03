@@ -1,6 +1,6 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
+import { MEMORY_KINDS, MEMORY_SCOPES, RECALL_CANDIDATE_LIMIT } from "./types";
 import type { MemoryRecord } from "./store";
 
 const capturedMemoryFields = {
@@ -37,13 +37,54 @@ const capturedMemoriesSchema = z
   })
   .strict();
 
-const recalledMemoriesSchema = z
+const recalledMemoryIdsSchema = z
+  .array(z.string().min(1))
+  .max(RECALL_CANDIDATE_LIMIT);
+
+const legacyRecalledMemoriesSchema = z
   .object({
-    // Matches the automatic-recall candidate window; admission packs by char budget.
-    memories: z.array(z.string().min(1)).max(20),
+    memories: recalledMemoryIdsSchema,
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
+
+// Ids and retrieval numbers only. Memory content stays out of history.
+const recallCandidateFields = {
+  id: z.string().min(1),
+  lexicalRank: z.number().int().positive().optional(),
+  rank: z.number().int().positive(),
+  scope: z.enum(MEMORY_SCOPES),
+  vectorDistance: z.number().finite().optional(),
+};
+
+const recalledMemoriesSchema = z.union([
+  z
+    .object({
+      candidates: z
+        .array(
+          z
+            .object({ ...recallCandidateFields, selected: z.boolean() })
+            .strict(),
+        )
+        .max(RECALL_CANDIDATE_LIMIT),
+      costUsd: z.number().finite().nonnegative().optional(),
+      // Selected candidates that fit the prompt budget.
+      memories: recalledMemoryIdsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      // No `selected` flag: a failed selection is not a choice of none.
+      candidates: z
+        .array(z.object(recallCandidateFields).strict())
+        .min(1)
+        .max(RECALL_CANDIDATE_LIMIT),
+      costUsd: z.number().finite().nonnegative().optional(),
+      memories: z.array(z.string()).length(0),
+      selectionFailed: z.literal(true),
+    })
+    .strict(),
+]);
 
 function currentScope(
   scope: "personal" | "conversation" | "private" | "public",
@@ -87,10 +128,20 @@ export const memoriesCapturedEvent = defineConversationEvent({
   renderEvent: renderCapturedMemories,
 });
 
+/** Previous stored automatic-recall event shape without candidates. */
+export const memoriesRecalledEventV1 = defineConversationEvent({
+  name: "memories_recalled",
+  version: 1,
+  schema: legacyRecalledMemoriesSchema,
+  renderEvent() {
+    return undefined;
+  },
+});
+
 /** Durable outcome emitted after one completed automatic recall attempt. */
 export const memoriesRecalledEvent = defineConversationEvent({
   name: "memories_recalled",
-  version: 1,
+  version: 2,
   schema: recalledMemoriesSchema,
   renderEvent() {
     return undefined;

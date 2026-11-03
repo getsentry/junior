@@ -4,6 +4,8 @@ import { z } from "zod";
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
 export const MEMORY_SCOPES = ["private", "public"] as const;
+/** Automatic-recall candidate window. Prompt admission packs by char budget. */
+export const RECALL_CANDIDATE_LIMIT = 20;
 export const MEMORY_SUBJECT_TYPES = [
   "user",
   "conversation",

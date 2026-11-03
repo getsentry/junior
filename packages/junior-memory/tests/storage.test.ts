@@ -3190,7 +3190,11 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       });
 
       await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual([
-        expect.objectContaining({ id: close.memory.id }),
+        {
+          memory: expect.objectContaining({ id: close.memory.id }),
+          rank: 1,
+          vectorDistance: expect.closeTo(0.2, 6),
+        },
       ]);
       await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
         expect.objectContaining({ id: close.memory.id }),
@@ -3233,8 +3237,16 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       // the exact/token memory that only lexical retrieval surfaces.
       await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: distractor.memory.id }),
-          expect.objectContaining({ id: answer.memory.id }),
+          {
+            memory: expect.objectContaining({ id: distractor.memory.id }),
+            rank: expect.any(Number),
+            vectorDistance: expect.closeTo(0.2, 6),
+          },
+          {
+            lexicalRank: 1,
+            memory: expect.objectContaining({ id: answer.memory.id }),
+            rank: expect.any(Number),
+          },
         ]),
       );
     } finally {
@@ -3288,8 +3300,10 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            id: preference.memory.id,
-            scope: "private",
+            memory: expect.objectContaining({
+              id: preference.memory.id,
+              scope: "private",
+            }),
           }),
         ]),
       );
@@ -4198,15 +4212,34 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       expect(emitted).toEqual([
         expect.objectContaining({
           data: {
+            candidates: [
+              {
+                id: conversation.memory.id,
+                lexicalRank: 1,
+                rank: 1,
+                scope: "private",
+                selected: true,
+              },
+              {
+                id: personal.memory.id,
+                lexicalRank: 1,
+                rank: 2,
+                scope: "private",
+                selected: true,
+              },
+            ],
             costUsd: 0.0045,
             memories: [conversation.memory.id, personal.memory.id],
           },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
-            version: 1,
+            version: 2,
           }),
         }),
       ]);
+      const stored = JSON.stringify(emitted[0]?.data);
+      expect(stored).not.toContain(personal.memory.content);
+      expect(stored).not.toContain(conversation.memory.content);
     } finally {
       await fixture.close();
     }
@@ -4267,10 +4300,10 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       );
       expect(emitted).toEqual([
         expect.objectContaining({
-          data: { memories: admittedIds },
+          data: expect.objectContaining({ memories: admittedIds }),
           definition: expect.objectContaining({
             eventName: "memories_recalled",
-            version: 1,
+            version: 2,
           }),
         }),
       ]);
@@ -4344,7 +4377,9 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
 
     try {
       const context = slackContext();
+      // Shared embeddings make every memory a candidate for the selector.
       const store = createMemoryStore(memoryDb(fixture), context, {
+        embedder: createTestEmbedder(),
         now: () => TEST_NOW_MS,
       });
       const relevant = await store.createConversationMemory({
@@ -4352,18 +4387,19 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-relevant",
       });
-      await store.createConversationMemory({
+      const vocabulary = await store.createConversationMemory({
         content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-vocabulary",
       });
-      await store.createConversationMemory({
+      const unrelated = await store.createConversationMemory({
         content:
           "Single-tenant repository access is configured in the admin dashboard.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-unrelated",
       });
 
+      const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
@@ -4371,6 +4407,11 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
         log: noopLogger,
         model: recallModel((candidates) =>
           candidates.filter((content) => content.includes("getsentry/junior")),
@@ -4390,6 +4431,17 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       });
       expect(contribution.renderPrompt()).not.toContain("autofix");
       expect(contribution.renderPrompt()).not.toContain("Single-tenant");
+      expect(emitted[0]?.data).toMatchObject({
+        candidates: expect.arrayContaining([
+          expect.objectContaining({ id: relevant.memory.id, selected: true }),
+          expect.objectContaining({
+            id: vocabulary.memory.id,
+            selected: false,
+          }),
+          expect.objectContaining({ id: unrelated.memory.id, selected: false }),
+        ]),
+        memories: [relevant.memory.id],
+      });
     } finally {
       await fixture.close();
     }
@@ -4400,7 +4452,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
 
     try {
       const context = slackContext();
-      await createMemoryStore(memoryDb(fixture), context, {
+      const candidate = await createMemoryStore(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
       }).createConversationMemory({
         content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
@@ -4431,10 +4483,22 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
         expect.objectContaining({
-          data: { costUsd: 0.0019, memories: [] },
+          data: {
+            candidates: [
+              {
+                id: candidate.memory.id,
+                lexicalRank: 1,
+                rank: 1,
+                scope: "public",
+                selected: false,
+              },
+            ],
+            costUsd: 0.0019,
+            memories: [],
+          },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
-            version: 1,
+            version: 2,
           }),
         }),
       ]);
@@ -4475,10 +4539,10 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
         expect.objectContaining({
-          data: { costUsd: 0.0002, memories: [] },
+          data: { candidates: [], costUsd: 0.0002, memories: [] },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
-            version: 1,
+            version: 2,
           }),
         }),
       ]);
@@ -4500,7 +4564,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
 
     try {
       const context = slackContext();
-      await createMemoryStore(memoryDb(fixture), context, {
+      const candidate = await createMemoryStore(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
       }).createConversationMemory({
         content: "Release notes live in Notion.",
@@ -4508,6 +4572,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         idempotencyKey: "memory-test:recall-gate-failure",
       });
 
+      const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
       await expect(
         plugin.hooks?.userPrompt?.({
@@ -4515,7 +4580,12 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           destination: slackDestination(context),
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
-          embedder: createTestEmbedder(),
+          embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
+          events: {
+            async emit(event) {
+              emitted.push(event);
+            },
+          },
           log,
           model: {
             async completeObject() {
@@ -4528,6 +4598,29 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         }),
       ).resolves.toBeUndefined();
       expect(warnings).toEqual(["memory_recall_selection_failed"]);
+      // Failed selection carries no `selected` flags, so it cannot read as
+      // a selector that picked nothing.
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: {
+            candidates: [
+              {
+                id: candidate.memory.id,
+                lexicalRank: 1,
+                rank: 1,
+                scope: "public",
+              },
+            ],
+            costUsd: 0.0002,
+            memories: [],
+            selectionFailed: true,
+          },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 2,
+          }),
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
