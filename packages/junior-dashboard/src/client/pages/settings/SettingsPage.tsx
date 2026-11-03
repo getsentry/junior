@@ -12,12 +12,14 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import {
   useConversationStartPosition,
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
+import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
@@ -105,6 +107,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
         </Card>
       </form>
       <ConversationStartSetting />
+      <ComposerAutocorrectSetting />
       <CustomizationForm />
     </SettingsPageLayout>
   );
@@ -162,6 +165,31 @@ function ConversationStartSetting() {
           ))}
         </RadioGroup>
       </fieldset>
+    </Card>
+  );
+}
+
+/** Let the user turn on keyboard autocorrect in the composer on this browser. */
+function ComposerAutocorrectSetting() {
+  const [autocorrect, setAutocorrect] = useComposerAutocorrect();
+  return (
+    <Card className="mt-6 mb-0" padding="md" variant="raised">
+      <h2 className="m-0 text-lg font-bold">Message box</h2>
+      <label className="mt-4 flex cursor-pointer items-start gap-3">
+        <Checkbox
+          checked={autocorrect}
+          className="mt-0.5"
+          onCheckedChange={setAutocorrect}
+        />
+        <span className="grid gap-0.5">
+          <span className="text-sm font-medium">Autocorrect</span>
+          <span className="text-xs text-dashboard-text-muted">
+            Let your keyboard correct spelling and capitalize sentences as you
+            type. This can change ids, paths, and code. This choice applies to
+            this browser.
+          </span>
+        </span>
+      </label>
     </Card>
   );
 }
