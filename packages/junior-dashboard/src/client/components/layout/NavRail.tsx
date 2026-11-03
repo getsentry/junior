@@ -82,7 +82,7 @@ function RailItem(props: {
       {props.count ? (
         <SidebarMenuBadge
           aria-hidden="true"
-          className="-top-2 -right-1.5 h-4 min-w-4 rounded-full bg-dashboard-accent px-1 text-2xs font-semibold leading-none normal-nums text-dashboard-text-inverse ring-2 ring-sidebar group-data-[collapsible=icon]:flex peer-data-[size=default]/menu-button:-top-2 peer-data-active/menu-button:text-dashboard-text-inverse peer-hover/menu-button:text-dashboard-text-inverse"
+          className="top-0 right-0 h-4 min-w-4 rounded-full bg-dashboard-accent px-1 text-2xs font-semibold leading-none normal-nums text-dashboard-text-inverse ring-2 ring-sidebar group-data-[collapsible=icon]:flex peer-data-[size=default]/menu-button:top-0 peer-data-active/menu-button:text-dashboard-text-inverse peer-hover/menu-button:text-dashboard-text-inverse"
         >
           {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
         </SidebarMenuBadge>
