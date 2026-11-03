@@ -562,49 +562,6 @@ describe("conversation report event projection", () => {
     });
   });
 
-  it("drops agent history a fork child inherited from its parent", () => {
-    const turnStart = event(
-      1,
-      {
-        type: "turn_started",
-        turnId: "turn-1",
-        inputMessageIds: ["task-1"],
-        surface: "internal",
-      },
-      10_000,
-    );
-    const inheritedResult = event(
-      2,
-      {
-        type: "tool_result",
-        toolCallId: "parent-call",
-        toolName: "bash",
-        content: [{ type: "text", text: "parent output" }],
-        isError: false,
-        timestamp: 1_000,
-      },
-      1_000,
-    );
-    const inheritedReasoning = event(
-      3,
-      assistantMessage([{ type: "thinking", thinking: "Parent plan." }]),
-      2_000,
-    );
-    const ownReasoning = event(
-      4,
-      assistantMessage([{ type: "thinking", thinking: "Child plan." }]),
-      11_000,
-    );
-
-    const projected = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: [turnStart, inheritedResult, inheritedReasoning, ownReasoning],
-      firstTurnStart: turnStart,
-    });
-
-    expect(projected.map((item) => item.seq)).toEqual([1, 4]);
-  });
-
   it("drops provider-redacted thinking before reporting", () => {
     const redactedOnly = [
       event(

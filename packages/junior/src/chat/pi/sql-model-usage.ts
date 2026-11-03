@@ -1,5 +1,6 @@
 /** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
+import { notInheritedByForkChild } from "@/chat/agent-invocations/fork-history";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 import {
   conversationSubtree,
@@ -180,6 +181,7 @@ export async function readConversationModelUsageFromSql(
         eq(juniorConversationEvents.type, "assistant_message"),
         // Copied fork history is model context, not another model call.
         notCopiedByFork(),
+        notInheritedByForkChild(),
         sql`jsonb_typeof(${message}->'provider') = 'string'`,
         sql`jsonb_typeof(${message}->'model') = 'string'`,
         sql`coalesce(${message}->>'provider', '') <> ''`,
