@@ -127,7 +127,9 @@ export function NavRail(props: {
           <JuniorLogo />
         </Link>
       </SidebarHeader>
-      <SidebarContent>
+      {/* Stock icon mode hides overflow; the rail stays collapsed, so let
+          plugin pages scroll on short windows. */}
+      <SidebarContent className="group-data-[collapsible=icon]:overflow-auto">
         <SidebarGroup className="items-center py-0">
           <nav aria-label="Primary" className="w-full">
             <SidebarMenu className="items-center gap-1.5">
