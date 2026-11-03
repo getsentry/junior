@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createAgentInvocationForMessage,
   getAgentInvocation,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  createAndEnqueueAgentInvocation,
+  enqueueAgentInvocation,
+} from "@/chat/agent-invocations/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
@@ -44,31 +48,59 @@ describe("agent invocation worker crash", () => {
       );
       const { childConversationId, invocationId } = created;
 
-      for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+      let followUpId = "";
+      for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
         // Injected fault: the worker of this try is killed mid-run.
         await killWorker(queue.takeMessageFor(childConversationId));
+        if (tries === CONVERSATION_WORK_MAX_RETRIES) {
+          // The parent gives the dying child more work. Stopped work drops
+          // its mailbox, so this task never runs either.
+          const { invocation } = await createAgentInvocationForMessage({
+            actor: invocationInput.actor,
+            childConversationId,
+            destination: invocationInput.destination,
+            idempotencyKey: "crash-follow-up",
+            input: "Also check the retry path.",
+            parentConversationId,
+            parentToolCallId: "call-message",
+          });
+          await enqueueAgentInvocation(invocation, {
+            conversationStore,
+            queue,
+            state,
+          });
+          followUpId = invocation.invocationId;
+        }
         await runHeartbeatAfterLeasesExpire(queue);
       }
 
       await expect(
         getConversationWorkState({ conversationId: childConversationId }),
       ).resolves.toMatchObject({ execution: { status: "failed" } });
-      await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
-        parentMailboxStatus: "appended",
-        status: "failed",
-      });
+      for (const id of [invocationId, followUpId]) {
+        await expect(getAgentInvocation(id)).resolves.toMatchObject({
+          parentMailboxStatus: "appended",
+          status: "failed",
+        });
+      }
       const parent = await getConversationWorkState({
         conversationId: parentConversationId,
       });
-      expect(parent?.messages).toEqual([
-        expect.objectContaining({
-          input: expect.objectContaining({
-            text: expect.stringMatching(
-              /lost its worker|worker failed repeatedly/,
-            ),
+      expect(parent?.messages).toHaveLength(2);
+      expect(parent?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            input: expect.objectContaining({
+              text: expect.stringMatching(/This task stopped/),
+            }),
           }),
-        }),
-      ]);
+          expect.objectContaining({
+            input: expect.objectContaining({
+              text: expect.stringMatching(/This task did not start/),
+            }),
+          }),
+        ]),
+      );
       // Nothing may resume the dead Turn.
       await expect(
         getTurnRecord(

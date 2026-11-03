@@ -53,6 +53,11 @@ export async function recoverConversationWork(args: {
     state: args.state,
   });
 
+  const endStoppedWork = async (conversationId: string): Promise<void> => {
+    await args.onWorkStopped?.(conversationId);
+    await removeActiveConversation({ conversationId, state: args.state });
+  };
+
   for (const conversationId of ids) {
     await withLogContext({ conversationId }, async () => {
       let work: ConversationWorkState | undefined;
@@ -91,6 +96,17 @@ export async function recoverConversationWork(args: {
           return;
         }
 
+        // Stopped work keeps its place in the scan until `onWorkStopped`
+        // succeeds, so a failed callback runs again on the next heartbeat.
+        if (
+          work.execution.status === "failed" &&
+          !work.execution.lease &&
+          !hasRunnableConversationWork(work)
+        ) {
+          await endStoppedWork(conversationId);
+          return;
+        }
+
         if (
           work.execution.lease &&
           work.execution.lease.expiresAtMs <= args.nowMs
@@ -116,7 +132,7 @@ export async function recoverConversationWork(args: {
                 "app.worker.retry_count": (work.execution.retryCount ?? 0) + 1,
               },
             );
-            await args.onWorkStopped?.(conversationId);
+            await endStoppedWork(conversationId);
             return;
           }
           const wake = await ensureConversationWake({

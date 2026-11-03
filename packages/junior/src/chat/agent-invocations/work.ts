@@ -77,6 +77,7 @@ import {
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   listActiveAgentInvocationsForConversation,
+  listNonTerminalAgentInvocationsForConversation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -498,16 +499,29 @@ async function endOtherActiveAgentInvocation(
 }
 
 /**
- * End the active agent invocations of a child whose work stopped after its
- * tries ran out. A killed worker never runs its own failure path, so this is
- * the only place the invocation ends. The heartbeat sends the result.
+ * End the agent invocations of a child whose work stopped after its tries ran
+ * out. A killed worker never runs its own failure path, so this is the only
+ * place they end. Stopped work drops its mailbox, so a pending invocation whose
+ * input was appended never runs either. The heartbeat sends each result.
  */
 export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
 ): Promise<void> {
-  for (const invocation of await listActiveAgentInvocationsForConversation(
+  for (const invocation of await listNonTerminalAgentInvocationsForConversation(
     conversationId,
   )) {
+    if (invocation.status === "pending") {
+      // Its mailbox append has not run yet. That append starts the work again.
+      if (invocation.mailboxStatus !== "appended") continue;
+      await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage:
+          "This task did not start. Its child agent stopped after its worker failed repeatedly.",
+        reportNow: true,
+        status: "failed",
+      });
+      continue;
+    }
     const terminal =
       (await projectTerminalTurn(invocation, { reportNow: true })) ??
       (await completeAgentInvocation({

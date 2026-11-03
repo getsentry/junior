@@ -246,6 +246,27 @@ export async function listActiveAgentInvocationsForConversation(
   return rows.map(invocationFromRow);
 }
 
+/** List the agent invocations of one child Conversation that have not finished. */
+export async function listNonTerminalAgentInvocationsForConversation(
+  childConversationId: string,
+): Promise<AgentInvocation[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.childConversationId, childConversationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
+    .orderBy(asc(juniorAgentInvocations.createdAt));
+  return rows.map(invocationFromRow);
+}
+
 /** Resolve the single invocation that may resume for one child conversation. */
 export async function getActiveAgentInvocationForConversation(
   childConversationId: string,
