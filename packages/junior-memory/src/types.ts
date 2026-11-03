@@ -15,9 +15,9 @@ export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 /** Things that can happen to a stored memory and feed future recall weights. */
 export const MEMORY_SIGNALS = ["duplicate"] as const;
 /**
- * Vector sizes the embeddings table can store and index. Each size has its own
- * HNSW index, so one table can hold vectors from an old and a new model while
- * a model change is in progress.
+ * Vector sizes the embeddings table can store, so one table can hold vectors
+ * from an old and a new model while a model change is in progress. Only 1024
+ * has an HNSW index.
  */
 export const MEMORY_EMBEDDING_DIMENSIONS = [1024, 1536] as const;
 
