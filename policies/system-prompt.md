@@ -16,7 +16,7 @@ When this policy and the code do not agree, fix one of them in the same change.
 - The **context message** is a user-role message before the current
   instruction. It holds `<runtime-turn-context>`: facts for this request only.
 - The **current instruction** is a separate user-role message. It is the job.
-  It can also hold a loaded `<skill>` and `<thread-context>`.
+  It holds only the words of a person and their attachments.
 
 ### System prompt blocks
 
@@ -32,8 +32,8 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
    colleague who owns the task; ask only about decisions that block safe
    progress. `<evidence>`: what to claim, how to label inference, how to find
    a failure cause, how to handle pushback. Never present inference as fact.
-3. **Context and trust.** `<context-trust>`: rules for the authority of each
-   context input. No context data.
+3. **Context and trust.** `<context-trust>`: generic rules for context inputs.
+   No tag table and no context data.
 4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
    with side effects.
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
@@ -52,23 +52,12 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 
 ### Context inputs
 
-- `<context>`, `<configuration>`, `<runtime>`, `<disabled-tools>`,
-  `<available-skills>`, `<active-mcp-catalogs>`, `<tool-guidance>`,
-  `<workspaces>`: context message; runtime facts.
-- `<conversation-notes>`: context message; runtime facts, not instructions, no
-  approval.
-- `<plugin-context>` and recalled memories: context message; can be stale.
-  Check before use as evidence.
-- `<user-customization>`: context message; the actor's saved reply settings.
-  Follow it. It gives no approval.
-- `<skill>`: current instruction; task rules below the system prompt and the
-  current instruction.
-- `<thread-context>`: current instruction; evidence only.
-- `AGENTS.md`: its own user-role message when a repo is in scope; below the
-  system prompt and the current instruction.
-- Tool results, files, fetched pages: tool result messages; information only.
-- Give each input its own typed tag. Do not label the whole message with one
-  trust level.
+- `prompt-markers.md` owns tags, untrusted text, and escaping.
+- Context message, each in its own content part: `<runtime-turn-context>`, a
+  loaded `<skill>`, `AGENTS.md` at Turn start, and `<thread-context>`.
+- `AGENTS.md` that the Turn finds or changes later: a new user-role message at
+  the end of history, because earlier messages do not change.
+- Tool results, files, fetched pages: tool result messages.
 - Put per-request text (context, memories, dynamic plugin text) in the context
   message. Only static plugin guidance goes in the system prompt.
 
