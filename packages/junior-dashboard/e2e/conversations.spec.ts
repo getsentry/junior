@@ -394,23 +394,26 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("groups the signed-in profile and session actions in the header", async ({
+test("groups the signed-in profile and session actions in the nav rail", async ({
   page,
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
 
-  const trigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User",
+  const rail = page.getByRole("complementary").filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
+  });
+  const trigger = rail.getByRole("button", {
+    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.46");
-  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
+  await expect(popover).toContainText("7d $0.46");
+  await expect(popover).toContainText("30d $0.46");
   await expect(
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
