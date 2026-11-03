@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
   EgressAuthRequired,
+  type PluginSandbox,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
   type ToolRegistrationHookContext,
@@ -17,7 +18,11 @@ import {
   vi,
 } from "vitest";
 import { githubPlugin } from "../src/index";
-import { gitHooksPath, REPOSITORY_HOOK_NAMES } from "../src/git-config";
+import {
+  gitHooksPath,
+  REPOSITORY_HOOK_NAMES,
+  repositoryHook,
+} from "../src/git-config";
 import { gitHubDeploymentSourceResource } from "../src/events/deployment";
 import { gitHubIssueResource } from "../src/events/issue";
 import { gitHubPullRequestResource } from "../src/events/pull-request";
@@ -149,46 +154,62 @@ const pluginLog = {
 };
 
 /**
- * Recover the exact hook scripts sandboxPrepare writes and stage them with a
- * seeded commit message file, so tests execute the real generated bash
- * instead of asserting on script text.
+ * Sandbox that runs commands on this host in a temp dir, with Git's global
+ * config file in that dir, so tests run the real sandboxPrepare command.
  */
-async function prepareCommitMsgHookFixture(initialMessage: string) {
-  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+async function localSandbox() {
+  const { mkdtempSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  const { basename, join } = await import("node:path");
+  const { join } = await import("node:path");
   const { spawnSync } = await import("node:child_process");
 
-  const hookScripts = new Map<string, string>();
+  const dir = mkdtempSync(join(tmpdir(), "junior-github-sandbox-"));
+  const gitConfigPath = join(dir, ".gitconfig");
+  const calls: string[] = [];
+  const sandbox: PluginSandbox = {
+    juniorRoot: dir,
+    root: dir,
+    async readFile() {
+      calls.push("readFile");
+      return null;
+    },
+    async run(input) {
+      calls.push(`run ${input.cmd}`);
+      const result = spawnSync(input.cmd, input.args ?? [], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: dir, GIT_CONFIG_GLOBAL: gitConfigPath },
+      });
+      return {
+        exitCode: result.status ?? 1,
+        stderr: result.stderr,
+        stdout: result.stdout,
+      };
+    },
+    async writeFile() {
+      calls.push("writeFile");
+    },
+  };
+  return { calls, dir, gitConfigPath, sandbox };
+}
+
+/**
+ * Run sandboxPrepare in a local sandbox and seed a commit message file, so
+ * tests execute the real generated hooks instead of asserting on script text.
+ */
+async function prepareCommitMsgHookFixture(initialMessage: string) {
+  const { writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+
+  const { dir, sandbox } = await localSandbox();
   await githubPlugin().hooks?.sandboxPrepare?.({
     db,
     log: pluginLog,
     plugin: { name: "github" },
-    sandbox: {
-      juniorRoot: "/vercel/sandbox/.junior",
-      root: "/vercel/sandbox",
-      async readFile() {
-        return null;
-      },
-      async run() {
-        return { exitCode: 0, stderr: "", stdout: "" };
-      },
-      async writeFile(input) {
-        hookScripts.set(basename(input.path), String(input.content));
-      },
-    },
+    sandbox,
   } as SandboxPrepareHookContext);
-  if (!hookScripts.has("prepare-commit-msg")) {
-    throw new Error("prepare-commit-msg hook was not written");
-  }
 
-  const dir = mkdtempSync(join(tmpdir(), "junior-github-hook-"));
-  const hooksDir = gitHooksPath(dir);
-  mkdirSync(hooksDir);
-  for (const [name, script] of hookScripts) {
-    writeFileSync(join(hooksDir, name), script, { mode: 0o755 });
-  }
-  const hookPath = join(hooksDir, "prepare-commit-msg");
+  const hookPath = join(gitHooksPath(dir), "prepare-commit-msg");
   const messagePath = join(dir, "COMMIT_EDITMSG");
   writeFileSync(messagePath, initialMessage);
 
@@ -3430,58 +3451,59 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("prepares git attribution hooks and sandbox git config", async () => {
-    const started: string[] = [];
-    const writes: Array<{ content: string | Uint8Array; path: string }> = [];
+    const { readdirSync, readFileSync, rmSync, statSync, writeFileSync } =
+      await import("node:fs");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
 
-    const plugin = githubPlugin();
+    const { calls, dir, gitConfigPath, sandbox } = await localSandbox();
+    const hooksPath = gitHooksPath(dir);
     const ctx: SandboxPrepareHookContext = {
       db,
-      log: {
-        error() {},
-        info() {},
-        warn() {},
-      },
+      log: pluginLog,
       plugin: { name: "github" },
-      sandbox: {
-        juniorRoot: "/vercel/sandbox/.junior",
-        root: "/vercel/sandbox",
-        async readFile() {
-          return null;
-        },
-        async run(input) {
-          expect(input.cmd).toBe("git");
-          expect(input.args?.slice(0, 2)).toEqual(["config", "--global"]);
-
-          started.push(String(input.args?.[2]));
-
-          return { exitCode: 0, stderr: "", stdout: "" };
-        },
-        async writeFile(input) {
-          writes.push({ content: input.content, path: input.path });
-        },
-      },
+      sandbox,
     };
+    try {
+      await githubPlugin().hooks?.sandboxPrepare?.(ctx);
+      // A resumed sandbox already has the hooks, maybe from an older Junior.
+      writeFileSync(join(hooksPath, "pre-commit"), "stale\n", { mode: 0o644 });
+      await githubPlugin().hooks?.sandboxPrepare?.(ctx);
 
-    await plugin.hooks?.sandboxPrepare?.(ctx);
+      // Each sandbox call is a provider round trip on every sandbox acquire.
+      expect(calls).toEqual(["run bash", "run bash"]);
+      const hookNames = ["prepare-commit-msg", ...REPOSITORY_HOOK_NAMES];
+      expect(readdirSync(hooksPath).sort()).toEqual(hookNames.sort());
+      for (const name of hookNames) {
+        expect(statSync(join(hooksPath, name)).mode & 0o777).toBe(0o755);
+      }
+      expect(readFileSync(join(hooksPath, "pre-commit"), "utf8")).toBe(
+        repositoryHook("pre-commit"),
+      );
+      const prepareCommitMsg = readFileSync(
+        join(hooksPath, "prepare-commit-msg"),
+        "utf8",
+      );
+      expect(prepareCommitMsg).toContain("JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS");
+      expect(prepareCommitMsg).not.toContain("JUNIOR_GIT_COAUTHOR");
+      expect(prepareCommitMsg).toContain(
+        "Git author was not set to the configured identity",
+      );
 
-    expect(writes.map((write) => write.path)).toEqual(
-      ["prepare-commit-msg", ...REPOSITORY_HOOK_NAMES].map(
-        (name) => `/vercel/sandbox/.junior/git-hooks/${name}`,
-      ),
-    );
-    expect(String(writes[0]?.content)).toContain(
-      "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
-    );
-    expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
-    expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the configured identity",
-    );
-    expect(started).toEqual([
-      "core.hooksPath",
-      "commit.gpgsign",
-      "credential.helper",
-      "http.emptyAuth",
-    ]);
+      const globalConfig = spawnSync(
+        "git",
+        ["config", "--file", gitConfigPath, "--list"],
+        { encoding: "utf8" },
+      );
+      expect(globalConfig.stdout).toBe(
+        `core.hookspath=${hooksPath}\n` +
+          "commit.gpgsign=false\n" +
+          "credential.helper=\n" +
+          "http.emptyauth=true\n",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("preloads workspace repositories through sandbox egress", async () => {

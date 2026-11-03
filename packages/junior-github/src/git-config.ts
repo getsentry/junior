@@ -362,19 +362,49 @@ fi
 `;
 }
 
-/** Set one global Git option inside the prepared sandbox. */
-export async function configureGit(
+// Arguments: the hooks directory, then hook name and content pairs.
+// `printf '%s'` writes each hook byte for byte.
+const PREPARE_GIT_SCRIPT = `set -eu
+hooks_dir=$1
+shift
+mkdir -p "$hooks_dir"
+while [ "$#" -gt 0 ]; do
+  printf '%s' "$2" > "$hooks_dir/$1"
+  chmod 755 "$hooks_dir/$1"
+  shift 2
+done
+git config --global core.hooksPath "$hooks_dir"
+git config --global commit.gpgsign false
+git config --global credential.helper ""
+git config --global http.emptyAuth true
+`;
+
+/**
+ * Write Junior's Git hooks and global Git config inside the sandbox.
+ *
+ * This runs on every sandbox acquire, and each sandbox call is one provider
+ * round trip, so all of the setup is one command.
+ */
+export async function prepareSandboxGit(
   ctx: SandboxPrepareHookContext,
-  key: string,
-  value: string,
 ): Promise<void> {
+  const hooks = [
+    ["prepare-commit-msg", prepareCommitMsgHook()],
+    ...REPOSITORY_HOOK_NAMES.map((name) => [name, repositoryHook(name)]),
+  ];
   const result = await ctx.sandbox.run({
-    cmd: "git",
-    args: ["config", "--global", key, value],
+    cmd: "bash",
+    args: [
+      "-c",
+      PREPARE_GIT_SCRIPT,
+      "bash",
+      gitHooksPath(ctx.sandbox.juniorRoot),
+      ...hooks.flat(),
+    ],
   });
   if (result.exitCode !== 0) {
     throw new Error(
-      `Failed to configure git ${key}: ${result.stderr || result.stdout}`,
+      `Failed to prepare sandbox git: ${result.stderr || result.stdout}`,
     );
   }
 }
