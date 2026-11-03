@@ -78,8 +78,9 @@ test("opens a registered plugin page from primary navigation", async ({
   await privateTab.click();
   await expect(privateTab).toHaveAttribute("aria-selected", "true");
   await expect(page).toHaveURL(/filter=private/);
-  const navLinks = await page.locator("header nav a").allTextContents();
-  expect(navLinks.at(-1)?.trim()).toBe("System");
+  await expect(
+    page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
+  ).toHaveAccessibleName("System");
 });
 
 test("opens memory details beside the library", async ({ page, dashboard }) => {

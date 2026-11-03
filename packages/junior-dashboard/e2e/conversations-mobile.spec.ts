@@ -182,7 +182,7 @@ test("opens and closes a conversation on mobile", async ({
     name: "Open navigation",
   });
   await expect(navigationTrigger).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
   ).toBeHidden();
@@ -240,7 +240,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
   ).toBeHidden();

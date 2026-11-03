@@ -1,11 +1,4 @@
-import {
-  Boxes,
-  ChevronDown,
-  LogOut,
-  Settings,
-  ShieldCheck,
-  UserRound,
-} from "lucide-react";
+import { Boxes, LogOut, Settings, ShieldCheck, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
@@ -25,7 +18,7 @@ type ProfileMenuProps = {
   spend?: PersonalSpendReport;
   userPages: PluginUserPageLink[];
   /**
-   * `popover` is the desktop header control.
+   * `popover` is the avatar control at the bottom of the desktop nav rail.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
@@ -331,48 +324,18 @@ export function ProfileMenu({
       <PopoverTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          "grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         closeDelay={HOVER_CLOSE_DELAY_MS}
         delay={HOVER_OPEN_DELAY_MS}
         openOnHover
       >
-        <span className="hidden items-center gap-2 md:flex">
-          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-              7d
-            </span>
-            <span className="text-xs font-semibold text-dashboard-text">
-              <SpendAmount value={spend?.sevenDaysUsd} />
-            </span>
-          </span>
-          <span
-            aria-hidden="true"
-            className="h-3 w-px bg-dashboard-fill-strong"
-          />
-          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-              30d
-            </span>
-            <span className="text-xs font-semibold text-dashboard-text">
-              <SpendAmount value={spend?.thirtyDaysUsd} />
-            </span>
-          </span>
-        </span>
         <ProfileAvatar user={identity.user} />
-        <ChevronDown
-          aria-hidden="true"
-          className={cn(
-            "hidden text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text md:block",
-            open && "rotate-180 text-dashboard-text",
-          )}
-          size={14}
-          strokeWidth={2}
-        />
       </PopoverTrigger>
       <PopoverContent
         align="end"
+        side="right"
         className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
         id="profile-popover"
       >

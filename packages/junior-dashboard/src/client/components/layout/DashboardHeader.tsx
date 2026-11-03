@@ -3,7 +3,6 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
-import { JuniorLogo } from "../JuniorLogo";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -31,7 +30,10 @@ function NavCount(props: { count?: number }) {
   );
 }
 
-/** Render the primary dashboard shell header and optional mobile nav sheet. */
+/**
+ * Render the mobile shell header and navigation sheet. Desktop navigation
+ * lives in `NavRail`.
+ */
 export function DashboardHeader(props: {
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
@@ -45,8 +47,6 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
-  /** Compact desktop header control. */
-  profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -63,13 +63,6 @@ export function DashboardHeader(props: {
     onOpenChangeRef.current(true);
   });
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
-      isActive
-        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
-        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
-    );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
@@ -92,19 +85,12 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg">
-      <div
-        className={cn(
-          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-7 md:py-3",
-          props.profile
-            ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
-            : "md:grid-cols-[auto_minmax(0,1fr)]",
-        )}
-      >
+    <header className="relative bg-dashboard-bg md:hidden">
+      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2">
         {conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
             to={props.mobileBackTo}
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
@@ -115,7 +101,7 @@ export function DashboardHeader(props: {
             aria-expanded={props.mobileNavigationOpen}
             aria-hidden={props.mobileNavigationOpen || undefined}
             aria-label="Open navigation"
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
             onClick={() => props.onMobileNavigationOpenChange(true)}
             tabIndex={props.mobileNavigationOpen ? -1 : undefined}
             type="button"
@@ -124,7 +110,7 @@ export function DashboardHeader(props: {
           </button>
         )}
         {conversationMode ? (
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
             {mobileTitle ? (
               <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
                 {mobileTitle}
@@ -136,42 +122,16 @@ export function DashboardHeader(props: {
         <Link
           aria-label={`${getDashboardAgentName()} home`}
           className={cn(
-            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
+            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
           to="/"
         >
-          <span className="truncate font-sans text-sm font-semibold md:hidden">
+          <span className="truncate font-sans text-sm font-semibold">
             {getDashboardAgentName()}
           </span>
-          <span className="hidden md:block">
-            <JuniorLogo />
-          </span>
         </Link>
-        <nav
-          aria-label="Primary"
-          className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start"
-        >
-          <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
-            to="/"
-          >
-            Conversations
-          </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-              <NavCount count={item.count} />
-            </NavLink>
-          ))}
-        </nav>
         {conversationMode ? <MobileHeaderActionsSlot /> : null}
-        {props.profile ? (
-          <div className="col-start-3 hidden justify-self-end md:block">
-            {props.profile}
-          </div>
-        ) : null}
       </div>
       {props.mobileNavigationOpen ? (
         <MobileNavigationSheet

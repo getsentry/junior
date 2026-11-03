@@ -21,6 +21,7 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
+import { NavRail, navRailOffsetClass } from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
@@ -201,8 +202,22 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
+      <NavRail
+        navItems={primaryNavItems}
+        profile={
+          loggedIn ? (
+            <ProfileMenu
+              identity={data!.me}
+              onSignOut={signOut}
+              spend={personalSpendQuery.data}
+              userPages={userPages}
+            />
+          ) : undefined
+        }
+        workspaceActive={workspace}
+      />
       <VisualViewportShell
-        className="bg-dashboard-bg"
+        className={`bg-dashboard-bg ${navRailOffsetClass}`}
         enabled={
           workspace ||
           location.pathname === "/review" ||
@@ -254,16 +269,6 @@ export function DashboardShell() {
                     spend={personalSpendQuery.data}
                     userPages={userPages}
                     variant="sheet-spend"
-                  />
-                ) : undefined
-              }
-              profile={
-                loggedIn ? (
-                  <ProfileMenu
-                    identity={data!.me}
-                    onSignOut={signOut}
-                    spend={personalSpendQuery.data}
-                    userPages={userPages}
                   />
                 ) : undefined
               }
