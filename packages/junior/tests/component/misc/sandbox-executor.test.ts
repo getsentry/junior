@@ -197,6 +197,7 @@ import {
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/session";
+import { ensureDockerDaemon } from "@/chat/sandbox/guest-docker";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import {
   isWorkspaceSnapshotNotReadyError,
@@ -959,6 +960,115 @@ describe("createTestSandbox", () => {
       },
     });
     expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
+  });
+
+  it("prepares a restored sandbox while its network policy applies", async () => {
+    const restoredSandbox = makeSandbox("sbx_restored_overlap");
+    const events: string[] = [];
+    let releasePolicy: () => void = () => {};
+    restoredSandbox.update.mockImplementationOnce(async () => {
+      events.push("policy:start");
+      await new Promise<void>((resolve) => {
+        releasePolicy = resolve;
+      });
+      events.push("policy:end");
+    });
+    restoredSandbox.writeFiles.mockImplementation(async () => {
+      events.push("skills");
+    });
+    vi.mocked(ensureDockerDaemon).mockImplementationOnce(async () => {
+      events.push("docker");
+    });
+    const onSandboxPrepare = vi.fn(async () => {
+      events.push("plugins");
+    });
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createTestSandboxRuntime({
+      sandboxId: "sbx_restored_overlap",
+      createNetworkPolicy: () => ({
+        credentialEgress: {
+          credentialToken: "token",
+          domains: ["api.example"],
+        },
+      }),
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    const acquired = manager.createSandbox();
+    await vi.waitFor(() =>
+      expect(events).toEqual(
+        expect.arrayContaining(["policy:start", "skills", "docker"]),
+      ),
+    );
+    expect(onSandboxPrepare).not.toHaveBeenCalled();
+
+    releasePolicy();
+    await acquired;
+
+    expect(events.slice(-2)).toEqual(["policy:end", "plugins"]);
+  });
+
+  it("fails a restored sandbox only after every preparation step settles", async () => {
+    const unavailable = createApiError(
+      410,
+      "Gone",
+      "sandbox_stopped",
+      "Sandbox has stopped execution and is no longer available",
+    );
+    const restoredSandbox = makeSandbox("sbx_restored_failure", {
+      writeFilesError: unavailable,
+    });
+    restoredSandbox.update.mockRejectedValueOnce(
+      createApiError(
+        500,
+        "Internal Server Error",
+        "sandbox_api_error",
+        "Sandbox API failed",
+      ),
+    );
+    let dockerStarted = false;
+    let releaseDocker: () => void = () => {};
+    vi.mocked(ensureDockerDaemon).mockImplementationOnce(async () => {
+      dockerStarted = true;
+      await new Promise<void>((resolve) => {
+        releaseDocker = resolve;
+      });
+    });
+    const onSandboxPrepare = vi.fn();
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createTestSandboxRuntime({
+      sandboxId: "sbx_restored_failure",
+      createNetworkPolicy: () => ({
+        credentialEgress: {
+          credentialToken: "token",
+          domains: ["api.example"],
+        },
+      }),
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    let settled = false;
+    const acquired = manager.createSandbox().finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => {
+      expect(dockerStarted).toBe(true);
+      expect(restoredSandbox.update).toHaveBeenCalled();
+      expect(restoredSandbox.writeFiles).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    releaseDocker();
+    const error = await acquired.catch((caught: unknown) => caught);
+
+    expect(getSandboxProvider().errors.isUnavailable(error)).toBe(true);
+    expect(onSandboxPrepare).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("keeps network policy tied to the acquired session", async () => {

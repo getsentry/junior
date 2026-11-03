@@ -252,17 +252,20 @@ export function createSandboxRuntime(
     });
   };
 
-  const prepareSandbox = async (
-    targetSandbox: SandboxSession,
-  ): Promise<void> => {
-    await syncSkills(targetSandbox);
-    // Snapshots ship Docker clients; the daemon is per-boot and must start here.
+  // Snapshots ship Docker clients; the daemon is per-boot and must start here.
+  const ensureDocker = async (targetSandbox: SandboxSession): Promise<void> =>
     await withSandboxSpan(
       "sandbox.docker.ensure",
       "sandbox.docker.ensure",
       {},
       async () => await ensureDockerDaemon(targetSandbox),
     );
+
+  const prepareSandbox = async (
+    targetSandbox: SandboxSession,
+  ): Promise<void> => {
+    await syncSkills(targetSandbox);
+    await ensureDocker(targetSandbox);
     await options.onSandboxPrepare?.(targetSandbox);
   };
 
@@ -590,10 +593,29 @@ export function createSandboxRuntime(
       throw new Error("sandbox restore failed", { cause: error });
     }
 
-    let networkPolicyKey: string | undefined;
     try {
-      networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
-      await prepareSandbox(hintedSandbox);
+      // Wait for every step so none keeps running on a sandbox we give up on.
+      const steps = await Promise.allSettled([
+        applyNetworkPolicy(hintedSandbox),
+        syncSkills(hintedSandbox),
+        ensureDocker(hintedSandbox),
+      ]);
+      const failures = steps.flatMap((step) =>
+        step.status === "rejected" ? [step.reason as unknown] : [],
+      );
+      if (failures.length > 0) {
+        throw (
+          failures.find((error) =>
+            getSandboxProvider().errors.isUnavailable(error),
+          ) ?? failures[0]
+        );
+      }
+      const [policy] = steps;
+      const networkPolicyKey =
+        policy.status === "fulfilled" ? policy.value : undefined;
+      // Plugin hooks may need egress, and the old policy holds an expired
+      // credential token, so they start only after the new policy applies.
+      await options.onSandboxPrepare?.(hintedSandbox);
       dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
