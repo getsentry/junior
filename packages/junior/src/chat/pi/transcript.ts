@@ -35,7 +35,8 @@ function isRuntimeTurnContextPart(part: unknown): boolean {
   );
 }
 
-function hasCurrentInstruction(message: PiMessage): boolean {
+/** Whether a user message carries a Turn instruction, not only context. */
+export function hasCurrentInstruction(message: PiMessage): boolean {
   return (
     userMessageContent(message)?.some(
       (part) =>

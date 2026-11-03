@@ -161,7 +161,7 @@ import {
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
-import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
+import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -1033,7 +1033,8 @@ async function executeAgentRunInPrivacyContext(
       pairPendingRuntimeContext = false,
       mode: "blocking" | "active" = "active",
     ): Promise<AgentLoopTurnUpdate | undefined> => {
-      const compaction = await compactActiveContextIfNeeded(
+      // A ready background summary replaces history without a model call.
+      const compaction = await compactWithPreparedSummary(
         {
           conversationId,
           modelId: activeModelId,

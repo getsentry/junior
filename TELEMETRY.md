@@ -327,6 +327,32 @@ Attributes on the `agent.context_compaction` span:
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
   `handoff` runs for a model handoff.
+
+A swap of a prepared background summary has its own
+`agent.context_compaction` span and makes no model call.
+`chat/services/context-compaction-swap.ts` owns it. The mode tells the swap
+point: `blocking` at Turn start, `active` between model calls. The span exists
+only when the current History version has a background compaction request or
+result.
+
+| Attribute                         | Type   | Meaning                                         |
+| --------------------------------- | ------ | ----------------------------------------------- |
+| `app.compaction.outcome`          | string | `applied`, `not_ready`, or `discarded`          |
+| `app.compaction.discard_reason`   | string | why a ready summary was not used                |
+| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap      |
+| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary |
+| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages        |
+| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer       |
+| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                |
+
+- `not_ready`: the job has not written a ready summary, or it failed. A
+  blocking compaction can still follow at the threshold.
+- `app.compaction.discard_reason`: `history_version_changed`,
+  `profile_changed`, `over_target`, `conflict` (another replacement committed
+  first), or `split_tool_call` (the mark falls between a tool call and its
+  result).
+- A swap also sets `app.compaction.input.estimate`,
+  `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
 - A `handoff` span has only `app.compaction.mode`. A failed handoff or an
   input above the limit sets `error.type`.
 

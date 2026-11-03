@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createResumeState } from "@/chat/agent/resume";
+import { commitMessages } from "@/chat/conversations/projection";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
+import type { PiMessage } from "@/chat/pi/messages";
+import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { runCodeModeScript } from "@/chat/codemode/bridge";
 import {
   closeDb,
@@ -199,6 +203,92 @@ describe("readConversationEvent", () => {
     expect(missing.value).toContain(
       `Conversation event not found: seq 999 in ${CURRENT_CONVERSATION_ID}`,
     );
+  });
+
+  it("reads back a tool result that a prepared-summary swap cleared", async () => {
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: CURRENT_CONVERSATION_ID,
+      visibility: "public",
+    });
+    const log = Array.from(
+      { length: 400 },
+      (_, index) => `step ${index} checksum ${(index * 7_919).toString(16)}`,
+    ).join("\n");
+    const ask = (text: string, timestamp: number) =>
+      ({
+        role: "user",
+        content: [{ type: "text", text: renderCurrentInstruction(text) }],
+        timestamp,
+      }) as PiMessage;
+    const reply = (timestamp: number) =>
+      ({
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "call-bash", name: "bash", arguments: {} },
+        ],
+        api: "openai-responses",
+        provider: "openai",
+        model: "test-model",
+        usage: {},
+        stopReason: "toolUse",
+        timestamp,
+      }) as PiMessage;
+    const earlier = [ask("Start the deploy.", 1)];
+    const marked = await commitMessages({
+      conversationId: CURRENT_CONVERSATION_ID,
+      messages: earlier,
+    });
+    await getConversationEventStore().append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 2,
+        data: {
+          type: "compaction_prepared",
+          markSeq: marked.committedSeq,
+          historyVersion: marked.historyVersion,
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+          outcome: "ready",
+          summary: "The person started a deploy.",
+        },
+      },
+    ]);
+    const messages = [
+      ...earlier,
+      ask("Show the deploy log.", 3),
+      reply(4),
+      {
+        role: "toolResult",
+        toolCallId: "call-bash",
+        toolName: "bash",
+        content: [{ type: "text", text: log }],
+        isError: false,
+        timestamp: 5,
+      } as PiMessage,
+      ask("What was the last checksum?", 6),
+    ];
+    await commitMessages({ conversationId: CURRENT_CONVERSATION_ID, messages });
+
+    const swap = await compactWithPreparedSummary(
+      {
+        conversationId: CURRENT_CONVERSATION_ID,
+        mode: "blocking",
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        piMessages: messages,
+      },
+      async () => "Unused.",
+    );
+    expect(swap.compacted).toBe(true);
+    const cleared = JSON.stringify(swap.piMessages);
+    const seq = /readConversationEvent\(\{ seq: (\d+) \}\)/.exec(cleared)?.[1];
+    expect(cleared).not.toContain(log);
+    expect(seq).toBeDefined();
+
+    const result = await runScript(`
+      return await tools.readConversationEvent({ seq: ${seq}, limit: 50000 });
+    `);
+    expect(result.value).toMatchObject({ tool_name: "bash", text: log });
   });
 
   it("refuses events of a private conversation outside the current tree", async () => {

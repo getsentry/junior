@@ -69,10 +69,15 @@ export interface CompactionMetadata {
   threadId?: string;
 }
 
+/** Outcome of one compaction attempt. */
 export interface CompactContextResult {
   compacted: boolean;
   piMessages?: PiMessage[];
-  reason?: "below_threshold" | "missing_context" | "summary_failed";
+  reason?:
+    | "below_threshold"
+    | "history_conflict"
+    | "missing_context"
+    | "summary_failed";
 }
 
 interface HandoffContextArgs {
@@ -90,7 +95,8 @@ interface HandoffContextArgs {
   };
 }
 
-interface ActiveContextCompactionArgs {
+/** Inputs of a capacity compaction or a prepared-summary swap. */
+export interface ActiveContextCompactionArgs {
   conversationId: string;
   modelId: string;
   modelProfile: ModelProfile;
@@ -190,7 +196,8 @@ function isPayloadHeavy(text: string): boolean {
   );
 }
 
-function userMessage(text: string): PiMessage {
+/** Build a text-only user message for a replacement history. */
+export function userMessage(text: string): PiMessage {
   return {
     role: "user",
     content: [{ type: "text", text }],
@@ -356,13 +363,40 @@ function turnRuntimeContextMessage(
   );
 }
 
+/**
+ * Build the runtime context of summarized history that the kept history
+ * does not carry: the latest session context and the AGENTS.md
+ * instructions. Request context of earlier Turns is left out.
+ */
+export function summarizedRuntimeContextMessage(
+  summarized: PiMessage[],
+  kept: PiMessage[],
+): PiMessage | undefined {
+  const earlierContext = retainRuntimeTurnContext(summarized);
+  const keptContext = retainRuntimeTurnContext(kept);
+  const sessionContext = keptContext.some((message) =>
+    userMessageContent(message).map(textPart).some(isSessionTurnContext),
+  )
+    ? undefined
+    : latestSessionContext(earlierContext);
+  return toRuntimeContextMessage(
+    runtimeContextContent(
+      sessionContext ? [sessionContext] : [],
+      findVisibleAgentsInstructions(kept) ? [] : earlierContext,
+    ),
+  );
+}
+
 interface RetainedUserMessage {
   message: PiMessage;
   sourceIndex: number;
 }
 
-/** Build retained user messages for a compacted Pi replacement history. */
-function selectRetainedUserMessageEntries(
+/**
+ * Build retained user messages for a compacted Pi replacement history. Each
+ * entry keeps the index of its source message.
+ */
+export function selectRetainedUserMessageEntries(
   messages: PiMessage[],
   maxTokens = RETAINED_USER_MESSAGE_TOKENS,
 ): RetainedUserMessage[] {
@@ -531,7 +565,7 @@ async function summarizeContext(
 }
 
 /** Keep generated text inside the existing evidence-only prompt boundary. */
-function renderCompactionSummary(summary: string): string {
+export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
     '<thread-context authority="evidence-only">',
@@ -541,7 +575,7 @@ function renderCompactionSummary(summary: string): string {
 }
 
 /** Measure provider-visible history without counting host-only message fields. */
-function estimateHistoryTokens(messages: PiMessage[]): number {
+export function estimateHistoryTokens(messages: PiMessage[]): number {
   return estimateContextTokens(messages).tokens;
 }
 
