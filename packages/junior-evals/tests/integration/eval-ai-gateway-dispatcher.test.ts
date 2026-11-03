@@ -8,12 +8,8 @@ import { installEvalAiGatewayDispatcher } from "../../src/eval-ai-gateway-dispat
 
 const openServers = new Set<http.Server>();
 
-async function startStalledServer(sendHeaders = true): Promise<string> {
-  const server = http.createServer((_request, response) => {
-    if (!sendHeaders) return;
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.flushHeaders();
-  });
+async function startServer(listener: http.RequestListener): Promise<string> {
+  const server = http.createServer(listener);
   openServers.add(server);
   await new Promise<void>((resolve) =>
     server.listen(0, "127.0.0.1", () => resolve()),
@@ -25,6 +21,14 @@ async function startStalledServer(sendHeaders = true): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function startStalledServer(sendHeaders = true): Promise<string> {
+  return await startServer((_request, response) => {
+    if (!sendHeaders) return;
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.flushHeaders();
+  });
+}
+
 afterEach(async () => {
   for (const server of openServers) {
     server.closeAllConnections();
@@ -34,6 +38,27 @@ afterEach(async () => {
 });
 
 describe("eval AI Gateway dispatcher", () => {
+  it("drops the session affinity header", async () => {
+    const targetOrigin = await startServer((request, response) => {
+      response.end(JSON.stringify(request.headers));
+    });
+    const restore = installEvalAiGatewayDispatcher(1_000, targetOrigin);
+    try {
+      const response = await fetch(targetOrigin, {
+        headers: {
+          "X-Session-Affinity": "agent:212aaafaf81eee9e28b821a24fd743e7",
+          "x-api-key": "kept",
+        },
+      });
+      const headers = await response.json();
+
+      expect(headers).not.toHaveProperty("x-session-affinity");
+      expect(headers).toMatchObject({ "x-api-key": "kept" });
+    } finally {
+      await restore();
+    }
+  });
+
   it("terminates a request that never receives headers", async () => {
     const targetOrigin = await startStalledServer(false);
     const restore = installEvalAiGatewayDispatcher(100, targetOrigin);
