@@ -115,14 +115,20 @@ export async function stackGitHubPullRequest(
     // Bottom to top. Each pull request is based on the head of the one below.
     const chain = [target.number];
     let branch = target.base.ref;
-    for (let depth = 0; depth < MAX_STACK_DEPTH; depth += 1) {
+    // Stop at the trunk. A pull request from the trunk is not part of the stack.
+    for (
+      let depth = 0;
+      depth < MAX_STACK_DEPTH && branch !== target.base.repo.default_branch;
+      depth += 1
+    ) {
       const parents = await github(
         "github.pull.list",
         `${api}/pulls?state=open&per_page=2&head=${encodeURIComponent(`${owner}:${branch}`)}`,
         openPullRequestsSchema,
       );
       if (!parents) return undefined;
-      // No parent: `branch` is the trunk. Two parents: the chain is ambiguous.
+      // No parent: `branch` is not a pull request head. Two parents: the
+      // chain is ambiguous.
       if (parents.length !== 1) break;
       const parent = parents[0]!;
       const stacks = await github(

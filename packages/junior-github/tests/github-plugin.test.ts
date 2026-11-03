@@ -1813,12 +1813,15 @@ Conversation: \`local:test:old-conversation\`
             );
           }
           if (operation === "github.pull.list") {
-            // Only feat/bottom has an open pull request, so main is the trunk.
+            // The walk must stop at main, so the pull request from main
+            // onto a release branch never joins the stack.
+            const head = new URL(request.url).searchParams.get("head");
             return Response.json(
-              new URL(request.url).searchParams.get("head") ===
-                "getsentry:feat/bottom"
+              head === "getsentry:feat/bottom"
                 ? [{ number: 700, base: { ref: "main" } }]
-                : [],
+                : head === "getsentry:main"
+                  ? [{ number: 650, base: { ref: "release" } }]
+                  : [],
             );
           }
           if (operation === "github.stack.read") return Response.json(stacks);
