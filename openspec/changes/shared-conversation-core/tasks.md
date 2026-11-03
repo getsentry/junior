@@ -22,7 +22,7 @@
 - "Needs" lists the decisions (`design.md`, Decisions Needed) that must be
   signed off first. A change to a decided rule needs David's OK.
 - Gate timing (Decided: P41): step G ships first. With the model complete
-  (G.1a–G.1f), it must be green before the cutover release (step 15). A
+  (G.1a–G.1g), it must be green before the cutover release (step 15). A
   build step merges only when the checks its Verify line names are green
   against the new core.
 - "Verify" names the invariants (I), liveness properties (L), rules (S),
@@ -41,32 +41,33 @@
       absent, never passed in production, with no global, singleton or
       test-only module API. Reason: decided for the verification gate
       (P42).
-- [ ] G.1 Add the TLA+ model in `packages/junior/verification/` (P37, P40),
-      ported from the Quint drafts on branch
-      `spec/shared-conversation-core-model` (7ca64c2: `worker_lock.qnt`,
-      `stop_clock.qnt`, `FINDINGS.md`, `traces/`). CI runs TLC for safety
-      and liveness, and every worked example as a named trace.
+- [x] G.1 The TLA+ model is in `packages/junior/verification/` (P37, P40):
+      `WorkerLock.tla`, `StopClock.tla`, `Cutover.tla`, `cfg/`,
+      `checks.txt` and `check.sh`. `check.sh` runs every check in
+      `checks.txt` with TLC and fails on a changed result. `FINDINGS.md`
+      has the counterexamples.
 - [ ] G.1a Model parent and child conversations and the system actor.
 - [ ] G.1b Model the adversarial `send`.
 - [ ] G.1c Model request-record matching: I5, I6, I9 and I12.
 - [ ] G.1d Model tree-stop results: I8, and P35 on the receive clock (P44).
 - [ ] G.1e Model sandbox process tags: I13.
-- [ ] G.1f Grow the bound toward the P37 target bound, and model the P44
-      receive clock: every input and stop stamped at receive, with late
-      delivery.
+- [ ] G.1f Grow the bound toward the P37 target bound. Model the move of
+      today's inbox input at cutover (P45) and the P46 choice.
+- [ ] G.1g Run `check.sh` in CI, with every worked example as an `ex_*`
+      check.
 - [ ] G.2 Add the scenario-id list and the trace check there. At the gate, a
       scenario may map only to a model invariant or trace. The step that
       builds the behavior adds its test id. The check also matches each
       fault point name with a model crash action, both ways.
 - [ ] G.3 Add the conformance harness (P38) on the integration harness,
-      with the `faults` port (P42): one named point for each crash-point
-      item, named like the model's crash actions, and a two-worker suite on
-      real Postgres for the lock compare-and-set. It runs against the new
-      core as each build step lands.
+      with the `faults` port (P42): one point per `Crash_<Point>` action in
+      `WorkerLock.tla` that the design has (17 of the 20), and a
+      two-worker suite on real Postgres for the lock compare-and-set. It
+      runs against the new core as each build step lands.
 - [ ] G.4 Add the structural check runner. Each rule lands with the step
       that makes it true.
 - Verify: the model holds I1–I14 and L1–L3 within the bound; every scenario
-  maps. Step G is not green until G.1a to G.1f are modeled, and it is green
+  maps. Step G is not green until G.1a to G.1g are done, and it is green
   before the cutover release (step 15).
 - Rollback: CI and test wiring only. Remove the jobs.
 
@@ -80,6 +81,8 @@
 
 ### 3. SQL worker lock, lock version and wake time
 
+Needs: P46.
+
 - [ ] 3.1 Add lock token, expiry and version to the conversation row. Take
       the lock with the compare-and-set. Check in and release with the
       token and version. All lock times use database `now()`.
@@ -89,14 +92,15 @@
       release while the turn is `running`.
 - [ ] 3.3 `recordSignIn` raises `inboxSeq` and sets `wakeAtMs` to now
       before it notifies.
-- [ ] 3.4 Measure the check-in load (P43 switch rule).
-- [ ] 3.5 Test: a slow worker after a takeover cannot check in (turn E3); a
+- [ ] 3.4 A notify that finds a live lock, as P46 decides.
+- [ ] 3.5 Measure the check-in load (P43 switch rule).
+- [ ] 3.6 Test: a slow worker after a takeover cannot check in (turn E3); a
       message while the lock is held (turn E7); a sign-in while the lock is
       held.
 - Verify: I3 for lock take and check-in; L3 without repair fairness; S5 for
   lock writes; turn-lifecycle › Slow worker save; conversation-inbox ›
   Message while the lock is held; traces turn E3, E7, access E2 and
-  `wake_l3NoRepair_signInDuringLock` (now holds).
+  `wakeLive_design l3_pausedResumedNoRepair`; P46 as decided.
 
 ### 4. Turn rows
 
@@ -184,7 +188,7 @@
 - Verify: I8, I10, I11 (with joins) and I14; L1 under stop; turn-stop ›
   Stop races a turn start, Turn started after the click, Older input tries
   to join, Newer input joined before the stop, Stop during a pause; traces
-  turn E5, agents E3 and E4, and the `stop_*` traces; turn-stop › Late
+  turn E5, agents E3 and E4, and the `stop_receive_*` checks; turn-stop › Late
   result after a tree stop, Late result after stopAgent, Result in flight
   at the stop, Dashboard stop of a child, Slack message received late.
 
@@ -212,8 +216,6 @@
   traces agents E1, E2, E5 and edges E2; the guardian cases.
 
 ### 12. Plugin-started agents
-
-Needs: P18 (the rest: where the result comes from).
 
 - [ ] 12.1 Plugin-started runs use `work()`. An Automation run has
       `replyTo: stored` and `outcomes` on its record; `finishTurn` delivers
@@ -244,13 +246,17 @@ Needs: P45.
 
 - [ ] 14.1 Add the `core` owner field to the conversation row (P45).
       Today's workers read it and refuse a conversation that the new core
-      owns. They move an idle new-core conversation back to today's
-      workers (the rollback path).
-- [ ] 14.2 Readers (`listAgents`, the dashboard, reporting, result handling
+      owns. They read `core` without taking a pinned lease, and a move
+      back replaces the pin. They move an idle new-core conversation back
+      to today's workers (the rollback path).
+- [ ] 14.2 Today's turn cursor writes check the Redis lease token, not
+      only the per-turn mutation lock (P45, C3).
+- [ ] 14.3 Readers (`listAgents`, the dashboard, reporting, result handling
       and the plugin view) read turn rows and request records for a
       new-core conversation, else today's rows.
-- [ ] 14.3 Test: an old worker refuses a new-core conversation.
-- Verify: every check from steps G to 13.
+- [ ] 14.4 Test: an old worker refuses a new-core conversation; a cursor
+      write after its lease expired is refused.
+- Verify: every check from steps G to 13; `cutover_oldFenced safety`.
 - Rollback: revert. No conversation is new core yet.
 
 ### 15. Cutover release
@@ -260,12 +266,13 @@ Needs: P45.
 - [ ] 15.1 Every kind runs through `work()`: Slack, web and ACP, events,
       Automations, plugin-started agents, child agents and the CLI
       (`pnpm cli -- chat` uses core ingress and runs `work()` locally).
-- [ ] 15.2 The first new-core lock take of a conversation moves its state
-      (P45): an open Redis turn cursor into a turn row keyed by its turn id,
-      active Agent invocation rows and dispatch records into request
-      records, Slack `activeTurnId` and `pendingAuth` into the turn row.
-      Each move inserts once and then deletes the old state, so a repeat
-      after a crash does nothing new.
+- [ ] 15.2 Every new-core lock take that finds today's state moves it
+      (P45): it pins today's lease, then in one locked step moves an open
+      Redis turn cursor into a turn row keyed by its turn id, today's
+      waiting inbox input into inbox entries with request records, active
+      Agent invocation rows and dispatch records into request records, and
+      Slack `activeTurnId` and `pendingAuth` into the turn row. A repeat
+      after a crash inserts nothing new and only deletes.
 - [ ] 15.3 Report or move live `replaced` requests before the cutover.
 - [ ] 15.4 Set the `maxAgentDepth` default to 1 (Decided).
 - [ ] 15.5 Document one sandbox per conversation in the user docs, on the
@@ -275,7 +282,8 @@ Needs: P45.
       exploit steps (P36).
 - [ ] 15.6 Test: a conversation with an open Redis turn cursor and a
       running child agent moves on its first lock take.
-- Verify: the gate is green; I1 holds across the move; turn-lifecycle ›
+- Verify: the gate is green; `cutover_midDeployPinnedFenced` `safety` and
+  `noDuplicateTurn`; I1 holds across the move; turn-lifecycle ›
   Cutover from the old turn cursor; agent-tree › Grandchild spawns;
   conversation-inbox › Duplicate CLI input; turn-access › Docs state the
   shared-file limit.

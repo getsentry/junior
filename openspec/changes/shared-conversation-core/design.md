@@ -325,16 +325,22 @@ went.
 - **Decided:** one restart after a lost worker, and the restart counts as
   an error. One retry limit per turn: 5 errors, restarts included. Message
   delivery attempts stay separate. Source: the planning thread.
-- **Detail:** the turn row has `errors` and `restarts`. An error after
-  take-in adds 1 to `errors` (P31). A lost-worker restart adds 1 to both.
-  `restarts` (limit 1) only enforces the one restart. The fifth error ends
-  the turn: `failed: error`, or `failed: lost_worker` when the fifth is a
-  restart. A second lost worker ends it `failed: lost_worker`.
-- **One failure counts once:** an error saves `paused: error_retry` with
-  `errors + 1`. The next worker resumes a `paused` turn, so case 3 of
-  `work()` does not fire and adds nothing. A turn is lost only when it is
-  still `running` under an expired lock (P8). That happens when the
-  worker died or its pause save failed, so no error was saved for it.
+- **Detail:** one failure counts once. `errors` counts every failure of the
+  turn: an error after take-in (P31) and a lost-worker restart. `restarts`
+  counts restarts only, and is at most 1. The turn fails when `errors`
+  reaches 5: `failed: error`, or `failed: lost_worker` when the restart
+  would be the fifth error. A second lost worker ends it
+  `failed: lost_worker`.
+- **What stops a double count:** P31. An error saves `paused: error_retry`
+  with `errors + 1`, so the next worker resumes a `paused` turn, and case 3
+  of `work()` does not fire. A turn is lost only when it is still `running`
+  under an expired lock (P8), so no error was saved for that failure.
+  Without P31, an error save leaves the turn `running`; a crash right after
+  it makes the next worker restart it, and one failure uses two errors
+  (`errors_noPause oneChargePerAttempt`, 8 steps).
+- **Checks:** `errors_design safety` (`errorBudget`, `oneChargePerAttempt`)
+  holds; `errors_design ex_restartUsesLastError` reaches the
+  `failed: lost_worker` end at 4 errors.
 - **Evidence:** `task-execution/paused-turn.ts` (`MAX_LOST_WORKER_RESUMES`);
   `task-execution/state.ts` (`CONVERSATION_WORK_MAX_RETRIES = 5`).
 
@@ -438,9 +444,9 @@ went.
   `running` and the worker just took an expired lock. Every clean end of an
   attempt leaves the turn `paused` (P10) or finished, never `running`. A
   lost turn with `restarts: 0` restarts from its checkpoint and counts one
-  error (P4); otherwise `finishTurn(failed: lost_worker)`. A worker saves its pause before it
-  releases. If that save fails, it does not release: the lock expires, and
-  the next worker treats the turn as lost.
+  error (P4); otherwise `finishTurn(failed: lost_worker)`. A worker saves
+  its pause before it releases. If that save fails, it does not release:
+  the lock expires, and the next worker treats the turn as lost.
 - **Why:** #2298 made a live turn whose lock expired wait for one restart.
   With fenced saves, the old worker cannot save or post after the takeover.
 - **Evidence:** `task-execution/paused-turn.ts` (`pauseLostWorkerTurn`).
@@ -533,7 +539,7 @@ went.
   refuses a plugin binding); `credentials/subject.ts` (signs `allowedWhen`,
   `teamId`, `channelId`, `userId`).
 
-### P18. Automation results (Q17) — Decided in part
+### P18. Automation results (Q17) — Decided
 
 - **Decided:** an Automation run is a conversation with no Slack reply
   target (`replyTo: stored`). Its responses go only to the web and dashboard
@@ -557,7 +563,10 @@ went.
   outcomes; it shows on the Automation. A run that stops with no result gets
   one reminder (`remindMissingAutomationResult`). If it still declares
   none, it ends `completed` and posts nothing.
-- **Proposal (the rest):** David: "it's ok for this to vary."
+- **Decided (the rest):** the result source can vary. David: "it's ok
+  for this to vary." Source: the planning thread. What varies: a run's
+  result is its final response, or the `finishAutomationRun` call when the
+  run makes one. The mapping below is the same for both.
   - The result comes from the finished run by default: a completed turn's
     final response is a `send_message` result, and a completed turn with
     no response is `no_action`. A `finishAutomationRun` call, when made,
@@ -714,9 +723,11 @@ turn".
   - Built in step 3, with the SQL lock.
   - Model check: without the `recordSignIn` change and the delayed notify,
     a sign-in during a held lock drops its notify, and L3 fails without
-    the repair job (trace `wake_l3NoRepair_signInDuringLock` in the Quint
-    drafts, P37).
+    the repair job (`wakeLive_rev3 l3_pausedResumedNoRepair`). With them,
+    `wakeLive_design l3_pausedResumedNoRepair` holds.
 - **Why:** a notification that arrives while the lock is held is dropped.
+  That loses a wake when the holder dies or loses the lock between its
+  pause save and its release (P46).
   The compare-and-set stops a later wake time from hiding a new message.
   The release-then-read order means one side always sees the other: if the
   new worker failed to take the lock, the release came after, so the read
@@ -756,12 +767,12 @@ turn".
      with no history.
 - **Why:** a stop ends what the person sent before it, and nothing newer.
   The 5ed29c2 rule compared the stop with the turn's database
-  `startedAtMs`. The model found it wrong both ways: a turn that started
-  after the click but before `stop()` saved kept posting
-  (`stop_turnBeforeStopKeepsPosting`), and with the source clock ahead, a
-  newer message's turn was stopped (`stop_stopKillsNewerTurn`). The rule
-  above passes every stop check when the stop and the input share a clock
-  (`stop_proposed_*`); P44 makes that one clock.
+  `startedAtMs`. An earlier model found it wrong both ways: a turn that
+  started after the click but before `stop()` saved kept posting, and with
+  the source clock ahead, a newer message's turn was stopped. The rule
+  above holds on the receive clock (`StopClock.tla`, `stop_receive_*`
+  `safety`). Without the join refusal (rule 2), older input joins after
+  the stop (`stop_receive_noJoinFix i11j_noOlderJoinAfterStop`).
 
 ### P35. Results after a stop — Decided
 
@@ -833,14 +844,18 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 - **Accepted behavior:** a Slack message that Junior receives late, after a
   retry, counts as newer than a stop the person clicked after sending it,
   so it runs.
-- **Why it was open:** the model showed source clocks failing across
-  sources (checks `stop_proposed_crossAhead` and
-  `stop_proposed_crossBehind`). An inbox sequence number alone also fails
-  with late messages (check `stop_seq_same`).
+- **Why it was open:** an earlier model showed source clocks failing
+  across sources, and an inbox sequence number alone failing with late
+  messages.
+- **Checks:** `stop_receive_same`, `_ahead`, `_behind`, `_crossAhead` and
+  `_crossBehind` hold `safety`. The accepted behavior is reachable on
+  purpose (`acc_lateSentBeforeStopRuns`, `acc_earlySentAfterStopNotRun`).
 
 ### P45. A cutover that is safe under a rolling deploy (from P1)
 
-Old and new workers run at once during each deploy.
+Old and new workers run at once during each deploy. Model: `Cutover.tla`
+(P37). The first draft failed two of three checks; this proposal folds in
+the four fixes.
 
 - **Proposal:**
   - The conversation row gets a `core` field (`old` or `new`). The SQL
@@ -848,15 +863,44 @@ Old and new workers run at once during each deploy.
     same compare-and-set. The reader release before the cutover (`tasks.md`
     step 14) teaches today's workers to read it: they refuse a conversation
     that the new core owns.
-  - The first new-core lock take of a conversation also takes today's
-    Redis lease, so it waits while an old worker is mid-turn. Then, in one
-    locked step, it moves the state: an open Redis turn cursor into a turn
-    row keyed by its turn id, active Agent invocation rows and dispatch
-    records into request records, and Slack `activeTurnId` and
-    `pendingAuth` into the turn row. Each move inserts once and then
-    deletes the old state, so a repeat after a crash does nothing new.
+  - **Every new-core lock take that finds today's state runs the move**,
+    not only the take that set `core` (C1, C2). It takes today's Redis
+    lease (`execution.lease`), so it waits while an old worker is
+    mid-turn. Then, in one locked step, it moves the state: an open Redis
+    turn cursor into a turn row keyed by its turn id; today's waiting
+    inbox input (`pendingMessages`) into inbox entries with core-minted
+    request records; active Agent invocation rows and dispatch records
+    into request records; Slack `activeTurnId` and `pendingAuth` into the
+    turn row. The insert is keyed by turn id, so a repeat after a crash
+    inserts nothing new and only deletes.
+  - **The move pins the lease** (C4). Before the insert, it writes today's
+    lease with no expiry and leaves it there. Only the reader release
+    understands the pin: it reads `core` without taking the lease, and a
+    move back replaces the pin. A worker without the reader release can
+    never take the lease of a moved conversation, so this does not depend
+    on deploy order.
+  - **The reader release fences today's cursor writes with the lease**
+    (C3). Today each cursor write takes only a per-turn mutation lock
+    (`task-execution/turn-cursor.ts`, `withTurnCursorMutation` on
+    `turnCursorMutationKey`; `main` at `0dbbec3`), not the conversation
+    lease. The reader release makes them check the lease token. A stalled
+    old worker can still post until its next check-in: the same window as
+    P5 "Limit".
   - A cutover switch decides whether a lock take on an old-core
     conversation moves it. The cutover release turns it on.
+- **Checks:**
+  - First draft: `cutover_design noStrandedCursor` (a crash after the
+    core switch strands the open turn) and
+    `cutover_designNoStall noCrossCoreDuplicate` (a crash inside the move
+    runs a turn twice after a rollback) fail.
+  - Move on every take, cursor writes not fenced:
+    `cutover_always noCrossCoreDuplicate` fails (an expired lease is not a
+    stopped old worker).
+  - Fenced, not pinned: `cutover_midDeployFenced oneCoreLive` fails (a
+    worker without the reader release takes the lease after the move).
+  - All four fixes: `cutover_midDeployPinnedFenced` holds `safety` and
+    `noDuplicateTurn`.
+- **Model gap:** the move of today's inbox input is not modeled yet.
 - **Rollback of the cutover release:** turn the switch off. No more
   conversations move. A new-core conversation goes back to today's workers
   at its next lock take once it has no open turn and no open record; open
@@ -869,6 +913,25 @@ Old and new workers run at once during each deploy.
   made again. After the columns and old tables drop, only fix forward.
 - **Why:** the lock take is already the one place a worker decides to run
   a conversation, so the owner check costs no extra read.
+
+### P46. A notify lost while the lock is held (from the model)
+
+P32 drops a notify that arrives while the lock is held. The holder's
+release-then-read covers it, but not when the holder dies or loses its
+lock between its pause save and its release. With one such loss, a paused
+turn waits for the repair job (`errors_design l3_pausedResumedNoRepair`,
+12 steps: a dropped `send()` notify, `Crash_AfterSavePause`, then the
+redelivered message dropped too before the lock expires). That breaks L3
+as `specs/verification/spec.md` states it ("without fairness for the
+repair job"). With the repair job, L3 holds
+(`errors_design l3_pausedResumed`).
+
+- **Proposal:** a notify that finds a live lock is queued again with a
+  delay until the lock expires, instead of dropped.
+- **Alternative:** require L3 without the repair job only for runs with no
+  loss, and accept the repair-job wait after a loss, as for a lost
+  `running` turn (`lostTurnPickedUpNoRepair`, accepted).
+- **Model gap:** neither option is modeled yet.
 
 ## Verification
 
@@ -886,39 +949,45 @@ Decided (the planning thread).
 
 ### P37. Protocol model — Decided
 
-- **Decided:** TLA+, checked by TLC. TLC checks the safety invariants
-  (I1–I14) and the liveness properties (L1–L3) exhaustively within the
-  bound. Its breadth-first search prints a shortest counterexample trace.
-  No Quint and no Apalache; Apalache comes back only if TLC cannot print
-  the shortest traces. Each worked example in `interfaces/*.md` is a named
-  trace (for example `turn_E3_slow_worker`). Source: the planning thread.
+- **Decided:** TLA+, checked by TLC. Source: the planning thread. The model
+  is in `packages/junior/verification/` (P40):
+  - `WorkerLock.tla`: worker lock, lock version, turn row, errors,
+    deliveries and wake-ups;
+  - `StopClock.tla`: the stop time on the receive clock (P34, P44);
+  - `Cutover.tla`: the cutover under a rolling deploy (P45);
+  - `cfg/`: one TLC config per instance, with the constants of one plan
+    revision;
+  - `checks.txt`: each check and its expected result; `check.sh` runs
+    them with TLC and fails on any change of result.
+- TLC checks the safety invariants and the liveness properties
+  exhaustively within each bound. It searches breadth-first, so each
+  counterexample trace is a shortest one. An expected `violated` is a
+  known counterexample, a worked example (`ex_*`, for example
+  `ex_turn_E3_slowWorker`) that must be reachable, or accepted behavior
+  (`acc_*`). `FINDINGS.md` has the counterexamples.
 - **Target bound:** 2 conversations (a parent and a child), 2 person actors
   and the system actor, 4 inputs, 2 worker crashes, 2 lock expiries and 2
   delivery attempts per run.
-- **Checked so far** (TLC, exhaustive, on the Quint drafts at repo-root
-  `verification/` on branch `spec/shared-conversation-core-model` at
-  7ca64c2). The drafts are being ported to TLA+; G.1 merges the TLA+
-  model, not the drafts:
-  - worker lock model (`worker_lock.qnt`): 1 conversation, 2 workers, 2
-    person actors, 2 inputs, at most 2 crashes and lock expiries combined,
-    2 post attempts per delivery, 2 turn errors;
-  - wake liveness (`wakeLive_*`): the same model with no crashes or
-    expiries and no soft pause;
-  - stop model (`stop_clock.qnt`): 1 conversation, 1 person actor, 2
-    inputs, 1 stop, 2 turns, 6 clock ticks, skew 0 and ±3.
+- **Checked so far:** 66 checks (`results.txt`). Bounds are smaller than
+  the target; each instance turns on only what it needs:
+  - `WorkerLock`: 1 conversation, 2 workers, 2 inputs, at most 2 losses
+    (crashes plus lock expiries), 2 post attempts per delivery, 5 turn
+    errors. Wake liveness (`wakeLive_*`) has no losses and no soft pause.
+  - `StopClock`: 1 person actor, 2 inputs, 1 stop, 2 turns, 6 clock ticks.
+  - `Cutover`: 1 conversation, one worker of each kind (without the reader
+    release, with it, new core), 2 inputs, up to 2 crashes, 2 lease or
+    lock expiries, 3 switch flips.
 - **Not modeled yet** (step G tasks G.1a–G.1f): parent and child
   conversations, the system actor, the adversarial `send`, request-record
   matching (I5, I6, I9, I12), tree-stop results (I8), sandbox process tags
-  (I13), and the P44 receive clock. Until then, these invariants are not
-  checked.
+  (I13), the move of today's inbox input at cutover (P45), and the P46
+  options. Until then, these invariants are not checked.
 - **Adversary:** a `send` action that puts any message with any request id
   in any inbox, so I9 and the E5 traces are not vacuous.
 - **Processes:** each sandbox process carries its creator's (actor,
   subject). The proxy invariant I13 then covers access E5. Files are not
   modeled: shared files are an accepted, documented limit (P36), not a
   gate check.
-- **Not chosen:** Quint (typed syntax, younger tooling); P (state machines
-  close to code, weaker for liveness and exhaustive checks).
 
 ### P38. Conformance tests — Decided
 
@@ -930,7 +999,9 @@ Decided (the planning thread).
   row, request record, delivery) with the model. It does not check internal
   steps.
 - **No mocks:** no mocks of Junior modules. Crashes come from the one
-  `faults` port (P42).
+  `faults` port, at the points named after the `Crash_<Point>` actions in
+  `WorkerLock.tla` (P42). A counterexample in `checks.txt` becomes a fixed
+  conformance run.
 - **Today's code:** the gate's first suite checks only what today's code
   already holds. Each step's Verify line adds what must be green after it.
 
@@ -952,15 +1023,17 @@ Decided (the planning thread).
 ### P40. Traceability and where the checks live — Decided
 
 - **Decided:** the checks live in `packages/junior/verification/` from day
-  one: the model, the scenario-id list and the trace check. This plan only
+  one: the model (`WorkerLock.tla`, `StopClock.tla`, `Cutover.tla`,
+  `cfg/`), `checks.txt`, `check.sh`, the scenario-id list and the trace
+  check. This plan only
   links to them, so deleting it removes nothing that CI needs. Source: the
   planning thread.
 - Each scenario id is capability, requirement and scenario titles in kebab
   case. Tests carry it in their name or a `// spec:` comment; rules in
   their `note`; model invariants in a comment. While this plan exists, the
   check also reads `specs/`, so the list cannot drift from it.
-- The trace check also matches each fault point name (P42) with a crash
-  action in the model, both ways.
+- The trace check also matches each fault point name (P42) with a
+  `Crash_<Point>` action in `WorkerLock.tla`, both ways.
 - The scenarios of `specs/verification/` are exempt: the gate itself
   checks them.
 
@@ -970,7 +1043,7 @@ Decided (the planning thread).
   the conformance tests and the structural rules are green, the trace check
   shows no gap, and the `guardian` eval suite passes for the P15 outside
   text and the P20 "never approval" rules. Source: the planning thread.
-- **Timing:** the gate ships first (step G): the full model (G.1a–G.1f),
+- **Timing:** the gate ships first (step G): the full model (G.1a–G.1g),
   the conformance harness with the `faults` port, the structural check
   runner and the trace check. The words step (step 2) follows. Each build
   step merges when the checks its Verify line names are green against the
@@ -987,9 +1060,22 @@ was lost".
   - Tests pass it through Junior's existing dependency wiring. It is
     optional and does nothing when absent. Production never passes it.
   - No global, no singleton and no test-only module API.
-  - Each item on the crash-point list has a named point. The names match
-    the model's crash actions, so a trace maps to a run (P40).
   - Step G amends `policies/testing.md` to allow this port.
+- **Points:** one per `Crash_<Point>` action in `WorkerLock.tla`. The
+  action runs the step's durable write, then the worker dies, and the
+  queue delivers its message again. The 20 points:
+  - SQL: `AfterAcquireLock`, `AfterRaiseVersion`, `AfterStartTurn`,
+    `AfterRestartSave`, `AfterResumeSave`, `AfterSaveIntent`,
+    `AfterSaveSent`, `AfterSavePause`, `AfterSaveError`,
+    `AfterFinishingSave`, `AfterSaveDeliveryAttempt`,
+    `AfterAnswerRecords`, `AfterFinishedSave`, `AfterReleaseLock`.
+  - Redis: `AfterRedisLock`, `AfterInboxRemove`,
+    `AfterWakeCompareAndSet`, `AfterInboxRead`.
+  - Post: `AfterPost`, `PostAcceptedReplyLost`.
+  - `AfterRaiseVersion`, `AfterRedisLock` and `AfterSaveError` model
+    writes that only earlier drafts (`ab76f5d`) or `noPause` have. The
+    design has no such write, so they have no point in code, and the
+    trace check skips them.
 - **Other boundaries that stay:**
   - Queue redelivery: the queue provider adapter (`queue/provider.ts`)
     redelivers an unacked message.
@@ -1020,9 +1106,11 @@ was lost".
 
 Every item is **Proposed, needs sign-off**.
 
-1. P18, the rest: where the Automation result comes from (the final
-   response by default, or a `finishAutomationRun` call), the result
-   mapping, and `outcomes` on the request record. David: "it's ok for this
-   to vary."
-2. P45: the `core` owner field, state moved on the first new-core lock
-   take, a cutover switch and its rollback.
+1. P45: the `core` owner field; a move on every new-core lock take that
+   finds today's state, keyed by turn id; a pinned lease; today's cursor
+   writes fenced by the lease in the reader release; today's inbox input
+   moved in the same step (not modeled yet); a cutover switch and its
+   rollback.
+2. P46: a notify that finds a live lock is queued again with a delay
+   until the lock expires, or L3 without the repair job is required only
+   for runs with no loss.

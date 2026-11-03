@@ -71,7 +71,7 @@ one result, which its outcomes deliver (Decided: P18). A `failed` or
 
 The result SHALL come from the finished run: its final response, or a
 `finishAutomationRun` call when the run makes one, so the source can vary
-(Proposed, needs sign-off: P18; David: "it's ok for this to vary").
+(Decided: P18; David: "it's ok for this to vary").
 
 #### Scenario: Result from the final response
 

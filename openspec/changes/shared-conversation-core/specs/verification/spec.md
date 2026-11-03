@@ -20,8 +20,22 @@ adversarial `send`.
 #### Scenario: Worked examples
 
 - **WHEN** CI checks the model
-- **THEN** every worked example in `interfaces/*.md` runs as a named trace
-  and reaches the "After" state that the example states.
+- **THEN** every worked example in `interfaces/*.md` runs as an `ex_*`
+  check and reaches the "After" state that the example states.
+
+### Requirement: Model Files And Expected Results
+
+The model SHALL be `WorkerLock.tla`, `StopClock.tla` and `Cutover.tla`, with
+one TLC config per instance in `cfg/`. `checks.txt` SHALL list each check
+and its expected result: `holds`, or `violated` for a known counterexample,
+a worked example (`ex_*`) or accepted behavior (`acc_*`). `check.sh` SHALL
+run every check with TLC and fail on any other result (Decided: P37, P40).
+
+#### Scenario: Changed result
+
+- **WHEN** a model change makes a check give another result than
+  `checks.txt` expects
+- **THEN** `check.sh` fails and names the check.
 
 ### Requirement: Turn Safety Invariants
 
@@ -124,7 +138,9 @@ within the crash bound (Decided: P37):
 - **L2** no turn stays `finishing` forever;
 - **L3** a paused turn with work left is eventually resumed or finished,
   without fairness for the repair job (needs the P32 sign-in and delayed
-  notify fix).
+  notify fix). After a lost worker,
+  `errors_design l3_pausedResumedNoRepair` fails today; the fix is P46
+  (Proposed, needs sign-off: P46).
 
 #### Scenario: Delivery never succeeds
 
@@ -158,7 +174,8 @@ Redis operation and post, and where the provider accepted a post but the
 reply was lost. One optional `faults` port SHALL supply them through the
 existing dependency wiring, as a no-op when absent. Production SHALL never
 pass it, and it SHALL have no global, singleton or test-only module API.
-Point names SHALL match model crash actions (Decided: P42).
+Point names SHALL match `Crash_<Point>` actions in `WorkerLock.tla`
+(Decided: P42).
 
 #### Scenario: Crash between commit and inbox removal
 
