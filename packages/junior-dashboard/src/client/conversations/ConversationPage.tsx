@@ -181,10 +181,18 @@ export function ConversationPage(props: {
     unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
   });
   // A reader far behind sees the events from their read position. Others
-  // see the latest page and the pages before it.
-  const history: TranscriptHistory = unreadHistory ?? detail;
+  // see the latest page and the pages before it. When the cached transcript
+  // already shows the latest page, it stays until the unread events load.
+  // Then the transcript opens at the "New" marker, if the reader has not
+  // moved.
+  const showUnreadHistory =
+    unreadHistory &&
+    !(readAtOpen.unreadCursorAfterCache && unreadHistory.isPending)
+      ? unreadHistory
+      : undefined;
+  const history: TranscriptHistory = showUnreadHistory ?? detail;
   const transcriptPending =
-    detail.isPending || Boolean(unreadHistory?.isPending);
+    detail.isPending || Boolean(showUnreadHistory?.isPending);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );

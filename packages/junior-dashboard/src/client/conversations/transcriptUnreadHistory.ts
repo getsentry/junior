@@ -11,12 +11,13 @@
  * so the transcript never has a gap. Until then the transcript ends with a
  * row that shows the newer pages load.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   conversationEventPageSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
+  type ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
 import { fetchDashboardJson } from "../http";
@@ -55,7 +56,13 @@ export function useUnreadHistory(input: {
   unreadCursor: string | undefined;
 }): (TranscriptHistory & { isPending: boolean }) | undefined {
   const { conversationId, detail, unreadCursor } = input;
-  const latestFirstSeq = detail?.events[0]?.seq;
+  const latestEventsRef = useRef<ConversationReportEvent[]>([]);
+  const latestEvents = useMemo(() => {
+    const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
+    latestEventsRef.current = kept;
+    return kept;
+  }, [detail?.events]);
+  const latestFirstSeq = latestEvents[0]?.seq;
   const newer = useInfiniteQuery({
     enabled: false,
     queryKey: ["conversation", conversationId, "unread", unreadCursor, "newer"],
@@ -96,9 +103,13 @@ export function useUnreadHistory(input: {
   const data = useMemo(
     () =>
       detail && newerPages
-        ? buildUnreadConversationTranscript(detail, pages, reached)
+        ? buildUnreadConversationTranscript(
+            detail,
+            pages,
+            reached ? latestEvents : [],
+          )
         : undefined,
-    [detail, newerPages, pages, reached],
+    [detail, latestEvents, newerPages, pages, reached],
   );
 
   // Load newer pages one at a time until they reach the latest page. A
@@ -141,6 +152,24 @@ export function useUnreadHistory(input: {
           },
         }),
   };
+}
+
+/**
+ * Keep the events that new events push out of the latest page. Without them,
+ * the latest page would start after the newer pages again, and the transcript
+ * would drop its latest events until one more page loads. A poll that skips
+ * past the kept events starts over from its own events.
+ */
+function keepLatestEvents(
+  kept: ConversationReportEvent[],
+  events: ConversationReportEvent[] | undefined,
+): ConversationReportEvent[] {
+  const firstSeq = events?.[0]?.seq;
+  const keptLastSeq = kept.at(-1)?.seq;
+  if (!events || firstSeq === undefined) return kept;
+  if (keptLastSeq === undefined || firstSeq > keptLastSeq + 1) return events;
+  const slid = kept.filter((event) => event.seq < firstSeq);
+  return slid.length ? [...slid, ...events] : events;
 }
 
 /**

@@ -44,6 +44,11 @@ export type ReadPositionAtOpen = {
   unread?: TranscriptUnreadRange;
   /** Set when unread events start before the latest page. */
   unreadCursor?: string;
+  /**
+   * Set when only the fetched detail has `unreadCursor`. The cached
+   * transcript already shows the latest page then.
+   */
+  unreadCursorAfterCache?: boolean;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -76,7 +81,10 @@ export function readConversationStartPosition(): ConversationStartPosition {
  * The read position comes from the first detail, which can be a cached copy.
  * The last unread row comes from the first detail fetched in this visit, so a
  * stale cache cannot hide messages that arrived while the reader was away,
- * and later polls cannot add rows that arrived after open.
+ * and later polls cannot add rows that arrived after open. For the same
+ * reason, the fetched detail supplies `unreadCursor` when the cache has none:
+ * a cache from a visit that read to the end has no cursor, even when more
+ * than a page arrived after that visit.
  */
 export function useReadPositionAtOpen(
   detail: DetailAtOpen | undefined,
@@ -88,7 +96,10 @@ export function useReadPositionAtOpen(
     lastReadSeq?: number;
     unreadCursor?: string;
   }>();
-  const [fetchedEnd, setFetchedEnd] = useState<{ throughSeq?: number }>();
+  const [fetchedAtOpen, setFetchedAtOpen] = useState<{
+    throughSeq?: number;
+    unreadCursor?: string;
+  }>();
   const read =
     opened ??
     (detail
@@ -99,15 +110,28 @@ export function useReadPositionAtOpen(
       : undefined);
   if (!opened && read) setOpened(read);
   const end =
-    fetchedEnd ??
-    (fetched ? { throughSeq: fetched.events.at(-1)?.seq } : undefined);
-  if (!fetchedEnd && end) setFetchedEnd(end);
+    fetchedAtOpen ??
+    (fetched
+      ? {
+          throughSeq: fetched.events.at(-1)?.seq,
+          unreadCursor: fetched.unreadCursor,
+        }
+      : undefined);
+  if (!fetchedAtOpen && end) setFetchedAtOpen(end);
+  const unreadCursor = read?.unreadCursor ?? end?.unreadCursor;
   return {
     ...readPositionAtOpen(
       read?.lastReadSeq,
       end ? end.throughSeq : detail?.events.at(-1)?.seq,
     ),
-    ...(read?.unreadCursor ? { unreadCursor: read.unreadCursor } : undefined),
+    ...(unreadCursor
+      ? {
+          unreadCursor,
+          ...(read?.unreadCursor
+            ? undefined
+            : { unreadCursorAfterCache: true }),
+        }
+      : undefined),
   };
 }
 

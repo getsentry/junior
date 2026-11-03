@@ -35,13 +35,13 @@ export function buildConversationTranscript(
  * Build a transcript that opens at the read position.
  *
  * `pages` hold one unbroken range of events around the read position. The
- * latest events in `detail` join only when `reachesLatest` is true, so the
+ * caller supplies `latestEvents` only when `pages` reach them, so the
  * transcript never shows a gap between the two.
  */
 export function buildUnreadConversationTranscript(
   detail: ConversationDetailReport,
   pages: ConversationEventPage[],
-  reachesLatest: boolean,
+  latestEvents: ConversationReportEvent[],
 ): ConversationDetailReport {
   const restricted = restrictedTranscript(detail, pages);
   if (restricted) return restricted;
@@ -49,7 +49,7 @@ export function buildUnreadConversationTranscript(
     ...detail,
     events: orderedEvents([
       ...pages.flatMap((page) => page.events),
-      ...(reachesLatest ? detail.events : []),
+      ...latestEvents,
     ]),
     previousCursor: oldestPreviousCursor(pages),
   };

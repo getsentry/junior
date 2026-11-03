@@ -3,6 +3,8 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
+const PAGE_SIZE = 40;
+
 /** Mock one completed Conversation whose server read position moves forward. */
 async function mockReadPositionConversation(
   page: Page,
@@ -26,6 +28,8 @@ async function mockReadPositionConversation(
     eventCount: input.eventCount,
     /** Holds detail responses until it resolves. */
     detailGate: Promise.resolve(),
+    /** Return only the latest page in detail, like the server. */
+    pagedDetail: false,
     reported: [] as number[],
   };
   let stored = input.lastReadSeq;
@@ -62,26 +66,61 @@ async function mockReadPositionConversation(
       await route.fulfill({ json: { lastReadSeq: stored } });
     },
   );
+  const events = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, index) => {
+      const seq = from + index;
+      return {
+        createdAt: new Date(
+          Date.parse(generatedAt) + seq * 1_000,
+        ).toISOString(),
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: seq % 2 === 0 ? "user" : "assistant",
+          text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+        },
+        seq,
+      };
+    });
+  await page.route(
+    `**/api/conversations/${conversationId}/events?*`,
+    async (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      const after = query.get("after");
+      const latestSeq = state.eventCount - 1;
+      const from = after
+        ? Number(after) + 1
+        : Math.max(0, Number(query.get("before")) - PAGE_SIZE);
+      const to = after
+        ? Math.min(from + PAGE_SIZE - 1, latestSeq)
+        : Number(query.get("before")) - 1;
+      await route.fulfill({
+        json: {
+          eventHistory: { status: "available" },
+          events: events(from, to),
+          generatedAt,
+          ...(from > 0 ? { previousCursor: String(from) } : undefined),
+          ...(to < latestSeq ? { nextCursor: String(to) } : undefined),
+        },
+      });
+    },
+  );
   await page.route(`**/api/conversations/${conversationId}`, async (route) => {
     await state.detailGate;
+    const firstSeq = state.pagedDetail
+      ? Math.max(0, state.eventCount - PAGE_SIZE)
+      : 0;
     await route.fulfill({
       json: {
         ...conversation,
         eventHistory: { status: "available" },
-        events: Array.from({ length: state.eventCount }, (_, seq) => ({
-          createdAt: new Date(
-            Date.parse(generatedAt) + seq * 1_000,
-          ).toISOString(),
-          data: {
-            type: "message",
-            messageId: `message-${seq}`,
-            role: seq % 2 === 0 ? "user" : "assistant",
-            text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-          },
-          seq,
-        })),
+        events: events(firstSeq, state.eventCount - 1),
         generatedAt,
         readPosition: { lastReadSeq: stored },
+        ...(firstSeq > 0 ? { previousCursor: String(firstSeq) } : undefined),
+        ...(stored + 1 < firstSeq
+          ? { unreadCursor: String(stored) }
+          : undefined),
       },
     });
   });
@@ -139,10 +178,12 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   await expect(transcript.getByText("Transcript message 39 ")).toBeInViewport();
   await expect(marker).toHaveCount(0);
 
-  // New messages arrive while the reader is away. The reopen shows the cached
-  // copy first, then the fetch brings the new messages and the marker.
+  // More than a page arrives while the reader is away. The reopen shows the
+  // cached copy first. The fetch then brings the read position's cursor,
+  // although the cached copy has none, and the transcript opens there.
   await page.getByRole("link", { name: "Back to conversations" }).click();
-  mock.eventCount = 60;
+  mock.eventCount = 120;
+  mock.pagedDetail = true;
   let releaseDetail = () => {};
   mock.detailGate = new Promise((resolve) => {
     releaseDetail = resolve;
@@ -157,7 +198,7 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   await expect(marker).toBeInViewport();
   await expect(transcript.getByText("Transcript message 40 ")).toBeInViewport();
   await expect(
-    transcript.getByText("Transcript message 59 "),
+    transcript.getByText("Transcript message 119 "),
   ).not.toBeInViewport();
 
   // Leaving right after a scroll still saves the place.
@@ -184,10 +225,11 @@ test("opens far behind at the read position and loads newer pages after it", asy
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    // Active Conversations poll every 2s, so new events reach the page.
+    status: "active",
     surface: "internal",
   };
-  const latestSeq = 139;
+  let latestSeq = 139;
   const events = (from: number, to: number) =>
     Array.from({ length: to - from + 1 }, (_, index) => {
       const seq = from + index;
@@ -270,9 +312,9 @@ test("opens far behind at the read position and loads newer pages after it", asy
       json: {
         ...conversation,
         eventHistory: { status: "available" },
-        events: events(100, latestSeq),
+        events: events(latestSeq - 39, latestSeq),
         generatedAt,
-        previousCursor: "100",
+        previousCursor: String(latestSeq - 39),
         readPosition: { lastReadSeq: 20 },
         unreadCursor: "20",
       },
@@ -306,4 +348,12 @@ test("opens far behind at the read position and loads newer pages after it", asy
   await expect(marker).toHaveCount(1);
   // The pages from the latest page back are never read.
   expect(cursors).not.toContain("before-100");
+
+  // New events push the joined events out of the latest page. They stay, so
+  // the latest events do not leave, and no newer page loads again.
+  latestSeq = 141;
+  await expect(transcript.getByText("Transcript message 141 ")).toBeAttached();
+  await expect(transcript.getByText("Transcript message 101 ")).toBeAttached();
+  await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
+  expect(cursors).not.toContain("after-100");
 });
