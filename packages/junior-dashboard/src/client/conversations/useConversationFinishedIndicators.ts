@@ -32,21 +32,19 @@ export function useConversationFinishedIndicators(
   const [held, setHeld] = useState<{ heldId?: string; selectedId?: string }>(
     {},
   );
-  // Read the unread state before the effect below marks the selection read.
-  // Wait for the feed to hold the selection, so a deep link still counts.
+  // Read the unread state when the selection changes, before the effect
+  // below or the opened page marks it read. Hold only a row that the list
+  // already showed. A deep link has no row under the pointer, and the
+  // selected row never leads its section, so it does not move.
   if (held.selectedId !== selectedId) {
     const selected = conversations.find(({ id }) => id === selectedId);
-    if (selected || selectedId === undefined) {
-      setHeld({
-        heldId:
-          selected && finishedSinceRead(storedStates, selected)
-            ? selected.id
-            : undefined,
-        selectedId,
-      });
-    } else if (held.heldId !== undefined) {
-      setHeld({ selectedId: held.selectedId });
-    }
+    setHeld({
+      heldId:
+        selected && finishedSinceRead(storedStates, selected)
+          ? selected.id
+          : undefined,
+      selectedId,
+    });
   }
 
   useEffect(() => {
