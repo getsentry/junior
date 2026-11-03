@@ -38,6 +38,7 @@ Open this when making repository edits, not for read-only inspection.
    - Run `gh pr view NUMBER --repo owner/repo --json mergeable,baseRefName`.
    - `UNKNOWN`: GitHub is still calculating it. Wait about 5 seconds and check again, up to 3 times. If it stays `UNKNOWN`, report that and continue.
    - `CONFLICTING`: resolve it now. Do not ask first. GitHub checks mergeability against the PR base (`baseRefName`), which is usually the default branch. Fetch the base and merge `origin/BASE` into the PR branch. Do not rebase. Resolve each conflict so that both the PR change and the base branch change stay intact. Run the checks again, push, and check mergeability again.
+   - Stacked PR (`gh api 'repos/owner/repo/stacks?pull_request=NUMBER'` returns a stack): a stack merges only with a linear history, so rebase instead of merge. Run `gh stack checkout NUMBER` and `gh stack rebase`, resolve each conflict, run `gh stack rebase --continue`, run the checks, and `gh stack push`.
 4. Resolve the actual default branch.
 5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
@@ -48,4 +49,4 @@ Open this when making repository edits, not for read-only inspection.
 
 ## Follow
 
-When PR creation returns a subscribable hint, subscribe to suggested review/CI events. Fix routine review feedback and failed checks without a thread update. Reply only when the requester needs to act, or when the PR merges or closes.
+When PR creation returns a subscribable hint, subscribe to suggested review/CI events. Fix routine review feedback and failed checks without a thread update. When a PR in a stack merges, restack the open PRs above it with `gh stack sync` before you reply; GitHub sends them no event when its own rebase stops at a conflict. Reply only when the requester needs to act, or when the PR merges or closes.
