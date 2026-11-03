@@ -86,6 +86,19 @@ export function reviewItemNeedsUser(userId: string): SQL {
   )!;
 }
 
+/**
+ * SQL: the Review item is not assigned only to other people. It is assigned
+ * to this User, to Everyone, or to no one. This is the assignee rule of
+ * `canActOnReviewItem`; keep the two the same.
+ */
+export function reviewItemForUser(userId: string): SQL {
+  return or(
+    eq(juniorReviewItems.assignedToEveryone, true),
+    sql`not exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+    reviewItemAssignedTo(userId),
+  )!;
+}
+
 /** SQL: the Review item links this Conversation. */
 export function reviewItemLinkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorReviewItemConversations} where ${juniorReviewItemConversations.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemConversations.conversationId} = ${conversationId})`;
@@ -298,6 +311,7 @@ export async function requireReviewItemAssignees(args: {
  * Return whether a User can act on an open Review item: an assigned User,
  * anyone for an item assigned to Everyone, and anyone for an item with no
  * assignees. The caller checks that the User can see the item.
+ * `reviewItemForUser` is the SQL form of the assignee rule.
  */
 export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   if (item.status !== "open") return false;

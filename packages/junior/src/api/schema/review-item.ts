@@ -68,6 +68,11 @@ export const reviewItemListQuerySchema = z
     conversationId: z.string().min(1).optional(),
     /** `nextCursor` of the page before. */
     cursor: z.string().min(1).max(1_000).optional(),
+    /**
+     * `viewer` drops the items that are assigned only to other people. The
+     * list keeps items assigned to the viewer, to Everyone, or to no one.
+     */
+    for: z.enum(["viewer"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /** Also list the newest done and dismissed items, with the first page. */

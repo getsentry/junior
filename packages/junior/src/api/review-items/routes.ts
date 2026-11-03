@@ -44,12 +44,16 @@ import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 const ARCHIVED_LIMIT = 50;
 
 /** The list that a cursor belongs to. */
-type ListFilters = Pick<ReviewItemFilters, "conversationId" | "query">;
+type ListFilters = Pick<
+  ReviewItemFilters,
+  "conversationId" | "forUserId" | "query"
+>;
 
 const cursorSchema = z
   .object({
     conversationId: z.string().min(1).optional(),
     createdAtMs: z.number().int(),
+    forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     query: z.string().min(1).optional(),
     version: z.literal(2),
@@ -83,6 +87,7 @@ function decodeCursor(
     );
     if (
       parsed.conversationId !== filters.conversationId ||
+      parsed.forUserId !== filters.forUserId ||
       parsed.query !== filters.query
     ) {
       return undefined;
@@ -160,6 +165,7 @@ export function createReviewItemRoutes(services: {
         ...(query.conversationId
           ? { conversationId: query.conversationId }
           : undefined),
+        ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
       };
       const after = query.cursor

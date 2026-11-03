@@ -69,7 +69,11 @@ export function ReviewDeskPage() {
   useDocumentTitle("Inbox");
   const [searchParams] = useSearchParams();
   const [search, setSearch, q] = useDebouncedSearchParam();
-  const { items: list, moreArchived, query: items } = useReviewItemsData({ q });
+  const {
+    items: list,
+    moreArchived,
+    query: items,
+  } = useReviewItemsData({ forViewer: true, q });
   const showBlocked = !q;
   const blocked = useBlockedAutomationsData(showBlocked);
   const blockedAutomations = showBlocked
