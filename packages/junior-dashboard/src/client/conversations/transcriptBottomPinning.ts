@@ -133,8 +133,7 @@ function changesVisibleTranscript(event: ConversationReportEvent): boolean {
     data.type === "subagent" ||
     data.type === "structured_event" ||
     data.type === "attachments_delivered" ||
-    data.type === "compaction" ||
-    data.type === "handoff"
+    data.type === "compaction"
   );
 }
 
@@ -208,18 +207,6 @@ function eventTailVersion(event: ConversationReportEvent | undefined): string {
       ].join(":");
     case "compaction":
       return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "handoff":
-      return [
-        data.type,
-        data.modelProfile,
-        data.modelId,
-        data.summary?.length ?? 0,
-        event.createdAt,
-      ].join(":");
-    case "turn_routed":
-      return [data.type, data.turnId, data.modelProfile, data.modelId].join(
-        ":",
-      );
     case "guardian_action_reviewed":
       return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
     case "turn_context":

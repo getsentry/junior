@@ -6,14 +6,13 @@ Create or revise an edited video from real UI captures, optional narration, opti
 
 This is a workflow-process skill with a reference-backed shape. The runtime checklist owns the flow. `references/rendering.md` holds setup, audio, render, and export commands with revision examples. `references/motion.md` holds narration-timed animation patterns. No generator script, fixed design template, new package, or runtime dependency is required.
 
-Raw browser recordings belong to `agent-browser`. Visual correctness checks belong to `visual-web-qa`. Audio-only requests belong to the available TTS skill. Model selection belongs to the runtime `handoff` tool; this skill only says when to use it. Deployment, event operations, email sending, voice cloning, and music generation are outside scope.
+Raw browser recordings belong to `agent-browser`. Visual correctness checks belong to `visual-web-qa`. Audio-only requests belong to the available TTS skill. Deployment, event operations, email sending, voice cloning, and music generation are outside scope.
 
 ## Contract
 
 - Resolve the brief, source, and existing artifacts before generating assets.
 - Verify product claims and preserve requested credits.
 - Capture the real UI safely; label synthetic fixtures and narration.
-- Hand off to an implementation profile before composition when one fits better.
 - Measure speech, align words, reuse unchanged clips, and keep scene offsets current.
 - Time camera, highlights, cursor, captions, and on-screen text to spoken words.
 - Use only user-supplied or licensed music, and keep it under the narration.

@@ -4,7 +4,6 @@
  * Conversation storage owns the ordered event log. This module turns its
  * stored messages into the active Pi context.
  */
-import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ConversationEvent,
   ConversationEventData,
@@ -23,7 +22,6 @@ type AuthorizationCompletedEventData = Extract<
 export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
-  modelProfile: ModelProfile;
   replacementSeq: number | undefined;
 }
 
@@ -106,20 +104,19 @@ function historyItemProvenance(
 /**
  * Project ordered Junior events into Pi context.
  *
- * Compaction and handoff start with replacement history. Later native history
- * events append after it.
+ * Compaction and legacy handoff events start with replacement history. Later
+ * native history events append after it.
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options: { defaultProfile: ModelProfile; maxSeq?: number },
+  options: { maxSeq?: number } = {},
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = options.defaultProfile;
   let replacementSeq: number | undefined;
 
   for (const event of events) {
@@ -140,7 +137,6 @@ export function projectConversationEvents(
       continue;
     }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
-      modelProfile = event.data.modelProfile;
       replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
         const message = piMessageFromHistoryItem(replacement.item);
@@ -174,7 +170,6 @@ export function projectConversationEvents(
     messages,
     provenance,
     seqs,
-    modelProfile,
     replacementSeq,
   };
 }

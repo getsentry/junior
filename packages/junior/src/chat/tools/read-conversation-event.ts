@@ -88,7 +88,7 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
 
       await assertCanReadConversationEvents(context, conversationId);
       // The log query has no history-version filter, so this finds events
-      // that a compaction or handoff replaced.
+      // that a compaction replaced.
       const page = await getConversationEventStore().query(conversationId, {
         afterSeq: input.seq - 1,
         beforeSeq: input.seq + 1,

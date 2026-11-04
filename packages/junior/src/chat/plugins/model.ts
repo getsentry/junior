@@ -6,7 +6,6 @@ import type {
   PluginReranker,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import {
   completeDecision,
   completeObject,
@@ -26,7 +25,7 @@ export function createPluginModel(
       const modelId =
         options.structuredModelId ??
         (options.structuredModel === "default"
-          ? defaultModelId(botConfig)
+          ? botConfig.modelId
           : botConfig.fastModelId);
       const result = await completeObject({
         modelId,

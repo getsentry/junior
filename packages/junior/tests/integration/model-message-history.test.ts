@@ -45,12 +45,7 @@ describe("model message history", () => {
     ]);
     const agent = await createAgent({
       modelStream: streamSimple,
-      botConfig: {
-        defaultProfile: "standard",
-        profiles: {
-          standard: { modelId: "openai/gpt-6-astra", reasoningLevel: "low" },
-        },
-      },
+      botConfig: { modelId: "openai/gpt-6-astra", reasoningLevel: "low" },
     });
 
     await agent.run("first\u0000request and literal \\u0000");

@@ -325,7 +325,7 @@ Attributes on the `agent.context_compaction` span:
 
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
-| `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
+| `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
 | `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
@@ -340,7 +340,6 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
-  `handoff` runs for a model handoff.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
@@ -362,13 +361,10 @@ result.
 - `not_ready`: the job has not written a ready summary, or it failed. A
   blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
-  `profile_changed`, `over_target`, `conflict` (another replacement committed
-  first), or `split_tool_call` (the mark falls between a tool call and its
-  result).
+  `over_target`, `conflict` (another replacement committed first), or
+  `split_tool_call` (the mark falls between a tool call and its result).
 - A swap also sets `app.compaction.input.estimate`,
   `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
-- A `handoff` span has only `app.compaction.mode`. A failed handoff or an
-  input above the limit sets `error.type`.
 
 ### Background Compaction
 

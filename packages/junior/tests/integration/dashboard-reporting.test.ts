@@ -158,17 +158,8 @@ describe("dashboard canonical event reporting", () => {
       },
       {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "private-model-id",
         summary: "Continue monitoring CI.",
-      },
-      {
-        type: "handoff",
-        modelProfile: "fast",
-        modelId: "private-handoff-model-id",
-        reasoningLevel: "high",
-        triggeringToolCallId: `${conversationId}:handoff-tool-call`,
-        summary: "Fix the remaining test.",
       },
     ]);
     const eventSeqs = detail.events.map((event) => event.seq);
@@ -183,7 +174,14 @@ describe("dashboard canonical event reporting", () => {
       "More private replacement context.",
     );
     expect(JSON.stringify(detail)).toContain("private-model-id");
-    expect(JSON.stringify(detail)).toContain("private-handoff-model-id");
+    // Stored handoff and Turn route events from retired releases are skipped.
+    for (const retired of [
+      "private-handoff-model-id",
+      "private-routed-model-id",
+      "Fix the remaining test.",
+    ]) {
+      expect(JSON.stringify(detail)).not.toContain(retired);
+    }
     for (const removed of [
       "activity",
       "contextEvents",
@@ -251,7 +249,6 @@ describe("dashboard canonical event reporting", () => {
       createdAtMs: 1_000,
       data: {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5",
         replacementHistory: [
           replacement(componentUsageMessage),

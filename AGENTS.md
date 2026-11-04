@@ -47,7 +47,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | One test file          | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`              |
 | Eval harness test file | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                   |
 | One eval file or case  | `pnpm --filter @sentry/junior-evals evals:<suite> path/to/x.eval.ts [-t "case"]` |
-| Eval suites            | `behavioral`, `integration`, `guardian`, `router`, `classifiers`                 |
+| Eval suites            | `behavioral`, `integration`, `guardian`, `classifiers`                           |
 | Package schema         | `pnpm --filter <package> db:generate`                                            |
 | Dashboard e2e          | `pnpm test:e2e:dashboard`                                                        |
 | Release alignment      | `pnpm release:check`                                                             |

@@ -8,7 +8,6 @@
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigValue,
@@ -211,7 +210,7 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
     ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
-    modelId: defaultModelId(botConfig),
+    modelId: botConfig.modelId,
   };
 }
 

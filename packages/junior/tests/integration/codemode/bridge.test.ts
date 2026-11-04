@@ -222,7 +222,7 @@ describe("Code Mode bridge", () => {
   });
 
   it("refuses model-only tools inside the script", async () => {
-    const handoff = vi.fn();
+    const spawnAgent = vi.fn();
     const registry = createTools([], {}, {
       conversationId: CONVERSATION_ID,
       destination: DESTINATION,
@@ -231,12 +231,8 @@ describe("Code Mode bridge", () => {
           return new Response("ok");
         },
       },
-      handoff: {
-        activeProfile: { name: "standard" },
-        profiles: [{ name: "handoff" }],
-        execute: handoff,
-      },
       source: SOURCE,
+      spawnAgent,
       workspace: {} as never,
     } as never);
     const { scriptTools } = planToolExposure(registry);
@@ -246,7 +242,7 @@ describe("Code Mode bridge", () => {
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         try {
-          await tools.handoff({ profile: "handoff", reason: "harder task" });
+          await tools.spawnAgent({ task: "Inspect the failing checks." });
         } catch (error) {
           return error.message;
         }
@@ -256,9 +252,9 @@ describe("Code Mode bridge", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.value).toContain("tools.handoff does not exist.");
+    expect(result.value).toContain("tools.spawnAgent does not exist.");
     expect(result.calls).toEqual([]);
-    expect(handoff).not.toHaveBeenCalled();
+    expect(spawnAgent).not.toHaveBeenCalled();
   });
 
   it("rejects only the denied call and keeps its marker", async () => {

@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { encodeHistoryPayload } from "@/chat/conversations/history-payload";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
@@ -11,6 +12,45 @@ export function replacement(message: PiMessage) {
   return {
     item: historyItemFromPiMessage(message, { authority: "context" }),
   };
+}
+
+/**
+ * Insert an event that current code no longer writes, as an older release
+ * stored it. `replacesHistory` starts a new History version, as a handoff did.
+ */
+export async function insertLegacyEvent(
+  conversationId: string,
+  args: {
+    createdAtMs: number;
+    data: Parameters<typeof encodeHistoryPayload>[0];
+    replacesHistory?: boolean;
+  },
+): Promise<void> {
+  const { getDb } = await import("@/chat/db");
+  const [cursor] = await getDb()
+    .select({
+      seq: sql<number | null>`max(${juniorConversationEvents.seq})`,
+      historyVersion: sql<
+        number | null
+      >`max(${juniorConversationEvents.historyVersion})`,
+    })
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId));
+  const historyVersion = cursor?.historyVersion ?? 0;
+  const encoded = encodeHistoryPayload(args.data);
+  await getDb()
+    .insert(juniorConversationEvents)
+    .values({
+      conversationId,
+      seq: (cursor?.seq ?? -1) + 1,
+      historyVersion: args.replacesHistory
+        ? historyVersion + 1
+        : historyVersion,
+      schemaVersion: encoded.schemaVersion,
+      type: args.data.type,
+      payload: encoded.payload,
+      createdAt: new Date(args.createdAtMs),
+    });
 }
 
 /** Record a root conversation for dashboard reporting tests. */
@@ -32,7 +72,9 @@ export async function recordRoot(
       channelId: slackIdFromText("C", conversationId),
     },
     nowMs: 1,
-    ...(actor ? { actor: { platform: "slack" as const, ...actor } } : undefined),
+    ...(actor
+      ? { actor: { platform: "slack" as const, ...actor } }
+      : undefined),
     source: "slack",
     title: "Canonical event report",
     visibility,
@@ -173,11 +215,21 @@ export async function appendVisibleHistory(
       createdAtMs: 18,
     },
   ]);
+  await insertLegacyEvent(conversationId, {
+    createdAtMs: 14,
+    data: {
+      type: "turn_routed",
+      turnId: `${conversationId}:turn`,
+      modelProfile: "default",
+      modelId: "private-routed-model-id",
+      reasoningLevel: "high",
+      source: "configured",
+    },
+  });
   await getConversationEventStore().replaceHistory(conversationId, {
     createdAtMs: 15,
     data: {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "private-model-id",
       summary: "Continue monitoring CI.",
       replacementHistory: [
@@ -190,8 +242,9 @@ export async function appendVisibleHistory(
       ],
     },
   });
-  await getConversationEventStore().replaceHistory(conversationId, {
+  await insertLegacyEvent(conversationId, {
     createdAtMs: 16,
+    replacesHistory: true,
     data: {
       type: "handoff",
       modelProfile: "fast",

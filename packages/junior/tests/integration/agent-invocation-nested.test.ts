@@ -132,7 +132,7 @@ describe("nested agent invocations", () => {
         expect.objectContaining({
           actor: slackInvocationInput.actor,
           conversationId: helper.childConversationId,
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+          disabledFeatures: ["interactive-auth", "subagents"],
           location: expect.objectContaining({
             provider: "slack",
             channelId: "C123",

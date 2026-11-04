@@ -794,11 +794,6 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
-        event(1, {
-          type: "handoff",
-          modelProfile: "fast",
-          modelId: "openai/gpt-5-mini",
-        }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",
@@ -811,7 +806,6 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
     expect(html).toContain("Context compacted");
-    expect(html).toContain("Model handoff");
     expect(html).toContain("Model connection failed");
     expect(html).toContain('data-transcript-failure-reason="network"');
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);

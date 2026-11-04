@@ -997,7 +997,6 @@ describe("conversation report event projection", () => {
     const events = [
       event(1, {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
         replacementHistory: [
@@ -1019,6 +1018,7 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      // Stored by retired model handoff; the report skips it.
       event(2, {
         type: "handoff",
         modelProfile: "handoff",
@@ -1059,15 +1059,8 @@ describe("conversation report event projection", () => {
     ).toEqual([
       {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
-      },
-      {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        summary: "Fix the remaining test.",
       },
       {
         type: "subagent",
@@ -1106,6 +1099,7 @@ describe("conversation report event projection", () => {
           inputMessageIds: ["private-input-id"],
           surface: "slack",
         }),
+        // Retired Turn router and model handoff rows are skipped.
         event(2, {
           type: "turn_routed",
           turnId: "turn-1",
@@ -1117,7 +1111,6 @@ describe("conversation report event projection", () => {
         }),
         event(3, {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "private-model-id",
           details: {
             reason: "capacity",
@@ -1191,7 +1184,7 @@ describe("conversation report event projection", () => {
     });
 
     expect(projected.map(({ seq }) => seq)).toEqual([
-      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
+      1, 3, 4, 7, 8, 9, 10, 11, 13,
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       {
@@ -1201,17 +1194,7 @@ describe("conversation report event projection", () => {
         inputMessageIds: ["private-input-id"],
       },
       {
-        type: "turn_routed",
-        turnId: "turn-1",
-        modelProfile: "handoff",
-        modelId: "private-routed-model-id",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-      },
-      {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "private-model-id",
         details: {
           reason: "capacity",
@@ -1234,13 +1217,6 @@ describe("conversation report event projection", () => {
             startedSeq: 4,
           },
         ],
-      },
-      {
-        type: "handoff",
-        modelProfile: "fast",
-        modelId: "private-handoff-model-id",
-        reasoningLevel: "high",
-        triggeringToolCallId: "private-handoff-tool-call-id",
       },
       {
         type: "turn_lifecycle",
