@@ -4,12 +4,12 @@
 
 ### Requirement: A Stop Saves A Stop Time
 
-A stop SHALL save the database `now()` of its own transaction as the stop
-time on the conversation and notify a worker. It SHALL NOT write a turn row
-or a request record (Decided: P34, P44). A turn SHALL be under the stop
-when Junior received any input it took in before the stop time;
-a worker SHALL stop it. `startTurn` and a join SHALL refuse input older
-than the stop time. A new turn after the stop SHALL run normally.
+A stop SHALL lock the conversation row, and for a tree stop every row below
+it, parent before child. Then it SHALL save `clock_timestamp()` as the stop
+time and set `wakeAtMs` to now on each row, and notify a worker. It SHALL NOT
+write a turn row or a request record (Decided: P34, P44). A turn SHALL be
+under the stop when Junior received any input it took in before the stop time;
+a worker SHALL stop it. A new turn after the stop SHALL run normally.
 
 #### Scenario: Slack stop button
 
@@ -21,6 +21,12 @@ than the stop time. A new turn after the stop SHALL run normally.
 
 - **WHEN** the turn waits for sign-in
 - **THEN** the stop notifies a worker and the turn ends.
+
+#### Scenario: Stop during a sign-in wait with a lost notify
+
+- **WHEN** the turn waits for sign-in and the stop's notify is lost
+- **THEN** the repair job finds the past `wakeAtMs` and notifies a worker,
+  and the turn ends before the link expires (Decided: P34, P7).
 
 #### Scenario: Stop races a turn start
 
@@ -51,9 +57,9 @@ than the stop time. A new turn after the stop SHALL run normally.
 
 Every fenced save and every delivery intent save of a turn under the stop
 SHALL refuse, except the saves of `finishTurn(stopped)`. The stop SHALL be
-compared only with the receive stamp of input, database `now()` of the
-record insert, or of the child's save that recorded it for a result or
-parent message (Decided: P34, P44).
+compared only with the receive stamp of input. Both stamps SHALL be
+`clock_timestamp()`, read after the transaction holds its row locks, so
+their order is commit order (Decided: P34, P44).
 
 #### Scenario: Slack message received late
 
@@ -70,7 +76,8 @@ parent message (Decided: P34, P44).
 
 ### Requirement: Input Older Than A Stop
 
-Person input older than the stop SHALL NOT run. It SHALL be saved to history
+`startTurn` and a join SHALL refuse input older than the stop time. Person
+input older than the stop SHALL NOT run. It SHALL be saved to history
 as not run, so the person can see it and ask again. Event and agent input
 older than the stop SHALL be dropped. Both SHALL end through a closing turn
 (Decided: P30, P34).
@@ -121,10 +128,18 @@ conversation's `finishTurn` and closing turns SHALL mark its records
 - **THEN** its asked record is `stopped`, no result record is sent, and
   no turn starts (Decided: P35).
 
-#### Scenario: Result in flight at the stop
+#### Scenario: Result in the parent's inbox at the stop
 
-- **WHEN** a result recorded before a tree stop reaches the parent after it
+- **WHEN** a result was inserted in the parent before a tree stop, and no
+  parent turn took it in
 - **THEN** a closing turn records it and no turn starts.
+
+#### Scenario: Child save races a tree stop
+
+- **WHEN** a child's finishing save starts after a tree stop's transaction
+  started, takes the parent row first and commits first
+- **THEN** its result's `receivedAtMs` is older than the stop time, a
+  closing turn records it, and no parent turn starts (Decided: P35, P44).
 
 ### Requirement: Stopping A Child
 

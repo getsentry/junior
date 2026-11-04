@@ -86,8 +86,10 @@ type TurnRecord = {
   outcome?: TurnOutcome;
   /**
    * Plain errors (Decided, P4): an error after take-in, a lost-worker
-   * restart, a resume that saves nothing new, a mid-turn post failure.
-   * Limit 5. One failure counts once.
+   * restart, a clean resume that saves nothing new (P11), a mid-turn post
+   * failure. Limit 5. One failure counts once: saving errors + 1 is not
+   * progress, and an error resume that saved nothing counts only its
+   * error.
    */
   errors: number;
   totals: {
@@ -127,12 +129,13 @@ type TurnOutcome =
 type FailReason =
   | "error" // the fifth plain error (P4), or a mid-turn delivery out of attempts
   | "limit" // attempts, tool calls or cost; first try
-  | "input_dropped"; // its input hit 5 delivery attempts (closing turn)
+  | "input_dropped"; // its input hit 5 attempts to start (closing turn, P22)
 
-/** One response to one reply target. */
+/** One response to a location or destination reply target. A parent
+ * target has no delivery: finishTurn inserts its result (P26). */
 type Delivery = {
   deliveryId: string; // turnId + response index + target
-  target: ReplyTarget;
+  target: Exclude<ReplyTarget, { kind: "parent" }>;
   /** Saved with the intent. A restart sends this text again (P5). */
   body: ResponseBody;
   state: "intended" | "sent" | "failed";
@@ -200,7 +203,9 @@ inbox (E1).
  *    limit (P4);
  * 4. open turn "paused": resume it, or handle sign-in (access.md);
  * 5. no open turn: run selectTurnInput on the inbox. Close dropped or
- *    stop-cut input with closeInput. Then startTurn.
+ *    stop-cut input, and input with attemptCount 5, with closeInput. Raise
+ *    attemptCount on the rest in its own commit (P22). Then load context
+ *    and startTurn.
  * Then releaseWorkerLock, which re-checks for work.
  */
 function work(conversationId: ConversationId): Promise<void>;
@@ -210,9 +215,11 @@ function work(conversationId: ConversationId): Promise<void>;
 
 ```ts
 /**
- * Send one body to each distinct reply target of the turn's records that
- * takes it: a location takes each response, a parent or destination only
- * the result (edges.md). With no reply target, history is the delivery.
+ * Send one body to each distinct location or destination reply target of
+ * the turn's records that takes it: a location takes each response, a
+ * destination only the result (edges.md). A parent target is not a
+ * delivery (finishTurn, step 1). With no reply target, history is the
+ * delivery.
  * Checks in, then saves a checkpoint
  * that commits the response to history and records the intent with its
  * delivery id and text (fenced, refused under a stop). Posts, then saves
@@ -228,12 +235,15 @@ function deliver(
 /**
  * The only way a turn ends, and the only writer of request status.
  * Resumable through "finishing":
- * 1. save "finishing" and the outcome (fenced);
+ * 1. save "finishing" and the outcome (fenced). For each parent target,
+ *    the same transaction locks the parent row first (Lock Order), checks
+ *    the parent's stop (P35), inserts the result record, stamps it with
+ *    clock_timestamp() (P44) and sets the parent's wakeAtMs; notify after
+ *    commit (P26);
  * 2. send the error message or ending note to each location, and the one
- *    result to each parent and destination (P18), with fixed delivery ids;
- *    retry with backoff up to 5 attempts, or fail at once on a permanent
- *    provider error (P33). A result to a parent is a send() after the
- *    save in step 1 commits, keyed by its delivery id (P26);
+ *    result to each destination (P18), with fixed delivery ids; retry with
+ *    backoff up to 5 attempts, or fail at once on a permanent provider
+ *    error (P33);
  * 3. move each taken-in record from open to answered or stopped
  *    (WHERE status = 'open'). For finishTurn(stopped), input not older
  *    than stopAtMs goes back in the inbox: its record stays open and its
@@ -262,9 +272,10 @@ function closeInput(
 
 ```ts
 /**
- * Save stopAtMs = database now() of this transaction (P44), and stopBy,
- * on the conversation and on every conversation below it, then notify each
- * worker (P34). Writes no turn row
+ * Lock the conversation row and every conversation below it, parent before
+ * child. Then save stopAtMs = clock_timestamp() (P44), stopBy and
+ * wakeAtMs = now on each, and notify each worker after commit (P34). A
+ * lost notify leaves a past wakeAtMs for the repair job. Writes no turn row
  * and no request record (rule 7). A top-level stop is always a tree stop
  * (Decided). Input from a person older than the stop is kept in history as
  * "not run".
@@ -284,7 +295,8 @@ type StopBy =
 the stop was explicit for the parent: `stopBy` is `stop_agent`, or the
 parent's own stop time is after the record's `receivedAtMs` (a tree stop).
 Then the outcome is recorded on the asked record and no turn starts (P35,
-Decided). Both stamps are database `now()` (P44).
+Decided). Both stamps are `clock_timestamp()` read after the row locks, so
+their order is commit order (P44).
 
 ## Examples
 
@@ -355,8 +367,8 @@ stays open (bugs 1 and 11).
 
 Before: T1 for A (started 12:00) posted response 1 (`sent`).
 
-1. A clicks stop at 12:02. `stop()` sets `stopAtMs` on the conversation
-   and notifies a worker. It does not touch T1's row.
+1. A clicks stop at 12:02. `stop()` sets `stopAtMs` and `wakeAtMs = now`
+   on the conversation and notifies a worker. It does not touch T1's row.
 2. The running worker sees that T1 is under the stop (its input is older
    than 12:02) at its next safe point and calls `finishTurn(stopped: person)`.
 3. Response 1 stays. No more responses (Decided).

@@ -175,8 +175,8 @@ toward it (Decided).
 
 A child message to its parent SHALL reach the parent as agent input, marked as
 not from a person, acting for the child turn's actor. It SHALL have its own
-record in the parent. A fenced save of the child records it as a delivery
-intent, and `send()` inserts it keyed by the delivery id (Decided: P26). With
+record in the parent, which a fenced save of the child inserts after it
+locks the parent row and then the child row (Decided: P26). With
 no open record on the child's turn, the send SHALL fail.
 
 #### Scenario: Message with no open record

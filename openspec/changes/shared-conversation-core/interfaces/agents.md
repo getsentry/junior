@@ -6,13 +6,12 @@ Sketches for review, not final code. Labels follow `../design.md`.
 
 ```ts
 /**
- * spawnAgent and messageAgent both call this. One SQL transaction under the
- * parent conversation row (FOR UPDATE): refuse if the parent turn is
- * under the parent's stop (P34); check the caps (8 children with open work,
- * 4 open records per child); create the child conversation and binding if
- * new; for a new child, insert the request record in this transaction.
- * Commit. An existing child gets its record through send() after the
- * commit, so a transaction holds one existing conversation row. The
+ * spawnAgent and messageAgent both call this. One SQL transaction that
+ * locks the parent conversation row (FOR UPDATE), then the child row
+ * (Lock Order): refuse if the parent turn is under the parent's stop
+ * (P34); check the caps (8 children with open work, 4 open records per
+ * child); create the child conversation and binding if new; insert the
+ * request record and set the child's wakeAtMs. Commit, then notify. The
  * record's inboundMessageId is parent turnId + toolCallId, so a retried
  * tool call is a duplicate and returns the first result. Never starts a
  * runner.
@@ -46,11 +45,11 @@ level down.
 ```ts
 /**
  * A child's message to its parent, without ending its turn. Needs an open
- * record on the child's current turn. One fenced save in the child records
- * a delivery intent; send() then inserts the record in the parent
- * (`answers`: the turn's open records for this parent; `sentBy`: this
- * turn), keyed by the delivery id (P26). Acts for that turn's actor.
- * Marked as not from a person.
+ * record on the child's current turn. One fenced save in the child locks
+ * the parent row, then the child row, and inserts the record in the
+ * parent (`answers`: the turn's open records for this parent; `sentBy`:
+ * this turn), keyed by turnId + toolCallId (P26). Acts for that turn's
+ * actor. Marked as not from a person.
  */
 function messageParent(
   childTurn: TurnRecord,
@@ -62,14 +61,14 @@ function messageParent(
 
 ```ts
 /**
- * The one result record a child turn sends per `parent` reply target, at
- * finishTurn. finishTurn records it as a delivery intent; send() inserts it
- * in the parent with the delivery id as its inboundMessageId, so a resumed
- * finishTurn sends it once (P26). Its `answers` and `sentBy` decide
- * acceptance. The parent reads the task title from the answered records.
- * A result is a follow-up when an `answers` record was already `answered`
- * (P6). The parent turn acts for the answered record's actor (P15) and
- * replies to its onBehalfOf's reply targets (P6).
+ * The one result record a child turn makes per `parent` reply target.
+ * finishTurn's finishing save inserts it in the parent, after it locks the
+ * parent row and then the child row. Its inboundMessageId is turnId +
+ * parent, so a finishing save that runs again makes no second one (P26). Its
+ * `answers` and `sentBy` decide acceptance. The parent reads the task title
+ * from the answered records. A result is a follow-up when an `answers` record
+ * was already `answered` (P6). The parent turn acts for the answered record's
+ * actor (P15) and replies to its onBehalfOf's reply targets (P6).
  */
 type ChildResult = RequestRecord & {
   source: "agent";
@@ -86,9 +85,9 @@ type ChildResult = RequestRecord & {
 };
 ```
 
-The result record that send() inserts in the parent:
+The result record that the finishing save inserts in the parent:
 
-- `conversationId`: the parent; `inboundMessageId`: the delivery id;
+- `conversationId`: the parent; `inboundMessageId`: turnId + parent;
 - `answers`: every record the child turn answered for this parent;
 - `sentBy: { conversationId: child, turnId }`;
 - `actor` and subject: those of the answered record (P15);
@@ -141,14 +140,13 @@ type PluginAgentView = {
 Before: child C runs T1 for `req_1` (actor A, no subject). Parent P calls
 `askChild` for C again (`req_2`, actor A).
 
-1. `send(req_2)` inserts `req_2` in C with no `turnId`: it is in C's
-   inbox. C's `joinRule` is `now_or_wait`.
+1. `askChild` locks P's row, then C's row, and inserts `req_2` in C with
+   no `turnId`: it is in C's inbox. C's `joinRule` is `now_or_wait`.
 2. At T1's next safe point, `canJoin(T1, req_2)` is true. `saveCheckpoint`
    adds `req_2` to `T1.requestIds` and sets `req_2.turnId` to T1 in the
    same write.
-3. T1 ends. `finishTurn` records one result delivery for P with `answers:
-[req_1, req_2]`, and send() inserts it in P. Both records become
-   `answered`.
+3. T1 ends. Its finishing save inserts one result record in P with
+   `answers: [req_1, req_2]`. Then both records become `answered`.
 
 If `req_2` had actor B: `canJoin` is false, `req_2` waits, and T2 runs for
 B with its own result (Decided).
@@ -161,8 +159,8 @@ Before: P's turn (for A, started by Slack record `req_s`) asked C (`req_1`,
 
 1. T1 ends before G. P gets a result for `req_1`. `req_1` is `answered`.
 2. B messages C at 12:05 (`req_3`, actor B). T2 runs for B and ends.
-3. G finishes. Its `finishTurn` records the result, and send() inserts
-   `req_r` in C (`answers: [req_2]`, `sentBy`: G's turn). C checks: the
+3. G finishes. Its finishing save locks C's row, then G's row, and
+   inserts `req_r` in C (`answers: [req_2]`, `sentBy`: G's turn). C checks: the
    `sentBy` turn row is in G, a child of C; `req_2` has `conversationId` G
    and a `parent` reply target that names C. Accepted.
 4. C starts T3 for `req_2.actor`, A (P15). B's 12:05 message is from
@@ -209,3 +207,21 @@ Before: a bug in core calls send() for conversation X with a `source:
 
 There is no message that points at a record in another conversation, so
 there is no record-match check (rule 10).
+
+### E6. A child's finishing save races a tree stop
+
+Before: C1's turn T1 for A has its outcome. P runs T for A.
+
+1. 12:10:00.050: A clicks stop. The `stop(P)` transaction starts.
+2. 12:10:00.080: C1's finishing save starts. It locks P's row before
+   `stop(P)` does, then C1's row.
+3. The save reads `clock_timestamp()` (12:10:00.100), inserts the result
+   `req_r` in P with that `receivedAtMs`, sets P's `wakeAtMs` and commits.
+4. `stop(P)` gets P's row and C1's row, reads `clock_timestamp()`
+   (12:10:00.150) and saves it as the stop time on both.
+5. P's worker finds `req_r` older than the stop. A closing turn records it
+   and no turn starts (P35).
+
+With `now()`, the stop time would be 12:10:00.050 and `req_r` 12:10:00.080:
+newer than the stop, so P would start a turn for a result that committed
+before the stop (P44).

@@ -9,7 +9,8 @@
   2. Build: steps 3 to 13 build the new core beside today's code. It is not
      wired to production traffic: entry-point wiring comes in step 15. The conformance tests and the gate run
      against it. A build step changes no production behavior, so its
-     rollback is a revert.
+     rollback is a revert. One exception: step 3 adds the tombstone writes
+     to today's workers (3.7, P45). They change nothing a user sees.
   3. Cut over and delete: step 14 points today's readers at the new
      core's rows and ships the shim, step 15 routes every kind through `work()`, step 16 deletes
      today's workers and records, and step 17 deletes this plan.
@@ -89,9 +90,10 @@
         `deploymentId` (`shim_long`).
       - The margin `M` is 5 min, not a 60 s skew allowance; the drop wait
         is `1 h + 2×D + M + 60 s` (`drop_design`).
-      - The shim ships in step 14, not step 3: a first current-row upsert
-        sets `freshSinceAtMs`, and ingress from before step 14 can be in
-        flight during a release jump.
+      - The shim ships in step 14, not step 3, except the tombstone
+        (below): a first current-row upsert sets `freshSinceAtMs`, and
+        ingress from before step 14 can be in flight during a release
+        jump.
       - The sweep has no TTL refresh.
 
       Stale after the reopen card (review item 0d751ba0; the model needs
@@ -122,6 +124,29 @@
       - The P45 move copies no claimed id other than the ones it makes
         records for. `CutoverShim.tla` still copies them (`shim_ingress`).
       - One result shape (P18): not in the model, so nothing is stale.
+
+      Stale after the durability review (the model needs updating; this
+      plan is the target):
+
+      - Stamps use commit order (P44, rule 13): `StopClock.tla` fixes the
+        stop stamp with `now()` at the transaction start and has no child
+        save, so it does not check a child save that races a tree stop
+        (P35). The design stamps with `clock_timestamp()` after the row
+        locks.
+      - Results in the finishing save (P26, Lock Order): no model has a
+        result or a `messageParent` record inserted in the child's save,
+        the parent-then-child lock order, or `askChild` locking two rows.
+        `WorkerLock.tla` has one kind of delivery, a provider post with an
+        attempt limit (`DELIVERY_LIMIT`); the design has no delivery for a
+        `parent` target.
+      - `attemptCount` raised before the work starts and the
+        `input_dropped` end (P22) are not modeled.
+      - `stop()` sets `wakeAtMs` to now (P34), and the no-progress rule
+        counts only a clean `continue` pause (P11). Neither is modeled;
+        the `post_retry` note above covers the old rule.
+      - The tombstone from step 3 (P45) now matches `CutoverShim.tla`'s
+        step 3 worker, so the model is not stale there. Repair part 2 for
+        any open turn (P7) matches `RepairJob`.
 
 - [ ] G.1g Run `check.sh` in CI when `packages/junior/verification/**`
       changes, and once a week. A full run of the 76 checks takes about
@@ -192,9 +217,18 @@
       release). It is the input to P43.
 - [ ] 3.6 Test: a slow worker after a takeover cannot check in (turn E3); a
       message while the lock is held (turn E7); a sign-in while the lock is
-      held.
+      held; a take over an expired lease and a heartbeat clear each save
+      `staleLeaseAcquiredAtMs`.
+- [ ] 3.7 The tombstone, in today's worker modules (P45, from the
+      durability review). Add `staleLeaseAcquiredAtMs` to the SQL
+      conversation row. Today's heartbeat clear of an expired lease and a
+      take over an expired lease first save the old `acquiredAtMs` there
+      (the larger value). Only this piece of the shim ships here: an app
+      can jump from step 3 to 13 straight to step 15, and its old chains
+      have no time bound.
 - Verify: I3 for lock take and check-in; L3 without repair fairness; S5 for
-  lock writes; turn-lifecycle › Slow worker save; conversation-inbox ›
+  lock writes; turn-lifecycle › Slow worker save, Cleared lease waits out
+  the old worker; conversation-inbox ›
   Message while the lock is held; traces turn E3, E7, access E2 and
   `wakeLive_design l3_pausedResumedNoRepair`; L3 with the repair job after
   a lost notify (P46).
@@ -224,8 +258,8 @@
       boundary for `createRequest` and `send`, and their runtime asserts.
 - [ ] 5.4 Test: a result whose sender is not a child (inbox E5).
 - Verify: I9; S3 and S4; conversation-inbox › Result from a turn that is
-  not a child, Result sent again after a crash, Provider retry, Copy while
-  waiting, Message during the release; traces inbox E1 and E5.
+  not a child, Provider retry, Copy while waiting, Message during the release;
+  traces inbox E1 and E5.
 
 ### 6. `work()`
 
@@ -234,15 +268,19 @@
       exact signed subject and source (P20). `canJoin` for joins.
 - [ ] 6.2 Closing turns through `closeInput`.
 - [ ] 6.3 The repair job notifies for past `wakeAtMs` (SQL index) and for
-      `running` turns with an expired lock. It writes nothing and resends
-      no input (P7).
+      every open turn (`running`, `paused` or `finishing`) with an expired
+      lock. It writes nothing and resends no input (P7).
+- [ ] 6.5 Raise `attemptCount` on the selected records in a commit before
+      loading context or `startTurn`. A record at 5 goes to `closeInput`
+      (P22).
 - [ ] 6.4 Test: batch split by actor (inbox E2), events with different
       access (inbox E3), a plain reply from the turn's own person (inbox
       E4).
 - Verify: I6 for every source, with one actor and one exact subject per
   taken batch; L3; conversation-inbox › Interleaved people, Web and event
   input, Events with different access, Another person, Plain reply from
-  the turn's own person; traces inbox E2, E3, E4 and edges E3.
+  the turn's own person; turn-lifecycle › Child crashed while finishing,
+  Input that crashes every attempt; traces inbox E2, E3, E4 and edges E3.
 
 ### 7. Delivery records
 
@@ -271,11 +309,12 @@
 - [ ] 8.2 Plain errors (P4): an error pauses `continue` with
       `nextAttemptAtMs` and `errors + 1` (P31). A turn is lost only when
       `running` under an expired lock; each restart counts one error, with
-      no restart count or cap. A resume that saves nothing new and a
-      mid-turn post failure each count one error. One failure counts once.
-      At 5, `finishTurn(failed: error)`. An error before `startTurn` commits counts a
-      delivery attempt, not a turn error (P22). The timer job only
-      notifies a worker.
+      no restart count or cap. A clean resume that saves nothing new and a
+      mid-turn post failure each count one error (P11). An error resume
+      that saved nothing counts only its error: saving `errors + 1` is not
+      progress. One failure counts once. At 5, `finishTurn(failed: error)`.
+      An error before `startTurn` commits uses an attempt (6.5), not a
+      turn error (P22). The timer job only notifies a worker.
 - [ ] 8.3 Delivery attempts and backoff while finishing. A permanent
       provider error fails the delivery at once.
 - [ ] 8.4 Write one `turn.terminal` event per turn end.
@@ -283,29 +322,33 @@
       stuck delivery (turn E6).
 - Verify: I2, I4 and S1; L2; turn-lifecycle › Crash during finish, Retries
   run out, An error is not a lost worker, Lost again, Same boundary twice,
-  Failures before the
+  Error resume that saves nothing, Failures before the
   turn started, Error message cannot be posted; traces turn E2, E4, E6.
 
 ### 9. Stop
 
-- [ ] 9.1 `stop()` saves its database `now()` as the stop time on
-      the conversation and every conversation below it, and notifies each
-      worker.
+- [ ] 9.1 `stop()` locks the conversation and every conversation below
+      it, parent before child, then saves `clock_timestamp()` as the stop
+      time and sets `wakeAtMs = now` on each, and notifies each worker
+      (P34).
 - [ ] 9.2 A turn is under the stop when its oldest taken-in input is older
       than the stop time. `startTurn` and joins refuse older input. Every
       fenced save and intent save of a turn under the stop refuses.
       `finishTurn(stopped)` puts newer taken-in input back in the inbox.
-- [ ] 9.3 Stamp every record at insert with database `now()`, and a result
-      or parent message with the stamp of the child's save that recorded
-      it (P44).
+- [ ] 9.3 Stamp every record at insert, and every stop, with
+      `clock_timestamp()` read after the transaction holds its row locks,
+      so stamp order is commit order (P44).
 - [ ] 9.4 Test: top-level stop of a tree (agents E3); stop of a paused
-      plugin-started agent.
+      plugin-started agent; a child's finishing save that races a tree
+      stop (agents E6); a stop of a sign-in pause with a lost notify.
 - Verify: I8, I10, I11 (with joins) and I14; L1 under stop; turn-stop ›
   Stop races a turn start, Turn started after the click, Older input tries
   to join, Newer input joined before the stop, Stop during a pause; traces
   turn E5, agents E3 and E4, and the `stop_receive_*` checks; turn-stop › Late
-  result after a tree stop, Late result after stopAgent, Result in flight
-  at the stop, Dashboard stop of a child, Slack message received late.
+  result after a tree stop, Late result after stopAgent, Result in the
+  parent's inbox at the stop, Child save races a tree stop, Stop during a
+  sign-in wait with a lost notify, Dashboard stop of a child, Slack
+  message received late; trace agents E6.
 
 ### 10. Sign-in
 
@@ -317,10 +360,11 @@
 
 ### 11. Child agents and results
 
-- [ ] 11.1 `askChild` only sends. Child turns run in `work()`. `finishTurn`
-      and `messageParent` record a delivery intent in the child's save;
-      `send()` inserts the result record in the parent, keyed by the
-      delivery id (P26).
+- [ ] 11.1 `askChild` only inserts the child's record. Child turns run in
+      `work()`. `finishTurn`'s finishing save and the `messageParent` save
+      insert the record in the parent. Every transaction that locks two
+      conversation rows locks the parent first; nothing locks a child and
+      then its parent (Lock Order, P26).
 - [ ] 11.2 Add guardian eval cases for P15 outside text and P20 "never
       approval".
 - [ ] 11.3 Set the `maxAgentDepth` default to 1 (Decided).
@@ -329,6 +373,7 @@
 - Verify: I5 for records, I8 and I9; L1 for children; agent-tree › Same
   actor, Grandchild spawns, Grandchild result after the child's turn ended, Answers from another child,
   Result wakes an idle parent, Two siblings finish together;
+  conversation-inbox › Crash after the finishing save;
   turn-access › Grandchild result after another person messaged the child;
   traces agents E1, E2, E5 and edges E2; the guardian cases.
 
@@ -378,21 +423,19 @@
       modules. It changes no user-visible behavior, because no conversation
       is new core yet. Add the `core` field on the conversation row; a child
       inherits its root's `core`. Today's workers read it and refuse
-      `core = new`: they ack and send nothing. The heartbeat clear of an
-      expired lease and a take over an expired lease first save the old
-      `acquiredAtMs` as `staleLeaseAcquiredAtMs` (the larger value) on the
-      SQL row. Each invocation that runs work first upserts its deployment
-      row (`deploymentId`, `capabilities`, `lastSeenAtMs`; at most once a
-      minute). Every ingress path first adds the id to
+      `core = new`: they ack and send nothing. The tombstone writes are
+      already there (3.7). Each invocation that runs work first upserts its
+      deployment row (`deploymentId`, `capabilities`, `lastSeenAtMs`; at most
+      once a minute). Every ingress path first adds the id to
       `execution.inboundMessageIds` in one conversation mutation, before it
       reads `core`; only the add that wins goes on (C5, C6). Each new Agent
-      invocation row stores the id of the parent turn that created it, and
-      the request record id when the parent has one (I15). The heartbeat
-      cron upserts the current-deployment row (`deploymentId`,
-      `capabilities`, `currentSinceAtMs`, `freshSinceAtMs`, `updatedAtMs`).
-      It sets `freshSinceAtMs` on the first upsert and after any missed cron
-      run: when the old `updatedAtMs` is more than one cron interval plus
-      jitter old, with the jitter allowance below one interval (C13).
+      invocation row stores the id of the parent turn that created it, and the
+      request record id when the parent has one (I15). The heartbeat cron
+      upserts the current-deployment row (`deploymentId`, `capabilities`,
+      `currentSinceAtMs`, `freshSinceAtMs`, `updatedAtMs`). It sets
+      `freshSinceAtMs` on the first upsert and after any missed cron run: when
+      the old `updatedAtMs` is more than one cron interval plus jitter old,
+      with the jitter allowance below one interval (C13).
 - [ ] 14.3 The move back (P45). When the current deployment lacks
       `new_core`, a take that finds `core = new` and no pin first passes the
       stale lease fence and pins, in the C11 read order (C14). Then it
@@ -404,8 +447,7 @@
       clears the pin and sets `core = old`. Today's timer job notifies each
       new-core conversation whose `wakeAtMs` has passed. No flag turns this
       on.
-- [ ] 14.4 Test: a take over an expired lease and a heartbeat clear each
-      save `staleLeaseAcquiredAtMs`; a refusal sends no message; a new
+- [ ] 14.4 Test: a refusal sends no message; a new
       invocation row has its parent turn id; an invocation writes its
       deployment row at most once a minute; the first current-row upsert
       and a rollback shorter than 3 minutes (one missed cron run) each set
@@ -449,7 +491,7 @@
       A repeat that finds a cursor with an end status and an open turn row
       ends that row through `finishTurn` with the same end status and does
       not run it. Today's stop request (`conversationStopKey`) becomes
-      `stopAtMs` at the move's database `now()`: inputs in its
+      `stopAtMs` at the move's `clock_timestamp()`: inputs in its
       `inboundMessageIds` get a `receivedAtMs` before it, others after.
 - [ ] 15.3 Moved authority (P45, I15): verify each old subject with today's
       `verify*` check, then `bindSubject` with the P45 mapping table, then
@@ -507,7 +549,8 @@
   deployment that is not current, Pin outlives the move, Inbox move after
   a crash, Moved authority not verified, Agent invocation row without its
   creating record, Tombstone read after the lease, Fence ignores the
-  deployment's maxDuration, Release jump to the cutover, Abandoned
+  deployment's maxDuration, Release jump to the cutover, Release jump from
+  step 3 or later, Release jump from before step 3, Abandoned
   half-moved turn, Pending stop moves with the conversation, Instant Rollback below
   step 14, Short rollback below step 14, Repair job moves leftover state;
   conversation-inbox › Duplicate CLI input.

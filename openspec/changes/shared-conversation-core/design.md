@@ -62,9 +62,9 @@ From the #2567 decision comments and the planning thread:
   the turn's own person waits. Events never join.
 - A message to a busy child joins its running turn (join now or wait, same
   actor and access). One result covers both requests.
-- Plain errors (P4): a lost-worker restart, a resume that saves nothing
-  new and a mid-turn post failure each count as one error. One error limit
-  of 5 per turn. Message delivery attempts stay a separate count.
+- Plain errors (P4): a lost-worker restart, a clean resume that saves
+  nothing new and a mid-turn post failure each count as one error. One error
+  limit of 5 per turn. Message delivery attempts stay a separate count.
 - Every save and every post checks the lock version. A worker that lost its
   lock stops at its next check-in, save or post.
 - An error after the input is saved retries from the last save. On the last
@@ -221,7 +221,7 @@ makes the shared ingress claim (P45). Steps 16 and 17 delete the shim.
 10. Core mints request ids. Access lives only on a request record in the
     receiving conversation, and that record is the inbox entry, so no
     message points at a record. A result or a message to the parent has
-    its own record there, which core inserts after the child's save. Its
+    its own record there, which the child's own save inserts. Its
     sender comes from the child's turn row, never from message fields
     (P26).
 11. What differs by kind is stored data. The core takes no per-kind
@@ -230,9 +230,11 @@ makes the shared ingress claim (P45). Steps 16 and 17 delete the shim.
     `VerifiedPersonActor`, and a person-actor record needs one. Only the
     core agent module (`finishTurn`, `askChild`, `messageParent`) makes
     `source: "agent"` messages and their records (P26, P39).
-13. Server times (lock expiry, turn start, wake time) come from database
-    `now()`. A stop and the input it judges are both stamped with database
-    `now()` when Junior receives them (P34, P44).
+13. Server times come from the database clock. Lock expiry, turn start
+    and wake time use `now()`. Every stop stamp (`stopAtMs`) and every
+    input stamp (`receivedAtMs`) is `clock_timestamp()`, read after the
+    transaction holds its row locks, so stamp order is commit order (P34,
+    P44).
 14. A worker never releases the lock while its turn is `running`. When the
     pause save fails, the lock expires instead (P8).
 
@@ -248,14 +250,16 @@ conversation's worker lock:
    records it takes in, then conversation events.
 3. `send()` and the lock release each lock the conversation row
    (`FOR UPDATE`) in their own transaction (P32).
+4. A transaction that also writes to the parent locks the parent row
+   (`FOR UPDATE`) before its own row: a child's finishing save that inserts
+   a result, and a `messageParent` save (P26).
 
-A transaction holds at most one existing conversation row. A write to
-another conversation is a `send()` after the caller's commit. `askChild`
-takes the parent conversation row `FOR UPDATE` for the caps and the stop
-check, and in the same transaction inserts a new child conversation and its
-request record, a new row that no one else can lock. A message to an
-existing child is a `send()` after that commit. This removes the per-turn
-Redis mutation lock (`task-execution/turn-cursor.ts`,
+Every transaction that locks two or more conversation rows locks a parent
+before its child. `stop()` locks the stopped conversation, then each level
+below it (P34). `askChild` locks the parent row, then the child row, or
+inserts a new child. Nothing locks a child row and then its parent, so
+these transactions cannot deadlock on each other. This removes the
+per-turn Redis mutation lock (`task-execution/turn-cursor.ts`,
 `withTurnCursorMutation`).
 
 ### What Differs By Kind
@@ -344,7 +348,8 @@ numbers say where they went.
   planning thread.
 - **Detail:** one failure counts once, as one error under the one limit
   of 5. These count: an error after take-in (P31), a lost-worker restart
-  (P8), a resume that saves nothing new (P11) and a mid-turn post failure.
+  (P8), a clean resume that saves nothing new (P11) and a mid-turn post
+  failure.
   A lost worker restarts from its checkpoint as often as the limit allows.
   At 5, `finishTurn(failed: error)`. There is no restart count, no restart
   cap, and no `lost_worker`, `no_progress` or `post_failed` end.
@@ -448,11 +453,12 @@ numbers say where they went.
   notifies a worker for:
   1. a conversation with no live lock whose `wakeAtMs` has passed. A SQL
      index on the conversation row's `wakeAtMs` is the wake-time index;
-  2. a `running` turn whose lock expired, on the first pass after expiry.
-     An index on `lock_expires_at` for conversations with an open turn
-     finds them.
+  2. an open turn (`running`, `paused` or `finishing`) whose lock
+     expired, on the first pass after expiry, so a child that crashed while
+     `finishing` still wakes. An index on `lock_expires_at` for
+     conversations with an open turn finds them.
 - With P32's delayed notify, the job is a backstop for wakes: L3 holds
-  without it. A `running` turn whose worker died still waits for this job.
+  without it. An open turn whose worker died still waits for this job.
   The worker, not the job, closes records through a closing turn (P30), so
   `finishTurn` stays the only status writer.
 - **Reopened** (P23; source: David's answer on the reopen card, review
@@ -508,9 +514,13 @@ numbers say where they went.
 
 ### P11. The no-progress rule — Decided
 
-- **Decided:** a resume that saves nothing new counts as one error (P4).
-  A new checkpoint or a delivery attempt is progress. Source: David's
-  answer on the reopen card (review item 0d751ba0).
+- **Decided:** the rule applies only to a clean `continue` pause, one with
+  no error. Its resume that saves nothing new counts as one error (P4). A
+  new checkpoint or a delivery attempt is progress. Source: David's answer
+  on the reopen card (review item 0d751ba0).
+- **After an error:** an error resume that saved nothing counts once, as
+  the error (P31). Saving `errors + 1` is not progress, so the next resume
+  of that turn is judged by the same rule.
 - **Evidence:** `agent/resume.ts` ("Turn made no progress").
 
 ### P12. Per-turn limits — Decided
@@ -690,9 +700,14 @@ numbers say where they went.
 
 - **Decided:** an error after the input is saved retries from the last
   save. An error before `startTurn` commits retries the message with no
-  visible text and counts a delivery attempt. After 5, the worker runs a
-  closing turn `failed: input_dropped`, which sends the error message.
-  Source: the planning thread.
+  visible text. After 5 attempts, the worker runs a closing turn
+  `failed: input_dropped`, which sends the error message. Source: the
+  planning thread.
+- **Counted first:** `work()` raises `attemptCount` on the records it
+  selected in a commit before it loads context or calls `startTurn`. A
+  record that already has 5 goes to the closing turn instead. So input
+  that crashes every attempt (out of memory, a timeout) reaches the limit
+  and is not woken forever.
 - **Separate limits:** these 5 delivery attempts belong to the message.
   They do not count against the turn error limit (P4), because no turn
   started. A turn that starts later begins with `errors: 0`.
@@ -708,10 +723,8 @@ numbers say where they went.
     that no turn has taken (`turnId` is null).
   - A unique constraint on `(conversationId, inboundMessageId)` is the
     duplicate check. There is no second dedupe key and no seen-id list.
-  - The record has one receive stamp, `receivedAtMs`: the database `now()`
-    of its insert. A result or parent message takes the stamp of the
-    child's save that recorded its delivery intent, so a later `send()`
-    does not make it newer than a stop (P26, P35, P44).
+  - The record has one receive stamp, `receivedAtMs`: `clock_timestamp()`
+    of its insert, read after the transaction holds its row locks (P44).
   - The message carries no request id and the record points at no message,
     so there is no cross-link to check (P26).
 - **Why:** one shape and one store for the inbox, access and the duplicate
@@ -750,14 +763,17 @@ credentials outside a turn. A title lookup runs as a system actor
     `askChild` and `messageParent` make `source: "agent"` messages.
   - A child result and a `messageParent` call each get their own record in
     the parent conversation, with `answers` naming the asked records and
-    `sentBy` naming the child's turn. The child's `finishTurn` (or the
-    fenced save of the `messageParent` call) records it as a delivery
-    intent. `send()`
-    inserts it in the parent after that commit, with the delivery id as its
-    `inboundMessageId`, so a resend after a crash is a duplicate. The
-    child's next worker resends a lost one, as for any intended delivery
-    (P5). Its `receivedAtMs` is the database stamp of the child's save,
-    not of the insert (P44).
+    `sentBy` naming the child's turn. The child's own save inserts it:
+    `finishTurn`'s finishing save, or the fenced save of the
+    `messageParent` call. That transaction locks the parent row, then the
+    child row (Lock Order), inserts the record, stamps `receivedAtMs`
+    (P44) and sets the parent's `wakeAtMs` to now. It notifies after the
+    commit. The `inboundMessageId` is the turn id plus the parent, or the
+    turn id plus the tool call id, so a save that runs again is a
+    duplicate.
+  - So the result is in the parent before any asked record is `answered`,
+    and no crash can lose it. A `parent` target has no delivery and no
+    delivery intent, and the P33 attempt cap does not apply to it.
   - The parent accepts it only when the `sentBy` turn row belongs to a
     child of the parent, and every
     `answers` record has that child as `conversationId` and a `parent`
@@ -843,13 +859,18 @@ turn".
   (for example a missing channel) fails the delivery at once, with no
   backoff.
 - **Why:** a turn must not stay `finishing` forever.
+- A `parent` target is not a delivery: its result goes in with the
+  finishing save (P26).
 
 ### P34. Stop time — Decided
 
-- **Decided:** `stop()` saves its own database `now()` as the stop time on
-  the conversation row (and on every conversation below it for a tree
-  stop) and notifies each worker. It writes no turn row and no request
-  record. Both sides of every compare are receive stamps (P44): "older
+- **Decided:** `stop()` locks the conversation row and, for a tree stop,
+  every conversation below it, parent before child (Lock Order). Then it
+  saves `clock_timestamp()` as the stop time on each row (P44), sets
+  `wakeAtMs = now` on each, and notifies each worker. A lost notify then
+  cannot leave a stopped `sign_in` pause waiting until its link expires:
+  the repair job finds the past `wakeAtMs` (P7). It writes no turn row and no
+  request record. Both sides of every compare are receive stamps (P44): "older
   than the stop" means Junior received it before the stop. Source: the
   planning thread.
   1. A turn is under the stop when any input it took in has `receivedAtMs`
@@ -948,10 +969,21 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 
 - **Decided:** Junior's receive time everywhere. Core stamps every input at
   record insert (`receivedAtMs`) and every stop in the `stop()` transaction
-  with database `now()`. Core-made input (child messages, results) gets
-  the database stamp of the child's save that recorded it (P26).
-  "Older than the stop" means Junior received it earlier. P34 and P35
-  compare only these stamps. Source: the planning thread.
+  with the database clock. "Older than the stop" means Junior received it
+  earlier. P34 and P35 compare only these stamps. Source: the planning
+  thread.
+- **Stamps use commit order** (from the durability review). Each stamp is
+  `clock_timestamp()`, read after the transaction holds its row locks:
+  `send()` after the row it inserts into, a child's save after the parent
+  and child rows (P26), and `stop()` after every row it stamps. Two
+  transactions that lock the same row then stamp in commit order.
+  - Why not `now()`: Postgres `now()` is the time the transaction started.
+    A child's finishing save that started after a tree stop's transaction,
+    but took the parent row first, commits before the stop with a newer
+    stamp. The parent then reads the result as newer than the stop and
+    starts a turn, which P35 forbids.
+  - Model: `StopClock.tla` fixes the stop stamp at the transaction start
+    and has no child save, so it is stale for this rule (G.1f).
 - **Accepted behavior:** a Slack message that Junior receives late, after a
   retry, counts as newer than a stop the person clicked after sending it,
   so it runs.
@@ -975,12 +1007,22 @@ the simplification pass.
   planning thread. David: "i think what id prefer is just a simple shim
   that we remove in a follow-up commit so it can be zero downtime and
   theres no manual intervention."
-- **Shim release.** The shim ships in step 14. Only the move, the sweep
-  and `new_core` ship in step 15. Nothing must ship earlier for safety.
-  An app can jump releases, for example from a release before step 14
-  straight to step 15. So the plan handles code from any release before
-  step 14 in the same way: it has no refusal, saves no tombstone, writes no
-  row and makes no ingress claim.
+- **Shim release.** The tombstone writes ship in step 3 (from the
+  durability review). The rest of the shim ships in step 14. Only the move,
+  the sweep and `new_core` ship in step 15.
+  - Why the tombstone ships early: an app can jump releases, for example
+    from step 3 to 13 straight to step 15. The old deployment's chains have
+    no useful time bound. One turn runs up to 100 slices
+    (`maxSlicesPerTurn`, `chat/config.ts:25` on `main` at `38c8693`), each
+    continuation takes a new lease (`worker.ts:418-423`), and the next
+    input starts a new chain. So no fixed wait, such as the 2,100 s after
+    `freshSinceAtMs`, covers a takeover in such a chain that saves no
+    tombstone.
+  - Code from step 3 to 13 saves the tombstone, but has no refusal, writes
+    no row and makes no ingress claim.
+  - Code from before step 3 also saves no tombstone. An app that jumps from
+    such a release keeps the existing accepted gap (`shim_gap`, What this
+    design gives up).
 - **Safety in one rule.** The new core runs a conversation only after the
   move, and the move runs only when no old worker can still hold today's
   lease: the lease is absent, or the stale lease fence has passed, and the
@@ -1023,11 +1065,13 @@ the simplification pass.
   - Two paths remove an expired lease while its holder may still run: the
     heartbeat clear (`task-execution/heartbeat.ts:92-100`,
     `state.ts:2319-2353`) and a new take of an expired lease
-    (`state.ts:1551-1575`). From step 14 each of them first saves the old
+    (`state.ts:1551-1575`). From step 3 each of them first saves the old
     `acquiredAtMs` as `staleLeaseAcquiredAtMs` (the larger value) on the
-    SQL conversation row. The heartbeat runs only on the current
-    deployment. After an Instant Rollback below step 14 it runs code that
-    saves no tombstone (Rollback below step 14).
+    SQL conversation row. Both paths are still there at `38c8693`
+    (`heartbeat.ts:98-101` calls `clearExpiredConversationLease`,
+    `state.ts:2324`; the take, `state.ts:1554-1566`). The heartbeat runs
+    only on the current deployment. After an Instant Rollback below step 3
+    it runs code that saves no tombstone (Rollback below step 14).
 - **Pin** (C4). Before the insert, the move writes today's lease with
   `expiresAtMs = Number.MAX_SAFE_INTEGER` and a fixed token, and leaves it
   there. A no-expiry value does not work on `main`: `normalizeLease`
@@ -1053,8 +1097,8 @@ the simplification pass.
 - **Pending stop.** The move carries today's stop request
   (`conversationStopKey`, written by `stopConversationWork`,
   `state.ts:1812-1816`: `{ inboundMessageIds, runId }`) into `stopAtMs`.
-  It sets `stopAtMs` to its own database `now()`. Each moved input in the
-  stop's `inboundMessageIds` gets a `receivedAtMs` before it, each other
+  It sets `stopAtMs` to its own `clock_timestamp()` (P44). Each moved input in
+  the stop's `inboundMessageIds` gets a `receivedAtMs` before it, each other
   moved input one after it, so the moved stop judges the same inputs as
   today's stop (P34, P44).
 - **Inbox move, safe to repeat.** Today's waiting input (`pendingMessages`)
@@ -1218,7 +1262,7 @@ the simplification pass.
     not current for any deployment: a new-core worker takes no lock and
     acks. Only an Instant Rollback below step 14, or crons turned off,
     stops the upserts.
-  - After a gap, `freshSinceAtMs` is new. Code from before step 14 may have
+  - After a gap, `freshSinceAtMs` is new. Code from before step 3 may have
     cleared a lease with no tombstone during the gap, and that holder can
     run up to `D` after its take. So for `D + M` (2,100 s) after
     `freshSinceAtMs`, a move with no lease and no tombstone waits too.
@@ -1291,17 +1335,17 @@ the simplification pass.
   release before step 16 reads dropped columns and fails; only roll
   forward.
 - **Rollback below step 14.** After an Instant Rollback to a release from
-  before step 14, the heartbeat saves no tombstone and no cron updates the
-  current row. Within 3 minutes the row is not current, so no new-core
-  lock take starts. A new-core invocation that read the row before then
-  can still pin until its `maxDuration` ends (`ex_pinAfterStale`), so the
-  window is 3 minutes plus one invocation. Pinned conversations wait, safe
-  but stuck: code from before step 14 busy-defers on the pin and never
-  takes it. They run again after a roll forward, from `freshSinceAtMs` on.
-  Unmoved conversations run on today's core as before. A rollback below
-  step 14 that outlasts a pin is not supported: a pin expires 7 days after
-  the conversation's last write, and then today's core runs new input on
-  that conversation while its moved turns wait for the roll forward.
+  before step 14, no cron updates the current row. A release from before
+  step 3 also saves no tombstone. Within 3 minutes the row is not current, so
+  no new-core lock take starts. A new-core invocation that read the row before
+  then can still pin until its `maxDuration` ends (`ex_pinAfterStale`), so the
+  window is 3 minutes plus one invocation. Pinned conversations wait, safe but
+  stuck: code from before step 14 busy-defers on the pin and never takes it.
+  They run again after a roll forward, from `freshSinceAtMs` on. Unmoved
+  conversations run on today's core as before. A rollback below step 14 that
+  outlasts a pin is not supported: a pin expires 7 days after the
+  conversation's last write, and then today's core runs new input on that
+  conversation while its moved turns wait for the roll forward.
 - **Background sweep.** From step 15, the repair job (P7) also moves each
   conversation in today's Redis conversation indexes that still holds
   today's state, and notifies the parent of each active Agent invocation
@@ -1323,7 +1367,7 @@ the simplification pass.
 | `core` on the conversation row, and the refusal in today's workers                                 | 14 (14.2) | readers 16 (16.5); column 17 (17.1)                                                  |
 | The pin (today's lease, `MAX_SAFE_INTEGER`)                                                        | 15 (15.2) | writer 16 (16.3, 16.5); data: no delete step, it expires 7 days after the last write |
 | The move back, with the fence and the pin on its take (C14), the C10 delete and the end rule (C12) | 14 (14.3) | 16 (16.5)                                                                            |
-| `staleLeaseAcquiredAtMs`                                                                           | 14 (14.2) | writers 16 (16.5); column 17 (17.1)                                                  |
+| `staleLeaseAcquiredAtMs`                                                                           | 3 (3.7)   | writers 16 (16.5); column 17 (17.1)                                                  |
 | Current row (`updatedAtMs`, `freshSinceAtMs`, `currentSinceAtMs`, capabilities)                    | 14 (14.2) | row and writer 17 (17.1); 16 keeps it for the guard                                  |
 | Deployment rows (`lastSeenAtMs`)                                                                   | 14 (14.2) | rows and writer 17 (17.1); 16 keeps them for the guard                               |
 | `oldStateDrainedAtMs`                                                                              | 15 (15.5) | 17 (17.1)                                                                            |
@@ -1371,15 +1415,18 @@ the simplification pass.
     refusal. It never takes the pin and runs no turn, and its wake fields
     do not block `oldStateDrainedAtMs`. It stops only when the app deletes
     that deployment.
-  - A worker from before step 14 that takes over an expired lease saves no
+  - A worker from before step 3 that takes over an expired lease saves no
     `staleLeaseAcquiredAtMs`. If it then releases before the first
     holder's `maxDuration` has passed, the move can start while that
-    holder still runs. Only a chain from before step 14 does such a take.
+    holder still runs. Only a chain from before step 3 does such a take.
+    This is the existing accepted gap for an app that jumps from such a
+    release.
   - The move closes each active Agent invocation row made before step 14
     with a `failed` result, because the row has no parent turn id.
   - For up to 3 minutes plus one invocation after an Instant Rollback
-    below step 14, a new-core move can pin while the heartbeat runs code
-    that saves no tombstone. The row looks current for 3 minutes, and a
+    below step 3, a new-core move can pin while the heartbeat runs code
+    that saves no tombstone. A rollback to step 3 to 13 saves the
+    tombstone. The row looks current for 3 minutes, and a
     new-core invocation that read it in that time can still pin until its
     `maxDuration` ends (`ex_pinAfterStale`). If the heartbeat clears the
     lease of a stalled holder in that window, such a move can pin at once
@@ -1423,9 +1470,9 @@ the simplification pass.
     columns.
   - A measured clock skew with a log and an alert (the earlier draft): a
     fixed `M` needs neither.
-  - The shim from step 3 (the earlier draft): an app can jump releases, so
-    the plan handles code from before the shim release anyway, and nothing
-    needs the shim before the move ships.
+  - The whole shim from step 3 (the earlier draft): only the tombstone
+    writes guard old code that runs during a release jump. The refusal, the
+    rows and the ingress claim are needed only once the move ships.
   - The sweep's daily TTL refresh of each pin: `shim_rollbackNoRefresh`
     holds without it, and it helps only a rollback below step 14 that
     outlasts a pin, which is not supported.
@@ -1484,7 +1531,8 @@ the simplification pass.
 - **Model gap** (step G, G.1f):
   - The model has the earlier shim (G.1f): a step 3 worker, the running
     max with the ceiling, a 60 s skew allowance and a 2 min drop margin.
-    The design has a fixed `D`, `M` = 5 min and the shim from step 14.
+    The design has a fixed `D`, `M` = 5 min, the tombstone writes from
+    step 3 (as the model has) and the rest of the shim from step 14.
   - The sweep under the fence: a full lock take and the root before the
     child.
   - Ingress from before step 14 in flight during a release jump.
@@ -1734,8 +1782,9 @@ was lost".
   - Queue redelivery: the queue provider adapter (`queue/provider.ts`)
     redelivers an unacked message.
   - Lock expiry: the SQL fixture's database clock. All server times come
-    from database `now()`, so one clock moves the lock, the turn start and
-    the wake time.
+    from the database: `now()` moves the lock, the turn start and the wake
+    time, and `clock_timestamp()` moves the stop and input stamps
+    (rule 13).
   - Reply lost: the Slack fake accepts the post and drops the reply.
   - Compare-and-set contention: one suite runs two real workers on real
     Postgres.

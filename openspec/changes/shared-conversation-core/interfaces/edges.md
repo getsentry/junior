@@ -68,7 +68,8 @@ type ReplyTargetAdapter = {
   ): Promise<{ providerMessageId: string } | undefined>;
 };
 
-const replyTargets: Record<ReplyTarget["kind"], ReplyTargetAdapter>;
+/** No parent adapter: a parent target is not a delivery (P26). */
+const replyTargets: Record<"location" | "destination", ReplyTargetAdapter>;
 
 /** Pure. Which bodies a reply target gets (P18): a location each
  * response, a parent or destination only the one result. */
@@ -79,9 +80,10 @@ function shouldPost(target: ReplyTarget, body: ResponseBody): boolean {
 ```
 
 - `location`: Slack post in the thread. `find` reads message metadata.
-- `parent`: `send()` to the parent inbox, with the delivery id as the
-  record's `inboundMessageId`. `find` is the unique key. A parent gets
-  errors inside the result, so it gets no separate error post.
+- `parent`: no adapter. `finishTurn`'s finishing save inserts the result
+  record in the parent (P26), so there is no post, no `find` and no
+  attempt cap. A parent gets errors inside the result, so it gets no
+  separate error post.
 - `destination`: an Automation Destination, in `replyTo` order. It posts
   the result only for `send_message`. A `failed` or `stopped` run,
   `no_action` and `misconfigured` post nothing there; the run shows on the

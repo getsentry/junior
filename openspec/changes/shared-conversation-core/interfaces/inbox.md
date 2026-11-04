@@ -20,15 +20,16 @@ type Conversation = {
    * sets lockExpiresAtMs to null. */
   lockExpiresAtMs?: number;
   lockVersion: number;
-  /** Database now() of the stop() transaction (P34, P44). A turn that
-   * took in input received before it is stopped. */
+  /** clock_timestamp() of the stop() transaction, read after it holds its
+   * row locks (P34, P44). A turn that took in input received before it is
+   * stopped. */
   stopAtMs?: number;
   /** Who stopped it. finishTurn reads it to choose the child result. */
   stopBy?: StopBy["kind"];
   /**
-   * Next wake. send() sets it to now; the release sets it to nextRunAtMs.
-   * Both lock this row (P32). A SQL index on it is the wake-time index
-   * that the repair job reads (P7).
+   * Next wake. send() and stop() set it to now; the release sets it to
+   * nextRunAtMs. Each locks this row (P32, P34). A SQL index on it is the
+   * wake-time index that the repair job reads (P7).
    */
   wakeAtMs?: number;
 };
@@ -70,8 +71,8 @@ type RequestRecord = {
   /** The conversation that does the work. */
   conversationId: ConversationId;
   /** From the source's own id, so a provider retry gets the same id. For
-   * input that core makes, a fixed key: parent turnId + toolCallId, or a
-   * delivery id. */
+   * input that core makes, a fixed key: the asking turnId + toolCallId,
+   * or the child's turnId + parent for a result (P26). */
   inboundMessageId: string;
   /** A person actor needs a VerifiedPersonActor, which only core person
    * ingress makes (rule 12, P39). The record write asserts it. */
@@ -94,11 +95,13 @@ type RequestRecord = {
   join: "now" | "wait";
   /** When it was sent. Orders input. */
   createdAtMs: number;
-  /** Database now() of the insert; for a result or parent message, of the
-   * child's save that recorded it (P26). Drives the event window, judges
-   * stops and orders results against a stop (P34, P35, P44). */
+  /** clock_timestamp() of the insert, read after the transaction holds its
+   * row locks, so its order with a stop is commit order (P44). Drives the
+   * event window, judges stops and orders results against a stop (P34,
+   * P35). */
   receivedAtMs: number;
-  /** Delivery attempts before a turn takes it in. Limit 5 (P22). */
+  /** Attempts to start a turn with it. work() raises it in a commit before
+   * the attempt does any work, so a crash still counts. Limit 5 (P22). */
   attemptCount: number;
   input: { text: string; attachments?: Attachment[]; eventKind?: string };
   traceContext?: TraceContext;
@@ -128,7 +131,8 @@ type ReplyTarget =
 ```ts
 /**
  * Core only; plugins cannot import it (P39). One transaction: lock the
- * conversation row FOR UPDATE, insert the record, set wakeAtMs to now.
+ * conversation row FOR UPDATE, insert the record with receivedAtMs =
+ * clock_timestamp(), set wakeAtMs to now.
  * Then notify a worker. Never runs work. The unique key makes a repeat a
  * duplicate (P23, P32).
  */

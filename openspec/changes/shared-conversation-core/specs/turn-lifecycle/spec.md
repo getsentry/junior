@@ -180,9 +180,10 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 ### Requirement: Stale Lease Fence
 
 The move SHALL take an expired today's lease only after
-`max(acquiredAtMs, staleLeaseAcquiredAtMs) + D + M` (Decided: P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or a
-take over an expired lease SHALL first save the old `acquiredAtMs` as
-`staleLeaseAcquiredAtMs`.
+`max(acquiredAtMs, staleLeaseAcquiredAtMs) + D + M` (Decided: P45). Until then
+it SHALL set `wakeAtMs` to that time. From step 3, a heartbeat clear or a take
+over an expired lease SHALL first save the old `acquiredAtMs` as
+`staleLeaseAcquiredAtMs`. The rest of the shim SHALL ship in step 14.
 
 #### Scenario: Expired lease waits out the old worker
 
@@ -198,6 +199,23 @@ take over an expired lease SHALL first save the old `acquiredAtMs` as
   `acquiredAtMs`
 - **THEN** the move waits until `staleLeaseAcquiredAtMs + D + M`, though
   the conversation has no lease.
+
+#### Scenario: Release jump from step 3 or later
+
+- **WHEN** an app deploys the step 15 release straight from a release
+  from step 3 to 13, and a worker of the old release took over an expired
+  lease more than 2,100 s after `freshSinceAtMs`
+- **THEN** that takeover saved `staleLeaseAcquiredAtMs`, and the move waits
+  out the first holder.
+
+#### Scenario: Release jump from before step 3
+
+- **WHEN** an app deploys the step 15 release straight from a release
+  before step 3, and a worker of the old release takes over an expired
+  lease more than 2,100 s after `freshSinceAtMs` and releases it before
+  the first holder's `maxDuration` ends
+- **THEN** no tombstone exists, and the move can start while the first
+  holder runs: the accepted gap (Decided: P45, `shim_gap`).
 
 ### Requirement: Fence Duration
 
@@ -304,9 +322,11 @@ queue message SHALL carry only the conversation id.
 
 ### Requirement: A Turn Must Make Progress
 
-A resume that saves nothing new SHALL count one error under the turn error
-limit. A new checkpoint or a delivery attempt SHALL count as progress
-(Decided: P11).
+After a clean `continue` pause, one with no error, a resume that saves
+nothing new SHALL count one error under the turn error limit. A new
+checkpoint or a delivery attempt SHALL count as progress. Saving
+`errors + 1` SHALL NOT count as progress, and an error resume that saved
+nothing SHALL count only its error (Decided: P11).
 
 #### Scenario: Same boundary twice
 
@@ -319,6 +339,12 @@ limit. A new checkpoint or a delivery attempt SHALL count as progress
 - **WHEN** a mid-turn post fails and its delivery is retried
 - **THEN** the failure counts one error, each retry counts only as a
   delivery attempt (up to 5), and the retries use no more errors.
+
+#### Scenario: Error resume that saves nothing
+
+- **WHEN** a resume after an error pause fails again before it saves
+  anything new
+- **THEN** the turn counts one error for that failure, not two.
 
 ### Requirement: Per-Turn Limits
 
@@ -336,8 +362,8 @@ the first try after one wrap-up step, outside the retry limit (Decided: P12).
 
 A turn SHALL have one error limit of 5 (Decided: P4). An error after
 take-in SHALL pause the turn `continue` with `nextAttemptAtMs`, count one
-error, and release the lock (Decided: P31). A lost-worker restart, a resume
-that saves nothing new and a mid-turn post failure SHALL each count one
+error, and release the lock (Decided: P31). A lost-worker restart, a clean
+resume that saves nothing new and a mid-turn post failure SHALL each count one
 error. One failure SHALL count once. At the limit the turn SHALL end
 `failed: error`.
 
@@ -356,10 +382,12 @@ error. One failure SHALL count once. At the limit the turn SHALL end
 ### Requirement: Errors Before The Input Is Saved
 
 An error before `startTurn` commits SHALL retry the message with no visible
-text and count one delivery attempt. Each message SHALL allow 5 delivery
-attempts. After the fifth, a closing turn SHALL end `failed: input_dropped`
-and send the error message. These attempts SHALL NOT count against the
-turn error limit, because no turn started (Decided: P22).
+text. `work()` SHALL raise the record's attempt count in a commit before
+it loads context or starts the turn. Each message SHALL allow 5 attempts.
+A record that already has 5 SHALL go to a closing turn that ends
+`failed: input_dropped` and sends the error message. These attempts SHALL
+NOT count against the turn error limit, because no turn started (Decided:
+P22).
 
 #### Scenario: Failures before the turn started
 
@@ -367,6 +395,13 @@ turn error limit, because no turn started (Decided: P22).
   turn starts
 - **THEN** nothing showed for the 4 failures, and the turn starts with
   `errors: 0`.
+
+#### Scenario: Input that crashes every attempt
+
+- **WHEN** every attempt for a message dies before `startTurn` commits,
+  for example out of memory
+- **THEN** each attempt raised the count before it died, and after the
+  fifth a closing turn ends it `failed: input_dropped`.
 
 ### Requirement: Lost Worker Restarts
 
@@ -449,7 +484,8 @@ be resumable.
 A delivery that fails while finishing SHALL retry with backoff, up to 5
 attempts. A permanent provider error SHALL fail it at once. Then it SHALL
 be `failed`, and the turn SHALL finish anyway (Decided:
-P33).
+P33). A `parent` target SHALL NOT be a delivery: the finishing save SHALL
+insert its result (Decided: P26).
 
 #### Scenario: Error message cannot be posted
 
@@ -464,7 +500,7 @@ without the agent (Decided: P30).
 
 #### Scenario: Input past its delivery attempts
 
-- **WHEN** a message reaches 5 delivery attempts
+- **WHEN** a message reaches 5 attempts to start a turn
 - **THEN** a closing turn ends `failed: input_dropped` and sends the error
   message.
 
@@ -472,7 +508,8 @@ without the agent (Decided: P30).
 
 One repair job SHALL notify a worker for each conversation with no live
 lock whose `wakeAtMs` has passed, found by a SQL index on `wakeAtMs`, and
-for each `running` turn whose lock expired. It SHALL write nothing. There
+for each open turn (`running`, `paused` or `finishing`) whose lock
+expired. It SHALL write nothing. There
 SHALL be no resend of input: the request record is the inbox entry
 (Decided: P7, P23).
 
@@ -486,6 +523,13 @@ SHALL be no resend of input: the request record is the inbox entry
 
 - **WHEN** a caller fails after `send()` committed a record
 - **THEN** the record is already in the inbox, and nothing sends it again.
+
+#### Scenario: Child crashed while finishing
+
+- **WHEN** a child's worker dies with its turn `finishing` and its lock
+  expires
+- **THEN** the repair job notifies a worker, which runs `finishTurn`
+  again.
 
 ### Requirement: Usage And Route Belong To The Turn
 

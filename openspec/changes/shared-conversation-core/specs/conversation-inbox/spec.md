@@ -39,9 +39,10 @@ conversation id and the inbound message id. Only core person ingress
 ### Requirement: Results Get Their Own Record
 
 A child result or parent message SHALL get its own record in the receiving
-conversation, with `answers` and `sentBy`. The child's save SHALL record it
-as a delivery intent, and `send()` SHALL insert it with the delivery id as
-its inbound message id. No message SHALL point at a record (Decided: P26).
+conversation, with `answers` and `sentBy`. The child's own save SHALL
+insert it: the finishing save for a result, the fenced save of the call
+for a parent message. That transaction SHALL lock the parent row before the
+child row. No message SHALL point at a record (Decided: P26).
 
 #### Scenario: Result from a turn that is not a child
 
@@ -50,11 +51,12 @@ its inbound message id. No message SHALL point at a record (Decided: P26).
 - **THEN** the worker drops it with reason `sender_mismatch`, starts no
   turn, and fills in no actor from another source.
 
-#### Scenario: Result sent again after a crash
+#### Scenario: Crash after the finishing save
 
-- **WHEN** the child's next worker sends a result again after a crash
-- **THEN** the delivery id makes it a duplicate, and the parent has one
-  result record.
+- **WHEN** a child's worker dies after its finishing save commits and
+  before it marks the asked records `answered`
+- **THEN** the parent already has the result record, and the next worker
+  finishes the turn and makes no second one.
 
 #### Scenario: Result record
 
