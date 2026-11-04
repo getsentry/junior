@@ -10,7 +10,9 @@ related:
   - /start-here/quickstart/
 ---
 
-The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed public-channel and local sessions.
+The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
+
+All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are not available and passive extraction does not run.
 
 New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 
@@ -154,28 +156,24 @@ Automatic recall adds a candidate to the prompt only when its score is at least 
 
 </details>
 
-## Manage personal memories
+## Manage memories
 
-Signed-in users can search, page through, and forget their personal memories
-from the top-level **Memories** dashboard page. The page shows viewer-scoped
-memory totals, embedding coverage, and history on **Overview**. The separate
-**Memories** view provides search and collections for preferences,
-automatically learned memories, and explicitly saved memories. During a
-search, the collection tabs count only matching memories, and each result marks
-the matched words. Each record
-explains whether Junior learned it automatically or saved it because the user
-asked. Overview groups the viewer's active memories by type and how they were
-added. Forgetting archives the memory so Junior no longer recalls it.
+Signed-in users can search, page through, and forget memories from the
+top-level **Memories** dashboard page. **Overview** shows memory totals,
+embedding coverage, and history, grouped by type and by how each memory was
+added. The separate **Memories** view lists and searches memories. Each search
+result marks the matched words. Each record tells whether Junior
+learned it automatically or saved it because someone asked. Forgetting
+archives the memory for everyone, so Junior no longer recalls it.
 
 The plugin also exposes authenticated REST resources:
 
 | Method   | Path                               | Purpose                                       |
 | -------- | ---------------------------------- | --------------------------------------------- |
-| `GET`    | `/api/plugins/memory/dashboard`    | Read viewer-scoped memory totals and timeline |
-| `GET`    | `/api/plugins/memory/counts`       | Count memories that match `q` by visibility   |
+| `GET`    | `/api/plugins/memory/dashboard`    | Read memory totals and timeline               |
 | `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
-| `GET`    | `/api/plugins/memory/memories/:id` | Read one personal memory                      |
-| `DELETE` | `/api/plugins/memory/memories/:id` | Forget one personal memory                    |
+| `GET`    | `/api/plugins/memory/memories/:id` | Read one memory                               |
+| `DELETE` | `/api/plugins/memory/memories/:id` | Forget one memory                             |
 
 Personal API tokens can use the read endpoints. Deletion requires an
 authenticated dashboard browser session.
@@ -192,7 +190,7 @@ On a fresh database, this creates the `vector` and `btree_gin` extensions, the `
 
 ## Verify
 
-Confirm memory storage and recall work end to end. In a Slack conversation where Junior has actor context, ask Junior to store an explicit memory:
+Confirm memory storage and recall work end to end. In a public Slack channel where Junior has actor context, ask Junior to store an explicit memory:
 
 ```text
 Remember that I prefer concise bullet-point summaries
@@ -212,7 +210,7 @@ What do you remember about my preferences?
 
 Junior should recall the preference without prompting.
 
-Public Slack channel memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from another public channel in the same Slack workspace. Private memories belong to one person. Junior recalls them only in that person's private conversations, never in a public one. Child agents and automations use the visibility of the conversation they run in.
+Memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from any Conversation in the same Slack workspace, including DMs. Older private memories stay in the database, but Junior does not read them.
 
 ## Failure modes
 

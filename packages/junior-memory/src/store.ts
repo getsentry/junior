@@ -56,10 +56,9 @@ import {
   type MemorySourcePlatform,
 } from "./types";
 import {
-  deriveMemoryScope,
   deriveMemorySubject,
+  publicMemoryScope,
   type ResolvedMemorySubject,
-  deriveVisibleMemoryScopes,
   type ResolvedMemoryScope,
 } from "./scope";
 
@@ -434,38 +433,24 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
   });
 }
 
-/** Build the scoped SQL predicate and ordered params for visible memory reads. */
-function visibleScopePredicate(scopes: ResolvedMemoryScope[]): SQL | undefined {
-  if (scopes.length === 0) {
-    return undefined;
-  }
-  return or(
-    ...scopes.map((scope) =>
-      and(
-        eq(juniorMemoryMemories.scope, scope.scope),
-        eq(juniorMemoryMemories.scopeKey, scope.scopeKey),
-      ),
-    ),
-  );
+/** Match public memory. Reads return only public memory. */
+function publicScopeFilters(): SQL[] {
+  return [
+    eq(juniorMemoryMemories.scope, publicMemoryScope.scope),
+    eq(juniorMemoryMemories.scopeKey, publicMemoryScope.scopeKey),
+  ];
 }
 
-/** Build the active-row predicate for already-authorized memory scopes. */
-export function activeVisiblePredicate(args: {
-  nowMs: number;
-  scopes: ResolvedMemoryScope[];
-}): SQL | undefined {
-  const scopePredicate = visibleScopePredicate(args.scopes);
-  if (!scopePredicate) {
-    return undefined;
-  }
+/** Build the predicate for active public memory. */
+function activeVisiblePredicate(nowMs: number): SQL | undefined {
   return and(
-    scopePredicate,
+    ...publicScopeFilters(),
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
     or(
       isNull(juniorMemoryMemories.expiresAtMs),
-      gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+      gt(juniorMemoryMemories.expiresAtMs, nowMs),
     ),
   );
 }
@@ -555,21 +540,16 @@ async function findByIdempotencyKey(args: {
 }
 
 /**
- * Archive a bounded batch of expired active rows in the given scopes and
- * remove their derived vectors.
+ * Archive a bounded batch of expired active public rows and remove their
+ * derived vectors.
  */
-export async function archiveExpiredMemoryBatch(args: {
+async function archiveExpiredMemoryBatch(args: {
   db: MemoryDb;
   idempotencyKey?: string;
   limit?: number;
   nowMs: number;
-  scopes: ResolvedMemoryScope[];
 }): Promise<ArchiveExpiredMemoriesResult> {
-  const scopePredicate = visibleScopePredicate(args.scopes);
-  if (!scopePredicate) {
-    return { archivedCount: 0 };
-  }
-  const filters: SQL[] = [scopePredicate];
+  const filters = publicScopeFilters();
   if (args.idempotencyKey !== undefined) {
     filters.push(eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey));
   }
@@ -1011,17 +991,13 @@ async function adjudicateCandidate(args: {
   }
 }
 
-/** List active records for the runtime-derived visible scopes. */
+/** List active public records. */
 async function listVisibleMemories(args: {
   db: MemoryDb;
   limit?: number;
   nowMs: number;
-  scopes: ResolvedMemoryScope[];
 }): Promise<MemoryRecord[]> {
-  const predicate = activeVisiblePredicate(args);
-  if (!predicate) {
-    return [];
-  }
+  const predicate = activeVisiblePredicate(args.nowMs);
   const limit = boundedLimit(args.limit, DEFAULT_LIST_LIMIT);
   const rows = await args.db
     .select()
@@ -1060,12 +1036,8 @@ async function searchVisibleLexicalMemories(args: {
   limit: number;
   nowMs: number;
   query: string;
-  scopes: ResolvedMemoryScope[];
 }): Promise<MemoryMatch[]> {
-  const predicate = activeVisiblePredicate(args);
-  if (!predicate) {
-    return [];
-  }
+  const predicate = activeVisiblePredicate(args.nowMs);
   const query = normalizeRetrievalQuery(args.query);
   if (!query) {
     return [];
@@ -1137,7 +1109,7 @@ interface VectorSearchArgs {
   embedding: MemoryEmbedding;
   limit: number;
   maxDistance?: number;
-  predicate: SQL;
+  predicate: SQL | undefined;
 }
 
 /** Search every visible vector of the query model. Exact, but reads each one. */
@@ -1245,20 +1217,10 @@ async function searchVisibleVectorMemories(args: {
   limit: number;
   maxDistance?: number;
   nowMs: number;
-  scopes: ResolvedMemoryScope[];
 }): Promise<MemoryMatch[]> {
-  const predicate = activeVisiblePredicate(args);
-  if (!predicate) {
-    return [];
-  }
-  // Public memory makes the visible set large, so the exact search is slow.
-  // Without it the visible set is one User's private memory: the exact search
-  // is fast, and a shared nearest-vector budget could miss all of it.
-  const useHnsw =
-    hasHnswIndex(args.embedding) &&
-    args.scopes.some((scope) => scope.scope === "public");
-  const searchArgs = { ...args, predicate };
-  const rows = useHnsw
+  const searchArgs = { ...args, predicate: activeVisiblePredicate(args.nowMs) };
+  // The public set is large, so the exact search is slow.
+  const rows = hasHnswIndex(args.embedding)
     ? await searchHnswVectorRows(searchArgs)
     : await searchExactVectorRows(searchArgs);
   return withDenseRanks(rows, (row) => Number(row.distance)).flatMap(
@@ -1304,7 +1266,6 @@ export function createMemoryStore(
       db,
       limit: input.limit,
       nowMs,
-      scopes: deriveVisibleMemoryScopes(runtimeContext),
     });
   }
 
@@ -1347,7 +1308,7 @@ export function createMemoryStore(
     const input = createMemoryInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const content = normalizeContent(input.content);
-    const scope = deriveMemoryScope(runtimeContext);
+    const scope = publicMemoryScope;
     const subject = deriveMemorySubject(runtimeContext, subjectType);
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
@@ -1360,7 +1321,6 @@ export function createMemoryStore(
       idempotencyKey: input.idempotencyKey,
       limit: 1,
       nowMs,
-      scopes: [scope],
     });
     if (input.idempotencyKey !== undefined) {
       const idempotent = await findByIdempotencyKey({
@@ -1554,9 +1514,6 @@ export function createMemoryStore(
    * vectors already hit: that drops exact/token memories and serializes the
    * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
    * bounded even on broad queries.
-   *
-   * Automatic recall also searches private memory by itself. This keeps newer
-   * public memory with common words from hiding older private memory.
    */
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
@@ -1564,28 +1521,19 @@ export function createMemoryStore(
   ): Promise<MemoryRecord[]> {
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
-    const scopes = deriveVisibleMemoryScopes(runtimeContext);
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
     const overfetch =
       vectorMaxDistance === undefined
         ? SEARCH_RETRIEVAL_OVERFETCH
         : RECALL_RETRIEVAL_OVERFETCH;
     const candidateLimit = retrievalLegLimit(limit, overfetch);
-    const privateScopes = scopes.filter((scope) => scope.scope === "private");
-    // Search private memory by itself during recall so public results cannot
-    // fill both search windows.
-    const probePrivate =
-      vectorMaxDistance !== undefined && privateScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
-    // Embed once for both vector probes. A failed embed means lexical-only.
-    const queryEmbedding =
-      embedder && query
-        ? embedOne(embedder, query, "query").catch(() => undefined)
-        : Promise.resolve(undefined);
-    const vectorMatches = async (
-      vectorScopes: ResolvedMemoryScope[],
-    ): Promise<MemoryMatch[]> => {
-      const embedding = await queryEmbedding;
+    // A failed embed means lexical-only.
+    const vectorMatches = async (): Promise<MemoryMatch[]> => {
+      const embedding =
+        embedder && query
+          ? await embedOne(embedder, query, "query").catch(() => undefined)
+          : undefined;
       if (!embedding) {
         return [];
       }
@@ -1597,32 +1545,19 @@ export function createMemoryStore(
           ? { maxDistance: vectorMaxDistance }
           : undefined),
         nowMs,
-        scopes: vectorScopes,
       });
-    };
-    const emptyMatches = Promise.resolve([] as MemoryMatch[]);
-    const lexicalArgs = {
-      db,
-      limit: candidateLimit,
-      nowMs,
-      query: input.query,
     };
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
-    // Lexical probes do not need the embedding, so they start while it runs.
+    // The lexical leg does not need the embedding, so it starts while it runs.
     const matches = await Promise.all([
-      vectorMatches(scopes),
+      vectorMatches(),
       searchVisibleLexicalMemories({
-        ...lexicalArgs,
-        scopes,
+        db,
+        limit: candidateLimit,
+        nowMs,
+        query: input.query,
       }),
-      probePrivate ? vectorMatches(privateScopes) : emptyMatches,
-      probePrivate
-        ? searchVisibleLexicalMemories({
-            ...lexicalArgs,
-            scopes: privateScopes,
-          })
-        : emptyMatches,
     ]);
     return rankMemoryMatches(matches.flat(), {
       nowMs,
@@ -1650,13 +1585,10 @@ export function createMemoryStore(
 
     async listMemories(input) {
       input = listMemoriesInputSchema.parse(input);
-      const nowMs = getNowMs();
-      const scopes = deriveVisibleMemoryScopes(runtimeContext);
       return await listVisibleMemories({
         db,
         limit: input.limit,
-        nowMs,
-        scopes,
+        nowMs: getNowMs(),
       });
     },
 
@@ -1671,28 +1603,24 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {
         throw new Error("Memory id is required.");
       }
-      const rows = predicate
-        ? await db
-            .select()
-            .from(juniorMemoryMemories)
-            .where(
-              and(
-                predicate,
-                or(
-                  eq(juniorMemoryMemories.id, idPrefix),
-                  like(juniorMemoryMemories.id, `${idPrefix}%`),
-                ),
-              ),
-            )
-            .orderBy(asc(juniorMemoryMemories.id))
-            .limit(2)
-        : [];
+      const rows = await db
+        .select()
+        .from(juniorMemoryMemories)
+        .where(
+          and(
+            activeVisiblePredicate(nowMs),
+            or(
+              eq(juniorMemoryMemories.id, idPrefix),
+              like(juniorMemoryMemories.id, `${idPrefix}%`),
+            ),
+          ),
+        )
+        .orderBy(asc(juniorMemoryMemories.id))
+        .limit(2);
       if (rows.length === 0) {
         throw new Error("Memory was not found in the current context.");
       }

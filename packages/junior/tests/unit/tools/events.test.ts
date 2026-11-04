@@ -16,7 +16,6 @@ import { createEventTools } from "@/chat/tools/events";
 
 const context: ToolRuntimeContext = {
   conversationId: "slack:C123:1712345.0001",
-  conversationPrivacy: "public",
   destination: {
     platform: "slack",
     teamId: "T123",

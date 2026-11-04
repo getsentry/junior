@@ -11,37 +11,28 @@ import {
 } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID } from "./slack";
 
 /** The most memories that the store lists in one call. */
 const LIST_LIMIT = 200;
 
 /**
- * Return the active memories that a Slack person can recall, newest first:
- * each public memory and the private memories of that person. A memory that
- * Junior forgot or replaced is not in the list.
+ * Return the active memories that any person can recall, newest first. A
+ * memory that Junior forgot or replaced is not in the list.
  */
-export async function readMemories(
-  args: { author?: SlackAuthor } = {},
-): Promise<MemoryRecord[]> {
-  const actor = {
-    platform: "slack" as const,
-    teamId: SLACK_TEAM_ID,
-    userId: args.author?.userId ?? DEFAULT_SLACK_AUTHOR.userId,
-  };
-  const userId = (await readActorIdentity(actor))?.user?.id;
+export async function readMemories(): Promise<MemoryRecord[]> {
+  // All memory is public, so the reader's Source does not change the list.
   const store = createMemoryStore(getDb() as unknown as MemoryDb, {
-    actor,
-    // A private Conversation, so the list holds public and private memories.
-    conversationVisibility: "private",
+    actor: {
+      platform: "slack",
+      teamId: SLACK_TEAM_ID,
+      userId: DEFAULT_SLACK_AUTHOR.userId,
+    },
     source: createSlackSource({
-      channelId: `D${actor.userId}`,
+      channelId: `D${DEFAULT_SLACK_AUTHOR.userId}`,
       teamId: SLACK_TEAM_ID,
       visibility: "private",
     }),
-    ...(userId ? { userId } : undefined),
   });
   return await store.listMemories({ limit: LIST_LIMIT });
 }

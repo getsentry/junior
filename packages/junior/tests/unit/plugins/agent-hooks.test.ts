@@ -338,7 +338,6 @@ describe("agent plugin hooks", () => {
           async userPrompt(ctx) {
             expect(ctx.actor).toBeUndefined();
             expect(ctx.source).toEqual(LOCAL_SOURCE);
-            expect(ctx.conversationVisibility).toBe("private");
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
             expect(ctx).toHaveProperty("model");
@@ -353,7 +352,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            conversationPrivacy: "private",
             source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "remember this",
@@ -405,7 +403,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "slack:C123:1712345.0001",
-            conversationPrivacy: "public",
             actor: webActor,
             destination: slackDestination,
             source: webSource,
@@ -457,7 +454,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            conversationPrivacy: "private",
             source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
@@ -504,7 +500,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            conversationPrivacy: "private",
             source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
@@ -536,7 +531,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            conversationPrivacy: "private",
             source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
@@ -580,7 +574,6 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            conversationPrivacy: "private",
             source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
@@ -646,7 +639,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: "slack:DDM:1712345.0001",
-        conversationPrivacy: "public",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
@@ -719,7 +711,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: "local:web:dashboard-1",
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         actor: webActor,
         egress: TEST_EGRESS,
@@ -758,7 +749,6 @@ describe("agent plugin hooks", () => {
     try {
       getPluginTools({
         conversationId: "slack:DDM:1712345.0001",
-        conversationPrivacy: "public",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
@@ -802,7 +792,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: LOCAL_DESTINATION.conversationId,
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -855,7 +844,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: LOCAL_DESTINATION.conversationId,
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -890,7 +878,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: LOCAL_DESTINATION.conversationId,
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -924,7 +911,6 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         conversationId: LOCAL_DESTINATION.conversationId,
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -963,7 +949,6 @@ describe("agent plugin hooks", () => {
         {},
         {
           conversationId: LOCAL_DESTINATION.conversationId,
-          conversationPrivacy: "private",
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
           source: LOCAL_SOURCE,
@@ -1015,7 +1000,6 @@ describe("agent plugin hooks", () => {
     try {
       getPluginTools({
         conversationId: LOCAL_DESTINATION.conversationId,
-        conversationPrivacy: "private",
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         mcpToolManager: {
@@ -2005,7 +1989,6 @@ describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
       conversationId: LOCAL_DESTINATION.conversationId,
-      conversationPrivacy: "private",
       destination: LOCAL_DESTINATION,
       egress: TEST_EGRESS,
       source: LOCAL_SOURCE,
@@ -2040,7 +2023,6 @@ describe("getPluginTools channel resolution", () => {
     const source = slackSource("DDM");
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
-      conversationPrivacy: "private",
       source,
       destination: {
         platform: "slack",
@@ -2062,7 +2044,6 @@ describe("getPluginTools channel resolution", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
-      conversationPrivacy: "private",
       source: slackSource("DDM"),
       location: {
         id: "location:T123:DDM",
@@ -2087,7 +2068,6 @@ describe("getPluginTools channel resolution", () => {
   it("exposes Slack context and Actor for an Agent invocation", () => {
     const ctx = capturePluginContext({
       conversationId: "agent-invocation:invocation-1",
-      conversationPrivacy: "private",
       source: { kind: "agent_invocation" },
       actor: TEST_ACTOR,
       destination: SLACK_DESTINATION,
@@ -2109,7 +2089,6 @@ describe("getPluginTools channel resolution", () => {
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
-      conversationPrivacy: "private",
       source: slackSource("DDM"),
       destination: {
         platform: "slack",
@@ -2131,7 +2110,6 @@ describe("getPluginTools channel resolution", () => {
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
-      conversationPrivacy: "public",
       source: slackSource("CSOURCE"),
       destination: {
         platform: "slack",
@@ -2149,7 +2127,6 @@ describe("getPluginTools channel resolution", () => {
   it("exposes conversationId to plugins", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1780479160.406339",
-      conversationPrivacy: "public",
       destination: SLACK_DESTINATION,
       egress: TEST_EGRESS,
       source: SLACK_SOURCE,

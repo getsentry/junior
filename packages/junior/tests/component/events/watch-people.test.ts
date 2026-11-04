@@ -90,7 +90,6 @@ describe("Watch Event people", () => {
     });
     getPluginTools({
       conversationId: CONVERSATION_ID,
-      conversationPrivacy: "public",
       destination: SLACK_DESTINATION,
       egress: { fetch: async () => new Response("ok") },
       source: createSlackSource({

@@ -54,7 +54,6 @@ function memoryToolContext(ctx: {
   embedder?: MemoryToolContext["embedder"];
   locationId?: string;
   actor?: MemoryToolContext["actor"];
-  conversationVisibility: MemoryToolContext["conversationVisibility"];
   source: MemoryToolContext["source"];
   users: MemoryToolContext["users"];
   userText?: string;
@@ -68,7 +67,6 @@ function memoryToolContext(ctx: {
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
-    conversationVisibility: ctx.conversationVisibility,
     source: ctx.source,
     users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
@@ -82,7 +80,6 @@ function memoryCreateToolContext(ctx: {
   embedder?: MemoryCreateToolContext["embedder"];
   locationId?: string;
   actor?: MemoryCreateToolContext["actor"];
-  conversationVisibility: MemoryCreateToolContext["conversationVisibility"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   users: MemoryCreateToolContext["users"];
@@ -176,9 +173,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
         };
-        // Only the main agent writes memory. Child agent runs can read memory
-        // and suggest memories in their result.
-        if (ctx.source.kind === "agent_invocation") {
+        // All memory is public, so only a main agent in a public Conversation
+        // writes it. Child agents can suggest memories in their result. Other
+        // Sources, such as automations, carry no visibility, so they only read.
+        if (
+          !("visibility" in ctx.source) ||
+          ctx.source.visibility !== "public"
+        ) {
           return readTools;
         }
         return {
@@ -203,7 +204,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
-                conversationVisibility: ctx.conversationVisibility,
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,

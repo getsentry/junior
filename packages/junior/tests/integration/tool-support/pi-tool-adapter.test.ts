@@ -37,7 +37,6 @@ const TEST_EGRESS = {
 function runtimeContext() {
   return {
     conversationId: LOCAL_DESTINATION.conversationId,
-    conversationPrivacy: "private" as const,
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,

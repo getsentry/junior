@@ -25,7 +25,6 @@ const SOURCE = { kind: "scheduled_automation" } as const;
 function context(): ToolRuntimeContext {
   return {
     conversationId: CURRENT_CONVERSATION_ID,
-    conversationPrivacy: "public",
     destination: { platform: "slack", teamId: "T123", channelId: "C123" },
     location: {
       id: "location:T123:C123",

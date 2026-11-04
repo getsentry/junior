@@ -40,7 +40,6 @@ function runtimeContext() {
       userId: "UQUALITY",
     },
     conversationId: `slack:${channelId}:${threadTs}`,
-    conversationVisibility: "public" as const,
     source: createSlackSource({
       channelId,
       messageTs: threadTs,

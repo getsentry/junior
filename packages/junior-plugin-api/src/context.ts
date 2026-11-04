@@ -148,12 +148,6 @@ interface BaseInvocationContext {
   conversationId?: string;
   /** Location associated with this Conversation. */
   locationId?: string;
-  /**
-   * Visibility of the Conversation this invocation runs in. Child agents,
-   * automations, and events inherit it from the root Conversation. Read
-   * this, not Source visibility, to decide what private data may appear.
-   */
-  conversationVisibility: SourceVisibility;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {

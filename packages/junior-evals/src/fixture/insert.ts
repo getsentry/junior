@@ -335,23 +335,13 @@ export async function insertMemory(args: {
   kind?: "knowledge" | "preference" | "procedure";
   /** What the memory is about. Defaults to the person. */
   subjectType?: "conversation" | "user";
-  /**
-   * `private` is a memory from a direct message, which only the person can
-   * recall. Defaults to `public`, a memory from a public channel.
-   */
-  visibility?: "private" | "public";
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.author);
   const identity = await insertSlackIdentity(author);
   if (!identity.userId) {
     throw new Error(`The Slack person ${author.userId} has no User`);
   }
-  const visibility = args.visibility ?? "public";
-  const channel = slackChannel();
-  const channelId =
-    visibility === "private"
-      ? channel.channelId.replace(/^C/, "D")
-      : channel.channelId;
+  const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
@@ -362,13 +352,12 @@ export async function insertMemory(args: {
         userId: author.userId,
       },
       conversationId: `slack:${channelId}:${messageTs}`,
-      conversationVisibility: visibility,
       source: createSlackSource({
         channelId,
         messageTs,
         teamId: SLACK_TEAM_ID,
         threadTs: messageTs,
-        visibility,
+        visibility: "public",
       }),
       userId: identity.userId,
     },

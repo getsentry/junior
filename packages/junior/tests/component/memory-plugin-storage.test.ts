@@ -166,7 +166,6 @@ function memoryToolsFor(args: {
   return getPluginTools({
     actor,
     conversationId: args.conversationId,
-    conversationPrivacy: "private",
     destination: {
       channelId: args.channelId,
       platform: "slack",
@@ -384,7 +383,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
     }
   }, 15_000);
 
-  it("reads public memory everywhere and private memory only for its User", async () => {
+  it("reads only public memory in every Conversation", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
     const plugin = memoryPlugin();
     setPlugins([plugin]);
@@ -404,7 +403,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         userId: "U123",
       });
       const publicMemory = await createMemoryStore(db, {
-        conversationVisibility: "public",
         conversationId: "slack:C123:1718800000.000000",
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
         source: createSlackSource({
@@ -418,46 +416,22 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
-      const privateMemory = await createMemoryStore(db, {
-        conversationVisibility: "private",
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800001.000000",
-          visibility: "private",
-        }),
-        userId: viewer.user.id,
-      }).createMemory({
-        content: "Prefers terse status updates in this DM.",
-        idempotencyKey: "component-private-memory",
-        kind: "preference",
-      });
-      const otherPrivateMemory = await createMemoryStore(db, {
-        conversationVisibility: "private",
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U999" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800002.000000",
-          visibility: "private",
-        }),
-        userId: "other-user",
-      }).createMemory({
-        content: "Only the other User can read this.",
-        idempotencyKey: "component-other-private-memory",
-        kind: "knowledge",
-      });
-      await expect(
-        fixture.sql.query<{ location_id: string | null }>(
-          "SELECT location_id FROM junior_memory_memories WHERE id = $1",
-          [privateMemory.memory.id],
-        ),
-      ).resolves.toEqual([{ location_id: viewer.locationId }]);
+      // Memory wrote private rows before it became public only. Reads skip
+      // them, also for the User who owns them.
+      const privateMemoryId = "legacy-private-memory";
+      await fixture.sql.query(
+        `INSERT INTO junior_memory_memories (
+          id, scope, scope_key, type, subject_type, subject_key, content,
+          source_platform, source_key, observed_at_ms, created_at_ms
+        ) VALUES ($1, 'private', $2, 'preference', 'user', $2, $3, 'slack', $4, $5, $5)`,
+        [
+          privateMemoryId,
+          viewer.user.id,
+          "Prefers terse status updates in this DM.",
+          "slack:T123:D123:1718800001.000000",
+          Date.parse("2026-08-21T12:00:00.000Z"),
+        ],
+      );
 
       const viewerPage = await readPluginUserPage({
         email: "memory-viewer@example.com",
@@ -465,15 +439,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         pluginName: "memory",
         query: { limit: 25 },
       });
-      expect(viewerPage?.records.map((record) => record.id)).toEqual(
-        expect.arrayContaining([
-          publicMemory.memory.id,
-          privateMemory.memory.id,
-        ]),
-      );
-      expect(viewerPage?.records.map((record) => record.id)).not.toContain(
-        otherPrivateMemory.memory.id,
-      );
+      expect(viewerPage?.records.map((record) => record.id)).toEqual([
+        publicMemory.memory.id,
+      ]);
 
       await expect(
         memoryToolsFor({
@@ -483,10 +451,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           userId: "U123",
         }).memory_listMemories!.execute!({}, {}),
       ).resolves.toEqual({
-        memories: [
-          expect.objectContaining({ id: privateMemory.memory.id }),
-          expect.objectContaining({ id: publicMemory.memory.id }),
-        ],
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
         target: "listMemories",
       });
 
@@ -516,7 +481,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       const webTools = getPluginTools({
         actor: webActor,
         conversationId: webConversationId,
-        conversationPrivacy: "private",
         destination: webDestination,
         egress: {
           async fetch() {
@@ -528,12 +492,15 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         userText: "what do you remember about me?",
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
+      // A private Conversation recalls public memory but cannot create any.
+      expect(Object.keys(webTools).sort()).toEqual([
+        "memory_listMemories",
+        "memory_searchMemories",
+      ]);
       await expect(
         webTools.memory_listMemories!.execute!({}, {}),
       ).resolves.toMatchObject({
-        memories: expect.arrayContaining([
-          expect.objectContaining({ id: privateMemory.memory.id }),
-        ]),
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
       });
     } finally {
       await fixture.close();
@@ -560,7 +527,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
 
-        visibility: "private",
+        visibility: "public",
       });
       const userContext = await recordPrivateConversation(fixture, {
         channelId: "C123",
@@ -574,7 +541,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         fixture.sql.db() as MemoryDb,
         {
           conversationId,
-          conversationVisibility: "private",
           locationId: userContext.locationId,
           actor,
           source,
@@ -594,7 +560,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       const tools = getPluginTools({
         conversationId,
-        conversationPrivacy: "private",
         locationId: userContext.locationId,
         destination: {
           platform: "slack",

@@ -18,28 +18,14 @@ export interface ResolvedMemorySubject {
   subjectType: Extract<MemorySubjectType, "user" | "conversation">;
 }
 
-/** Public memories are visible everywhere. */
+/**
+ * Memory is public only. Reads and writes use this scope. Stored rows with
+ * the legacy private scope stay in the table, but no read returns them.
+ */
 export const publicMemoryScope: ResolvedMemoryScope = {
   scope: "public",
   scopeKey: PUBLIC_SCOPE_KEY,
 };
-
-function privateMemoryScope(userId: string): ResolvedMemoryScope {
-  return { scope: "private", scopeKey: userId };
-}
-
-/** Set memory access from the Conversation visibility. */
-export function deriveMemoryScope(
-  ctx: MemoryRuntimeContext,
-): ResolvedMemoryScope {
-  if (ctx.conversationVisibility === "public") {
-    return publicMemoryScope;
-  }
-  if (!ctx.userId) {
-    throw new Error("Private memory requires a User.");
-  }
-  return privateMemoryScope(ctx.userId);
-}
 
 /** Set what a memory is about. Access is set separately. */
 export function deriveMemorySubject(
@@ -62,17 +48,4 @@ export function deriveMemorySubject(
     subjectType,
     subjectKey,
   };
-}
-
-/**
- * Return the memory scopes that the current Turn may read. A public
- * Conversation never reads private memory, also the person's own.
- */
-export function deriveVisibleMemoryScopes(
-  ctx: MemoryRuntimeContext,
-): ResolvedMemoryScope[] {
-  if (!ctx.userId || ctx.conversationVisibility === "public") {
-    return [publicMemoryScope];
-  }
-  return [publicMemoryScope, privateMemoryScope(ctx.userId)];
 }

@@ -1,8 +1,4 @@
-import {
-  actorSchema,
-  sourceSchema,
-  sourceVisibilitySchema,
-} from "@sentry/junior-plugin-api";
+import { actorSchema, sourceSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
@@ -43,8 +39,6 @@ export const memoryRuntimeContextSchema = z
     locationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
     source: sourceSchema,
-    /** Visibility of the Conversation. Child agents inherit their root's. */
-    conversationVisibility: sourceVisibilitySchema,
     /** User linked to the active Actor. */
     userId: nonEmptyStringSchema.optional(),
   })

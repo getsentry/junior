@@ -239,7 +239,8 @@ export async function processMemorySession(
     return;
   }
   const sourceKey = getSourceKey(run.source);
-  if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
+  // All memory is public, so a private Conversation never creates memory.
+  if (!sourceKey || run.source.visibility !== "public") {
     return;
   }
   const transcript = run.transcript
@@ -258,9 +259,6 @@ export async function processMemorySession(
     conversationId: run.conversationId,
     ...(run.locationId ? { locationId: run.locationId } : undefined),
     ...(run.actor ? { actor: run.actor } : undefined),
-    // Passive extraction runs only for Slack and web roots, whose Source
-    // visibility is the Conversation visibility.
-    conversationVisibility: run.source.visibility,
     source: run.source,
     ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });
