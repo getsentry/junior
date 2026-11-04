@@ -161,6 +161,7 @@ import {
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
+import { estimateRequestOverheadTokens } from "@/chat/services/context-budget";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { requestBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
@@ -1045,6 +1046,10 @@ async function executeAgentRunInPrivacyContext(
           pendingMessages,
           mode,
           piMessages: messages,
+          requestOverheadTokens: estimateRequestOverheadTokens(
+            agent!.state.systemPrompt,
+            agent!.state.tools,
+          ),
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
                 runtimeContextMessages: [
