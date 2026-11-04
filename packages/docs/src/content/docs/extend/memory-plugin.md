@@ -150,7 +150,7 @@ Reranking model that scores recall candidates against the user's message.
 - **Required:** No
 - **Environment override:** `AI_RERANKING_MODEL`
 
-Automatic recall adds a candidate to the prompt only when its score is at least `0.55`. This threshold is tuned for the default model. If the reranking call fails, the turn continues without recalled memories.
+Automatic recall scores each candidate against the whole message and against each of its first five sentences, and keeps the best score. It adds a candidate to the prompt only when that score is at least `0.55`. This threshold is tuned for the default model. If the reranking call fails, the turn continues without recalled memories.
 
 </details>
 

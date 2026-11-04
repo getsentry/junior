@@ -4525,6 +4525,58 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
+  it("admits a memory that matches one sentence of a request", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = slackContext();
+      const gutCheck = await createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "Gut check means a code review verdict as a reaction.",
+        kind: "procedure",
+        idempotencyKey: "memory-test:recall-sentence",
+      });
+
+      // Live scores from voyage/rerank-2.5-lite for this request shape.
+      const queryScores: Record<string, number> = {
+        "Switch to the other configured profile first. Gut check": 0.48,
+        "Switch to the other configured profile first.": 0.27,
+        "Gut check": 0.86,
+      };
+      const plugin = memoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        users: memoryUsers(context.userId),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        log: noopLogger,
+        model: recallOnlyModel,
+        plugin: { name: "memory" },
+        reranker: {
+          async rerank({ documents, query }) {
+            return { scores: documents.map(() => queryScores[query] ?? 0) };
+          },
+        },
+        setSpanAttributes() {},
+        state: memoryState,
+        text: "Switch to the other configured profile first. Gut check",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      expect(contribution.context.content).toMatchObject({
+        memories: [{ id: gutCheck.memory.id }],
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("omits memory context when no candidate is directly relevant", async () => {
     const fixture = await createMemoryFixture();
 

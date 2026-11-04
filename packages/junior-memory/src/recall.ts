@@ -31,6 +31,12 @@ const MAX_MEMORY_LINE_CHARS = 600;
 // - 0.50 kept 13, admitted 4, and gave 1 of 11 small-talk queries a memory.
 // - Clear matches scored 0.63-0.93. Indirect matches scored 0.37-0.60.
 const RECALL_MIN_RERANK_SCORE = 0.55;
+// A message with several requests scores each memory low against the whole
+// text: "Switch to the other configured profile first. Gut check" scored 0.48
+// against a memory that defines "gut check", and "Gut check" alone scored 0.86
+// (voyage/rerank-2.5-lite, 2026-11-04). Recall also ranks each sentence and
+// keeps the best score per memory. The cap bounds rerank calls for long text.
+const MAX_RECALL_SENTENCE_QUERIES = 5;
 
 export interface MemoryRecallContext {
   conversationId?: string;
@@ -119,6 +125,18 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
   ].join("\n");
 }
 
+/** Return the whole text, plus each sentence when the text has more than one. */
+function recallQueries(text: string): string[] {
+  const sentences = Array.from(
+    new Intl.Segmenter("en", { granularity: "sentence" }).segment(text),
+    ({ segment }) => segment.trim(),
+  ).filter(Boolean);
+  if (sentences.length < 2) {
+    return [text];
+  }
+  return [text, ...sentences.slice(0, MAX_RECALL_SENTENCE_QUERIES)];
+}
+
 function addUsd(
   left: number | undefined,
   right: number | undefined,
@@ -199,12 +217,14 @@ export async function createMemoryPromptContributions(
   context.setSpanAttributes({
     "app.memory.recall.candidate.count": candidates.length,
   });
-  let rerank: { costUsd?: number; scores: number[] };
+  const documents = candidates.map(({ content }) => content);
+  let reranks: Array<{ costUsd?: number; scores: number[] }>;
   try {
-    rerank = await context.reranker.rerank({
-      documents: candidates.map(({ content }) => content),
-      query: context.text,
-    });
+    reranks = await Promise.all(
+      recallQueries(context.text).map((query) =>
+        context.reranker.rerank({ documents, query }),
+      ),
+    );
   } catch (error) {
     // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
@@ -214,7 +234,9 @@ export async function createMemoryPromptContributions(
     });
     return undefined;
   }
-  const { scores } = rerank;
+  const scores = documents.map((_, index) =>
+    Math.max(...reranks.map((rerank) => rerank.scores[index]!)),
+  );
   // Sort is stable, so equal scores keep retrieval rank order.
   const relevant = candidates
     .map((memory, index) => ({ memory, score: scores[index]! }))
@@ -227,7 +249,10 @@ export async function createMemoryPromptContributions(
     "app.memory.recall.injected.count": selected.length,
     "app.memory.recall.score.max": Math.max(...scores),
   });
-  const costUsd = addUsd(embeddingCostUsd, rerank.costUsd);
+  const costUsd = reranks.reduce(
+    (total, rerank) => addUsd(total, rerank.costUsd),
+    embeddingCostUsd,
+  );
   await emitRecallOutcome({
     ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
