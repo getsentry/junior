@@ -1,4 +1,5 @@
 import {
+  createContext,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -779,6 +780,11 @@ export function usePinnedTranscriptBottom(input: {
     ],
   );
 }
+
+/** Jump to the latest row from inside the transcript, like the floating pill. */
+export const TranscriptJumpToLatestContext = createContext<
+  (() => void) | undefined
+>(undefined);
 
 /** Load the previous history page when the reader scrolls near the top. */
 export function useAutoLoadPreviousPage(input: {

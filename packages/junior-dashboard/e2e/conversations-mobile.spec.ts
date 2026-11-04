@@ -940,6 +940,13 @@ test("catches the reader up on several unread Turns", async ({
   // The range is the one from when the Conversation opened.
   expect(requested).toEqual([{ afterSeq: 20, throughSeq: 61 }]);
   await screenshot(page, "conversation-catch-up", { view: "mobile" });
+
+  // The summary replaces the unread rows, so it leads straight to the latest.
+  await transcript
+    .getByRole("group", { name: "Catch-up" })
+    .getByRole("button", { name: "Jump to latest" })
+    .click();
+  await expect(transcript.getByText("Transcript message 59 ")).toBeInViewport();
 });
 
 test("opens at new messages after a cached reopen and keeps a quick exit", async ({

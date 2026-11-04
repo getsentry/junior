@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
+  TranscriptJumpToLatestContext,
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
   useAutoLoadPreviousPage,
@@ -155,13 +156,15 @@ export function Transcript(props: {
           />
         ) : (
           <TurnContextPanelProvider panel={props.turnContextPanel}>
-            <ConversationTranscriptView
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.transcript}
-              pendingMessages={props.pendingMessages}
-              responding={props.responding ?? props.live ?? false}
-              unread={props.unread}
-            />
+            <TranscriptJumpToLatestContext value={bottomPinning.jumpToBottom}>
+              <ConversationTranscriptView
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.transcript}
+                pendingMessages={props.pendingMessages}
+                responding={props.responding ?? props.live ?? false}
+                unread={props.unread}
+              />
+            </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
         )}
         <div
