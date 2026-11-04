@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWebInboundMessage,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -9,8 +9,9 @@ import {
   savedTurnInputMessages,
   webConversationMessage,
 } from "@/chat/task-execution/mailbox-input";
+import { testViewer } from "../../fixtures/user";
 
-const actor = webActorFromEmail("alice@example.com");
+const actor = webActorFromUser(testViewer("alice@example.com"));
 const author = { email: actor.email, userName: "alice" };
 
 function webMessage(
