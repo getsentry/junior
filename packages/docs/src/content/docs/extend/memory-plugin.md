@@ -212,7 +212,7 @@ What do you remember about my preferences?
 
 Junior should recall the preference without prompting.
 
-Public Slack channel memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from another public channel in the same Slack workspace. Private Slack and local conversation memories remain scoped to their original conversation.
+Public Slack channel memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from another public channel in the same Slack workspace. Private memories belong to one person. Junior recalls them only in that person's private conversations, never in a public one.
 
 ## Failure modes
 

@@ -88,8 +88,5 @@ These differ from the table. Agent-facing code must not copy them.
   and the plugin event reader (`canViewPrivateContent`, `isParticipant`).
   Forking a private Conversation needs the Owner, so a participant cannot
   get Owner access through a copy.
-- Memory recall returns the private memories of the person in every
-  Conversation, also public ones (`deriveVisibleMemoryScopes`). This breaks
-  the invariant.
 - `searchConversationBriefs` in a public Conversation with no provider
   tenant searches public Conversations of every tenant (row 2).
