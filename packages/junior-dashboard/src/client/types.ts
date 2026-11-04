@@ -91,6 +91,8 @@ export type TranscriptViewStructuredEventPart = {
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
+  /** Turn that emitted the event. */
+  turnId?: string;
   type: "structured_event";
   version: number;
 };
@@ -114,6 +116,7 @@ export type TranscriptViewTurnContext = {
   kind: string;
   loadedAt: string;
   pluginName: string;
+  turnId: string;
   version: number;
 };
 

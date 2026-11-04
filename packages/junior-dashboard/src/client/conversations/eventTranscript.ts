@@ -333,6 +333,7 @@ export function transcriptMessagesFromEvents(
           kind: data.kind,
           loadedAt: event.createdAt,
           pluginName: data.pluginName,
+          turnId: data.turnId,
           version: data.version,
         });
       }
@@ -417,6 +418,7 @@ export function transcriptMessagesFromEvents(
             name: data.name,
             version: data.version,
             presentation: data.presentation,
+            ...(data.turnId ? { turnId: data.turnId } : undefined),
           },
         ]),
       );

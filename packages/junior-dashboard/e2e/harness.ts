@@ -152,19 +152,33 @@ export async function mockDashboardApis(
     async (route) => {
       await route.fulfill({
         json: {
+          events: [
+            {
+              memoryIds: ["memory-checkout-runbook"],
+              source: "recalled",
+              turnId: "active-turn",
+            },
+            {
+              memoryIds: ["captured-memory-1", "captured-memory-2"],
+              source: "captured",
+              turnId: "qa-turn",
+            },
+          ],
           memories: [
             {
-              capturedAt: "2026-08-07T07:01:00.000Z",
+              content:
+                "Checkout latency investigations start with the deployment comparison dashboard.",
+              id: "memory-checkout-runbook",
+              visibility: "public",
+            },
+            {
               content: "Use pnpm for repository commands.",
               id: "captured-memory-1",
-              kind: "preference",
               visibility: "private",
             },
             {
-              capturedAt: "2026-08-07T07:01:00.000Z",
               content: "Dashboard transcript events should remain expandable.",
               id: "captured-memory-2",
-              kind: "knowledge",
               visibility: "public",
             },
           ],
