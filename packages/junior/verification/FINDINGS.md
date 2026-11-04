@@ -1,4 +1,4 @@
-# Findings Against 170f513
+# Findings Against 5356776
 
 Each finding names its check. CI checks are in `checks.txt`; evidence
 checks (drafts and failing variants) are in `evidence.txt`
@@ -6,29 +6,201 @@ checks (drafts and failing variants) are in `evidence.txt`
 `.out/<instance>.<property>.log`; `trace.py` prints it one step per line.
 A trace of N steps has N + 1 states. TLC searches breadth-first, so each
 safety trace is a shortest one within its bounds. Line numbers are in
-`openspec/changes/shared-conversation-core/design.md` at `170f513`
-unless a section names another revision.
+`openspec/changes/shared-conversation-core/design.md` at the revision
+that each section names.
+
+## P45 Shim (5356776)
+
+Models: `CutoverShim.tla` (the fence, the tombstone, the pin, the move,
+the move back; from 5356776 also the rollback below step 3, mixed
+`maxDuration`, the pending stop, I15, the pin expiry and Slack ingress),
+`CutoverTree.tla` (a parent and a child under the shim) and
+`DropGuard.tla` (the column-drop guard). Line numbers in this section
+are at `5356776`.
+
+| Check                                           | Result           | States | Plan                                |
+| ----------------------------------------------- | ---------------- | ------ | ----------------------------------- |
+| `tree_shim` resultNotLost, resultOneOwner       | holds            | 1.08M  | C7 in the shim's terms, `:988-1006` |
+| `tree_shimNoFence` resultNotLost                | fails, 6 steps   | 6K     | without the child's fence           |
+| `tree_shimNoPin` resultNotLost                  | fails, 5 steps   | 2K     | without the child's pin             |
+| `tree_shimEarlyTomb` resultNotLost              | fails, 8 steps   | 16K    | C11 order broken for the child      |
+| `shim_design` safety, oneCore                   | holds            | 4.22M  | the fence, the pin, C10, C12, C14   |
+| `shim_abandon` safety                           | holds            | 5.29M  | `:946-949`                          |
+| `shim_ingress` safety and ingress               | holds            | 10.4M  | C5, C6 claim, `:966-986`            |
+| `shim_ingressNoClaim` acceptedOnce              | fails, 3 steps   | 114    | today's ingress without the claim   |
+| `shim_ingressNoClaim` noDuplicateTurn           | fails, 10 steps  | 106K   | C5                                  |
+| `shim_ingressNoClaim` retryAfterMoveIsDuplicate | fails, 10 steps  | 302K   | C6                                  |
+| `shim_ingressRevNoFence` oneCoreLive            | fails, 11 steps  | 90K    | C14: `:1112-1123`                   |
+| `shim_abandonPlan` noSupersededRun              | fails, 13 steps  | 560K   | C12: `:1112-1119`                   |
+| `shim_abandonNoEnd` noSupersededRun             | fails, 14 steps  | 876K   | C12 without the end rule            |
+| `shim_gap` noDuplicateTurn                      | fails, 16 steps  | 1.55M  | the give-up (170f513 `:1061-1065`)  |
+| `shim_gap` safety                               | fails, 9 steps   | 32K    | same (`noOldWriteAfterPin`)         |
+| `shim_plan` safety, noDuplicateTurn             | fails, 19 steps  | 2.69M  | C10 (170f513)                       |
+| `shim_noFence` noDuplicateTurn                  | fails, 13 steps  | 297K   | without the fence                   |
+| `shim_earlyTomb` noDuplicateTurn                | fails, 15 steps  | 737K   | C11                                 |
+| `shim_rollback` onlyWindowGap                   | holds            | 56.0M  | C13 fix, `:1222-1227`               |
+| `shim_rollback` safety                          | fails, 8 steps   | 8K     | the accepted window                 |
+| `shim_rollbackStale` onlyWindowGap              | fails, 9 steps   | 19K    | C13: `:1084-1086`                   |
+| `shim_rollbackNoFresh` onlyWindowGap            | fails, 9 steps   | 19K    | no `freshSinceAtMs`                 |
+| `shim_rollbackNoStale` onlyWindowGap            | fails, 10 steps  | 62K    | a stale row stays current           |
+| `shim_rollbackNoRefresh` onlyWindowGap          | holds            | 64.8M  | no TTL refresh, `:935-938`          |
+| `shim_long` safety                              | holds            | 22.8M  | `D(lease)`, the ceiling             |
+| `shim_longCurrent` noDuplicateTurn              | fails, 14 steps  | 862K   | `D(lease)` of the current deploy    |
+| `shim_longNoCeiling` noDuplicateTurn            | fails, 14 steps  | 1.70M  | no ceiling for no `deploymentId`    |
+| `shim_stop` safety                              | holds            | 3.97M  | the pending stop                    |
+| `shim_stopNoMove` stopHonored                   | fails, 9 steps   | 27K    | the move drops the stop key         |
+| `shim_inv` safety                               | holds            | 3.57M  | I15                                 |
+| `shim_invCopy` movedActorVerified               | fails, 5 steps   | 1K     | trusts the stored actor             |
+| `drop_design` noReadAfterDrop                   | holds            | 79.8M  | `:1192-1209`                        |
+| `drop_spare` noReadAfterDrop                    | holds            | 4.20M  | `+2 min 15 s`, no revert            |
+| `drop_noSpare` noReadAfterDrop                  | fails, 284 steps | 4.20M  | `+2 min`, no revert                 |
+| `drop_oneMax` noReadAfterDrop                   | fails, 268 steps | 4.20M  | one `maxDuration`                   |
+
+`safety` is `oneCoreLive`, `noDuplicateTurn`, `noStrandedCursor`,
+`moveIdempotent`, `noTurnOpenedAfterMove`, `noOldWriteAfterPin`,
+`noSupersededRun`, `stopHonored` and `movedActorVerified`.
+`onlyWindowGap`: `safety` and `oneCore` hold, or a new-core invocation
+that read the current row before it was 3 cron runs old pinned while the
+rollback was current (the accepted window, `:1222-1227`).
+
+### C7 in the shim's terms (`:988-1006`)
+
+`tree_shim` holds `resultNotLost` and `resultOneOwner`: a step 3 child
+worker `co` and one from before step 3, `cp` (no `core` read, no
+tombstone, takes only an absent lease); each can stall or crash, and no
+result write checks a token. The row moves only after the child's lease
+and tombstone pass the stale lease fence, read in one step after the
+lease (C11), and the move pins the child. Each part is needed:
+
+- `tree_shimNoFence`, 6 steps: `cp` takes the child lease and stalls; the
+  move takes the row at once; `cp` writes its result to the moved row.
+- `tree_shimNoPin`, 5 steps: the move finds no child lease and does not
+  pin; `cp` takes the lease after the move and writes its result.
+- `tree_shimEarlyTomb`, 8 steps: the move reads the child's tombstone
+  (none); `cp` stalls, and the heartbeat saves the tombstone and clears
+  the lease; the move sees no lease and uses the tombstone it read.
+
+`tree_fenced` (core-model's result-token check against the deploy gate)
+is evidence only.
+
+### C5, C6 under the fence (`:966-986`)
+
+`shim_ingress` holds `safety`, `noDuplicateTurn`, `acceptedOnce`,
+`retryAfterMoveIsDuplicate` and `noLostInput` with the shared claim.
+Slack delivers i3 and retries i1 and i3. Without the claim
+(`shim_ingressNoClaim`):
+
+- `acceptedOnce`, 3 steps: a retry of i1 after the lock take sets
+  `core = new` and before the move copies `inboundMessageIds`.
+- `noDuplicateTurn`, 10 steps (C5): the retry of i1 goes to the new
+  core's inbox after the pin; a take on a revert runs it, so T1 starts
+  twice.
+- `retryAfterMoveIsDuplicate`, 10 steps (C6): today's path reads
+  `core = old`, the move runs, the append lands, and a retry of i3 is new.
+
+`cutover_inboxShared` (the claim against the deploy gate) is evidence
+only. With the claim, an append after the move stays in `pendingMessages`
+until the next new-core take moves it. Inference: the step 15 sweep or
+the next message brings that take; the model checks no liveness for it.
+
+### C12. The move back runs an abandoned half-moved turn
+
+`shim_abandonPlan noSupersededRun`, 13 steps: `n` inserts T1's turn row
+and crashes before the Redis delete. A revert makes a release without
+`new_core` current. `abandonTurnRecord` ends T1's cursor as `abandoned`.
+The revert's lock take finds `core = new` and runs `work()`, which runs
+T1's open row. The plan's move back runs `work()` first and the C10
+delete after (`:1112-1119`, 14.2); only a new-core take ends such a row
+(`:946-949`, 15.2). Fix (modeled, `CLEANFIRST`): the move back runs the
+C10 delete with the same rule (an open row of an ended cursor gets that
+end through `finishTurn`) before `work()`. `shim_abandonNoEnd` (14
+steps) is the same run with the delete but without the end rule.
+
+### C13. A rollback shorter than 3 minutes sets no freshSinceAtMs
+
+`shim_rollbackStale onlyWindowGap`, 9 steps:
+
+1. `o1` takes today's lease. A new-core invocation `n` starts and reads
+   the current row.
+2. An Instant Rollback below step 3. `n` takes the SQL lock
+   (`core = new`). `o1` stalls; the rollback's heartbeat clears the lease
+   and saves no tombstone (`:917-920`).
+3. A roll forward within 3 minutes. The row missed one cron run, so
+   `freshSinceAtMs` stays (`:1084-1086`).
+4. `n` finds no lease and no tombstone and pins at once. `o1` still runs
+   and takes i2 after the pin.
+
+The window in the plan (`:1222-1227`) ends at the roll forward; this run
+is after it. Fix (modeled, `FRESH = "any"`): set `freshSinceAtMs` when
+the old `updatedAtMs` is more than one cron interval (plus jitter) old.
+A clear by the rollback's heartbeat misses at least one upsert.
+`shim_rollback` holds `onlyWindowGap` with it. Also:
+
+- `shim_rollbackNoFresh` (9 steps) and `shim_rollbackNoStale`
+  (10 steps: a row 3 runs old stays current) fail.
+- The window is 3 minutes plus one invocation: `ex_pinAfterStale` is a
+  pin by an `n` that read the row in the window, after the row went
+  stale. The plan's "up to 3 minutes" leaves out up to one
+  `maxDuration`.
+- With the daily refresh, a pin expires only while the rollback is
+  current and the row is stale (`ex_pinExpired`). Without it
+  (`shim_rollbackNoRefresh`), `onlyWindowGap` still holds: a new-core
+  take that finds no pin passes the fence and pins again, and while the
+  rollback is current that pin is in the window. Inference: the refresh
+  keeps a quiet conversation pinned, so code from before step 3 does not
+  run new input on today's core while its moved turns wait
+  (`:1140-1146`). No check here covers that split.
+
+### C14. A take on the revert runs work() with no fence
+
+`shim_ingressRevNoFence oneCoreLive`, 11 steps: `o1` holds today's
+lease and runs T1. `n` takes the SQL lock (`core = new`), finds the live
+lease and waits. A revert makes a release without `new_core` current.
+Slack delivers i3; `core = new`, so it goes to the new core's inbox. The
+revert's lock take finds `core = new` and runs i3 with `work()` while
+`o1` runs T1. No move ran, so nothing pinned today's lease, and the move
+back (`:1112-1119`, 14.2) has no fence. Fix (modeled, `REVFENCE`): a
+take on a release without `new_core` that finds `core = new` and no pin
+first passes the stale lease fence and pins (C11 order), then runs
+`work()`. The move back gives today's state back when it clears the pin.
+Inference: only a release from step 14 runs `work()` (`:1120-1123`), so
+the fix is needed from step 14.
+
+### Mixed maxDuration, the pending stop, I15
+
+- `shim_long` (both today's workers on a deployment with the longer
+  `maxDuration`) holds `safety`. `shim_longCurrent` (`D(lease)` is the
+  current deployment's value) and `shim_longNoCeiling` (a lease with no
+  `deploymentId` gets the running max) fail `noDuplicateTurn`, 14 steps
+  each: the fence passes on the short value, and a stalled long worker
+  takes i2 after the pin.
+- `shim_stop` holds `safety`. `shim_stopNoMove stopHonored`, 9 steps:
+  the move drops today's stop key, and the new core runs a stopped turn.
+- `shim_inv` (an Agent invocation row with the creating turn and actor,
+  one with another actor, one whose parent turn is gone, one with no
+  parent turn id) holds `safety`. `shim_invCopy movedActorVerified`, 5
+  steps: a move that trusts the stored actor moves a row for actor B.
+
+### Column-drop guard (`:1192-1209`)
+
+`DropGuard.tla` checks that no step 15 invocation runs at the drop. A
+step 15 invocation that works (ingress, or a delivery while the row
+names step 15) first upserts `lastSeenAtMs`, at most once a minute. A
+delivery that finds the row naming step 16 acks with no upsert. A revert
+and a promote again can fall within one cron interval. `drop_design`
+(`1 h + 2×maxDuration + 3 min`) holds. With no revert, the model holds
+at `+2 min 15 s` (`drop_spare`) and fails at `+2 min` (`drop_noSpare`,
+284 steps): the 60 s throttle adds one minute to the earlier `+60 s`
+bound. `drop_oneMax` (one `maxDuration`) fails in 268 steps. The model
+rounds each bound up by at most 15 s, so the 3 min wait has 45 s to 60 s
+of spare. Not modeled: a revert in progress at the drop that no
+invocation has reached. No guard can see it; it is the Instant Rollback
+after step 17 that `:1132-1137` rules out.
 
 ## P45 Shim (170f513)
 
-Models: `CutoverShim.tla` (the fence, the tombstone, the pin, the move,
-the move back) and `DropGuard.tla` (the column-drop guard).
-
-| Check                               | Result           | States | Plan                             |
-| ----------------------------------- | ---------------- | ------ | -------------------------------- |
-| `shim_design` safety                | holds            | 4.28M  | `:869-917`, `:990-1019`, C10 fix |
-| `shim_design` oneCore               | holds            | 4.28M  | same                             |
-| `shim_abandon` safety               | holds            | 4.59M  | `:963-976`                       |
-| `shim_gap` noDuplicateTurn          | fails, 16 steps  | 1.50M  | the give-up at `:1061-1065`      |
-| `shim_gap` safety                   | fails, 9 steps   | 32K    | same (`noOldWriteAfterPin`)      |
-| `shim_plan` safety, noDuplicateTurn | fails, 19 steps  | 2.4M   | C10: `:916-917`, `:1006-1014`    |
-| `shim_noFence` noDuplicateTurn      | fails, 13 steps  | 286K   | the fence at `:877-882` removed  |
-| `shim_earlyTomb` noDuplicateTurn    | fails, 15 steps  | 785K   | C11: read order, `:877-898`      |
-| `drop_design` noReadAfterDrop       | holds            | 4.03M  | `:1042-1052`                     |
-| `drop_oneMax` noReadAfterDrop       | fails, 268 ticks | 4.02M  | one `maxDuration` instead of two |
-
-`safety` is `oneCoreLive`, `noDuplicateTurn`, `noStrandedCursor`,
-`moveIdempotent`, `noTurnOpenedAfterMove` and `noOldWriteAfterPin`.
+The first shim checks. Line numbers in this section are at `170f513`.
+The results are in the table above.
 
 Model rules (`CutoverShim.tla`):
 
@@ -130,36 +302,11 @@ worker runs at all while `n` runs, stalled or not.
 
 `shim_abandon safety` holds: `abandonTurnRecord` never opens a turn after
 the move (`noTurnOpenedAfterMove`). `ex_abandonFoundNoCursor` (9 steps)
-is the plan's "after it they find no cursor". `ex_abandonedHalfMoved` (8
-steps): `n` crashes between the insert and the delete, so the cursor
-lock is free; `abandonTurnRecord` writes `abandoned` on a cursor that
-already has a turn row. The repeat deletes it and `n` runs the turn. That
-is the same outcome as an abandon after the move, which the plan
-accepts.
-
-### Column-drop guard (`:1042-1052`)
-
-`DropGuard.tla` checks that no step 15 invocation runs at the drop.
-`drop_design` (the 1 h + 2 `maxDuration` + 2 min wait) holds.
-`drop_oneMax` (1 h + one `maxDuration` + 2 min) fails: a step 15
-invocation that started just before the cron saw the new row sends a
-message near its `maxDuration`; the message is delivered just before its
-1 h retention ends, and that delivery runs for one more `maxDuration`.
-The model holds with a wait down to 1 h + 2 `maxDuration` + 75 s and
-fails at 1 h + 2 `maxDuration` + 60 s (`drop_noSpare`, the skew alone).
-It rounds each bound up by at most 15 s, so it is stricter than the
-host, where the last step 15 read is before `currentSinceAtMs` + 1 h + 2
-`maxDuration` and the skew can move the check 60 s early. The 2 min wait
-has 45 s to 60 s of spare.
-
-Not modeled: an Instant Rollback to step 15 and a promote again (a
-draft with them passed 30M states without an end).
-Inference: the rollback makes the row name step 15, so the guard fails
-until the next promote, which sets `currentSinceAtMs` again; from there
-the run is `drop_design`'s.
-
-Plan text: `:1045` says "under 2 h for any `maxDuration` up to 1,740 s".
-With 1,740 s the wait is 3,600 + 3,480 + 120 = 7,200 s, exactly 2 h.
+is the plan's "after it they find no cursor". `ex_abandonedHalfMoved`:
+`n` crashes between the insert and the delete, so the cursor lock is
+free; `abandonTurnRecord` writes `abandoned` on a cursor that already
+has a turn row. At `170f513` the repeat deleted it and ran the turn;
+`5356776` ends that row instead (`shim_abandonNoEnd`, C12 above).
 
 ## P45: The Cutover (01e2234 and 90bbd9b)
 
@@ -167,7 +314,8 @@ Models: `Cutover.tla` (one conversation) and `CutoverTree.tla` (a parent
 and a child). Line numbers in this section are at `01e2234`. 170f513
 replaced the deploy gate (C9) and the delete and drop releases (C8) with
 the shim above; `cutover_gated` and `cutover_gatedSeen` are now evidence.
-C5, C6 (`cutover_inboxShared`) and C7 (`tree_fenced`) stay in CI.
+`cutover_inboxShared` and `tree_fenced` left CI at `5356776`:
+`shim_ingress` and `tree_shim` check C5, C6 and C7 under the shim.
 
 | Check                                                       | Result | Plan                         |
 | ----------------------------------------------------------- | ------ | ---------------------------- |
@@ -302,7 +450,9 @@ atomic Redis add). Only the add that wins goes on. The move promotes a
 the gate opens; `n` pins R's lease; `co` stalls and C's lease expires, so
 C looks idle (`:926-931`); `n` moves the invocation row; `co` writes the
 result to the moved row. Fix (`RESULT_FENCED`): today's result write
-checks the child's lease token too. `tree_fenced` holds.
+checks the child's lease token too. `tree_fenced` holds. `5356776` does
+not adopt it (a child worker from before step 3 has no such check); see
+C7 in the shim's terms above.
 
 ## P46: A Notify Lost While The Lock Is Held (Decided: Keep The Drop)
 

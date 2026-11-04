@@ -2,16 +2,16 @@
 
 Hand-written TLA+ models of the shared conversation core in
 `openspec/changes/shared-conversation-core/` (P37), checked by TLC. They
-check the plan at `170f513`. A model change that changes a result also
+check the plan at `5356776`. A model change that changes a result also
 changes `checks.txt`. `FINDINGS.md` has the counterexamples.
 
 | File              | What it models                                                    |
 | ----------------- | ----------------------------------------------------------------- |
 | `WorkerLock.tla`  | worker lock, lock version, turn row, errors, deliveries, wake-ups |
 | `StopClock.tla`   | the stop time on the Junior receive clock (P34, P44 option 1)     |
-| `Cutover.tla`     | the inbox move and Slack ingress at the cutover; the old gate     |
-| `CutoverTree.tla` | the cutover of a parent and a child (P45)                         |
-| `CutoverShim.tla` | the P45 shim: stale lease fence, tombstone, pin, move back        |
+| `Cutover.tla`     | the inbox move and Slack ingress against the old deploy gate      |
+| `CutoverTree.tla` | a parent and a child at the cutover (P45, C7)                     |
+| `CutoverShim.tla` | the P45 shim: fence, tombstone, pin, move back, ingress, rollback |
 | `DropGuard.tla`   | the P45 column-drop guard (step 17)                               |
 | `cfg/`            | one TLC config per instance: the constants of a plan revision     |
 | `checks.txt`      | the CI set: design configs and their expected results             |
@@ -45,9 +45,10 @@ shortest one.
 `rev3` is `5ed29c2`, `design` is the plan head. `noPause` is `design`
 without P31. Cutover instances name the variant they turn on (see
 `Cutover.tla`); `cutover_gatedSeen` is `cutover_gated` with the
-`01e2234` gate. `shim_design` is P45 at `170f513` with the C10 fix;
-`shim_plan` is without it. `shim_gap`, `shim_noFence` and
-`shim_earlyTomb` turn on one variant each.
+`01e2234` gate. `shim_design` is P45 at `5356776` with the C10, C12 and
+C14 fixes; `shim_<scenario>` turns on one scenario (`rollback`, `long`,
+`stop`, `inv`, `ingress`, `abandon`) and `shim_<scenario><Variant>` one
+change from it. `tree_shim` is C7 under the shim.
 
 ## Bounds
 
@@ -70,26 +71,30 @@ only what it needs, so TLC explores it exhaustively.
   `cutover_inbox*` has the deliveries and no `o1` (the gate retires it
   before it opens).
 - `CutoverTree`: 1 parent, 1 child, one worker of each kind on each,
-  2 crashes, 2 expiries, the gate opens once.
+  2 crashes, 2 expiries. `tree_shim` adds a child worker from before step
+  3, the child's fence and 3 child lease takes; no gate.
 - `CutoverShim`: 1 conversation, 2 inputs (an open cursor and a waiting
   input), today's workers `o1` (step 3 or later) and `p` (before step 3),
   the new core `n`, 3 today's lease takes (the epoch bound), 2 crashes,
-  2 lease or lock expiries, 1 revert. `shim_abandon` has `o1` only and 1
-  `abandonTurnRecord` call. Time is the order of lease takes: the fence
-  passes epochs one by one (`Tick`), and each pass ends every invocation
-  that started before that take. No Slack ingress and no sweep
-  (`Cutover.tla` has them).
+  2 lease or lock expiries, 1 revert. Time is the order of lease takes:
+  the fence passes epochs one by one (`Tick`), and each pass ends every
+  invocation that started before that take. `shim_abandon`, `shim_stop`,
+  `shim_inv` and `shim_ingress` have `o1` only; `shim_ingress` has 1
+  crash, 1 expiry and 3 Slack deliveries; `shim_rollback` has no crash,
+  1 expiry, a rollback below step 3 and a roll forward, 1 pin expiry and
+  one input that the rollback's ingress adds. No sweep (`Cutover.tla`
+  has it).
 - `DropGuard`: units of 15 s; `maxDuration` 300 s, retention 1 h, skew
-  60 s, a cron run each minute; 2 step 15 invocations, 1 queue message,
-  no rollback. Each bound counts
-  through the unit it ends in, so the model can be up to 15 s per bound
-  more pessimistic than the host.
+  60 s, a cron run each minute, the 60 s `lastSeenAtMs` throttle; 2 step
+  15 invocations, 1 queue message, a revert and a promote again. Each
+  bound counts through the unit it ends in, so the model can be up to
+  15 s per bound more pessimistic than the host.
 
 Not modeled: the system actor, the adversarial `send`, request record
 matching (I5, I6, I9, I12), tree stop results (I8), sandbox process tags
-(I13), shared sandbox files (accepted, P36), I15 (authority of moved
-state) and a Slack retry that finds a request record but no append (the
-model resumes `send()` there).
+(I13), shared sandbox files (accepted, P36), I15 beyond the Agent
+invocation row, and a Slack retry that finds a request record but no
+append (the model resumes `send()` there).
 
 ## Crash Points
 
@@ -105,7 +110,9 @@ step.
 
 ## Results
 
-`results.txt`: 63 checks. TLC only, exhaustive within the bounds. No
-Apalache and no inductive invariants. Largest: `wake_design` safety, 32.8M
-states, 52 minutes. The `errors_design` liveness check (three properties,
-one run) takes 2 h. A full run takes about 4 h 20 min on 4 cores.
+`results.txt`: 76 checks. TLC only, exhaustive within the bounds. No
+Apalache and no inductive invariants. Largest: `drop_design`, 79.8M
+states, 8 minutes. Slowest: the `errors_design` liveness check (three
+properties, one run), 2 h. A full run takes about 5 h 25 min on 4 cores.
+In the evidence list, `shim_rollbackNoRefresh` (64.8M states) takes
+35 minutes.

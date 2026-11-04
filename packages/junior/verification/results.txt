@@ -1,8 +1,9 @@
-# TLC results, 2026-11-03/04, plan 170f513. tla2tools v1.7.4 (SHA-256 in check.sh), Java 21, 4 cores.
+# TLC results, plan 5356776. tla2tools v1.7.4 (SHA-256 in check.sh), Java 21, 4 cores.
 # One row per line of checks.txt. Columns: PASS (matches checks.txt), instance, spec, property,
 # expected, got, wall time, distinct states (for a violation: states found when TLC stopped).
-# Run in parts. The CutoverShim and DropGuard rows ran next to the errors_design liveness row for
-# about 20 min, so those times are high. Sum of wall times: 15,558 s (4 h 19 min).
+# CutoverTree, CutoverShim, DropGuard: run 2026-11-04 with WORKERS=2, next to evidence runs, so
+# the times are high: 4,803 s. WorkerLock, StopClock: from the 09b3e45 run; their models, configs
+# and check.sh have not changed since: 14,679 s. Sum of wall times: 19,482 s (5 h 25 min).
 PASS lock_design                Spec            safety                             holds     holds        180s 2279933 states
 PASS errors_design              Spec            safety                             holds     holds        377s 3800618 states
 PASS delivery_design            Spec            safety                             holds     holds          4s 30055 states
@@ -39,30 +40,43 @@ PASS stop_receive_same          Spec            ex_stop_newerTurnRuns           
 PASS stop_receive_same          Spec            ex_stop_newerInputRequeued         violated  violated       3s 191509 states
 PASS stop_receive_same          Spec            acc_lateSentBeforeStopRuns         violated  violated       2s 88471 states
 PASS stop_receive_same          Spec            acc_earlySentAfterStopNotRun       violated  violated       1s 21800 states
-PASS cutover_inboxShared        Spec            safety,noDuplicateTurn,acceptedOnce holds     holds        106s 8916292 states
-PASS cutover_inboxShared        Spec            ex_inboxMovedThenRunOnNew          violated  violated       1s 38965 states
-PASS cutover_inboxShared        Spec            ex_retryRefused                    violated  violated       1s 12 states
-PASS cutover_inboxShared        Spec            ex_oldWriteAfterMove               violated  violated       1s 593 states
-PASS cutover_inboxShared        Spec            ex_dropped                         violated  violated       1s 9090 states
-PASS tree_fenced                Spec            resultNotLost,resultOneOwner       holds     holds          2s 25504 states
-PASS tree_fenced                Spec            ex_childMovedThenAnsweredOnNew     violated  violated       0s 1327 states
-PASS tree_fenced                Spec            ex_resultMovedAnswered             violated  violated       1s 1829 states
-PASS tree_fenced                Spec            ex_moveWaitsForBusyChild           violated  violated       1s 429 states
-PASS shim_design                Spec            safety                             holds     holds        202s 4283417 states
-PASS shim_design                Spec            oneCore                            holds     holds        187s 4283417 states
-PASS shim_abandon               Spec            safety                             holds     holds        185s 4589295 states
-PASS shim_gap                   Spec            noDuplicateTurn                    violated  violated      55s 1504767 states
-PASS shim_examples              Spec            ex_moveWaitsForFence               violated  violated       2s 343 states
-PASS shim_examples              Spec            ex_moveWaitsForTombstone           violated  violated       1s 4052 states
-PASS shim_examples              Spec            ex_takeoverTombstone               violated  violated       2s 141 states
-PASS shim_examples              Spec            ex_heartbeatCleared                violated  violated       1s 93 states
-PASS shim_examples              Spec            ex_refused                         violated  violated       1s 190 states
-PASS shim_examples              Spec            ex_busyDeferOnPin                  violated  violated       2s 729 states
-PASS shim_examples              Spec            ex_nonCurrentNoLock                violated  violated       1s 42 states
-PASS shim_examples              Spec            ex_movedBack                       violated  violated       3s 33634 states
-PASS shim_examples              Spec            ex_moveLockBusy                    violated  violated       2s 2236 states
-PASS shim_examples              Spec            ex_movedThenFinishedOnNew          violated  violated       6s 137199 states
-PASS shim_examples              Spec            ex_abandonFoundNoCursor            violated  violated       6s 136899 states
-PASS shim_examples              Spec            ex_abandonedHalfMoved              violated  violated       4s 55406 states
-PASS drop_design                Spec            noReadAfterDrop                    holds     holds         51s 4026128 states
-PASS drop_design                Spec            ex_dropped                         violated  violated      54s 4026067 states
+PASS tree_shim                  Spec            resultNotLost,resultOneOwner       holds     holds         19s 1080182 states
+PASS tree_shim                  Spec            ex_childMovedThenAnsweredOnNew     violated  violated       2s 2839 states
+PASS tree_shim                  Spec            ex_resultMovedAnswered             violated  violated       1s 2967 states
+PASS tree_shim                  Spec            ex_moveWaitsForBusyChild           violated  violated       1s 329 states
+PASS shim_design                Spec            safety                             holds     holds        179s 4224007 states
+PASS shim_design                Spec            oneCore                            holds     holds        186s 4224007 states
+PASS shim_abandon               Spec            safety                             holds     holds        207s 5294557 states
+PASS shim_long                  Spec            safety                             holds     holds        861s 22827072 states
+PASS shim_stop                  Spec            safety                             holds     holds        100s 3973601 states
+PASS shim_inv                   Spec            safety                             holds     holds         89s 3567260 states
+PASS shim_ingress               Spec            safety,noDuplicateTurn,acceptedOnce,retryAfterMoveIsDuplicate,noLostInput holds     holds        324s 10367498 states
+PASS shim_rollback              Spec            onlyWindowGap                      holds     holds       1606s 55975678 states
+PASS shim_gap                   Spec            noDuplicateTurn                    violated  violated      38s 1546182 states
+PASS shim_rollback              Spec            safety                             violated  violated       1s 7801 states
+PASS shim_examples              Spec            ex_moveWaitsForFence               violated  violated       2s 505 states
+PASS shim_examples              Spec            ex_moveWaitsForTombstone           violated  violated       1s 4455 states
+PASS shim_examples              Spec            ex_takeoverTombstone               violated  violated       1s 205 states
+PASS shim_examples              Spec            ex_heartbeatCleared                violated  violated       1s 142 states
+PASS shim_examples              Spec            ex_refused                         violated  violated       1s 407 states
+PASS shim_examples              Spec            ex_busyDeferOnPin                  violated  violated       1s 1353 states
+PASS shim_examples              Spec            ex_nonCurrentNoLock                violated  violated       1s 75 states
+PASS shim_examples              Spec            ex_movedBack                       violated  violated       6s 182870 states
+PASS shim_examples              Spec            ex_moveLockBusy                    violated  violated       1s 3458 states
+PASS shim_examples              Spec            ex_movedThenFinishedOnNew          violated  violated       4s 142243 states
+PASS shim_examples              Spec            ex_abandonFoundNoCursor            violated  violated       6s 199078 states
+PASS shim_examples              Spec            ex_abandonedHalfMoved              violated  violated       3s 64586 states
+PASS shim_examples              Spec            ex_rowEnded                        violated  violated     145s 7426543 states
+PASS shim_long                  Spec            ex_longFence                       violated  violated       1s 4929 states
+PASS shim_stop                  Spec            ex_stopMoved                       violated  violated       2s 47866 states
+PASS shim_inv                   Spec            ex_invMoved                        violated  violated       1s 1189 states
+PASS shim_inv                   Spec            ex_invClosed                       violated  violated       1s 1542 states
+PASS shim_ingress               Spec            ex_inboxMovedThenRunOnNew          violated  violated       8s 289789 states
+PASS shim_ingress               Spec            ex_retryRefused                    violated  violated       0s 14 states
+PASS shim_ingress               Spec            ex_oldWriteAfterMove               violated  violated       2s 1209 states
+PASS shim_rollback              Spec            ex_staleRowNoLock                  violated  violated       1s 1960 states
+PASS shim_rollback              Spec            ex_freshWait                       violated  violated       1s 3438 states
+PASS shim_rollback              Spec            ex_pinExpired                      violated  violated      14s 656734 states
+PASS shim_rollback              Spec            ex_pinAfterStale                   violated  violated       1s 8134 states
+PASS drop_design                Spec            noReadAfterDrop                    holds     holds        499s 79759813 states
+PASS drop_design                Spec            ex_droppedAfterFlips               violated  violated     485s 79759197 states

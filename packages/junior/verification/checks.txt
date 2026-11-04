@@ -55,33 +55,40 @@ StopClock stop_receive_same Spec INVARIANT ex_stop_newerInputRequeued violated
 StopClock stop_receive_same Spec INVARIANT acc_lateSentBeforeStopRuns violated
 StopClock stop_receive_same Spec INVARIANT acc_earlySentAfterStopNotRun violated
 
-# Model 3: the inbox move and Slack ingress at the cutover (P45), with the
-# proposed ingress fix (FINDINGS.md C5, C6): every ingress path adds the
-# id to inboundMessageIds first.
-Cutover cutover_inboxShared Spec INVARIANT safety,noDuplicateTurn,acceptedOnce holds
-Cutover cutover_inboxShared Spec INVARIANT ex_inboxMovedThenRunOnNew violated
-Cutover cutover_inboxShared Spec INVARIANT ex_retryRefused violated
-Cutover cutover_inboxShared Spec INVARIANT ex_oldWriteAfterMove violated
-Cutover cutover_inboxShared Spec INVARIANT ex_dropped violated
+# Model 4: a parent and a child under the shim (P45 at 5356776, C7 in the
+# shim's terms): the Agent invocation row moves only after the child passes
+# the stale lease fence (C11 read order) and is pinned. A stalled step 3
+# child worker and one from before step 3; no result write checks a token.
+CutoverTree tree_shim Spec INVARIANT resultNotLost,resultOneOwner holds
+CutoverTree tree_shim Spec INVARIANT ex_childMovedThenAnsweredOnNew violated
+CutoverTree tree_shim Spec INVARIANT ex_resultMovedAnswered violated
+CutoverTree tree_shim Spec INVARIANT ex_moveWaitsForBusyChild violated
 
-# Model 4: a parent and a child at the cutover (P45), with the proposed
-# result-write fence (FINDINGS.md C7).
-CutoverTree tree_fenced Spec INVARIANT resultNotLost,resultOneOwner holds
-CutoverTree tree_fenced Spec INVARIANT ex_childMovedThenAnsweredOnNew violated
-CutoverTree tree_fenced Spec INVARIANT ex_resultMovedAnswered violated
-CutoverTree tree_fenced Spec INVARIANT ex_moveWaitsForBusyChild violated
-
-# Model 5: the P45 shim (plan 170f513). The stale lease fence with the
+# Model 5: the P45 shim (plan 5356776). The stale lease fence with the
 # tombstone, the pin, a step 3 worker and a worker from before step 3 (no
 # reader, no tombstone; it takes only an absent lease), 2 crashes, 2
-# stalls, a revert, and the proposed move-back fix (FINDINGS.md C10).
+# stalls, a revert, and the proposed fixes C10, C12 and C14 (FINDINGS.md).
 CutoverShim shim_design Spec INVARIANT safety holds
 CutoverShim shim_design Spec INVARIANT oneCore holds
 # The lease-less abandonTurnRecord against the move.
 CutoverShim shim_abandon Spec INVARIANT safety holds
-# Documented limit (the plan's give-up, :1061-1065): a worker from before
-# step 3 takes over an expired lease and releases early.
+# Mixed maxDuration: D(lease) is the running max, the 1,800 s ceiling for a
+# lease with no deploymentId.
+CutoverShim shim_long Spec INVARIANT safety holds
+# The pending stop carried into stopAtMs.
+CutoverShim shim_stop Spec INVARIANT safety holds
+# Agent invocation rows of each kind (I15).
+CutoverShim shim_inv Spec INVARIANT safety holds
+# Slack ingress with the shared ingress claim (C5, C6) under the fence.
+CutoverShim shim_ingress Spec INVARIANT safety,noDuplicateTurn,acceptedOnce,retryAfterMoveIsDuplicate,noLostInput holds
+# An Instant Rollback below step 3, the stale row, freshSinceAtMs (with the
+# proposed C13 fix) and a pin expiry: every failure comes from a pin by an
+# invocation that read the row in the window.
+CutoverShim shim_rollback Spec INVARIANT onlyWindowGap holds
+# Documented limits: the plan's give-up (a worker from before step 3 takes
+# over an expired lease and releases early), and the rollback window.
 CutoverShim shim_gap Spec INVARIANT noDuplicateTurn violated
+CutoverShim shim_rollback Spec INVARIANT safety violated
 # Worked examples (reachable).
 CutoverShim shim_examples Spec INVARIANT ex_moveWaitsForFence violated
 CutoverShim shim_examples Spec INVARIANT ex_moveWaitsForTombstone violated
@@ -95,7 +102,20 @@ CutoverShim shim_examples Spec INVARIANT ex_moveLockBusy violated
 CutoverShim shim_examples Spec INVARIANT ex_movedThenFinishedOnNew violated
 CutoverShim shim_examples Spec INVARIANT ex_abandonFoundNoCursor violated
 CutoverShim shim_examples Spec INVARIANT ex_abandonedHalfMoved violated
+CutoverShim shim_examples Spec INVARIANT ex_rowEnded violated
+CutoverShim shim_long Spec INVARIANT ex_longFence violated
+CutoverShim shim_stop Spec INVARIANT ex_stopMoved violated
+CutoverShim shim_inv Spec INVARIANT ex_invMoved violated
+CutoverShim shim_inv Spec INVARIANT ex_invClosed violated
+CutoverShim shim_ingress Spec INVARIANT ex_inboxMovedThenRunOnNew violated
+CutoverShim shim_ingress Spec INVARIANT ex_retryRefused violated
+CutoverShim shim_ingress Spec INVARIANT ex_oldWriteAfterMove violated
+CutoverShim shim_rollback Spec INVARIANT ex_staleRowNoLock violated
+CutoverShim shim_rollback Spec INVARIANT ex_freshWait violated
+CutoverShim shim_rollback Spec INVARIANT ex_pinExpired violated
+CutoverShim shim_rollback Spec INVARIANT ex_pinAfterStale violated
 
-# Model 6: the P45 column-drop guard (plan 170f513, step 17).
+# Model 6: the P45 column-drop guard (plan 5356776, step 17): lastSeenAtMs
+# from invocations, the 60 s throttle, a revert and a promote again.
 DropGuard drop_design Spec INVARIANT noReadAfterDrop holds
-DropGuard drop_design Spec INVARIANT ex_dropped violated
+DropGuard drop_design Spec INVARIANT ex_droppedAfterFlips violated

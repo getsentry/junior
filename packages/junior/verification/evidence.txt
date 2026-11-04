@@ -56,21 +56,64 @@ Cutover cutover_gated Spec INVARIANT ex_refusedByReader violated
 Cutover cutover_gated Spec INVARIANT ex_revertedAfterMove violated
 Cutover cutover_gated Spec INVARIANT ex_dropped violated
 
-# Model 4: the parent and child move as written.
+# Model 3: Slack ingress with the shared claim (C5, C6) against the deploy
+# gate. Retired from CI at 5356776: CutoverShim shim_ingress checks the
+# claim under the fence.
+Cutover cutover_inboxShared Spec INVARIANT safety,noDuplicateTurn,acceptedOnce holds
+Cutover cutover_inboxShared Spec INVARIANT ex_inboxMovedThenRunOnNew violated
+Cutover cutover_inboxShared Spec INVARIANT ex_retryRefused violated
+Cutover cutover_inboxShared Spec INVARIANT ex_oldWriteAfterMove violated
+Cutover cutover_inboxShared Spec INVARIANT ex_dropped violated
+
+# Model 4: the parent and child move as written, and core-model's
+# result-write fence (C7) against the deploy gate. tree_fenced is retired
+# from CI: the plan does not adopt that fix (5356776); tree_shim checks C7
+# in the shim's terms.
 CutoverTree tree_plan Spec INVARIANT resultNotLost violated
+CutoverTree tree_fenced Spec INVARIANT resultNotLost,resultOneOwner holds
+# The shim rule without one part: the child's fence, the child's pin, the
+# C11 read order.
+CutoverTree tree_shimNoFence Spec INVARIANT resultNotLost violated
+CutoverTree tree_shimNoPin Spec INVARIANT resultNotLost violated
+CutoverTree tree_shimEarlyTomb Spec INVARIANT resultNotLost violated
 
 # Model 5: the shim as written, and variants.
-# C10: the move back after a crashed move, as written (:1006-1014, :916-917).
+# C10: the move back after a crashed move, as written at 170f513.
 CutoverShim shim_plan Spec INVARIANT safety violated
 CutoverShim shim_plan Spec INVARIANT noDuplicateTurn violated
-# The plan's give-up (:1061-1065): the first violated safety check.
+# The plan's give-up (:1218-1221): the first violated safety check.
 CutoverShim shim_gap Spec INVARIANT safety violated
 # Without the stale lease fence.
 CutoverShim shim_noFence Spec INVARIANT noDuplicateTurn violated
 # C11: the move reads the tombstone before the lease step.
 CutoverShim shim_earlyTomb Spec INVARIANT noDuplicateTurn violated
+# C12: the move back runs work() before the C10 delete (5356776); a
+# repeated move that does not end an abandoned half-moved turn.
+CutoverShim shim_abandonPlan Spec INVARIANT noSupersededRun violated
+CutoverShim shim_abandonNoEnd Spec INVARIANT noSupersededRun violated
+# D(lease) without the running max, or without the ceiling.
+CutoverShim shim_longCurrent Spec INVARIANT noDuplicateTurn violated
+CutoverShim shim_longNoCeiling Spec INVARIANT noDuplicateTurn violated
+# The move drops today's stop key.
+CutoverShim shim_stopNoMove Spec INVARIANT stopHonored violated
+# I15: the move trusts the actor that the Agent invocation row stored.
+CutoverShim shim_invCopy Spec INVARIANT movedActorVerified violated
+# C5, C6 under the fence: today's ingress without the shared claim.
+CutoverShim shim_ingressNoClaim Spec INVARIANT acceptedOnce violated
+CutoverShim shim_ingressNoClaim Spec INVARIANT noDuplicateTurn violated
+CutoverShim shim_ingressNoClaim Spec INVARIANT retryAfterMoveIsDuplicate violated
+# C14: a take on the revert runs work() with no fence (5356776).
+CutoverShim shim_ingressRevNoFence Spec INVARIANT oneCoreLive violated
+# C13: freshSinceAtMs only after a 3-minute gap (5356776); without it; a
+# stale row that stays current.
+CutoverShim shim_rollbackStale Spec INVARIANT onlyWindowGap violated
+CutoverShim shim_rollbackNoFresh Spec INVARIANT onlyWindowGap violated
+CutoverShim shim_rollbackNoStale Spec INVARIANT onlyWindowGap violated
+# No TTL refresh: holds. A take that finds no pin pins again (FINDINGS.md).
+CutoverShim shim_rollbackNoRefresh Spec INVARIANT onlyWindowGap holds
 
-# Model 6: the column-drop guard with one maxDuration, and with only the
-# skew (1 h + 2 maxDuration + 1 min; fails within the model's rounding).
-DropGuard drop_oneMax Spec INVARIANT noReadAfterDrop violated
+# Model 6: the column-drop guard with the wait before the throttle, with
+# one maxDuration, and with the smallest wait that holds (no revert).
 DropGuard drop_noSpare Spec INVARIANT noReadAfterDrop violated
+DropGuard drop_oneMax Spec INVARIANT noReadAfterDrop violated
+DropGuard drop_spare Spec INVARIANT noReadAfterDrop holds
