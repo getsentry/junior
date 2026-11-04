@@ -5,7 +5,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
   acceptsWebMessages,
-  webActorFromEmail,
+  webActorFromUser,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
@@ -39,8 +39,7 @@ function parseImages(images: InputImage[] | undefined) {
 
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
-  return webActorFromEmail(normalized, {
-    ...(viewer.displayName ? { fullName: viewer.displayName } : undefined),
+  return webActorFromUser(viewer, {
     userName: normalized.split("@")[0] || normalized,
   });
 }

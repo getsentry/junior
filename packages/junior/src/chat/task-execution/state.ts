@@ -1946,12 +1946,13 @@ export async function cancelHumanFacingPendingMessages(args: {
 
 /**
  * Mark one author's queued web messages as interrupts without a worker lease.
+ * `authorIds` lists every id that names the author.
  *
  * The active Turn drains them at its next model boundary when it belongs to the
  * same author. Otherwise they start the next Turn ahead of deferred input.
  */
 export async function steerWebPendingMessages(args: {
-  authorId: string;
+  authorIds: readonly string[];
   conversationId: string;
   inboundMessageIds: readonly string[];
   nowMs?: number;
@@ -1970,7 +1971,8 @@ export async function steerWebPendingMessages(args: {
       if (
         message.source !== "web" ||
         message.delivery !== "defer" ||
-        message.input.authorId !== args.authorId ||
+        message.input.authorId === undefined ||
+        !args.authorIds.includes(message.input.authorId) ||
         !requestedIds.has(message.inboundMessageId)
       ) {
         return message;

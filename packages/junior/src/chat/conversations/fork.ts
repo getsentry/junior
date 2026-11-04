@@ -1,5 +1,6 @@
 import { eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { User } from "@sentry/junior-plugin-api";
 import type { ConversationEvent } from "./history";
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
@@ -7,7 +8,7 @@ import { withConversationEventLock } from "./sql/event-lock";
 import {
   createConversationId,
   recordWebConversationActivity,
-  webActorFromEmail,
+  webActorFromUser,
 } from "./web-input";
 import {
   getConversationEventStore,
@@ -71,12 +72,11 @@ export class ConversationForkError extends Error {}
 export async function forkConversation(input: {
   sourceConversationId: string;
   messageId: string;
-  actorEmail: string;
-  actorName?: string;
+  viewer: User;
   idempotencyKey: string;
 }): Promise<{ conversationId: string }> {
   const conversationId = createConversationId({
-    actorEmail: input.actorEmail,
+    actorEmail: input.viewer.email,
     idempotencyKey: JSON.stringify([
       "fork",
       input.sourceConversationId,
@@ -147,9 +147,7 @@ export async function forkConversation(input: {
 
       const nowMs = Date.now();
       await recordWebConversationActivity({
-        actor: webActorFromEmail(input.actorEmail, {
-          ...(input.actorName ? { fullName: input.actorName } : undefined),
-        }),
+        actor: webActorFromUser(input.viewer),
         conversationId,
         nowMs,
         rootVisibility: source.visibility === "public" ? "public" : "private",

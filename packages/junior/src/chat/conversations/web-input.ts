@@ -5,7 +5,11 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
-import { createWebSource, type Destination } from "@sentry/junior-plugin-api";
+import {
+  createWebSource,
+  type Destination,
+  type User,
+} from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -123,17 +127,19 @@ export function acceptsWebMessages(
   );
 }
 
-/** Rebuild the web Actor from durable Conversation identity. */
-export function webActorFromEmail(
-  email: string,
-  profile?: { fullName?: string; userName?: string },
+/**
+ * Build the web Actor for one signed-in User. Junior is the web provider,
+ * so the provider-scoped Actor id is the User id.
+ */
+export function webActorFromUser(
+  user: Pick<User, "displayName" | "email" | "id">,
+  profile?: { userName?: string },
 ): WebActor {
-  const normalized = normalizeEmail(email);
   return {
     platform: "web",
-    userId: `dashboard:${stableHex(normalized)}`,
-    email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
+    userId: user.id,
+    email: normalizeEmail(user.email),
+    ...(user.displayName ? { fullName: user.displayName } : undefined),
     ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
 }

@@ -5,7 +5,8 @@ import {
   agentInvocationInputText,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorFromUser } from "@/chat/conversations/web-input";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import {
   resolveActorIdentityId,
@@ -224,7 +225,9 @@ describe("user approval for child agents", () => {
       // A desk answer is a web Message. Web ingress stores the Identity of
       // the signed-in person as the author.
       const deskAnswer = async (email: string, text: string) => {
-        const actor = webActorFromEmail(email);
+        const viewer = await resolveViewerUser(email);
+        if (!viewer) throw new Error(`missing viewer for ${email}`);
+        const actor = webActorFromUser(viewer);
         await recordRootMessage(slackParentConversationId, {
           author: { userId: actor.userId },
           authorIdentityId: await resolveActorIdentityId(

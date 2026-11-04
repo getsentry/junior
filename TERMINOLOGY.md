@@ -32,8 +32,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Identity**: one provider account (for example, a Slack account in one
   workspace), optionally linked to a User.
 - **Actor**: the runtime participant for one source invocation. Ids are
-  provider-scoped, not User ids. Provider fields do not select the runtime. A
-  Turn stores the starting Actor; steering inputs keep their own.
+  provider-scoped. Junior is the web provider, so a web Actor id is the User
+  id. Provider fields do not select the runtime. A Turn stores the starting
+  Actor; steering inputs keep their own.
 - **Owner**: the Identity that started a root Conversation. Human for Slack,
   web, and fork; the system Identity for Automation runs, plugin dispatch, and
   CLI. Children use the root Owner. Automations have a creator, not an Owner.

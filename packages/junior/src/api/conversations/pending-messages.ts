@@ -18,7 +18,7 @@ import {
   type ConversationPendingMessagesReport,
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import {
   legacyWebMailboxMetadataSchema,
@@ -199,6 +199,21 @@ async function attachPendingMentions(
   );
 }
 
+/** Read the viewer's pending authorization, also one saved before a deploy. */
+async function findViewerWebAuthorization(
+  conversationId: string,
+  viewer: User,
+) {
+  for (const actorId of webActorUserIds(viewer)) {
+    const authorization = await getWebAuthorization({
+      actorId,
+      conversationId,
+    });
+    if (authorization) return authorization;
+  }
+  return undefined;
+}
+
 /**
  * Read accepted mailbox messages that have not reached durable history yet.
  *
@@ -221,12 +236,9 @@ export async function readConversationPendingMessages(
   ).get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
   const isParticipant = access?.isParticipant ?? false;
-  const actorId = options.viewer?.email
-    ? webActorFromEmail(options.viewer.email).userId
-    : undefined;
   const authorization =
-    isParticipant && actorId
-      ? await getWebAuthorization({ actorId, conversationId })
+    isParticipant && options.viewer
+      ? await findViewerWebAuthorization(conversationId, options.viewer)
       : undefined;
 
   const work = await getConversation({ conversationId });
