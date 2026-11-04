@@ -6,7 +6,6 @@ import {
   CircleX,
   GitMerge,
   GitPullRequest,
-  Globe2,
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
@@ -72,35 +71,24 @@ export function PendingAuthorization(props: {
   );
 }
 
-/** Show whether the selected conversation is public or private. */
+/**
+ * Mark a private conversation with a lock icon. Public is the default, so it
+ * gets no marker, which keeps the title bar short.
+ */
 export function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
-  if (!props.visibility) return null;
-  const isPublic = props.visibility === "public";
-  const Icon = isPublic ? Globe2 : LockKeyhole;
-  const shortLabel = isPublic ? "Public" : "Private";
-  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
-  const detail = isPublic
-    ? "Anyone in this workspace can see this transcript."
-    : "Only members of this conversation can see this transcript.";
+  if (props.visibility !== "private") return null;
+  const label =
+    "Private conversation. Only members of this conversation can see this transcript.";
   return (
     <span
-      className={
-        isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-      }
+      className="inline-flex items-center text-dashboard-text-muted"
       role="note"
-      title={`${fullLabel}. ${detail}`}
+      title={label}
     >
-      <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span aria-hidden="true" className="truncate">
-        {shortLabel}
-      </span>
-      <span className="sr-only">
-        {fullLabel}. {detail}
-      </span>
+      <LockKeyhole aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="sr-only">{label}</span>
     </span>
   );
 }
