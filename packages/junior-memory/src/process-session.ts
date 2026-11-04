@@ -239,7 +239,8 @@ export async function processMemorySession(
     return;
   }
   const sourceKey = getSourceKey(run.source);
-  if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
+  // All memory is public, so a private Conversation never creates memory.
+  if (!sourceKey || run.source.visibility !== "public") {
     return;
   }
   const transcript = run.transcript

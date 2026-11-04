@@ -99,7 +99,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
       id: memory.id,
       content,
       observedAtMs: memory.observedAtMs,
-      scope: memory.scope === "private" ? "personal" : "conversation",
+      scope: "conversation",
       kind: memory.kind,
     });
     totalChars += line.length + 1;

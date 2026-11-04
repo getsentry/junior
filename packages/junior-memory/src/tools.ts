@@ -502,7 +502,7 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one active memory visible in the current context. This includes public memories and private memories owned by the current User. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
+      "Forget one active memory visible in the current context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
     executionMode: "sequential",
     inputSchema: archiveMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,

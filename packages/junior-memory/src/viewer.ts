@@ -1,7 +1,7 @@
 /**
  * Memory access for an authenticated User.
  *
- * Every User can read public memory and private memory that they own.
+ * Every User can read public memory.
  */
 import {
   and,
@@ -25,7 +25,6 @@ import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const nonEmptyStringSchema = z.string().min(1);
-const memoryVisibilitySchema = z.enum(["private", "public"]);
 const cursorSchema = z
   .object({
     createdAtMs: z.number().finite(),
@@ -34,7 +33,6 @@ const cursorSchema = z
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
     version: z.literal(1),
-    visibility: memoryVisibilitySchema.optional(),
   })
   .strict();
 const pageInputSchema = z
@@ -44,19 +42,14 @@ const pageInputSchema = z
     limit: z.number().int().min(1).max(50),
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
-    visibility: memoryVisibilitySchema.optional(),
   })
   .strict();
 const timelineDaysSchema = z.number().int().min(1).max(365);
-
-/** Access label returned by dashboard and REST memory views. */
-export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
 
 /** Memory fields returned to an authenticated User. */
 export type MemoryView = MemoryRecord & {
   origin: "automatic" | "explicit" | "other";
   sourcePlatform: MemorySourcePlatform;
-  visibility: MemoryVisibility;
 };
 
 interface MemoryPage {
@@ -89,26 +82,9 @@ function publicScopePredicate() {
   );
 }
 
-function privateScopePredicate(userId: string) {
+function activeMemoryPredicate(nowMs: number) {
   return and(
-    eq(juniorMemoryMemories.scope, "private"),
-    eq(juniorMemoryMemories.scopeKey, userId),
-  );
-}
-
-function visibleScopePredicate(userId: string, visibility?: MemoryVisibility) {
-  if (visibility === "public") return publicScopePredicate();
-  if (visibility === "private") return privateScopePredicate(userId);
-  return or(publicScopePredicate(), privateScopePredicate(userId));
-}
-
-function activeMemoryPredicate(
-  userId: string,
-  nowMs: number,
-  visibility?: MemoryVisibility,
-) {
-  return and(
-    visibleScopePredicate(userId, visibility),
+    publicScopePredicate(),
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
@@ -158,12 +134,10 @@ function memoryOrigin(idempotencyKey: string | null): MemoryView["origin"] {
 function toMemoryView(
   row: typeof juniorMemoryMemories.$inferSelect,
 ): MemoryView {
-  const memory = parseMemoryRow(row);
   return {
-    ...memory,
+    ...parseMemoryRow(row),
     origin: memoryOrigin(row.idempotencyKey),
     sourcePlatform: row.sourcePlatform,
-    visibility: memory.scope,
   };
 }
 
@@ -172,7 +146,6 @@ function cursorFilters(input: MemoryPageInput) {
     kind: input.kind,
     origin: input.origin,
     query: input.query?.trim() || undefined,
-    visibility: input.visibility,
   };
 }
 
@@ -188,8 +161,7 @@ function decodeCursor(
     if (
       parsed.query !== filters.query ||
       parsed.kind !== filters.kind ||
-      parsed.origin !== filters.origin ||
-      parsed.visibility !== filters.visibility
+      parsed.origin !== filters.origin
     ) {
       throw new InvalidMemoryCursorError();
     }
@@ -209,8 +181,8 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Archive one active memory visible to the authenticated User: public memory or private memory they own. */
-export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
+/** Archive one active public memory. */
+export async function archiveMemory(db: MemoryDb, id: string) {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
   const updated = await db
@@ -220,10 +192,7 @@ export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
       archiveReason: "user_removed",
     })
     .where(
-      and(
-        activeMemoryPredicate(userId, nowMs),
-        eq(juniorMemoryMemories.id, memoryId),
-      ),
+      and(activeMemoryPredicate(nowMs), eq(juniorMemoryMemories.id, memoryId)),
     )
     .returning();
   if (!updated[0]) throw new MemoryNotFoundError();
@@ -234,21 +203,14 @@ export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
 }
 
 /** Read one active memory visible to the authenticated User. */
-export async function getMemory(
-  db: MemoryDb,
-  userId: string,
-  id: string,
-): Promise<MemoryView> {
+export async function getMemory(db: MemoryDb, id: string): Promise<MemoryView> {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
   const rows = await db
     .select()
     .from(juniorMemoryMemories)
     .where(
-      and(
-        activeMemoryPredicate(userId, nowMs),
-        eq(juniorMemoryMemories.id, memoryId),
-      ),
+      and(activeMemoryPredicate(nowMs), eq(juniorMemoryMemories.id, memoryId)),
     )
     .limit(1);
   if (!rows[0]) throw new MemoryNotFoundError();
@@ -258,7 +220,6 @@ export async function getMemory(
 /** Read the active memories in `ids` that the authenticated User can see. */
 export async function getMemories(
   db: MemoryDb,
-  userId: string,
   ids: readonly string[],
 ): Promise<MemoryView[]> {
   if (ids.length === 0) return [];
@@ -267,7 +228,7 @@ export async function getMemories(
     .from(juniorMemoryMemories)
     .where(
       and(
-        activeMemoryPredicate(userId, Date.now()),
+        activeMemoryPredicate(Date.now()),
         inArray(juniorMemoryMemories.id, [...ids]),
       ),
     );
@@ -277,13 +238,12 @@ export async function getMemories(
 /** List one stable page of active memory visible to the authenticated User. */
 export async function listMemories(
   db: MemoryDb,
-  userId: string,
   input: MemoryPageInput,
 ): Promise<MemoryPage> {
   input = pageInputSchema.parse(input);
   const filters = cursorFilters(input);
   const cursor = decodeCursor(input.cursor, filters);
-  const active = activeMemoryPredicate(userId, Date.now(), input.visibility);
+  const active = activeMemoryPredicate(Date.now());
   const createdBefore = cursor
     ? or(
         lt(juniorMemoryMemories.createdAtMs, cursor.createdAtMs),
@@ -320,7 +280,7 @@ export async function listMemories(
 }
 
 /** Summarize active memory visible to the authenticated User. */
-export async function getMemoryStats(db: MemoryDb, userId: string) {
+export async function getMemoryStats(db: MemoryDb) {
   const nowMs = Date.now();
   const [counts] = await db
     .select({
@@ -346,10 +306,6 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
         sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
           Number,
         ),
-      private:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
-          Number,
-        ),
       preference:
         sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
           Number,
@@ -358,52 +314,15 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
         sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
           Number,
         ),
-      public:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
-          Number,
-        ),
     })
     .from(juniorMemoryMemories)
-    .where(activeMemoryPredicate(userId, nowMs));
+    .where(activeMemoryPredicate(nowMs));
   if (!counts) throw new Error("Memory stats query returned no row.");
   return counts;
 }
 
-/**
- * Count active memory visible to the authenticated User, split by visibility.
- * A query applies the same term match as `listMemories`.
- */
-export async function countMemories(
-  db: MemoryDb,
-  userId: string,
-  query?: string,
-) {
-  const [counts] = await db
-    .select({
-      active: sql<number>`count(*)`.mapWith(Number),
-      private:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
-          Number,
-        ),
-      public:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
-          Number,
-        ),
-    })
-    .from(juniorMemoryMemories)
-    .where(
-      and(activeMemoryPredicate(userId, Date.now()), searchPredicate(query)),
-    );
-  if (!counts) throw new Error("Memory count query returned no row.");
-  return counts;
-}
-
 /** Read daily memory creation totals visible to the authenticated User in UTC. */
-export async function getMemoryTimeline(
-  db: MemoryDb,
-  userId: string,
-  days: number,
-) {
+export async function getMemoryTimeline(db: MemoryDb, days: number) {
   days = timelineDaysSchema.parse(days);
   const todayMs = Date.parse(`${utcDate(Date.now())}T00:00:00.000Z`);
   const startMs = todayMs - (days - 1) * DAY_MS;
@@ -412,19 +331,12 @@ export async function getMemoryTimeline(
       date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
         "date",
       ),
-      private:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
-          Number,
-        ),
-      public:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
-          Number,
-        ),
+      count: sql<number>`count(*)`.mapWith(Number),
     })
     .from(juniorMemoryMemories)
     .where(
       and(
-        visibleScopePredicate(userId),
+        publicScopePredicate(),
         gt(juniorMemoryMemories.createdAtMs, startMs - 1),
       ),
     )
@@ -437,18 +349,13 @@ export async function getMemoryTimeline(
     const row = byDate.get(date);
     return {
       date,
-      private: row?.private ?? 0,
-      public: row?.public ?? 0,
+      count: row?.count ?? 0,
     };
   });
 }
 
 /** Read hourly memory creation totals visible to the authenticated User in UTC. */
-export async function getMemoryTimelineHours(
-  db: MemoryDb,
-  userId: string,
-  hours = 24,
-) {
+export async function getMemoryTimelineHours(db: MemoryDb, hours = 24) {
   const end = new Date();
   end.setUTCMinutes(0, 0, 0);
   const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
@@ -457,19 +364,12 @@ export async function getMemoryTimelineHours(
       date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`.as(
         "date",
       ),
-      private:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
-          Number,
-        ),
-      public:
-        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
-          Number,
-        ),
+      count: sql<number>`count(*)`.mapWith(Number),
     })
     .from(juniorMemoryMemories)
     .where(
       and(
-        visibleScopePredicate(userId),
+        publicScopePredicate(),
         gt(juniorMemoryMemories.createdAtMs, startMs - 1),
       ),
     )
@@ -484,8 +384,7 @@ export async function getMemoryTimelineHours(
     const row = byHour.get(date);
     return {
       date,
-      private: row?.private ?? 0,
-      public: row?.public ?? 0,
+      count: row?.count ?? 0,
     };
   });
 }
