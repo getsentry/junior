@@ -1,4 +1,3 @@
-import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
@@ -41,13 +40,19 @@ import {
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import {
-  logInfo,
-  logWarn,
-  withSpan,
-  type SetSpanAttributes,
-} from "@/chat/logging";
+import { logInfo, logWarn, type SetSpanAttributes } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import {
+  runAfterToolExecuteHooks,
+  type AfterToolHookInput,
+  type ToolHookSandbox,
+  type ToolResultNudge,
+} from "@/chat/plugins/after-tool-hooks";
+import {
+  basePluginContext,
+  createSandboxCapability,
+  withPluginHookSpan,
+} from "@/chat/plugins/hook-context";
 import {
   createPluginEmbedder,
   createPluginModel,
@@ -55,11 +60,7 @@ import {
 } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import {
-  SANDBOX_JUNIOR_ROOT,
-  SANDBOX_WORKSPACE_ROOT,
-} from "@/chat/sandbox/paths";
-import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
+import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -77,10 +78,7 @@ import {
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type {
-  SandboxCommandInput,
-  SandboxWorkspace,
-} from "@/chat/sandbox/workspace";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
@@ -127,6 +125,7 @@ export interface AfterMcpToolHookInput {
 
 export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<OwnedObjectAnnotation[]>;
+  afterToolExecute(input: AfterToolHookInput): Promise<ToolResultNudge[]>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   prepareWorkspace(
@@ -168,16 +167,6 @@ const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function basePluginContext(plugin: PluginRegistration) {
-  const name = plugin.manifest.name;
-  return {
-    plugin: { name },
-    cache: createPluginCache(name),
-    log: createPluginLogger(name),
-    db: getDb(),
-  };
 }
 
 /** Convert manifest names into model-facing tool namespaces. */
@@ -356,24 +345,6 @@ function pluginMcpContext(
       );
     },
   };
-}
-
-/** Time one plugin hook call so slow plugins show up in turn traces. */
-async function withPluginHookSpan<T>(
-  pluginName: string,
-  hookName: "beforeToolExecute" | "sandboxPrepare" | "userPrompt",
-  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
-): Promise<T> {
-  return await withSpan(
-    `plugin.hook ${hookName}`,
-    "plugin.hook",
-    {},
-    callback,
-    {
-      "app.plugin.name": pluginName,
-      "app.plugin.hook": hookName,
-    },
-  );
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -1588,60 +1559,27 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function preparationSignal(
-  inputSignal?: AbortSignal,
-  ownerSignal?: AbortSignal,
-): AbortSignal | undefined {
-  if (!inputSignal) return ownerSignal;
-  if (!ownerSignal) return inputSignal;
-  return AbortSignal.any([inputSignal, ownerSignal]);
-}
-
-function createSandboxCapability(
-  workspace: SandboxWorkspace,
-  ownerSignal?: AbortSignal,
-): PluginSandbox {
-  return {
-    root: SANDBOX_WORKSPACE_ROOT,
-    juniorRoot: SANDBOX_JUNIOR_ROOT,
-    async readFile(filePath) {
-      return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
-    },
-    async run(input: SandboxCommandInput) {
-      const signal = preparationSignal(input.signal, ownerSignal);
-      const result = await runNonInteractiveCommand(workspace, {
-        ...input,
-        ...(signal ? { signal } : undefined),
-      });
-      return {
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      };
-    },
-    async writeFile(input) {
-      await workspace.writeFiles([
-        {
-          path: input.path,
-          content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
-        },
-      ]);
-    },
-  };
-}
-
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
     actor?: Actor;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
     actors?: () => Actor[];
+    /** The Run's sandbox. Without it, `afterToolExecute` hooks do not run. */
+    sandbox?: () => ToolHookSandbox;
   } = {},
 ): PluginHookRunner {
   const loaded = getPlugins();
 
   return {
+    async afterToolExecute(tool) {
+      if (!input.sandbox) return [];
+      return await runAfterToolExecuteHooks({
+        plugins: loaded,
+        sandbox: input.sandbox(),
+        tool,
+      });
+    },
     async afterMcpTool(tool) {
       const cards: OwnedObjectAnnotation[] = [];
       for (const plugin of loaded) {

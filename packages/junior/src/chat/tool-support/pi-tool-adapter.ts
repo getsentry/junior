@@ -40,6 +40,10 @@ import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-hand
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
+  renderToolResultNudge,
+  type ToolResultNudge,
+} from "@/chat/plugins/after-tool-hooks";
+import {
   createExecuteToolTool,
   EXECUTE_TOOL_NAME,
 } from "@/chat/tools/execute-tool";
@@ -107,6 +111,27 @@ async function untilPreempted<T>(
 
 type NormalizedToolResult = ReturnType<typeof normalizeToolResult>;
 
+/**
+ * Add plugin guidance after the tool's own content. Details stay the same, so
+ * structured (JSON) output is not changed.
+ */
+function withToolResultNudges(
+  result: NormalizedToolResult,
+  nudges: ToolResultNudge[],
+): NormalizedToolResult {
+  if (nudges.length === 0) return result;
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      ...nudges.map((nudge) => ({
+        type: "text" as const,
+        text: renderToolResultNudge(nudge),
+      })),
+    ],
+  };
+}
+
 /** Services that every tool call uses, for direct, catalog, and script calls. */
 export interface ToolPipelineOptions {
   /** Tools that `executeTool` may run. */
@@ -149,7 +174,7 @@ export interface ScriptToolCall {
  * call, so whether it ran is unknown. An authorization pause throws.
  */
 export type ScriptToolCallOutcome =
-  | { status: "ok"; result: NormalizedToolResult }
+  | { status: "ok"; result: NormalizedToolResult; nudges: ToolResultNudge[] }
   | { status: "preempted" }
   | {
       status: "rejected";
@@ -344,17 +369,24 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       signal,
     );
 
-    const normalized = normalizeToolResult(result, {
+    const toolResult = normalizeToolResult(result, {
       requireStructuredResult: Boolean(toolDef.outputSchema),
       toolName,
     });
     if (isSandbox && pluginAuthOrchestration) {
-      await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
+      await pluginAuthOrchestration.maybeHandleAuthSignal(toolResult.details);
     }
+    const nudges = agentHooks
+      ? await agentHooks.afterToolExecute({
+          input: toolInput,
+          name: toolName,
+          ...(signal ? { signal } : undefined),
+        })
+      : [];
     const resultAttributeValue = reportedToolResult(
       result,
       isSandbox,
-      normalized,
+      toolResult,
     );
     let projectedPrivateResult: unknown;
     let hasProjectedPrivateResult = false;
@@ -409,7 +441,7 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       toolCallId,
       toolName,
     });
-    return normalized;
+    return { result: toolResult, nudges };
   };
   const executeDefinition = async (args: {
     toolCallId: string;
@@ -425,12 +457,13 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       actionReview,
       args.signal,
     );
-    return await executeReviewed({
+    const { result, nudges } = await executeReviewed({
       prepared,
       review: reviews.get(args.toolCallId)!,
       signal: args.signal,
       setSpanAttributes: args.setSpanAttributes,
     });
+    return withToolResultNudges(result, nudges);
   };
   const reportStatus = async (
     executionToolName: string,
@@ -638,6 +671,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
      */
     async callFromScript(call: ScriptToolCall): Promise<ScriptToolCallOutcome> {
       const { signal, tool, toolCallId, toolName } = call;
+      // The script gets the tool's own value. Nudges go to the codemode
+      // result, so they never change what the script reads.
+      let nudges: ToolResultNudge[] = [];
       let traced: TracedToolCall;
       try {
         traced = await traceCall(
@@ -671,12 +707,14 @@ export function createToolPipeline(options: ToolPipelineOptions) {
               toolDef: tool,
               toolName,
             });
-            return await executeReviewed({
+            const reviewed = await executeReviewed({
               prepared,
               review: await call.review(prepared.action),
               signal,
               setSpanAttributes,
             });
+            nudges = reviewed.nudges;
+            return reviewed.result;
           },
         );
       } catch (error) {
@@ -692,7 +730,7 @@ export function createToolPipeline(options: ToolPipelineOptions) {
         };
       }
       if (traced.kind === "completed") {
-        return { status: "ok", result: traced.result };
+        return { status: "ok", result: traced.result, nudges };
       }
       if (traced.kind === "preempted") {
         return { status: "preempted" };

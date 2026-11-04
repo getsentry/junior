@@ -360,6 +360,9 @@ export async function runCodeModeScript(
         if (undeliverable) {
           call.error = cut(undeliverable, MAX_CALL_ERROR_CHARS);
         }
+        if (outcome.nudges.length > 0) {
+          call.nudges = outcome.nudges;
+        }
         return;
       }
       case "rejected":
