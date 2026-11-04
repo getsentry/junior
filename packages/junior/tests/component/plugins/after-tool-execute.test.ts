@@ -73,7 +73,7 @@ describe("afterToolExecute plugin hooks", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "eval-guard",
+            name: "edit-check",
             displayName: "Eval guard",
             description: "Checks eval edits.",
           },
@@ -88,7 +88,7 @@ describe("afterToolExecute plugin hooks", () => {
                 cwd: `${ctx.sandbox.root}/${repo.path}`,
               });
               if (diff.stdout.includes("toContain")) {
-                ctx.decision.nudge("The eval asserts <exact> wording.");
+                ctx.decision.nudge("The change looks <risky>.");
               }
             },
           },
@@ -120,7 +120,7 @@ describe("afterToolExecute plugin hooks", () => {
     ]);
     expect(result.content.at(-1)).toEqual({
       type: "text",
-      text: '<plugin-note plugin="eval-guard">The eval asserts &lt;exact&gt; wording.</plugin-note>',
+      text: '<plugin-note plugin="edit-check">The change looks &lt;risky&gt;.</plugin-note>',
     });
   });
 

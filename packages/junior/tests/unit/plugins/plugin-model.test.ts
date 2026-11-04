@@ -8,8 +8,8 @@ const completeDecision = vi.fn(async () => ({
   answers: {
     answer: {
       type: "choice",
-      choice: "overfit",
-      probabilities: { overfit: 0.9, fine: 0.1 },
+      choice: "block",
+      probabilities: { block: 0.9, allow: 0.1 },
     },
   },
 }));
@@ -97,7 +97,7 @@ describe("createPluginModel", () => {
     const { createPluginDecider } = await import("@/chat/plugins/model");
 
     const result = await createPluginDecider("test-plugin").decide({
-      criteria: { fine: "Checks behavior.", overfit: "Checks wording." },
+      criteria: { allow: "Safe change.", block: "Risky change." },
       instructions: "Judge the eval change.",
       state: "+ expect(reply).toBe('done')",
     });
@@ -109,15 +109,15 @@ describe("createPluginModel", () => {
           answer: {
             type: "choice",
             instructions: "Judge the eval change.",
-            criteria: { fine: "Checks behavior.", overfit: "Checks wording." },
+            criteria: { allow: "Safe change.", block: "Risky change." },
           },
         },
         state: "+ expect(reply).toBe('done')",
       }),
     );
     expect(result).toEqual({
-      choice: "overfit",
-      probabilities: { overfit: 0.9, fine: 0.1 },
+      choice: "block",
+      probabilities: { block: 0.9, allow: 0.1 },
     });
   });
 });
