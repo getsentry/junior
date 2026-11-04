@@ -47,6 +47,9 @@ function setHighlight(range: Range | undefined) {
   else CSS.highlights.delete(HIGHLIGHT_NAME);
 }
 
+/** Longest quote the API accepts. Longer selections are clipped. */
+const MAX_QUOTE_CHARS = 4_000;
+
 /**
  * Read the selection when it lies in the text of one Junior reply that can
  * end a fork. `TranscriptMessageView` marks that text.
@@ -57,7 +60,7 @@ function readSelection(
   const selection = window.getSelection();
   if (!root || !selection || selection.isCollapsed || !selection.rangeCount)
     return undefined;
-  const quote = selection.toString().trim();
+  const quote = selection.toString().trim().slice(0, MAX_QUOTE_CHARS).trim();
   if (!quote) return undefined;
   const range = selection.getRangeAt(0);
   const node = range.commonAncestorContainer;
@@ -344,6 +347,8 @@ export function QuickQuestionPanel(props: {
             <KeepAsForkButton
               conversationId={props.conversationId}
               disabled={props.pending}
+              // A new thread needs a new fork request and idempotency key.
+              key={thread.id}
               thread={thread}
             />
           </div>

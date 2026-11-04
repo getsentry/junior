@@ -6,7 +6,10 @@ import type { QuickQuestionBody } from "../schema/conversation-fork";
 import { readConversationAccessFromSql } from "./access";
 import { throwApiError } from "../http";
 
-/** Answer a Quick question in a Conversation that the viewer can read. */
+/**
+ * Answer a Quick question for a participant. The cost belongs to the
+ * Conversation, so readers who cannot send cannot ask.
+ */
 export async function answerQuickQuestionForViewer(
   viewer: User,
   conversationId: string,
@@ -17,15 +20,19 @@ export async function answerQuickQuestionForViewer(
     [conversationId],
     viewer,
   );
-  if (!access.get(conversationId)?.canViewPrivateContent) {
+  if (!access.get(conversationId)?.isParticipant) {
     throwApiError(403, "You do not have access to this conversation.");
   }
-  try {
-    return await answerQuickQuestion({ conversationId, ...body, viewer });
-  } catch (error) {
+  const answer = await answerQuickQuestion({
+    conversationId,
+    ...body,
+    viewer,
+  }).catch((error: unknown) => {
     if (error instanceof ConversationForkError) {
       throwApiError(409, error.message);
     }
     throw error;
-  }
+  });
+  if (!answer.text) throwApiError(502, "Junior returned no answer.");
+  return answer;
 }

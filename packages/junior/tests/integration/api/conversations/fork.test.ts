@@ -68,7 +68,12 @@ function assistantMessage(
 /** Store one answered web turn and return its delivered reply id. */
 async function storeAnsweredTurn(
   conversationId: string,
-  args: { answer: string; question: string; turn: string },
+  args: {
+    answer: string;
+    question: string;
+    turn: string;
+    visibility?: "private" | "public";
+  },
 ): Promise<string> {
   const store = getConversationStore();
   if (!(await store.get({ conversationId }))) {
@@ -77,7 +82,7 @@ async function storeAnsweredTurn(
       destination: { platform: "local", conversationId },
       actor: { email: OWNER_EMAIL },
       source: "web",
-      visibility: "private",
+      visibility: args.visibility ?? "private",
     });
   }
   const events = getConversationEventStore();
@@ -377,6 +382,7 @@ describe("conversation forks", () => {
       question: "Which option?",
       answer: "Use the blue option.",
       turn: "first",
+      visibility: "public",
     });
     await storeAnsweredTurn(source, {
       question: "And later?",
@@ -402,6 +408,7 @@ describe("conversation forks", () => {
     };
     const before = await getConversationEventStore().loadHistory(source);
 
+    // A reader who cannot send must not add cost to this Conversation.
     expect((await stranger.request(url, ask(body))).status).toBe(403);
     expect(
       (await owner.request(url, ask({ ...body, messageId: "missing" }))).status,
@@ -457,5 +464,9 @@ describe("conversation forks", () => {
       detail.auxiliaryCosts?.costUsd,
     );
     expect(detail.auxiliaryCosts?.costUsd).toBeGreaterThan(0);
+
+    // An empty answer is an error, so the thread never holds an empty reply.
+    mockTitleModel("  ");
+    expect((await owner.request(url, ask(body))).status).toBe(502);
   });
 });

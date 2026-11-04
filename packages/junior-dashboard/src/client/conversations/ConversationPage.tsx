@@ -686,14 +686,17 @@ export function ConversationPage(props: {
           thread={quickQuestion.thread}
         />
       ) : null}
-      <QuickQuestionSelectionButton
-        onAsk={(selection) => {
-          if (eventOpen) setSelectedEventSeq(undefined);
-          setTurnContext(undefined);
-          quickQuestion.open(selection);
-        }}
-        rootRef={pageRef}
-      />
+      {/* The answer's cost belongs to the Conversation, so only participants ask. */}
+      {detail.data?.isParticipant ? (
+        <QuickQuestionSelectionButton
+          onAsk={(selection) => {
+            if (eventOpen) setSelectedEventSeq(undefined);
+            setTurnContext(undefined);
+            quickQuestion.open(selection);
+          }}
+          rootRef={pageRef}
+        />
+      ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}

@@ -435,9 +435,13 @@ export const ConversationComposer = memo(function ConversationComposer(
           dragging && "ring-2 ring-dashboard-focus",
         )}
         onDragOver={(event) => {
-          if (props.compact || !event.dataTransfer.types.includes("Files"))
-            return;
+          if (!event.dataTransfer.types.includes("Files")) return;
+          // Always cancel a file drop, or the browser opens the file.
           event.preventDefault();
+          if (props.compact) {
+            event.dataTransfer.dropEffect = "none";
+            return;
+          }
           event.dataTransfer.dropEffect = "copy";
           setDragging(true);
         }}
@@ -446,9 +450,9 @@ export const ConversationComposer = memo(function ConversationComposer(
             setDragging(false);
         }}
         onDrop={(event) => {
-          if (props.compact || !event.dataTransfer.types.includes("Files"))
-            return;
+          if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
+          if (props.compact) return;
           setDragging(false);
           void addImages(Array.from(event.dataTransfer.files));
         }}

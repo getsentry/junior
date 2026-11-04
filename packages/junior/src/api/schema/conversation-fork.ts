@@ -14,13 +14,15 @@ export const forkConversationResponseSchema = z
 
 /** Longest text of one Quick question message. */
 const MAX_QUICK_QUESTION_TEXT_CHARS = 20_000;
+/** Longest selection. The dashboard clips longer selections to this. */
+const MAX_QUICK_QUESTION_QUOTE_CHARS = 4_000;
 
 export const quickQuestionBodySchema = z
   .object({
     /** Assistant reply that ends the history the model reads. */
     messageId: z.string().min(1).max(500),
     /** Text the person selected in that reply. */
-    quote: z.string().trim().min(1).max(4_000),
+    quote: z.string().trim().min(1).max(MAX_QUICK_QUESTION_QUOTE_CHARS),
     /**
      * The whole thread so far: questions and answers in order, ending with
      * the new question. Nothing saves the thread, so the browser sends it.
@@ -49,7 +51,7 @@ export const quickQuestionBodySchema = z
   .strict();
 
 export const quickQuestionResponseSchema = z
-  .object({ text: z.string() })
+  .object({ text: z.string().min(1) })
   .strict();
 
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
