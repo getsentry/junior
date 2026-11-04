@@ -543,15 +543,20 @@ test("opens links outside the loaded rows from the page around them", async ({
     exact: true,
   });
   // One request reads the page around the linked event. Nothing pages
-  // toward it, and the page around the read position is not read. Newer
-  // pages then load as the reader nears them.
+  // toward it, and the page around the read position is not read. Pages
+  // next to it then load as the reader nears them.
   await page.goto(
     `${dashboard.baseURL}/conversations/${mock.conversationId}?event=70`,
   );
   await expect(linked).toContainText("Transcript message 70 ");
-  expect(pageRequests.filter((query) => !query.startsWith("?after="))).toEqual([
-    "?event=70",
-  ]);
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  await expect(
+    log.getByRole("button", { name: "Event 70: message", exact: true }),
+  ).toBeInViewport();
+  await screenshot(page, "conversation-link-opens-around-event");
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?event=70"]);
 
   // A Turn link opens at the event that started the Turn.
   pageRequests.length = 0;
@@ -559,10 +564,12 @@ test("opens links outside the loaded rows from the page around them", async ({
     `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-30`,
   );
   await expect(page).toHaveURL(/[?&]event=30(&|$)/);
-  await expect(linked).toBeVisible();
-  expect(pageRequests.filter((query) => !query.startsWith("?after="))).toEqual([
-    "?turn=turn-30",
-  ]);
+  await expect(
+    log.getByRole("button", { name: "Event 30: turn_lifecycle", exact: true }),
+  ).toBeInViewport();
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?turn=turn-30"]);
 
   // A link that the server cannot find is dropped.
   await page.goto(
@@ -605,6 +612,7 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     page.getByRole("dialog", { name: "Captured 2 memories" }),
   ).toBeVisible();
   expect(pageRequests).toEqual(["?event=13"]);
+  await screenshot(page, "conversation-memory-opens-around-event");
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({

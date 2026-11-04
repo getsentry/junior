@@ -218,6 +218,11 @@ export function ConversationPage(props: {
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
   );
+  // A link at open shows its row, so the transcript does not open at the
+  // latest message or the read position, unless the link fails first.
+  const [startAtLink, setStartAtLink] = useState(
+    () => selectedEventSeq !== undefined || linkedTurnId !== undefined,
+  );
   const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
   // the rest of the visit. It can come before the unread page loads.
@@ -252,6 +257,7 @@ export function ConversationPage(props: {
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
+    setStartAtLink(false);
     setMemoryJump(undefined);
     setSearchParams(
       (current) => {
@@ -642,6 +648,7 @@ export function ConversationPage(props: {
                       search={search}
                       onSearchChange={setSearch}
                       selectedEventSeq={selectedEventSeq}
+                      startAtLink={startAtLink}
                       startAtUnread={startAtUnread}
                       transcript={transcript}
                       turnContextPanel={turnContextPanel}

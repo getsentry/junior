@@ -61,6 +61,8 @@ export function Transcript(props: {
   transcript?: ConversationTranscript;
   /** Show turn context in the owner's panel. Without it, a drawer opens. */
   turnContextPanel?: TurnContextPanel;
+  /** Open where a link shows its row instead of the latest message. */
+  startAtLink?: boolean;
   /** Open at the "New" marker instead of the latest message. */
   startAtUnread?: boolean;
   /** Rows that were unread when the Conversation opened get a marker. */
@@ -79,6 +81,7 @@ export function Transcript(props: {
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     pinRequestVersion: props.pinRequestVersion,
+    startAtLink: props.startAtLink,
     startAtUnread: view === "rich" && props.startAtUnread,
     view,
     versions: {
