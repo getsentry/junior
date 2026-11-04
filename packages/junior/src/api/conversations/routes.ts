@@ -24,6 +24,10 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+} from "../schema/conversation-pin";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -32,6 +36,7 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { pinConversation } from "./pin";
 import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
@@ -227,6 +232,26 @@ export function createConversationRoutes(
         await archiveConversation(viewer, conversationId, body),
       );
     },
+  );
+
+  app.patch(
+    "/:conversationId/pin",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest("json", pinConversationBodySchema, "Invalid request body."),
+    async (context) =>
+      jsonResponse(
+        pinConversationResponseSchema,
+        await pinConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.put(

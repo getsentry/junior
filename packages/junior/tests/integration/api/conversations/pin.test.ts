@@ -1,0 +1,176 @@
+import { Hono } from "hono";
+import { afterEach, describe, expect, it } from "vitest";
+import { createJuniorApi } from "@/api";
+import { readConversationDetail } from "@/api/conversations/detail";
+import { readConversationFeed } from "@/api/conversations/list";
+import type { JuniorApiEnv } from "@/api/route";
+import {
+  conversationDetailReportSchema,
+  pinConversationResponseSchema,
+} from "@/api/schema";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { juniorConversationParticipants } from "@/db/schema";
+
+async function authenticatedApi(email: string) {
+  const viewer = await resolveViewerUser(email);
+  if (!viewer) throw new Error(`missing viewer for ${email}`);
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  return { app, viewer };
+}
+
+async function storeConversation(args: {
+  conversationId: string;
+  nowMs: number;
+  visibility: "private" | "public";
+}) {
+  await getConversationStore().recordActivity({
+    conversationId: args.conversationId,
+    destination: { platform: "local", conversationId: args.conversationId },
+    nowMs: args.nowMs,
+    source: "internal",
+    title: args.conversationId,
+    visibility: args.visibility,
+  });
+}
+
+async function addParticipant(conversationId: string, userId: string) {
+  await getDb()
+    .insert(juniorConversationParticipants)
+    .values({
+      lastMessageAt: new Date(1_000),
+      rootConversationId: conversationId,
+      userId,
+    });
+}
+
+function setPin(
+  app: Hono<JuniorApiEnv>,
+  conversationId: string,
+  pinned: boolean,
+) {
+  return app.request(
+    `http://localhost/api/conversations/${conversationId}/pin`,
+    {
+      body: JSON.stringify({ pinned }),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    },
+  );
+}
+
+async function feedIds(viewer: Parameters<typeof readConversationFeed>[0]) {
+  const feed = await readConversationFeed(viewer);
+  return feed.conversations.map((conversation) => ({
+    conversationId: conversation.conversationId,
+    pinned: Boolean(conversation.pinnedAt),
+  }));
+}
+
+describe("conversation pin API", () => {
+  afterEach(async () => {
+    await closeDb();
+  });
+
+  it("sorts the viewer's pins first and unpins on archive", async () => {
+    const older = "local:test:pin-older";
+    const newer = "local:test:pin-newer";
+    await storeConversation({
+      conversationId: older,
+      nowMs: 1_000,
+      visibility: "private",
+    });
+    await storeConversation({
+      conversationId: newer,
+      nowMs: 2_000,
+      visibility: "private",
+    });
+    const { app, viewer } = await authenticatedApi("pinner@example.com");
+    const other = await authenticatedApi("other@example.com");
+    for (const id of [older, newer]) {
+      await addParticipant(id, viewer.id);
+      await addParticipant(id, other.viewer.id);
+    }
+
+    const pin = await setPin(app, older, true);
+    expect(pin.status).toBe(200);
+    expect(pinConversationResponseSchema.parse(await pin.json())).toEqual({
+      pinnedAt: expect.any(String),
+    });
+    // The older pinned root sorts before newer activity, so it stays inside
+    // the feed limit.
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: older, pinned: true },
+      { conversationId: newer, pinned: false },
+    ]);
+    await expect(feedIds({ viewer: other.viewer })).resolves.toEqual([
+      { conversationId: newer, pinned: false },
+      { conversationId: older, pinned: false },
+    ]);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(older, { viewer }),
+      ).pinnedAt,
+    ).toEqual(expect.any(String));
+
+    const archive = await app.request(
+      `http://localhost/api/conversations/${older}/archive`,
+      {
+        body: JSON.stringify({
+          archived: true,
+          lastSeenAt: new Date(1_000).toISOString(),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(archive.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(older, { viewer }),
+      ).pinnedAt,
+    ).toBeNull();
+  });
+
+  it("lets a reader pin a public conversation but not a private one", async () => {
+    const shared = "local:test:pin-public";
+    const hidden = "local:test:pin-private";
+    await storeConversation({
+      conversationId: shared,
+      nowMs: 1_000,
+      visibility: "public",
+    });
+    await storeConversation({
+      conversationId: hidden,
+      nowMs: 1_000,
+      visibility: "private",
+    });
+    const { app, viewer } = await authenticatedApi("reader@example.com");
+    await expect(feedIds({ viewer })).resolves.toEqual([]);
+
+    // Pinning adds the reader's participant row, so the pin shows in their feed.
+    expect((await setPin(app, shared, true)).status).toBe(200);
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: shared, pinned: true },
+    ]);
+
+    // A private conversation stays hidden, and the pin grants no access.
+    expect((await setPin(app, hidden, true)).status).toBe(404);
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: shared, pinned: true },
+    ]);
+
+    const unpin = await setPin(app, shared, false);
+    expect(pinConversationResponseSchema.parse(await unpin.json())).toEqual({
+      pinnedAt: null,
+    });
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: shared, pinned: false },
+    ]);
+  });
+});

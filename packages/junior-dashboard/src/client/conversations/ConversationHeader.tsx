@@ -12,8 +12,10 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
+  PinConversationToggle,
   TranscriptSearchToggle,
   type ConversationArchiveAction,
+  type ConversationPinAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { ShareConversationButton } from "./ShareConversationButton";
@@ -44,6 +46,7 @@ export function ConversationHeader(props: {
   location?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
+  pin: ConversationPinAction;
   privacy: ReactNode;
   search: string;
   sentryConversationUrl?: string;
@@ -92,6 +95,7 @@ export function ConversationHeader(props: {
     <ConversationHeaderActions
       archive={props.archive}
       conversationId={props.conversationId}
+      pin={props.pin}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
       onDetailsClick={() => {
@@ -116,6 +120,7 @@ export function ConversationHeader(props: {
   const showMobileHeader =
     searchOpenVisible ||
     props.archive.error ||
+    props.pin.error ||
     Boolean(props.linkedWork) ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
@@ -206,6 +211,7 @@ export function ConversationHeader(props: {
                 open={searchOpenVisible}
               />
             )}
+            <PinConversationToggle {...props.pin} />
             <ShareConversationButton
               key={props.conversationId}
               conversationId={props.conversationId}
@@ -257,6 +263,11 @@ export function ConversationHeader(props: {
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update archive state.
+          </div>
+        ) : null}
+        {props.pin.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update pin.
           </div>
         ) : null}
       </header>

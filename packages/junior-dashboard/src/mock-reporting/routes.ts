@@ -7,6 +7,8 @@ import {
   actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
   conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -66,6 +68,7 @@ import {
   readMockAutomationExecutions,
   readMockAutomationList,
   setMockConversationArchived,
+  setMockConversationPinned,
 } from "./fixtures";
 import { readMockConversationWatches } from "./watches";
 
@@ -287,6 +290,23 @@ export function createMockReportingApi(): Hono<{
     );
     return result
       ? jsonResponse(archiveConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/pin", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = pinConversationBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationPinned(
+      params.data.conversationId,
+      body.data.pinned,
+    );
+    return result
+      ? jsonResponse(pinConversationResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   // Fixed bodies so dashboard mock can exercise image/file attachment cards.

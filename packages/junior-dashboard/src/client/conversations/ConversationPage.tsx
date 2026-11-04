@@ -17,6 +17,7 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
@@ -207,6 +208,7 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const feedConversation = conversations.find(
@@ -483,6 +485,12 @@ export function ConversationPage(props: {
                 <ConversationAnnotations detail={detail.data} />
               ) : null
             }
+            pin={{
+              disabled: !conversation || pin.isPending,
+              error: Boolean(pin.error),
+              onClick: () => pin.mutate(!conversation?.pinnedAt),
+              pinned: Boolean(conversation?.pinnedAt),
+            }}
             archive={{
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
