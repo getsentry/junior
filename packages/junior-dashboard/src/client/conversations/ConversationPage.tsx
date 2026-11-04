@@ -31,7 +31,6 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
-import { turnPrompts } from "./ConversationMemories";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -330,10 +329,6 @@ export function ConversationPage(props: {
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
   // Show a chosen memory at its transcript row. Wait for the first page, then
   // load earlier pages until the row renders, or stop when history ends.
-  const memoryPrompts = useMemo(
-    () => turnPrompts(transcript?.events),
-    [transcript?.events],
-  );
   useEffect(() => {
     if (!memoryJump || !transcript) return;
     const anchor = pageRef.current?.querySelector(
@@ -618,7 +613,6 @@ export function ConversationPage(props: {
             identity={identity}
             onClose={closeDetails}
             onOpenSubagent={setSubagentTarget}
-            memoryPrompts={memoryPrompts}
             onSelectMemory={(entry) => {
               // Memory rows show only in the Conversation view, and search
               // can hide them.
