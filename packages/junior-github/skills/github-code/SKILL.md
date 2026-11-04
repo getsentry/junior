@@ -18,11 +18,11 @@ Use `git` and `gh` for repository work.
 
 ## Open when needed
 
-| Need                          | Read                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| Commands and permissions      | [references/api-surface.md](references/api-surface.md)                                 |
-| Edit, verify, and open a PR   | [references/workflow.md](references/workflow.md)                                       |
-| Command or permission failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                               | Read                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Commands and permissions           | [references/api-surface.md](references/api-surface.md)                                 |
+| Edit, verify, and open a PR        | [references/workflow.md](references/workflow.md)                                       |
+| Command, permission, or CI failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Always
 
