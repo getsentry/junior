@@ -963,12 +963,47 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   duplicate check, so a Slack retry after the move is still a duplicate.
   Admission (allowed domains, P19 trust) runs again on each moved input; a
   failure is dropped with a recorded reason.
+- **Shared ingress claim** (C5, C6). Today's ingress checks and appends the
+  id in one write (`appendInboundMessageWithAdmission`,
+  `state.ts:1166,1198-1200,1258-1262`), after it decides the path. Two
+  races break the inbox move:
+  - C5 (`cutover_inbox noCrossCoreDuplicate`, 10 steps; `acceptedOnce`, 3
+    steps): a Slack retry arrives after the pin and before the move copies
+    `inboundMessageIds`. It sees `core = new` and no request record, so
+    the new core takes it as new input and runs T1 twice.
+  - C6 (`cutover_inbox retryAfterMoveIsDuplicate`, 9 steps): an ingress
+    reads `core = old`, the move runs, then the ingress appends i3 to
+    `pendingMessages`. A retry of i3 sees `core = new` and no record, and
+    is accepted again. A new-core read of `inboundMessageIds` alone is not
+    enough (`cutover_inboxBoth noCrossCoreDuplicate`, 19 steps).
+  - Fix: from step 3 until step 17, every ingress path, today's and the
+    new core's, first adds the id to `execution.inboundMessageIds` in one
+    conversation mutation, before it reads `core`. Only the add that wins
+    goes on. The move makes an inbox entry for each claimed id that is in
+    `pendingMessages`, and copies every other claimed id as a duplicate.
+  - Check: `cutover_inboxShared` (`safety`, `noDuplicateTurn`,
+    `acceptedOnce`) holds with it, in CI. That instance still has the
+    earlier deploy gate, so it holds for the claim, not for the fence
+    (G.1f).
 - **Parent and child.** Active Agent invocation rows and dispatch records
   move into request records only when the child conversation is new-core
-  or idle. Otherwise that part of the move waits for a later take. A live
-  `replaced` row is first reported to its parent as a `failed` result, as
-  `reportReplacedAgentInvocation` does today
-  (`agent-invocations/store.ts:770`).
+  or idle. Otherwise that part of the move waits for a later take.
+  - C7 (`CutoverTree tree_plan resultNotLost`, 8 steps): the child worker
+    `co` stalls and its lease expires, so the child looks idle; the move
+    takes the row; `co` then writes its result to the moved row, and the
+    result is lost. `tree_fenced` holds with core-model's fix: today's
+    result write checks the child's lease token (`RESULT_FENCED`).
+  - **That fix conflicts with the shim, so this plan does not adopt it.**
+    It covers only a worker from step 3 on: a child worker from before step
+    3 has no token check. It is also the kind of write check the shim does
+    not use (C3, Not chosen). In the shim's terms, "idle" must mean that
+    the child's lease and tombstone pass the stale lease fence, read in
+    the C11 order, and that the child is pinned before the row moves. No
+    model checks that rule yet (G.1f), so `tree_fenced` is not evidence
+    for it. A live
+    `replaced` row is first reported to its parent as a `failed` result, as
+    `reportReplacedAgentInvocation` does today
+    (`agent-invocations/store.ts:770`).
 - **Authority of moved state.** A moved turn or record keeps the verified
   old actor and subject, or it is closed (I15):
   - Before `bindSubject`, the move verifies each old subject with today's
@@ -1122,6 +1157,23 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   invocation or dispatch row; wake fields alone do not count. When a sweep
   finds nothing left, and no deployment row without `new_core` has
   `lastSeenAtMs` in the last 7 days, the job saves `oldStateDrainedAtMs`.
+- **Shim inventory.** Every field, row and timer the shim adds, with the
+  step that adds it and the step that deletes it:
+
+| Item                                                                                                     | Added     | Deleted                                                                                            |
+| -------------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| `core` on the conversation row                                                                           | 3 (3.5)   | readers 16 (16.5); column 17 (17.1)                                                                |
+| The pin (today's lease, `MAX_SAFE_INTEGER`)                                                              | 15 (15.2) | writer 16 (16.3, 16.5); data: no delete step, it expires with the 7-day TTL after the last refresh |
+| `staleLeaseAcquiredAtMs`, `staleLeaseMaxDurationSeconds`                                                 | 3 (3.5)   | writers 16 (16.5); columns 17 (17.1)                                                               |
+| Lease `deploymentId`                                                                                     | 3 (3.5)   | writer 16 (16.5); data goes with the Redis lease (16.3)                                            |
+| Current row (`updatedAtMs`, `maxDurationMaxSeconds`, `freshSinceAtMs`, `currentSinceAtMs`, capabilities) | 3 (3.5)   | row and writer 17 (17.1); 16 keeps it for the guard                                                |
+| Deployment rows (`lastSeenAtMs`)                                                                         | 3 (3.5)   | rows and writer 17 (17.1); 16 keeps them for the guard                                             |
+| `oldStateDrainedAtMs`                                                                                    | 15 (15.5) | 17 (17.1)                                                                                          |
+| Shared ingress claim (C5, C6)                                                                            | 3 (3.5)   | 17 (17.1)                                                                                          |
+| Parent turn id and request record id on Agent invocation rows                                            | 3 (3.5)   | with the Agent invocation table, 17 (17.1)                                                         |
+| `app.conversation.lease.clock_skew_ms`                                                                   | 3 (3.5)   | with today's lease take, 16 (16.5)                                                                 |
+| Sweep TTL refresh (daily, every `core = new` record)                                                     | 15 (15.5) | 16 (16.5)                                                                                          |
+
 - **Shim.** The gate-free cutover lives in one feature directory,
   `chat/cutover/`: the fence, the move with its authority checks, the pin
   and its TTL refresh, the move back and the sweep. The current row and
@@ -1243,6 +1295,8 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
     a promote again within one cron interval.
   - The repeat that ends an abandoned half-moved turn without a run, and
     the pending stop carried into `stopAtMs`.
+  - C7 in the shim's terms: a row moves only after the child passes the
+    fence and is pinned.
 - **What a revert cannot undo after the delete release:** today's workers
   and the move back are gone, so no conversation can go back. The moved
   Redis cursors, Agent invocation rows and dispatch records are not made

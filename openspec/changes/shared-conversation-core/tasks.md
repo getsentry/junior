@@ -60,30 +60,29 @@
 - [ ] G.1c Model request-record matching: I5, I6, I9 and I12.
 - [ ] G.1d Model tree-stop results: I8, and P35 on the receive clock (P44).
 - [ ] G.1e Model sandbox process tags: I13.
-- [ ] G.1f Grow the bound toward the P37 target bound. Done in
-      `CutoverShim.tla` (`cfg/shim_design.cfg`, `cfg/shim_abandon.cfg`,
-      `cfg/shim_gap.cfg`, `cfg/shim_examples.cfg`) and `DropGuard.tla`
-      (`cfg/drop_design.cfg`): `maxDuration`, the stale lease fence with
-      the tombstone and its read order (C11), the heartbeat clear and the
-      takeover that save `staleLeaseAcquiredAtMs`, `o1` with no fence,
-      the pin, deploys and reverts that change the current row, the
-      automatic move back with the C10 delete, the lease-less
-      `abandonTurnRecord`, and the column-drop guard. Evidence:
-      `shim_plan`, `shim_gap`, `shim_noFence`, `shim_earlyTomb`,
-      `drop_oneMax`, `drop_noSpare`. The P46 drop with the repair job is
-      in `errors_design` (L1 to L3). Left (core-model is on these): I15,
-      with Agent invocation rows that have no parent turn id; Slack
-      ingress, the sweep (a full lock take, root before child, the TTL
-      refresh) and a parent with a child under the stale lease fence
-      (`cutover_inboxShared` and `tree_fenced` check them only against
-      the earlier deploy gate); `D(lease)` as the running max with the
-      1,800 s ceiling for a lease with no `deploymentId`; an Instant
-      Rollback below step 3 (the stale row and `freshSinceAtMs`);
-      `DropGuard.tla` with `lastSeenAtMs` from invocations and a revert
-      and a promote again within one cron interval; the repeat that ends
-      an abandoned half-moved turn without a run; the pending stop
-      carried into `stopAtMs`; the P37 target bound (2 conversations, 2
-      person actors and the system actor, 4 inputs).
+- [ ] G.1f Grow the bound toward the P37 target bound. Done in `CutoverShim.tla`
+      (`cfg/shim_design.cfg`, `cfg/shim_abandon.cfg`, `cfg/shim_gap.cfg`,
+      `cfg/shim_examples.cfg`) and `DropGuard.tla` (`cfg/drop_design.cfg`):
+      `maxDuration`, the stale lease fence with the tombstone and its read order
+      (C11), the heartbeat clear and the takeover that save
+      `staleLeaseAcquiredAtMs`, `o1` with no fence, the pin, deploys and reverts
+      that change the current row, the automatic move back with the C10 delete,
+      the lease-less `abandonTurnRecord`, and the column-drop guard. Evidence:
+      `shim_plan`, `shim_gap`, `shim_noFence`, `shim_earlyTomb`, `drop_oneMax`,
+      `drop_noSpare`. The P46 drop with the repair job is in `errors_design` (L1
+      to L3). Left (core-model is on these): I15, with Agent invocation rows
+      that have no parent turn id; Slack ingress, the sweep (a full lock take,
+      root before child, the TTL refresh) and a parent with a child under the
+      stale lease fence (`cutover_inboxShared` and `tree_fenced` check them only
+      against the earlier deploy gate); `D(lease)` as the running max with the
+      1,800 s ceiling for a lease with no `deploymentId`; an Instant Rollback
+      below step 3 (the stale row and `freshSinceAtMs`); `DropGuard.tla` with
+      `lastSeenAtMs` from invocations and a revert and a promote again within
+      one cron interval; the repeat that ends an abandoned half-moved turn
+      without a run; the pending stop carried into `stopAtMs`; C7 in the shim's
+      terms (a row moves only after the child passes the fence and is pinned);
+      the P37 target bound (2 conversations, 2 person actors and the system
+      actor, 4 inputs).
 - [ ] G.1g Run `check.sh` in CI when `packages/junior/verification/**`
       changes, and once a week. A full run of the 63 checks takes about
       4 h 19 min on 4 cores (`results.txt`); the slowest, the combined
@@ -159,7 +158,10 @@
       30 s. Each invocation that runs work first upserts its deployment row
       (`deploymentId`, `capabilities`, `maxDurationSeconds`, `lastSeenAtMs`; at
       most once a minute) and raises `maxDurationMaxSeconds` on the current row.
-      Each new Agent invocation row stores the id of the parent turn that
+      Every ingress path first adds the id to `execution.inboundMessageIds`
+      in one conversation mutation, before it reads `core`; only the add
+      that wins goes on (C5, C6). Each new Agent invocation row stores the
+      id of the parent turn that
       created it, and the request record id when the parent has one (I15). The
       heartbeat cron upserts the current-deployment row (`deploymentId`,
       `capabilities`, `maxDurationSeconds`, `maxDurationMaxSeconds`,
@@ -345,7 +347,8 @@
       Core ingress, `askChild` and `startPluginAgent` mint records. Slack
       stop, dashboard stop, ACP stop and thread opt-out call `stop()`.
       Until the current row has `new_core` (15.4), input takes today's
-      path, as in the step 14 release.
+      path, as in the step 14 release. Core ingress makes the same shared
+      claim as today's ingress (3.5) before its SQL insert.
 - [ ] 15.2 Every new-core lock take that finds today's state moves it
       (P45): it pins today's lease (`MAX_SAFE_INTEGER`, fixed token) and
       refreshes the record's 7-day TTL, then in one locked step moves an
@@ -354,7 +357,8 @@
       on `(conversationId, inboundMessageId)`, `inboundMessageIds`
       copied, admission run again), and Slack `activeTurnId` and
       `pendingAuth` into the turn row. Active Agent invocation rows and
-      dispatch records move only when the child is new-core or idle; a
+      dispatch records move only when the child passes the stale lease
+      fence and is pinned, or is new-core (C7); a
       live `replaced` row is first reported to its parent as a `failed`
       result. A repeat after a crash inserts nothing new and only deletes.
       A repeat that finds a cursor with an end status and an open turn row
@@ -457,9 +461,11 @@
 - [ ] 16.4 Delete the repair sweeps: the result sweep, the outbox sweep, the
       24 h failure rule and the lost-worker fallback in the timer job.
 - [ ] 16.5 Delete the shim: `chat/cutover/` (fence, move, pin, move back,
-      sweep) and every `core` check, lease `deploymentId` and tombstone
-      write. Keep the current row and deployment row writers for step 17's
-      guard. This release adds `old_core_deleted` to its capabilities.
+      sweep, TTL refresh) and every `core` check, lease `deploymentId`,
+      tombstone write and `app.conversation.lease.clock_skew_ms` log. Keep
+      the current row and deployment row writers for step 17's guard, and
+      the shared ingress claim (C5, C6) for ingress in flight on a step 15
+      deployment. This release adds `old_core_deleted` to its capabilities.
 - [ ] 16.6 Delete the copies: every reader and writer of the copied
       `execution_status` and `run_id` columns (P3), the second
       status-to-end mapping, the step 14 fallback reads, the
@@ -481,9 +487,11 @@
 ### 17. Clean up
 
 - [ ] 17.1 Drop `execution_status`, `run_id`, the `core` column,
-      `staleLeaseAcquiredAtMs`, `staleLeaseMaxDurationSeconds`, the current row,
-      the deployment rows and the old tables in one migration, and delete their
-      writers. It first checks that the current row has `old_core_deleted` and
+      `staleLeaseAcquiredAtMs`, `staleLeaseMaxDurationSeconds`,
+      `oldStateDrainedAtMs`, the current row, the deployment rows and the old
+      tables (with the Agent invocation table and its parent turn id and request
+      record id) in one migration. Delete their writers and the shared ingress
+      claim. It first checks that the current row has `old_core_deleted` and
       that every deployment row without it has `lastSeenAtMs` at least 1 h plus
       two `maxDurationMaxSeconds` plus 3 min old (P45 column-drop guard), since
       code from steps 3 to 15 still selects the columns, and fails otherwise, so
