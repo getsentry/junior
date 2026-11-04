@@ -33,6 +33,7 @@ const slackCanvasReadOutputSchema = juniorToolOutputSchema
 export function createSlackCanvasReadTool() {
   return zodTool({
     description: "Read a bounded line range from a Slack canvas as markdown.",
+    describeProgress: () => "Reading a canvas",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

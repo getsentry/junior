@@ -87,6 +87,10 @@ export function createWebFetchTool(
   return zodTool({
     description:
       "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
+    describeProgress: ({ url }) => {
+      const host = URL.parse(url)?.hostname;
+      return host ? `Fetching ${host}` : "Fetching a page";
+    },
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

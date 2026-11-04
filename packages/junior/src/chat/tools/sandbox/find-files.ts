@@ -246,6 +246,7 @@ export function createFindFilesTool() {
   return zodTool({
     description:
       "Find sandbox workspace files by glob pattern. Returns bounded paths relative to the search root and skips dependency/cache directories.",
+    describeProgress: () => "Finding files",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

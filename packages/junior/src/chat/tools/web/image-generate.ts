@@ -171,6 +171,7 @@ export function createImageGenerateTool(
   deps: ImageGenerateToolDeps = {},
 ) {
   return zodTool({
+    describeProgress: () => "Generating an image",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

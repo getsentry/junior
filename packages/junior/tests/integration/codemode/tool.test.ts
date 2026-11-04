@@ -39,6 +39,7 @@ const post = tool({
     readOnlyHint: false,
   },
   approvalMode: "review",
+  describeProgress: () => "Posting a message",
   description: "Post a message to a channel.",
   inputSchema: Type.Object({ channel: Type.String(), text: Type.String() }),
   execute: async () => ({ posted: true }),
@@ -69,11 +70,18 @@ describe("codemode tool", () => {
       turnId: "turn-codemode",
     });
     const started: string[] = [];
+    const statuses: unknown[] = [];
+    const systemTime = {
+      ...registry.systemTime,
+      describeProgress: () => "Checking the time",
+    } as AnyToolDefinition;
     const agentTools = createPiAgentTools(
-      { ...registry, post } as Record<string, AnyToolDefinition>,
+      { ...registry, post, systemTime } as Record<string, AnyToolDefinition>,
       new SkillSandbox([], []),
       {},
-      undefined,
+      async (status) => {
+        statuses.push(status);
+      },
       undefined,
       undefined,
       (_id, toolName) => {
@@ -122,6 +130,8 @@ describe("codemode tool", () => {
       "listWatches",
       "post",
     ]);
+    // Nested calls show their progress labels, except the rejected post.
+    expect(statuses).toEqual([{ text: "Checking the time", source: "tool" }]);
     // The 3 nested calls count toward the Turn's tool-call total.
     expect(resume.countToolCall()).toBe(4);
     expect(result.details).toMatchObject({

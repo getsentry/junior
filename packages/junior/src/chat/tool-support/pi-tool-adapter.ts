@@ -20,6 +20,7 @@ import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orches
 import {
   buildPlanStatus,
   buildReportedProgressStatus,
+  buildToolProgressStatus,
 } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
@@ -282,6 +283,23 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       executionInput,
     };
   };
+  // Runs only after action review allows the call, so a rejected call never
+  // shows progress for work that did not happen.
+  const reportStatus = async (
+    toolName: string,
+    toolDef: AnyToolDefinition,
+    params: Record<string, unknown>,
+  ) => {
+    const status =
+      toolName === "updatePlan"
+        ? buildPlanStatus(params)
+        : toolName === "reportProgress"
+          ? buildReportedProgressStatus(params)
+          : buildToolProgressStatus(toolName, toolDef, params);
+    if (status) {
+      await onStatus?.(status);
+    }
+  };
   const executeReviewed = async (args: {
     prepared: PreparedToolCall;
     review: ToolActionReviewResult;
@@ -320,6 +338,7 @@ export function createToolPipeline(options: ToolPipelineOptions) {
         "app.guardian.user_authorization": review.decision.userAuthorization,
       });
     }
+    await reportStatus(toolName, toolDef, toolInput);
     const sandboxInput = buildSandboxInput(toolName, executionInput);
     const isSandbox = Boolean(sandboxTools?.supports(toolName));
     const result = await untilPreempted(
@@ -431,20 +450,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       signal: args.signal,
       setSpanAttributes: args.setSpanAttributes,
     });
-  };
-  const reportStatus = async (
-    executionToolName: string,
-    params: Record<string, unknown>,
-  ) => {
-    const status =
-      executionToolName === "updatePlan"
-        ? buildPlanStatus(params)
-        : executionToolName === "reportProgress"
-          ? buildReportedProgressStatus(params)
-          : undefined;
-    if (status) {
-      await onStatus?.(status);
-    }
   };
   /**
    * Run one call under its `gen_ai.execute_tool` span. `body` resolves the
@@ -593,7 +598,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
             });
             const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
             target.params = catalogCall.arguments;
-            await reportStatus(target.toolName, target.params);
             return await executeDefinition({
               toolCallId,
               params: catalogCall.arguments,
@@ -604,7 +608,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
             });
           }
 
-          await reportStatus(target.toolName, target.params);
           return await executeDefinition({
             toolCallId,
             params: parsed,
@@ -664,7 +667,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
               },
               CODEMODE_TOOL_NAME,
             );
-            await reportStatus(toolName, params);
             const prepared = await prepareCall({
               toolCallId,
               params,

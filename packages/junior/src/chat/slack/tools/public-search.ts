@@ -370,6 +370,7 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
   return zodTool({
     description:
       "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
+    describeProgress: () => "Searching Slack",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

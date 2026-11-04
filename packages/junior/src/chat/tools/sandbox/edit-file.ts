@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   isMissingPathError,
   normalizeToLf,
@@ -101,6 +102,8 @@ const editReplacementSchema = z.object({
 /** Create the sandbox edit tool definition exposed to the agent. */
 export function createEditFileTool() {
   return zodTool({
+    describeProgress: ({ path: filePath }) =>
+      `Editing ${path.posix.basename(filePath)}`,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

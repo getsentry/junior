@@ -125,6 +125,7 @@ export function createListDirTool() {
   return zodTool({
     description:
       "List a sandbox workspace directory. Returns sorted entries with '/' suffixes for directories and bounded truncation notices.",
+    describeProgress: () => "Listing files",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

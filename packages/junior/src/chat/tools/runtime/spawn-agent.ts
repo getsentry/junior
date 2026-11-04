@@ -66,6 +66,7 @@ export function createSpawnAgentTool(
       `Configured profiles:\n${profileList}`,
     ].join(" "),
     exposure: "modelOnly",
+    describeProgress: () => "Starting a child agent",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
