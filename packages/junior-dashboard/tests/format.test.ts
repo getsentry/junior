@@ -25,7 +25,6 @@ import {
   formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
-  parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
   summarizeMessages,
@@ -426,51 +425,5 @@ describe("dashboard conversation formatting", () => {
         channelNameRedacted: false,
       }),
     ).toBe("#proj-alpha (C1)");
-  });
-});
-
-describe("transcript blocks", () => {
-  it("keeps prose as markdown and preserves fenced languages", () => {
-    expect(
-      parseMarkdownBlocks("The function returns a const value.")[0],
-    ).toMatchObject({
-      fenced: false,
-      language: "markdown",
-    });
-    expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
-      fenced: true,
-      language: "json",
-    });
-    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
-      fenced: true,
-      language: "xml",
-    });
-  });
-
-  it.each([
-    ["javascript:(()=>{alert(1)})()", "tsx"],
-    ["const total = items.length;", "tsx"],
-    ["export class Store {}", "tsx"],
-    ["export { handler };", "tsx"],
-    ["export * from './api';", "tsx"],
-    ["export async function load() {}", "tsx"],
-    ["export API_URL=https://example.com", "shellscript"],
-    ["export var=1", "shellscript"],
-    ["def handler(event):\n    return event", "python"],
-    ["pnpm install --frozen-lockfile", "shellscript"],
-    ["$ git status", "shellscript"],
-    ['{"ok":true}', "json"],
-    ["Thanks for the report. I will look at it today.", "markdown"],
-  ])("guesses the language of untagged fence %j", (code, language) => {
-    expect(parseMarkdownBlocks(`\`\`\`\n${code}\n\`\`\``)[0]).toMatchObject({
-      fenced: true,
-      language,
-    });
-  });
-
-  it("keeps an explicit text fence plain", () => {
-    expect(
-      parseMarkdownBlocks("```text\nconst total = 1;\n```")[0],
-    ).toMatchObject({ language: "markdown" });
   });
 });

@@ -3,7 +3,7 @@ import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
 import { CopyButton } from "../components/CopyButton";
-import { parseMarkdownBlocks } from "../format";
+import { parseMarkdownBlocks } from "./codeBlocks";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
