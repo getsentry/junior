@@ -80,6 +80,10 @@ export function useUnreadHistory(input: {
     // goes stale, so a refetch cannot reload every newer page at once.
     enabled: Boolean(unreadCursor),
     staleTime: Infinity,
+    // Each visit starts again from the page around the read position. Pages
+    // from an earlier visit can end at an old latest event, which would
+    // leave a gap before the latest page.
+    gcTime: 0,
     queryKey: ["conversation", conversationId, "unread", unreadCursor, "newer"],
     queryFn: ({ pageParam, signal }) =>
       readConversationEventsFrom(conversationId, pageParam, signal),
