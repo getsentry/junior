@@ -1,5 +1,6 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import { dashboardCodeLanguages } from "./code-languages";
+import { guessFenceLanguage } from "./code-language-guess";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
@@ -889,6 +890,11 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
+function guessUntaggedLanguage(code: string): BundledLanguage {
+  const json = detectOutputLanguage(code);
+  return json === "json" ? json : (guessFenceLanguage(code) ?? "markdown");
+}
+
 /** Parse transcript prose as Markdown or JSON while preserving fenced code. */
 export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
@@ -905,7 +911,9 @@ export function parseMarkdownBlocks(text: string): CodeBlock[] {
         language,
       });
     }
-    const language = normalizeLanguage(match[1]);
+    const language = match[1]
+      ? normalizeLanguage(match[1])
+      : guessUntaggedLanguage(match[2] ?? "");
     blocks.push({
       code: formatCodeBlock(match[2] ?? "", language),
       fenced: true,

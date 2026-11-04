@@ -446,4 +446,25 @@ describe("transcript blocks", () => {
       language: "xml",
     });
   });
+
+  it.each([
+    ["javascript:(()=>{alert(1)})()", "tsx"],
+    ["const total = items.length;", "tsx"],
+    ["def handler(event):\n    return event", "python"],
+    ["pnpm install --frozen-lockfile", "shellscript"],
+    ["$ git status", "shellscript"],
+    ['{"ok":true}', "json"],
+    ["Thanks for the report. I will look at it today.", "markdown"],
+  ])("guesses the language of untagged fence %j", (code, language) => {
+    expect(parseMarkdownBlocks(`\`\`\`\n${code}\n\`\`\``)[0]).toMatchObject({
+      fenced: true,
+      language,
+    });
+  });
+
+  it("keeps an explicit text fence plain", () => {
+    expect(
+      parseMarkdownBlocks("```text\nconst total = 1;\n```")[0],
+    ).toMatchObject({ language: "markdown" });
+  });
 });
