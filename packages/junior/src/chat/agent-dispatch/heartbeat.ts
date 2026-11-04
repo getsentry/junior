@@ -13,6 +13,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
+import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import {
   endStrandedAgentInvocation,
   enqueueAgentInvocation,
@@ -161,18 +162,31 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   }
 }
 
-/** End open agent invocations whose child work can no longer run them. */
+/**
+ * End open agent invocations whose child work can no longer run them. It reads
+ * every open agent invocation, because healthy ones can stay open for a long
+ * time and would otherwise hide the stranded ones.
+ */
 export async function recoverStrandedAgentInvocations(): Promise<void> {
-  for (const invocation of await listAppendedOpenAgentInvocations(
-    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
-  )) {
-    try {
-      await endStrandedAgentInvocation(invocation);
-    } catch (error) {
-      logException(error, "agent.invocation.stranded_recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
+  let after: AgentInvocation | undefined;
+  for (;;) {
+    const page = await listAppendedOpenAgentInvocations({
+      after,
+      limit: AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
+    });
+    for (const invocation of page) {
+      try {
+        await endStrandedAgentInvocation(invocation);
+      } catch (error) {
+        logException(error, "agent.invocation.stranded_recovery.failed", {
+          "app.agent.invocation_id": invocation.invocationId,
+        });
+      }
     }
+    if (page.length < AGENT_INVOCATION_MAILBOX_APPEND_LIMIT) {
+      return;
+    }
+    after = page.at(-1);
   }
 }
 

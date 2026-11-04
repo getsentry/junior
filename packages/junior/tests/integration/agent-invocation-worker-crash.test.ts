@@ -117,7 +117,7 @@ describe("agent invocation worker crash", () => {
     }
   });
 
-  it("tells the parent when a child worker fails past its last retry", async () => {
+  it("tells the parent about dropped work when a child worker fails past its last retry", async () => {
     vi.useFakeTimers({
       now: 1_800_000_000_000,
       toFake: ["Date", "setInterval", "clearInterval"],
@@ -163,18 +163,36 @@ describe("agent invocation worker crash", () => {
           state,
         });
       }
+      // The parent gives the stopped child new work before the heartbeat.
+      const { invocation: next } = await createAgentInvocationForMessage({
+        actor: invocationInput.actor,
+        childConversationId,
+        destination: invocationInput.destination,
+        idempotencyKey: "retry-next",
+        input: "Now check the docs.",
+        parentConversationId,
+        parentToolCallId: "call-next",
+      });
+      await enqueueAgentInvocation(next, { conversationStore, queue, state });
       await runHeartbeatAfterLeasesExpire(queue);
 
-      for (const id of [invocationId, followUp.invocationId]) {
-        await expect(getAgentInvocation(id)).resolves.toMatchObject({
-          parentMailboxStatus: "appended",
+      // The stop dropped the follow-up, so it can never run.
+      await expect(
+        getAgentInvocation(followUp.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "appended",
+        status: "failed",
+      });
+      // The child has new work, so the next agent invocation ends the first.
+      for (const id of [invocationId, next.invocationId]) {
+        await expect(getAgentInvocation(id)).resolves.not.toMatchObject({
           status: "failed",
         });
       }
       const parent = await getConversationWorkState({
         conversationId: parentConversationId,
       });
-      expect(parent?.messages).toHaveLength(2);
+      expect(parent?.messages).toHaveLength(1);
     } finally {
       await fixture.close();
     }

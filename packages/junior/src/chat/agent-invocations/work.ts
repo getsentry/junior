@@ -500,26 +500,41 @@ async function endOtherActiveAgentInvocation(
 
 /**
  * End an open agent invocation that can no longer run. Its input left the
- * child mailbox, and the child has no lease and no work to resume. A worker
- * that dies, or that fails past its last retry, leaves this state and runs no
- * failure path. Each consumed id stays in `inboundMessageIds`, so the input
- * cannot be appended again. The heartbeat sends the result.
+ * child mailbox, and no worker holds the child's lease. A worker that dies, or
+ * that fails past its last retry, leaves this state and runs no failure path.
+ * Each consumed id stays in `inboundMessageIds`, so the input cannot be
+ * appended again. The heartbeat sends the result.
  */
 export async function endStrandedAgentInvocation(
-  invocation: AgentInvocation,
+  listed: AgentInvocation,
 ): Promise<void> {
   const work = await getConversationWorkState({
-    conversationId: invocation.childConversationId,
+    conversationId: listed.childConversationId,
   });
-  const messageId = getAgentInvocationMessageId(invocation.invocationId);
+  const messageId = getAgentInvocationMessageId(listed.invocationId);
   if (
     !work ||
     work.execution.lease ||
-    (work.execution.status !== "failed" && work.execution.status !== "idle") ||
     !work.execution.inboundMessageIds.includes(messageId) ||
     work.execution.pendingMessages.some(
       (message) => message.inboundMessageId === messageId,
     )
+  ) {
+    return;
+  }
+  // Read after the work state: a worker can start it after the listing.
+  const invocation = await getAgentInvocation(listed.invocationId);
+  if (!invocation || isTerminalAgentInvocation(invocation)) {
+    return;
+  }
+  // Only a worker that holds the lease starts a pending agent invocation, so
+  // it can never start. A running or paused one keeps its Turn while the
+  // child can still resume it. The next agent invocation of the child ends
+  // it, or this ends it when the child has no work left.
+  if (
+    invocation.status !== "pending" &&
+    work.execution.status !== "failed" &&
+    work.execution.status !== "idle"
   ) {
     return;
   }

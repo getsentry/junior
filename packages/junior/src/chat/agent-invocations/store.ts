@@ -6,6 +6,7 @@ import {
   countDistinct,
   desc,
   eq,
+  gt,
   inArray,
   lt,
   ne,
@@ -750,13 +751,14 @@ export async function listPendingAgentInvocationMailboxAppends(
 }
 
 /**
- * List open agent invocations whose input reached the child mailbox, least
- * recently updated first. An agent invocation that a dead worker left behind
- * is never updated again, so it moves to the front.
+ * List open agent invocations whose input reached the child mailbox, oldest
+ * first. Pass the last agent invocation of a page to read the next page.
  */
-export async function listAppendedOpenAgentInvocations(
-  limit = 100,
-): Promise<AgentInvocation[]> {
+export async function listAppendedOpenAgentInvocations(args: {
+  after?: AgentInvocation;
+  limit: number;
+}): Promise<AgentInvocation[]> {
+  const { after } = args;
   const rows = await getSqlExecutor()
     .db()
     .select()
@@ -768,10 +770,25 @@ export async function listAppendedOpenAgentInvocations(
           juniorAgentInvocations.status,
           NON_TERMINAL_AGENT_INVOCATION_STATUSES,
         ),
+        after
+          ? or(
+              gt(juniorAgentInvocations.createdAt, new Date(after.createdAtMs)),
+              and(
+                eq(
+                  juniorAgentInvocations.createdAt,
+                  new Date(after.createdAtMs),
+                ),
+                gt(juniorAgentInvocations.invocationId, after.invocationId),
+              ),
+            )
+          : undefined,
       ),
     )
-    .orderBy(asc(juniorAgentInvocations.updatedAt))
-    .limit(limit);
+    .orderBy(
+      asc(juniorAgentInvocations.createdAt),
+      asc(juniorAgentInvocations.invocationId),
+    )
+    .limit(args.limit);
   return rows.map(invocationFromRow);
 }
 
