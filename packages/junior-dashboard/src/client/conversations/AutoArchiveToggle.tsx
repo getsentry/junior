@@ -4,10 +4,10 @@ import { CircleHelp } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 import { InlineError } from "../components/InlineError";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
 import { useSetConversationAutoArchive } from "./autoArchiveQueries";
 
 const AUTO_ARCHIVE_HELP =
@@ -34,8 +34,11 @@ export function AutoArchiveToggle(props: {
             Auto archive
           </span>
         </label>
-        <Tooltip>
-          <TooltipTrigger
+        {/* A popover, not a tooltip: touch screens open it with a tap. */}
+        <Popover>
+          <PopoverTrigger
+            delay={0}
+            openOnHover
             render={
               <button
                 aria-label="About auto archive"
@@ -46,11 +49,14 @@ export function AutoArchiveToggle(props: {
               </button>
             }
           />
-          <TooltipContent className="max-w-64">
+          <PopoverContent
+            className="w-64 px-3 py-2 text-xs leading-relaxed text-dashboard-text-muted"
+            side="top"
+          >
             {AUTO_ARCHIVE_HELP}
-          </TooltipContent>
-        </Tooltip>
-        {/* Keep the help text for screen readers when the tooltip is closed. */}
+          </PopoverContent>
+        </Popover>
+        {/* Keep the help text for screen readers when the popover is closed. */}
         <span className="sr-only" id={helpId}>
           {AUTO_ARCHIVE_HELP}
         </span>
