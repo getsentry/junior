@@ -350,5 +350,12 @@ describe("searchConversationEvents", () => {
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateConversationId}`,
     );
+    // A missing Conversation gets the same error as a private one.
+    const missingConversationId = "slack:C404:1700000000.400000";
+    await expect(
+      executeTool({ conversation_id: missingConversationId }),
+    ).rejects.toThrow(
+      `Conversation events are not accessible: ${missingConversationId}`,
+    );
   });
 });

@@ -361,7 +361,7 @@ describe("messageAgent", () => {
     }
   });
 
-  it("lets top-level agents message each other only with the same visibility", async () => {
+  it("lets only public top-level agents message each other", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
@@ -388,7 +388,8 @@ describe("messageAgent", () => {
         channelId: "CPRIV3",
         visibility: "private",
       });
-      // The person behind the Slack Actor is a member of one private target.
+      // The person behind the Slack Actor is a participant of one private
+      // target. That does not let any other Conversation reach it.
       const ana = await resolveViewerUserFromSql(getDb(), "ana@example.com");
       await getDb()
         .insert(juniorIdentities)
@@ -454,9 +455,10 @@ describe("messageAgent", () => {
         `to set to "${slackParentConversationId}"`,
       );
 
-      // Not the same visibility, another workspace, or the sender itself.
+      // A private target, another workspace, or the sender itself. Every
+      // private target looks like a missing one.
       await expect(send(fromPublic, privateMember)).rejects.toThrow(
-        "is a private conversation and this conversation is public",
+        "a top-level agent that you can message",
       );
       await expect(send(fromPublic, otherWorkspace)).rejects.toThrow(
         "a top-level agent that you can message",
@@ -465,26 +467,19 @@ describe("messageAgent", () => {
         "is this conversation",
       );
 
-      // Private to private needs a member. A private target that the person
-      // is not in looks like a missing one.
+      // A private Conversation is isolated. It reaches no private agent,
+      // also one where the person is a participant, and it never writes into
+      // a public one.
       const fromPrivate = topLevelRun(privateSender);
-      await expect(send(fromPrivate, privateMember)).resolves.toEqual({
-        conversation_id: privateMember,
-        delivery: "queued",
-      });
-      expect((await eventMessages(privateMember))[0]!.input.text).toContain(
-        "cannot message private conversations",
-      );
-      await expect(send(fromPrivate, privateOther)).rejects.toThrow(
-        "a top-level agent that you can message",
-      );
+      for (const target of [privateMember, privateOther]) {
+        await expect(send(fromPrivate, target)).rejects.toThrow(
+          "a top-level agent that you can message",
+        );
+      }
+      expect(await eventMessages(privateMember)).toEqual([]);
       await expect(send(fromPrivate, publicTarget)).rejects.toThrow(
         "is a public conversation and this conversation is private",
       );
-      // An event Turn has no person, so it reaches no private agent.
-      await expect(
-        send(topLevelRun(privateSender, EVENT_SYSTEM_ACTOR), privateMember),
-      ).rejects.toThrow("a top-level agent that you can message");
 
       // A child agent reaches only its own tree.
       const child = await createAgentInvocation({
