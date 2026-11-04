@@ -23,13 +23,17 @@ export function usePinConversation(
   const feeds = { queryKey: ["dashboard", "conversations"] };
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   const setPinnedAt = (pinnedAt: string | null) => {
+    // Match the API: a pin also restores an archived conversation.
+    const viewerMarks = pinnedAt
+      ? { archivedAt: null, pinnedAt }
+      : { pinnedAt };
     queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
       feed
         ? {
             ...feed,
             conversations: feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
-                ? { ...conversation, pinnedAt }
+                ? { ...conversation, ...viewerMarks }
                 : conversation,
             ),
           }
@@ -38,7 +42,7 @@ export function usePinConversation(
     // Clear the etag so the next read gets a full body, not a 304 that keeps
     // this local value.
     queryClient.setQueryData<DetailCache>(detailQueryKey, (detail) =>
-      detail ? { ...detail, detailEtag: undefined, pinnedAt } : detail,
+      detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
     );
   };
   return useMutation({
