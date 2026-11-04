@@ -15,7 +15,10 @@ type DetailCache = ConversationDetailReport & { detailEtag?: string };
  * change at once, so the row moves to or from the Pinned section before the
  * request returns. A failed request puts the old caches back.
  */
-export function usePinConversation(conversationId: string) {
+export function usePinConversation(
+  conversationId: string,
+  options?: { onError?(pinned: boolean): void },
+) {
   const queryClient = useQueryClient();
   const feeds = { queryKey: ["dashboard", "conversations"] };
   const detailQueryKey = conversationDetailQueryKey(conversationId);
@@ -57,11 +60,12 @@ export function usePinConversation(conversationId: string) {
       setPinnedAt(pinned ? new Date().toISOString() : null);
       return previous;
     },
-    onError: (_error, _pinned, previous) => {
+    onError: (_error, pinned, previous) => {
       previous?.feeds.forEach(([queryKey, feed]) => {
         queryClient.setQueryData(queryKey, feed);
       });
       queryClient.setQueryData(detailQueryKey, previous?.detail);
+      options?.onError?.(pinned);
     },
     onSuccess: (result) => setPinnedAt(result.pinnedAt),
     // A reader's first pin adds the conversation to their feed.

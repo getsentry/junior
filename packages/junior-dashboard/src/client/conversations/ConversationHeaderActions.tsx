@@ -92,20 +92,18 @@ export function ConversationHeaderActions(props: {
           layout="menu"
         />
       ) : null}
-      {mobile ? (
-        <MenuActionButton
-          disabled={props.pin.disabled}
-          label={props.pin.pinned ? "Unpin" : "Pin"}
-          onClick={props.pin.onClick}
-        >
-          {props.pin.pinned ? (
-            <PinOff aria-hidden="true" size={16} strokeWidth={2} />
-          ) : (
-            <Pin aria-hidden="true" size={16} strokeWidth={2} />
-          )}
-        </MenuActionButton>
-      ) : null}
       {props.copyAction}
+      <MenuActionButton
+        disabled={props.pin.disabled}
+        label={props.pin.pinned ? "Unpin" : "Pin"}
+        onClick={props.pin.onClick}
+      >
+        {props.pin.pinned ? (
+          <PinOff aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Pin aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
       <ArchiveConversationButton {...props.archive} />
       {props.sentryConversationUrl ? (
         <a
@@ -181,7 +179,6 @@ function ViewModeItem(props: {
 /** Shared icon control used by conversation and subagent transcript headers. */
 export function HeaderIconButton(props: {
   children: ReactNode;
-  disabled?: boolean;
   ref?: Ref<HTMLButtonElement>;
   label: string;
   onClick(): void;
@@ -201,7 +198,6 @@ export function HeaderIconButton(props: {
               "text-dashboard-text-muted",
               props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
             )}
-            disabled={props.disabled}
             onClick={props.onClick}
             size="icon"
           >
@@ -211,25 +207,6 @@ export function HeaderIconButton(props: {
       />
       <TooltipContent size="compact">{props.label}</TooltipContent>
     </Tooltip>
-  );
-}
-
-/** Pin or unpin the conversation from the desktop title bar. */
-export function PinConversationToggle(props: ConversationPinAction) {
-  return (
-    <HeaderIconButton
-      disabled={props.disabled}
-      label={props.pinned ? "Unpin" : "Pin"}
-      onClick={props.onClick}
-      pressed={props.pinned}
-    >
-      <Pin
-        aria-hidden="true"
-        fill={props.pinned ? "currentColor" : "none"}
-        size={15}
-        strokeWidth={2}
-      />
-    </HeaderIconButton>
   );
 }
 

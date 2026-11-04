@@ -139,16 +139,17 @@ test.describe("conversation sections", () => {
       /^Needs attention/,
     );
 
+    // Pin from the row's hover action in the sidebar.
     const pinRequest = page.waitForRequest(
       (request) =>
         request.method() === "PATCH" && request.url().endsWith("/pin"),
     );
-    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    await activeRows.hover();
+    await sidebar
+      .getByRole("button", { name: "Pin Investigate checkout latency" })
+      .click();
     expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
-    await expect(
-      page.getByRole("button", { name: "Unpin", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
     // Pinned wins over Needs attention, so the section is gone.
     await expect(sectionButtons).toHaveCount(1);
@@ -156,6 +157,12 @@ test.describe("conversation sections", () => {
     await expect(
       activeRows.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
+    await activeRows.hover();
+    await expect(
+      sidebar.getByRole("button", {
+        name: "Unpin Investigate checkout latency",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
     await screenshot(page, "conversations-pinned", {
       lightTheme: true,
       view: "desktop",
@@ -164,6 +171,8 @@ test.describe("conversation sections", () => {
     await page.reload();
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
 
+    // Unpin from the conversation `⋯` menu.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("button", { name: "Unpin", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Pin", exact: true }),

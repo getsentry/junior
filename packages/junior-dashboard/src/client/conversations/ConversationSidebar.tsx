@@ -6,11 +6,13 @@ import {
   CircleAlert,
   Inbox,
   LockKeyhole,
+  Pin,
   SquarePen,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
+import { usePinConversation } from "./usePinConversation";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
@@ -51,9 +53,12 @@ type ConversationSidebarEntry =
     }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
-// Tracks the attempted direction alongside the conversation so a failed
-// archive can never read the row's already-optimistic archived state.
-type ArchiveErrorState = { conversation: Conversation; wasArchiving: boolean };
+// The title names the attempted action, so a failed archive or pin never
+// reads the row's already-optimistic state.
+type RowActionError = { conversation: Conversation; title: string };
+
+const ROW_ACTION_BUTTON_CLASS =
+  "absolute top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
@@ -81,19 +86,31 @@ export function ConversationSidebar(props: {
   const isLanding = variant === "landing";
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<ArchiveErrorState>();
+  const [rowError, setRowError] = useState<RowActionError>();
   const dismissArchivedConversation = useCallback(
     () => setArchivedConversation(undefined),
     [],
   );
   const handleArchiveError = useCallback(
     (conversation: Conversation, wasArchiving: boolean) => {
-      setArchiveError({ conversation, wasArchiving });
+      setRowError({
+        conversation,
+        title: wasArchiving ? "Could not archive" : "Could not restore",
+      });
+    },
+    [],
+  );
+  const handlePinError = useCallback(
+    (conversation: Conversation, wasPinning: boolean) => {
+      setRowError({
+        conversation,
+        title: wasPinning ? "Could not pin" : "Could not unpin",
+      });
     },
     [],
   );
   const handleArchived = useCallback((conversation: Conversation) => {
-    setArchiveError((current) =>
+    setRowError((current) =>
       current?.conversation.id === conversation.id ? undefined : current,
     );
     setArchivedConversation(conversation);
@@ -217,6 +234,7 @@ export function ConversationSidebar(props: {
                   conversation={entry.conversation}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
+                  onPinError={handlePinError}
                   selected={entry.conversation.id === props.selectedId}
                   unread={props.finishedConversationIds.has(
                     entry.conversation.id,
@@ -231,7 +249,7 @@ export function ConversationSidebar(props: {
           />
         )}
       </div>
-      {archivedConversation || archiveError ? (
+      {archivedConversation || rowError ? (
         <div
           className={cn(
             // Landing is content-tall (parent scrolls). Keep notices on the
@@ -241,11 +259,11 @@ export function ConversationSidebar(props: {
               : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
           )}
         >
-          {archiveError ? (
-            <ArchiveConversationErrorNotice
-              conversation={archiveError.conversation}
-              onDismiss={() => setArchiveError(undefined)}
-              wasArchiving={archiveError.wasArchiving}
+          {rowError ? (
+            <ConversationActionErrorNotice
+              conversation={rowError.conversation}
+              onDismiss={() => setRowError(undefined)}
+              title={rowError.title}
             />
           ) : null}
           {archivedConversation ? (
@@ -317,6 +335,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onPinError(conversation: Conversation, wasPinning: boolean): void;
   selected: boolean;
   unread: boolean;
   waiting?: WaitingConversation;
@@ -334,6 +353,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       if (archived) props.onArchived(props.conversation);
     },
   });
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinned) => props.onPinError(props.conversation, pinned),
+  });
+  const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
@@ -405,12 +428,39 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
           />
         </Link>
       ) : null}
+      {/* Mobile rows pin from the conversation menu, so only the archive
+          button takes row space there. Archived rows restore before they pin. */}
+      {props.conversation.archivedAt ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                aria-pressed={pinned}
+                className={cn(ROW_ACTION_BUTTON_CLASS, "right-9 max-sm:hidden")}
+                disabled={pin.isPending}
+                onClick={() => pin.mutate(!pinned)}
+                type="button"
+              >
+                <Pin
+                  aria-hidden="true"
+                  fill={pinned ? "currentColor" : "none"}
+                  size={14}
+                />
+              </button>
+            }
+          />
+          <TooltipContent size="compact">
+            {pinned ? "Unpin" : "Pin"}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={
             <button
               aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-              className="absolute right-1.5 top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
+              className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
               disabled={archive.isPending}
               onClick={() =>
                 archive.mutate({
@@ -459,15 +509,11 @@ function ConversationRowState(props: {
   );
 }
 
-function ArchiveConversationErrorNotice(props: {
+function ConversationActionErrorNotice(props: {
   conversation: Conversation;
   onDismiss(): void;
-  wasArchiving: boolean;
+  title: string;
 }) {
-  const title = conversationDisplayTitle(props.conversation);
-  const actionTitle = props.wasArchiving
-    ? "Could not archive"
-    : "Could not restore";
   return (
     <Notice
       action={
@@ -475,9 +521,9 @@ function ArchiveConversationErrorNotice(props: {
           Dismiss
         </NoticeAction>
       }
-      detail={title}
+      detail={conversationDisplayTitle(props.conversation)}
       icon={CircleAlert}
-      title={actionTitle}
+      title={props.title}
       tone="error"
     />
   );

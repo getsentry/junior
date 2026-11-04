@@ -12,7 +12,6 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
-  PinConversationToggle,
   TranscriptSearchToggle,
   type ConversationArchiveAction,
   type ConversationPinAction,
@@ -211,7 +210,6 @@ export function ConversationHeader(props: {
                 open={searchOpenVisible}
               />
             )}
-            <PinConversationToggle {...props.pin} />
             <ShareConversationButton
               key={props.conversationId}
               conversationId={props.conversationId}
