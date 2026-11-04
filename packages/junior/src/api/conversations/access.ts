@@ -17,6 +17,8 @@ const rootIdentity = alias(juniorIdentities, "access_root_identity");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
+  /** The viewer is the Owner: the person who started the root Conversation. */
+  isOwner: boolean;
   isParticipant: boolean;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
@@ -123,6 +125,7 @@ export async function readConversationAccessFromSql(
         row.conversationId,
         {
           canViewPrivateContent,
+          isOwner: isRootActor,
           isParticipant,
           visibility,
           ...(validRootConversationId !== undefined &&
@@ -138,5 +141,38 @@ export async function readConversationAccessFromSql(
         },
       ];
     }),
+  );
+}
+
+/**
+ * Apply `policies/conversation-access.md`: whether work in the `requester`
+ * Conversation may read, find, or act on the `target` Conversation. Read
+ * `target` with the person of the current Turn as viewer. A Turn with no
+ * person has no viewer, so it is never the Owner and gets only public
+ * Conversations.
+ */
+export function canAccessConversation(args: {
+  requester: ConversationAccess;
+  target: ConversationAccess;
+}): boolean {
+  const { requester, target } = args;
+  if (
+    !requester.tenant ||
+    !target.tenant ||
+    requester.tenant.provider !== target.tenant.provider ||
+    requester.tenant.providerTenantId !== target.tenant.providerTenantId
+  ) {
+    return false;
+  }
+  if (target.visibility === "public") {
+    return true;
+  }
+  // Output of a public Conversation is visible to everyone who can see it,
+  // so it never gets private data. Missing visibility is private.
+  return (
+    target.visibility !== null &&
+    requester.visibility !== null &&
+    requester.visibility !== "public" &&
+    target.isOwner
   );
 }

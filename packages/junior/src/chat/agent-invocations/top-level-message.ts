@@ -6,7 +6,10 @@
  */
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import {
+  canAccessConversation,
+  readConversationAccessFromSql,
+} from "@/api/conversations/access";
 import { botConfig } from "@/chat/config";
 import { getConversationStore, getDb } from "@/chat/db";
 import {
@@ -29,13 +32,11 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
 type AgentScope = "private" | "public";
 
 /**
- * Check that a top-level agent can message another top-level agent. Both
- * must be in the same provider tenant and have the same scope: public or
- * private. To reach a private agent, the person behind the sender's Actor
- * must be a member of the target Conversation. A system Actor has no
- * person, so it reaches only public agents. Every target that the Actor
- * cannot see gets the same error, so the error does not show that a private
- * Conversation exists.
+ * Check that a top-level agent can message another top-level agent, under
+ * `policies/conversation-access.md`. Every target that the Actor cannot
+ * reach gets the same error, so the error does not show that a private
+ * Conversation exists. Returns the scope of the sender: the target runs
+ * the message with no person, so it can answer only a public sender.
  */
 async function requireTopLevelAgentAccess(args: {
   actor: Actor;
@@ -70,28 +71,13 @@ async function requireTopLevelAgentAccess(args: {
   const sender = access.get(args.senderConversationId);
   const receiver = access.get(args.to);
   if (
-    !sender?.tenant ||
-    !receiver?.tenant ||
-    !sender.visibility ||
-    !receiver.visibility ||
-    sender.visibility === "unknown" ||
-    receiver.visibility === "unknown" ||
-    sender.tenant.provider !== receiver.tenant.provider ||
-    sender.tenant.providerTenantId !== receiver.tenant.providerTenantId
+    !sender ||
+    !receiver ||
+    !canAccessConversation({ requester: sender, target: receiver })
   ) {
     throw notReachable;
   }
-  const senderScope = sender.visibility === "public" ? "public" : "private";
-  const targetScope = receiver.visibility === "public" ? "public" : "private";
-  if (targetScope === "private" && !receiver.isParticipant) {
-    throw notReachable;
-  }
-  if (senderScope !== targetScope) {
-    throw new AgentMessageTargetError(
-      `"${args.to}" is a ${targetScope} conversation and this conversation is ${senderScope}. A top-level agent can message only top-level agents with the same visibility`,
-    );
-  }
-  return targetScope;
+  return sender.visibility === "public" ? "public" : "private";
 }
 
 function renderTopLevelMessageInput(args: {
@@ -113,7 +99,7 @@ function renderTopLevelMessageInput(args: {
     "",
     args.scope === "public"
       ? `To answer the sender, use messageAgent with to set to "${args.senderConversationId}".`
-      : "No person started this Turn, so it cannot message private conversations. Answer in this conversation.",
+      : "The sender is a private conversation. No person started this Turn, so it cannot message the sender. Answer in this conversation.",
   ].join("\n");
 }
 

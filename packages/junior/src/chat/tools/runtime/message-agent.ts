@@ -46,7 +46,7 @@ export function createMessageAgentTool(
           .trim()
           .min(1)
           .describe(
-            `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from spawnAgent or listAgents, or the conversation_id of another top-level agent`,
+            `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from spawnAgent or searchAgents, or the conversation_id of another top-level agent`,
           ),
         text: z
           .string()
@@ -75,7 +75,7 @@ export function createMessageAgentTool(
       } catch (error) {
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
-            `${error.message}. Use listAgents to find a child agent.`,
+            `${error.message}. Use searchAgents to find an agent.`,
             { cause: error },
           );
         }

@@ -13,8 +13,8 @@ conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 - Public destinations may use approved public excerpts in diagnostics.
 - Private channels, DMs, local conversations, and unknown destinations are
   private. Missing visibility never widens access.
-- Child conversations, events, artifacts, and plugin records inherit the
-  visibility and actor edges of their owning conversation.
+- Who may read, find, or act on a Conversation follows
+  `./conversation-access.md`.
 
 ### Storage
 
@@ -38,7 +38,8 @@ conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 
 ### Model and tools
 
-- Include only content authorized for the active actor and destination.
+- Include only content that `./conversation-access.md` allows for the active
+  actor and Conversation.
 - Tool results must not expose hidden provider payloads or credentials.
 - Memory recall and search filter by actor, source, and visibility before
   content enters model context.
