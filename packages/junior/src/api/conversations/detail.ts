@@ -220,20 +220,25 @@ async function readConversationDetailFromSql(
       ...(brief ? { brief } : undefined),
       events: page.events,
     }),
-    // Only the first read of a visit asks for this page, not each poll.
+    // Only the first read of a visit asks for this page, not each poll. The
+    // page is optional: without it, the dashboard reads it with an `around`
+    // request, which reports the same failure on its own route. So a failed
+    // page must not fail the detail.
     options.unreadPage && unreadAfterSeq !== undefined
       ? readConversationEventPageAround(executor, {
           canExposePayload,
           conversationId,
           limit: options.limit,
           seq: unreadAfterSeq,
-        }).then((around) =>
-          conversationEventPageReport(executor, {
-            conversationId,
-            eventHistory: conversationEventHistory({ canExposePayload }),
-            page: around,
-          }),
-        )
+        })
+          .then((around) =>
+            conversationEventPageReport(executor, {
+              conversationId,
+              eventHistory: conversationEventHistory({ canExposePayload }),
+              page: around,
+            }),
+          )
+          .catch(() => undefined)
       : undefined,
   ]);
   const metrics = metricsByConversation.get(conversationId);

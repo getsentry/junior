@@ -208,6 +208,10 @@ export function ConversationPage(props: {
   const detail = useConversationData(conversationId, {
     unreadPageAtOpen: startAtUnread,
   });
+  // Jump to latest, a send, or the mobile keyboard skips the newer pages for
+  // the rest of the visit. It can come before the unread page loads.
+  const [showLatest, setShowLatest] = useState(false);
+  const opensAtUnread = startAtUnread && !showLatest;
   const memoryList = useConversationMemories(conversationId).data;
   const memoryState = useMemo<ConversationMemoryState>(
     () => ({
@@ -224,7 +228,8 @@ export function ConversationPage(props: {
     conversationId,
     // Cached earlier pages from a past visit would look like newer events.
     detail: detail.latest,
-    unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
+    onShowLatest: () => setShowLatest(true),
+    unreadCursor: opensAtUnread ? readAtOpen.unreadCursor : undefined,
     unreadPage: readAtOpen.unreadPage,
   });
   // The page is keyed by Conversation, so this is the cached copy at open.
@@ -237,7 +242,7 @@ export function ConversationPage(props: {
   // "New" marker, if the reader has not moved.
   const holdCachedTranscript = Boolean(
     cachedAtOpen &&
-    (unreadHistory?.isPending || (startAtUnread && !detail.fetchedAtOpen)),
+    (unreadHistory?.isPending || (opensAtUnread && !detail.fetchedAtOpen)),
   );
   const history: TranscriptHistory = holdCachedTranscript
     ? {
@@ -420,10 +425,8 @@ export function ConversationPage(props: {
     }),
     [turnContext?.id],
   );
-  // A send or the mobile keyboard pins the latest event, so it skips the
-  // newer pages that are not loaded.
   const requestPin = useCallback(() => {
-    historyRef.current.newer?.showLatest();
+    setShowLatest(true);
     setPinRequestVersion((version) => version + 1);
   }, []);
   const onOpenSubagentTranscript = useCallback(

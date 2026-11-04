@@ -767,6 +767,8 @@ export function usePinnedTranscriptBottom(input: {
     const version = input.pinRequestVersion ?? 0;
     if (version === pinRequestVersionRef.current) return;
     pinRequestVersionRef.current = version;
+    // The reader asked for the latest event, not the "New" marker.
+    awaitingUnreadMarkerRef.current = false;
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom("auto");

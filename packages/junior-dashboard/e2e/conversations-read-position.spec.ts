@@ -273,6 +273,28 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
   await expect
     .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
     .toBeGreaterThanOrEqual(52);
+
+  // The composer pins the latest event. On a reopen, that can come while the
+  // cached copy waits for the fetch. The transcript then opens at the latest
+  // page, not at the read position.
+  mock.eventCount = 200;
+  mock.detailGate = new Promise((resolve) => {
+    releaseDetail = resolve;
+  });
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .click();
+  await expect(transcript.getByText("Transcript message 119 ")).toBeAttached();
+  await page.getByLabel("Continue this conversation").focus();
+  releaseDetail();
+  await expect(
+    transcript.getByText("Transcript message 199 "),
+  ).toBeInViewport();
+  await expect(marker).not.toBeInViewport();
+  await expect(
+    transcript.getByRole("button", { name: "Load newer events" }),
+  ).toHaveCount(0);
 });
 
 test("opens at new messages after earlier pages were cached", async ({
