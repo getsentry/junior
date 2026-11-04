@@ -216,85 +216,105 @@ test("opens where the reader left off and reports what they read", async ({
   await expect(marker).not.toBeInViewport();
 });
 
-test("opens at new messages after a cached reopen and keeps a quick exit", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize(mobile);
-  const mock = await mockReadPositionConversation(page, {
-    eventCount: 40,
-    lastReadSeq: 39,
-  });
-  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
-  const transcript = page.getByLabel("Conversation transcript");
-  const marker = transcript.getByRole("separator", { name: "New messages" });
-  await expect(transcript.getByText("Transcript message 39 ")).toBeInViewport();
-  await expect(marker).toHaveCount(0);
+test.describe("opens at new messages after a cached reopen", () => {
+  // Fast-forward past the read report delay while the cached copy waits.
+  test.use({ controlTimers: true });
+  test("opens at new messages after a cached reopen and keeps a quick exit", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    const mock = await mockReadPositionConversation(page, {
+      eventCount: 40,
+      lastReadSeq: 39,
+    });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${mock.conversationId}`,
+    );
+    const transcript = page.getByLabel("Conversation transcript");
+    const marker = transcript.getByRole("separator", { name: "New messages" });
+    await expect(
+      transcript.getByText("Transcript message 39 "),
+    ).toBeInViewport();
+    await expect(marker).toHaveCount(0);
 
-  // More than a page arrives while the reader is away. The reopen shows the
-  // cached copy first. The fetch then brings the read position's cursor,
-  // although the cached copy has none. The cached copy stays until the page
-  // after the read position loads, and the transcript opens there.
-  await page.getByRole("link", { name: "Back to conversations" }).click();
-  mock.eventCount = 120;
-  mock.pagedDetail = true;
-  let releaseDetail = () => {};
-  mock.detailGate = new Promise((resolve) => {
-    releaseDetail = resolve;
-  });
-  let releaseNewer = () => {};
-  mock.newerGate = new Promise((resolve) => {
-    releaseNewer = resolve;
-  });
-  const newerRequest = page.waitForRequest((request) =>
-    request.url().includes("/events?around="),
-  );
-  await page
-    .getByRole("link", { name: /Read position/ })
-    .first()
-    .click();
-  await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
-  await expect(marker).toHaveCount(0);
-  releaseDetail();
-  await newerRequest;
-  await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
-  await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(0);
-  releaseNewer();
-  await expect(marker).toBeInViewport();
-  await expect(transcript.getByText("Transcript message 40 ")).toBeInViewport();
-  await expect(
-    transcript.getByText("Transcript message 119 "),
-  ).not.toBeInViewport();
+    // More than a page arrives while the reader is away. The reopen shows the
+    // cached copy first. The fetch then brings the read position's cursor,
+    // although the cached copy has none. The cached copy stays until the page
+    // after the read position loads, and the transcript opens there.
+    await page.getByRole("link", { name: "Back to conversations" }).click();
+    mock.eventCount = 120;
+    mock.pagedDetail = true;
+    let releaseDetail = () => {};
+    mock.detailGate = new Promise((resolve) => {
+      releaseDetail = resolve;
+    });
+    let releaseNewer = () => {};
+    mock.newerGate = new Promise((resolve) => {
+      releaseNewer = resolve;
+    });
+    const newerRequest = page.waitForRequest((request) =>
+      request.url().includes("/events?around="),
+    );
+    await page
+      .getByRole("link", { name: /Read position/ })
+      .first()
+      .click();
+    await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
+    await expect(marker).toHaveCount(0);
+    releaseDetail();
+    await newerRequest;
+    await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
+    await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(
+      0,
+    );
+    releaseNewer();
+    await expect(marker).toBeInViewport();
+    await expect(
+      transcript.getByText("Transcript message 40 "),
+    ).toBeInViewport();
+    await expect(
+      transcript.getByText("Transcript message 119 "),
+    ).not.toBeInViewport();
 
-  // Leaving right after a scroll still saves the place.
-  const reportCount = mock.reported.length;
-  await transcript.getByText("Transcript message 52 ").scrollIntoViewIfNeeded();
-  await page.getByRole("link", { name: "Back to conversations" }).click();
-  await expect
-    .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
-    .toBeGreaterThanOrEqual(52);
+    // Leaving right after a scroll still saves the place.
+    const reportCount = mock.reported.length;
+    await transcript
+      .getByText("Transcript message 52 ")
+      .scrollIntoViewIfNeeded();
+    await page.getByRole("link", { name: "Back to conversations" }).click();
+    await expect
+      .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
+      .toBeGreaterThanOrEqual(52);
 
-  // The composer pins the latest event. On a reopen, that can come while the
-  // cached copy waits for the fetch. The transcript then opens at the latest
-  // page, not at the read position.
-  mock.eventCount = 200;
-  mock.detailGate = new Promise((resolve) => {
-    releaseDetail = resolve;
+    // The composer pins the latest event. On a reopen, that can come while the
+    // cached copy waits for the fetch. The transcript then opens at the latest
+    // page, not at the read position.
+    mock.eventCount = 200;
+    mock.detailGate = new Promise((resolve) => {
+      releaseDetail = resolve;
+    });
+    await page
+      .getByRole("link", { name: /Read position/ })
+      .first()
+      .click();
+    await expect(
+      transcript.getByText("Transcript message 119 "),
+    ).toBeInViewport();
+    // The held copy sits at its latest rows, which the reader has not read.
+    const reportsBeforeHold = mock.reported.length;
+    await page.clock.fastForward(1_000);
+    expect(mock.reported.slice(reportsBeforeHold)).toEqual([]);
+    await page.getByLabel("Continue this conversation").focus();
+    releaseDetail();
+    await expect(
+      transcript.getByText("Transcript message 199 "),
+    ).toBeInViewport();
+    await expect(marker).not.toBeInViewport();
+    await expect(
+      transcript.getByRole("button", { name: "Load newer events" }),
+    ).toHaveCount(0);
   });
-  await page
-    .getByRole("link", { name: /Read position/ })
-    .first()
-    .click();
-  await expect(transcript.getByText("Transcript message 119 ")).toBeAttached();
-  await page.getByLabel("Continue this conversation").focus();
-  releaseDetail();
-  await expect(
-    transcript.getByText("Transcript message 199 "),
-  ).toBeInViewport();
-  await expect(marker).not.toBeInViewport();
-  await expect(
-    transcript.getByRole("button", { name: "Load newer events" }),
-  ).toHaveCount(0);
 });
 
 test("opens at new messages after earlier pages were cached", async ({

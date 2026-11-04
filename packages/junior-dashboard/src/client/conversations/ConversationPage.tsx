@@ -238,7 +238,8 @@ export function ConversationPage(props: {
   // see the latest page and the pages before it. A cached transcript stays
   // on screen until this visit's fetch tells where to open and the unread
   // events load. It loads no earlier pages and shows no marker: both would
-  // come from the cached read position. Then the transcript opens at the
+  // come from the cached read position. It reports no reads, because it sits
+  // at rows the reader has not read yet. Then the transcript opens at the
   // "New" marker, if the reader has not moved.
   const holdCachedTranscript = Boolean(
     cachedAtOpen &&
@@ -589,7 +590,7 @@ export function ConversationPage(props: {
                       loadingPreviousPage={history.isLoadingPreviousPage}
                       newerHistory={history.newer}
                       onLoadPreviousPage={history.loadPreviousPage}
-                      onRead={markRead}
+                      onRead={holdCachedTranscript ? undefined : markRead}
                       onSelectedEventSeqChange={setSelectedEventSeq}
                       // Sends and the thinking row belong after the latest event.
                       pendingMessages={
