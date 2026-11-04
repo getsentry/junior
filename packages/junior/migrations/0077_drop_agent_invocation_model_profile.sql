@@ -1,1 +1,0 @@
-ALTER TABLE "junior_agent_invocations" DROP COLUMN "model_profile";
