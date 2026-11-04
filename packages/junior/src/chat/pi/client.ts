@@ -9,6 +9,7 @@ import {
   type Message,
   type Model,
   type ThinkingLevel,
+  type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
@@ -267,6 +268,8 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  /** Tool definitions to send. They are part of the cached prompt prefix. */
+  tools?: Tool[];
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
@@ -342,6 +345,7 @@ export async function completeText(params: {
           {
             systemPrompt: params.system,
             messages: params.messages,
+            ...(params.tools ? { tools: params.tools } : undefined),
           },
           {
             apiKey,
