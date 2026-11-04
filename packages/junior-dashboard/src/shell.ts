@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
@@ -210,9 +211,32 @@ export function renderInstallIcon(): Response {
   });
 }
 
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+// The browser SDK reads these meta tags to continue the trace of the request
+// that served this page, so its pageload span joins the server spans.
+function renderSentryHead(sentry: BrowserSentryConfig | undefined): string {
+  if (!sentry) return "";
+  const { baggage, sentryTrace, ...options } = sentry;
+  return [
+    sentryTrace &&
+      `<meta name="sentry-trace" content="${escapeHtml(sentryTrace)}" />`,
+    baggage && `<meta name="baggage" content="${escapeHtml(baggage)}" />`,
+    `<script>window.__JUNIOR_DASHBOARD_SENTRY__ = ${scriptJson(options)};</script>`,
+  ]
+    .filter(Boolean)
+    .join("\n  ");
+}
+
 /** Render the authenticated dashboard HTML shell. */
-export function renderDashboard(basePath: string, agentName: string): Response {
-  const encodedAgentName = JSON.stringify(agentName).replace(/</g, "\\u003c");
+export function renderDashboard(
+  basePath: string,
+  agentName: string,
+  sentry?: BrowserSentryConfig,
+): Response {
+  const encodedAgentName = scriptJson(agentName);
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
@@ -228,6 +252,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
   <title>${escapeHtml(agentName)}</title>
+  ${renderSentryHead(sentry)}
   <style>
     ${readDashboardTailwind()}
   </style>

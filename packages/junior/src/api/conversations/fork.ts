@@ -1,8 +1,9 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   ConversationForkError,
   forkConversation,
+  keepQuickQuestion,
 } from "@/chat/conversations/fork";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -38,6 +39,23 @@ export async function forkConversationForViewer(
   }
 }
 
+/** Keep the viewer's Quick question as a fork that lists show. */
+export async function keepQuickQuestionForViewer(
+  viewer: User,
+  conversationId: string,
+): Promise<{ conversationId: string }> {
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    viewer,
+  );
+  if (!access.get(conversationId)?.isParticipant) {
+    throwApiError(404, "Conversation not found.");
+  }
+  await keepQuickQuestion(conversationId);
+  return { conversationId };
+}
+
 /**
  * Read fork state for the viewer: whether they can fork, and the source and
  * fork links that they can open.
@@ -62,7 +80,12 @@ export async function readConversationForks(
   const forks = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
-    .where(eq(juniorConversations.forkedFromConversationId, conversationId))
+    .where(
+      and(
+        eq(juniorConversations.forkedFromConversationId, conversationId),
+        isNull(juniorConversations.quickQuestionAt),
+      ),
+    )
     .orderBy(asc(juniorConversations.createdAt))
     .limit(50);
   const forkedFrom = row?.forkedFrom ?? undefined;

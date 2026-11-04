@@ -342,25 +342,19 @@
   }
 }
 
-@keyframes junior-active-indicator {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 0 rgba(110, 231, 183, 0),
-      0 0 8px rgba(110, 231, 183, 0.35);
-  }
-
-  50% {
-    box-shadow:
-      0 0 0 4px rgba(110, 231, 183, 0.18),
-      0 0 14px rgba(110, 231, 183, 0.65);
-  }
-}
-
 @media (max-width: 767px) {
   /* Keep long mobile feeds cheap while preserving their full scroll range. */
   .mobile-conversation-row {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
   }
+}
+
+/* The Quick question selection. Utilities cannot style a highlight. */
+::highlight(quick-question) {
+  background-color: color-mix(
+    in oklab,
+    var(--color-dashboard-accent) 30%,
+    transparent
+  );
 }

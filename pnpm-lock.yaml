@@ -13,6 +13,9 @@ catalogs:
     '@earendil-works/pi-ai':
       specifier: 0.85.1
       version: 0.85.1
+    '@sentry/browser':
+      specifier: 11.10.0
+      version: 11.10.0
     '@sentry/nitro':
       specifier: 11.10.0
       version: 11.10.0
@@ -371,6 +374,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@sentry/browser':
+        specifier: 'catalog:'
+        version: 11.10.0
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -4120,6 +4126,14 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
+  '@sentry/browser-utils@11.10.0':
+    resolution: {integrity: sha512-P/bYHTgj76sYBYCZa524YoZ/hZac2XCW3i3qShrMXnh7s63x1cweUjD7BDVDb0L/lGMwtuObuZeRnCif4hWLNg==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/browser@11.10.0':
+    resolution: {integrity: sha512-kU8Inx3K/PaaDGqTu4lBW8XCYNsYNTwwPIZNIRDas/mTXtepXpM7M0KxxrTSZXBTWX0RfDU4t7vsL9ay0o4+NQ==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
   '@sentry/bundler-plugins@11.10.0':
     resolution: {integrity: sha512-+ngJ485rIYll5uOhWSvSO+Vx4S24MGe5KcLKlUZghr+BXK+ib32uBOZNG294wGyeauLTDvdjncLEYwiaBnP/5w==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
@@ -4138,6 +4152,10 @@ packages:
 
   '@sentry/core@11.10.0':
     resolution: {integrity: sha512-l/OtTo1v+TQgZtHG2Q5N4IX+gFdAE1tZ27K/P21UCzJglWk54TPEm+d9T2lulPqMK06kZcLwDgRAhE2GO4YS5w==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/feedback@11.10.0':
+    resolution: {integrity: sha512-jZqxVHPoUeZ6W7xSlhJdTMuM/GUJLA/K4U9OFmkP+g+TvtXhdwWxeiT23m2Wm5NmTHjaB07jSc05ayuflD8ETw==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/junior-dashboard@file:packages/junior-dashboard':
@@ -4188,6 +4206,14 @@ packages:
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
+
+  '@sentry/replay-canvas@11.10.0':
+    resolution: {integrity: sha512-i0Fsjbl8ChzTMntLVhZvn72+p395tGNtL4iflsprnzPhTVSOGW9IYgUYfO87UcujUf5CmYn7ELBKUc5V0Ipfdg==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/replay@11.10.0':
+    resolution: {integrity: sha512-0rcg+43tkO278VyrKcbmg0JQm2yxuguXKLbr9ieiNsynaxj22JC8baie4Uxizf2jM2ukfqA3O+o0Pbqaed8P2Q==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/server-runtime-injection@11.10.0':
     resolution: {integrity: sha512-1nc+HNPldrPEov16sL5m2cOLVgNJ+FsR7QtaWGOOv8qYFJkSp95lyc2qzLnaG2L72UzSMOv10peGRioAKrrZQQ==}
@@ -4274,6 +4300,7 @@ packages:
   '@smithy/core@3.24.4':
     resolution: {integrity: sha512-3UNRKEyQyAgVgM0LGlerCLm+ChZWZ1GPfde+jBEW6bm6bSBGU1p0EbblaUV3unbhwvidjLA5Zs3sOs7mnZwvAw==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.3.4':
     resolution: {integrity: sha512-vKW0MEFRU4Y3MkVZUkpJm+g9qyPGLCXhc0YLggUdSdBB4g7IaSSsCE75P9rBXyWHrXY1UYSQUl8/DwsTR7QciA==}
@@ -9809,6 +9836,9 @@ packages:
   web-vitals@0.2.4:
     resolution: {integrity: sha512-6BjspCO9VriYy12z356nL6JBS0GYeEcA457YyRzD+dD6XYCQ75NKhcOHUMHentOE7OcVCIXXDvOm0jKFfQG2Gg==}
 
+  web-vitals@6.2.3:
+    resolution: {integrity: sha512-Dmy+vdO1UPMqXiAtZSNayhl4f794Bxfd94W4HIj2HlYtczEQfEOon969memlcpcHrTuOKLa5baFjX7WbgmOq+A==}
+
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
 
@@ -12753,6 +12783,21 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
+  '@sentry/browser-utils@11.10.0':
+    dependencies:
+      '@sentry/conventions': 0.29.0
+      '@sentry/core': 11.10.0
+      web-vitals: 6.2.3
+
+  '@sentry/browser@11.10.0':
+    dependencies:
+      '@sentry/browser-utils': 11.10.0
+      '@sentry/conventions': 0.29.0
+      '@sentry/core': 11.10.0
+      '@sentry/feedback': 11.10.0
+      '@sentry/replay': 11.10.0
+      '@sentry/replay-canvas': 11.10.0
+
   '@sentry/bundler-plugins@11.10.0':
     dependencies:
       '@sentry/core': 11.10.0
@@ -12769,9 +12814,14 @@ snapshots:
     dependencies:
       '@sentry/conventions': 0.29.0
 
+  '@sentry/feedback@11.10.0':
+    dependencies:
+      '@sentry/core': 11.10.0
+
   '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0)))':
     dependencies:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@sentry/browser': 11.10.0
       '@sentry/junior': file:packages/junior(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@tanstack/react-query': 5.100.14(react@19.2.6)
@@ -13148,6 +13198,7 @@ snapshots:
       '@chat-adapter/state-redis': 4.29.0(ai@7.0.153(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-codemode': 1.4.0
       '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.5.4)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.5.4)
@@ -13246,6 +13297,7 @@ snapshots:
       '@chat-adapter/state-redis': 4.29.0(ai@7.0.153(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-codemode': 1.4.0
       '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.5.4)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.5.4)
@@ -13344,6 +13396,7 @@ snapshots:
       '@chat-adapter/state-redis': 4.29.0(ai@7.0.153(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai': 0.84.1(@modelcontextprotocol/sdk@1.32.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-codemode': 1.4.0
       '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.5.4)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.5.4)
@@ -13500,6 +13553,16 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@sentry/conventions': 0.29.0
+      '@sentry/core': 11.10.0
+
+  '@sentry/replay-canvas@11.10.0':
+    dependencies:
+      '@sentry/core': 11.10.0
+      '@sentry/replay': 11.10.0
+
+  '@sentry/replay@11.10.0':
+    dependencies:
+      '@sentry/browser-utils': 11.10.0
       '@sentry/core': 11.10.0
 
   '@sentry/server-runtime-injection@11.10.0':
@@ -20491,6 +20554,8 @@ snapshots:
   web-streams-polyfill@3.3.3: {}
 
   web-vitals@0.2.4: {}
+
+  web-vitals@6.2.3: {}
 
   webidl-conversions@3.0.1: {}
 

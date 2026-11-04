@@ -16,7 +16,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import {
   insertReviewItem as insertStoredReviewItem,
@@ -103,6 +103,26 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
     provider: "slack",
     providerSubjectId: author.userId,
     providerTenantId: SLACK_TEAM_ID,
+  });
+}
+
+/**
+ * Link a GitHub login to a Slack person, as account linking does, so Events
+ * that name the login resolve to that person.
+ */
+export async function insertLinkedGitHubIdentity(args: {
+  author?: SlackAuthor;
+  login: string;
+}): Promise<void> {
+  const slack = await insertSlackIdentity(resolveAuthor(args.author));
+  if (!slack.userId) {
+    throw new Error("Slack identity has no Junior user to link");
+  }
+  await upsertLinkedIdentity(getSqlExecutor(), slack.userId, {
+    handle: args.login,
+    kind: "user",
+    provider: "github",
+    providerSubjectId: `github-user-${args.login}`,
   });
 }
 

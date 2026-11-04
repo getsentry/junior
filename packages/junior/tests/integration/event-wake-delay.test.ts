@@ -284,15 +284,16 @@ describe("event wake delay", () => {
     expect(text).toContain(
       [
         `About: ${prWatch.label}`,
-        "People involved: <@U123>",
+        'People involved: <@U123> (did Event 1; called "dcramer" in the Event data)',
+        'If you mention <@U123>, write to them as "you", and do not also call them "dcramer".',
         `Instructions: ${prWatch.intent}`,
       ].join("\n"),
     );
     expect(text).toContain(
       "- pull_request.review_comment.created: Reply on the thread.",
     );
-    expect(text).toMatch(
-      /Event 1: pull_request\.review\.approved\nDone by: <@U123>\. [^\n]*"dcramer"[^\n]*\nTrusted summary: Approved by dcramer\.\n\nEvent 2: pull_request\.review_comment\.created/,
+    expect(text).toContain(
+      "Event 1: pull_request.review.approved\nTrusted summary: Approved by dcramer.\n\nEvent 2: pull_request.review_comment.created",
     );
     expect(text).toContain(
       [

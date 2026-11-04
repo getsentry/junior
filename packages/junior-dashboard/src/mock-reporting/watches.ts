@@ -43,6 +43,7 @@ export function readMockConversationWatches(
         label: "getsentry/junior#2383",
         namespace: "github",
         resourceType: "pull_request",
+        url: "https://github.com/getsentry/junior/pull/2383",
       },
       {
         createdAt: iso(-2 * HOUR_MS),
@@ -79,6 +80,7 @@ export function readMockConversationWatches(
         label: "getsentry/junior#2351",
         namespace: "github",
         resourceType: "pull_request",
+        url: "https://github.com/getsentry/junior/pull/2351",
       },
       {
         createdAt: iso(-10 * 60_000),

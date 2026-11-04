@@ -80,6 +80,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
 - **Transcript**: a reporting view of Messages and history. Not storage.
+- **Quick question**: a hidden, read-only fork that asks about text in one
+  Reply. Keep as fork makes it a normal fork.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Never shorten to "invocation".
