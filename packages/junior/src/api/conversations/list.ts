@@ -1,5 +1,15 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -39,6 +49,7 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import { listWaitingConversations } from "@/chat/review-items/store";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
@@ -110,12 +121,24 @@ function conversationCodeRepositoryFilter(
 
 async function conversationRows(
   db: JuniorDatabase,
-  limit: number,
-  status: "active" | "archived" | "all",
-  filter: ConversationFeedMembership | undefined,
-  query?: string,
-  includePrivateBriefs = false,
-  codeRepository?: { id: string; viewerUserId?: string },
+  {
+    codeRepository,
+    conversationIds,
+    filter,
+    includePrivateBriefs = false,
+    limit,
+    query,
+    status,
+  }: {
+    codeRepository?: { id: string; viewerUserId?: string };
+    /** Read only these root conversations. */
+    conversationIds?: string[];
+    filter: ConversationFeedMembership | undefined;
+    includePrivateBriefs?: boolean;
+    limit: number;
+    query?: string;
+    status: "active" | "archived" | "all";
+  },
 ) {
   return db
     .select({
@@ -145,6 +168,9 @@ async function conversationRows(
         // An unkept Quick question is a private side thread.
         isNull(juniorConversations.quickQuestionAt),
         conversationFeedMembershipFilter(status, filter),
+        conversationIds
+          ? inArray(juniorConversations.conversationId, conversationIds)
+          : undefined,
         codeRepository
           ? conversationCodeRepositoryFilter(
               codeRepository.id,
@@ -183,6 +209,30 @@ async function conversationRows(
 }
 
 type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
+
+/**
+ * Read the viewer's active conversations that wait on them but fall outside
+ * the newest page. Needs attention shows every conversation that waits on the
+ * viewer, so an old one must come back to the feed.
+ */
+async function waitingRowsOutsidePage(
+  db: JuniorDatabase,
+  filter: ConversationFeedMembership & { kind: "viewer" },
+  page: ConversationRow[],
+): Promise<ConversationRow[]> {
+  const loaded = new Set(page.map((row) => row.conversation.conversationId));
+  const missing = (await listWaitingConversations(db, filter.userId))
+    .map((waiting) => waiting.conversationId)
+    .filter((conversationId) => !loaded.has(conversationId));
+  if (missing.length === 0) return [];
+  return await conversationRows(db, {
+    conversationIds: missing,
+    filter,
+    includePrivateBriefs: true,
+    limit: missing.length,
+    status: "active",
+  });
+}
 
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
@@ -342,20 +392,28 @@ export async function readConversationFeedFromSql(
     ? undefined
     : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
-  const rows = await conversationRows(
-    db,
-    options.limit ?? CONVERSATION_FEED_LIMIT,
-    query || options.codeRepositoryId ? "all" : (options.status ?? "active"),
-    filter,
-    query,
-    filter?.kind === "viewer",
-    options.codeRepositoryId
+  const status =
+    query || options.codeRepositoryId ? "all" : (options.status ?? "active");
+  const rows = await conversationRows(db, {
+    ...(options.codeRepositoryId
       ? {
-          id: options.codeRepositoryId,
-          ...(options.viewer ? { viewerUserId: options.viewer.id } : undefined),
+          codeRepository: {
+            id: options.codeRepositoryId,
+            ...(options.viewer
+              ? { viewerUserId: options.viewer.id }
+              : undefined),
+          },
         }
-      : undefined,
-  );
+      : undefined),
+    filter,
+    includePrivateBriefs: filter?.kind === "viewer",
+    limit: options.limit ?? CONVERSATION_FEED_LIMIT,
+    query,
+    status,
+  });
+  if (filter?.kind === "viewer" && status === "active") {
+    rows.push(...(await waitingRowsOutsidePage(db, filter, rows)));
+  }
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,

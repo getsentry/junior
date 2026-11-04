@@ -39,6 +39,8 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
  * it, and what it cost. Each fact shows here only, not in the title bar.
  */
 export function ConversationDetails(props: {
+  /** Viewer's auto-archive control. Null for non-participants. */
+  autoArchive: ReactNode;
   brief?: Brief;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
@@ -163,6 +165,10 @@ export function ConversationDetails(props: {
               <ConversationWatches watches={watches} />
             ) : null}
           </DetailsCard>
+        ) : null}
+        {/* Linked work decides when auto-archive runs, so it follows. */}
+        {props.autoArchive != null ? (
+          <DetailsCard>{props.autoArchive}</DetailsCard>
         ) : null}
         {agents?.length ? (
           <DetailsCard count={agents.length} title="Subagents">

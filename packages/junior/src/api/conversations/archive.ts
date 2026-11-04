@@ -11,7 +11,7 @@ import { throwApiError } from "../http";
 import type {
   ArchiveConversationBody,
   ArchiveConversationResponse,
-} from "../schema/conversation";
+} from "../schema/conversation-archive";
 import { readConversationAccessFromSql } from "./access";
 
 async function setViewerArchive(args: {
@@ -67,10 +67,12 @@ async function setViewerArchive(args: {
       };
     }
 
+    // A manual restore means the conversation is not done for this user, so
+    // auto-archive must not archive it again.
     await db
       .with(conversationDetailTouch(db, [args.rootConversationId]))
       .update(juniorConversationParticipants)
-      .set({ archivedAt: null })
+      .set({ archivedAt: null, autoArchive: false })
       .where(
         and(
           eq(juniorConversationParticipants.userId, args.userId),

@@ -41,6 +41,12 @@ import {
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
+  DEFAULT_AUTO_ARCHIVE_SETTINGS,
+  readUserAutoArchiveSettings,
+  updateUserAutoArchiveSettings,
+  type AutoArchiveSettings,
+} from "./api/conversations/auto-archive";
+export {
   readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,

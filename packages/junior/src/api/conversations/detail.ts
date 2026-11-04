@@ -30,6 +30,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationViewerMarks } from "./membership";
+import { readConversationAutoArchive } from "./auto-archive";
 import { readConversationAuthors } from "./participants";
 import { readConversationForks } from "./fork";
 import { readConversationAgentTree } from "./agent-tree";
@@ -240,11 +241,14 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const [forks, agentTree, readPosition] = await Promise.all([
+  const [forks, agentTree, readPosition, autoArchive] = await Promise.all([
     readConversationForks(conversationId, options.viewer),
     readConversationAgentTree(conversationId, options.viewer),
     options.viewer
       ? readConversationReadPosition(options.viewer, conversationId)
+      : undefined,
+    options.viewer && report.isParticipant
+      ? readConversationAutoArchive(options.viewer, conversationId)
       : undefined,
   ]);
   return conversationDetailReportSchema.parse({
@@ -252,5 +256,6 @@ export async function readConversationDetail(
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
     ...(readPosition ? { readPosition } : undefined),
+    ...(autoArchive === undefined ? undefined : { autoArchive }),
   });
 }
