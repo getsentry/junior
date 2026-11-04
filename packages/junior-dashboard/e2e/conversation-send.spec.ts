@@ -1,4 +1,7 @@
-import { webMessageId } from "@sentry/junior/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  webMessageId,
+} from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   InputImage,
@@ -178,7 +181,10 @@ test("starts and continues conversations from the dashboard", async ({
       if (holdDetailRefresh) await detailRefreshHeld;
       // Request the full body because this test changes it.
       const response = await route.fetch({
-        headers: { ...route.request().headers(), "if-none-match": "" },
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
       });
       await route.fulfill({
         response,
@@ -331,7 +337,10 @@ test("hands web and external messages from queue to history without gaps", async
     await historyHeld;
     // Request the full body because this test changes it.
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     await route.fulfill({
@@ -678,7 +687,10 @@ test("stops the active Turn and returns queued text to the composer", async ({
   });
   await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     await route.fulfill({
@@ -795,7 +807,10 @@ test("edits a queued message back into the composer", async ({
   });
   await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     await route.fulfill({

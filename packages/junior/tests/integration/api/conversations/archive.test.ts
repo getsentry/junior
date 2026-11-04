@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -346,7 +347,9 @@ describe("conversation archive API", () => {
 
     const { app } = await authenticatedApi(viewer.email);
     const detailUrl = `http://localhost/api/conversations/${optedOutId}`;
-    const beforeEtag = (await app.request(detailUrl)).headers.get("etag")!;
+    const beforeEtag = (await app.request(detailUrl)).headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
     const optOut = await app.request(
       `http://localhost/api/conversations/${optedOutId}/auto-archive`,
       {
@@ -363,7 +366,7 @@ describe("conversation archive API", () => {
     expect(
       (
         await app.request(detailUrl, {
-          headers: { "if-none-match": beforeEtag },
+          headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: beforeEtag },
         })
       ).status,
     ).toBe(200);

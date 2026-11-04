@@ -206,7 +206,11 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       }
       return {
         target: "updateCalendarEvent" as const,
-        ...ownEventResult(ownEventSchema.parse(response.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(response.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });
