@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
+  codeOverviewQuerySchema,
   codeOverviewReportSchema,
   codeRepositoryParamsSchema,
   codeRepositoryReportSchema,
@@ -13,8 +14,20 @@ import { readCodeRepository } from "./repository";
 /** Create the code analytics API. */
 export function createCodeRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  app.get("/", async () =>
-    jsonResponse(codeOverviewReportSchema, await readCodeOverview()),
+  app.get(
+    "/",
+    validateRequest(
+      "query",
+      codeOverviewQuerySchema,
+      "Invalid query parameters.",
+    ),
+    async (context) => {
+      const { repository } = context.req.valid("query");
+      return jsonResponse(
+        codeOverviewReportSchema,
+        await readCodeOverview({ repositoryNames: repository }),
+      );
+    },
   );
   app.get(
     "/repositories/:repositoryId",

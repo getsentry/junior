@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -134,9 +134,30 @@ function ownedByUserSql(conversationIds: SQL, userId: string): SQL {
   )`;
 }
 
-/** Limit code changes to one person's conversations or one repository. */
+/** True when the code change belongs to one of the named repositories. */
+function inRepositoryNamesSql(names: string[]): SQL {
+  // Hosting services treat repository names as case-insensitive.
+  return inArray(
+    juniorCodeChanges.repositoryId,
+    getDb()
+      .select({ id: juniorCodeRepositories.id })
+      .from(juniorCodeRepositories)
+      .where(
+        inArray(
+          sql`lower(${juniorCodeRepositories.name})`,
+          names.map((name) => name.toLowerCase()),
+        ),
+      ),
+  );
+}
+
+/**
+ * Limit code changes to one person's conversations, one repository, or a set
+ * of repository names.
+ */
 function changeScopeFilter(args: {
   repositoryId?: string;
+  repositoryNames?: string[];
   userId?: string;
 }): SQL | undefined {
   return and(
@@ -146,6 +167,9 @@ function changeScopeFilter(args: {
     args.repositoryId
       ? eq(juniorCodeChanges.repositoryId, args.repositoryId)
       : undefined,
+    args.repositoryNames?.length
+      ? inRepositoryNamesSql(args.repositoryNames)
+      : undefined,
   );
 }
 
@@ -153,6 +177,7 @@ function changeScopeFilter(args: {
 export async function readCodeWindows(args: {
   nowMs: number;
   repositoryId?: string;
+  repositoryNames?: string[];
   userId?: string;
 }) {
   const db = getDb();
@@ -382,12 +407,22 @@ export function codeChangeReport(change: {
   };
 }
 
-/** Read code activity created by Junior across installed code plugins. */
-export async function readCodeOverview(nowMs = Date.now()) {
+/**
+ * Read code activity created by Junior across installed code plugins,
+ * optionally scoped to a set of repository names.
+ */
+export async function readCodeOverview(
+  args: { nowMs?: number; repositoryNames?: string[] } = {},
+) {
   const db = getDb();
   const changes = juniorCodeChanges;
   const repositories = juniorCodeRepositories;
-  const windows = await readCodeWindows({ nowMs });
+  const nowMs = args.nowMs ?? Date.now();
+  const scope = changeScopeFilter({ repositoryNames: args.repositoryNames });
+  const windows = await readCodeWindows({
+    nowMs,
+    repositoryNames: args.repositoryNames,
+  });
   const conversationTreeCost = conversationTreeCostExpr();
   const [repositoryResult, recentChanges] = await Promise.all([
     db.execute(sql`
@@ -401,10 +436,13 @@ export async function readCodeOverview(nowMs = Date.now()) {
           ${changes.state},
           ${changes.conversationIds} AS conversation_ids
         FROM ${changes}
-        WHERE ${changes.openedAt} >= ${windows.windowStart}
-          OR ${changes.mergedAt} >= ${windows.windowStart}
-          OR ${changes.closedAt} >= ${windows.windowStart}
-          OR ${changes.state} = 'open'
+        WHERE (
+          ${changes.openedAt} >= ${windows.windowStart}
+            OR ${changes.mergedAt} >= ${windows.windowStart}
+            OR ${changes.closedAt} >= ${windows.windowStart}
+            OR ${changes.state} = 'open'
+        )
+          ${scope ? sql`AND ${scope}` : sql``}
       ), change_costs AS (
         SELECT
           recent_changes.repository_id,
@@ -454,11 +492,14 @@ export async function readCodeOverview(nowMs = Date.now()) {
       .from(changes)
       .innerJoin(repositories, eq(changes.repositoryId, repositories.id))
       .where(
-        or(
-          gte(changes.openedAt, windows.windowStart),
-          gte(changes.mergedAt, windows.windowStart),
-          gte(changes.closedAt, windows.windowStart),
-          eq(changes.state, "open"),
+        and(
+          or(
+            gte(changes.openedAt, windows.windowStart),
+            gte(changes.mergedAt, windows.windowStart),
+            gte(changes.closedAt, windows.windowStart),
+            eq(changes.state, "open"),
+          ),
+          scope,
         ),
       )
       .orderBy(desc(changes.updatedAt))

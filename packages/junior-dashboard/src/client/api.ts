@@ -100,12 +100,28 @@ export function useConversationsData(search = "") {
   });
 }
 
-/** Fetch repository and code change analytics. */
-export function useCodeOverviewData() {
+/** Query key that scopes `/code` and `/api/code` to repositories by name. */
+export const CODE_REPOSITORY_PARAM = "repository";
+
+/** Build the `/code` search string for a set of repository names. */
+export function codeRepositorySearch(repositories: readonly string[]): string {
+  const params = new URLSearchParams(
+    repositories.map((repository) => [CODE_REPOSITORY_PARAM, repository]),
+  ).toString();
+  return params ? `?${params}` : "";
+}
+
+/** Fetch repository and code change analytics, optionally for some repositories. */
+export function useCodeOverviewData(repositories: readonly string[]) {
   return useQuery({
-    queryKey: ["dashboard", "code"],
+    queryKey: ["dashboard", "code", repositories],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
+      fetchDashboardJson(
+        codeOverviewReportSchema,
+        `/api/code${codeRepositorySearch(repositories)}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }
