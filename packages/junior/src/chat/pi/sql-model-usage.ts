@@ -15,8 +15,14 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 
-const message = sql`${juniorConversationEvents.payload}`;
-const usage = sql`${message}->'usage'`;
+// Read the payload fields once per row. Each `payload->...` detoasts the whole
+// payload again, an assistant payload holds the full reply content, and this
+// query has dozens of usage expressions per row.
+const assistantCall = sql`jsonb_to_record(${juniorConversationEvents.payload})
+  as assistant_call(provider jsonb, model jsonb, usage jsonb)`;
+const provider = sql`assistant_call.provider`;
+const model = sql`assistant_call.model`;
+const usage = sql`assistant_call.usage`;
 const cost = sql`${usage}->'cost'`;
 
 function nonnegativeNumber(
@@ -136,10 +142,11 @@ export async function readConversationModelUsageFromSql(
   // Prefer the model field when it already carries a vendor prefix so usage keys
   // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
   // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
+  const modelText = sql`(${model} #>> '{}')`;
   const modelId = sql<string>`case
-    when position('/' in coalesce(${message}->>'model', '')) > 0
-      then ${message}->>'model'
-    else concat(${message}->>'provider', '/', ${message}->>'model')
+    when position('/' in coalesce(${modelText}, '')) > 0
+      then ${modelText}
+    else concat(${provider} #>> '{}', '/', ${modelText})
   end`;
   const inputTokens = token("input", "inputTokens");
   const outputTokens = token("output", "outputTokens");
@@ -176,16 +183,17 @@ export async function readConversationModelUsageFromSql(
         juniorConversationEvents.conversationId,
       ),
     )
+    .crossJoinLateral(assistantCall)
     .where(
       and(
         eq(juniorConversationEvents.type, "assistant_message"),
         // Copied fork history is model context, not another model call.
         notCopiedByFork(),
         notInheritedByForkChild(),
-        sql`jsonb_typeof(${message}->'provider') = 'string'`,
-        sql`jsonb_typeof(${message}->'model') = 'string'`,
-        sql`coalesce(${message}->>'provider', '') <> ''`,
-        sql`coalesce(${message}->>'model', '') <> ''`,
+        sql`jsonb_typeof(${provider}) = 'string'`,
+        sql`jsonb_typeof(${model}) = 'string'`,
+        sql`coalesce(${provider} #>> '{}', '') <> ''`,
+        sql`coalesce(${modelText}, '') <> ''`,
       ),
     )
     .groupBy(modelId)
