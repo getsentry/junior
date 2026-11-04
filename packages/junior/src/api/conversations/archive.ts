@@ -52,12 +52,17 @@ async function setViewerArchive(args: {
             juniorConversationParticipants.userId,
             juniorConversationParticipants.rootConversationId,
           ],
+          // Archive also unpins, so the Pinned section holds only active rows.
           set: {
             archivedAt,
+            pinnedAt: null,
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
-      return { archivedAt: archivedAt.toISOString(), status: "updated" as const };
+      return {
+        archivedAt: archivedAt.toISOString(),
+        status: "updated" as const,
+      };
     }
 
     await db
@@ -75,31 +80,6 @@ async function setViewerArchive(args: {
       );
     return { archivedAt: null, status: "updated" as const };
   });
-}
-
-/** Read one viewer's archive timestamp for a conversation root. */
-export async function readConversationArchivedAt(
-  viewer: User,
-  conversationId: string,
-): Promise<number | undefined> {
-  const rootConversationId = await resolveRootConversationId(
-    getSqlExecutor(),
-    conversationId,
-  );
-  const [row] = await getDb()
-    .select({ archivedAt: juniorConversationParticipants.archivedAt })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(juniorConversationParticipants.userId, viewer.id),
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-      ),
-    )
-    .limit(1);
-  return row?.archivedAt?.getTime();
 }
 
 /** Archive or restore one conversation for the signed-in viewer. */

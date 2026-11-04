@@ -21,7 +21,8 @@ import { readConversationAccessFromSql } from "./access";
 import {
   conversationArchivedForEmail,
   conversationArchivedForUser,
-  conversationArchiveTimes,
+  conversationPinnedForUser,
+  conversationViewerMarks,
   conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationNotArchivedForEmail,
@@ -171,6 +172,10 @@ async function conversationRows(
       ),
     )
     .orderBy(
+      // Pins sort first so an old pinned root stays inside the feed limit.
+      ...(filter?.kind === "viewer" && status === "active"
+        ? [desc(conversationPinnedForUser(filter.userId))]
+        : []),
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
     )
@@ -357,7 +362,7 @@ export async function readConversationFeedFromSql(
   );
   const [
     accessByConversation,
-    archiveTimesByConversation,
+    viewerMarksByConversation,
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
@@ -370,7 +375,7 @@ export async function readConversationFeedFromSql(
     firstHumanMessageTextByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
-    conversationArchiveTimes(
+    conversationViewerMarks(
       db,
       conversationIds,
       filter?.kind === "viewer"
@@ -429,11 +434,8 @@ export async function readConversationFeedFromSql(
         conversation.conversationId,
       );
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
-      const archivedAtMs = archiveTimesByConversation.get(
-        conversation.conversationId,
-      );
       const summary = conversationSummaryFromStoredConversation({
-        ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+        ...viewerMarksByConversation.get(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,
         ),

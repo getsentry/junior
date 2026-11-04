@@ -316,6 +316,7 @@ export const conversationSummaryReportSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
     archivedAt: z.string().datetime().nullable().optional(),
+    pinnedAt: z.string().datetime().nullable().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),

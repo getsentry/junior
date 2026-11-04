@@ -4,6 +4,8 @@ import {
   ArchiveRestore,
   Info,
   MessagesSquare,
+  Pin,
+  PinOff,
   ScrollText,
   Search,
   X,
@@ -28,12 +30,20 @@ export type ConversationArchiveAction = {
   pending: boolean;
 };
 
+export type ConversationPinAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  pinned: boolean;
+};
+
 /**
  * Show conversation actions in the `⋯` menu. On desktop the title bar shows
  * search, share, and details, so the menu leaves them out.
  */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
+  pin: ConversationPinAction;
   conversationId: string;
   copyAction?: ReactNode;
   detailsOpen: boolean;
@@ -83,6 +93,17 @@ export function ConversationHeaderActions(props: {
         />
       ) : null}
       {props.copyAction}
+      <MenuActionButton
+        disabled={props.pin.disabled}
+        label={props.pin.pinned ? "Unpin" : "Pin"}
+        onClick={props.pin.onClick}
+      >
+        {props.pin.pinned ? (
+          <PinOff aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Pin aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
       <ArchiveConversationButton {...props.archive} />
       {props.sentryConversationUrl ? (
         <a
@@ -211,6 +232,7 @@ export function TranscriptSearchToggle(props: {
 
 function MenuActionButton(props: {
   children: ReactNode;
+  disabled?: boolean;
   label: string;
   onClick(): void;
   pressed?: boolean;
@@ -220,6 +242,7 @@ function MenuActionButton(props: {
       aria-label={props.label}
       aria-pressed={props.pressed}
       className={props.pressed ? "bg-dashboard-fill-strong" : undefined}
+      disabled={props.disabled}
       onClick={props.onClick}
       size="menu"
     >

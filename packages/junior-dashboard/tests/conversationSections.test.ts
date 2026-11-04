@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attentionFirst,
   buildConversationSections,
+  pinnedAndAttentionFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
@@ -83,13 +83,36 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("moves attention conversations before paging and keeps feed order", () => {
+  it("puts pinned conversations only in Pinned, before Needs attention", () => {
+    const pinned = (id: string, lastSeenAt: string) => ({
+      ...conversation(id, lastSeenAt),
+      pinnedAt: "2026-08-03T08:00:00-07:00",
+    });
+    const sections = buildConversationSections(
+      [
+        conversation("today", "2026-08-03T11:00:00-07:00"),
+        pinned("pinned-old", "2026-06-20T12:00:00-07:00"),
+        pinned("pinned-waiting", "2026-08-03T10:00:00-07:00"),
+        conversation("waiting", "2026-08-03T09:00:00-07:00"),
+      ],
+      { ...NOW, attentionIds: new Set(["pinned-waiting", "waiting"]) },
+    );
+
+    expect(sectionIds(sections)).toEqual([
+      { conversations: ["pinned-waiting", "pinned-old"], label: "Pinned" },
+      { conversations: ["waiting"], label: "Needs attention" },
+      { conversations: ["today"], label: "Today" },
+    ]);
+  });
+
+  it("moves pinned, then attention conversations before paging", () => {
     const feed = ["a", "b", "c", "d", "e"].map((id) =>
       conversation(id, "2026-08-03T12:00:00-07:00"),
     );
+    feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
 
     expect(
-      attentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
-    ).toEqual(["b", "d", "a", "c", "e"]);
+      pinnedAndAttentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
+    ).toEqual(["e", "b", "d", "a", "c"]);
   });
 });

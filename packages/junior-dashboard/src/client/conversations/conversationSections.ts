@@ -7,18 +7,22 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Sorts before every time section.
+// Pinned sorts first, then Needs attention, then every time section.
+const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
 const ATTENTION_SECTION = {
   key: "attention",
   label: "Needs attention",
-  order: Number.NEGATIVE_INFINITY,
+  order: -1,
 };
 
 /**
- * Group conversations into Needs attention, then by last activity: Today,
- * Yesterday, Previous 7 days, Previous 30 days, then one section per month.
+ * Group conversations into Pinned, then Needs attention, then by last
+ * activity: Today, Yesterday, Previous 7 days, Previous 30 days, then one
+ * section per month.
  *
- * Conversations in `attentionIds` go to Needs attention, newest first.
+ * A pinned conversation shows only in Pinned, even when it needs attention.
+ * Conversations in `attentionIds` go to Needs attention. Each section lists
+ * the newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
@@ -35,14 +39,16 @@ export function buildConversationSections(
   );
 
   for (const conversation of sorted) {
-    const section = options.attentionIds?.has(conversation.id)
-      ? ATTENTION_SECTION
-      : conversationSection(
-          activityTime(conversation),
-          nowDay,
-          options.nowMs,
-          options.timeZone,
-        );
+    const section = conversation.pinnedAt
+      ? PINNED_SECTION
+      : options.attentionIds?.has(conversation.id)
+        ? ATTENTION_SECTION
+        : conversationSection(
+            activityTime(conversation),
+            nowDay,
+            options.nowMs,
+            options.timeZone,
+          );
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -65,16 +71,16 @@ export function attentionConversationIds(
 }
 
 /**
- * Sort attention conversations to the front. The sort is stable, so each group
- * keeps the feed order. Paginated lists call this before paging, so page 1
- * holds every attention conversation.
+ * Sort pinned, then attention conversations to the front. The sort is stable,
+ * so each group keeps the feed order. Paginated lists call this before paging,
+ * so page 1 holds every pinned and attention conversation.
  */
-export function attentionFirst(
+export function pinnedAndAttentionFirst(
   conversations: Conversation[],
   attentionIds: ReadonlySet<string>,
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
-    attentionIds.has(conversation.id) ? 0 : 1;
+    conversation.pinnedAt ? 0 : attentionIds.has(conversation.id) ? 1 : 2;
   return [...conversations].sort((left, right) => rank(left) - rank(right));
 }
 

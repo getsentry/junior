@@ -135,12 +135,32 @@ const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
+/** Process-local pins so the Pinned section can be exercised in visual QA. */
+const mockPinnedConversationIds = new Set<string>();
 
-/** Restore process-local archive state so tests sharing a worker do not leak state. */
-export function resetMockConversationArchiveState(): void {
+/**
+ * Restore process-local archive and pin state so tests sharing a worker do
+ * not leak state.
+ */
+export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.clear();
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
+  mockPinnedConversationIds.clear();
 }
+
+/** Add the viewer's mock archive and pin times to one conversation. */
+function withMockViewerState<T extends { conversationId: string }>(
+  report: T & { archivedAt?: string | null },
+): T & { archivedAt: string | undefined; pinnedAt: string | null } {
+  return {
+    ...report,
+    archivedAt: mockArchivedConversationIds.has(report.conversationId)
+      ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
+      : undefined,
+    pinnedAt: mockPinnedConversationIds.has(report.conversationId) ? NOW : null,
+  };
+}
+
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -1657,19 +1677,11 @@ function summaryFromConversation(
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
   };
-  const withArchiveState = mockArchivedConversationIds.has(
-    conversation.conversationId,
-  )
-    ? {
-        ...summaryWithActivity,
-        archivedAt:
-          summaryWithActivity.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...summaryWithActivity, archivedAt: undefined };
-  return withArchiveState.channel &&
-    PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
-    ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
-    : withArchiveState;
+  const withViewerState = withMockViewerState(summaryWithActivity);
+  return withViewerState.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withViewerState.channel)
+    ? { ...withViewerState, locationId: `mock:${withViewerState.channel}` }
+    : withViewerState;
 }
 
 function mockConversationFeed(nowMs: number): ConversationFeed {
@@ -1924,9 +1936,33 @@ export function setMockConversationArchived(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
-  if (archived) mockArchivedConversationIds.add(conversationId);
-  else mockArchivedConversationIds.delete(conversationId);
+  if (archived) {
+    mockArchivedConversationIds.add(conversationId);
+    // Match the API: archive also unpins.
+    mockPinnedConversationIds.delete(conversationId);
+  } else {
+    mockArchivedConversationIds.delete(conversationId);
+  }
   return { archivedAt: archived ? NOW : null };
+}
+
+/** Pin or unpin one mock conversation for local dashboard visual QA. */
+export function setMockConversationPinned(
+  conversationId: string,
+  pinned: boolean,
+): { pinnedAt: string | null } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  if (pinned) {
+    mockPinnedConversationIds.add(conversationId);
+    // Match the API: a pin also restores an archived conversation.
+    mockArchivedConversationIds.delete(conversationId);
+  } else {
+    mockPinnedConversationIds.delete(conversationId);
+  }
+  return { pinnedAt: pinned ? NOW : null };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -2152,21 +2188,16 @@ export function readMockConversationDetail(
       !parentConversationId &&
       conversationDetail.eventHistory.status !== "redacted",
   };
-  const withArchiveState = mockArchivedConversationIds.has(conversationId)
-    ? {
-        ...detail,
-        archivedAt: detail.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...detail, archivedAt: undefined };
-  const events = withArchiveState.events.slice(-limit);
+  const withViewerState = withMockViewerState(detail);
+  const events = withViewerState.events.slice(-limit);
   const bounded =
-    events.length < withArchiveState.events.length && events[0]
+    events.length < withViewerState.events.length && events[0]
       ? {
-          ...withArchiveState,
+          ...withViewerState,
           events,
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
-      : withArchiveState;
+      : withViewerState;
   return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
     ? { ...bounded, locationId: `mock:${bounded.channel}` }
     : bounded;
