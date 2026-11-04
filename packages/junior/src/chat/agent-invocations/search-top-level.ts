@@ -37,6 +37,8 @@ import {
 
 /** One top-level agent that the requester may read, find, and message. */
 export interface TopLevelAgent {
+  /** The viewer archived this Conversation. */
+  archived: boolean;
   conversationId: string;
   status: ConversationStatus;
   /** Summary of the latest Brief. A new Conversation may have none yet. */
@@ -129,6 +131,7 @@ export async function searchTopLevelAgents(args: {
     : [newestFirst];
   const rows = await db
     .select({
+      archivedAt: juniorConversationParticipants.archivedAt,
       briefContent: briefs.content,
       conversationId: juniorConversations.conversationId,
       lastActivityAt: juniorConversations.lastActivityAt,
@@ -190,6 +193,7 @@ export async function searchTopLevelAgents(args: {
       : undefined;
     return [
       {
+        archived: row.archivedAt !== null,
         conversationId: row.conversationId,
         status: row.status,
         ...(brief ? { summary: brief.summary } : undefined),

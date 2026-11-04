@@ -515,11 +515,25 @@ describe("messageAgent", () => {
         searchTopLevel(privateSender, { conversation_ids: [privateOwned] }),
       ).resolves.toEqual([]);
       await expect(
-        searchTopLevel(privateSender, {
-          conversation_ids: [privateOwned],
-          include_archived: true,
-        }),
-      ).resolves.toEqual([privateOwned]);
+        createSearchAgentsTool({
+          actor: parentActor,
+          conversationId: privateSender,
+        }).execute!(
+          {
+            scope: "top_level",
+            conversation_ids: [privateOwned],
+            include_archived: true,
+          },
+          {},
+        ),
+      ).resolves.toEqual({
+        agents: [
+          expect.objectContaining({
+            archived: true,
+            conversation_id: privateOwned,
+          }),
+        ],
+      });
 
       const send = async (
         run: AgentRun,

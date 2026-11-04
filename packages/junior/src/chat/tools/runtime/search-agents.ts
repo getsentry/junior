@@ -123,6 +123,12 @@ const listedAgentSchema = z
       .url()
       .optional()
       .describe("Dashboard link of a top-level conversation"),
+    archived: z
+      .literal(true)
+      .optional()
+      .describe(
+        "You archived this conversation. Only a root conversation can be archived.",
+      ),
     error: z
       .string()
       .optional()
@@ -163,6 +169,7 @@ function listedTopLevelAgent(agent: TopLevelAgent): ListedAgent {
       ? { summary: truncate(agent.summary, SUMMARY_MAX_LENGTH) }
       : undefined),
     ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(agent.archived ? { archived: true as const } : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
   };
 }
@@ -228,7 +235,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "top_level only. Include conversations that you archived. Default false.",
+        "Include conversations that you archived. Default false. Child agents cannot be archived, so this changes only top_level results.",
       ),
     limit: z
       .number()
