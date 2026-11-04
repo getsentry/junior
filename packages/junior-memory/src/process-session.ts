@@ -258,6 +258,9 @@ export async function processMemorySession(
     conversationId: run.conversationId,
     ...(run.locationId ? { locationId: run.locationId } : undefined),
     ...(run.actor ? { actor: run.actor } : undefined),
+    // Passive extraction runs only for Slack and web roots, whose Source
+    // visibility is the Conversation visibility.
+    conversationVisibility: run.source.visibility,
     source: run.source,
     ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });

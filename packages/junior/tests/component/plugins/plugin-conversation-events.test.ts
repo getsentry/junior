@@ -154,6 +154,7 @@ describe("plugin conversation events", () => {
     const request = {
       context: {
         conversationId,
+        conversationPrivacy: "private" as const,
         destination: { platform: "local" as const, conversationId },
         source: createLocalSource(conversationId),
         userText: "Recall relevant memory.",

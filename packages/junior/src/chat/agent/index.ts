@@ -297,7 +297,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationPrivacy: ConversationPrivacy | undefined,
+  conversationPrivacy: ConversationPrivacy,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
 ): Promise<AgentRunOutcome> {
@@ -652,7 +652,12 @@ async function executeAgentRunInPrivacyContext(
       ? runSandbox.agentSandbox.captureRepositoryInstructions()
       : Promise.resolve(undefined);
     const promptTurnContextPromise = loadPromptTurnContext({
-      context: createPromptHookContext({ actor, run, userInput }),
+      context: createPromptHookContext({
+        actor,
+        conversationPrivacy,
+        run,
+        userInput,
+      }),
       currentActor: actor,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:

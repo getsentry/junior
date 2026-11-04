@@ -54,6 +54,7 @@ function memoryToolContext(ctx: {
   embedder?: MemoryToolContext["embedder"];
   locationId?: string;
   actor?: MemoryToolContext["actor"];
+  conversationVisibility: MemoryToolContext["conversationVisibility"];
   source: MemoryToolContext["source"];
   users: MemoryToolContext["users"];
   userText?: string;
@@ -67,6 +68,7 @@ function memoryToolContext(ctx: {
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
+    conversationVisibility: ctx.conversationVisibility,
     source: ctx.source,
     users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
@@ -80,6 +82,7 @@ function memoryCreateToolContext(ctx: {
   embedder?: MemoryCreateToolContext["embedder"];
   locationId?: string;
   actor?: MemoryCreateToolContext["actor"];
+  conversationVisibility: MemoryCreateToolContext["conversationVisibility"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   users: MemoryCreateToolContext["users"];
@@ -200,6 +203,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
+                conversationVisibility: ctx.conversationVisibility,
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,

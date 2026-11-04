@@ -14,6 +14,7 @@ const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 function context(): ToolRuntimeContext {
   return {
     conversationId: CURRENT_CONVERSATION_ID,
+    conversationPrivacy: "public",
     destination: {
       platform: "slack",
       teamId: "T123",

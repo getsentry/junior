@@ -152,12 +152,14 @@ export async function createRunSandbox(
 /** Build the context that plugin prompt hooks read, before tool wiring exists. */
 export function createPromptHookContext(args: {
   actor?: Actor;
+  conversationPrivacy: ConversationPrivacy;
   run: AgentRun;
   userInput: string;
 }): PromptHookContext {
   const actor = args.actor;
   return {
     conversationId: args.run.conversationId,
+    conversationPrivacy: args.conversationPrivacy,
     ...(args.run.location ? { locationId: args.run.location.id } : undefined),
     ...resolveToolRuntimeRoute({ actor, run: args.run }),
     ...(actor
@@ -180,7 +182,7 @@ interface ToolWiringArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy: ConversationPrivacy;
   durability: AgentDurability;
   authorization?: OAuthAuthorization;
   generatedFiles: FileUpload[];

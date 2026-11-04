@@ -9,6 +9,7 @@ import type {
   Actor,
   Identity,
   Source,
+  SourceVisibility,
   User,
 } from "./context";
 import type { PluginState } from "./state";
@@ -82,6 +83,8 @@ export type SystemPromptContext = Pick<
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
+  /** Visibility of the Conversation. Child agents inherit their root's. */
+  conversationVisibility: SourceVisibility;
   destination: Destination;
   embedder: PluginEmbedder;
   /** Conversation-bound event writer when the prompt belongs to a durable turn. */

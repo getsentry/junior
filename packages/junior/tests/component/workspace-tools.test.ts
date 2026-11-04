@@ -107,6 +107,7 @@ describe("Workspace tools", () => {
       } as const;
       const workspaceTools = createWorkspaceTools({
         conversationId: conversationId!,
+        conversationPrivacy: "private",
         destination,
         egress: { fetch: async () => new Response("ok") },
         source: createLocalSource(destination.conversationId),
@@ -356,6 +357,7 @@ describe("Workspace tools", () => {
       const switchWorkspace = vi.fn().mockResolvedValue(undefined);
       const context = {
         conversationId: "local:test:workspace-stats",
+        conversationPrivacy: "private",
         destination: {
           platform: "local",
           conversationId: "local:test:workspace-stats",
@@ -431,6 +433,7 @@ describe("Workspace tools", () => {
       const conversationId = "local:test:workspace-missing-snapshot";
       const context = {
         conversationId,
+        conversationPrivacy: "private",
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
         egress: {
@@ -495,6 +498,7 @@ describe("Workspace tools", () => {
     const conversationId = "local:test:workspace-retry-snapshot";
     const context = {
       conversationId,
+      conversationPrivacy: "private",
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
       egress: {
@@ -545,6 +549,7 @@ describe("Workspace tools", () => {
     const conversationId = "slack:CWORKSPACE:1700000000.100000";
     const context = {
       conversationId,
+      conversationPrivacy: "public",
       destination: {
         platform: "slack",
         teamId: "TWORKSPACE",

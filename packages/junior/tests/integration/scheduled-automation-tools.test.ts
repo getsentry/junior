@@ -2226,6 +2226,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         {},
         {
           conversationId: `slack:DDM:1700000000.100000`,
+          conversationPrivacy: "private",
           source: createSlackSource({
             teamId: TEAM_ID,
             channelId: "DDM",
@@ -2311,6 +2312,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       };
       const webTurn = (conversationId: string) => ({
         conversationId,
+        conversationPrivacy: "public",
         source: createWebSource(conversationId, "public"),
         actor: {
           platform: "web" as const,
@@ -2428,6 +2430,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         {},
         {
           conversationId: "slack:C123:1700000000.100000",
+          conversationPrivacy: "public",
           location: {
             id: `location:${TEAM_ID}:C123`,
             provider: "slack",

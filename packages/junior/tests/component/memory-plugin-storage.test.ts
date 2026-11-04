@@ -166,6 +166,7 @@ function memoryToolsFor(args: {
   return getPluginTools({
     actor,
     conversationId: args.conversationId,
+    conversationPrivacy: "private",
     destination: {
       channelId: args.channelId,
       platform: "slack",
@@ -403,6 +404,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         userId: "U123",
       });
       const publicMemory = await createMemoryStore(db, {
+        conversationVisibility: "public",
         conversationId: "slack:C123:1718800000.000000",
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
         source: createSlackSource({
@@ -417,6 +419,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         kind: "knowledge",
       });
       const privateMemory = await createMemoryStore(db, {
+        conversationVisibility: "private",
         conversationId: viewerConversationId,
         locationId: viewer.locationId,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -433,6 +436,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         kind: "preference",
       });
       const otherPrivateMemory = await createMemoryStore(db, {
+        conversationVisibility: "private",
         conversationId: viewerConversationId,
         locationId: viewer.locationId,
         actor: { platform: "slack", teamId: "T123", userId: "U999" },
@@ -512,6 +516,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       const webTools = getPluginTools({
         actor: webActor,
         conversationId: webConversationId,
+        conversationPrivacy: "private",
         destination: webDestination,
         egress: {
           async fetch() {
@@ -569,6 +574,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         fixture.sql.db() as MemoryDb,
         {
           conversationId,
+          conversationVisibility: "private",
           locationId: userContext.locationId,
           actor,
           source,
@@ -588,6 +594,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       const tools = getPluginTools({
         conversationId,
+        conversationPrivacy: "private",
         locationId: userContext.locationId,
         destination: {
           platform: "slack",

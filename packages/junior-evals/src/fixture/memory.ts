@@ -34,7 +34,8 @@ export async function readMemories(
   const userId = (await readActorIdentity(actor))?.user?.id;
   const store = createMemoryStore(getDb() as unknown as MemoryDb, {
     actor,
-    // A private Source, so the list holds public and private memories.
+    // A private Conversation, so the list holds public and private memories.
+    conversationVisibility: "private",
     source: createSlackSource({
       channelId: `D${actor.userId}`,
       teamId: SLACK_TEAM_ID,

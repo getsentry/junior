@@ -48,6 +48,7 @@ function ctx(
   if (!channelId) {
     return {
       conversationId: "local:test:tool-registration",
+      conversationPrivacy: "private",
       destination: {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
@@ -343,6 +344,7 @@ describe("Slack tool registration", () => {
       {},
       {
         conversationId: "local:test:run-test",
+        conversationPrivacy: "private",
         destination: {
           platform: "local",
           conversationId: "local:test:run-test",

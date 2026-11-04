@@ -386,6 +386,9 @@ function slackContext(
   const actorUserId = overrides.userId ?? "U123";
   return {
     conversationId: `slack:${channelId}:${threadTs}`,
+    conversationVisibility: channelId.startsWith("C")
+      ? ("public" as const)
+      : ("private" as const),
     locationId: `location:${teamId}:${channelId}`,
     actor: {
       platform: "slack" as const,
@@ -431,6 +434,7 @@ function apiContext(
       userId: overrides.userId ?? `dashboard:${email}`,
       email,
     },
+    conversationVisibility: overrides.visibility ?? "public",
     source: createWebSource(conversationId, overrides.visibility ?? "public"),
     userId: `user:${email}`,
   };
@@ -446,6 +450,7 @@ function localContext(
       platform: "local" as const,
       userId: overrides.userId ?? "local-user",
     },
+    conversationVisibility: "private" as const,
     source: createLocalSource(conversationId),
     userId: `user:local:${overrides.userId ?? "local-user"}`,
   };
@@ -2442,10 +2447,14 @@ describe("memory plugin storage", () => {
       await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      // A Source without visibility can run in a public Conversation.
+      // A child agent inherits the visibility of its root Conversation.
       const childAgentStore = createMemoryStore(
         memoryDb(fixture),
-        { ...privateContext, source: { kind: "agent_invocation" } },
+        {
+          ...privateContext,
+          conversationVisibility: "public",
+          source: { kind: "agent_invocation" },
+        },
         { now: () => nowMs },
       );
       await expect(childAgentStore.listMemories({})).resolves.toEqual([
@@ -4256,6 +4265,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         createMemoryCreateTool({
           agent: allowMemory("actor"),
           db: memoryDb(fixture),
+          conversationVisibility: "public",
           source: slackContext().source,
           users: {
             async resolveActor() {

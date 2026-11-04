@@ -22,6 +22,7 @@ function localContext() {
   return {
     conversationId: "local:junior:memory-report",
     actor: { platform: "local" as const, userId: "report-user" },
+    conversationVisibility: "private" as const,
     source: createLocalSource("local:junior:memory-report"),
     userId: "user:local:report-user",
   };

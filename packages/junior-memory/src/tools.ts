@@ -6,6 +6,7 @@ import {
   PluginToolInputError,
   type PluginToolOutput,
   type Source,
+  type SourceVisibility,
   type Actor,
   type Identity,
   type User,
@@ -57,6 +58,7 @@ export interface MemoryToolContext {
   embedder?: MemoryEmbeddingProvider;
   locationId?: string;
   actor?: Actor;
+  conversationVisibility: SourceVisibility;
   source: Source;
   users: {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
@@ -95,6 +97,7 @@ async function memoryRuntimeContext(
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
     ...(context.locationId ? { locationId: context.locationId } : undefined),
+    conversationVisibility: context.conversationVisibility,
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
   });

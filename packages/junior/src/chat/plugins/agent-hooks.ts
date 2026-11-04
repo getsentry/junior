@@ -188,11 +188,17 @@ function systemPromptPluginContext(plugin: PluginRegistration) {
 function pluginInvocationContext(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "locationId" | "destination" | "actor" | "source"
+    | "conversationId"
+    | "conversationPrivacy"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "source"
   >,
 ): InvocationContext {
   const common = {
     conversationId: context.conversationId,
+    conversationVisibility: context.conversationPrivacy,
     locationId: context.locationId,
   };
   switch (context.source.kind) {
@@ -270,6 +276,7 @@ function invocationPluginContext(
   context: Pick<
     ToolRuntimeContext,
     | "conversationId"
+    | "conversationPrivacy"
     | "locationId"
     | "destination"
     | "actor"
@@ -571,6 +578,7 @@ export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
     | "conversationId"
+    | "conversationPrivacy"
     | "locationId"
     | "destination"
     | "actor"
@@ -767,6 +775,7 @@ export function getPluginTools(
         ? { automationLink: { url: automationUrl } }
         : undefined),
       conversationId: context.conversationId,
+      conversationVisibility: context.conversationPrivacy,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,

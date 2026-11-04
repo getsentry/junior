@@ -362,6 +362,7 @@ export async function insertMemory(args: {
         userId: author.userId,
       },
       conversationId: `slack:${channelId}:${messageTs}`,
+      conversationVisibility: visibility,
       source: createSlackSource({
         channelId,
         messageTs,

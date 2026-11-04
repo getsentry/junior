@@ -7,6 +7,7 @@ import {
   type PluginLogger,
   type PluginReranker,
   type Source,
+  type SourceVisibility,
   type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -34,6 +35,7 @@ const RECALL_MIN_RERANK_SCORE = 0.55;
 
 export interface MemoryRecallContext {
   conversationId?: string;
+  conversationVisibility: SourceVisibility;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   events?: PluginConversationEvents;
@@ -162,6 +164,7 @@ export async function createMemoryPromptContributions(
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
     ...(context.locationId ? { locationId: context.locationId } : undefined),
+    conversationVisibility: context.conversationVisibility,
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
   });

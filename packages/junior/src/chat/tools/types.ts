@@ -124,7 +124,7 @@ interface BaseToolRuntimeContext {
   /** Legacy Location identity used by memory and plugin contexts. */
   locationId?: string;
   /** Stored Conversation visibility used by tools. */
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy: ConversationPrivacy;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
