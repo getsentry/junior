@@ -20,6 +20,8 @@ export interface ConversationAccess {
   /** The viewer is the Owner: the person who started the root Conversation. */
   isOwner: boolean;
   isParticipant: boolean;
+  /** Root of the Conversation tree. Missing when the stored tree is invalid. */
+  rootConversationId?: string;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
@@ -127,6 +129,9 @@ export async function readConversationAccessFromSql(
           canViewPrivateContent,
           isOwner: isRootActor,
           isParticipant,
+          ...(validRootConversationId !== undefined
+            ? { rootConversationId: validRootConversationId }
+            : undefined),
           visibility,
           ...(validRootConversationId !== undefined &&
           row.provider !== null &&
@@ -156,6 +161,13 @@ export function canAccessConversation(args: {
   target: ConversationAccess;
 }): boolean {
   const { requester, target } = args;
+  // A Turn may always use its own Conversation tree.
+  if (
+    requester.rootConversationId !== undefined &&
+    requester.rootConversationId === target.rootConversationId
+  ) {
+    return true;
+  }
   if (
     !requester.tenant ||
     !target.tenant ||

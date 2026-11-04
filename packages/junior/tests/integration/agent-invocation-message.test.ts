@@ -28,6 +28,8 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
@@ -519,6 +521,33 @@ describe("messageAgent", () => {
       await expect(
         searchTopLevel(privateSender, { query: "classifier" }),
       ).resolves.toEqual([privateOwned]);
+      // searchConversationEvents reads by the same rule.
+      const readEvents = async (
+        conversationId: string,
+        target: string,
+        actor: AgentRun["actor"] = parentActor,
+      ) =>
+        await createSearchConversationEventsTool({
+          actor,
+          conversationId,
+          destination: { platform: "slack", teamId: "T123", channelId: "C1" },
+          egress: { fetch: async () => new Response("ok") },
+          source: { kind: "scheduled_automation" },
+          workspace: {} as ToolRuntimeContext["workspace"],
+        }).execute!({ conversation_id: target }, {});
+      await expect(readEvents(privateSender, privateOwned)).resolves.toEqual(
+        expect.objectContaining({ events: [] }),
+      );
+      for (const [requester, target, actor] of [
+        [privateSender, privateMember, parentActor],
+        [slackParentConversationId, privateOwned, parentActor],
+        [privateSender, privateOwned, EVENT_SYSTEM_ACTOR],
+        [privateSender, otherWorkspace, parentActor],
+      ] as const) {
+        await expect(readEvents(requester, target, actor)).rejects.toThrow(
+          `Conversation events are not accessible: ${target}`,
+        );
+      }
       // A linked resource finds the conversations that touched it.
       await annotatePullRequest(publicTarget);
       await expect(

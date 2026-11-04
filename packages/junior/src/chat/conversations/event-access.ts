@@ -1,24 +1,18 @@
 /**
  * Read access to a Conversation's durable event log for model-facing tools.
- * The current Conversation tree is always readable. Other Conversations are
- * readable only when they are public and in the same Slack workspace.
+ * The current Conversation tree is always readable. Other Conversations
+ * follow `policies/conversation-access.md`.
  */
 import {
-  canExposeConversationPayload,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
+  canAccessConversation,
+  readConversationAccessFromSql,
+} from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-interface ConversationEventAccessScope {
-  currentConversationId: string;
-  currentRootConversationId?: string;
-  provider?: string;
-  providerTenantId?: string;
-}
 
 /**
  * Throw a repairable tool error unless the active context may read the event
@@ -28,96 +22,75 @@ export async function assertCanReadConversationEvents(
   context: ToolRuntimeContext,
   conversationId: string,
 ): Promise<void> {
+  // "Not found" and "no access" get one error, so it does not show that a
+  // private Conversation exists.
+  const notAccessible = new ToolInputError(
+    `Conversation events are not accessible: ${conversationId}`,
+  );
   const conversationStore = getConversationStore();
   const target = await conversationStore.get({ conversationId });
-  if (!target) {
-    throw new ToolInputError(`Conversation not found: ${conversationId}`);
+  if (
+    !target ||
+    !(await canReadTarget(context, conversationStore, {
+      conversationId,
+      parentConversationId: target.parentConversationId,
+    }))
+  ) {
+    throw notAccessible;
   }
   if (target.transcriptPurgedAtMs !== undefined) {
     throw new ToolInputError(
       `Conversation transcript was purged: ${conversationId}`,
     );
   }
-
-  const accessScope = await resolveAccessScope(
-    conversationStore,
-    context,
-    context.conversationId,
-  );
-  // A Conversation with a parent uses the root privacy boundary.
-  const targetRootConversationId = await resolveRootConversationId(
-    conversationStore,
-    conversationId,
-    target.parentConversationId,
-  );
-  const targetRoot =
-    targetRootConversationId === conversationId
-      ? target
-      : await conversationStore.get({
-          conversationId: targetRootConversationId,
-        });
-  assertScopeCanReadTarget({
-    accessScope,
-    targetConversationId: conversationId,
-    targetRootConversationId,
-    targetVisibility: targetRoot?.visibility ?? target.visibility,
-    targetDestination: targetRoot?.destination ?? target.destination,
-  });
 }
 
-async function resolveAccessScope(
-  conversationStore: ConversationStore,
+async function canReadTarget(
   context: ToolRuntimeContext,
-  currentConversationId: string,
-): Promise<ConversationEventAccessScope> {
+  conversationStore: ConversationStore,
+  target: { conversationId: string; parentConversationId?: string },
+): Promise<boolean> {
+  const { conversationId } = target;
   const current = await conversationStore.get({
-    conversationId: currentConversationId,
+    conversationId: context.conversationId,
   });
-  const currentRootConversationId = current
-    ? await resolveRootConversationId(
+  const [currentRootConversationId, targetRootConversationId] =
+    await Promise.all([
+      current
+        ? resolveRootConversationId(
+            conversationStore,
+            context.conversationId,
+            current.parentConversationId,
+          )
+        : context.conversationId,
+      resolveRootConversationId(
         conversationStore,
-        currentConversationId,
-        current.parentConversationId,
-      )
-    : currentConversationId;
-
-  if (context.location?.provider === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.location.teamId,
-    };
-  }
-
-  // TODO(dcramer): Remove the Source and Destination fallbacks after every
-  // deployed Slack Conversation has a stored Location and AgentRun no longer
-  // has Destination.
-  if (context.source.kind === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.source.teamId,
-    };
-  }
-
+        conversationId,
+        target.parentConversationId,
+      ),
+    ]);
   if (
-    context.destination.platform === "slack" &&
-    "teamId" in context.destination
+    conversationId === context.conversationId ||
+    targetRootConversationId === currentRootConversationId
   ) {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.destination.teamId,
-    };
+    return true;
   }
 
-  return {
-    currentConversationId,
-    currentRootConversationId,
-  };
+  const viewer = context.actor
+    ? (await readActorIdentity(context.actor))?.user
+    : undefined;
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [context.conversationId, conversationId],
+    viewer,
+  );
+  const requester = access.get(context.conversationId);
+  const targetAccess = access.get(conversationId);
+  return Boolean(
+    requester &&
+    targetAccess &&
+    canAccessConversation({ requester, target: targetAccess }),
+  );
 }
 
 async function resolveRootConversationId(
@@ -147,57 +120,6 @@ async function resolveRootConversationId(
     cursor = parent.parentConversationId;
   }
   return conversationId;
-}
-
-function assertScopeCanReadTarget(args: {
-  accessScope: ConversationEventAccessScope;
-  targetConversationId: string;
-  targetRootConversationId?: string;
-  targetVisibility?: ConversationPrivacy;
-  targetDestination?: {
-    platform: string;
-    teamId?: string;
-    channelId?: string;
-    conversationId?: string;
-  };
-}): void {
-  const {
-    accessScope,
-    targetConversationId,
-    targetRootConversationId,
-    targetVisibility,
-    targetDestination,
-  } = args;
-
-  if (
-    targetConversationId === accessScope.currentConversationId ||
-    (targetRootConversationId !== undefined &&
-      targetRootConversationId === accessScope.currentRootConversationId)
-  ) {
-    return;
-  }
-
-  const publicPayloadAllowed = canExposeConversationPayload(
-    targetVisibility ? { visibility: targetVisibility } : {},
-  );
-  if (!publicPayloadAllowed) {
-    throw new ToolInputError(
-      `Conversation events are not accessible: ${targetConversationId}`,
-    );
-  }
-
-  if (
-    accessScope.provider === "slack" &&
-    targetDestination?.platform === "slack" &&
-    accessScope.providerTenantId &&
-    targetDestination.teamId === accessScope.providerTenantId
-  ) {
-    return;
-  }
-
-  throw new ToolInputError(
-    `Conversation events are not accessible: ${targetConversationId}`,
-  );
 }
 
 /** Replace replacement history with its item count; the original events stay readable by seq. */
