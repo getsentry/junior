@@ -6,6 +6,7 @@ import { InlineError } from "../components/InlineError";
 import {
   Popover,
   PopoverContent,
+  PopoverDescription,
   PopoverTrigger,
 } from "../components/ui/popover";
 import { useSetConversationAutoArchive } from "./autoArchiveQueries";
@@ -50,10 +51,11 @@ export function AutoArchiveToggle(props: {
             }
           />
           <PopoverContent
-            className="w-64 px-3 py-2 text-xs leading-relaxed text-dashboard-text-muted"
+            aria-label="About auto archive"
+            className="w-64 px-3 py-2 text-xs"
             side="top"
           >
-            {AUTO_ARCHIVE_HELP}
+            <PopoverDescription>{AUTO_ARCHIVE_HELP}</PopoverDescription>
           </PopoverContent>
         </Popover>
         {/* Keep the help text for screen readers when the popover is closed. */}
