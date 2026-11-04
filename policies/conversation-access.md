@@ -8,7 +8,7 @@ the API, MCP, memory, Briefs, search, and plugins. A new feature uses this
 rule. It does not add its own rule.
 
 Invariant: a public Conversation never reads, finds, or acts on a private
-Conversation. No row, filter, or Owner match changes this.
+Conversation. No row, filter, or participant match changes this.
 
 ## Terms
 
@@ -17,9 +17,9 @@ Conversation. No row, filter, or Owner match changes this.
   the dashboard, the API, or MCP directly is a private requester.
 - **Person**: the person of the current Turn. A Turn with no person (an
   Automation run, a plugin dispatch, or another system Actor) has none.
-- The root Conversation decides visibility and Owner. Child Conversations,
-  events, Messages, Briefs, Annotations, artifacts, and plugin records use
-  the values of their root. Unknown visibility is private. When the root or
+- The root Conversation decides visibility and participants. Child
+  Conversations, events, Messages, Briefs, Annotations, artifacts, and plugin
+  records use the values of their root. Unknown visibility is private. When the root or
   its Destination is missing, every row after row 1 denies.
 - Visibility is the value stored on the root Destination. Junior updates it
   on the next message, so a channel that becomes private can read as public
@@ -29,24 +29,25 @@ Conversation. No row, filter, or Owner match changes this.
 
 Check the scenarios in this order. The first match decides.
 
-| #   | Requester                               | Target  | Person        | Result |
-| --- | --------------------------------------- | ------- | ------------- | ------ |
-| 1   | Same Conversation tree as the target    | any     | any           | Allow  |
-| 2   | Other provider tenant (Slack workspace) | any     | any           | Deny   |
-| 3   | any                                     | Public  | any           | Allow  |
-| 4   | Public                                  | Private | any           | Deny   |
-| 5   | Private                                 | Private | None          | Deny   |
-| 6   | Private                                 | Private | Not the Owner | Deny   |
-| 7   | Private                                 | Private | The Owner     | Allow  |
+| #   | Requester                               | Target  | Person            | Result |
+| --- | --------------------------------------- | ------- | ----------------- | ------ |
+| 1   | Same Conversation tree as the target    | any     | any               | Allow  |
+| 2   | Other provider tenant (Slack workspace) | any     | any               | Deny   |
+| 3   | any                                     | Public  | any               | Allow  |
+| 4   | Public                                  | Private | any               | Deny   |
+| 5   | Private                                 | Private | None              | Deny   |
+| 6   | Private                                 | Private | Not a participant | Deny   |
+| 7   | Private                                 | Private | A participant     | Allow  |
 
 - Row 1: a tree has one root, so the requester and the target have the
   same visibility. This row never lets a public requester reach a private
   target.
 - Row 4: anyone who can see a public Conversation can see its output, so it
-  never gets private data. This is true also when the person owns the
-  target.
-- Row 6: channel membership, an earlier message, or a mention does not make
-  a person the Owner.
+  never gets private data. This is true also when the person is a
+  participant of the target.
+- Rows 6 and 7: a participant is the person who started the root
+  Conversation, or a person with a participant record on the root
+  (`isParticipant`).
 - Code: `canAccessConversation` in
   `packages/junior/src/api/conversations/access.ts`. Its unit test has one
   case for each row.
@@ -82,14 +83,8 @@ Check the scenarios in this order. The first match decides.
 
 These differ from the table. Agent-facing code must not copy them.
 
-- Direct reads by a person also let recorded participants of a private
-  Conversation read it, not only the Owner (row 6). This applies to
-  dashboard and API transcript views, MCP, ACP, Slack annotation details,
-  and the plugin event reader (`canViewPrivateContent`, `isParticipant`).
-  Forking a private Conversation needs the Owner, so a participant cannot
-  get Owner access through a copy.
 - Memory recall returns the private memories of the person in every
   Conversation, also public ones (`deriveVisibleMemoryScopes`). This breaks
-  the invariant. #2684 fixes it.
+  the invariant. #2684 removes private memories.
 - `searchConversationBriefs` in a public Conversation with no provider
   tenant searches public Conversations of every tenant (row 2).

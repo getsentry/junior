@@ -12,6 +12,7 @@ import {
   gt,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   ne,
   notExists,
@@ -87,10 +88,12 @@ export async function searchTopLevelAgents(args: {
   const viewerEmail = viewer?.email.trim().toLowerCase() || undefined;
 
   // The access rule below decides. This filter only keeps the candidate
-  // set small: public targets, or private targets that the viewer started.
-  const ownedByViewer =
+  // set small: public targets, or private targets where the viewer is a
+  // participant.
+  const participatedByViewer =
     viewer && requester.visibility !== "public"
       ? or(
+          isNotNull(juniorConversationParticipants.rootConversationId),
           eq(juniorIdentities.userId, viewer.id),
           viewerEmail
             ? and(
@@ -113,8 +116,8 @@ export async function searchTopLevelAgents(args: {
     ne(juniorConversations.conversationId, requesterConversationId),
     eq(juniorDestinations.provider, requester.tenant.provider),
     eq(juniorDestinations.providerTenantId, requester.tenant.providerTenantId),
-    ownedByViewer
-      ? or(eq(juniorDestinations.visibility, "public"), ownedByViewer)
+    participatedByViewer
+      ? or(eq(juniorDestinations.visibility, "public"), participatedByViewer)
       : eq(juniorDestinations.visibility, "public"),
     search.annotation
       ? treeHasAnnotationKey(

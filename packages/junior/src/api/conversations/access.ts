@@ -17,8 +17,6 @@ const rootIdentity = alias(juniorIdentities, "access_root_identity");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
-  /** The viewer is the Owner: the person who started the root Conversation. */
-  isOwner: boolean;
   isParticipant: boolean;
   /** Root of the Conversation tree. Missing when the stored tree is invalid. */
   rootConversationId?: string;
@@ -127,7 +125,6 @@ export async function readConversationAccessFromSql(
         row.conversationId,
         {
           canViewPrivateContent,
-          isOwner: isRootActor,
           isParticipant,
           ...(validRootConversationId !== undefined
             ? { rootConversationId: validRootConversationId }
@@ -153,7 +150,7 @@ export async function readConversationAccessFromSql(
  * Apply `policies/conversation-access.md`: whether work in the `requester`
  * Conversation may read, find, or act on the `target` Conversation. Read
  * `target` with the person of the current Turn as viewer. A Turn with no
- * person has no viewer, so it is never the Owner and gets only public
+ * person has no viewer, so it is never a participant and gets only public
  * Conversations.
  */
 export function canAccessConversation(args: {
@@ -185,6 +182,6 @@ export function canAccessConversation(args: {
     target.visibility !== null &&
     requester.visibility !== null &&
     requester.visibility !== "public" &&
-    target.isOwner
+    target.isParticipant
   );
 }

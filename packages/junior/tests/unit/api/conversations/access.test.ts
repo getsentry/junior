@@ -13,7 +13,6 @@ function access(
 ): ConversationAccess {
   return {
     canViewPrivateContent: false,
-    isOwner: false,
     isParticipant: false,
     rootConversationId: `root:${nextRoot++}`,
     tenant: WORKSPACE,
@@ -30,7 +29,7 @@ const scenarios: [
   allowed: boolean,
 ][] = [
   [
-    "same tree: a private tree, also when the person is not the Owner",
+    "same tree: a private tree, also when the person is not a participant",
     access({ rootConversationId: "root:a", visibility: "private" }),
     access({ rootConversationId: "root:a", visibility: "private" }),
     true,
@@ -49,25 +48,21 @@ const scenarios: [
     false,
   ],
   [
-    "private target that the person owns, from a private requester",
+    "private target where the person is a participant, from a private requester",
     access({ visibility: "private" }),
-    access({ isOwner: true, visibility: "private" }),
+    access({ isParticipant: true, visibility: "private" }),
     true,
   ],
   [
-    "private target that the person owns, from a public requester",
+    "private target where the person is a participant, from a public requester",
     access(),
-    access({ isOwner: true, visibility: "private" }),
+    access({ isParticipant: true, visibility: "private" }),
     false,
   ],
   [
-    "private target where the person is only a participant",
+    "private target where the person is not a participant",
     access({ visibility: "private" }),
-    access({
-      canViewPrivateContent: true,
-      isParticipant: true,
-      visibility: "private",
-    }),
+    access({ visibility: "private" }),
     false,
   ],
   [
@@ -77,15 +72,15 @@ const scenarios: [
     false,
   ],
   [
-    "owned target with a missing root or Destination",
+    "participant target with a missing root or Destination",
     access({ visibility: "private" }),
-    access({ isOwner: true, visibility: null }),
+    access({ isParticipant: true, visibility: null }),
     false,
   ],
   [
-    "owned private target from a requester with unknown visibility",
+    "participant private target from a requester with unknown visibility",
     access({ visibility: null }),
-    access({ isOwner: true, visibility: "private" }),
+    access({ isParticipant: true, visibility: "private" }),
     false,
   ],
   [

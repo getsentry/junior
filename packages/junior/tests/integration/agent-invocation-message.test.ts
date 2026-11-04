@@ -443,8 +443,12 @@ describe("messageAgent", () => {
         channelId: "CPRIV3",
         visibility: "private",
       });
-      // The person behind the Slack Actor started one private target and is
-      // only a member of another.
+      const privateOther = await topLevelConversation({
+        channelId: "CPRIV4",
+        visibility: "private",
+      });
+      // The person behind the Slack Actor started one private target, is a
+      // participant of another, and has no part in a third.
       const ana = await resolveViewerUserFromSql(getDb(), "ana@example.com");
       await getDb()
         .insert(juniorIdentities)
@@ -505,7 +509,12 @@ describe("messageAgent", () => {
         return result.agents.map((agent) => agent.conversation_id).sort();
       };
       await expect(searchTopLevel(privateSender)).resolves.toEqual(
-        [publicTarget, privateOwned, slackParentConversationId].sort(),
+        [
+          publicTarget,
+          privateOwned,
+          privateMember,
+          slackParentConversationId,
+        ].sort(),
       );
       await expect(searchTopLevel(slackParentConversationId)).resolves.toEqual([
         publicTarget,
@@ -515,9 +524,14 @@ describe("messageAgent", () => {
       ).resolves.toEqual([publicTarget, slackParentConversationId].sort());
       await expect(
         searchTopLevel(privateSender, {
-          conversation_ids: [privateOwned, privateMember, otherWorkspace],
+          conversation_ids: [
+            privateOwned,
+            privateMember,
+            privateOther,
+            otherWorkspace,
+          ],
         }),
-      ).resolves.toEqual([privateOwned]);
+      ).resolves.toEqual([privateOwned, privateMember].sort());
       await expect(
         searchTopLevel(privateSender, { query: "classifier" }),
       ).resolves.toEqual([privateOwned]);
@@ -535,11 +549,13 @@ describe("messageAgent", () => {
           source: { kind: "scheduled_automation" },
           workspace: {} as ToolRuntimeContext["workspace"],
         }).execute!({ conversation_id: target }, {});
-      await expect(readEvents(privateSender, privateOwned)).resolves.toEqual(
-        expect.objectContaining({ events: [] }),
-      );
+      for (const target of [privateOwned, privateMember]) {
+        await expect(readEvents(privateSender, target)).resolves.toEqual(
+          expect.objectContaining({ events: [] }),
+        );
+      }
       for (const [requester, target, actor] of [
-        [privateSender, privateMember, parentActor],
+        [privateSender, privateOther, parentActor],
         [slackParentConversationId, privateOwned, parentActor],
         [privateSender, privateOwned, EVENT_SYSTEM_ACTOR],
         [privateSender, otherWorkspace, parentActor],
@@ -653,8 +669,8 @@ describe("messageAgent", () => {
         `to set to "${slackParentConversationId}"`,
       );
 
-      // A public conversation never reaches a private one, also one that the
-      // person owns. Every miss looks the same.
+      // A public conversation never reaches a private one, also one where the
+      // person is a participant. Every miss looks the same.
       await expect(send(fromPublic, privateOwned)).rejects.toThrow(
         "a top-level agent that you can message",
       );
@@ -665,9 +681,8 @@ describe("messageAgent", () => {
         "is this conversation",
       );
 
-      // A private conversation messages only private agents that the person
-      // owns. Membership is not ownership. The target cannot answer a
-      // private sender.
+      // A private conversation messages only private agents where the person
+      // is a participant. The target cannot answer a private sender.
       const fromPrivate = topLevelRun(privateSender);
       await expect(send(fromPrivate, privateOwned)).resolves.toEqual({
         conversation_id: privateOwned,
@@ -676,7 +691,11 @@ describe("messageAgent", () => {
       expect((await eventMessages(privateOwned))[0]!.input.text).toContain(
         "cannot message the sender",
       );
-      await expect(send(fromPrivate, privateMember)).rejects.toThrow(
+      await expect(send(fromPrivate, privateMember)).resolves.toEqual({
+        conversation_id: privateMember,
+        delivery: "queued",
+      });
+      await expect(send(fromPrivate, privateOther)).rejects.toThrow(
         "a top-level agent that you can message",
       );
       // Private data never enters a public conversation.

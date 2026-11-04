@@ -18,10 +18,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeConversationFixture } from "../../../fixtures/conversation";
-import {
-  juniorConversationParticipants,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
@@ -306,23 +303,6 @@ describe("conversation forks", () => {
     expect((await stranger.request(url, forkRequest("reply"))).status).toBe(
       403,
     );
-    // A participant can read the source, but a fork would make them the
-    // Owner of a private copy.
-    const memberEmail = "member@example.com";
-    const member = await authenticatedApi(memberEmail);
-    await getDb()
-      .insert(juniorConversationParticipants)
-      .values({
-        lastMessageAt: new Date(1),
-        rootConversationId: source,
-        userId: (await resolveViewerUser(memberEmail))!.id,
-      });
-    expect((await member.request(url, forkRequest("reply"))).status).toBe(403);
-    expect(
-      conversationDetailReportSchema.parse(
-        await (await member.request(`/api/conversations/${source}`)).json(),
-      ).canFork,
-    ).toBe(false);
     expect((await owner.request(url, forkRequest("missing"))).status).toBe(409);
     expect(
       (await createJuniorApi().request(url, forkRequest("reply"))).status,
