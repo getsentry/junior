@@ -14,7 +14,7 @@ export function renderMcpPage(page: {
   title: string;
 }): Response {
   const formAction = ["'self'", ...(page.formOrigin ? [page.formOrigin] : [])];
-  const message = `      <p style="margin:0 0 1rem;color:#b8b8b8;line-height:1.5">${escapeHtml(page.message)}</p>`;
+  const message = `    <p>${escapeHtml(page.message)}</p>`;
   return renderHtmlPage({
     bodyHtml: page.bodyHtml ? `${message}\n${page.bodyHtml}` : message,
     headers: {
