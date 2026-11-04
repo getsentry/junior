@@ -6,6 +6,7 @@ import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, type juniorDestinations } from "@/db/schema";
 import type { ProviderConversationBinding } from "./bindings";
+import { nextDetailVersion } from "./detail-version";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
 
@@ -131,6 +132,7 @@ export async function startLocationThread(
     .update(juniorConversations)
     .set({
       location: sql`${location} || jsonb_build_object('threadTs', ${binding.providerConversationId}::text)`,
+      detailVersion: nextDetailVersion,
     })
     .where(
       and(

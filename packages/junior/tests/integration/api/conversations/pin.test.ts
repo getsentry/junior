@@ -97,6 +97,9 @@ describe("conversation pin API", () => {
       await addParticipant(id, other.viewer.id);
     }
 
+    const detailPath = `http://localhost/api/conversations/${older}`;
+    const unpinnedEtag = (await app.request(detailPath)).headers.get("etag")!;
+
     const pin = await setPin(app, older, true);
     expect(pin.status).toBe(200);
     expect(pinConversationResponseSchema.parse(await pin.json())).toEqual({
@@ -112,10 +115,13 @@ describe("conversation pin API", () => {
       { conversationId: newer, pinned: false },
       { conversationId: older, pinned: false },
     ]);
+    // A pin is viewer state, so an open detail page revalidates.
+    const pinnedDetail = await app.request(detailPath, {
+      headers: { "if-none-match": unpinnedEtag },
+    });
+    expect(pinnedDetail.status).toBe(200);
     expect(
-      conversationDetailReportSchema.parse(
-        await readConversationDetail(older, { viewer }),
-      ).pinnedAt,
+      conversationDetailReportSchema.parse(await pinnedDetail.json()).pinnedAt,
     ).toEqual(expect.any(String));
 
     const archive = await app.request(

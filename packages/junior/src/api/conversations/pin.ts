@@ -41,7 +41,10 @@ export async function pinConversation(
     conversationId,
   );
   const db = executor.db();
+  // Pins are viewer marks, which the detail ETag reads on each request, so
+  // they need no detail version bump.
   if (!body.pinned) {
+    // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
     await db
       .update(juniorConversationParticipants)
       .set({ pinnedAt: null })
@@ -64,6 +67,7 @@ export async function pinConversation(
     .limit(1);
   if (!root) throwApiError(404, "Conversation not found.");
   const pinnedAt = new Date();
+  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   await db
     .insert(juniorConversationParticipants)
     .values({

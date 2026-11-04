@@ -35,6 +35,7 @@ import {
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
+import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -241,7 +242,11 @@ class SqlConversationEventStore implements ConversationEventStore {
             ),
           );
         }
-        await this.executor.db().insert(juniorConversationEvents).values(rows);
+        const db = this.executor.db();
+        await db
+          .with(conversationDetailTouch(db, [conversationId]))
+          .insert(juniorConversationEvents)
+          .values(rows);
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(
@@ -318,8 +323,9 @@ class SqlConversationEventStore implements ConversationEventStore {
         }
         await ensureConversationRow(this.executor, conversationId, Date.now());
         const historyVersion = currentHistoryVersion + 1;
-        await this.executor
-          .db()
+        const db = this.executor.db();
+        await db
+          .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(
             insertFromEvent(
