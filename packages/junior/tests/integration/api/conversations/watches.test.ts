@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { conversationWatchesReportSchema } from "@/api/schema";
 import { createAgentInvocation } from "@/chat/agent-invocations/store";
 import { closeDb } from "@/chat/db";
@@ -22,10 +24,13 @@ async function requestWatches(conversationId: string) {
 
 describe("conversation watches API", () => {
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await closeDb();
   });
 
   it("returns the watches of the Conversation and of its child agents", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     await prepareSlackParentConversation();
     const reviewer = await createAgentInvocation(
       {
@@ -79,6 +84,7 @@ describe("conversation watches API", () => {
           match: { branch: "main" },
           namespace: "github",
           resourceType: "pull_request",
+          url: "https://github.com/getsentry/junior/pull/1",
         },
         {
           childAgent: {
@@ -121,5 +127,6 @@ describe("conversation watches API", () => {
     });
     expect(report.watches[0]).not.toHaveProperty("label");
     expect(report.watches[0]).not.toHaveProperty("intent");
+    expect(report.watches[0]).not.toHaveProperty("url");
   });
 });
