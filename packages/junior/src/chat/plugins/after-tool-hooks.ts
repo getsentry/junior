@@ -53,7 +53,8 @@ async function activeWorkspace(
 
 /**
  * Run each plugin's `afterToolExecute` hook in registration order. A denial
- * throws `PluginToolDeniedError` and skips later hooks.
+ * throws `PluginToolDeniedError` and skips later hooks. An abort stops the
+ * checks and keeps the tool result.
  */
 export async function runAfterToolExecuteHooks(args: {
   plugins: PluginRegistration[];
@@ -70,6 +71,9 @@ export async function runAfterToolExecuteHooks(args: {
   const workspace = await activeWorkspace(args.sandbox);
   const nudges: ToolResultNudge[] = [];
   for (const plugin of hooked) {
+    // The tool already ran. After an abort, keep its result and skip the
+    // remaining checks, so a resumed agent does not retry finished work.
+    if (signal?.aborted) break;
     const pluginName = plugin.manifest.name;
     let denial: string | undefined;
     try {
@@ -96,7 +100,7 @@ export async function runAfterToolExecuteHooks(args: {
           }),
       );
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) break;
       // The tool already ran. A broken check must not turn its result into a
       // failure that the agent retries.
       logException(error, "agent.plugin.after_tool_execute.failed", {

@@ -170,4 +170,33 @@ describe("afterToolExecute plugin hooks", () => {
       /This action ran, but policy rejected its result\.[\s\S]*Reason: Eval edits need a person\./,
     );
   });
+
+  it("keeps the finished result when the run aborts during a check", async () => {
+    const controller = new AbortController();
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "slow-check",
+            displayName: "Slow check",
+            description: "Aborted mid-check.",
+          },
+          hooks: {
+            afterToolExecute(ctx) {
+              controller.abort();
+              ctx.signal?.throwIfAborted();
+            },
+          },
+        }),
+      ]),
+    });
+    const { tool } = editTool(fakeSandbox(""));
+
+    await expect(
+      tool.execute("call-4", { path: "src/a.ts" }, controller.signal),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: '{"ok":true}' }],
+      details: { ok: true },
+    });
+  });
 });
