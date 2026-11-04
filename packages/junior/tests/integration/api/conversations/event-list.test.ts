@@ -146,6 +146,53 @@ describe("conversation event list API", () => {
     ]);
   });
 
+  it("opens the page around a linked event or Turn", async () => {
+    const conversationId = "local:test:linked-events";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      ...Array.from({ length: 10 }, (_, index) =>
+        message(`message-${index}`, index + 1),
+      ),
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-linked",
+          inputMessageIds: ["message-9"],
+          surface: "internal",
+        },
+        createdAtMs: 11,
+      },
+      ...Array.from({ length: 10 }, (_, index) =>
+        message(`later-${index}`, index + 12),
+      ),
+    ]);
+
+    const app = createJuniorApi();
+    const readPage = async (query: string) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${conversationId}/events?${query}&limit=4`,
+      );
+      expect(response.status).toBe(200);
+      return conversationEventPageSchema.parse(await response.json());
+    };
+    // Half of the page ends with the linked event, and the rest follows it.
+    const eventPage = await readPage("event=4");
+    expect(eventPage.events.map((event) => event.seq)).toEqual([3, 4, 5, 6]);
+    expect(eventPage.previousCursor).toBeDefined();
+    expect(eventPage.nextCursor).toBeDefined();
+    // A Turn link opens at the event that started the Turn.
+    const turnPage = await readPage("turn=turn-linked");
+    expect(turnPage.events.map((event) => event.seq)).toEqual([9, 10, 11, 12]);
+
+    const missingTurn = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?turn=turn-missing`,
+    );
+    expect(missingTurn.status).toBe(404);
+    expect(apiErrorSchema.parse(await missingTurn.json())).toEqual({
+      error: "Turn not found.",
+    });
+  });
+
   it("keeps recorded models and call usage across page boundaries", async () => {
     const conversationId = "local:test:event-model";
     await recordConversation(conversationId);
