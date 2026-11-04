@@ -62,6 +62,22 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(hideList).toBeVisible();
   await expect(conversationList).toBeVisible();
 
+  const resizeList = page.getByRole("separator", {
+    name: "Resize conversation list",
+  });
+  const listSize = async () =>
+    Number(await resizeList.getAttribute("aria-valuenow"));
+  const startSize = await listSize();
+  await resizeList.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(listSize).toBeGreaterThan(startSize);
+  const resizedSize = await listSize();
+  await page.reload();
+  await expect(conversationList).toBeVisible();
+  // The saved width rounds to whole pixels.
+  await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();

@@ -7,6 +7,7 @@
  */
 import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { QUIET_MARKER } from "@/chat/no-reply";
 
 /**
  * Shared closing lines. Automations pass outcomes and end with a declared
@@ -20,6 +21,7 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
     return [
       "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
       "When you reply, follow any reply format in the instructions.",
+      `When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly ${QUIET_MARKER}. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.`,
     ];
   }
   return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];

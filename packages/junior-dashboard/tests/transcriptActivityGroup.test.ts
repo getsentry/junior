@@ -5,6 +5,7 @@ import {
   activityGroupOpen,
   activityGroupSummary,
   isCollapsibleActivityEntry,
+  quietTurnEntryKeys,
 } from "../src/client/conversations/TranscriptActivityGroup";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
 
@@ -85,6 +86,23 @@ function message(eventType?: string): RenderedTranscriptEntry {
   };
 }
 
+function turnMessage(
+  key: string,
+  role: "assistant" | "user",
+  meta: { eventType?: string; quiet?: true } = {},
+): RenderedTranscriptEntry {
+  return {
+    key,
+    kind: "message",
+    message: {
+      parts: [{ text: key, type: "text" }],
+      ...meta,
+      role,
+      sourceSeq: 1,
+    },
+  };
+}
+
 function failure(): RenderedTranscriptEntry {
   return {
     key: "failure:1",
@@ -148,6 +166,22 @@ describe("transcript activity group", () => {
         }),
       ]),
     ).toBe("1 event · 300ms");
+  });
+
+  it("folds quiet replies with the Event messages that started their Turn", () => {
+    const entries = [
+      turnMessage("person", "user"),
+      turnMessage("loud-reply", "assistant"),
+      turnMessage("ci", "user", { eventType: "pull_request.checks.failed" }),
+      tool("fix"),
+      turnMessage("quiet-reply", "assistant", { quiet: true }),
+      turnMessage("review", "user", { eventType: "pull_request.merged" }),
+      turnMessage("merged-reply", "assistant"),
+    ];
+    expect([...quietTurnEntryKeys(entries)]).toEqual(["quiet-reply", "ci"]);
+    expect(activityGroupSummary([entries[2]!, entries[3]!, entries[4]!])).toBe(
+      "1 tool call · 1 event · 1 quiet reply",
+    );
   });
 
   it("summarizes collapsed activity contents for the tooltip", () => {
