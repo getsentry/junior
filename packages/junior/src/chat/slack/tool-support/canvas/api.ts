@@ -9,6 +9,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { extractCanvasId } from "@/chat/slack/canvas-references";
+import { canvasBodyToMarkdown } from "@/chat/slack/tool-support/canvas/html";
 import {
   normalizeCanvasMarkdown,
   type CanvasMarkdownNormalization,
@@ -190,10 +191,10 @@ function isCanvasFile(file: NonNullable<FilesInfoResponse["file"]>): boolean {
 }
 
 /**
- * Read a Slack canvas the bot has access to and return its raw downloadable
- * content. Slack does not expose a structured canvas-read API, so we fetch
- * file metadata via `files.info` and download the canvas body via the private
- * file URL with the bot token.
+ * Read a Slack canvas the bot has access to and return its body as Markdown.
+ * Slack does not expose a structured canvas-read API, so we fetch file
+ * metadata via `files.info` and download the canvas body via the private file
+ * URL with the bot token.
  */
 export async function readCanvas(
   canvasIdOrUrl: string,
@@ -242,7 +243,7 @@ export async function readCanvas(
     permalink: file.permalink,
     mimetype: file.mimetype,
     filetype: file.filetype,
-    content: buffer.toString("utf-8"),
+    content: canvasBodyToMarkdown(buffer.toString("utf-8")),
     byteLength: buffer.byteLength,
   };
 }

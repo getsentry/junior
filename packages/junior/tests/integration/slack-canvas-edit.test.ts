@@ -84,6 +84,45 @@ describe("Slack canvas file-like tools", () => {
     expect((result as { diff: string }).diff).toContain("+3 New summary");
   });
 
+  it("edits a canvas served as Quip HTML and writes Markdown back", async () => {
+    queueCanvasRead(
+      "F0PREVIOUS",
+      '<div class="quip-canvas-content"><h2 id="temp:C:A">Rows</h2>' +
+        '<div data-section-style="5"><ul id="temp:C:B"><li id="temp:C:C">' +
+        '<span><lnk href="https://linear.app/getsentry/issue/NET-625">NET-625</lnk>' +
+        " — <code>Docs</code> fix</span><br/></li></ul></div>" +
+        '<p id="temp:C:D" class="line">Old summary</p></div>',
+    );
+    queueSlackApiResponse("canvases.edit", {
+      body: canvasesEditOk(),
+    });
+    const tool = createSlackCanvasEditTool(createState());
+
+    if (typeof tool.execute !== "function") {
+      throw new Error("slackCanvasEdit execute function missing");
+    }
+
+    await tool.execute(
+      {
+        canvas: "F0PREVIOUS",
+        edits: [{ old_text: "Old summary", new_text: "New summary" }],
+      },
+      {} as never,
+    );
+
+    const editCalls = getCapturedSlackApiCalls("canvases.edit");
+    expect(editCalls[0]?.params).toMatchObject({
+      changes: [
+        {
+          document_content: {
+            markdown:
+              "## Rows\n\n- [NET-625](https://linear.app/getsentry/issue/NET-625) — `Docs` fix\n\nNew summary",
+          },
+        },
+      ],
+    });
+  });
+
   it("applies multiple edits against the original canvas content in one write", async () => {
     queueCanvasRead(
       "F0PREVIOUS",
