@@ -1,8 +1,13 @@
+import type { CSSProperties } from "react";
+
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
-import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
+import {
+  readSidebarWidth,
+  useConversationSidebarOpen,
+} from "./conversationSidebarLayout";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
@@ -15,9 +20,15 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       className={cn(
         dashboardContainerClass,
         "grid h-full min-h-0 grid-cols-[minmax(0,1fr)] overflow-hidden",
-        sidebarOpen && "md:grid-cols-[20rem_minmax(0,1fr)]",
+        sidebarOpen &&
+          "md:grid-cols-[var(--conversation-sidebar-width)_minmax(0,1fr)]",
       )}
       role="status"
+      style={
+        {
+          "--conversation-sidebar-width": `${readSidebarWidth()}px`,
+        } as CSSProperties
+      }
     >
       <span className="sr-only">Loading conversation</span>
       {sidebarOpen ? <ConversationSidebarLoading /> : null}

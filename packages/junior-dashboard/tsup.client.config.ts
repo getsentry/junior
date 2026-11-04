@@ -36,6 +36,7 @@ export default defineConfig({
     "react-dom",
     "react-is",
     "react-markdown",
+    "react-resizable-panels",
     "react-router",
     "recharts",
     "remark-breaks",
