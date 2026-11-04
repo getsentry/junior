@@ -64,16 +64,11 @@ export function deriveMemorySubject(
   };
 }
 
-/**
- * Return the memory scopes that the current Turn may read. A public
- * Conversation never reads private memory (`policies/conversation-access.md`).
- */
+/** Return the memory scopes that the current User can access. */
 export function deriveVisibleMemoryScopes(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope[] {
-  const isPublic =
-    "visibility" in ctx.source && ctx.source.visibility === "public";
-  if (!ctx.userId || isPublic) {
+  if (!ctx.userId) {
     return [publicMemoryScope];
   }
   return [publicMemoryScope, privateMemoryScope(ctx.userId)];
