@@ -229,7 +229,13 @@ test("searches, paginates, and forgets plugin page records", async ({
     },
   );
 
-  await page.goto(`${dashboard.baseURL}/memories/library`);
+  // Load the summary first, so the forget must invalidate a cached copy.
+  await page.goto(`${dashboard.baseURL}/memories`);
+  await expect.poll(() => dashboardRequestCount).toBe(1);
+  const memoryNavigation = page.getByRole("navigation", {
+    name: "Memory navigation",
+  });
+  await memoryNavigation.getByRole("link", { name: "Memories" }).click();
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -292,9 +298,11 @@ test("searches, paginates, and forgets plugin page records", async ({
     page.getByText("No memories matched your search."),
   ).toBeVisible();
   expect(forgetRequests).toBe(1);
-  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
+
+  await memoryNavigation.getByRole("link", { name: "Overview" }).click();
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 });
