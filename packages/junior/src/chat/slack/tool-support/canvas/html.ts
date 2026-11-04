@@ -15,12 +15,15 @@ const canvasHtmlConverter = new NodeHtmlMarkdown(
   },
 );
 
+// A leading HTML start tag, not a Markdown autolink such as `<https://...>`.
+const leadingHtmlTag = /^\s*<[a-z][a-z0-9-]*[\s/>]/i;
+
 /**
  * Convert a downloaded canvas body to Markdown. Canvas writes take Markdown,
  * so an HTML body passed back unchanged renders as escaped HTML text.
  */
 export function canvasBodyToMarkdown(body: string, title?: string): string {
-  if (!body.trimStart().startsWith("<")) {
+  if (!leadingHtmlTag.test(body)) {
     return body;
   }
   const markdown = canvasHtmlConverter.translate(body).trim();
