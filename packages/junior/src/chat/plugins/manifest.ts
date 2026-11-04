@@ -275,6 +275,7 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
+    "audit-tools": nonEmptyStringArraySchema("audit-tools").optional(),
   })
   .passthrough();
 
@@ -414,6 +415,7 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
+      setDefined(mcp, "audit-tools", config.mcp.auditTools);
       result.mcp = mcp;
     }
   }
@@ -1033,6 +1035,19 @@ function normalizeMcp(
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }
+  const auditTools = result.data["audit-tools"];
+  const unknownAuditTools = unloadedMcpTools(
+    {
+      allowedTools: result.data["allowed-tools"],
+      wrappedTools: result.data["wrapped-tools"],
+    },
+    auditTools ?? [],
+  );
+  if (unknownAuditTools.length > 0) {
+    throw new Error(
+      `Plugin ${name} mcp.audit-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownAuditTools.join(", ")}`,
+    );
+  }
 
   const headers = result.data.headers
     ? normalizeStringMap(result.data.headers, `Plugin ${name} mcp.headers`, {
@@ -1108,7 +1123,26 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
+    ...(auditTools ? { auditTools } : undefined),
   } satisfies PluginMcpConfig;
+}
+
+/**
+ * Return the tools that a set MCP allow-list does not load. An empty
+ * allow-list loads every tool, so only a set list can be checked.
+ */
+function unloadedMcpTools(
+  mcp: Pick<PluginMcpConfig, "allowedTools" | "wrappedTools">,
+  tools: string[],
+): string[] {
+  if (!mcp.allowedTools) {
+    return [];
+  }
+  const loadedTools = new Set([
+    ...mcp.allowedTools,
+    ...(mcp.wrappedTools ?? []),
+  ]);
+  return tools.filter((tool) => !loadedTools.has(tool));
 }
 
 /**
@@ -1141,20 +1175,11 @@ function normalizeAccounts(
       `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
     );
   }
-  // An empty allow-list loads every tool, so only a set list can be checked.
-  if (mcp.allowedTools) {
-    const loadedTools = new Set([
-      ...mcp.allowedTools,
-      ...(mcp.wrappedTools ?? []),
-    ]);
-    const unknownTools = serviceAccount.tools.filter(
-      (tool) => !loadedTools.has(tool),
+  const unknownTools = unloadedMcpTools(mcp, serviceAccount.tools);
+  if (unknownTools.length > 0) {
+    throw new Error(
+      `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
     );
-    if (unknownTools.length > 0) {
-      throw new Error(
-        `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
-      );
-    }
   }
   return {
     ...(userOAuth === false ? { userOAuth } : undefined),

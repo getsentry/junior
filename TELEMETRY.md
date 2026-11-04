@@ -33,6 +33,9 @@ move to the domain below.
 - Production keeps only audit info events (`app.log.audit:true`), such as
   `sandbox.egress.upstream.requested` for write grants. Outside production,
   that event is logged for every forwarded request.
+- `mcp.tool_call.completed` is an audit event for each successful call to a
+  tool in a plugin's `mcp.audit-tools`. `app.credential.account` is
+  `service_account` or `actor`.
 
 ## Query Recipes
 
@@ -157,6 +160,14 @@ in production. Other info events stay out of Sentry in production.
 ```text
 dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
 fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when,app.task.id,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code
+sort=-timestamp
+```
+
+MCP audit tool calls, with the account that made them.
+
+```text
+dataset=logs query='app.log.audit:true event.name:mcp.tool_call.completed'
+fields=timestamp,user.id,app.actor.type,app.task.id,gen_ai.conversation.id,app.plugin.name,gen_ai.tool.name,app.credential.account
 sort=-timestamp
 ```
 
