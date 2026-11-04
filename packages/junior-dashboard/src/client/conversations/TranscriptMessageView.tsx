@@ -24,6 +24,8 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
+import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
+import { memoryRecallContent } from "./turnContext";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { showsSlackSourceIcon } from "./transcriptSource";
 
@@ -36,6 +38,9 @@ export const TranscriptMessageView = memo(
     const rawText = messageRawText(props.message);
     const roleKind = transcriptRoleKind(props.message.role);
     const chatText = roleKind === "assistant" || roleKind === "user";
+    const recallTurnId = props.message.contexts?.find((context) =>
+      memoryRecallContent(context),
+    )?.turnId;
     const text = (
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
         {props.message.parts.map((part, index) =>
@@ -83,6 +88,9 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
+        {recallTurnId ? (
+          <TranscriptRecalledMemories turnId={recallTurnId} />
+        ) : null}
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}

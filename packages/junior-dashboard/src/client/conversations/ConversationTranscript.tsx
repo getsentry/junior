@@ -28,6 +28,8 @@ import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
+import { TranscriptCapturedMemories } from "./TranscriptMemoryPopover";
+import { isMemoryCaptureEvent } from "./conversationMemory";
 import { TranscriptFailureView } from "./TranscriptFailureView";
 import {
   structuredEventIcon,
@@ -285,10 +287,23 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
           icon={structuredEventIcon(entry.part.presentation.icon)}
           kind="structured_event"
         >
-          <TranscriptStructuredEventView
-            part={entry.part}
-            timestamp={entry.timestamp}
-          />
+          {isMemoryCaptureEvent(entry.part) ? (
+            <TranscriptCapturedMemories
+              fallback={
+                <TranscriptStructuredEventView
+                  part={entry.part}
+                  timestamp={entry.timestamp}
+                />
+              }
+              timestamp={entry.timestamp}
+              turnId={entry.part.turnId}
+            />
+          ) : (
+            <TranscriptStructuredEventView
+              part={entry.part}
+              timestamp={entry.timestamp}
+            />
+          )}
         </TranscriptRailEvent>
       )}
       renderSubagent={(entry) => (

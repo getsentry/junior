@@ -1,0 +1,157 @@
+import { Brain } from "lucide-react";
+import type { ReactElement, ReactNode } from "react";
+import { Link } from "react-router";
+
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
+import { formatMessageTimestamp, memoryPath } from "../format";
+import { cn } from "../styles";
+import {
+  anchorMemories,
+  memoryAnchorKey,
+  useConversationMemoryState,
+  type ConversationMemory,
+  type ConversationMemoryState,
+  type MemoryAnchor,
+} from "./conversationMemory";
+
+function memoryCount(count: number): string {
+  return `${count} ${count === 1 ? "memory" : "memories"}`;
+}
+
+/**
+ * Open one transcript spot's memories in a popover, so the transcript keeps
+ * its length. The page owns which popover is open, so the details panel can
+ * open one too.
+ */
+function MemoryPopover(props: {
+  anchor: MemoryAnchor;
+  label: string;
+  memories: ConversationMemory[];
+  state: ConversationMemoryState;
+  trigger: ReactElement;
+}) {
+  const { anchor, state } = props;
+  const open =
+    state.open?.source === anchor.source && state.open.turnId === anchor.turnId;
+  const highlightId = open ? state.open?.memoryId : undefined;
+  return (
+    <Popover
+      onOpenChange={(next) => state.setOpen(next ? anchor : undefined)}
+      open={open}
+    >
+      <PopoverTrigger
+        data-memory-anchor={memoryAnchorKey(anchor)}
+        render={props.trigger}
+      />
+      <PopoverContent
+        align="start"
+        aria-label={props.label}
+        className="max-h-[min(28rem,var(--available-height))] w-96 p-1.5"
+      >
+        <ul className="m-0 grid list-none gap-0.5 p-0">
+          {props.memories.map((memory) => (
+            <li
+              className={cn(
+                "grid gap-1.5 rounded-md px-2.5 py-2",
+                memory.id === highlightId && "bg-dashboard-fill-strong",
+              )}
+              key={memory.id}
+              ref={
+                memory.id === highlightId
+                  ? (node) => node?.scrollIntoView({ block: "nearest" })
+                  : undefined
+              }
+            >
+              <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
+                {memory.content}
+              </p>
+              <div className="flex items-center gap-3 text-xs text-dashboard-text-muted">
+                {memory.visibility === "private" ? <span>Private</span> : null}
+                <Link
+                  className="text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline"
+                  to={memoryPath(memory.id)}
+                >
+                  Open
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Show the memories that one prompt recalled, under that prompt. */
+export function TranscriptRecalledMemories(props: { turnId: string }) {
+  const state = useConversationMemoryState();
+  const anchor = { source: "recalled", turnId: props.turnId } as const;
+  const memories = anchorMemories(state?.list, anchor);
+  if (!state || memories.length === 0) return null;
+  const label = `Recalled ${memoryCount(memories.length)}`;
+  return (
+    <div className="flex">
+      <MemoryPopover
+        anchor={anchor}
+        label={label}
+        memories={memories}
+        state={state}
+        trigger={
+          <button
+            className="inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-dashboard-border-subtle bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
+            type="button"
+          >
+            <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
+            {label}
+          </button>
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * Show the memories that one Turn captured. Without memory state or a list
+ * for the Turn, such as in a nested transcript, show `fallback`.
+ */
+export function TranscriptCapturedMemories(props: {
+  fallback: ReactNode;
+  timestamp?: number;
+  turnId?: string;
+}) {
+  const state = useConversationMemoryState();
+  const anchor = props.turnId
+    ? ({ source: "captured", turnId: props.turnId } as const)
+    : undefined;
+  const memories = anchor ? anchorMemories(state?.list, anchor) : [];
+  if (!state || !anchor || memories.length === 0) return props.fallback;
+  const label = `Captured ${memoryCount(memories.length)}`;
+  const timestamp = formatMessageTimestamp(props.timestamp);
+  return (
+    <MemoryPopover
+      anchor={anchor}
+      label={label}
+      memories={memories}
+      state={state}
+      trigger={
+        <button
+          className="-mx-2 -my-1.5 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left font-sans transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-hover max-md:grid-cols-[minmax(0,1fr)]"
+          type="button"
+        >
+          <span className="text-sm font-medium leading-6 text-dashboard-text">
+            {label}
+          </span>
+          {timestamp ? (
+            <span className="text-xs leading-6 tabular-nums text-dashboard-text-muted max-md:hidden">
+              {timestamp}
+            </span>
+          ) : null}
+        </button>
+      }
+    />
+  );
+}

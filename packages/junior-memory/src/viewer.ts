@@ -10,6 +10,7 @@ import {
   eq,
   gt,
   ilike,
+  inArray,
   isNull,
   like,
   lt,
@@ -252,6 +253,25 @@ export async function getMemory(
     .limit(1);
   if (!rows[0]) throw new MemoryNotFoundError();
   return toMemoryView(rows[0]);
+}
+
+/** Read the active memories in `ids` that the authenticated User can see. */
+export async function getMemories(
+  db: MemoryDb,
+  userId: string,
+  ids: readonly string[],
+): Promise<MemoryView[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        activeMemoryPredicate(userId, Date.now()),
+        inArray(juniorMemoryMemories.id, [...ids]),
+      ),
+    );
+  return rows.map(toMemoryView);
 }
 
 /** List one stable page of active memory visible to the authenticated User. */

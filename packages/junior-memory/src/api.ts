@@ -15,6 +15,7 @@ import type { MemoryDb } from "./store";
 import {
   archiveMemory,
   countMemories,
+  getMemories,
   getMemory,
   getMemoryStats,
   getMemoryTimeline,
@@ -24,7 +25,7 @@ import {
   MemoryNotFoundError,
   type MemoryView,
 } from "./viewer";
-import { parseCapturedMemories } from "./events";
+import { parseCapturedMemories, parseRecalledMemoryIds } from "./events";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -50,16 +51,30 @@ export const memoryListResponseSchema = z
 
 export const conversationMemorySchema = z
   .object({
-    capturedAt: z.iso.datetime(),
     content: z.string().min(1),
     id: z.string().min(1),
-    kind: z.enum(["preference", "procedure", "knowledge"]),
     visibility: z.enum(["private", "public"]),
   })
   .strict();
 
+/** One recall or capture in a Conversation, and the memories it touched. */
+const conversationMemoryEventSchema = z
+  .object({
+    memoryIds: z.array(z.string().min(1)).min(1),
+    source: z.enum(["captured", "recalled"]),
+    turnId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * Memories that a Conversation recalled or captured. `events` are in
+ * Conversation order, and each id in them is a key of `memories`.
+ */
 export const conversationMemoryListResponseSchema = z
-  .object({ memories: z.array(conversationMemorySchema) })
+  .object({
+    events: z.array(conversationMemoryEventSchema),
+    memories: z.array(conversationMemorySchema),
+  })
   .strict();
 
 const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
@@ -180,6 +195,89 @@ function viewerEmail(context: unknown): string | undefined {
   return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
 }
 
+/**
+ * List what one Conversation recalled and captured, in Conversation order.
+ *
+ * Captured memories come from the event snapshot. Recall events store only
+ * ids, so recalled memories are read from the store, and the viewer sees only
+ * the active memories they can access.
+ */
+async function conversationMemories(args: {
+  conversationEvents: PluginConversationEventReader;
+  conversationId: string;
+  db: MemoryDb;
+  viewer: User;
+}): Promise<z.output<typeof conversationMemoryListResponseSchema> | undefined> {
+  const [captured, recalled] = await Promise.all(
+    (["memories_captured", "memories_recalled"] as const).map((eventName) =>
+      args.conversationEvents.list({
+        conversationId: args.conversationId,
+        eventName,
+        viewer: args.viewer,
+      }),
+    ),
+  );
+  if (!captured || !recalled) return undefined;
+
+  const memories = new Map<string, z.output<typeof conversationMemorySchema>>();
+  const capturedEvents = captured.map((event) => {
+    const eventMemories = parseCapturedMemories(event.version, event.content);
+    for (const memory of eventMemories) {
+      memories.set(memory.id, {
+        content: memory.content,
+        id: memory.id,
+        visibility: currentMemoryVisibility(memory.scope),
+      });
+    }
+    return {
+      createdAt: event.createdAt,
+      memoryIds: eventMemories.map((memory) => memory.id),
+      source: "captured" as const,
+      turnId: event.turnId,
+    };
+  });
+  const recalledEvents = recalled.map((event) => ({
+    createdAt: event.createdAt,
+    memoryIds: parseRecalledMemoryIds(event.version, event.content),
+    source: "recalled" as const,
+    turnId: event.turnId,
+  }));
+  const recalledIds = [
+    ...new Set(recalledEvents.flatMap((event) => event.memoryIds)),
+  ].filter((id) => !memories.has(id));
+  for (const memory of await getMemories(
+    args.db,
+    args.viewer.id,
+    recalledIds,
+  )) {
+    memories.set(memory.id, {
+      content: memory.content,
+      id: memory.id,
+      visibility: memory.visibility,
+    });
+  }
+
+  // ISO timestamps sort as text. Recall runs before its Turn replies and
+  // capture runs after, so a stable sort keeps one Turn in that order.
+  const events = [...recalledEvents, ...capturedEvents]
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .flatMap(({ memoryIds, source, turnId }) => {
+      const visibleIds = memoryIds.filter((id) => memories.has(id));
+      if (visibleIds.length === 0) return [];
+      return [
+        {
+          memoryIds: visibleIds,
+          source,
+          ...(turnId ? { turnId } : undefined),
+        },
+      ];
+    });
+  return conversationMemoryListResponseSchema.parse({
+    events,
+    memories: [...memories.values()],
+  });
+}
+
 /** Create the authenticated memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
@@ -294,35 +392,13 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         }
 
         if (conversationPath && isRead) {
-          const events = await options.conversationEvents.list({
+          const body = await conversationMemories({
+            conversationEvents: options.conversationEvents,
             conversationId: decodeURIComponent(conversationPath[1]!),
-            eventName: "memories_captured",
+            db: options.db,
             viewer,
           });
-          if (!events) return json({ error: "Conversation not found." }, 404);
-          const memories = new Map<
-            string,
-            z.input<typeof conversationMemorySchema>
-          >();
-          for (const event of events) {
-            for (const memory of parseCapturedMemories(
-              event.version,
-              event.content,
-            )) {
-              if (!memories.has(memory.id)) {
-                memories.set(memory.id, {
-                  capturedAt: event.createdAt,
-                  content: memory.content,
-                  id: memory.id,
-                  kind: memory.kind,
-                  visibility: currentMemoryVisibility(memory.scope),
-                });
-              }
-            }
-          }
-          const body = conversationMemoryListResponseSchema.parse({
-            memories: [...memories.values()],
-          });
+          if (!body) return json({ error: "Conversation not found." }, 404);
           return request.method === "HEAD"
             ? new Response(null, {
                 headers: { "cache-control": "no-store" },

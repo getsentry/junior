@@ -1,11 +1,11 @@
-import { ChevronRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
-import { dashboardDisclosureChevronClass } from "../styles";
+import { Button } from "../components/ui/button";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   ConversationChildAgents,
@@ -16,9 +16,14 @@ import {
   type ConversationLink,
 } from "./ConversationLinkedWork";
 import {
-  ConversationMemories,
-  useConversationMemories,
+  ConversationMemoryCard,
+  ConversationMemoryEntries,
 } from "./ConversationMemories";
+import {
+  conversationMemoryEntries,
+  useConversationMemoryState,
+  type ConversationMemoryEntry,
+} from "./conversationMemory";
 import {
   ConversationWatches,
   useConversationWatches,
@@ -43,14 +48,62 @@ export function ConversationDetails(props: {
   onClose(): void;
   /** Open one child agent transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
+  /** Show one memory where its Turn recalled or captured it. */
+  onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
+  /** The prompt that started each loaded Turn. */
+  memoryPrompts: Map<string, string>;
   overview: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
-  const memories = useConversationMemories(props.conversationId).data?.memories;
+  const memoryList = useConversationMemoryState()?.list;
+  const [memoriesOpen, setMemoriesOpen] = useState(false);
+  const [memoryConversationId, setMemoryConversationId] = useState(
+    props.conversationId,
+  );
+  if (memoryConversationId !== props.conversationId) {
+    setMemoryConversationId(props.conversationId);
+    setMemoriesOpen(false);
+  }
   const agents = useConversationChildAgents(props.conversationId).data?.agents;
   const watches =
     useConversationWatches(props.conversationId).data?.watches ?? [];
+
+  if (memoriesOpen && memoryList) {
+    // The list replaces details in place, so nothing stacks over the panel.
+    return (
+      <DetailsPanel
+        label="Conversation details"
+        onClose={props.onClose}
+        title={
+          <div className="-ml-2 flex min-w-0 items-center gap-1">
+            <Button
+              aria-label="Back to details"
+              onClick={() => setMemoriesOpen(false)}
+              size="icon"
+            >
+              <ArrowLeft aria-hidden="true" size={15} />
+            </Button>
+            <h2 className="m-0 truncate font-sans text-sm font-semibold text-dashboard-text">
+              Memories
+            </h2>
+          </div>
+        }
+      >
+        <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <ConversationMemoryEntries
+            entries={conversationMemoryEntries(memoryList)}
+            onSelect={(entry) => {
+              // The transcript sits under a details sheet. Close it first.
+              if (!panel) props.onClose();
+              props.onSelectMemory(entry);
+            }}
+            prompts={props.memoryPrompts}
+          />
+        </div>
+      </DetailsPanel>
+    );
+  }
 
   return (
     <DetailsPanel
@@ -135,38 +188,13 @@ export function ConversationDetails(props: {
         {props.identity != null ? (
           <DetailsCard title="Participants">{props.identity}</DetailsCard>
         ) : null}
-        {memories?.length ? (
-          <DetailsCard count={memories.length} title="Memories">
-            <Disclosure label="memories">
-              <ConversationMemories conversationId={props.conversationId} />
-            </Disclosure>
-          </DetailsCard>
+        {memoryList?.events.length ? (
+          <ConversationMemoryCard
+            list={memoryList}
+            onOpen={() => setMemoriesOpen(true)}
+          />
         ) : null}
       </div>
     </DetailsPanel>
-  );
-}
-
-/** Hide long, rarely read content behind one show/hide row. */
-function Disclosure(props: { children: ReactNode; label: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="grid min-w-0 gap-2">
-      <button
-        aria-expanded={open}
-        className="group -mx-1.5 -my-1 flex min-h-8 items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        <span className="grid size-5 shrink-0 place-items-center">
-          <ChevronRight
-            aria-hidden="true"
-            className={dashboardDisclosureChevronClass}
-          />
-        </span>
-        {open ? `Hide ${props.label}` : `Show ${props.label}`}
-      </button>
-      {open ? props.children : null}
-    </div>
   );
 }
