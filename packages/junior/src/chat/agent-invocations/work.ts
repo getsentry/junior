@@ -60,6 +60,7 @@ import { loadForkHistory } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
+  getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -76,9 +77,7 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
-  ACTIVE_AGENT_INVOCATION_STATUSES,
-  listAgentInvocationsForConversation,
-  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  listActiveAgentInvocationsForConversation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -500,38 +499,40 @@ async function endOtherActiveAgentInvocation(
 }
 
 /**
- * End every agent invocation of a child whose last attempt lost its worker and
- * whose input reached the child's mailbox. The worker ran no failure path, and
- * the stop drops the mailbox, so none of them can run. The heartbeat sends
- * each result.
+ * End an open agent invocation that can no longer run. Its input left the
+ * child mailbox, and the child has no lease and no work to resume. A worker
+ * that dies, or that fails past its last retry, leaves this state and runs no
+ * failure path. Each consumed id stays in `inboundMessageIds`, so the input
+ * cannot be appended again. The heartbeat sends the result.
  */
-export async function endAgentInvocationsOfStoppedWork(
-  conversationId: string,
-  inboundMessageIds: readonly string[],
+export async function endStrandedAgentInvocation(
+  invocation: AgentInvocation,
 ): Promise<void> {
-  for (const invocation of await listAgentInvocationsForConversation(
-    conversationId,
-    NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-  )) {
-    // Its append runs after the stop and starts new work for the child.
-    if (
-      !inboundMessageIds.includes(
-        getAgentInvocationMessageId(invocation.invocationId),
-      )
-    ) {
-      continue;
-    }
-    const terminal =
-      (await projectTerminalTurn(invocation, { reportNow: true })) ??
-      (await completeAgentInvocation({
-        invocationId: invocation.invocationId,
-        errorMessage: "This task stopped because its worker failed repeatedly.",
-        reportNow: true,
-        status: "failed",
-      }));
-    if (terminal && isTerminalAgentInvocation(terminal)) {
-      await persistTerminalLifecycle(terminal);
-    }
+  const work = await getConversationWorkState({
+    conversationId: invocation.childConversationId,
+  });
+  const messageId = getAgentInvocationMessageId(invocation.invocationId);
+  if (
+    !work ||
+    work.execution.lease ||
+    (work.execution.status !== "failed" && work.execution.status !== "idle") ||
+    !work.execution.inboundMessageIds.includes(messageId) ||
+    work.execution.pendingMessages.some(
+      (message) => message.inboundMessageId === messageId,
+    )
+  ) {
+    return;
+  }
+  const terminal =
+    (await projectTerminalTurn(invocation, { reportNow: true })) ??
+    (await completeAgentInvocation({
+      invocationId: invocation.invocationId,
+      errorMessage: "This task stopped because its worker failed repeatedly.",
+      reportNow: true,
+      status: "failed",
+    }));
+  if (terminal && isTerminalAgentInvocation(terminal)) {
+    await persistTerminalLifecycle(terminal);
   }
 }
 
@@ -754,9 +755,8 @@ export function createAgentInvocationWorker(
       }
       // A child has at most one running or paused agent invocation. End any
       // other active one first. Each one reports its own result.
-      for (const active of await listAgentInvocationsForConversation(
+      for (const active of await listActiveAgentInvocationsForConversation(
         invocation.childConversationId,
-        ACTIVE_AGENT_INVOCATION_STATUSES,
       )) {
         if (active.invocationId !== invocation.invocationId) {
           await finish(await endOtherActiveAgentInvocation(active));
