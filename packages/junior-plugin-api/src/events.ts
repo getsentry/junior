@@ -476,6 +476,16 @@ export const pluginEventsSchema = z
     normalizeIdentifier: z
       .function({ input: [z.string()], output: z.string() })
       .optional(),
+    /**
+     * The web page of one watched resource, so people can open it. Returns
+     * undefined when the resource has no page.
+     */
+    resourceUrl: z
+      .function({
+        input: [z.object({ identifier: z.string(), resourceType: z.string() })],
+        output: z.string().optional(),
+      })
+      .optional(),
   })
   .strict()
   .superRefine((registration, context) => {

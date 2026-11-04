@@ -69,9 +69,10 @@ const resourceIcons: Partial<Record<string, LucideIcon>> = {
 };
 
 /**
- * Show one Watch as a single line with its resource. Clicking the line shows
- * why the Watch exists and which events wake the Conversation. The expiry is
- * an internal limit, so the row does not show it.
+ * Show one Watch as a single line with its resource. When the resource has a
+ * web page, the line opens it and a chevron shows the details. Otherwise the
+ * line itself shows why the Watch exists and which events wake the
+ * Conversation. The expiry is an internal limit, so the row does not show it.
  */
 function WatchRow(props: { watch: ConversationWatch }) {
   const { watch } = props;
@@ -83,20 +84,41 @@ function WatchRow(props: { watch: ConversationWatch }) {
   // A timer has one event, and its fire time already says when it wakes.
   const events = watch.firesAt ? [] : watch.events;
   const filters = Object.entries(watch.match ?? {});
-  const row = (
+  const icon = <Icon aria-hidden="true" className="size-3.5" />;
+  const title = watch.label ?? `Private ${resource}`;
+  const chevron = (
+    <span className="grid size-5 place-items-center">
+      <ChevronRight
+        aria-hidden="true"
+        className={dashboardDisclosureChevronClass}
+      />
+    </span>
+  );
+  const toggle = () => setExpanded((value) => !value);
+  const row = watch.url ? (
+    // The row opens the watched resource, like a linked work row. The
+    // chevron beside it shows the details.
+    <div className="flex min-w-0 items-start gap-0.5">
+      <div className="min-w-0 flex-1">
+        <DetailsRow href={watch.url} icon={icon} title={title} />
+      </div>
+      <button
+        aria-expanded={expanded}
+        aria-label={`Details for ${title}`}
+        className="group grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        onClick={toggle}
+        type="button"
+      >
+        {chevron}
+      </button>
+    </div>
+  ) : (
     <DetailsRow
       expanded={expanded}
-      icon={<Icon aria-hidden="true" className="size-3.5" />}
-      meta={
-        <span className="grid size-5 place-items-center">
-          <ChevronRight
-            aria-hidden="true"
-            className={dashboardDisclosureChevronClass}
-          />
-        </span>
-      }
-      onToggle={() => setExpanded((value) => !value)}
-      title={watch.label ?? `Private ${resource}`}
+      icon={icon}
+      meta={chevron}
+      onToggle={toggle}
+      title={title}
     />
   );
   if (!expanded) return row;
