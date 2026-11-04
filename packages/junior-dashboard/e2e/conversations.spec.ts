@@ -427,7 +427,8 @@ test("groups the signed-in profile and session actions in the nav rail", async (
     has: page.getByRole("navigation", { name: "Primary" }),
   });
   const trigger = rail.getByRole("button", {
-    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
+    name: "Open profile menu for Dashboard User",
+    exact: true,
   });
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");

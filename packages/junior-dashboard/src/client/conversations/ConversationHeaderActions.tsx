@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "../components/ui/button";
+import { Separator } from "../components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -38,8 +39,8 @@ export type ConversationPinAction = {
 };
 
 /**
- * Show conversation actions in the `⋯` menu. On desktop the title bar shows
- * search, share, and details, so the menu leaves them out.
+ * Keep secondary conversation actions in the menu, with search and details
+ * available there on mobile too.
  */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
@@ -56,9 +57,10 @@ export function ConversationHeaderActions(props: {
   view: TranscriptViewMode;
 }) {
   const mobile = props.placement === "mobile";
+  const eventLogOpen = props.view === "raw";
   return (
     <div className="grid gap-0.5">
-      {mobile && props.view === "rich" ? (
+      {mobile && !eventLogOpen ? (
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
           onClick={props.onSearchClick}
@@ -71,28 +73,42 @@ export function ConversationHeaderActions(props: {
           )}
         </MenuActionButton>
       ) : null}
-      <MenuActionButton
-        label="Conversation"
-        onClick={() => props.onViewChange("rich")}
-        pressed={props.view === "rich"}
-      >
-        <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
-      <MenuActionButton
-        label="Event log"
-        onClick={() => props.onViewChange("raw")}
-        pressed={props.view === "raw"}
-      >
-        <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
       {mobile ? (
-        <ShareConversationButton
-          key={props.conversationId}
-          conversationId={props.conversationId}
-          layout="menu"
-        />
+        <MenuActionButton
+          label="Conversation details"
+          onClick={props.onDetailsClick}
+          pressed={props.detailsOpen}
+        >
+          <Info aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
       ) : null}
+      <ShareConversationButton
+        key={props.conversationId}
+        conversationId={props.conversationId}
+      />
       {props.copyAction}
+      <MenuActionButton
+        label={eventLogOpen ? "Back to conversation" : "Open event log"}
+        onClick={() => props.onViewChange(eventLogOpen ? "rich" : "raw")}
+      >
+        {eventLogOpen ? (
+          <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
+      {props.sentryConversationUrl ? (
+        <a
+          className={buttonVariants({ size: "menu" })}
+          href={props.sentryConversationUrl}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <SentryGlyph />
+          Open in Sentry
+        </a>
+      ) : null}
+      <Separator className="my-1 bg-dashboard-border-subtle" />
       <MenuActionButton
         disabled={props.pin.disabled}
         label={props.pin.pinned ? "Unpin" : "Pin"}
@@ -105,26 +121,6 @@ export function ConversationHeaderActions(props: {
         )}
       </MenuActionButton>
       <ArchiveConversationButton {...props.archive} />
-      {props.sentryConversationUrl ? (
-        <a
-          className={buttonVariants({ size: "menu" })}
-          href={props.sentryConversationUrl}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <SentryGlyph />
-          Open in Sentry
-        </a>
-      ) : null}
-      {mobile ? (
-        <MenuActionButton
-          label="Conversation details"
-          onClick={props.onDetailsClick}
-          pressed={props.detailsOpen}
-        >
-          <Info aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
-      ) : null}
     </div>
   );
 }

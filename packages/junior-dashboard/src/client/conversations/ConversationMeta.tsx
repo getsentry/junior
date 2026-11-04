@@ -42,7 +42,10 @@ import {
   type SidebarAnnotation,
   type SidebarAnnotationBadgeGroup,
 } from "./sidebarAnnotationBadges";
-import { conversationLinks, linkStatusLabel } from "./ConversationLinkedWork";
+import {
+  linkStatusLabel,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -91,13 +94,6 @@ export function ConversationPrivacyChip(props: {
       <span className="sr-only">{label}</span>
     </span>
   );
-}
-
-/** True when the conversation has at least one resource-link annotation. */
-export function hasConversationAnnotations(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-): boolean {
-  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -401,13 +397,11 @@ function SidebarAnnotationIcon(props: {
 
 /** Render linked work as a compact strip under the conversation title. */
 export function ConversationAnnotations(props: {
-  detail: ConversationDetailReport | undefined;
+  links: readonly ConversationLink[];
 }) {
-  const links = conversationLinks(props.detail);
-  if (links.length === 0) return null;
   return (
     <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
-      {links.map((link) => (
+      {props.links.map((link) => (
         <a
           className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           href={link.url}

@@ -57,14 +57,13 @@ import {
 import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
+import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
   ConversationAnnotations,
   conversationCost,
-  conversationLocation,
   ConversationPrivacyChip,
   ConversationStats,
-  hasConversationAnnotations,
   hasConversationStats,
 } from "./ConversationMeta";
 import {
@@ -227,6 +226,7 @@ export function ConversationPage(props: {
       <ParticipantAvatarStack participants={participants} size="detail" />
     ) : null;
   const conversationDetail = detail.data;
+  const links = conversationLinks(conversationDetail);
   const title =
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
@@ -444,8 +444,9 @@ export function ConversationPage(props: {
             agentTree={
               agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
             }
+            contextTags={conversationContextTags(conversation)}
             conversationId={conversationId}
-            cost={conversationCost(conversation, detail.data, "below")}
+            cost={conversationCost(conversation, conversationDetail, "below")}
             detailsOpen={showDetails}
             onDetailsClick={() => {
               if (eventOpen) setSelectedEventSeq(undefined);
@@ -484,9 +485,7 @@ export function ConversationPage(props: {
               />
             }
             linkedWork={
-              hasConversationAnnotations(detail.data?.annotations) ? (
-                <ConversationAnnotations detail={detail.data} />
-              ) : null
+              links.length ? <ConversationAnnotations links={links} /> : null
             }
             pin={{
               // The API lets only participants pin, the same as archive.
@@ -508,7 +507,6 @@ export function ConversationPage(props: {
               pending: archive.isPending,
             }}
             live={live}
-            location={conversationLocation(conversation, detail.data)}
             onSearchChange={setSearch}
             onViewChange={onViewChange}
             privacy={
@@ -647,7 +645,7 @@ export function ConversationPage(props: {
                 turnId: entry.turnId,
               });
             }}
-            links={conversationLinks(detail.data)}
+            links={links}
             overview={
               hasConversationStats({
                 conversation,

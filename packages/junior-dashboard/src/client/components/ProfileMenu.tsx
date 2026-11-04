@@ -27,7 +27,7 @@ type ProfileMenuProps = {
   userPages: PluginUserPageLink[];
   /**
    * `popover` is the avatar control at the bottom of the desktop nav rail.
-   * `top-bar` is the spend and avatar control in the tall desktop top bar.
+   * `top-bar` is the avatar control in the tall desktop top bar.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
@@ -145,12 +145,6 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
-  const sevenDaySpend = spend
-    ? formatCostSummary({ total: spend.sevenDaysUsd })
-    : "—";
-  const thirtyDaySpend = spend
-    ? formatCostSummary({ total: spend.thirtyDaysUsd })
-    : "—";
   const profilePages = userPages.filter(
     (page) => page.navigation === "profile",
   );
@@ -170,7 +164,11 @@ export function ProfileMenu({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <div
+        aria-label="Personal model spend"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
+        role="group"
+      >
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
@@ -232,6 +230,12 @@ export function ProfileMenu({
   );
 
   if (variant === "sheet-spend") {
+    const sevenDaySpend = spend
+      ? formatCostSummary({ total: spend.sevenDaysUsd })
+      : "—";
+    const thirtyDaySpend = spend
+      ? formatCostSummary({ total: spend.thirtyDaysUsd })
+      : "—";
     // Vertical mobile callout pinned above every sheet destination.
     return (
       <div
@@ -335,7 +339,7 @@ export function ProfileMenu({
       open={open}
     >
       <PopoverTrigger
-        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
+        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}`}
         className={cn(
           "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           topBar
@@ -347,30 +351,6 @@ export function ProfileMenu({
         delay={HOVER_OPEN_DELAY_MS}
         openOnHover
       >
-        {topBar ? (
-          <span className="flex items-center gap-2">
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                7d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.sevenDaysUsd} />
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className="h-3 w-px bg-dashboard-fill-strong"
-            />
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                30d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.thirtyDaysUsd} />
-              </span>
-            </span>
-          </span>
-        ) : null}
         <ProfileAvatar user={identity.user} />
         {topBar ? (
           <ChevronDown

@@ -25,6 +25,7 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
+import { conversationLinks } from "../src/client/conversations/ConversationLinkedWork";
 import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -651,51 +652,50 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("labels linked object types for assistive technology without guessing from URLs", () => {
+    const detail = conversation([], {
+      annotations: [
+        {
+          kind: "resource_link",
+          objectType: "task",
+          key: "issue",
+          label: "Issue",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/issue",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "pr",
+          label: "PR",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/change",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "other",
+          label: "Other",
+          plugin: "example",
+          url: "https://github.com/example/repo/pull/1",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+      sidebarAnnotations: [
+        {
+          key: "pr",
+          label: "repo",
+          objectType: "code_change",
+          status: "closed",
+        },
+      ],
+    });
     const html = renderToStaticMarkup(
-      <ConversationAnnotations
-        detail={conversation([], {
-          annotations: [
-            {
-              kind: "resource_link",
-              objectType: "task",
-              key: "issue",
-              label: "Issue",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/issue",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "pr",
-              label: "PR",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/change",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "other",
-              label: "Other",
-              plugin: "example",
-              url: "https://github.com/example/repo/pull/1",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-          ],
-          sidebarAnnotations: [
-            {
-              key: "pr",
-              label: "repo",
-              objectType: "code_change",
-              status: "closed",
-            },
-          ],
-        })}
-      />,
+      <ConversationAnnotations links={conversationLinks(detail)} />,
     );
     expect(html).toContain('aria-label="Ticket: closed"');
     expect(html).toContain('aria-label="Code change: closed"');

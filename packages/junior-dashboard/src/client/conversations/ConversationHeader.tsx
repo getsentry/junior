@@ -3,6 +3,7 @@ import { Menu, PanelRight, ScrollText, X } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
@@ -17,32 +18,29 @@ import {
   type ConversationPinAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
-import { ShareConversationButton } from "./ShareConversationButton";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /**
- * Show the conversation title bar: where it runs, the title, its cost, and
- * actions. Other run facts, linked work, and the Brief live in Conversation
- * details.
+ * Keep the conversation title and frequently used controls in the header.
+ * Run facts and the Brief live in Conversation details.
  */
 export function ConversationHeader(props: {
   /** Parent chain of a child Conversation. Root Conversations omit it. */
   agentTree?: ReactNode;
+  contextTags?: ReactNode;
   /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
-  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
-  cost?: ReactNode;
   archive: ConversationArchiveAction;
   conversationId: string;
+  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
+  cost?: ReactNode;
   detailsOpen: boolean;
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
-  /** Mobile only. Desktop shows linked work in Conversation details. */
+  /** Linked work links below the title on mobile. */
   linkedWork?: ReactNode;
   live: boolean;
-  /** Where the conversation runs, such as a Slack channel. */
-  location?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
@@ -121,16 +119,18 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.archive.error ||
     props.pin.error ||
+    Boolean(props.contextTags) ||
     Boolean(props.linkedWork) ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
   const liveIndicator = props.live ? (
-    <span
-      aria-label="Conversation is live"
-      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
-      title="Live"
-    />
+    <span className="inline-flex shrink-0" title="Working">
+      <Spinner
+        aria-label="Working"
+        className="size-3.5 text-dashboard-text-muted motion-safe:[animation-duration:1.25s]"
+      />
+    </span>
   ) : null;
 
   return (
@@ -166,28 +166,27 @@ export function ConversationHeader(props: {
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden h-13 min-w-0 items-center justify-between gap-4 px-4 md:flex">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+          <div className="flex min-w-0 items-center gap-1.5">
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}
-            {props.agentTree ? (
-              <div className="min-w-0 shrink-[2]">{props.agentTree}</div>
-            ) : props.location ? (
-              <span className="shrink-0 text-sm text-dashboard-text-muted">
-                {props.location}
-              </span>
-            ) : null}
-            {props.agentTree || props.location ? (
-              <span aria-hidden="true" className="text-dashboard-text-faint">
-                ›
-              </span>
-            ) : null}
-            <h2 className="m-0 line-clamp-1 min-w-0 font-display text-base font-medium leading-tight tracking-tight">
+            <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
               {props.title}
             </h2>
             {liveIndicator}
-            <span className="shrink-0">{props.privacy}</span>
+            {props.privacy ? (
+              <span className="shrink-0">{props.privacy}</span>
+            ) : null}
+            {props.agentTree ? (
+              <div className="min-w-0 max-w-1/3 shrink-[2] border-l border-dashboard-border-subtle pl-2 text-xs text-dashboard-text-muted [&_a]:text-dashboard-text-muted [&_a:hover]:text-dashboard-text">
+                {props.agentTree}
+              </div>
+            ) : props.contextTags ? (
+              <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
+                {props.contextTags}
+              </div>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             {props.cost ? (
@@ -214,11 +213,6 @@ export function ConversationHeader(props: {
                 open={searchOpenVisible}
               />
             )}
-            <ShareConversationButton
-              key={props.conversationId}
-              conversationId={props.conversationId}
-              layout="icon"
-            />
             <ConversationOverflowMenu>
               {(close) => menuActions("desktop", close)}
             </ConversationOverflowMenu>
@@ -241,12 +235,12 @@ export function ConversationHeader(props: {
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
-        {props.linkedWork ? (
-          <div
-            aria-label="Linked work"
-            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:hidden"
-          >
-            {props.linkedWork}
+        {props.contextTags || props.linkedWork ? (
+          <div className="grid min-w-0 gap-2 px-3 pb-2 pt-1.5 md:hidden">
+            {props.contextTags}
+            {props.linkedWork ? (
+              <div aria-label="Linked work">{props.linkedWork}</div>
+            ) : null}
           </div>
         ) : null}
         {searchOpenVisible ? (

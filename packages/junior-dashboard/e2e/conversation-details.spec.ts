@@ -100,6 +100,7 @@ test("opens conversation details beside the chat", async ({
         Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
     });
   });
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Could not copy the link" }),
@@ -112,6 +113,7 @@ test("opens conversation details beside the chat", async ({
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );
+  await page.getByRole("button", { name: "Close conversation menu" }).click();
 
   // Details show memory counts. The full list replaces details in place.
   const memories = details.getByText("Use pnpm for repository commands.");
@@ -137,12 +139,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     details.getByRole("button", { name: "Close conversation details" }),
   ).toBeFocused();
-  // The pointer still rests on the header Share icon. Move it off so Escape
-  // closes the panel, not the icon tooltip.
   await page.mouse.move(800, 600);
-  await expect(
-    page.getByRole("tooltip").filter({ hasText: /Share|Link copied/ }),
-  ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
@@ -150,9 +147,17 @@ test("opens conversation details beside the chat", async ({
   await detailsButton.click();
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open event log", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Share", exact: true }).focus();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Event log" })).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Open event log", exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Conversation menu" }),
+  ).toBeFocused();
   await expect(details).toBeVisible();
   await detailsButton.click();
   await expect(details).toBeHidden();

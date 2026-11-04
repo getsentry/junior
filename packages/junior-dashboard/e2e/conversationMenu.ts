@@ -6,5 +6,10 @@ export async function chooseTranscriptView(
   view: "Conversation" | "Event log",
 ) {
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: view, exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: view === "Event log" ? "Open event log" : "Back to conversation",
+      exact: true,
+    })
+    .click();
 }
