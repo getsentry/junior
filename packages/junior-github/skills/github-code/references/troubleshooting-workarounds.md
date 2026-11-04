@@ -34,15 +34,12 @@
 
 ## GitHub status
 
-Read recent incidents. The list includes resolved ones, because a failure can come from an incident that ended:
+Call `github_getStatus`. It lists GitHub incidents that are open or were resolved in the last 24 hours. All callers share one cached read of githubstatus.com. Do not read the status page another way.
 
-```bash
-curl -fsS https://www.githubstatus.com/api/v2/incidents.json | jq '[.incidents[] | select(.resolved_at == null or ((.resolved_at[0:19] + "Z" | fromdateiso8601) > now - 86400)) | {name, status, impact, started_at, resolved_at, shortlink, components: [.components[].name]}]'
-```
-
-If `curl` fails, `webFetch` the same URL.
+A `pull_request.checks.failed` event already lists incidents that are open or ended in the last hour. Use that list before you call the tool.
 
 - An incident matches when its time covers the failure and its components cover the failing operation: `Git Operations` for clone, fetch, and push; `API Requests` for `gh` and GitHub tools; `Actions` for workflow runs; `Pull Requests`, `Issues`, or `Webhooks` for those features and missing events.
 - Match: say the failure is likely from that incident, and link it. Do not keep retrying. Do not change code, permissions, or workflows to work around it.
 - No match: say GitHub status shows no related incident, and continue from the error. Do not blame an outage.
+- If `github_getStatus` fails, say that GitHub status is unknown. Do not guess.
 - A 401, 403, 404, or 422 usually gives its own cause. Check status for one only when that cause does not fit, such as a 404 for a repository you just read.
