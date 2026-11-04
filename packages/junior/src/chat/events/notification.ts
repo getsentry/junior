@@ -211,7 +211,7 @@ function readEventTaskFacts(
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
  * their own inputs after the task. `rendered` replaces the text of an entry
- * by inbound message id, such as a relayed Review item change.
+ * by inbound message id, such as a person change to a Review item.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
@@ -292,12 +292,12 @@ function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
 /**
  * Return the saved Message fields for the Event inputs of one Turn.
  *
- * A relay of a person change to a Review item is not one of the Message's
- * own Events: its record goes to `reviewItemChanges`, and the dashboard shows
- * it as a change row. The Message's own Event is its first Watch Event, the
+ * A person change to a Review item is not one of the Message's own Events:
+ * its record goes to `reviewItemChanges`, and the dashboard shows it as a
+ * change row. The Message's own Event is its first Watch Event, the
  * kind the task message counts, or else its first other input, such as an
  * agent result. `events` lists the Watch Events when several arrived. When
- * relays share the Message with one own Event, `events` lists that Event, so
+ * changes share the Message with one own Event, `events` lists that Event, so
  * a reader can tell it from a Message that only records changes.
  */
 export function eventBatchMessageMeta(

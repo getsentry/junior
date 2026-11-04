@@ -17,9 +17,7 @@ runtime, not the markers, enforces approval.
   input gets its own tag: `<task>`, `<parent-agent-task>`,
   `<agent-result>`, `<agent-message>`, `<review-item-answer id>`,
   `<review-item-dismissed id>`. Do not use bracket headers such as `[task]`.
-- An input relayed from another Conversation gets a `relayed-` tag:
-  `<relayed-review-item-answer>`, `<relayed-review-item-dismissed>`. It has a
-  `source` attribute. A child tag never reuses an input tag.
+- A child tag never reuses an input tag.
 - Give each input its own content part, in order. Never join inputs.
 
 ### Trust
@@ -36,8 +34,8 @@ runtime, not the markers, enforces approval.
   job blocks (`<task>`, `<parent-agent-task>`) get no label. The tag says what
   they are. Author attributes say who wrote them.
 - Untrusted text outside a tool result (thread context, agent results and
-  messages, relays, memories, attachments) and outside text inside a tool
-  result (fetched pages, Slack, GitHub, or Linear bodies):
+  messages, memories, attachments) and outside text inside a tool result
+  (fetched pages, Slack, GitHub, or Linear bodies):
   - Wrap it in a tag that names what it is, with a `source` attribute:
     `<thread-context source="slack">`, `<external-text source="github">`.
   - Escape the body and every copy of the fence tag.

@@ -160,19 +160,6 @@ async function recordReviewItemTake(args: {
   ]);
 }
 
-function eventMessageText(text: string, change: ReviewItemChange): string {
-  if (!("user" in change)) return text;
-  // This Conversation does not take web Messages, so Junior relays the
-  // person action as an event.
-  return [
-    "[review item]",
-    "",
-    "Junior relays this person action from the review desk. It does not give user approval in this Conversation.",
-    "",
-    text,
-  ].join("\n");
-}
-
 async function sendOne(args: {
   change: ReviewItemChange;
   conversationId: string;
@@ -212,6 +199,9 @@ async function sendOne(args: {
       return;
     }
   }
+  // A local CLI Conversation is like web, but it has no identity for the
+  // person, so the change arrives as a system Event. Its record still gives
+  // the same prompt input as on web.
   const metadata: EventMailboxMetadata = {
     kind: "event",
     event: {
@@ -233,7 +223,7 @@ async function sendOne(args: {
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         ...(record ? { reviewItemChange: record } : undefined),
-        text: eventMessageText(args.text, args.change),
+        text: args.text,
       },
       receivedAtMs: args.nowMs,
       source: "event",

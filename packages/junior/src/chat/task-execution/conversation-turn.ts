@@ -104,7 +104,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import { relayedReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -273,7 +273,7 @@ export function createConversationTurnWorker(
       if (isEventMailboxMetadata(firstMetadata)) {
         inputs = renderEventBatchInputs(
           messages,
-          await relayedReviewItemInputs(messages),
+          await eventReviewItemInputs(messages),
         ).map((text) => ({ kind: "runtime", text }));
         eventMeta = eventBatchMessageMeta(messages);
       } else {

@@ -21,7 +21,7 @@ import {
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
-const RELAY_CONVERSATION_ID = "local:cli:relay";
+const CLI_CONVERSATION_ID = "local:cli:review-items";
 
 const REQUEST = {
   question: "Approve or reject this entry?",
@@ -379,10 +379,10 @@ describe("review item actions API", () => {
         }),
       }),
     ]);
-    // A Conversation that takes no web Messages saves it the same way.
+    // A local CLI Conversation saves it the same way.
     await getConversationStore().recordActivity({
-      conversationId: RELAY_CONVERSATION_ID,
-      destination: { platform: "local", conversationId: RELAY_CONVERSATION_ID },
+      conversationId: CLI_CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CLI_CONVERSATION_ID },
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       source: "local",
       visibility: "public",
@@ -390,12 +390,12 @@ describe("review item actions API", () => {
     const item = await getReviewItem(getDb(), id);
     await sendReviewItemMessages({
       change: { kind: "taken", user: cal },
-      item: { ...item!, conversationIds: [RELAY_CONVERSATION_ID] },
+      item: { ...item!, conversationIds: [CLI_CONVERSATION_ID] },
       nowMs: Date.now(),
       queue: fixture.queue,
     });
-    expect(await pendingMessages(RELAY_CONVERSATION_ID)).toEqual([]);
-    expect(await savedTakes(RELAY_CONVERSATION_ID)).toHaveLength(1);
+    expect(await pendingMessages(CLI_CONVERSATION_ID)).toEqual([]);
+    expect(await savedTakes(CLI_CONVERSATION_ID)).toHaveLength(1);
 
     const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
     expect(dismissed.status).toBe(200);
