@@ -1,3 +1,4 @@
+import type { GitHubStatusIncident } from "../github-status.js";
 import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
@@ -173,6 +174,8 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestCommitPages?(
     target: GitHubPullRequestTarget,
   ): Promise<GitHubCommitPageLoader>;
+  /** Read open and recent GitHub incidents for failed check suites. */
+  loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
@@ -347,6 +350,9 @@ export function createGitHubWebhookRoute(args: {
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              ...(args.loadGitHubIncidents
+                ? { loadGitHubIncidents: args.loadGitHubIncidents }
+                : undefined),
               loadPullRequestFacts:
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,

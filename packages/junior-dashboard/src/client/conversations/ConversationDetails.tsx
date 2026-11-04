@@ -50,8 +50,6 @@ export function ConversationDetails(props: {
   onOpenSubagent(target: SubagentTranscriptTarget): void;
   /** Show one memory where its Turn recalled or captured it. */
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
-  /** The prompt that started each loaded Turn. */
-  memoryPrompts: Map<string, string>;
   overview: ReactNode;
   usage: ReactNode;
 }) {
@@ -98,7 +96,6 @@ export function ConversationDetails(props: {
               if (!panel) props.onClose();
               props.onSelectMemory(entry);
             }}
-            prompts={props.memoryPrompts}
           />
         </div>
       </DetailsPanel>

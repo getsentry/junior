@@ -10,8 +10,8 @@ import { juniorConversations } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAgentTree } from "./agent-tree";
-import { readConversationArchivedAt } from "./archive";
 import { readConversationForks } from "./fork";
+import { readConversationViewerMarks } from "./membership";
 import { readConversationReadPosition } from "./read-position";
 
 /**
@@ -52,11 +52,11 @@ export async function readConversationDetailEtag(
   options: { limit: number; viewer?: User },
 ): Promise<string | undefined> {
   const { viewer } = options;
-  const [subtree, access, archivedAtMs, forks, agentTree, readPosition] =
+  const [subtree, access, viewerMarks, forks, agentTree, readPosition] =
     await Promise.all([
       readSubtreeDetailVersion(conversationId),
       readConversationAccessFromSql(getDb(), [conversationId], viewer),
-      viewer ? readConversationArchivedAt(viewer, conversationId) : undefined,
+      viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
       readConversationForks(conversationId, viewer),
       readConversationAgentTree(conversationId, viewer),
       viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
@@ -65,12 +65,12 @@ export async function readConversationDetailEtag(
   const basis = JSON.stringify({
     access: access.get(conversationId) ?? null,
     agentTree: agentTree ?? null,
-    archivedAtMs: archivedAtMs ?? null,
     forks,
     junior: JUNIOR_VERSION,
     limit: options.limit,
     readPosition: readPosition ?? null,
     subtree,
+    viewerMarks: viewerMarks ?? null,
   });
   return `W/"${createHash("sha256").update(basis).digest("hex")}"`;
 }

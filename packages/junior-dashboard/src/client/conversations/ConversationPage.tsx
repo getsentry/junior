@@ -17,6 +17,7 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
@@ -31,7 +32,6 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
-import { turnPrompts } from "./ConversationMemories";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -208,6 +208,7 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const feedConversation = conversations.find(
@@ -330,10 +331,6 @@ export function ConversationPage(props: {
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
   // Show a chosen memory at its transcript row. Wait for the first page, then
   // load earlier pages until the row renders, or stop when history ends.
-  const memoryPrompts = useMemo(
-    () => turnPrompts(transcript?.events),
-    [transcript?.events],
-  );
   useEffect(() => {
     if (!memoryJump || !transcript) return;
     const anchor = pageRef.current?.querySelector(
@@ -488,6 +485,14 @@ export function ConversationPage(props: {
                 <ConversationAnnotations detail={detail.data} />
               ) : null
             }
+            pin={{
+              // The API lets only participants pin, the same as archive.
+              disabled:
+                !conversation || !detail.data?.isParticipant || pin.isPending,
+              error: Boolean(pin.error),
+              onClick: () => pin.mutate(!conversation?.pinnedAt),
+              pinned: Boolean(conversation?.pinnedAt),
+            }}
             archive={{
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
@@ -618,7 +623,6 @@ export function ConversationPage(props: {
             identity={identity}
             onClose={closeDetails}
             onOpenSubagent={setSubagentTarget}
-            memoryPrompts={memoryPrompts}
             onSelectMemory={(entry) => {
               // Memory rows show only in the Conversation view, and search
               // can hide them.

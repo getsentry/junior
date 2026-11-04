@@ -19,6 +19,7 @@ export const juniorConversationParticipants = pgTable(
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
     archivedAt: timestamptz("archived_at"),
+    pinnedAt: timestamptz("pinned_at"),
   },
   (table) => [
     primaryKey({

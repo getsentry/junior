@@ -1145,6 +1145,45 @@ describe("GitHub webhook events", () => {
     ]);
   });
 
+  it("adds GitHub status incidents to failed check suite events", () => {
+    const [event] = normalizeGitHubEvents({
+      body: {
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/junior"),
+        check_suite: {
+          app: { name: "GitHub Actions" },
+          conclusion: "failure",
+          head_sha: "abcdef1234567890",
+          id: 43,
+          pull_requests: [checkSuitePullRequest(692)],
+        },
+      },
+      checkSuiteFacts: {
+        githubIncidents: [
+          {
+            components: ["Actions", "Git Operations"],
+            impact: "major",
+            name: "Incident with Actions",
+            startedAt: "2026-11-04T09:50:00.000Z",
+            status: "investigating",
+            url: "https://stspg.io/open",
+          },
+        ],
+      },
+      deliveryId: "delivery-check-suite-status",
+      eventName: "check_suite",
+    });
+
+    expect(event).toMatchObject({
+      trustedSummary:
+        "GitHub PR getsentry/junior#692 checks failed for abcdef123456. githubstatus.com lists 1 open or recent GitHub incident.",
+      untrustedText: [
+        "GitHub status incidents:",
+        "- Incident with Actions (investigating; Actions, Git Operations; started 2026-11-04T09:50:00.000Z): https://stspg.io/open",
+      ].join("\n"),
+    });
+  });
+
   it("builds the browser suite url from repo, sha, and suite id", () => {
     expect(
       buildCheckSuiteUrl({

@@ -544,6 +544,10 @@ export function useArchiveConversation(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
+      // Match the API: archive also unpins.
+      const viewerMarks = args.archived
+        ? { archivedAt, pinnedAt: null }
+        : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const archivedSnapshot =
@@ -564,11 +568,16 @@ export function useArchiveConversation(
         const conversations = shouldRestore
           ? [
               ...feed.conversations,
-              { ...archivedSnapshot!.conversation, archivedAt: null },
+              // The archive cleared the pin, so the restored row is unpinned.
+              {
+                ...archivedSnapshot!.conversation,
+                archivedAt: null,
+                pinnedAt: null,
+              },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
           : feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
-                ? { ...conversation, archivedAt }
+                ? { ...conversation, ...viewerMarks }
                 : conversation,
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {
@@ -579,7 +588,9 @@ export function useArchiveConversation(
       queryClient.setQueryData<ConversationSnapshot>(
         detailQueryKey,
         (detail) =>
-          detail ? { ...detail, archivedAt, detailEtag: undefined } : detail,
+          detail
+            ? { ...detail, ...viewerMarks, detailEtag: undefined }
+            : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);

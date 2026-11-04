@@ -15,8 +15,10 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
+import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
+import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestCommitPages,
@@ -90,6 +92,10 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+
+// A failed check suite reports incidents that are open or ended in the last
+// hour. Older incidents rarely explain a suite that just finished.
+const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -205,6 +211,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceUrl: gitHubResourceUrl,
     },
     manifest: {
       name: "github",
@@ -353,6 +360,11 @@ export function githubPlugin(
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
+            loadGitHubIncidents: async () =>
+              await loadGitHubStatusIncidents(
+                ctx.cache,
+                CHECK_SUITE_INCIDENT_WINDOW_MS,
+              ),
             installationIdEnv,
             loadRepositoryRole: async (target) =>
               await loadRepositoryRole(installationEnv, ctx.cache, target),

@@ -18,7 +18,7 @@ import {
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
-  attentionFirst,
+  pinnedAndAttentionFirst,
 } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
@@ -73,7 +73,7 @@ export function ConversationWorkspace() {
   const pagedConversations = useMemo(
     () =>
       pageItems(
-        attentionFirst(
+        pinnedAndAttentionFirst(
           conversations,
           attentionConversationIds(
             waitingConversationIds,

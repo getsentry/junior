@@ -27,6 +27,15 @@ test("opens conversation details beside the chat", async ({
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
+  const runningConversation = page.getByRole("listitem").filter({
+    has: page.getByRole("heading", { name: "Investigate checkout latency" }),
+  });
+  await expect(
+    runningConversation.getByRole("status", { name: "Running" }),
+  ).toBeVisible();
+  await expect(
+    publicConversation.getByRole("status", { name: "Running" }),
+  ).toHaveCount(0);
   await publicConversation.getByText("41 minutes ago", { exact: true }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
@@ -200,7 +209,9 @@ test("shows recalled and captured memories in popovers", async ({
   await expect(
     capturedPopover.getByText("Use pnpm for repository commands."),
   ).toBeVisible();
-  await expect(capturedPopover.getByText("Private")).toBeVisible();
+  await expect(
+    capturedPopover.getByRole("img", { name: "Private" }),
+  ).toBeVisible();
   await screenshot(page, "conversation-captured-memories-popover");
   await page.keyboard.press("Escape");
   await expect(capturedPopover).toBeHidden();
@@ -218,7 +229,9 @@ test("shows recalled and captured memories in popovers", async ({
     .getByRole("button", { name: "1 recalled · 2 captured" })
     .click();
   await details
-    .getByRole("button", { name: /Dashboard transcript events should remain/ })
+    .getByRole("listitem")
+    .filter({ hasText: "Dashboard transcript events should remain" })
+    .getByRole("button", { name: "Go to message" })
     .click();
   await expect(capturedPopover).toBeVisible();
   await expect(
@@ -244,10 +257,9 @@ test("shows recalled memories under their prompt", async ({
       "Checkout latency investigations start with the deployment comparison dashboard.",
     ),
   ).toBeVisible();
-  await expect(popover.getByRole("link", { name: "Open" })).toHaveAttribute(
-    "href",
-    "/memories/memory-checkout-runbook",
-  );
+  await expect(
+    popover.getByRole("link", { name: /^Checkout latency investigations/ }),
+  ).toHaveAttribute("href", "/memories/memory-checkout-runbook");
   await screenshot(page, "conversation-recalled-memories-popover");
   await recalled.click();
   await expect(popover).toBeHidden();

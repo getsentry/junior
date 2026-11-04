@@ -1,5 +1,5 @@
 {
-  "id": "d61ed924-fabd-4829-acaf-c7fa21bd4b6b",
+  "id": "2e88a3fb-855b-4eef-927c-23647c6a70bf",
   "prevId": "596de823-c4c5-4ffc-9a2b-bace35abecdd",
   "version": "7",
   "dialect": "postgresql",
@@ -2137,6 +2137,12 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "pinned_at": {
+          "name": "pinned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2467,13 +2473,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "detail_version": {
-          "name": "detail_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "archived_at": {
           "name": "archived_at",

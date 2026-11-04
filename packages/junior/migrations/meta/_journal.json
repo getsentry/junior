@@ -523,8 +523,15 @@
     {
       "idx": 74,
       "version": "7",
-      "when": 1793795341052,
-      "tag": "0074_conversation_detail_version",
+      "when": 1793803896566,
+      "tag": "0074_conversation_participant_pins",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793810669602,
+      "tag": "0075_conversation_detail_version",
       "breakpoints": true
     }
   ]
