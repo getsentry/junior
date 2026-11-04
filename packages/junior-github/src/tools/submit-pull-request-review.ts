@@ -111,7 +111,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
       readOnlyHint: false,
     },
     description:
-      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
+      "Submit a GitHub pull request review as a comment or change request. To answer a question asked in a pull request review or comment, use event COMMENT. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
     exposure: "direct",
     inputSchema,
     outputSchema,
