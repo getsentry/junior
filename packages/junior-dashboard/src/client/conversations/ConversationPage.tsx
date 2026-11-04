@@ -31,6 +31,14 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
+import { turnPrompts } from "./ConversationMemories";
+import {
+  ConversationMemoryContext,
+  memoryAnchorKey,
+  useConversationMemories,
+  type ConversationMemoryState,
+  type OpenMemoryPopover,
+} from "./conversationMemory";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { ConversationEventLogLoading } from "./ConversationEventLog";
 import {
@@ -161,6 +169,18 @@ export function ConversationPage(props: {
     );
   }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
+  const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
+  // A memory chosen in details waits here until its transcript row renders.
+  const [memoryJump, setMemoryJump] = useState<OpenMemoryPopover>();
+  // The page stays mounted across Conversations. Memory state belongs to one.
+  const [memoryConversationId, setMemoryConversationId] = useState(
+    props.conversationId,
+  );
+  if (memoryConversationId !== props.conversationId) {
+    setMemoryConversationId(props.conversationId);
+    setMemoryPopover(undefined);
+    setMemoryJump(undefined);
+  }
   const quickQuestion = useQuickQuestionThread(props.conversationId);
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
@@ -178,6 +198,15 @@ export function ConversationPage(props: {
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
+  const memoryList = useConversationMemories(conversationId).data;
+  const memoryState = useMemo<ConversationMemoryState>(
+    () => ({
+      list: memoryList,
+      open: memoryPopover,
+      setOpen: setMemoryPopover,
+    }),
+    [memoryList, memoryPopover],
+  );
   const archive = useArchiveConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
@@ -299,6 +328,38 @@ export function ConversationPage(props: {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
+  // Show a chosen memory at its transcript row. Wait for the first page, then
+  // load earlier pages until the row renders, or stop when history ends.
+  const memoryPrompts = useMemo(
+    () => turnPrompts(transcript?.events),
+    [transcript?.events],
+  );
+  useEffect(() => {
+    if (!memoryJump || !transcript) return;
+    const anchor = pageRef.current?.querySelector(
+      `[data-memory-anchor="${CSS.escape(memoryAnchorKey(memoryJump))}"]`,
+    );
+    if (anchor) {
+      anchor.scrollIntoView({ block: "center" });
+      setMemoryPopover(memoryJump);
+      setMemoryJump(undefined);
+    } else if (
+      detail.hasPreviousPage &&
+      !detail.isLoadingPreviousPage &&
+      !detail.historyError
+    ) {
+      loadPreviousPageRef.current();
+    } else if (!detail.isLoadingPreviousPage) {
+      setMemoryJump(undefined);
+    }
+  }, [
+    detail.hasPreviousPage,
+    detail.historyError,
+    detail.isLoadingPreviousPage,
+    memoryJump,
+    transcript,
+    view,
+  ]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
@@ -483,31 +544,35 @@ export function ConversationPage(props: {
                       data.
                     </div>
                   ) : null}
-                  <Transcript
-                    hasPreviousPage={detail.hasPreviousPage}
-                    historyError={detail.historyError}
-                    historyVersion={detail.historyVersion}
-                    lastReadSeq={readAtOpen.lastReadSeq}
-                    live={live}
-                    loadingPreviousPage={detail.isLoadingPreviousPage}
-                    onLoadPreviousPage={detail.loadPreviousPage}
-                    onRead={markRead}
-                    onSelectedEventSeqChange={setSelectedEventSeq}
-                    pendingMessages={detail.inlineMessages}
-                    pinRequestVersion={pinRequestVersion}
-                    responding={
-                      !detail.error && conversationIsResponding(transcript)
-                    }
-                    onOpenSubagentTranscript={onOpenSubagentTranscript}
-                    search={search}
-                    onSearchChange={setSearch}
-                    selectedEventSeq={selectedEventSeq}
-                    startAtUnread={readConversationStartPosition() === "unread"}
-                    transcript={transcript}
-                    turnContextPanel={turnContextPanel}
-                    unread={readAtOpen.unread}
-                    view={view}
-                  />
+                  <ConversationMemoryContext value={memoryState}>
+                    <Transcript
+                      hasPreviousPage={detail.hasPreviousPage}
+                      historyError={detail.historyError}
+                      historyVersion={detail.historyVersion}
+                      lastReadSeq={readAtOpen.lastReadSeq}
+                      live={live}
+                      loadingPreviousPage={detail.isLoadingPreviousPage}
+                      onLoadPreviousPage={detail.loadPreviousPage}
+                      onRead={markRead}
+                      onSelectedEventSeqChange={setSelectedEventSeq}
+                      pendingMessages={detail.inlineMessages}
+                      pinRequestVersion={pinRequestVersion}
+                      responding={
+                        !detail.error && conversationIsResponding(transcript)
+                      }
+                      onOpenSubagentTranscript={onOpenSubagentTranscript}
+                      search={search}
+                      onSearchChange={setSearch}
+                      selectedEventSeq={selectedEventSeq}
+                      startAtUnread={
+                        readConversationStartPosition() === "unread"
+                      }
+                      transcript={transcript}
+                      turnContextPanel={turnContextPanel}
+                      unread={readAtOpen.unread}
+                      view={view}
+                    />
+                  </ConversationMemoryContext>
                 </>
               )}
             </div>
@@ -545,37 +610,51 @@ export function ConversationPage(props: {
         }
       />
       {showDetails ? (
-        <ConversationDetails
-          brief={detail.data?.brief}
-          conversationId={conversationId}
-          highlightReview={reviewOpen}
-          identity={identity}
-          onClose={closeDetails}
-          onOpenSubagent={setSubagentTarget}
-          links={conversationLinks(detail.data)}
-          overview={
-            hasConversationStats({
-              conversation,
-              detail: detail.data,
-            }) ? (
-              <ConversationStats
-                conversation={conversation}
-                detail={detail.data}
-              />
-            ) : null
-          }
-          usage={
-            hasConversationUsageBreakdown({
-              conversation,
-              detail: detail.data,
-            }) ? (
-              <ConversationUsageBreakdown
-                conversation={conversation}
-                detail={detail.data}
-              />
-            ) : null
-          }
-        />
+        <ConversationMemoryContext value={memoryState}>
+          <ConversationDetails
+            brief={detail.data?.brief}
+            conversationId={conversationId}
+            highlightReview={reviewOpen}
+            identity={identity}
+            onClose={closeDetails}
+            onOpenSubagent={setSubagentTarget}
+            memoryPrompts={memoryPrompts}
+            onSelectMemory={(entry) => {
+              // Memory rows show only in the Conversation view, and search
+              // can hide them.
+              if (view !== "rich") onViewChange("rich");
+              setSearch("");
+              setMemoryJump({
+                memoryId: entry.memory.id,
+                source: entry.source,
+                turnId: entry.turnId,
+              });
+            }}
+            links={conversationLinks(detail.data)}
+            overview={
+              hasConversationStats({
+                conversation,
+                detail: detail.data,
+              }) ? (
+                <ConversationStats
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+              ) : null
+            }
+            usage={
+              hasConversationUsageBreakdown({
+                conversation,
+                detail: detail.data,
+              }) ? (
+                <ConversationUsageBreakdown
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+              ) : null
+            }
+          />
+        </ConversationMemoryContext>
       ) : null}
       {showEvent ? (
         <ConversationEventDetails

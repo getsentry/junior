@@ -46,6 +46,9 @@ export function createPluginConversationEventReader(
             Record<string, unknown>
           >`${juniorConversationEvents.payload}->'content'`,
           createdAt: juniorConversationEvents.createdAt,
+          turnId: sql<
+            string | null
+          >`${juniorConversationEvents.payload}->>'turnId'`,
           version: sql<number>`(${juniorConversationEvents.payload}->>'version')::integer`,
         })
         .from(juniorConversationEvents)
@@ -61,6 +64,7 @@ export function createPluginConversationEventReader(
       return rows.map((row) => ({
         content: row.content,
         createdAt: row.createdAt.toISOString(),
+        ...(row.turnId ? { turnId: row.turnId } : undefined),
         version: row.version,
       }));
     },

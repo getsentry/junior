@@ -2527,6 +2527,29 @@ describe("memory plugin storage", () => {
         conversationEvents: {
           async list({ conversationId, eventName }) {
             if (conversationId === "missing") return undefined;
+            if (eventName === "memories_recalled") {
+              return [
+                {
+                  content: { memories: [privateMemory.memory.id] },
+                  createdAt: "2026-07-28T12:02:00.000Z",
+                  version: 1,
+                },
+                {
+                  content: { memories: [hidden.memory.id] },
+                  createdAt: "2026-07-28T12:00:30.000Z",
+                  turnId: "turn-2",
+                  version: 1,
+                },
+                {
+                  content: {
+                    memories: [publicMemory.memory.id, hidden.memory.id],
+                  },
+                  createdAt: "2026-07-28T11:59:00.000Z",
+                  turnId: "turn-1",
+                  version: 1,
+                },
+              ];
+            }
             expect(eventName).toBe("memories_captured");
             return [
               {
@@ -2539,9 +2562,17 @@ describe("memory plugin storage", () => {
                       observedAtMs: TEST_NOW_MS,
                       scope: "public",
                     },
+                    {
+                      content: "Hidden viewer memory.",
+                      id: hidden.memory.id,
+                      kind: "knowledge",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "private",
+                    },
                   ],
                 },
                 createdAt: "2026-07-28T12:01:00.000Z",
+                turnId: "turn-2",
                 version: 2,
               },
               {
@@ -2557,6 +2588,7 @@ describe("memory plugin storage", () => {
                   ],
                 },
                 createdAt: "2026-07-28T12:00:00.000Z",
+                turnId: "turn-1",
                 version: 2,
               },
             ];
@@ -2639,15 +2671,45 @@ describe("memory plugin storage", () => {
           await conversationResponse.json(),
         ),
       ).toEqual({
-        memories: [
+        // The viewer cannot see `hidden` in the store, so its recall drops
+        // it even though a capture snapshot has it, and a recall with only
+        // hidden memories drops out.
+        events: [
           {
-            capturedAt: "2026-07-28T12:01:00.000Z",
-            content: "Use pnpm.",
-            id: "captured-memory",
-            kind: "procedure",
+            memoryIds: [publicMemory.memory.id],
+            source: "recalled",
+            turnId: "turn-1",
+          },
+          {
+            memoryIds: ["captured-memory"],
+            source: "captured",
+            turnId: "turn-1",
+          },
+          {
+            memoryIds: ["captured-memory", hidden.memory.id],
+            source: "captured",
+            turnId: "turn-2",
+          },
+          { memoryIds: [privateMemory.memory.id], source: "recalled" },
+        ],
+        memories: expect.arrayContaining([
+          { content: "Use pnpm.", id: "captured-memory", visibility: "public" },
+          {
+            content: "Hidden viewer memory.",
+            id: hidden.memory.id,
+            visibility: "private",
+          },
+          {
+            content: "Public workspace memory.",
+            id: publicMemory.memory.id,
             visibility: "public",
           },
-        ],
+          {
+            content: "Private conversation memory.",
+            id: privateMemory.memory.id,
+            visibility: "private",
+          },
+        ]),
       });
       const missingConversationResponse = await api.fetch(
         new Request("http://localhost/conversations/missing/memories"),

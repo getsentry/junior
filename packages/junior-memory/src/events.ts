@@ -63,7 +63,7 @@ function renderCapturedMemories(event: {
   if (count === 0) return undefined;
   return {
     icon: "brain" as const,
-    title: `${count} ${count === 1 ? "memory" : "memories"} captured`,
+    title: `Captured ${count} ${count === 1 ? "memory" : "memories"}`,
     details: event.memories.map((memory) => ({
       title: memory.content,
       metadata: [memory.kind, currentScope(memory.scope)],
@@ -111,6 +111,17 @@ export function parseCapturedMemories(
   }
   if (version === memoriesCapturedEvent.version) {
     return capturedMemoriesSchema.parse(content).memories;
+  }
+  return [];
+}
+
+/** Parse the memory ids from one supported stored recall event. */
+export function parseRecalledMemoryIds(
+  version: number,
+  content: unknown,
+): string[] {
+  if (version === memoriesRecalledEvent.version) {
+    return recalledMemoriesSchema.parse(content).memories;
   }
   return [];
 }
