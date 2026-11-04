@@ -262,18 +262,22 @@ export function terminalReplyPinState(input: {
 
 /**
  * Show the jump control only when the reader left the bottom and a newer tail
- * arrived, or when the transcript opened at unread rows. Staying pinned, or
- * intentionally following, must not flash it.
+ * arrived, when the transcript opened at unread rows, or when it does not end
+ * at the latest event. Staying pinned, or intentionally following, must not
+ * flash it.
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
+  endsAtLatest?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
 }): boolean {
   return (
     !input.following &&
-    (Boolean(input.openedAtUnread) || (input.enabled && input.hasPendingUpdate))
+    (input.endsAtLatest === false ||
+      Boolean(input.openedAtUnread) ||
+      (input.enabled && input.hasPendingUpdate))
   );
 }
 
@@ -319,6 +323,12 @@ export function programmaticSettleScrollAction(input: {
 export function usePinnedTranscriptBottom(input: {
   conversationId?: string;
   enabled: boolean;
+  /**
+   * False while newer pages are not loaded. The end of the transcript is
+   * then not the latest event, so the reader cannot follow it, and a page
+   * that loads below them does not pull them down.
+   */
+  endsAtLatest?: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
   pinRequestVersion?: number;
@@ -330,6 +340,8 @@ export function usePinnedTranscriptBottom(input: {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const contentElementRef = useRef<HTMLDivElement | null>(null);
   const enabledRef = useRef(input.enabled);
+  const endsAtLatestRef = useRef(true);
+  endsAtLatestRef.current = input.endsAtLatest ?? true;
   const followingRef = useRef(false);
   const initializedRef = useRef(false);
   const initializedConversationRef = useRef<string | null>(null);
@@ -447,6 +459,7 @@ export function usePinnedTranscriptBottom(input: {
       }
 
       if (intent === "follow") {
+        if (!endsAtLatestRef.current) return;
         setFollowingIntent(true);
         setHasPendingUpdate(false);
         return;
@@ -537,7 +550,7 @@ export function usePinnedTranscriptBottom(input: {
     const snapshot = scrollSnapshot(root);
     previousScrollTopRef.current = snapshot.scrollTop;
     // Unread rows that fit above the bottom leave the reader at the latest.
-    const atBottom = isNearScrollBottom(snapshot);
+    const atBottom = endsAtLatestRef.current && isNearScrollBottom(snapshot);
     setFollowingIntent(atBottom);
     setOpenedAtUnread(!atBottom);
     rememberPlace();
@@ -574,8 +587,13 @@ export function usePinnedTranscriptBottom(input: {
   // reader moved. Then open at the marker, as if it was there at the start.
   const followLatest = useCallback(() => {
     if (awaitingUnreadMarkerRef.current && openAtUnreadMarker()) return;
+    if (!endsAtLatestRef.current) {
+      setFollowingIntent(false);
+      restorePlace();
+      return;
+    }
     scrollToBottom("auto");
-  }, [openAtUnreadMarker, scrollToBottom]);
+  }, [openAtUnreadMarker, restorePlace, scrollToBottom, setFollowingIntent]);
 
   const syncAfterLayoutChange = useCallback(() => {
     if (followingRef.current) {
@@ -763,6 +781,7 @@ export function usePinnedTranscriptBottom(input: {
       jumpToBottom,
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
+        endsAtLatest: input.endsAtLatest,
         following,
         hasPendingUpdate,
         openedAtUnread,
@@ -774,6 +793,7 @@ export function usePinnedTranscriptBottom(input: {
       following,
       hasPendingUpdate,
       input.enabled,
+      input.endsAtLatest,
       jumpToBottom,
       openedAtUnread,
     ],

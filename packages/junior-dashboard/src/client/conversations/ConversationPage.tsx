@@ -410,7 +410,10 @@ export function ConversationPage(props: {
     }),
     [turnContext?.id],
   );
+  // A send or the mobile keyboard pins the latest event, so it skips the
+  // newer pages that are not loaded.
   const requestPin = useCallback(() => {
+    historyRef.current.newer?.showLatest();
     setPinRequestVersion((version) => version + 1);
   }, []);
   const onOpenSubagentTranscript = useCallback(

@@ -38,7 +38,10 @@ export function Transcript(props: {
   /** The read position when the Conversation opened. */
   lastReadSeq?: number;
   loadingPreviousPage?: boolean;
-  /** Newer pages between the read position and the latest. They load on scroll. */
+  /**
+   * Newer pages between the read position and the latest. They load on
+   * scroll. Jump to latest skips them.
+   */
   newerHistory?: TranscriptHistory["newer"];
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
@@ -72,6 +75,7 @@ export function Transcript(props: {
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
+    endsAtLatest: !props.newerHistory,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     pinRequestVersion: props.pinRequestVersion,
@@ -181,8 +185,9 @@ export function Transcript(props: {
                 Newer events could not be loaded.
               </div>
             ) : null}
+            {/* The bottom margin keeps the jump control off this row. */}
             <HistoryPageControl
-              className="mt-3"
+              className="mb-12 mt-3"
               label="Load newer events"
               loading={newer.loading}
               onClick={newer.load}
@@ -201,7 +206,11 @@ export function Transcript(props: {
         />
         <JumpToLatestButton
           hasPendingUpdate={bottomPinning.hasPendingUpdate}
-          onClick={bottomPinning.jumpToBottom}
+          onClick={() => {
+            // The latest page is in the detail, so the jump needs no request.
+            newer?.showLatest();
+            bottomPinning.jumpToBottom();
+          }}
           visible={bottomPinning.showJumpToLatest}
         />
       </div>

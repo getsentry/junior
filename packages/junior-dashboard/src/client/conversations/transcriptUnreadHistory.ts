@@ -11,9 +11,11 @@
  *
  * The latest page joins the transcript only after the newer pages reach it,
  * so the transcript never has a gap. Until then the transcript ends with a
- * row that loads the next newer page.
+ * row that loads the next newer page. A reader who jumps to the latest skips
+ * the newer pages: the transcript shows the latest page from the detail at
+ * once, and earlier pages load above it as the reader scrolls up.
  */
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   conversationEventPageSchema,
@@ -43,6 +45,8 @@ export type TranscriptHistory = {
     /** Load the next newer page, or retry a failed one. */
     load: () => void;
     loading: boolean;
+    /** Skip the newer pages and show the latest page. */
+    showLatest: () => void;
   };
 };
 
@@ -61,6 +65,7 @@ export function useUnreadHistory(input: {
   unreadPage?: ConversationEventPage;
 }): (TranscriptHistory & { isPending: boolean }) | undefined {
   const { conversationId, detail, unreadCursor, unreadPage } = input;
+  const [showingLatest, setShowingLatest] = useState(false);
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -131,7 +136,9 @@ export function useUnreadHistory(input: {
     [detail, latestEvents, newerPages, pages, reached],
   );
 
-  if (!unreadCursor || (newer.error && !newerPages)) return undefined;
+  if (!unreadCursor || showingLatest || (newer.error && !newerPages)) {
+    return undefined;
+  }
 
   const hasPreviousPage = earlier.data
     ? earlier.hasNextPage
@@ -159,6 +166,7 @@ export function useUnreadHistory(input: {
               }
             },
             loading: newer.isFetchingNextPage,
+            showLatest: () => setShowingLatest(true),
           },
         }),
   };

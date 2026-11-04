@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./test";
-import { mobile, screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 
 const PAGE_SIZE = 40;
 
@@ -314,21 +314,74 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect(transcript.getByText("Transcript message 199 ")).toHaveCount(0);
 
   // A send waits in the queue. The transcript does not end at the latest
-  // event yet, so the send has no place there.
+  // event yet, so the send has no place there. The send shows the latest
+  // page at once, without the newer pages. On mobile, the composer focus
+  // already shows it, so this part runs on desktop.
+  await page.setViewportSize(desktop);
   await page.getByLabel("Continue this conversation").fill("Sent while behind");
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Sent while behind")).toBeVisible();
-  releaseNewer();
-  await scrollDownTo(
-    transcript,
+  await expect(
     transcript.getByText("Transcript message 199 "),
-  );
-  await expect(transcript.getByText("Transcript message 150 ")).toBeAttached();
-  await expect(pending.getByText("Sent while behind")).toBeVisible();
+  ).toBeInViewport();
   await expect(
     transcript.getByRole("button", { name: "Load newer events" }),
   ).toHaveCount(0);
+  releaseNewer();
+});
+
+test("jumps to the latest page without the newer pages", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 200,
+    lastReadSeq: 20,
+  });
+  mock.pagedDetail = true;
+  // Newer pages after the page around the read position never load.
+  mock.newerGateAfter = 21;
+  let releaseNewer = () => {};
+  mock.newerGate = new Promise((resolve) => {
+    releaseNewer = resolve;
+  });
+  const pageRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/events")) pageRequests.push(url.search);
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByRole("separator", { name: "New messages" }),
+  ).toBeInViewport();
+
+  // The reader at the end of the loaded pages can still jump. The latest
+  // page is in the detail, so the jump shows it at once.
+  await transcript.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  await jump.click();
+  await expect(
+    transcript.getByText("Transcript message 199 "),
+  ).toBeInViewport();
+  await expect(jump).toHaveCount(0);
+  await expect(
+    transcript.getByRole("button", { name: "Load newer events" }),
+  ).toHaveCount(0);
+  expect(pageRequests).toEqual(["?around=20", "?after=40"]);
+
+  // Earlier pages load above the latest page as the reader scrolls up.
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(transcript.getByText("Transcript message 159 ")).toBeAttached();
+  expect(pageRequests.slice(2)).toEqual(["?before=160"]);
+  releaseNewer();
 });
 
 test("opens linked events and Turns that newer pages have not loaded yet", async ({
@@ -553,6 +606,11 @@ test("opens far behind at the read position and loads newer pages after it", asy
   });
   await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
   releaseNewerPage();
+  // The page loads below the reader and does not pull them down, so the
+  // next page waits until they scroll to it.
+  await expect(transcript.getByText("Transcript message 41 ")).toBeInViewport();
+  await expect(transcript.getByText("Show newer messages")).toBeAttached();
+  expect(cursors).toEqual(["after-40"]);
   await scrollDownTo(
     transcript,
     transcript.getByText(`Transcript message ${latestSeq} `),
