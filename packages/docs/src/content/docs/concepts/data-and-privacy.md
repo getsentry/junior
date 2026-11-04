@@ -36,11 +36,11 @@ Junior uses normalized events instead of storing complete webhook payloads. Secr
 The Slack destination controls conversation visibility. One rule controls access to all conversation data:
 
 - Anyone in the same workspace can read and find a public conversation.
-- Only the person who started a private conversation can read and find it from another conversation.
+- Only the person who started a private conversation can read and find it from another conversation. In the dashboard, people who took part in it can also read it.
 - Work in a public conversation never gets data from a private conversation.
 - Automations and other work that no person started get only public conversations.
 
-Child conversations, artifacts, and plugin records use the access of the conversation that started them.
+Child conversations, artifacts, and plugin records use the access of their root conversation.
 
 Read access does not grant permission to act with another user's connected account.
 

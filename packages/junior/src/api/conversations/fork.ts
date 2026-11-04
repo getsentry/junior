@@ -8,10 +8,23 @@ import {
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ForkConversationBody } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "./access";
 import { throwApiError } from "../http";
 
-/** Fork a Conversation that the viewer can read into a new root they own. */
+// A fork makes the viewer the Owner of a copy. A participant who is not the
+// Owner of a private source must not gain Owner access to its transcript.
+// See `policies/conversation-access.md`.
+function canForkConversation(access: ConversationAccess | undefined): boolean {
+  return Boolean(
+    access?.canViewPrivateContent &&
+    (access.visibility === "public" || access.isOwner),
+  );
+}
+
+/** Fork a Conversation that the viewer may fork into a new root they own. */
 export async function forkConversationForViewer(
   viewer: User,
   sourceConversationId: string,
@@ -22,7 +35,7 @@ export async function forkConversationForViewer(
     [sourceConversationId],
     viewer,
   );
-  if (!access.get(sourceConversationId)?.canViewPrivateContent) {
+  if (!canForkConversation(access.get(sourceConversationId))) {
     throwApiError(403, "You do not have access to this conversation.");
   }
   try {
@@ -104,7 +117,7 @@ export async function readConversationForks(
     forks: string[];
   } = {
     // Child conversations cannot be forked. See `forkConversation`.
-    canFork: !row?.parent,
+    canFork: !row?.parent && canForkConversation(access.get(conversationId)),
     forks: ids.filter(canOpen),
   };
   if (forkedFrom && canOpen(forkedFrom)) {

@@ -19,7 +19,11 @@ Conversation. No row, filter, or Owner match changes this.
   Automation run, a plugin dispatch, or another system Actor) has none.
 - The root Conversation decides visibility and Owner. Child Conversations,
   events, Messages, Briefs, Annotations, artifacts, and plugin records use
-  the values of their root. Missing or unknown visibility is private.
+  the values of their root. Unknown visibility is private. When the root or
+  its Destination is missing, every row after row 1 denies.
+- Visibility is the value stored on the root Destination. Junior updates it
+  on the next message, so a channel that becomes private can read as public
+  until then.
 
 ## Scenarios
 
@@ -76,6 +80,16 @@ Check the scenarios in this order. The first match decides.
 
 ## Exceptions
 
-- Dashboard transcript views also let recorded participants of a private
-  Conversation read it (`canViewPrivateContent`). This differs from row 6.
-  Agent-facing code must not use it.
+These differ from the table. Agent-facing code must not copy them.
+
+- Direct reads by a person also let recorded participants of a private
+  Conversation read it, not only the Owner (row 6). This applies to
+  dashboard and API transcript views, MCP, ACP, Slack annotation details,
+  and the plugin event reader (`canViewPrivateContent`, `isParticipant`).
+  Forking a private Conversation needs the Owner, so a participant cannot
+  get Owner access through a copy.
+- Memory recall returns the private memories of the person in every
+  Conversation, also public ones (`deriveVisibleMemoryScopes`). This breaks
+  the invariant.
+- `searchConversationBriefs` in a public Conversation with no provider
+  tenant searches public Conversations of every tenant (row 2).

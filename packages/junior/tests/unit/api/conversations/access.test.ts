@@ -30,8 +30,8 @@ const scenarios: [
   allowed: boolean,
 ][] = [
   [
-    "same tree: a private child of a public root",
-    access({ rootConversationId: "root:a" }),
+    "same tree: a private tree, also when the person is not the Owner",
+    access({ rootConversationId: "root:a", visibility: "private" }),
     access({ rootConversationId: "root:a", visibility: "private" }),
     true,
   ],
@@ -77,7 +77,7 @@ const scenarios: [
     false,
   ],
   [
-    "owned target with unknown visibility",
+    "owned target with a missing root or Destination",
     access({ visibility: "private" }),
     access({ isOwner: true, visibility: null }),
     false,
