@@ -1,5 +1,5 @@
 // TEMP DIAGNOSTIC: remove before review.
-import { expect, it } from "vitest";
+import { it } from "vitest";
 import { rerankTexts } from "@/chat/pi/client";
 
 const memory =
@@ -24,5 +24,5 @@ it("TEMP rerank probe", async () => {
     });
     scores[query] = result.scores[0]!;
   }
-  expect(scores, "RERANK_PROBE").toEqual({});
+  throw new Error(`RERANK_PROBE ${JSON.stringify(scores)}`);
 });
