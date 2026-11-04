@@ -2304,16 +2304,13 @@ export function readMockConversationEventsAround(
   ) {
     return "turn-not-found";
   }
-  const events = conversation.events;
   return {
-    events,
+    events: conversation.events,
     eventHistory: conversation.eventHistory,
     generatedAt: NOW,
     ...(conversation.previousCursor
       ? { previousCursor: conversation.previousCursor }
-      : events[0] && events[0].seq > 0
-        ? { previousCursor: mockBeforeCursor(conversationId, events[0].seq) }
-        : {}),
+      : undefined),
   };
 }
 

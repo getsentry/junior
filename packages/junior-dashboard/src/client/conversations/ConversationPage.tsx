@@ -12,6 +12,7 @@ import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -223,8 +224,15 @@ export function ConversationPage(props: {
   const [showLatest, setShowLatest] = useState(false);
   const opensAtUnread = startAtUnread && !showLatest;
   // A linked row that the transcript does not hold. The transcript opens at
-  // the page around it until the reader jumps to the latest.
-  const [linkStart, setLinkStart] = useState<HistoryStart>();
+  // the page around it until the reader jumps to the latest. A link at open
+  // starts there, so the first render reads no other page.
+  const [linkStart, setLinkStart] = useState(() =>
+    linkedTurnId !== undefined
+      ? unheldLinkStart(detail.data?.events, { turn: linkedTurnId })
+      : selectedEventSeq === undefined
+        ? undefined
+        : unheldLinkStart(detail.data?.events, { event: selectedEventSeq }),
+  );
   const showLatestPage = useCallback(() => {
     setShowLatest(true);
     setLinkStart(undefined);
@@ -384,28 +392,11 @@ export function ConversationPage(props: {
   // transcript opens at the page around it, which the server finds by the
   // event seq or Turn id. Only a new link does this, so a reader who jumps to
   // the latest stays there. Returns false when the loaded rows hold the link.
-  const openLink = useEffectEvent(
-    (start: { event: number } | { turn: string }) => {
-      const events = history.data?.events;
-      const seq =
-        "event" in start
-          ? start.event
-          : turnStartedEventSeq(events, start.turn);
-      const held =
-        seq !== undefined &&
-        events !== undefined &&
-        seq >= (events[0]?.seq ?? Infinity) &&
-        seq <= (events.at(-1)?.seq ?? -Infinity);
-      if (!held) {
-        setLinkStart(
-          "event" in start
-            ? { event: String(start.event) }
-            : { turn: start.turn },
-        );
-      }
-      return !held;
-    },
-  );
+  const openLink = useEffectEvent((link: ConversationLink) => {
+    const start = unheldLinkStart(history.data?.events, link);
+    if (start) setLinkStart(start);
+    return Boolean(start);
+  });
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
@@ -427,8 +418,7 @@ export function ConversationPage(props: {
     );
     if (anchor) {
       anchor.scrollIntoView({ block: "center" });
-      const { seq: _seq, ...open } = memoryJump;
-      setMemoryPopover(open);
+      setMemoryPopover(memoryJump);
       setMemoryJump(undefined);
     } else if (!holdShown && !openLink({ event: memoryJump.seq })) {
       // The loaded rows hold the event, but no row shows the memory.
@@ -837,3 +827,21 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+type ConversationLink = { event: number } | { turn: string };
+
+/** The page to open for a link, or nothing when `events` hold its row. */
+function unheldLinkStart(
+  events: readonly ConversationReportEvent[] | undefined,
+  link: ConversationLink,
+): HistoryStart | undefined {
+  const seq =
+    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
+  const held =
+    seq !== undefined &&
+    events !== undefined &&
+    seq >= (events[0]?.seq ?? Infinity) &&
+    seq <= (events.at(-1)?.seq ?? -Infinity);
+  if (held) return undefined;
+  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
+}
