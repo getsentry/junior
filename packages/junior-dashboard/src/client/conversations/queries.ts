@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
+  skipToken,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -88,6 +89,22 @@ async function readConversationSnapshot(
     unreadPage,
   );
   return { ...detail, mailbox };
+}
+
+/**
+ * Read a value from the cached Conversation detail without fetching it. The
+ * Conversation page owns the fetch, so its first fetch of a visit can ask for
+ * the page around the read position.
+ */
+export function useCachedConversationDetail<T>(
+  conversationId: string | undefined,
+  select: (detail: ConversationSnapshot) => T,
+) {
+  return useQuery({
+    queryKey: conversationDetailQueryKey(conversationId),
+    queryFn: skipToken,
+    select,
+  }).data;
 }
 
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
