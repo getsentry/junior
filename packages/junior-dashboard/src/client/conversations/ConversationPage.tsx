@@ -486,7 +486,9 @@ export function ConversationPage(props: {
               ) : null
             }
             pin={{
-              disabled: !conversation || pin.isPending,
+              // The API lets only participants pin, the same as archive.
+              disabled:
+                !conversation || !detail.data?.isParticipant || pin.isPending,
               error: Boolean(pin.error),
               onClick: () => pin.mutate(!conversation?.pinnedAt),
               pinned: Boolean(conversation?.pinnedAt),

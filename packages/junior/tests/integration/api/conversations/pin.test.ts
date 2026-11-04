@@ -137,7 +137,7 @@ describe("conversation pin API", () => {
     ).toBeNull();
   });
 
-  it("lets a reader pin a public conversation but not a private one", async () => {
+  it("lets only participants pin, so a pin grants no access", async () => {
     const shared = "local:test:pin-public";
     const hidden = "local:test:pin-private";
     await storeConversation({
@@ -151,26 +151,16 @@ describe("conversation pin API", () => {
       visibility: "private",
     });
     const { app, viewer } = await authenticatedApi("reader@example.com");
-    await expect(feedIds({ viewer })).resolves.toEqual([]);
 
-    // Pinning adds the reader's participant row, so the pin shows in their feed.
-    expect((await setPin(app, shared, true)).status).toBe(200);
-    await expect(feedIds({ viewer })).resolves.toEqual([
-      { conversationId: shared, pinned: true },
-    ]);
-
-    // A private conversation stays hidden, and the pin grants no access.
+    // A reader of a public conversation is not a participant. A pin would add
+    // a participant row, which grants send and control access.
+    expect((await setPin(app, shared, true)).status).toBe(404);
     expect((await setPin(app, hidden, true)).status).toBe(404);
-    await expect(feedIds({ viewer })).resolves.toEqual([
-      { conversationId: shared, pinned: true },
-    ]);
-
-    const unpin = await setPin(app, shared, false);
-    expect(pinConversationResponseSchema.parse(await unpin.json())).toEqual({
-      pinnedAt: null,
-    });
-    await expect(feedIds({ viewer })).resolves.toEqual([
-      { conversationId: shared, pinned: false },
-    ]);
+    await expect(feedIds({ viewer })).resolves.toEqual([]);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(shared, { viewer }),
+      ).isParticipant,
+    ).toBe(false);
   });
 });

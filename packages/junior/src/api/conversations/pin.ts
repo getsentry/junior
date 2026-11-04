@@ -16,10 +16,11 @@ import { readConversationAccessFromSql } from "./access";
 /**
  * Pin or unpin one conversation for the signed-in viewer.
  *
- * A pin lives on the viewer's participant row, so pinning adds that row when
- * it is missing. The row also grants private access, so only a viewer who can
- * already read the conversation can pin it. A pin also restores an archived
- * conversation, because the Pinned section shows only active conversations.
+ * A pin lives on the viewer's participant row, and that row grants send and
+ * control access. So only a participant can pin, the same as archive. The
+ * root actor may have no row yet, so pinning adds it. A pin also restores an
+ * archived conversation, because the Pinned section shows only active
+ * conversations.
  */
 export async function pinConversation(
   viewer: User,
@@ -31,7 +32,7 @@ export async function pinConversation(
     [conversationId],
     viewer,
   );
-  if (!access.get(conversationId)?.canViewPrivateContent) {
+  if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
   const executor = getSqlExecutor();
