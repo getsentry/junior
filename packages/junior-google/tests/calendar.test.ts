@@ -29,7 +29,7 @@ function calendarTools(...responses: Response[]) {
 const LA = "America/Los_Angeles";
 
 describe("findFreeSlots", () => {
-  it("spreads non-overlapping weekday slots across days inside local working hours", () => {
+  it("spreads non-overlapping weekday slots across days inside local working hours and outside lunch", () => {
     // Friday 2026-10-09 through Monday 2026-10-12, Los Angeles (UTC-7).
     const slots = findFreeSlots({
       attendees: [
@@ -47,6 +47,8 @@ describe("findFreeSlots", () => {
         },
       ],
       durationMinutes: 60,
+      lunchEnd: "13:00",
+      lunchStart: "12:00",
       maxResults: 4,
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
       timeMinMs: Date.parse("2026-10-09T15:00:00Z"),
@@ -56,12 +58,61 @@ describe("findFreeSlots", () => {
     });
 
     expect(slots.map((slot) => new Date(slot.startMs).toISOString())).toEqual([
-      // Friday 12:00 and 13:00 local, then skip the weekend.
-      "2026-10-09T19:00:00.000Z",
+      // Friday 13:00 local, after lunch. Then skip the weekend.
       "2026-10-09T20:00:00.000Z",
-      // Monday 09:00, then the Monday slot farthest from it.
+      // Monday 09:00, then the Monday slots farthest from the ones chosen.
       "2026-10-12T16:00:00.000Z",
+      "2026-10-12T18:00:00.000Z",
       "2026-10-12T20:00:00.000Z",
+    ]);
+  });
+
+  it("puts slots next to existing meetings ahead of isolated ones", () => {
+    // Monday 2026-10-12 and Tuesday 2026-10-13, London (UTC+1).
+    const slots = findFreeSlots({
+      attendees: [
+        {
+          // Busy Tuesday 11:00-12:00 local, and 14:00-14:50 local.
+          busy: [
+            {
+              startMs: Date.parse("2026-10-13T10:00:00Z"),
+              endMs: Date.parse("2026-10-13T11:00:00Z"),
+            },
+            {
+              startMs: Date.parse("2026-10-13T13:00:00Z"),
+              endMs: Date.parse("2026-10-13T13:50:00Z"),
+            },
+          ],
+          email: REQUESTER,
+          required: true,
+          timeZone: "Europe/London",
+        },
+        {
+          busy: [],
+          email: "bob@example.com",
+          required: true,
+          timeZone: "Europe/London",
+        },
+      ],
+      durationMinutes: 30,
+      lunchEnd: "13:00",
+      lunchStart: "12:00",
+      maxResults: 3,
+      timeMaxMs: Date.parse("2026-10-14T00:00:00Z"),
+      timeMinMs: Date.parse("2026-10-12T00:00:00Z"),
+      timeZone: "Europe/London",
+      workdayEnd: "17:00",
+      workdayStart: "09:00",
+    });
+
+    expect(slots.map((slot) => new Date(slot.startMs).toISOString())).toEqual([
+      // Tuesday 10:30 local, right before the 11:00 meeting. The slot right
+      // after it, 12:00, is lunch.
+      "2026-10-13T09:30:00.000Z",
+      // Tuesday 15:00 local, 10 minutes after the 14:50 end.
+      "2026-10-13T14:00:00.000Z",
+      // Monday has no meetings, so its first free slot comes last.
+      "2026-10-12T08:00:00.000Z",
     ]);
   });
 
@@ -85,6 +136,8 @@ describe("findFreeSlots", () => {
         },
       ],
       durationMinutes: 60,
+      lunchEnd: "13:00",
+      lunchStart: "12:00",
       maxResults: 3,
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
       timeMinMs: Date.parse("2026-10-12T00:00:00Z"),
