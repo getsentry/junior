@@ -82,7 +82,7 @@ const listedAgentSchema = z
     relation: z
       .enum(AGENT_RELATIONS)
       .describe(
-        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. top_level: another root conversation that you can message.",
+        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. top_level: another root conversation that you can read.",
       ),
     conversation_id: z
       .string()
@@ -211,7 +211,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "relatives (default): this conversation, its parent, its child agents, and its siblings. top_level: other root conversations that you can read and message. Only a root conversation can search top_level.",
+        "relatives (default): this conversation, its parent, its child agents, and its siblings. top_level: other root conversations that you can read. Only a root conversation can search top_level.",
       ),
     conversation_ids: z
       .array(z.string().trim().min(1))
@@ -228,7 +228,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Finds the conversations that created, changed, or read the resource.",
+        "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
       ),
     query: z
       .string()
@@ -255,7 +255,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        `top_level only. Maximum results. Default ${TOP_LEVEL_DEFAULT_LIMIT}; max ${TOP_LEVEL_MAX_LIMIT}.`,
+        `Maximum top_level results. Default ${TOP_LEVEL_DEFAULT_LIMIT}; max ${TOP_LEVEL_MAX_LIMIT}. Relatives are not limited.`,
       ),
   })
   .strict();
@@ -272,7 +272,7 @@ export function createSearchAgentsTool(context: {
 }) {
   return zodTool({
     description:
-      "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other root conversations that you can read and message. Use it to check which agents are still working, to find the conversation that owns some work, or to find an agent before you message it with messageAgent. Results still arrive as new tasks; do not poll with this tool.",
+      "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other root conversations that you can read. messageAgent can send to a top-level agent only when it has the same visibility as this conversation. Results of child agents arrive as new tasks, not through this tool.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

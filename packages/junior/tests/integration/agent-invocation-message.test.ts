@@ -416,7 +416,7 @@ describe("messageAgent", () => {
     }
   });
 
-  it("lets top-level agents message public agents and private agents that the person owns", async () => {
+  it("lets top-level agents message agents with the same visibility that they may read", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
@@ -548,10 +548,22 @@ describe("messageAgent", () => {
           `Conversation events are not accessible: ${target}`,
         );
       }
-      // A linked resource finds the conversations that touched it.
+      // A linked resource finds the conversations that touched it, also
+      // through a child agent. Access still decides what is visible.
       await annotatePullRequest(publicTarget);
+      const ownedChild = "agent:owned-child";
+      await getConversationStore().createChild({
+        childConversationId: ownedChild,
+        parentConversationId: privateOwned,
+      });
+      await annotatePullRequest(ownedChild);
       await expect(
         searchTopLevel(privateSender, { annotation: PULL_REQUEST_KEY }),
+      ).resolves.toEqual([publicTarget, privateOwned].sort());
+      await expect(
+        searchTopLevel(slackParentConversationId, {
+          annotation: PULL_REQUEST_KEY,
+        }),
       ).resolves.toEqual([publicTarget]);
       await expect(
         createSearchAgentsTool({
@@ -653,9 +665,9 @@ describe("messageAgent", () => {
         "is this conversation",
       );
 
-      // A private conversation reaches public agents and private agents that
-      // the person owns. Membership is not ownership. The target cannot
-      // answer a private sender.
+      // A private conversation messages only private agents that the person
+      // owns. Membership is not ownership. The target cannot answer a
+      // private sender.
       const fromPrivate = topLevelRun(privateSender);
       await expect(send(fromPrivate, privateOwned)).resolves.toEqual({
         conversation_id: privateOwned,
@@ -667,9 +679,10 @@ describe("messageAgent", () => {
       await expect(send(fromPrivate, privateMember)).rejects.toThrow(
         "a top-level agent that you can message",
       );
+      // Private data never enters a public conversation.
       await expect(
         send(fromPrivate, publicTarget, "call-private-to-public"),
-      ).resolves.toMatchObject({ conversation_id: publicTarget });
+      ).rejects.toThrow("a private conversation cannot message a public one");
       // An event Turn has no person, so it reaches no private agent.
       await expect(
         send(topLevelRun(privateSender, EVENT_SYSTEM_ACTOR), privateOwned),

@@ -1,7 +1,10 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationAnnotations } from "@/db/schema";
+import {
+  juniorConversationAnnotations,
+  juniorConversations,
+} from "@/db/schema";
 
 // Exact key, or a nested child that continues with "#". Avoids sibling key
 // collisions and partial nested-id prefixes.
@@ -29,6 +32,31 @@ export function hasAnnotationKey(
     from ${juniorConversationAnnotations}
     where ${and(
       eq(juniorConversationAnnotations.conversationId, conversationId),
+      annotationKeyMatches(key),
+    )}
+  )`;
+}
+
+const ANNOTATED_ALIAS = "annotated_conversations";
+
+/**
+ * Match root Conversations where any Conversation in the tree has an
+ * Annotation with `key`. Tools write the Annotation on the Conversation that
+ * ran them, which can be a child agent.
+ */
+export function treeHasAnnotationKey(
+  rootConversationId: AnyPgColumn,
+  key: string,
+): SQL {
+  // An alias, so the outer query's Conversation columns are not shadowed.
+  const annotated = alias(juniorConversations, ANNOTATED_ALIAS);
+  return sql`exists (
+    select 1
+    from ${juniorConversationAnnotations}
+    inner join ${juniorConversations} as ${sql.identifier(ANNOTATED_ALIAS)}
+      on ${annotated.conversationId} = ${juniorConversationAnnotations.conversationId}
+    where ${and(
+      eq(annotated.rootConversationId, rootConversationId),
       annotationKeyMatches(key),
     )}
   )`;

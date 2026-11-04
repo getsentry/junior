@@ -25,7 +25,7 @@ import {
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
-import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
+import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import {
@@ -36,7 +36,7 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 
-/** One top-level agent that the requester may read, find, and message. */
+/** One top-level agent that the requester may read and find. */
 export interface TopLevelAgent {
   /** The viewer archived this Conversation. */
   archived: boolean;
@@ -102,6 +102,11 @@ export async function searchTopLevelAgents(args: {
       : undefined;
   const conditions: (SQL | undefined)[] = [
     isNull(juniorConversations.parentConversationId),
+    // Match the access check, so `limit` counts only valid roots.
+    eq(
+      juniorConversations.rootConversationId,
+      juniorConversations.conversationId,
+    ),
     // An unkept Quick question is a private side thread.
     isNull(juniorConversations.quickQuestionAt),
     isNull(juniorConversations.transcriptPurgedAt),
@@ -112,7 +117,10 @@ export async function searchTopLevelAgents(args: {
       ? or(eq(juniorDestinations.visibility, "public"), ownedByViewer)
       : eq(juniorDestinations.visibility, "public"),
     search.annotation
-      ? hasAnnotationKey(juniorConversations.conversationId, search.annotation)
+      ? treeHasAnnotationKey(
+          juniorConversations.conversationId,
+          search.annotation,
+        )
       : undefined,
     search.conversationIds
       ? inArray(juniorConversations.conversationId, [...search.conversationIds])

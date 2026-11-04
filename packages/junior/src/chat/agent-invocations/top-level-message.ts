@@ -77,6 +77,14 @@ async function requireTopLevelAgentAccess(args: {
   ) {
     throw notReachable;
   }
+  // A message writes the sender's data into the target. Private data never
+  // enters a public Conversation. The target is public, so this error leaks
+  // nothing.
+  if (receiver.visibility === "public" && sender.visibility !== "public") {
+    throw new AgentMessageTargetError(
+      `"${args.to}" is public, and a private conversation cannot message a public one`,
+    );
+  }
   return sender.visibility === "public" ? "public" : "private";
 }
 

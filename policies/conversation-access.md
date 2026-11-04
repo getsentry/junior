@@ -52,6 +52,9 @@ Check the scenarios in this order. The first match decides.
 - Find and act follow read. A search returns only targets that the
   requester may read. A tool that acts on another Conversation, such as
   `messageAgent`, checks the same rule.
+- Write needs one more check. Data that a private requester writes into a
+  public target becomes public, so a private requester never writes into a
+  public target. It may still read and find it.
 - Filters, such as `conversation_ids`, `annotation`, or `query`, only make
   the result smaller. They never add a target that the rule denies.
 - Give the same error for "not found" and "no access", so that the error
