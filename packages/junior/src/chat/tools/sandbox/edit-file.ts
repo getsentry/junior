@@ -89,13 +89,13 @@ export async function editFile(params: {
 }
 
 const editReplacementSchema = z.object({
-  oldText: z
+  old_text: z
     .string()
     .min(1)
     .describe(
       "Exact text to replace. It must be unique in the original file and must not overlap another edit.",
     ),
-  newText: z.string().describe("Replacement text for this edit."),
+  new_text: z.string().describe("Replacement text for this edit."),
 });
 
 /** Create the sandbox edit tool definition exposed to the agent. */
@@ -108,7 +108,7 @@ export function createEditFileTool() {
       readOnlyHint: false,
     },
     description:
-      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
+      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each old_text must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
     prepareArguments: prepareEditFileArguments,
     executionMode: "sequential",
     inputSchema: z.object({

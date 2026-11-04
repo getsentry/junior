@@ -69,7 +69,7 @@ describe("writeSandboxGeneratedArtifacts", () => {
       {
         bytes: Buffer.from("image-bytes").byteLength,
         filename: "generated.png",
-        mimeType: "image/png",
+        mime_type: "image/png",
         path: GENERATED_IMAGE_PATH,
       },
     ]);

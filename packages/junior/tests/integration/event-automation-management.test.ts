@@ -121,7 +121,7 @@ describe("event automation management", () => {
           automationToolContext(context("U999", "COTHER")),
           getEventCatalog(),
         ),
-        { automationId: created.automation.id },
+        { automation_id: created.automation.id },
       ),
     ).rejects.toThrow("Only scheduled automations can run now.");
     const update = (input: Record<string, unknown>) =>
@@ -130,7 +130,7 @@ describe("event automation management", () => {
           automationToolContext(context("U999", "COTHER")),
           getEventCatalog(),
         ),
-        { automationId: created.automation.id, ...input },
+        { automation_id: created.automation.id, ...input },
       );
     await update({ status: "paused" });
     // The paused task still uses the creator's credentials.
@@ -155,7 +155,7 @@ describe("event automation management", () => {
         automationToolContext(context("U999", "COTHER")),
         getEventCatalog(),
       ),
-      { automationId: created.automation.id },
+      { automation_id: created.automation.id },
     );
     expect(
       await getEventAutomation(fixture.sql.db(), created.automation.id),
@@ -177,7 +177,7 @@ describe("event automation management", () => {
           getEventCatalog(),
         ),
         {
-          automationId: created.automation.id,
+          automation_id: created.automation.id,
           instruction: "Change a private task from another channel.",
         },
       ),
@@ -219,8 +219,8 @@ describe("event automation management", () => {
           getEventCatalog(),
         ),
         {
-          automationId: created.automation.id,
-          credentialMode: "creator",
+          automation_id: created.automation.id,
+          credential_mode: "creator",
         },
       ),
     ).rejects.toThrow(
@@ -232,7 +232,7 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         trigger: {
           type: "event",
           namespace: "github",
@@ -257,13 +257,13 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         trigger: {
           type: "event",
           namespace: "github",
           label: "GitHub PR getsentry/junior#1176",
           events: ["pull_request.review.changes_requested"],
-          match: { pullRequest: 1176 },
+          match: { pull_request: 1176 },
         },
       },
     );
@@ -280,10 +280,10 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: null,
         trigger: null,
-        credentialMode: "creator",
+        credential_mode: "creator",
       },
     );
     await execute(
@@ -292,7 +292,7 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Address the requested changes.",
       },
     );
@@ -307,7 +307,7 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Only summarize the requested changes.",
       },
     );
@@ -331,7 +331,7 @@ describe("event automation management", () => {
         getEventCatalog(),
       ),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
       },
     );
     expect(deleted).not.toHaveProperty("cards");
@@ -371,7 +371,7 @@ describe("event automation management", () => {
           getEventCatalog(),
         ),
         {
-          automationId: created.automation.id,
+          automation_id: created.automation.id,
           instruction: "Try to update the deleted task.",
         },
       ),

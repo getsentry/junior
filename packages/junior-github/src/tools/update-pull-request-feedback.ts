@@ -28,12 +28,12 @@ type PullRequestCommentKind = "conversation" | "review";
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    commentKind: z
+    comment_kind: z
       .enum(["conversation", "review"])
       .describe(
         'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment.',
       ),
-    commentId: z
+    comment_id: z
       .number()
       .int()
       .positive()
@@ -51,16 +51,16 @@ const inputSchema = z
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequestFeedback"),
   repo: z.string(),
-  commentId: z.number(),
+  comment_id: z.number(),
   status: z.enum(["addressed", "declined"]),
-  reactionId: z.number(),
+  reaction_id: z.number(),
 });
 interface Result extends PluginToolOutput {
   target: "updatePullRequestFeedback";
   repo: string;
-  commentId: number;
+  comment_id: number;
   status: FeedbackOutcome;
-  reactionId: number;
+  reaction_id: number;
 }
 
 function parseRepo(value: string) {
@@ -215,7 +215,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the comment_id and comment_kind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
@@ -227,7 +227,11 @@ export function createGitHubUpdatePullRequestFeedbackTool(
           { cause: parsedInput.error },
         );
       }
-      const { commentId, commentKind, status } = parsedInput.data;
+      const {
+        comment_id: commentId,
+        comment_kind: commentKind,
+        status,
+      } = parsedInput.data;
       const repo = parseRepo(parsedInput.data.repo);
       const botUserId = botUserIdFromEmail(botEmail);
       if (botUserId === undefined) {
@@ -294,9 +298,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         return {
           target: "updatePullRequestFeedback",
           repo: repo.ref,
-          commentId,
+          comment_id: commentId,
           status,
-          reactionId: existing.id,
+          reaction_id: existing.id,
         };
       }
 
@@ -322,9 +326,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       return {
         target: "updatePullRequestFeedback",
         repo: repo.ref,
-        commentId,
+        comment_id: commentId,
         status,
-        reactionId: created.id,
+        reaction_id: created.id,
       };
     },
   });

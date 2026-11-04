@@ -4140,7 +4140,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         created: true,
         memory: {
           content: "Prefers valid expiration to be stored.",
-          expiresAtMs: Date.parse("2026-06-19T13:00:00+00:00"),
+          expires_at: "2026-06-19T13:00:00.000Z",
         },
       });
       await expect(

@@ -16,7 +16,7 @@ describe("buildSandboxInput", () => {
       env: { AGENT_PLUGIN: "1" },
     });
     expect(
-      buildSandboxInput("bash", { command: "sleep 10", timeoutMs: 1000 }),
+      buildSandboxInput("bash", { command: "sleep 10", timeout_ms: 1000 }),
     ).toEqual({
       command: "sleep 10",
       timeoutMs: 1000,
@@ -55,7 +55,7 @@ describe("buildSandboxInput", () => {
         pattern: "needle",
         path: "src",
         glob: "*.ts",
-        ignoreCase: true,
+        ignore_case: true,
         literal: true,
         context: 1,
         limit: 2,
@@ -87,7 +87,7 @@ describe("buildSandboxInput", () => {
   });
 
   it("normalizes editFile params", () => {
-    const edits = [{ oldText: "before", newText: "after" }];
+    const edits = [{ old_text: "before", new_text: "after" }];
     expect(buildSandboxInput("editFile", { path: "src/a.ts", edits })).toEqual({
       path: "src/a.ts",
       edits,

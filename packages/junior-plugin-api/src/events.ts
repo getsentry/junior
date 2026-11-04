@@ -44,7 +44,10 @@ export const resourceTypeSchema = z
     "Canonical plugin-defined resource type, such as issue or pull_request.",
   );
 
+// Plugins declare camelCase filter keys. Tool inputs and results use the
+// snake_case form, so the two convert without a lookup.
 const EVENT_MATCH_FIELD_NAME = /^[a-z][a-zA-Z0-9]*$/;
+const AGENT_EVENT_MATCH_KEY = /^[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)*$/;
 
 /** One exact value a watch or event automation may require on trusted event data. */
 export const eventMatchFieldSchema = z
@@ -105,35 +108,78 @@ export const eventMatchFieldsSchema = z
     }
   });
 
-/** Exact trusted values required before a watch or event automation runs. */
-export const eventMatchSchema = z
-  .record(
-    z.string().regex(EVENT_MATCH_FIELD_NAME),
-    z.union([
-      z.boolean(),
-      z.number().finite(),
-      z.string().min(1),
-      z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
-    ]),
-  )
-  .superRefine((match, context) => {
-    if (Object.keys(match).length > EVENT_DATA_MAX_KEYS) {
-      context.addIssue({
-        code: "custom",
-        message: `Event match may include at most ${EVENT_DATA_MAX_KEYS} keys.`,
-      });
-    }
-    for (const [key, value] of Object.entries(match)) {
-      if (!Array.isArray(value)) continue;
-      if (value.some((entry) => typeof entry === "boolean")) {
+function matchSchema(keyPattern: RegExp) {
+  return z
+    .record(
+      z.string().regex(keyPattern),
+      z.union([
+        z.boolean(),
+        z.number().finite(),
+        z.string().min(1),
+        z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
+      ]),
+    )
+    .superRefine((match, context) => {
+      if (Object.keys(match).length > EVENT_DATA_MAX_KEYS) {
         context.addIssue({
           code: "custom",
-          message: `Event match field "${key}" cannot use a boolean list.`,
-          path: [key],
+          message: `Event match may include at most ${EVENT_DATA_MAX_KEYS} keys.`,
         });
       }
-    }
-  });
+      for (const [key, value] of Object.entries(match)) {
+        if (!Array.isArray(value)) continue;
+        if (value.some((entry) => typeof entry === "boolean")) {
+          context.addIssue({
+            code: "custom",
+            message: `Event match field "${key}" cannot use a boolean list.`,
+            path: [key],
+          });
+        }
+      }
+    });
+}
+
+/** Exact trusted values required before a watch or event automation runs. */
+export const eventMatchSchema = matchSchema(EVENT_MATCH_FIELD_NAME);
+
+/**
+ * A match as tool inputs and results write it. Each key is the snake_case
+ * name of a declared field: `pullRequest` is `pull_request`.
+ */
+export const agentEventMatchSchema = matchSchema(AGENT_EVENT_MATCH_KEY);
+
+/** Name a declared filter as tool inputs and results write it. */
+export function agentEventMatchKey(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/** Name a tool-input filter as its plugin declares it. */
+function declaredEventMatchKey(key: string): string {
+  return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function renameMatchKeys<T>(
+  match: Readonly<Record<string, T>>,
+  rename: (key: string) => string,
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(match).map(([key, value]) => [rename(key), value]),
+  );
+}
+
+/** Copy event data or a saved match with snake_case keys, for the agent. */
+export function agentEventKeys<T>(
+  match: Readonly<Record<string, T>>,
+): Record<string, T> {
+  return renameMatchKeys(match, agentEventMatchKey);
+}
+
+/** Copy a tool-input match with the keys that its plugin declares. */
+export function declaredEventKeys<T>(
+  match: Readonly<Record<string, T>>,
+): Record<string, T> {
+  return renameMatchKeys(match, declaredEventMatchKey);
+}
 
 export type EventMatch = z.output<typeof eventMatchSchema>;
 export type EventMatchFields = z.output<typeof eventMatchFieldsSchema>;
@@ -516,13 +562,14 @@ export const subscribableResourceSchema = z
     label: z.string().min(1),
     /**
      * Filters that select the events of this resource in an event automation
-     * trigger, such as `{ repo, pullRequest }`. A Watch uses `identifier`.
+     * trigger, such as `{ repo, pull_request }`. A Watch uses `identifier`.
      * Missing when event automations cannot use this resource.
      */
-    match: eventMatchSchema.optional(),
+    match: agentEventMatchSchema.optional(),
     namespace: z.string().min(1),
-    suggestedEvents: z.array(eventTypeSchema).optional(),
-    supportedEvents: z.array(eventTypeSchema),
+    // Snake case: the model reads this object in tool results.
+    suggested_events: z.array(eventTypeSchema).optional(),
+    supported_events: z.array(eventTypeSchema),
     type: resourceTypeSchema,
   })
   .strict();

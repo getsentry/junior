@@ -52,7 +52,7 @@ describe("Slack canvas file-like tools", () => {
     const result = await tool.execute(
       {
         canvas: "F0PREVIOUS",
-        edits: [{ oldText: "Old summary", newText: "New summary" }],
+        edits: [{ old_text: "Old summary", new_text: "New summary" }],
       },
       {} as never,
     );
@@ -103,8 +103,8 @@ describe("Slack canvas file-like tools", () => {
       {
         canvas: "F0PREVIOUS",
         edits: [
-          { oldText: "Alpha", newText: "Alpha updated" },
-          { oldText: "Gamma", newText: "Gamma updated" },
+          { old_text: "Alpha", new_text: "Alpha updated" },
+          { old_text: "Gamma", new_text: "Gamma updated" },
         ],
       },
       {} as never,
@@ -145,7 +145,7 @@ describe("Slack canvas file-like tools", () => {
     const result = await tool.execute(
       {
         canvas: "F0PREVIOUS",
-        edits: [{ oldText: "Old summary", newText: "New summary" }],
+        edits: [{ old_text: "Old summary", new_text: "New summary" }],
       },
       {} as never,
     );
@@ -174,7 +174,7 @@ describe("Slack canvas file-like tools", () => {
       tool.execute(
         {
           canvas: "F0PREVIOUS",
-          edits: [{ oldText: "Missing", newText: "Replacement" }],
+          edits: [{ old_text: "Missing", new_text: "Replacement" }],
         },
         {} as never,
       ),
@@ -195,7 +195,7 @@ describe("Slack canvas file-like tools", () => {
       tool.execute(
         {
           canvas: "F0PREVIOUS",
-          edits: [{ oldText: "Duplicate", newText: "Replacement" }],
+          edits: [{ old_text: "Duplicate", new_text: "Replacement" }],
         },
         {} as never,
       ),

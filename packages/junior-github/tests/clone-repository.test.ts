@@ -40,7 +40,7 @@ describe("cloneRepository", () => {
     );
     expect(
       tool.describeProposal?.({
-        allowAdHoc: true,
+        allow_ad_hoc: true,
         repo: "getsentry/junior",
       }),
     ).toBe(
@@ -109,7 +109,7 @@ describe("cloneRepository", () => {
     expect(error).toMatchObject({
       name: "PluginToolInputError",
       message:
-        'Repository getsentry/junior is part of Workspaces "junior", "sentry". Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
+        'Repository getsentry/junior is part of Workspaces "junior", "sentry". Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allow_ad_hoc=true only for an intentional ad-hoc checkout.',
     });
     expect(findByRepository).toHaveBeenCalledWith({
       provider: "github",
@@ -130,12 +130,12 @@ describe("cloneRepository", () => {
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        'Repository getsentry/junior is part of Workspace "junior". Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
+        'Repository getsentry/junior is part of Workspace "junior". Call switchWorkspace with that name; the checkout is already present after the switch. Pass allow_ad_hoc=true only for an intentional ad-hoc checkout.',
     });
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("clones when allowAdHoc overrides matching Workspaces", async () => {
+  it("clones when allow_ad_hoc overrides matching Workspaces", async () => {
     const run = vi
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
@@ -147,7 +147,7 @@ describe("cloneRepository", () => {
     );
 
     const result = await tool.execute!(
-      { allowAdHoc: true, repo: "getsentry/junior" },
+      { allow_ad_hoc: true, repo: "getsentry/junior" },
       {} as never,
     );
 

@@ -549,7 +549,7 @@ describe("agent invocation conversation work", () => {
               { ...context(), conversationId: childConversationId },
               getEventCatalog(),
             ).watchTimer!,
-            { afterMs: 60_000, intent: "Check the PR checks." },
+            { after_ms: 60_000, intent: "Check the PR checks." },
             "child-timer",
           );
           clock.mockReturnValue(clock() + 120_000);

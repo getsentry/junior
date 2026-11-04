@@ -25,6 +25,10 @@ contradictory or unsafe requests.
   or a discovery tool. Do not paginate provider inventory to resolve names.
 - Keep runtime authority, destination, actor, credentials, and durable context
   out of model arguments. See `runtime-boundary-schemas.md`.
+- Input and output schema keys are snake_case, so each value has one name in
+  arguments and results. Card fields that the dashboard reads
+  (`objectCards`, `objectAnnotations`, `removedCards`) are the exception.
+  `tool-key-casing:check` enforces this.
 
 ### Authoring
 

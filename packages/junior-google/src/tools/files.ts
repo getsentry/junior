@@ -166,7 +166,7 @@ export function fileOutputFields(file: {
   webViewLink?: string;
 }) {
   return {
-    ...(file.modifiedTime ? { modifiedTime: file.modifiedTime } : undefined),
+    ...(file.modifiedTime ? { modified_at: file.modifiedTime } : undefined),
     ...(file.webViewLink ? { url: file.webViewLink } : undefined),
   };
 }

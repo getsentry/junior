@@ -76,8 +76,8 @@ export function gitHubReleaseSourceSubscribable(input: {
       repo: gitHubRepoDataSchema.parse(input.repo),
       ...(tag ? { tag: gitHubReleaseTagDataSchema.parse(tag) } : undefined),
     },
-    suggestedEvents: GITHUB_RELEASE_SUGGESTED_EVENTS,
-    supportedEvents: [...GITHUB_RELEASE_EVENTS],
+    suggested_events: GITHUB_RELEASE_SUGGESTED_EVENTS,
+    supported_events: [...GITHUB_RELEASE_EVENTS],
     type: "release_source",
   };
 }

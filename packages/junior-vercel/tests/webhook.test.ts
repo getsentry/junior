@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import {
+  declaredEventKeys,
   eventMatches,
   type EventInput,
   type EventMatch,
@@ -138,7 +139,8 @@ describe("Vercel webhook events", () => {
     ).toEqual([]);
 
     // An event automation copies `match` from the tool result, and a Watch
-    // copies `identifier`. Both must select the same events.
+    // copies `identifier`. Both must select the same events. Core reads the
+    // snake_case match keys as declared keys.
     const subscribables = new Map(
       deployments
         .flatMap(([projectId, target, commitSha]) => [
@@ -153,7 +155,10 @@ describe("Vercel webhook events", () => {
         .map((input) =>
           vercelDeploymentSubscribable({ ...input, canSubscribe: true }),
         )
-        .map((resource) => [resource!.identifier, resource!.match]),
+        .map((resource) => [
+          resource!.identifier,
+          resource!.match && declaredEventKeys(resource!.match),
+        ]),
     );
     expect(
       identifierMatchMismatches({

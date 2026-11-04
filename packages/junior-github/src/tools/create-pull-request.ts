@@ -153,7 +153,7 @@ const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
   stack: z
-    .object({ number: z.number(), pullRequests: z.array(z.number()) })
+    .object({ number: z.number(), pull_requests: z.array(z.number()) })
     .optional(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),

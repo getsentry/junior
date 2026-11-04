@@ -103,7 +103,7 @@ describe("Watches", () => {
         ]),
         identifier: `deployment-source:getsentry/junior-prod:production:${commitSha}`,
         namespace: "github",
-        resourceType: "deployment_source",
+        resource_type: "deployment_source",
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
@@ -145,7 +145,7 @@ describe("Watches", () => {
         ]),
         identifier: pullRequest,
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
       }),
     );
     expect(watches.map(toolOutput)).toContainEqual(

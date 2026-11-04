@@ -83,7 +83,7 @@ describe("event automations with no identifier", () => {
         ) as Promise<{
           automation: {
             id: string;
-            trigger: { identifier: unknown; resourceType: unknown };
+            trigger: { identifier: unknown; resource_type: unknown };
           };
         }>;
       const trigger = {
@@ -103,11 +103,11 @@ describe("event automations with no identifier", () => {
           {
             ...trigger,
             identifier: "getsentry/junior#1",
-            resourceType: "pull_request",
+            resource_type: "pull_request",
           },
           "identifier-input",
         ),
-      ).rejects.toThrow('Unrecognized keys: "identifier", "resourceType"');
+      ).rejects.toThrow('Unrecognized keys: "identifier", "resource_type"');
       // Event data has a lowercase repo, so the saved filter does too.
       const created = await create(
         { ...trigger, match: { repo: "getsentry/Junior" } },
@@ -115,7 +115,7 @@ describe("event automations with no identifier", () => {
       );
       expect(created.automation.trigger).toMatchObject({
         identifier: null,
-        resourceType: null,
+        resource_type: null,
         match: { repo: "getsentry/junior" },
       });
       const [row] = await fixture.sql
@@ -216,7 +216,7 @@ describe("event automations with no identifier", () => {
         {
           ...trigger,
           label: "getsentry/junior#7",
-          match: { repo: "getsentry/junior", pullRequest: 7 },
+          match: { repo: "getsentry/junior", pull_request: 7 },
         },
         "one-pull-request",
       );
@@ -227,7 +227,7 @@ describe("event automations with no identifier", () => {
       ) =>
         execute(
           createUpdateAutomationTool(automationToolContext(context()), catalog),
-          { automationId, trigger: { type: "event", ...next } },
+          { automation_id: automationId, trigger: { type: "event", ...next } },
           toolCallId,
         ) as Promise<{
           automation: { trigger: Record<string, unknown> };
@@ -237,7 +237,7 @@ describe("event automations with no identifier", () => {
         update(one.automation.id, edited, "keep-filters"),
       ).resolves.toMatchObject({
         automation: {
-          trigger: { match: { repo: "getsentry/junior", pullRequest: 7 } },
+          trigger: { match: { repo: "getsentry/junior", pull_request: 7 } },
         },
       });
       // Null removes a filter. The pull request events still need a repo.
@@ -250,7 +250,7 @@ describe("event automations with no identifier", () => {
       ).rejects.toThrow('This trigger needs a "repo" filter (match.repo)');
       const repoWide = await update(
         one.automation.id,
-        { ...edited, match: { pullRequest: null } },
+        { ...edited, match: { pull_request: null } },
         "drop-pull-request",
       );
       expect(repoWide.automation.trigger.match).toEqual({
@@ -282,7 +282,7 @@ describe("event automations with no identifier", () => {
         automation: {
           trigger: {
             identifier: "getsentry/junior#9",
-            resourceType: "pull_request",
+            resource_type: "pull_request",
           },
         },
       });

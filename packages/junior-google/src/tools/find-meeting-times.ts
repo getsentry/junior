@@ -29,35 +29,35 @@ const inputSchema = z
     attendees: emailListSchema(20)
       .min(1)
       .describe(
-        "Work emails of the people who must attend. Resolve names with userLookup. The runtime adds the requester as required when it knows their email. To make the requester optional, put their email in optionalAttendees.",
+        "Work emails of the people who must attend. Resolve names with userLookup. The runtime adds the requester as required when it knows their email. To make the requester optional, put their email in optional_attendees.",
       ),
-    optionalAttendees: emailListSchema(20)
+    optional_attendees: emailListSchema(20)
       .default([])
       .describe(
         'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
       ),
-    durationMinutes: z.number().int().min(15).max(480).default(30),
-    timeMin: z.iso
+    duration_minutes: z.number().int().min(15).max(480).default(30),
+    time_min: z.iso
       .datetime({ offset: true })
       .optional()
       .describe(
         "Start of the search window, RFC 3339 with offset. Defaults to now. For an exact requested time, search only that slot.",
       ),
-    timeMax: z.iso
+    time_max: z.iso
       .datetime({ offset: true })
       .optional()
       .describe(
-        "End of the search window, RFC 3339 with offset. Defaults to 7 days after timeMin. At most 14 days after timeMin.",
+        "End of the search window, RFC 3339 with offset. Defaults to 7 days after time_min. At most 14 days after time_min.",
       ),
-    timeZone: timeZoneSchema.describe(
+    time_zone: timeZoneSchema.describe(
       "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone you cannot read.",
     ),
-    workdayStart: clockTimeSchema
+    workday_start: clockTimeSchema
       .default("09:00")
       .describe(
         "Earliest local start, 24-hour HH:MM, in each attendee's own calendar time zone.",
       ),
-    workdayEnd: clockTimeSchema
+    workday_end: clockTimeSchema
       .default("17:00")
       .describe(
         "Latest local end, 24-hour HH:MM, in each attendee's own calendar time zone.",
@@ -67,20 +67,20 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe(
-        "Only return slots on these days, in the timeZone of the slot labels. Omit to search every weekday.",
+        "Only return slots on these days, in the time_zone of the slot labels. Omit to search every weekday.",
       ),
-    maxResults: z.number().int().min(1).max(20).default(3),
+    max_results: z.number().int().min(1).max(20).default(3),
   })
   .strict();
 
 const slotSchema = z.object({
   end: z.string(),
   label: z.string().describe("The slot in the requester's time zone."),
-  otherTimeZoneLabels: z
+  other_time_zone_labels: z
     .array(z.string())
     .optional()
     .describe("The slot in the other attendees' time zones."),
-  optionalConflicts: z
+  optional_conflicts: z
     .array(z.string())
     .optional()
     .describe(
@@ -94,7 +94,7 @@ const outputSchema = pluginToolOutputSchema.extend({
   checked: z.array(
     z.object({
       email: z.string(),
-      timeZone: z
+      time_zone: z
         .string()
         .optional()
         .describe(
@@ -103,7 +103,7 @@ const outputSchema = pluginToolOutputSchema.extend({
     }),
   ),
   slots: z.array(slotSchema),
-  timeZone: z.string(),
+  time_zone: z.string(),
   unavailable: z.array(z.object({ email: z.string(), reason: z.string() })),
 });
 
@@ -386,29 +386,31 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
+      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       const timeMinMs = Math.max(
-        input.timeMin ? Date.parse(input.timeMin) : 0,
+        input.time_min ? Date.parse(input.time_min) : 0,
         Date.now(),
       );
-      const timeMaxMs = input.timeMax
-        ? Date.parse(input.timeMax)
+      const timeMaxMs = input.time_max
+        ? Date.parse(input.time_max)
         : timeMinMs + DEFAULT_WINDOW_MS;
       if (timeMaxMs <= timeMinMs) {
         throw new PluginToolInputError(
-          "timeMax must be after timeMin and now.",
+          "time_max must be after time_min and now.",
         );
       }
       if (wallClockMs(timeMinMs, timeMaxMs, timeZone) > MAX_WINDOW_MS) {
         throw new PluginToolInputError("Search at most 14 days at a time.");
       }
-      if (clockMinutes(input.workdayEnd) <= clockMinutes(input.workdayStart)) {
+      if (
+        clockMinutes(input.workday_end) <= clockMinutes(input.workday_start)
+      ) {
         throw new PluginToolInputError(
-          "workdayEnd must be after workdayStart.",
+          "workday_end must be after workday_start.",
         );
       }
       // An explicit optional entry for the requester wins over the automatic add.
-      const optionalEmails = new Set(input.optionalAttendees);
+      const optionalEmails = new Set(input.optional_attendees);
       const attendees = (await withRequester(ctx, input.attendees)).filter(
         (email) =>
           input.attendees.includes(email) || !optionalEmails.has(email),
@@ -437,7 +439,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       }
       const { calendars } = freeBusyResponseSchema.parse(response.body);
 
-      const checked: Array<{ email: string; timeZone?: string }> = [];
+      const checked: Array<{ email: string; time_zone?: string }> = [];
       const unavailable: Array<{ email: string; reason: string }> = [];
       const slotAttendees: SlotAttendee[] = [];
       everyone.forEach((email, index) => {
@@ -450,7 +452,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         const calendarZone = timeZones[index];
         checked.push({
           email,
-          ...(calendarZone ? { timeZone: calendarZone } : undefined),
+          ...(calendarZone ? { time_zone: calendarZone } : undefined),
         });
         slotAttendees.push({
           busy: calendar.busy.map((interval) => ({
@@ -467,14 +469,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         ? []
         : findFreeSlots({
             attendees: slotAttendees,
-            durationMinutes: input.durationMinutes,
-            maxResults: input.maxResults,
+            durationMinutes: input.duration_minutes,
+            maxResults: input.max_results,
             timeMaxMs,
             timeMinMs,
             timeZone,
             weekdays: input.weekdays,
-            workdayEnd: input.workdayEnd,
-            workdayStart: input.workdayStart,
+            workdayEnd: input.workday_end,
+            workdayStart: input.workday_start,
           });
       const otherTimeZones = [
         ...new Set(slotAttendees.map((attendee) => attendee.timeZone)),
@@ -487,17 +489,17 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           label: formatInterval(slot.startMs, slot.endMs, timeZone),
           ...(otherTimeZones.length
             ? {
-                otherTimeZoneLabels: otherTimeZones.map((zone) =>
+                other_time_zone_labels: otherTimeZones.map((zone) =>
                   formatInterval(slot.startMs, slot.endMs, zone),
                 ),
               }
             : undefined),
           ...(slot.optionalConflicts.length
-            ? { optionalConflicts: slot.optionalConflicts }
+            ? { optional_conflicts: slot.optionalConflicts }
             : undefined),
           start: new Date(slot.startMs).toISOString(),
         })),
-        timeZone,
+        time_zone: timeZone,
         unavailable,
       };
     },

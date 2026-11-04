@@ -29,32 +29,32 @@ const inputSchema = z
       .describe(
         "Email address of the person whose calendar to read. Omit to read your own calendar, which holds every event you organize.",
       ),
-    timeMin: z.iso
+    time_min: z.iso
       .datetime({ offset: true })
       .describe("Start of the window, RFC 3339 with offset."),
-    timeMax: z.iso
+    time_max: z.iso
       .datetime({ offset: true })
       .describe(
-        "End of the window, RFC 3339 with offset. At most 31 days after timeMin.",
+        "End of the window, RFC 3339 with offset. At most 31 days after time_min.",
       ),
-    timeZone: timeZoneSchema,
-    maxResults: z.number().int().min(1).max(100).default(50),
+    time_zone: timeZoneSchema,
+    max_results: z.number().int().min(1).max(100).default(50),
   })
   .strict();
 
 const eventSchema = z.object({
   attendees: z.array(attendeeOutputSchema).optional(),
   end: z.string(),
-  eventId: z.string(),
+  event_id: z.string(),
   label: z.string(),
   location: z.string().optional(),
   organizer: z.string().optional(),
-  organizedByJunior: z
+  organized_by_junior: z
     .boolean()
     .describe(
-      "True when you organize the event, so you can change or cancel it with this eventId.",
+      "True when you organize the event, so you can change or cancel it with this event_id.",
     ),
-  seriesEventId: z
+  series_event_id: z
     .string()
     .optional()
     .describe(
@@ -63,14 +63,14 @@ const eventSchema = z.object({
   start: z.string(),
   title: z.string().optional(),
   url: z.string().optional(),
-  videoCallUrl: z.string().optional(),
+  video_call_url: z.string().optional(),
 });
 
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("listCalendarEvents"),
   calendar: z.string(),
   events: z.array(eventSchema),
-  timeZone: z.string(),
+  time_zone: z.string(),
   truncated: z.boolean(),
   visible: z.boolean(),
 });
@@ -150,11 +150,11 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
-      const timeMinMs = Date.parse(input.timeMin);
-      const timeMaxMs = Date.parse(input.timeMax);
+      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+      const timeMinMs = Date.parse(input.time_min);
+      const timeMaxMs = Date.parse(input.time_max);
       if (timeMaxMs <= timeMinMs) {
-        throw new PluginToolInputError("timeMax must be after timeMin.");
+        throw new PluginToolInputError("time_max must be after time_min.");
       }
       if (timeMaxMs - timeMinMs > MAX_WINDOW_MS) {
         throw new PluginToolInputError("Read at most 31 days at a time.");
@@ -166,7 +166,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
         operation: "google.calendar.events.list",
         path: `/calendar/v3/calendars/${calendar === ctx.accountEmail ? "primary" : encodeURIComponent(calendar)}/events`,
         query: {
-          maxResults: String(input.maxResults),
+          maxResults: String(input.max_results),
           orderBy: "startTime",
           singleEvents: "true",
           timeMax: new Date(timeMaxMs).toISOString(),
@@ -177,7 +177,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       const result = {
         target: "listCalendarEvents" as const,
         calendar,
-        timeZone,
+        time_zone: timeZone,
       };
       // Google returns 404 when Junior's account cannot see the calendar.
       if (response.status === 404) {
@@ -194,7 +194,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
           .filter((event) => event.status !== "cancelled")
           .map((event) => ({
             end: event.end.dateTime ?? lastAllDayDate(event.end) ?? "",
-            eventId: event.id,
+            event_id: event.id,
             label: eventLabel(event.start, event.end, timeZone),
             start: event.start.dateTime ?? event.start.date ?? "",
             ...(event.summary ? { title: event.summary } : undefined),
@@ -202,17 +202,17 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
             ...(event.organizer?.email
               ? { organizer: event.organizer.email }
               : undefined),
-            organizedByJunior:
+            organized_by_junior:
               event.organizer?.email?.toLowerCase() === ctx.accountEmail,
             ...(event.recurringEventId
-              ? { seriesEventId: event.recurringEventId }
+              ? { series_event_id: event.recurringEventId }
               : undefined),
             ...(event.attendees
               ? { attendees: attendeeResults(event.attendees) }
               : undefined),
             ...(event.htmlLink ? { url: event.htmlLink } : undefined),
             ...(event.hangoutLink
-              ? { videoCallUrl: event.hangoutLink }
+              ? { video_call_url: event.hangoutLink }
               : undefined),
           })),
         truncated: nextPageToken !== undefined,

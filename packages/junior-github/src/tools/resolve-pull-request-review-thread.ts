@@ -28,12 +28,12 @@ const inputSchema = z
       .describe(
         'Repository in "owner/name" format. Required because GraphQL has no repo path.',
       ),
-    threadId: z
+    thread_id: z
       .string()
       .trim()
       .min(1)
       .describe(
-        "GitHub pull request review thread node ID (the same `threadId` / `id` variable used by `gh api graphql` resolveReviewThread).",
+        "GitHub pull request review thread node ID (the `threadId` / `id` variable used by `gh api graphql` resolveReviewThread).",
       ),
   })
   .strict();
@@ -42,14 +42,14 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("resolvePullRequestReviewThread"),
   repo: z.string(),
   number: z.number(),
-  threadId: z.string(),
+  thread_id: z.string(),
   resolved: z.boolean(),
 });
 interface Result extends PluginToolOutput {
   target: "resolvePullRequestReviewThread";
   repo: string;
   number: number;
-  threadId: string;
+  thread_id: string;
   resolved: boolean;
 }
 
@@ -136,7 +136,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           body: JSON.stringify({
             operationName: "ReviewThreadOwnership",
             query,
-            variables: { threadId: parsedInput.data.threadId },
+            variables: { threadId: parsedInput.data.thread_id },
           }),
         }),
       });
@@ -203,7 +203,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           target: "resolvePullRequestReviewThread",
           repo: repo.ref,
           number: pullRequest.number,
-          threadId: thread.id,
+          thread_id: thread.id,
           resolved: true,
         };
       }
@@ -267,7 +267,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         target: "resolvePullRequestReviewThread",
         repo: repo.ref,
         number: pullRequest.number,
-        threadId: resolved.id,
+        thread_id: resolved.id,
         resolved: true,
       };
     },

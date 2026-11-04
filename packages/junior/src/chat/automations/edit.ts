@@ -173,6 +173,8 @@ async function saveViewerEdit(
       input,
       isCreator,
       getEventCatalog(),
+      // Dashboard edits send filters as their plugin declares them.
+      { inputKeys: false },
     );
     const task = await saveEventAutomation(
       getDb(),

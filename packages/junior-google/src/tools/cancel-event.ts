@@ -16,8 +16,8 @@ import {
 
 const inputSchema = z
   .object({
-    eventId: ownEventIdSchema,
-    timeZone: timeZoneSchema,
+    event_id: ownEventIdSchema,
+    time_zone: timeZoneSchema,
   })
   .strict();
 
@@ -50,20 +50,24 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
       readOnlyHint: false,
     },
     describeProposal(input) {
-      return `Cancel Google Calendar event ${input.eventId} organized by the connected Google account. Google emails every attendee a cancellation.`;
+      return `Cancel Google Calendar event ${input.event_id} organized by the connected Google account. Google emails every attendee a cancellation.`;
     },
     description:
-      "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its seriesEventId cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
+      "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its series_event_id cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
     inputSchema,
     outputSchema,
     async execute(input) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
-      const read = await readOwnEventForRequester(ctx, input.eventId, "cancel");
+      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+      const read = await readOwnEventForRequester(
+        ctx,
+        input.event_id,
+        "cancel",
+      );
       if (read.status === "cancelled") {
         return {
           target: "cancelCalendarEvent" as const,
           cancelled: false,
-          eventId: read.eventId,
+          event_id: read.eventId,
         };
       }
       const { event, path } = read;
