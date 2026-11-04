@@ -1,4 +1,4 @@
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq, lte, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
@@ -146,6 +146,29 @@ export async function readLatestConversationBrief(
     .select()
     .from(juniorConversationBriefs)
     .where(eq(juniorConversationBriefs.conversationId, conversationId))
+    .orderBy(desc(juniorConversationBriefs.version))
+    .limit(1);
+  return rows[0] ? briefVersionFromRow(rows[0]) : undefined;
+}
+
+/**
+ * Read the newest Brief version that covers no event after `seq`. That is the
+ * Brief as a reader saw it when they stopped at `seq`.
+ */
+export async function readConversationBriefThrough(
+  db: JuniorDatabase,
+  conversationId: string,
+  seq: number,
+): Promise<ConversationBriefVersion | undefined> {
+  const rows = await db
+    .select()
+    .from(juniorConversationBriefs)
+    .where(
+      and(
+        eq(juniorConversationBriefs.conversationId, conversationId),
+        lte(juniorConversationBriefs.throughSeq, seq),
+      ),
+    )
     .orderBy(desc(juniorConversationBriefs.version))
     .limit(1);
   return rows[0] ? briefVersionFromRow(rows[0]) : undefined;

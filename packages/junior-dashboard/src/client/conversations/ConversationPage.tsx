@@ -18,6 +18,10 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationIsResponding } from "./transcript";
+import {
+  ConversationCatchUpContext,
+  useConversationCatchUp,
+} from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
 import {
@@ -210,6 +214,12 @@ export function ConversationPage(props: {
   const archive = useArchiveConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
+  const catchUp = useConversationCatchUp({
+    conversationId,
+    events: detail.data?.events,
+    hasPreviousPage: detail.hasPreviousPage,
+    unread: readAtOpen.unread,
+  });
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -545,33 +555,35 @@ export function ConversationPage(props: {
                     </div>
                   ) : null}
                   <ConversationMemoryContext value={memoryState}>
-                    <Transcript
-                      hasPreviousPage={detail.hasPreviousPage}
-                      historyError={detail.historyError}
-                      historyVersion={detail.historyVersion}
-                      lastReadSeq={readAtOpen.lastReadSeq}
-                      live={live}
-                      loadingPreviousPage={detail.isLoadingPreviousPage}
-                      onLoadPreviousPage={detail.loadPreviousPage}
-                      onRead={markRead}
-                      onSelectedEventSeqChange={setSelectedEventSeq}
-                      pendingMessages={detail.inlineMessages}
-                      pinRequestVersion={pinRequestVersion}
-                      responding={
-                        !detail.error && conversationIsResponding(transcript)
-                      }
-                      onOpenSubagentTranscript={onOpenSubagentTranscript}
-                      search={search}
-                      onSearchChange={setSearch}
-                      selectedEventSeq={selectedEventSeq}
-                      startAtUnread={
-                        readConversationStartPosition() === "unread"
-                      }
-                      transcript={transcript}
-                      turnContextPanel={turnContextPanel}
-                      unread={readAtOpen.unread}
-                      view={view}
-                    />
+                    <ConversationCatchUpContext value={catchUp}>
+                      <Transcript
+                        hasPreviousPage={detail.hasPreviousPage}
+                        historyError={detail.historyError}
+                        historyVersion={detail.historyVersion}
+                        lastReadSeq={readAtOpen.lastReadSeq}
+                        live={live}
+                        loadingPreviousPage={detail.isLoadingPreviousPage}
+                        onLoadPreviousPage={detail.loadPreviousPage}
+                        onRead={markRead}
+                        onSelectedEventSeqChange={setSelectedEventSeq}
+                        pendingMessages={detail.inlineMessages}
+                        pinRequestVersion={pinRequestVersion}
+                        responding={
+                          !detail.error && conversationIsResponding(transcript)
+                        }
+                        onOpenSubagentTranscript={onOpenSubagentTranscript}
+                        search={search}
+                        onSearchChange={setSearch}
+                        selectedEventSeq={selectedEventSeq}
+                        startAtUnread={
+                          readConversationStartPosition() === "unread"
+                        }
+                        transcript={transcript}
+                        turnContextPanel={turnContextPanel}
+                        unread={readAtOpen.unread}
+                        view={view}
+                      />
+                    </ConversationCatchUpContext>
                   </ConversationMemoryContext>
                 </>
               )}

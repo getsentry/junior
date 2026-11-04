@@ -89,6 +89,14 @@ export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export { conversationReadPositionSchema } from "./schema/conversation-read-position";
 export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "./schema/conversation-catch-up";
+export type {
+  ConversationCatchUp,
+  ConversationCatchUpBody,
+} from "./schema/conversation-catch-up";
 export type {
   AcceptedConversationMessage,
   ArchiveConversationBody,

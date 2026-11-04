@@ -24,6 +24,10 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "../schema/conversation-catch-up";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -32,6 +36,7 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { catchUpOnConversation } from "./catch-up";
 import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
@@ -249,6 +254,30 @@ export function createConversationRoutes(
       return jsonResponse(
         conversationReadPositionSchema,
         await markConversationRead(viewer, conversationId, body),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/catch-up",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationCatchUpBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        conversationCatchUpSchema,
+        await catchUpOnConversation(viewer, conversationId, body),
       );
     },
   );

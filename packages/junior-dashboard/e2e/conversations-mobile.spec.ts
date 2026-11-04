@@ -766,7 +766,12 @@ test("keeps the message in view while earlier history and late content load", as
 /** Mock one completed Conversation whose server read position moves forward. */
 async function mockReadPositionConversation(
   page: Page,
-  input: { eventCount: number; lastReadSeq: number },
+  input: {
+    /** Turns that finish after the messages, each as one lifecycle event. */
+    completedTurns?: number;
+    eventCount: number;
+    lastReadSeq: number;
+  },
 ) {
   const generatedAt = "2026-08-07T11:00:00.000Z";
   const conversationId = "read-position";
@@ -828,18 +833,29 @@ async function mockReadPositionConversation(
       json: {
         ...conversation,
         eventHistory: { status: "available" },
-        events: Array.from({ length: state.eventCount }, (_, seq) => ({
-          createdAt: new Date(
-            Date.parse(generatedAt) + seq * 1_000,
-          ).toISOString(),
-          data: {
-            type: "message",
-            messageId: `message-${seq}`,
-            role: seq % 2 === 0 ? "user" : "assistant",
-            text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-          },
-          seq,
-        })),
+        events: [
+          ...Array.from({ length: state.eventCount }, (_, seq) => ({
+            createdAt: new Date(
+              Date.parse(generatedAt) + seq * 1_000,
+            ).toISOString(),
+            data: {
+              type: "message",
+              messageId: `message-${seq}`,
+              role: seq % 2 === 0 ? "user" : "assistant",
+              text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+            },
+            seq,
+          })),
+          ...Array.from({ length: input.completedTurns ?? 0 }, (_, index) => ({
+            createdAt: generatedAt,
+            data: {
+              state: "succeeded",
+              turnId: `turn-${index}`,
+              type: "turn_lifecycle",
+            },
+            seq: state.eventCount + index,
+          })),
+        ],
         generatedAt,
         readPosition: { lastReadSeq: stored },
       },
@@ -867,6 +883,10 @@ test("opens where the reader left off and reports what they read", async ({
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
   await expect(latest).not.toBeInViewport();
+  // Messages without finished Turns are quick to read, so no catch-up.
+  await expect(
+    transcript.getByRole("button", { name: "Catch me up" }),
+  ).toHaveCount(0);
   await screenshot(page, "conversation-unread-marker", { view: "mobile" });
 
   // Reading the first screen moves the shared position past the marker.
@@ -882,6 +902,44 @@ test("opens where the reader left off and reports what they read", async ({
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   await expect(latest).toBeInViewport();
   await expect(marker).not.toBeInViewport();
+});
+
+test("catches the reader up on several unread Turns", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    completedTurns: 2,
+    eventCount: 60,
+    lastReadSeq: 20,
+  });
+  const requested: unknown[] = [];
+  await page.route(
+    `**/api/conversations/${mock.conversationId}/catch-up`,
+    async (route) => {
+      requested.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          needsYou: "Review the Safari fix on PR #12.",
+          summary: "CI failed on Safari after you left. Junior pushed a fix.",
+        },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await transcript.getByRole("button", { name: "Catch me up" }).click();
+  await expect(
+    transcript.getByText("CI failed on Safari after you left."),
+  ).toBeInViewport();
+  await expect(
+    transcript.getByText("Review the Safari fix on PR #12."),
+  ).toBeVisible();
+  // The range is the one from when the Conversation opened.
+  expect(requested).toEqual([{ afterSeq: 20, throughSeq: 61 }]);
+  await screenshot(page, "conversation-catch-up", { view: "mobile" });
 });
 
 test("opens at new messages after a cached reopen and keeps a quick exit", async ({
