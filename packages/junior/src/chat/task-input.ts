@@ -55,26 +55,81 @@ export interface EventDoneBy {
   handle?: string;
 }
 
+/** A linked Event doer, merged across the Events of one task message. */
+interface Doer {
+  mention: string;
+  /** What the person did, such as "did Event 2". */
+  did: string;
+  /** Provider handles that the Event data uses for the same person. */
+  handles: string[];
+}
+
+function quoted(values: readonly string[]): string {
+  return values.map((value) => `"${value}"`).join(" or ");
+}
+
 /**
- * Connect the mention to the provider handle in the Event text. Without this,
- * the agent can mention a person and then name them again by handle as if
- * they were someone else. The "you" rule also applies when the doer is not in
- * People involved, because instructions can still ask the agent to mention
- * them, such as a requester who reviews their own pull request.
+ * Render each linked person once. A doer in People involved gets a note in
+ * that list. Other doers get a Done by line. Without one line per person, the
+ * agent can mention a person and then name them again by handle as if they
+ * were someone else. The "you" rule covers doers outside People involved too,
+ * because instructions can still ask to mention them, such as a requester who
+ * reviews their own pull request.
  */
-function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
-  const mention = oneLine(doneBy.mention);
-  const handle = doneBy.handle ? oneLine(doneBy.handle) : undefined;
-  const asYou = `as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`;
+function peopleLines(
+  people: readonly string[],
+  doers: readonly Doer[],
+): string[] {
+  const label = (doer: Doer) =>
+    `${doer.mention} (${[
+      doer.did,
+      ...(doer.handles.length > 0
+        ? [`called ${quoted(doer.handles)} in the Event data`]
+        : []),
+    ].join("; ")})`;
+  const doerByMention = new Map(doers.map((doer) => [doer.mention, doer]));
+  const involved = people.map((person) => {
+    const doer = doerByMention.get(person);
+    return doer ? label(doer) : person;
+  });
   return [
-    `Done by: ${mention}. This person did what this Event describes.`,
-    ...(handle
-      ? [`The Event calls them "${handle}". That is the same person.`]
-      : []),
-    people.includes(mention)
-      ? `They are also in People involved. Write to them ${asYou}`
-      : `If you mention them, write to them ${asYou}`,
-  ].join(" ");
+    ...(involved.length > 0 ? [`People involved: ${involved.join(", ")}`] : []),
+    ...doers
+      .filter((doer) => !people.includes(doer.mention))
+      .map((doer) => `Done by: ${label(doer)}`),
+    ...doers.map(
+      (doer) =>
+        `If you mention ${doer.mention}, write to them as "you"${
+          doer.handles.length > 0
+            ? `, and do not also call them ${quoted(doer.handles)}`
+            : ""
+        }.`,
+    ),
+  ];
+}
+
+/** Merge the doers of numbered Events, in first-Event order. */
+function batchDoers(
+  events: readonly { doneBy?: EventDoneBy; number: number }[],
+): Doer[] {
+  const merged = new Map<string, { handles: string[]; numbers: number[] }>();
+  for (const { doneBy, number } of events) {
+    if (!doneBy) continue;
+    const mention = oneLine(doneBy.mention);
+    const entry = merged.get(mention) ?? { handles: [], numbers: [] };
+    entry.numbers.push(number);
+    const handle = doneBy.handle ? oneLine(doneBy.handle) : undefined;
+    if (handle && !entry.handles.includes(handle)) entry.handles.push(handle);
+    merged.set(mention, entry);
+  }
+  return [...merged].map(([mention, { handles, numbers }]) => ({
+    mention,
+    did:
+      numbers.length === 1
+        ? `did Event ${numbers[0]}`
+        : `did Events ${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`,
+    handles,
+  }));
 }
 
 /**
@@ -128,8 +183,18 @@ export function renderTaskInput(args: {
           `Created by: ${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.`,
         ]
       : []),
-    ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
-    ...(args.doneBy ? [doneByLine(args.doneBy, people)] : []),
+    ...peopleLines(
+      people,
+      args.doneBy
+        ? [
+            {
+              mention: oneLine(args.doneBy.mention),
+              did: "did what this Event describes",
+              handles: args.doneBy.handle ? [oneLine(args.doneBy.handle)] : [],
+            },
+          ]
+        : [],
+    ),
     `Instructions: ${creator ? mentionCreator(instructions, oneLine(creator)) : instructions}`,
   ];
 
@@ -195,14 +260,7 @@ export interface TaskBatchGroup {
   events: readonly TaskBatchEvent[];
 }
 
-function pushEventFacts(
-  lines: string[],
-  event: TaskBatchEvent,
-  people: readonly string[],
-): void {
-  if (event.doneBy) {
-    lines.push(doneByLine(event.doneBy, people));
-  }
+function pushEventFacts(lines: string[], event: TaskBatchEvent): void {
   const trustedSummary = event.trustedSummary?.trim();
   if (trustedSummary) {
     lines.push(`Trusted summary: ${trustedSummary}`);
@@ -258,10 +316,15 @@ export function renderTaskBatchInput(args: {
     const people = group.people
       .map((person) => oneLine(person))
       .filter(Boolean);
+    const numbered = group.events.map((event, index) => ({
+      ...event,
+      number: number + index + 1,
+    }));
+    number += group.events.length;
     lines.push(
       "",
       ...(about ? [`About: ${oneLine(about)}`] : []),
-      ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
+      ...peopleLines(people, batchDoers(numbered)),
       `Instructions: ${instructions}`,
     );
 
@@ -281,10 +344,9 @@ export function renderTaskBatchInput(args: {
       );
     }
 
-    for (const event of group.events) {
-      number += 1;
-      lines.push("", `Event ${number}: ${event.eventType}`);
-      pushEventFacts(lines, event, people);
+    for (const event of numbered) {
+      lines.push("", `Event ${event.number}: ${event.eventType}`);
+      pushEventFacts(lines, event);
     }
   }
 

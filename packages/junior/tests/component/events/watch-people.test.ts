@@ -141,13 +141,17 @@ describe("Watch Event people", () => {
     const [succeeded, failed] = (work?.messages ?? []).map(
       (message) => message.input.text,
     );
-    expect(succeeded).toContain("People involved: <@U123>, <@U456>\n");
+    // The doer is in People involved, so they are listed once, with the
+    // handle that the Event uses for them.
     expect(succeeded).toContain(
-      'Done by: <@U123>. This person did what this Event describes. The Event calls them "REQUESTER". That is the same person. They are also in People involved.',
+      'People involved: <@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456>\n',
     );
+    expect(succeeded).not.toContain("Done by:");
     expect(succeeded).toContain("Tell the people involved.");
     // Watch guidance applies only to its own event type.
-    expect(failed).toContain("People involved: <@U123>, <@U456>\n");
+    expect(failed).toContain(
+      'People involved: <@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456>\n',
+    );
     expect(failed).not.toContain("Tell the people involved.");
   });
 });
