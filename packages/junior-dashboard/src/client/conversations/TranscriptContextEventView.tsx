@@ -16,24 +16,15 @@ export function TranscriptContextEventView(props: {
   timestamp?: number;
 }) {
   const event = props.part.event;
-  const handoff = event.type === "handoff";
-  const compactionDetail =
-    event.type === "compaction" && event.details
-      ? ` at approximately ${formatCompactNumber(event.details.estimatedInputTokens)} estimated tokens`
-      : "";
-  const compactionModel =
-    event.type === "compaction" && event.modelProfile && event.modelId
-      ? ` using the ${event.modelProfile} profile (${event.modelId})`
-      : "";
+  const compactionDetail = event.details
+    ? ` at approximately ${formatCompactNumber(event.details.estimatedInputTokens)} estimated tokens`
+    : "";
+  const compactionModel = event.modelId ? ` using ${event.modelId}` : "";
   return (
     <article className="min-w-0 py-0.5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <strong
-          className={`font-sans text-xs font-semibold ${
-            handoff ? "text-sky-100" : "text-amber-100"
-          }`}
-        >
-          {handoff ? "Model handoff" : "Context compacted"}
+        <strong className="font-sans text-xs font-semibold text-amber-100">
+          Context compacted
         </strong>
         {typeof props.timestamp === "number" ? (
           <span className="text-xs text-dashboard-text-muted">
@@ -42,9 +33,7 @@ export function TranscriptContextEventView(props: {
         ) : null}
       </div>
       <div className="mt-1 text-xs leading-relaxed text-dashboard-text-muted">
-        {handoff
-          ? `Handed off to ${event.modelId} via the ${event.modelProfile} profile${event.reasoningLevel ? ` (${event.reasoningLevel})` : ""}.`
-          : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
+        {`Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
         <Collapsible className="mt-2">

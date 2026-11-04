@@ -23,6 +23,12 @@ const clockTimeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+// Meetings this close count as back to back, so 25- and 50-minute meetings
+// join the next one.
+const BACK_TO_BACK_GAP_MS = 15 * 60_000;
+const FOCUS_BLOCK_MS = 2 * 60 * 60_000;
+const SHORT_FOCUS_BLOCK_MS = 60 * 60_000;
+const OPTIONAL_WEIGHT = 0.5;
 
 const inputSchema = z
   .object({
@@ -61,6 +67,32 @@ const inputSchema = z
       .default("17:00")
       .describe(
         "Latest local end, 24-hour HH:MM, in each attendee's own calendar time zone.",
+      ),
+    lunch_start: clockTimeSchema
+      .default("11:30")
+      .describe(
+        "Start of the lunch window, 24-hour HH:MM, in each attendee's own calendar time zone.",
+      ),
+    lunch_end: clockTimeSchema
+      .default("14:00")
+      .describe("End of the lunch window, 24-hour HH:MM."),
+    lunch_minutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(180)
+      .default(60)
+      .describe(
+        "Free time each attendee keeps for lunch inside the lunch window. Set 0 for a requested lunch meeting.",
+      ),
+    max_back_to_back_minutes: z
+      .number()
+      .int()
+      .min(60)
+      .max(600)
+      .default(180)
+      .describe(
+        "Longest run of back-to-back meetings a slot may create for an attendee. Gaps under 15 minutes count as back to back.",
       ),
     weekdays: z
       .array(z.enum(WEEKDAYS))
@@ -185,7 +217,18 @@ export interface SlotAttendee {
   timeZone: string;
 }
 
+/** How a slot fits attendees' days. */
+interface Cost {
+  /** Attendees who already have a meeting that day. Higher is better. */
+  meetingDays: number;
+  /** Focus time the slot removes. Lower is better. */
+  focusLostMs: number;
+  /** New runs of meetings, each one more interruption. Lower is better. */
+  runsAdded: number;
+}
+
 interface Candidate extends Interval {
+  cost: Cost;
   date: string;
   optionalConflicts: string[];
 }
@@ -194,19 +237,76 @@ function overlaps(busy: Interval, startMs: number, endMs: number): boolean {
   return busy.endMs > startMs && busy.startMs < endMs;
 }
 
-/** Pick the option farthest from the ones already chosen on that day. */
-function farthestOption(
+function byCost(a: Cost, b: Cost): number {
+  return (
+    b.meetingDays - a.meetingDays ||
+    a.focusLostMs - b.focusLostMs ||
+    a.runsAdded - b.runsAdded
+  );
+}
+
+/** Slots without optional conflicts first, then days with more meetings. */
+function byTier(a: Candidate, b: Candidate): number {
+  return (
+    Number(a.optionalConflicts.length > 0) -
+      Number(b.optionalConflicts.length > 0) ||
+    b.cost.meetingDays - a.cost.meetingDays
+  );
+}
+
+/** Merge busy times that are back to back into runs of meetings. */
+function meetingRuns(busy: Interval[]): Interval[] {
+  const runs: Interval[] = [];
+  for (const interval of [...busy].sort((a, b) => a.startMs - b.startMs)) {
+    const last = runs.at(-1);
+    if (last && interval.startMs - last.endMs < BACK_TO_BACK_GAP_MS) {
+      last.endMs = Math.max(last.endMs, interval.endMs);
+    } else {
+      runs.push({ ...interval });
+    }
+  }
+  return runs;
+}
+
+/** Free time between sorted runs inside `window`. */
+function freeGaps(runs: Interval[], window: Interval): Interval[] {
+  const gaps: Interval[] = [];
+  let cursor = window.startMs;
+  for (const run of runs) {
+    if (!overlaps(run, window.startMs, window.endMs)) continue;
+    if (run.startMs > cursor) {
+      gaps.push({ endMs: run.startMs, startMs: cursor });
+    }
+    cursor = Math.max(cursor, run.endMs);
+  }
+  if (cursor < window.endMs) {
+    gaps.push({ endMs: window.endMs, startMs: cursor });
+  }
+  return gaps;
+}
+
+function length(interval: Interval): number {
+  return interval.endMs - interval.startMs;
+}
+
+/**
+ * Pick the option that costs the least. Among equal options, pick the one
+ * farthest from the options already chosen on that day, then the earliest.
+ */
+function bestOption(
   options: Candidate[],
   chosen: Candidate[],
 ): Candidate | undefined {
-  if (chosen.length === 0) return options[0];
   let best: Candidate | undefined;
   let bestGap = -1;
   for (const option of options) {
-    const gap = Math.min(
-      ...chosen.map((slot) => Math.abs(slot.startMs - option.startMs)),
-    );
-    if (gap > bestGap) {
+    const gap = chosen.length
+      ? Math.min(
+          ...chosen.map((slot) => Math.abs(slot.startMs - option.startMs)),
+        )
+      : 0;
+    const order = best ? byCost(option.cost, best.cost) : -1;
+    if (order < 0 || (order === 0 && gap > bestGap)) {
       best = option;
       bestGap = gap;
     }
@@ -215,8 +315,9 @@ function farthestOption(
 }
 
 /**
- * Take options from each day in turn, so people get a real choice instead of
- * back-to-back slots on the first free morning.
+ * Take one option from each day per round, so people get a real choice of
+ * days. In each round, days with a cheaper option go first. Chosen options
+ * never overlap.
  */
 function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
   const days = new Map<string, Candidate[]>();
@@ -228,14 +329,21 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
   let progress = true;
   while (result.length < max && progress) {
     progress = false;
-    for (const [date, options] of days) {
+    const round = [...days]
+      .flatMap(([date, options]) => {
+        const next = bestOption(options, chosen.get(date) ?? []);
+        return next ? [{ date, next, options }] : [];
+      })
+      .sort((a, b) => byCost(a.next.cost, b.next.cost));
+    for (const { date, next, options } of round) {
       if (result.length >= max) break;
-      const picked = chosen.get(date) ?? [];
-      const next = farthestOption(options, picked);
-      if (!next) continue;
-      options.splice(options.indexOf(next), 1);
-      picked.push(next);
-      chosen.set(date, picked);
+      days.set(
+        date,
+        options.filter(
+          (option) => !overlaps(next, option.startMs, option.endMs),
+        ),
+      );
+      chosen.set(date, [...(chosen.get(date) ?? []), next]);
       result.push(next);
       progress = true;
     }
@@ -244,13 +352,31 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
 }
 
 /**
- * Find slots inside every required attendee's working hours, in their own
- * time zone, when they are all free.
+ * Find slots when every required attendee is free, inside their working
+ * hours in their own time zone, and rank them by how little they disturb
+ * those days.
  *
- * Optional attendees who are busy or outside their hours do not block a slot.
- * Slots without such conflicts come first. Options are spread across the days
- * of `timeZone` and across each day. With `weekdays`, only those days of
- * `timeZone` are searched.
+ * Days on which more attendees already have a meeting come first, so days
+ * without meetings stay free. A day without meetings is used only when busy
+ * days have too few slots. The requester chose this over pure focus time.
+ *
+ * Then the rules follow Clockwise's public docs, not its code:
+ * - Focus time is the free time in blocks of at least 2 hours, or 1 hour on
+ *   a day without a 2-hour block. Slots that remove the least focus time,
+ *   summed over attendees, come first. Optional attendees count half.
+ * - Among equal slots, the one that adds the fewest new runs of meetings
+ *   comes first, so a slot next to a meeting beats an isolated one.
+ * - A slot must leave each attendee a free gap of `lunchMinutes` inside
+ *   their lunch window, if they had one. Set `lunchMinutes` to 0 to allow
+ *   lunch meetings.
+ * - A slot must not make a run of back-to-back meetings longer than
+ *   `maxBackToBackMinutes`. Gaps under 15 minutes count as back to back.
+ *
+ * Optional attendees who are busy or break these rules do not block a slot.
+ * Slots without such conflicts come first. Inside each group of equal
+ * conflicts and meeting days, options are spread across the days of
+ * `timeZone`. Results come best first. With `weekdays`, only those
+ * days of `timeZone` are searched.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
@@ -258,6 +384,10 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
 export function findFreeSlots(input: {
   attendees: SlotAttendee[];
   durationMinutes: number;
+  lunchEnd: string;
+  lunchMinutes: number;
+  lunchStart: string;
+  maxBackToBackMinutes: number;
   maxResults: number;
   timeMaxMs: number;
   timeMinMs: number;
@@ -270,6 +400,10 @@ export function findFreeSlots(input: {
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
   const dayStart = clockMinutes(input.workdayStart);
   const dayEnd = clockMinutes(input.workdayEnd);
+  const lunchStart = clockMinutes(input.lunchStart);
+  const lunchEnd = clockMinutes(input.lunchEnd);
+  const lunchMs = input.lunchMinutes * 60_000;
+  const maxRunMs = Math.max(input.maxBackToBackMinutes * 60_000, durationMs);
   const formats = new Map<string, Intl.DateTimeFormat>();
   const partsIn = (ms: number, timeZone: string) => {
     let format = formats.get(timeZone);
@@ -279,61 +413,120 @@ export function findFreeSlots(input: {
     }
     return localParts(ms, format);
   };
-  const available = (
-    attendee: SlotAttendee,
-    startMs: number,
-    endMs: number,
-  ) => {
-    const start = partsIn(startMs, attendee.timeZone);
-    const end = partsIn(endMs, attendee.timeZone);
-    return (
-      start.weekday !== "Sat" &&
-      start.weekday !== "Sun" &&
-      start.date === end.date &&
-      start.minutes >= dayStart &&
-      end.minutes <= dayEnd &&
-      attendee.busy.every((busy) => !overlaps(busy, startMs, endMs))
+  const runsByEmail = new Map(
+    input.attendees.map((attendee) => [
+      attendee.email,
+      meetingRuns(attendee.busy),
+    ]),
+  );
+  /** The cost of the slot for one attendee, or undefined if they cannot take it. */
+  const assess = (attendee: SlotAttendee, slot: Interval) => {
+    const start = partsIn(slot.startMs, attendee.timeZone);
+    const end = partsIn(slot.endMs, attendee.timeZone);
+    if (
+      start.weekday === "Sat" ||
+      start.weekday === "Sun" ||
+      start.date !== end.date ||
+      start.minutes < dayStart ||
+      end.minutes > dayEnd ||
+      attendee.busy.some((busy) => overlaps(busy, slot.startMs, slot.endMs))
+    ) {
+      return undefined;
+    }
+    const before = runsByEmail.get(attendee.email) ?? [];
+    const after = meetingRuns([...before, slot]);
+    const run = after.find(
+      (run) => run.startMs <= slot.startMs && run.endMs >= slot.endMs,
     );
+    if (run && length(run) > maxRunMs) {
+      return undefined;
+    }
+    // Daylight-saving changes happen at night, so working hours and lunch
+    // keep the offset of the slot.
+    const midnightMs = slot.startMs - start.minutes * 60_000;
+    const at = (minutes: number) => midnightMs + minutes * 60_000;
+    const lunch = { endMs: at(lunchEnd), startMs: at(lunchStart) };
+    const hasLunch = (runs: Interval[]) =>
+      freeGaps(runs, lunch).some((gap) => length(gap) >= lunchMs);
+    if (lunchMs > 0 && hasLunch(before) && !hasLunch(after)) {
+      return undefined;
+    }
+    const workday = { endMs: at(dayEnd), startMs: at(dayStart) };
+    // Free/busy leaves out all-day events that do not block time, and one
+    // that does covers the slot, so only timed meetings count here.
+    const meetingDay = before.some((run) =>
+      overlaps(run, workday.startMs, workday.endMs),
+    );
+    const blockMs = freeGaps(before, workday).some(
+      (gap) => length(gap) >= FOCUS_BLOCK_MS,
+    )
+      ? FOCUS_BLOCK_MS
+      : SHORT_FOCUS_BLOCK_MS;
+    const focusMs = (runs: Interval[]) =>
+      freeGaps(runs, workday)
+        .filter((gap) => length(gap) >= blockMs)
+        .reduce((total, gap) => total + length(gap), 0);
+    const runsInDay = (runs: Interval[]) =>
+      runs.filter((run) => overlaps(run, workday.startMs, workday.endMs))
+        .length;
+    return {
+      focusLostMs: focusMs(before) - focusMs(after),
+      meetingDays: Number(meetingDay),
+      runsAdded: runsInDay(after) - runsInDay(before),
+    };
   };
   const required = input.attendees.filter((attendee) => attendee.required);
   const optional = input.attendees.filter((attendee) => !attendee.required);
   const candidates: Candidate[] = [];
 
-  let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
-  while (startMs + durationMs <= input.timeMaxMs) {
-    const endMs = startMs + durationMs;
+  for (
+    let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
+    startMs + durationMs <= input.timeMaxMs;
+    startMs += stepMs
+  ) {
+    const slot = { endMs: startMs + durationMs, startMs };
     const local = partsIn(startMs, input.timeZone);
-    if (
-      (!input.weekdays || input.weekdays.includes(local.weekday)) &&
-      required.every((attendee) => available(attendee, startMs, endMs))
-    ) {
-      candidates.push({
-        date: local.date,
-        endMs,
-        optionalConflicts: optional
-          .filter((attendee) => !available(attendee, startMs, endMs))
-          .map((attendee) => attendee.email),
-        startMs,
-      });
-      // Do not offer overlapping options.
-      startMs = endMs;
-    } else {
-      startMs += stepMs;
+    if (input.weekdays && !input.weekdays.includes(local.weekday)) continue;
+    const cost: Cost = { focusLostMs: 0, meetingDays: 0, runsAdded: 0 };
+    const add = (part: Cost, weight: number) => {
+      cost.focusLostMs += part.focusLostMs * weight;
+      cost.meetingDays += part.meetingDays * weight;
+      cost.runsAdded += part.runsAdded * weight;
+    };
+    const requiredCosts = required.map((attendee) => assess(attendee, slot));
+    if (!requiredCosts.every((part) => part !== undefined)) continue;
+    for (const part of requiredCosts) add(part, 1);
+    const optionalConflicts: string[] = [];
+    for (const attendee of optional) {
+      const part = assess(attendee, slot);
+      if (part) add(part, OPTIONAL_WEIGHT);
+      else optionalConflicts.push(attendee.email);
     }
+    candidates.push({ ...slot, cost, date: local.date, optionalConflicts });
   }
 
-  const picked = spreadAcrossDays(
-    candidates.filter((slot) => slot.optionalConflicts.length === 0),
-    input.maxResults,
-  );
-  picked.push(
-    ...spreadAcrossDays(
-      candidates.filter((slot) => slot.optionalConflicts.length > 0),
-      input.maxResults - picked.length,
-    ),
-  );
+  // Fill places from the best tier first, so a lower tier only fills the
+  // places that better tiers leave.
+  const sorted = [...candidates].sort(byTier);
+  const picked: Candidate[] = [];
+  let first = 0;
+  while (first < sorted.length && picked.length < input.maxResults) {
+    let end = first + 1;
+    while (end < sorted.length && byTier(sorted[first]!, sorted[end]!) === 0) {
+      end += 1;
+    }
+    picked.push(
+      ...spreadAcrossDays(
+        sorted.slice(first, end),
+        input.maxResults - picked.length,
+      ),
+    );
+    first = end;
+  }
   return picked
-    .sort((a, b) => a.startMs - b.startMs)
+    .sort(
+      (a, b) => byTier(a, b) || byCost(a.cost, b.cost) || a.startMs - b.startMs,
+    )
     .map(({ endMs, optionalConflicts, startMs }) => ({
       endMs,
       optionalConflicts,
@@ -382,7 +575,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots come best first: first days on which the attendees already have meetings, so days without meetings stay free; then the slots that keep the most focus time (free blocks of 2 hours, or 1 hour on days without a 2-hour block) for the attendees, then the ones that join existing meetings instead of adding an interruption. Slots also leave each attendee a lunch break inside their lunch window and do not make a run of back-to-back meetings longer than max_back_to_back_minutes. Offer them as a short list in that order; when the requester leaves the choice to you, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -407,6 +600,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       ) {
         throw new PluginToolInputError(
           "workday_end must be after workday_start.",
+        );
+      }
+      if (
+        input.lunch_minutes >
+        clockMinutes(input.lunch_end) - clockMinutes(input.lunch_start)
+      ) {
+        throw new PluginToolInputError(
+          "lunch_minutes must fit between lunch_start and lunch_end.",
         );
       }
       // An explicit optional entry for the requester wins over the automatic add.
@@ -470,6 +671,10 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         : findFreeSlots({
             attendees: slotAttendees,
             durationMinutes: input.duration_minutes,
+            lunchEnd: input.lunch_end,
+            lunchMinutes: input.lunch_minutes,
+            lunchStart: input.lunch_start,
+            maxBackToBackMinutes: input.max_back_to_back_minutes,
             maxResults: input.max_results,
             timeMaxMs,
             timeMinMs,

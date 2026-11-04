@@ -10,7 +10,6 @@ import { botConfig } from "@/chat/config";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
-import { defaultModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
 import { briefUpdatedEvent } from "./events";
 import { generateBrief } from "./generate";
@@ -157,7 +156,7 @@ export async function updateConversationBrief(
       );
       // Same request as `junior briefs run`, so the tuned prompt and
       // temperature apply in production.
-      const modelId = defaultModelId(botConfig);
+      const modelId = botConfig.modelId;
       const generation = await generateBrief({
         completeObject: (request) =>
           completeObject({

@@ -6,7 +6,6 @@ import {
 import { z } from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
-import { modelProfileSchema } from "@/chat/model-profile";
 import { agentTypeSchema } from "./agent-types";
 import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
@@ -54,7 +53,6 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
-    modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -91,7 +89,6 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
-    modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })

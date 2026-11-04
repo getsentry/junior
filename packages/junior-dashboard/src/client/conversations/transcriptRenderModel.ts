@@ -234,20 +234,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
           .map((attachment) => attachment.filename)
           .join("\n");
       }
-      if (part.event.type !== "handoff") {
-        return ["context compacted", part.event.summary]
-          .filter((line): line is string => line !== undefined)
-          .join("\n");
-      }
-      return [
-        "model handoff",
-        `model ${part.event.modelId}`,
-        `profile ${part.event.modelProfile}`,
-        part.event.summary,
-        part.event.reasoningLevel
-          ? `reasoning ${part.event.reasoningLevel}`
-          : undefined,
-      ]
+      return ["context compacted", part.event.summary]
         .filter((line): line is string => line !== undefined)
         .join("\n");
     })

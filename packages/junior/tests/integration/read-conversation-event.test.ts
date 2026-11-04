@@ -143,7 +143,6 @@ describe("readConversationEvent", () => {
       createdAtMs: 2,
       data: {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "test/model",
         summary: "Ran a deploy.",
         replacementHistory: [],
@@ -246,7 +245,6 @@ describe("readConversationEvent", () => {
           type: "compaction_prepared",
           markSeq: marked.committedSeq,
           historyVersion: marked.historyVersion,
-          modelProfile: "standard",
           modelId: "openai/gpt-5.4",
           outcome: "ready",
           summary: "The person started a deploy.",
@@ -274,7 +272,6 @@ describe("readConversationEvent", () => {
         conversationId: CURRENT_CONVERSATION_ID,
         mode: "blocking",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         piMessages: messages,
       },
       async () => "Unused.",

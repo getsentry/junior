@@ -26,16 +26,19 @@ export type ConversationCatchUpState = {
 };
 
 /**
- * Count the Turns that finished in the unread range. When the range starts
- * before the loaded rows, the reader has at least a page of unread rows.
+ * Count the Turns that finished in the unread range. When the range goes past
+ * the loaded rows, the reader has at least a page of unread rows.
  */
 function hasEnoughUnread(
   events: ConversationDetailReport["events"],
   unread: TranscriptUnreadRange,
-  hasPreviousPage: boolean,
+  pages: { hasNewerPage: boolean; hasPreviousPage: boolean },
 ): boolean {
+  if (pages.hasNewerPage) return true;
   const first = events[0];
-  if (hasPreviousPage && first && first.seq > unread.afterSeq) return true;
+  if (pages.hasPreviousPage && first && first.seq > unread.afterSeq) {
+    return true;
+  }
   let turns = 0;
   for (const event of events) {
     if (event.seq <= unread.afterSeq || event.seq > unread.throughSeq) continue;
@@ -53,6 +56,7 @@ function hasEnoughUnread(
 export function useConversationCatchUp(input: {
   conversationId: string;
   events?: ConversationDetailReport["events"];
+  hasNewerPage: boolean;
   hasPreviousPage: boolean;
   unread?: TranscriptUnreadRange;
 }): ConversationCatchUpState | undefined {
@@ -69,9 +73,7 @@ export function useConversationCatchUp(input: {
   const asked = !mutation.isIdle;
   if (
     !unread ||
-    (!asked &&
-      (!input.events ||
-        !hasEnoughUnread(input.events, unread, input.hasPreviousPage)))
+    (!asked && (!input.events || !hasEnoughUnread(input.events, unread, input)))
   ) {
     return undefined;
   }

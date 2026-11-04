@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
 import { QueryClient } from "@tanstack/react-query";
 import { webMessageId } from "@sentry/junior/api/schema";
@@ -167,7 +168,9 @@ describe("dashboard client API", () => {
       signedIn = false;
       const denied = await app.fetch(
         new Request(`http://localhost${detailPath}`, {
-          headers: { "if-none-match": changed.detailEtag! },
+          headers: {
+            [CONVERSATION_DETAIL_VERSION_HEADER]: changed.detailEtag!,
+          },
         }),
       );
       expect(denied.status).toBe(401);

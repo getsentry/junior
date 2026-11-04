@@ -10,11 +10,17 @@ import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 /**
  * Shared closing lines. Automations pass outcomes and end with a declared
- * result. Watches follow the Conversation's reply rules.
+ * result. Watches follow the Conversation's reply rules. A Watch reply goes
+ * only to the Conversation, so a question asked in the provider must also get
+ * its answer there. Watch instructions often say to stay silent, so this rule
+ * sits in the contract, not in plugin guidance.
  */
 function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
   if (!outcomes) {
-    return ["When you reply, follow any reply format in the instructions."];
+    return [
+      "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
+      "When you reply, follow any reply format in the instructions.",
+    ];
   }
   return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
 }

@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -98,7 +99,9 @@ describe("conversation pin API", () => {
     }
 
     const detailPath = `http://localhost/api/conversations/${older}`;
-    const unpinnedEtag = (await app.request(detailPath)).headers.get("etag")!;
+    const unpinnedEtag = (await app.request(detailPath)).headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
 
     const pin = await setPin(app, older, true);
     expect(pin.status).toBe(200);
@@ -117,7 +120,7 @@ describe("conversation pin API", () => {
     ]);
     // A pin is viewer state, so an open detail page revalidates.
     const pinnedDetail = await app.request(detailPath, {
-      headers: { "if-none-match": unpinnedEtag },
+      headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: unpinnedEtag },
     });
     expect(pinnedDetail.status).toBe(200);
     expect(

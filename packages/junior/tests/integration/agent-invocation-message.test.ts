@@ -141,7 +141,7 @@ describe("messageAgent", () => {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
         agentName: "researcher",
-        modelProfile: "handoff",
+        reasoningLevel: "low",
         idempotencyKey: "message-child",
         parentToolCallId: "call-spawn",
       });
@@ -178,7 +178,7 @@ describe("messageAgent", () => {
             "parent-turn:call-message",
           ),
         ),
-      ).resolves.toMatchObject({ modelProfile: "handoff" });
+      ).resolves.toMatchObject({ reasoningLevel: "low" });
       await expect(sendFromParent("nobody", "call-unknown")).rejects.toThrow(
         /"nobody" is not "parent", a child agent/,
       );

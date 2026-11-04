@@ -146,21 +146,13 @@ describe("conversation event list API", () => {
     ]);
   });
 
-  it("keeps recorded model settings and call usage across handoffs and page boundaries", async () => {
+  it("keeps recorded models and call usage across page boundaries", async () => {
     const conversationId = "local:test:event-model";
     await recordConversation(conversationId);
     const store = getConversationEventStore();
-    const initialModel = {
-      modelId: "openai/gpt-5",
-      modelProfile: "standard",
-      reasoningLevel: "low",
-    };
-    const targetModel = {
-      modelId: "openai/gpt-5.6-sol",
-      modelProfile: "handoff",
-      reasoningLevel: "high",
-    };
-    const call = assistantMessage(3, 120);
+    const initialModel = { modelId: "openai/gpt-5" };
+    const nextModel = { modelId: "openai/gpt-5.6-sol" };
+    const call = assistantMessage(2, 120);
     call.data.usage.output = 40;
     call.data.usage.cacheRead = 500;
     call.data.usage.cacheWrite = 60;
@@ -176,17 +168,6 @@ describe("conversation event list API", () => {
         },
       },
       {
-        createdAtMs: 2,
-        data: {
-          type: "turn_routed",
-          turnId: "turn-1",
-          ...initialModel,
-          reasoningLevel: "low",
-          source: "router",
-          costUsd: 0.001,
-        },
-      },
-      {
         ...call,
         data: {
           ...call.data,
@@ -194,23 +175,17 @@ describe("conversation event list API", () => {
           providerMetadata: { secret: "must-not-leak" },
         },
       },
-    ]);
-    await store.replaceHistory(conversationId, {
-      createdAtMs: 4,
-      data: { type: "handoff", ...targetModel, replacementHistory: [] },
-    });
-    await store.append(conversationId, [
       {
-        ...assistantMessage(5),
+        ...assistantMessage(3),
         data: {
-          ...assistantMessage(5).data,
+          ...assistantMessage(3).data,
           provider: "vercel-ai-gateway",
-          model: targetModel.modelId,
+          model: nextModel.modelId,
         },
       },
       // More than one scan batch: the latest page must resolve context from SQL.
       ...Array.from({ length: 70 }, (_, index) => ({
-        createdAtMs: 6 + index,
+        createdAtMs: 4 + index,
         data: {
           type: "tool_execution_started" as const,
           toolCallId: `call-${index}`,
@@ -228,10 +203,10 @@ describe("conversation event list API", () => {
         ).json(),
       );
     const latest = await read(1);
-    expect(latest.events[0]?.model).toEqual(targetModel);
+    expect(latest.events[0]?.model).toEqual(nextModel);
     expect(latest.events[0]?.modelCall).toBeUndefined();
     const full = await read(100);
-    expect(full.events[2]).toMatchObject({
+    expect(full.events[1]).toMatchObject({
       model: initialModel,
       modelCall: {
         provider: "openai",
@@ -248,8 +223,8 @@ describe("conversation event list API", () => {
         },
       },
     });
-    expect(full.events[3]?.model).toEqual(targetModel);
-    expect(full.events[4]?.model).toEqual(targetModel);
+    expect(full.events[2]?.model).toEqual(nextModel);
+    expect(full.events[3]?.model).toEqual(nextModel);
     expect(full.events.at(-1)).toEqual(latest.events[0]);
     expect(JSON.stringify(full.events)).not.toContain("must-not-leak");
     if (!latest.previousCursor) throw new Error("Expected a previous cursor");
@@ -278,16 +253,16 @@ describe("conversation event list API", () => {
         },
       },
       ...Array.from({ length: 70 }, (_, index) =>
-        message(`pending-route-${index}`, 83 + index),
+        message(`pending-model-${index}`, 83 + index),
       ),
     ]);
     expect((await read(1)).events[0]?.model).toBeUndefined();
     const finished = await read(100);
-    expect(finished.events.find((event) => event.seq === 75)?.model).toEqual(
-      targetModel,
+    expect(finished.events.find((event) => event.seq === 73)?.model).toEqual(
+      nextModel,
     );
     expect(
-      finished.events.find((event) => event.seq === 76)?.model,
+      finished.events.find((event) => event.seq === 74)?.model,
     ).toBeUndefined();
   });
 

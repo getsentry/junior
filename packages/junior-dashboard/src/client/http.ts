@@ -174,21 +174,21 @@ export async function fetchDashboardJson<T>(
   return schema.parse(await response.json());
 }
 
-/** Read an authenticated response, allowing 304 only for an explicit validator. */
+/** Read an authenticated response, allowing 304 only for explicit validator headers. */
 export async function readDashboardResponse(
   path: string,
   signal?: AbortSignal,
-  etag?: string,
+  validator?: Record<string, string>,
 ): Promise<Response> {
   const response = await fetchDashboard(path, {
     credentials: "same-origin",
     ...(signal ? { signal } : undefined),
-    ...(etag
-      ? { cache: "no-store" as const, headers: { "if-none-match": etag } }
+    ...(validator
+      ? { cache: "no-store" as const, headers: validator }
       : undefined),
   });
   if (response.status === 401) restartDashboardSignIn();
-  if (!response.ok && !(etag && response.status === 304)) {
+  if (!response.ok && !(validator && response.status === 304)) {
     await throwDashboardApiError(path, response);
   }
   return response;

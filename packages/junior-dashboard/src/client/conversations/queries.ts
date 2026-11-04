@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   type QueryClient,
   queryOptions,
@@ -16,6 +16,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   webMessageId,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
@@ -80,9 +81,15 @@ async function readConversationSnapshot(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
+  unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
   const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal, previous);
+  const detail = await readConversationData(
+    conversationId,
+    signal,
+    previous,
+    unreadPage,
+  );
   return { ...detail, mailbox };
 }
 
@@ -119,8 +126,13 @@ export function conversationDetailQueryOptions(
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
     fastPollUntilMs?: number;
+    /** Also read the page around the read position. */
+    unreadPage?: boolean;
   },
 ) {
+  // `unreadPage` adds a page to one fetch. The detail in the cache is the
+  // same, so it stays out of the key.
+  // oxlint-disable-next-line @tanstack/query/exhaustive-deps
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
@@ -132,6 +144,7 @@ export function conversationDetailQueryOptions(
         conversationId!,
         signal,
         previous,
+        options?.unreadPage,
       );
       // Side reads do not poll. A new ETag means the Conversation changed,
       // so the details panel may be stale too.
@@ -170,7 +183,8 @@ export function conversationDetailQueryOptions(
 
 /**
  * Read positions only move forward. A poll that started before a read report
- * finished must not put an older position back in the cache.
+ * finished must not put an older position back in the cache, nor the unread
+ * cursor of that older position.
  */
 function keepLatestReadPosition(
   previous: ConversationSnapshot,
@@ -179,7 +193,8 @@ function keepLatestReadPosition(
   const kept = previous.readPosition;
   if (!kept) return next;
   if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
-  return { ...next, readPosition: kept };
+  const { unreadCursor: _olderCursor, ...rest } = next;
+  return { ...rest, readPosition: kept };
 }
 
 /** Create one dashboard conversation and refresh the personal feed. */
@@ -481,9 +496,29 @@ export function useStopConversationTurn(conversationId: string) {
   });
 }
 
+/** The open Conversation's data, from `useConversationData`. */
+export type ConversationData = ReturnType<typeof useConversationData>;
+
 /** Fetch a bounded conversation snapshot and older pages on demand. */
-export function useConversationData(conversationId: string | undefined) {
+export function useConversationData(
+  conversationId: string | undefined,
+  options?: {
+    /**
+     * Ask the first fetch of this visit for the page around the read
+     * position. Polls do not ask, so the server reads that page once.
+     */
+    unreadPageAtOpen?: boolean;
+  },
+) {
   const queryClient = useQueryClient();
+  // The shell keeps one hook across Conversations, so a new Conversation
+  // starts a new visit.
+  const [visit, setVisit] = useState({ conversationId, fetched: false });
+  if (visit.conversationId !== conversationId) {
+    setVisit({ conversationId, fetched: false });
+  }
+  const fetchedAtOpen =
+    visit.conversationId === conversationId && visit.fetched;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -521,11 +556,20 @@ export function useConversationData(conversationId: string | undefined) {
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
+      unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
     }),
-    // A reopened Conversation shows the cached copy at once, but it can miss
-    // messages that arrived while the reader was away. Fetch it each visit.
-    refetchOnMount: "always",
   });
+  // A reopened Conversation shows the cached copy at once, but it can miss
+  // messages that arrived while the reader was away. Fetch it once at the
+  // start of each visit, even when the cached copy is still fresh. A fetch
+  // that is already running counts.
+  const refetchDetail = detail.refetch;
+  useEffect(() => {
+    if (conversationId) void refetchDetail({ cancelRefetch: false });
+  }, [conversationId, refetchDetail]);
+  if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
+    setVisit({ conversationId, fetched: true });
+  }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -679,7 +723,6 @@ export function useConversationData(conversationId: string | undefined) {
   const isLoadingPreviousPage =
     history.isFetchingNextPage || historyNeedsReconciliation;
 
-  const refetchDetail = detail.refetch;
   useEffect(() => {
     if (shouldRefreshDetail) void refetchDetail();
   }, [refetchDetail, shouldRefreshDetail]);
@@ -695,11 +738,18 @@ export function useConversationData(conversationId: string | undefined) {
 
   const fetchNextHistoryPage = history.fetchNextPage;
   useEffect(() => {
-    if (historyNeedsReconciliation) void fetchNextHistoryPage();
+    if (historyNeedsReconciliation) {
+      void fetchNextHistoryPage({ cancelRefetch: false });
+    }
   }, [fetchNextHistoryPage, historyNeedsReconciliation]);
 
   return {
     data,
+    /**
+     * The latest page alone, without earlier pages. It is not deferred, so it
+     * matches `fetchedDetail` and the read position that came with it.
+     */
+    latest: detail.data,
     error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),
@@ -707,6 +757,8 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The first fetch of this visit has ended. */
+    fetchedAtOpen,
     /** The latest detail after a fetch in this visit, before it is deferred. */
     fetchedDetail:
       detail.isFetchedAfterMount && !detail.isFetching
@@ -732,8 +784,10 @@ export function useConversationData(conversationId: string | undefined) {
       const hasPreviousPage = history.data
         ? history.hasNextPage
         : Boolean(detailData?.previousCursor);
-      if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
-        void history.fetchNextPage();
+      if (conversationId && hasPreviousPage) {
+        // A second call joins the read in flight. By default it cancels
+        // that read and starts the same read again.
+        void history.fetchNextPage({ cancelRefetch: false });
       }
     },
   };
@@ -744,15 +798,22 @@ export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
+  unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
   const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}${unreadPage ? "?unreadPage=true" : ""}`,
     signal,
-    previous?.detailEtag,
+    previous?.detailEtag
+      ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
+      : undefined,
   );
   if (response.status === 304 && previous) return previous;
   const report = conversationDetailReportSchema.parse(await response.json());
-  return { ...report, detailEtag: response.headers.get("etag") ?? undefined };
+  return {
+    ...report,
+    detailEtag:
+      response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
+  };
 }
 
 /** Read accepted mailbox messages that have not reached durable history yet. */

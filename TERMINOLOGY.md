@@ -69,13 +69,10 @@ Canonical words for Junior code and docs. One concept, one word.
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
-- **Turn route**: the Model profile and Reasoning level chosen before a Turn.
-- **Model profile**: a host model name (`standard`, `handoff`) with an
-  optional task-fit description for the router and `handoff`. **Reasoning
-  level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), or `tool_result` event. Not `model_item` or `model_message`.
-- **History replacement**: a compaction or handoff that sets later history.
+- **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
   and search. **Message update**: later state stored as `message_updated`.

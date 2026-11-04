@@ -24,7 +24,6 @@ function eventMentionTexts(
     case "assistant_message":
       return data.parts.map((part) => part.text);
     case "compaction":
-    case "handoff":
       return [data.summary];
     case "structured_event":
       return [

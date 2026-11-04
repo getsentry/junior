@@ -50,7 +50,6 @@ type DiscardReason =
   | "conflict"
   | "history_version_changed"
   | "over_target"
-  | "profile_changed"
   | "split_tool_call";
 
 interface ReplacementEntry {
@@ -173,9 +172,6 @@ async function swapPreparedCompaction(
     if (event.data.historyVersion !== historyVersion) {
       return discard("history_version_changed");
     }
-    if (event.data.modelProfile !== args.modelProfile) {
-      return discard("profile_changed");
-    }
     return await applyPreparedSummary(args, event.data, {
       estimatedTokens,
       historyVersion,
@@ -280,7 +276,6 @@ async function applyPreparedSummary(
       createdAtMs: Date.now(),
       data: {
         type: "compaction",
-        modelProfile: args.modelProfile,
         modelId: args.modelId,
         details: {
           reason: "capacity",

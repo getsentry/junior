@@ -58,7 +58,7 @@ function stripVolatile(value: unknown): unknown {
 
 /**
  * Stored rows without volatile fields. A message update folds into its
- * message. Routing and runtime context belong to the run, not the history.
+ * message. Runtime context belongs to the run, not the history.
  */
 async function comparableRows(conversationId: string): Promise<unknown[]> {
   const rows = await getConversationEventStore().loadHistory(conversationId);
@@ -66,7 +66,6 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
   const result: unknown[] = [];
   for (const row of rows) {
     const data = row.data as Record<string, unknown>;
-    if (data.type === "turn_routed") continue;
     if (
       data.type === "user_message" &&
       (data.provenance as { authority?: string } | undefined)?.authority ===

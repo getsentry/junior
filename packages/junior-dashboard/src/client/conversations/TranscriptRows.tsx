@@ -24,12 +24,7 @@ export function TranscriptRows({
  */
 export function TranscriptUnreadMarker() {
   return (
-    // An anchor row, so a catch-up that opens here grows down, not up.
-    <div
-      className="grid gap-2 py-1"
-      data-scroll-anchor="unread-marker"
-      data-transcript-unread-marker=""
-    >
+    <div className="grid gap-2 py-1" data-transcript-unread-marker="">
       <div className="flex items-center gap-3">
         <span
           aria-label="New messages"

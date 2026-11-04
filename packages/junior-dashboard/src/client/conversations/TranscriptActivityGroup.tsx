@@ -104,11 +104,6 @@ export function activityGroupSummary(
     (entry) =>
       entry.kind === "context" && entry.part.event.type === "compaction",
   ).length;
-  const handoffs = entries.flatMap((entry) =>
-    entry.kind === "context" && entry.part.event.type === "handoff"
-      ? [entry.part.event]
-      : [],
-  );
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
@@ -116,13 +111,6 @@ export function activityGroupSummary(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
   const eventCount = entries.filter((entry) => entry.kind === "message").length;
-  const [onlyHandoff] = handoffs;
-  const handoffSummary =
-    handoffs.length === 1 && onlyHandoff
-      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
-      : handoffs.length > 1
-        ? countLabel(handoffs.length, "model handoff", "model handoffs")
-        : undefined;
 
   const parts = [
     toolCount > 0
@@ -134,7 +122,6 @@ export function activityGroupSummary(
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
       : undefined,
-    handoffSummary,
     structuredCount > 0
       ? countLabel(structuredCount, "1 structured event", "structured events")
       : undefined,

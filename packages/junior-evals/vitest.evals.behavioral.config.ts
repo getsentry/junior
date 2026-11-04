@@ -110,7 +110,6 @@ export default defineConfig({
           exclude: [
             "evals/guardian/**",
             "evals/integration/**",
-            "evals/router/**",
             `${codingSuiteRoot}/**`,
             `${googleSuiteRoot}/**`,
             `${memorySuiteRoot}/**`,

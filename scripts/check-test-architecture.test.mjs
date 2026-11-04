@@ -303,7 +303,7 @@ test("allows agent tests to import the fixture, the public app API, plugin packa
         ),
         integrationTest(
           'import { getDb } from "@/chat/db";',
-          "packages/junior-evals/evals/router/new.eval.ts",
+          "packages/junior-evals/evals/classifiers/new.eval.ts",
         ),
       ],
       {},

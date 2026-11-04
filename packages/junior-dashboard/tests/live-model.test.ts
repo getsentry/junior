@@ -33,30 +33,18 @@ function event(
   };
 }
 
-describe("liveModelId", () => {
-  it("uses the open turn route", () => {
-    expect(
-      liveModelId(
-        detail([
-          event(0, {
-            type: "turn_lifecycle",
-            turnId: "turn-1",
-            state: "started",
-          }),
-          event(1, {
-            type: "turn_routed",
-            turnId: "turn-1",
-            modelProfile: "standard",
-            modelId: "xai/grok-4-5",
-            reasoningLevel: "high",
-            source: "router",
-          }),
-        ]),
-      ),
-    ).toBe("xai/grok-4-5");
-  });
+function assistantCall(seq: number, modelId: string) {
+  return {
+    ...event(seq, {
+      type: "assistant_message",
+      parts: [],
+    }),
+    model: { modelId },
+  };
+}
 
-  it("prefers a mid-turn handoff over the original route", () => {
+describe("liveModelId", () => {
+  it("uses the model of the latest call in the open turn", () => {
     expect(
       liveModelId(
         detail([
@@ -65,20 +53,8 @@ describe("liveModelId", () => {
             turnId: "turn-1",
             state: "started",
           }),
-          event(1, {
-            type: "turn_routed",
-            turnId: "turn-1",
-            modelProfile: "standard",
-            modelId: "openai/gpt-5-mini",
-            reasoningLevel: "medium",
-            source: "router",
-          }),
-          event(2, {
-            type: "handoff",
-            modelProfile: "handoff",
-            modelId: "xai/grok-4-5",
-            reasoningLevel: "high",
-          }),
+          assistantCall(1, "openai/gpt-5-mini"),
+          assistantCall(2, "xai/grok-4-5"),
         ]),
       ),
     ).toBe("xai/grok-4-5");
@@ -93,14 +69,7 @@ describe("liveModelId", () => {
             turnId: "turn-1",
             state: "started",
           }),
-          event(1, {
-            type: "turn_routed",
-            turnId: "turn-1",
-            modelProfile: "standard",
-            modelId: "xai/grok-4-5",
-            reasoningLevel: "high",
-            source: "router",
-          }),
+          assistantCall(1, "xai/grok-4-5"),
           event(2, {
             type: "turn_lifecycle",
             turnId: "turn-1",
