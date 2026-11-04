@@ -830,6 +830,11 @@ export const forkConversationBodySchema = z
     /** Assistant reply that ends the copied history. */
     messageId: z.string().min(1).max(500),
     idempotencyKey: z.string().trim().min(1).max(200),
+    /** Start a hidden, read-only Quick question about this reply text. */
+    quickQuestion: z
+      .object({ quote: z.string().trim().min(1).max(4_000) })
+      .strict()
+      .optional(),
   })
   .strict();
 

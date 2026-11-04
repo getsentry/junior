@@ -141,6 +141,8 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
+        // An unkept Quick question is a private side thread.
+        isNull(juniorConversations.quickQuestionAt),
         conversationFeedMembershipFilter(status, filter),
         codeRepository
           ? conversationCodeRepositoryFilter(

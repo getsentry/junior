@@ -364,3 +364,12 @@
     contain-intrinsic-size: auto 3.5rem;
   }
 }
+
+/* The Quick question selection. Utilities cannot style a highlight. */
+::highlight(quick-question) {
+  background-color: color-mix(
+    in oklab,
+    var(--color-dashboard-accent) 30%,
+    transparent
+  );
+}
