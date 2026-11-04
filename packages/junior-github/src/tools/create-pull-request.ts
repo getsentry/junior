@@ -38,6 +38,12 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -184,71 +190,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string): { name: string; owner: string } {
-  const repo = nonEmptyString(value, "repo");
-  const parts = repo.split("/");
-  if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return {
-    owner: parts[0].trim(),
-    name: parts[1].trim(),
-  };
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const record = payload as Record<string, unknown>;
-    const message = record.message;
-    if (typeof message === "string") {
-      const details = githubApiErrorDetails(record);
-      return details ? `${message}: ${details}` : message;
-    }
-  }
-  if (typeof payload === "string" && payload.trim()) {
-    return payload.trim();
-  }
-  return "GitHub request failed";
-}
-
-function githubApiErrorDetails(
-  payload: Record<string, unknown>,
-): string | undefined {
-  const errors = payload.errors;
-  if (!Array.isArray(errors)) {
-    return undefined;
-  }
-  const details = errors
-    .map((error) => {
-      if (!error || typeof error !== "object" || Array.isArray(error)) {
-        return undefined;
-      }
-      const fields = ["resource", "field", "code", "message"]
-        .map((name) => {
-          const value = (error as Record<string, unknown>)[name];
-          return typeof value === "string" && value.trim()
-            ? `${name}=${value.trim()}`
-            : undefined;
-        })
-        .filter((value): value is string => value !== undefined);
-      return fields.length ? fields.join(" ") : undefined;
-    })
-    .filter((value): value is string => value !== undefined);
-  return details.length ? details.join("; ") : undefined;
-}
-
 function createPullRequestState(
   value: unknown,
 ): CreatePullRequestState | undefined {
@@ -287,7 +228,7 @@ function createGitHubPullRequestRequest(
   ctx: ToolRegistrationHookContext,
   requester: GitHubRequester | undefined,
   dashboardUrl?: string,
-): Request {
+): { body: unknown; path: string } {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
@@ -300,38 +241,25 @@ function createGitHubPullRequestRequest(
     ),
     ...(input.draft !== undefined ? { draft: input.draft } : undefined),
   };
-  return new Request(
-    `https://api.github.com/repos/${encodeURIComponent(
-      repo.owner,
-    )}/${encodeURIComponent(repo.name)}/pulls`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return { path: `${repoPath(repo)}/pulls`, body: payload };
 }
 
 async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
-  request: Request,
+  request: { body: unknown; path: string },
 ): Promise<{
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
 }> {
-  const response = await ctx.egress.fetch({
-    provider: "github",
+  const response = await githubApi(ctx.egress, {
     operation: "github.pull.create",
-    request,
+    method: "POST",
+    ...request,
   });
-  const parsed = await readJsonResponse(response);
+  const parsed = response.body;
   if (!response.ok) {
     throw new GitHubPullRequestCreateRejectedError(
-      `GitHub pull request creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
+      `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
         parsed,
       )}`,
       response.status,
@@ -380,7 +308,7 @@ async function recordOpener(
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
-    repositoryFullName: `${repo.owner}/${repo.name}`,
+    repositoryFullName: repo.ref,
   });
 }
 
@@ -395,21 +323,11 @@ async function assignPullRequestRequester(
   if (!assignee) return;
   try {
     const repo = parseRepo(input.repo);
-    const response = await ctx.egress.fetch({
-      provider: "github",
+    const response = await githubApi(ctx.egress, {
       operation: "github.pull.assign",
-      request: new Request(
-        `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${result.number}/assignees`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-          body: JSON.stringify({ assignees: [assignee] }),
-        },
-      ),
+      method: "POST",
+      path: `${repoPath(repo)}/issues/${result.number}/assignees`,
+      body: { assignees: [assignee] },
     });
     if (!response.ok) {
       ctx.log.warn("github.pull_request.assign_after_create.rejected", {

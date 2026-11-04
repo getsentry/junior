@@ -23,6 +23,12 @@ import {
 import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -85,10 +91,6 @@ const draftMutationResponseSchema = z.object({
     result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
   }),
 });
-const graphqlErrorsSchema = z.object({
-  errors: z.array(z.object({ message: z.string() })).min(1),
-});
-
 const pullRequestSchema = z.object({
   base: z.string(),
   body: z.string().nullable(),
@@ -117,33 +119,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
-  return "GitHub request failed";
-}
-
 /** Change draft state through GitHub GraphQL and return the confirmed value. */
 async function setPullRequestDraft(input: {
   draft: boolean;
@@ -152,36 +127,26 @@ async function setPullRequestDraft(input: {
   repo: string;
 }): Promise<boolean> {
   const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
-  const response = await input.egress.fetch({
-    provider: "github",
+  const response = await githubApi(input.egress, {
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
-    request: new Request("https://api.github.com/graphql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operationName: mutation.operationName,
-        query: mutation.query,
-        variables: { id: input.nodeId },
-      }),
-    }),
+    method: "POST",
+    path: "/graphql",
+    body: {
+      operationName: mutation.operationName,
+      query: mutation.query,
+      variables: { id: input.nodeId },
+    },
   });
-  const payload = await readJson(response);
+  const payload = response.body;
   const isDraft =
     draftMutationResponseSchema.safeParse(payload).data?.data.result.pullRequest
       .isDraft;
   if (!response.ok || isDraft !== input.draft) {
     throw new Error(
-      `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`,
+      `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`,
     );
   }
   return isDraft;
-}
-
-function githubGraphqlErrorMessage(payload: unknown): string {
-  const result = graphqlErrorsSchema.safeParse(payload);
-  return result.success
-    ? result.data.errors.map((error) => error.message).join("; ")
-    : githubApiErrorMessage(payload);
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
@@ -235,27 +200,16 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         ...(update.base !== undefined ? { base: update.base } : undefined),
         ...(update.state !== undefined ? { state: update.state } : undefined),
       };
-      const pullUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${update.number}`;
       const hasRestUpdate = Object.keys(payload).length > 0;
-      const response = await ctx.egress.fetch({
-        provider: "github",
+      const response = await githubApi(ctx.egress, {
         operation: hasRestUpdate ? "github.pull.update" : "github.pull.get",
-        request: new Request(pullUrl, {
-          method: hasRestUpdate ? "PATCH" : "GET",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            ...(hasRestUpdate
-              ? { "Content-Type": "application/json" }
-              : undefined),
-          },
-          ...(hasRestUpdate ? { body: JSON.stringify(payload) } : undefined),
-        }),
+        path: `${repoPath(repo)}/pulls/${update.number}`,
+        ...(hasRestUpdate ? { method: "PATCH", body: payload } : undefined),
       });
-      const parsed = await readJson(response);
+      const parsed = response.body;
       if (!response.ok) {
         throw new Error(
-          `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`,
+          `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
         );
       }
       const providerResult = z
