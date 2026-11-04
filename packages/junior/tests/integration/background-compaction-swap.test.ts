@@ -197,9 +197,18 @@ describe("background compaction swap", () => {
   it("swaps between model calls only above the threshold, without a summary call", async () => {
     const conversationId = "local:web:swap-active";
     await prepareSummary(conversationId, firstTurn);
+    const instruction = user(
+      "<current-instruction>Check the deploy.</current-instruction>",
+      5,
+    );
+    // The model call that made this tool call saw the whole history. Its
+    // usage does not count toward the replacement, which drops that history.
     const turn = [
-      user("<current-instruction>Check the deploy.</current-instruction>", 5),
-      toolCall("call-2", 6),
+      instruction,
+      {
+        ...toolCall("call-2", 6),
+        usage: { input: 400_000, output: 20, totalTokens: 400_020 },
+      } as PiMessage,
       toolResult("call-2", "ok", 7),
     ];
     await commitMessages({ conversationId, messages: [...firstTurn, ...turn] });
@@ -213,7 +222,7 @@ describe("background compaction swap", () => {
     };
 
     const below = await compactWithPreparedSummary(
-      { ...args, piMessages: turn },
+      { ...args, piMessages: [instruction] },
       summarize,
     );
     expect(below.compacted).toBe(false);
@@ -281,6 +290,28 @@ describe("background compaction swap", () => {
     expect(result.piMessages!.map(textOf).join("\n")).toContain(
       "Fresh summary.",
     );
+  });
+
+  it("counts the system prompt and tools toward the target", async () => {
+    const conversationId = "local:web:swap-request-overhead";
+    await prepareSummary(conversationId, firstTurn);
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        modelProfile: "standard",
+        piMessages: firstTurn,
+        // Above the 288k target of the default 400k token window.
+        requestOverheadTokens: 300_000,
+      },
+      summarize,
+    );
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.compacted).toBe(true);
   });
 
   it("discards a summary when another replacement commits first", async () => {
