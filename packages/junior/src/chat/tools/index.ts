@@ -62,7 +62,6 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
-import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -214,18 +213,8 @@ export function createTools(
     });
   }
 
-  if (context.handoff) {
-    tools.handoff = createHandoffTool(context.handoff);
-  }
-
   if (context.spawnAgent) {
-    if (!context.spawnAgentProfiles) {
-      throw new Error("spawnAgent is missing its configured model profiles");
-    }
-    tools.spawnAgent = createSpawnAgentTool(
-      context.spawnAgent,
-      context.spawnAgentProfiles,
-    );
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 

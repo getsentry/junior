@@ -24,12 +24,11 @@ const AGENT_FIXTURE_ROOT = "packages/junior-evals/src/fixture/";
 const AGENT_FIXTURE_ALIAS = "@junior-evals/fixture/";
 const JUNIOR_TESTS_ROOT = "packages/junior/tests/";
 const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
-// Guardian, router, and classifier evals call one model boundary and do not
-// run the agent.
+// Guardian and classifier evals call one model boundary and do not run the
+// agent.
 const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/classifiers/",
   "packages/junior-evals/evals/guardian/",
-  "packages/junior-evals/evals/router/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
 

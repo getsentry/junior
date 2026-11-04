@@ -43,7 +43,7 @@ import {
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { decideReply } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
   buildConversationContext,
@@ -363,9 +363,8 @@ export function createConversationTurnWorker(
     // TODO(dcramer): Remove this Source-based Delivery choice after the core
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
-    const deliverToProvider =
-      Boolean(conversationLocation) &&
-      (source.kind === "event" || savedMessageIsEvent);
+    const isEventTurn = source.kind === "event" || savedMessageIsEvent;
+    const deliverToProvider = Boolean(conversationLocation) && isEventTurn;
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
@@ -486,15 +485,27 @@ export function createConversationTurnWorker(
           value: AssistantMessage | string,
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
+          const decision = agentMessage ? decideReply(agentMessage) : undefined;
           const replyText =
-            typeof value === "string" ? value : getAssistantReplyText(value);
+            typeof value === "string"
+              ? value
+              : decision?.kind === "deliver"
+                ? decision.text
+                : undefined;
           if (!replyText?.trim()) {
             return;
           }
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
+          // Only Event Turns may be quiet: a person who asked always gets the
+          // reply. A card means someone must look, so it always delivers.
+          const quiet =
+            decision?.kind === "deliver" &&
+            decision.quiet === true &&
+            isEventTurn &&
+            cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
-          if (deliverToProvider) {
+          if (deliverToProvider && !quiet) {
             if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
@@ -513,6 +524,7 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
             ...(deliveryResult ? { deliveryResult } : undefined),
+            ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             ...(deliveryResult
               ? { source: "slack" as const }

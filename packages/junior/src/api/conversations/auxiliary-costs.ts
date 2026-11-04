@@ -8,6 +8,8 @@ import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 
+// `turn_routed` rows come from the retired Turn router. They still carry the
+// router cost of old Turns.
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
@@ -86,7 +88,7 @@ export async function readConversationAuxiliaryCostsFromSql(
           ]),
         ),
         sql`${cost} >= 0`,
-        // A fork copies routing events, but their cost belongs to the source.
+        // A fork copies these events, but their cost belongs to the source.
         notCopiedByFork(),
       ),
     )

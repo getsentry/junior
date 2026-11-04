@@ -537,7 +537,7 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
-  // Core detail reads set a version ETag before they build the report. Mock
+  // Core detail reads set a version token before they build the report. Mock
   // reporting has no stored version, so it revalidates on content instead.
   if (options.mockConversations) {
     app.use("/api/conversations/:conversationId", revalidateConversation);

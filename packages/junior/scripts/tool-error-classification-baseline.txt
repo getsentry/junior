@@ -2,6 +2,7 @@
 # Model-repairable failures must use ToolInputError or PluginToolInputError.
 # Only keep true system/config/integrity failures here.
 # Format: relativePath<TAB>normalized throw statement
+packages/junior-github/src/tools/comment-on-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but the runtime could not persist the completed issue state.", { cause: error }, );
 packages/junior-github/src/tools/create-issue.ts	throw new Error("GitHub issue creation returned an invalid response.");
@@ -36,7 +37,6 @@ packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
 packages/junior/src/chat/automations/tools/create.ts	throw new Error("Automation creation requires a tool-call identity.");
-packages/junior/src/chat/tools/index.ts	throw new Error("spawnAgent is missing its configured model profiles");
 packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );

@@ -5,6 +5,7 @@ import {
   activityGroupOpen,
   activityGroupSummary,
   isCollapsibleActivityEntry,
+  quietTurnEntryKeys,
 } from "../src/client/conversations/TranscriptActivityGroup";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
 
@@ -72,23 +73,6 @@ function compaction(): RenderedTranscriptEntry {
   };
 }
 
-function handoff(): RenderedTranscriptEntry {
-  return {
-    key: "context:2",
-    kind: "context",
-    part: {
-      event: {
-        createdAt: "2026-01-01T00:00:00.000Z",
-        modelId: "openai/gpt-5-mini",
-        modelProfile: "fast",
-        type: "handoff",
-      },
-      type: "context_event",
-    },
-    timestamp: 1,
-  };
-}
-
 function message(eventType?: string): RenderedTranscriptEntry {
   return {
     key: "message:1",
@@ -97,6 +81,23 @@ function message(eventType?: string): RenderedTranscriptEntry {
       parts: [{ text: "hello", type: "text" }],
       ...(eventType ? { eventType } : undefined),
       role: "user",
+      sourceSeq: 1,
+    },
+  };
+}
+
+function turnMessage(
+  key: string,
+  role: "assistant" | "user",
+  meta: { eventType?: string; quiet?: true } = {},
+): RenderedTranscriptEntry {
+  return {
+    key,
+    kind: "message",
+    message: {
+      parts: [{ text: key, type: "text" }],
+      ...meta,
+      role,
       sourceSeq: 1,
     },
   };
@@ -124,7 +125,6 @@ describe("transcript activity group", () => {
     expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
     expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
-    expect(isCollapsibleActivityEntry(handoff())).toBe(true);
     expect(isCollapsibleActivityEntry(message())).toBe(false);
     expect(isCollapsibleActivityEntry(message("pull_request.opened"))).toBe(
       false,
@@ -137,9 +137,9 @@ describe("transcript activity group", () => {
     expect(activityGroupLabel([tool("1"), tool("2")])).toBe("2 events");
     expect(activityGroupLabel([reasoning("r1")])).toBe("1 event");
     expect(activityGroupLabel([tool("1"), reasoning("r1")])).toBe("2 events");
-    expect(
-      activityGroupLabel([tool("1"), tool("2"), compaction(), handoff()]),
-    ).toBe("4 events");
+    expect(activityGroupLabel([tool("1"), tool("2"), compaction()])).toBe(
+      "3 events",
+    );
   });
 
   it("appends group duration when start and end timestamps are known", () => {
@@ -168,19 +168,30 @@ describe("transcript activity group", () => {
     ).toBe("1 event · 300ms");
   });
 
+  it("folds quiet replies with the Event messages that started their Turn", () => {
+    const entries = [
+      turnMessage("person", "user"),
+      turnMessage("loud-reply", "assistant"),
+      turnMessage("ci", "user", { eventType: "pull_request.checks.failed" }),
+      tool("fix"),
+      turnMessage("quiet-reply", "assistant", { quiet: true }),
+      turnMessage("review", "user", { eventType: "pull_request.merged" }),
+      turnMessage("merged-reply", "assistant"),
+    ];
+    expect([...quietTurnEntryKeys(entries)]).toEqual(["quiet-reply", "ci"]);
+    expect(activityGroupSummary([entries[2]!, entries[3]!, entries[4]!])).toBe(
+      "1 tool call · 1 event · 1 quiet reply",
+    );
+  });
+
   it("summarizes collapsed activity contents for the tooltip", () => {
     expect(activityGroupSummary([tool("1")])).toBe("1 tool call");
     expect(activityGroupSummary([tool("1"), reasoning("r1")])).toBe(
       "1 tool call · 1 reasoning entry",
     );
-    expect(
-      activityGroupSummary([tool("1"), tool("2"), compaction(), handoff()]),
-    ).toBe(
-      "2 tool calls · context compacted · model handoff to openai/gpt-5-mini (fast)",
+    expect(activityGroupSummary([tool("1"), tool("2"), compaction()])).toBe(
+      "2 tool calls · context compacted",
     );
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
-    expect(activityGroupSummary([handoff()])).toBe(
-      "model handoff to openai/gpt-5-mini (fast)",
-    );
   });
 });

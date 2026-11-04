@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX,
+  COMPACTION_SUMMARY_PREFIX,
   hasCompactedConversationContext,
-  MODEL_HANDOFF_SUMMARY_PREFIX,
 } from "@/chat/services/context-compaction-marker";
 
 describe("hasCompactedConversationContext", () => {
@@ -24,7 +24,7 @@ describe("hasCompactedConversationContext", () => {
     ).toBe(true);
   });
 
-  it("detects a handoff summary wrapped as the current instruction", () => {
+  it("detects a compaction summary wrapped as the current instruction", () => {
     expect(
       hasCompactedConversationContext([
         {
@@ -33,7 +33,7 @@ describe("hasCompactedConversationContext", () => {
             {
               type: "text",
               text: renderCurrentInstruction(
-                `${MODEL_HANDOFF_SUMMARY_PREFIX}\nContinue the task.`,
+                `${COMPACTION_SUMMARY_PREFIX}\nContinue the task.`,
               ),
             },
           ],

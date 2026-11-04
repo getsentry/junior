@@ -22,6 +22,7 @@ import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import {
   isCollapsibleActivityEntry,
+  quietTurnEntryKeys,
   TranscriptActivityGroup,
 } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
@@ -232,9 +233,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       keyPrefix={props.conversation.conversationId}
       unread={props.unread}
       renderContext={(entry) => (
-        <TranscriptRailEvent
-          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
-        >
+        <TranscriptRailEvent kind="compaction">
           <TranscriptContextEventView
             part={entry.part}
             timestamp={entry.timestamp}
@@ -359,6 +358,12 @@ function TranscriptEntryList(props: {
 }) {
   const search = useTranscriptSearch();
   const activityKeys = useRef(new Map<string, string>());
+  const quietKeys = useMemo(
+    () => quietTurnEntryKeys(props.entries),
+    [props.entries],
+  );
+  const collapsible = (entry: TranscriptEntry) =>
+    isCollapsibleActivityEntry(entry) || quietKeys.has(entry.key);
   const claimedActivityKeys = new Set<string>();
   const rows: ReactNode[] = [];
   // Search results are not a reading order, so they get no marker.
@@ -394,11 +399,11 @@ function TranscriptEntryList(props: {
   for (let index = 0; index < props.entries.length; ) {
     const entry = props.entries[index]!;
 
-    if (isCollapsibleActivityEntry(entry)) {
+    if (collapsible(entry)) {
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
-        isCollapsibleActivityEntry(props.entries[index]!)
+        collapsible(props.entries[index]!)
       ) {
         activityEntries.push(props.entries[index]!);
         index += 1;
@@ -523,9 +528,7 @@ function RedactedTranscriptView(props: {
       entries={groupTranscriptMessages(props.messages)}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
       renderContext={(entry) => (
-        <TranscriptRailEvent
-          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
-        >
+        <TranscriptRailEvent kind="compaction">
           <TranscriptContextEventView
             part={entry.part}
             timestamp={entry.timestamp}

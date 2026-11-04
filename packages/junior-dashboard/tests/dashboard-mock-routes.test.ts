@@ -370,7 +370,7 @@ describe("dashboard canonical-event mock routes", () => {
 
     const long = await readDetail("slack:CQA456:1770021600.000600");
     expect(long.events.map((event) => event.data.type)).toEqual(
-      expect.arrayContaining(["compaction", "handoff"]),
+      expect.arrayContaining(["compaction"]),
     );
     const historyResponse = await app.fetch(
       new Request(

@@ -34,6 +34,7 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
+import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -154,8 +155,12 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
-  const conversationDetail = useConversationData(conversationId);
+  // The shell owns the open Conversation's data, and the page reads it. On a
+  // direct load, this fetch runs beside the dashboard core reads, before the
+  // page mounts. One fetch for each visit also brings the unread page.
+  const conversationDetail = useConversationData(conversationId, {
+    unreadPageAtOpen: readConversationStartPosition() === "unread",
+  });
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -439,7 +444,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail={false} />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -481,7 +486,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}

@@ -73,7 +73,7 @@ function textOf(message: PiMessage): string {
 async function prepareSummary(
   conversationId: string,
   messages: PiMessage[],
-  overrides: { historyVersion?: number; modelProfile?: string } = {},
+  overrides: { historyVersion?: number } = {},
 ) {
   const committed = await commitMessages({ conversationId, messages });
   await getConversationEventStore().append(conversationId, [
@@ -83,7 +83,6 @@ async function prepareSummary(
         type: "compaction_prepared",
         markSeq: committed.committedSeq,
         historyVersion: overrides.historyVersion ?? committed.historyVersion,
-        modelProfile: (overrides.modelProfile ?? "standard") as "standard",
         modelId: MODEL_ID,
         outcome: "ready",
         summary: "The person asked for the deploy checksum of build 7421.",
@@ -142,7 +141,6 @@ describe("background compaction swap", () => {
         conversationId,
         mode: "blocking",
         modelId: MODEL_ID,
-        modelProfile: "standard",
         pendingMessages: [
           { message: prompt, provenance: { authority: "instruction" } },
         ],
@@ -217,7 +215,6 @@ describe("background compaction swap", () => {
       conversationId,
       mode: "active" as const,
       modelId: MODEL_ID,
-      modelProfile: "standard" as const,
       piMessages: [...firstTurn, ...turn],
     };
 
@@ -233,40 +230,27 @@ describe("background compaction swap", () => {
     expect(result.piMessages!.slice(-3)).toEqual(turn);
   });
 
-  it.for([
-    {
-      reason: "an older History version",
-      overrides: { historyVersion: 99 },
-    },
-    {
-      reason: "another Model profile",
-      overrides: { modelProfile: "fast" },
-    },
-  ])(
-    "discards a summary of $reason and runs the blocking compaction",
-    async ({ overrides }) => {
-      const conversationId = `local:web:swap-discard-${overrides.historyVersion ?? overrides.modelProfile}`;
-      await prepareSummary(conversationId, firstTurn, overrides);
-      const summarize = vi.fn(async () => "Fresh summary.");
+  it("discards a summary of an older History version and runs the blocking compaction", async () => {
+    const conversationId = "local:web:swap-discard-99";
+    await prepareSummary(conversationId, firstTurn, { historyVersion: 99 });
+    const summarize = vi.fn(async () => "Fresh summary.");
 
-      const result = await compactWithPreparedSummary(
-        {
-          conversationId,
-          mode: "blocking",
-          modelId: MODEL_ID,
-          modelProfile: "standard",
-          piMessages: firstTurn,
-        },
-        summarize,
-      );
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
 
-      expect(summarize).toHaveBeenCalledOnce();
-      expect(result.compacted).toBe(true);
-      expect(result.piMessages!.map(textOf).join("\n")).toContain(
-        "Fresh summary.",
-      );
-    },
-  );
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.compacted).toBe(true);
+    expect(result.piMessages!.map(textOf).join("\n")).toContain(
+      "Fresh summary.",
+    );
+  });
 
   it("discards a summary when the kept history stays above the target", async () => {
     const conversationId = "local:web:swap-over-target";
@@ -279,7 +263,6 @@ describe("background compaction swap", () => {
         conversationId,
         mode: "blocking",
         modelId: MODEL_ID,
-        modelProfile: "standard",
         piMessages: firstTurn,
       },
       summarize,
@@ -302,7 +285,6 @@ describe("background compaction swap", () => {
         conversationId,
         mode: "blocking",
         modelId: MODEL_ID,
-        modelProfile: "standard",
         piMessages: firstTurn,
         // Above the 288k target of the default 400k token window.
         requestOverheadTokens: 300_000,
@@ -327,7 +309,6 @@ describe("background compaction swap", () => {
           createdAtMs: Date.now(),
           data: {
             type: "compaction",
-            modelProfile: "standard",
             modelId: MODEL_ID,
             summary: "Other Turn.",
             replacementHistory: [],
@@ -344,7 +325,6 @@ describe("background compaction swap", () => {
         conversationId,
         mode: "blocking",
         modelId: MODEL_ID,
-        modelProfile: "standard",
         piMessages: firstTurn,
       },
       summarize,

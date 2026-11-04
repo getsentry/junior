@@ -3,20 +3,16 @@
  *
  * Bounds Pi history for long conversations and commits a history
  * replacement. Capacity compaction gets its summary from the caller, which
- * asks the agent model with the cached request prefix. Handoff summarizes with
- * the fast model. Mid-turn and handoff replacements keep the authored
- * instruction before the summary. Turn-start replacements keep recent user
+ * asks the agent model with the cached request prefix. Mid-turn replacements
+ * keep the authored instruction before the summary. Turn-start replacements keep recent user
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import type { Message } from "@earendil-works/pi-ai";
 import {
   estimateContextTokens,
   estimateTokens,
 } from "@earendil-works/pi-agent-core";
-import { botConfig } from "@/chat/config";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   estimateTextTokens,
@@ -40,7 +36,6 @@ import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
-import type { ModelProfile } from "@/chat/model-profile";
 import {
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
@@ -62,7 +57,6 @@ import {
 import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
-const MAX_SUMMARY_CHARS = 6_000;
 
 /** Log fields of the Turn that compacts its history. */
 export interface CompactionMetadata {
@@ -83,26 +77,10 @@ export interface CompactContextResult {
     | "summary_failed";
 }
 
-interface HandoffContextArgs {
-  conversationContext?: string;
-  conversationId: string;
-  metadata?: CompactionMetadata;
-  piMessages: PiMessage[];
-  runtimeContext: PiMessage[];
-  signal?: AbortSignal;
-  triggeringToolCallId?: string;
-  target: {
-    modelId: string;
-    modelProfile: ModelProfile;
-    reasoningLevel?: string;
-  };
-}
-
 /** Inputs of a capacity compaction or a prepared-summary swap. */
 export interface ActiveContextCompactionArgs {
   conversationId: string;
   modelId: string;
-  modelProfile: ModelProfile;
   onCompactionStart?: () => void | Promise<void>;
   pendingMessages?: Array<{
     message: PiMessage;
@@ -115,7 +93,7 @@ export interface ActiveContextCompactionArgs {
    * the summary. `active` runs between model calls and keeps only the
    * instruction.
    */
-  mode: Exclude<CompactionMode, "handoff">;
+  mode: CompactionMode;
   /**
    * Estimated tokens of the system prompt and tool definitions. Provider
    * usage counts them, so a replacement estimate must count them too.
@@ -512,66 +490,6 @@ async function loadRetainedUserMessages(
   });
 }
 
-/** Ask the fast model for a bounded handoff summary of durable context. */
-async function summarizeContext(
-  args: {
-    conversationContext?: string;
-    piMessages: PiMessage[];
-    metadata?: CompactionMetadata;
-    signal?: AbortSignal;
-  },
-  deps: { completeText: typeof completeText },
-): Promise<string> {
-  const instructions = [
-    "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.",
-    "",
-    "Include:",
-    "- Current progress and key decisions made",
-    "- Important context, constraints, or user preferences",
-    "- What remains to be done (clear next steps)",
-    "- Any critical data, examples, or references needed to continue",
-    "",
-    "Be concise, structured, and focused on helping the next LLM seamlessly continue the work.",
-  ].join("\n");
-  const visibleContext = args.conversationContext?.trim();
-  const labeledContext = visibleContext
-    ? `<visible-thread-context>\n${visibleContext}\n</visible-thread-context>`
-    : undefined;
-  const history = stripRuntimeTurnContext(args.piMessages).filter(
-    (message): message is Message =>
-      ["user", "assistant", "toolResult"].includes(
-        (message as { role?: unknown }).role as string,
-      ),
-  );
-  const result = await deps.completeText({
-    modelId: botConfig.fastModelId,
-    // Compaction replaces this history, so later calls cannot reuse its cache.
-    cacheRetention: "none",
-    messageAttributeMode: "metadata",
-    temperature: 0,
-    signal: args.signal,
-    promptName: "junior.context_compaction",
-    messages: [
-      ...history,
-      ...(labeledContext ? [userMessage(labeledContext) as Message] : []),
-      userMessage(instructions) as Message,
-    ],
-    metadata: {
-      modelId: botConfig.fastModelId,
-      threadId: args.metadata?.threadId ?? "",
-      channelId: args.metadata?.channelId ?? "",
-      actorId: args.metadata?.actorId ?? "",
-      runId: args.metadata?.runId ?? "",
-    },
-  });
-
-  const summary = result.text.trim();
-  if (!summary) {
-    throw new Error("Compaction summary was empty");
-  }
-  return summary.slice(0, MAX_SUMMARY_CHARS);
-}
-
 /** Keep generated text inside the existing evidence-only prompt boundary. */
 export function renderCompactionSummary(summary: string): string {
   return [
@@ -634,72 +552,6 @@ function loadCompactionSource(messages: PiMessage[]): CompactionSource {
     };
   }
   return { reason: "missing_context" };
-}
-
-/** Compact the active conversation and durably bind its selected handoff profile. */
-export async function compactContextForHandoff(
-  args: HandoffContextArgs,
-  deps: { completeText: typeof completeText },
-): Promise<PiMessage[]> {
-  return await withCompactionSpan("handoff", () =>
-    compactForHandoff(args, deps),
-  );
-}
-
-async function compactForHandoff(
-  args: HandoffContextArgs,
-  deps: { completeText: typeof completeText },
-): Promise<PiMessage[]> {
-  const retainedInstruction = await loadLastInstruction(args.conversationId);
-  const contextMessage = runtimeContextMessage(
-    args.runtimeContext,
-    retainedInstruction?.message.timestamp,
-  );
-  if (!contextMessage) {
-    throw new Error("Handoff requires the current runtime turn context");
-  }
-  const generatedSummary = await summarizeContext(args, deps);
-  const continuation = appendOpenPlan(
-    renderCompactionSummary(generatedSummary),
-    args.piMessages,
-  );
-  // The summary supplies context. It must not become the authored instruction.
-  const replacement = [
-    { message: contextMessage, provenance: contextProvenance },
-    ...(retainedInstruction ? [retainedInstruction] : []),
-    {
-      // Summarization runs inside the handoff tool, before its result exists.
-      // This fact becomes visible only after the replacement commits.
-      message: userMessage(
-        `${continuation}\n\nModel handoff completed: ${JSON.stringify(args.target)}.`,
-      ),
-      provenance: contextProvenance,
-    },
-  ];
-  const messages = replacement.map((entry) => entry.message);
-  args.signal?.throwIfAborted();
-  await getConversationEventStore().replaceHistory(args.conversationId, {
-    createdAtMs: Date.now(),
-    data: {
-      type: "handoff",
-      modelProfile: args.target.modelProfile,
-      modelId: args.target.modelId,
-      ...(args.target.reasoningLevel
-        ? { reasoningLevel: args.target.reasoningLevel }
-        : undefined),
-      ...(args.triggeringToolCallId
-        ? { triggeringToolCallId: args.triggeringToolCallId }
-        : undefined),
-      summary: generatedSummary,
-      replacementHistory: replacement.map((entry) => ({
-        item: historyItemFromPiMessage(entry.message, entry.provenance),
-        ...("sourceEventSeq" in entry
-          ? { sourceEventSeq: entry.sourceEventSeq }
-          : undefined),
-      })),
-    },
-  });
-  return messages;
 }
 
 /**
@@ -834,7 +686,6 @@ async function compactActiveAboveThreshold(
     createdAtMs: Date.now(),
     data: {
       type: "compaction",
-      modelProfile: args.modelProfile,
       modelId: args.modelId,
       details: {
         reason: "capacity",
