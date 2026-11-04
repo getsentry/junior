@@ -2,7 +2,8 @@ import { memo } from "react";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
-import { parseMarkdownBlocks } from "../format";
+import { CopyButton } from "../components/CopyButton";
+import { parseMarkdownBlocks } from "./codeBlocks";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
@@ -56,10 +57,14 @@ function DisplayTextBlocks(props: { chat?: boolean; text: string }) {
 
         return (
           <div
-            className="min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5"
+            className="group/code relative min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-2.5 pl-3 pr-10"
             key={index}
           >
             <HighlightedCode code={block.code} language={block.language} />
+            {/* Touch screens cannot hover, so keep the button visible there. */}
+            <div className="absolute right-0.5 top-0.5 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/code:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-focus-within/code:opacity-100">
+              <CopyButton getText={() => block.code} label="Copy code" />
+            </div>
           </div>
         );
       })}
