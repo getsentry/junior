@@ -38,6 +38,7 @@ const SLOT_RULES = {
   workdayStart: "09:00",
 };
 const LONDON = "Europe/London";
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Tuesday 2026-10-13 at `time` in London (UTC+1). */
 function london(time: string): number {
@@ -83,21 +84,22 @@ describe("findFreeSlots", () => {
     });
 
     expect(starts(slots)).toEqual([
-      // Monday 09:00, 11:00, and 13:00 local each keep two hours or more of
-      // focus time, so they come first.
+      // Friday has meetings, so its one slot comes first: 13:00 local. 12:00
+      // would make a 4-hour run of meetings, and 12:30 would leave no lunch
+      // break. Then skip the weekend.
+      "2026-10-09T20:00:00.000Z",
+      // Monday has no meetings, so it only fills the other places: 09:00,
+      // 11:00, and 13:00 local each keep two hours or more of focus time.
       "2026-10-12T16:00:00.000Z",
       "2026-10-12T18:00:00.000Z",
       "2026-10-12T20:00:00.000Z",
-      // Friday 13:00 local. 12:00 would make a 4-hour run of meetings, and
-      // 12:30 would leave no lunch break. Then skip the weekend.
-      "2026-10-09T20:00:00.000Z",
     ]);
   });
 
-  it("puts a slot next to existing meetings ahead of an isolated one", () => {
+  it("puts a slot next to existing meetings ahead of an isolated one or an empty day", () => {
     const slots = findFreeSlots({
       ...SLOT_RULES,
-      // Meetings 11:00-12:00 and 14:00-14:50.
+      // Meetings Tuesday 11:00-12:00 and 14:00-14:50. Monday is empty.
       attendees: [
         {
           busy: busyAt(["11:00", "12:00"], ["14:00", "14:50"]),
@@ -109,17 +111,44 @@ describe("findFreeSlots", () => {
       durationMinutes: 30,
       maxResults: 3,
       timeMaxMs: london("23:00"),
-      timeMinMs: london("00:00"),
+      timeMinMs: london("00:00") - DAY_MS,
       timeZone: LONDON,
     });
 
-    // Every slot breaks one 2-hour block. 10:30, 12:00, and 13:30 join a
-    // meeting; 09:00 would add one more interruption.
+    // Monday 09:00 keeps the most focus time, but Monday has no meetings.
+    // On Tuesday, every slot breaks one 2-hour block. 10:30, 12:00, and
+    // 13:30 join a meeting; 09:00 would add one more interruption.
     expect(starts(slots)).toEqual([
       "2026-10-13T09:30:00.000Z",
       "2026-10-13T11:00:00.000Z",
       "2026-10-13T12:30:00.000Z",
     ]);
+  });
+
+  it("uses a day without meetings when no busy day has a slot", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      // Tuesday is full except 12:00-13:00, its only lunch break. Monday is
+      // empty.
+      attendees: [
+        {
+          busy: busyAt(["09:00", "12:00"], ["13:00", "17:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      maxResults: 3,
+      timeMaxMs: london("23:00"),
+      timeMinMs: london("00:00") - DAY_MS,
+      timeZone: LONDON,
+    });
+
+    expect(starts(slots)[0]).toBe("2026-10-12T08:00:00.000Z");
+    expect(starts(slots).every((start) => start.startsWith("2026-10-12"))).toBe(
+      true,
+    );
   });
 
   it("puts a slot that keeps a 2-hour block ahead of one that splits it", () => {

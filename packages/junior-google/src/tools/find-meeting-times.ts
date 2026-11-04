@@ -217,11 +217,13 @@ export interface SlotAttendee {
   timeZone: string;
 }
 
-/** What a slot takes from attendees' days. Lower is better. */
+/** How a slot fits attendees' days. */
 interface Cost {
-  /** Focus time the slot removes. */
+  /** Attendees who already have a meeting that day. Higher is better. */
+  meetingDays: number;
+  /** Focus time the slot removes. Lower is better. */
   focusLostMs: number;
-  /** New runs of meetings, each one more interruption of the day. */
+  /** New runs of meetings, each one more interruption. Lower is better. */
   runsAdded: number;
 }
 
@@ -236,7 +238,20 @@ function overlaps(busy: Interval, startMs: number, endMs: number): boolean {
 }
 
 function byCost(a: Cost, b: Cost): number {
-  return a.focusLostMs - b.focusLostMs || a.runsAdded - b.runsAdded;
+  return (
+    b.meetingDays - a.meetingDays ||
+    a.focusLostMs - b.focusLostMs ||
+    a.runsAdded - b.runsAdded
+  );
+}
+
+/** Slots without optional conflicts first, then days with more meetings. */
+function byTier(a: Candidate, b: Candidate): number {
+  return (
+    Number(a.optionalConflicts.length > 0) -
+      Number(b.optionalConflicts.length > 0) ||
+    b.cost.meetingDays - a.cost.meetingDays
+  );
 }
 
 /** Merge busy times that are back to back into runs of meetings. */
@@ -341,7 +356,11 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
  * hours in their own time zone, and rank them by how little they disturb
  * those days.
  *
- * The rules follow Clockwise's public docs, not its code:
+ * Days on which more attendees already have a meeting come first, so days
+ * without meetings stay free. A day without meetings is used only when busy
+ * days have too few slots. The requester chose this over pure focus time.
+ *
+ * Then the rules follow Clockwise's public docs, not its code:
  * - Focus time is the free time in blocks of at least 2 hours, or 1 hour on
  *   a day without a 2-hour block. Slots that remove the least focus time,
  *   summed over attendees, come first. Optional attendees count half.
@@ -354,8 +373,9 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
  *   `maxBackToBackMinutes`. Gaps under 15 minutes count as back to back.
  *
  * Optional attendees who are busy or break these rules do not block a slot.
- * Slots without such conflicts come first. Options are spread across the
- * days of `timeZone` and returned best first. With `weekdays`, only those
+ * Slots without such conflicts come first. Inside each group of equal
+ * conflicts and meeting days, options are spread across the days of
+ * `timeZone`. Results come best first. With `weekdays`, only those
  * days of `timeZone` are searched.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
@@ -432,6 +452,11 @@ export function findFreeSlots(input: {
       return undefined;
     }
     const workday = { endMs: at(dayEnd), startMs: at(dayStart) };
+    // Free/busy leaves out all-day events that do not block time, and one
+    // that does covers the slot, so only timed meetings count here.
+    const meetingDay = before.some((run) =>
+      overlaps(run, workday.startMs, workday.endMs),
+    );
     const blockMs = freeGaps(before, workday).some(
       (gap) => length(gap) >= FOCUS_BLOCK_MS,
     )
@@ -446,6 +471,7 @@ export function findFreeSlots(input: {
         .length;
     return {
       focusLostMs: focusMs(before) - focusMs(after),
+      meetingDays: Number(meetingDay),
       runsAdded: runsInDay(after) - runsInDay(before),
     };
   };
@@ -461,9 +487,10 @@ export function findFreeSlots(input: {
     const slot = { endMs: startMs + durationMs, startMs };
     const local = partsIn(startMs, input.timeZone);
     if (input.weekdays && !input.weekdays.includes(local.weekday)) continue;
-    const cost: Cost = { focusLostMs: 0, runsAdded: 0 };
+    const cost: Cost = { focusLostMs: 0, meetingDays: 0, runsAdded: 0 };
     const add = (part: Cost, weight: number) => {
       cost.focusLostMs += part.focusLostMs * weight;
+      cost.meetingDays += part.meetingDays * weight;
       cost.runsAdded += part.runsAdded * weight;
     };
     const requiredCosts = required.map((attendee) => assess(attendee, slot));
@@ -478,24 +505,27 @@ export function findFreeSlots(input: {
     candidates.push({ ...slot, cost, date: local.date, optionalConflicts });
   }
 
-  const picked = spreadAcrossDays(
-    candidates.filter((slot) => slot.optionalConflicts.length === 0),
-    input.maxResults,
-  );
-  picked.push(
-    ...spreadAcrossDays(
-      candidates.filter((slot) => slot.optionalConflicts.length > 0),
-      input.maxResults - picked.length,
-    ),
-  );
-  // Best first: no optional conflicts, then the lowest cost.
+  // Fill places from the best tier first, so a lower tier only fills the
+  // places that better tiers leave.
+  const sorted = [...candidates].sort(byTier);
+  const picked: Candidate[] = [];
+  let first = 0;
+  while (first < sorted.length && picked.length < input.maxResults) {
+    let end = first + 1;
+    while (end < sorted.length && byTier(sorted[first]!, sorted[end]!) === 0) {
+      end += 1;
+    }
+    picked.push(
+      ...spreadAcrossDays(
+        sorted.slice(first, end),
+        input.maxResults - picked.length,
+      ),
+    );
+    first = end;
+  }
   return picked
     .sort(
-      (a, b) =>
-        Number(a.optionalConflicts.length > 0) -
-          Number(b.optionalConflicts.length > 0) ||
-        byCost(a.cost, b.cost) ||
-        a.startMs - b.startMs,
+      (a, b) => byTier(a, b) || byCost(a.cost, b.cost) || a.startMs - b.startMs,
     )
     .map(({ endMs, optionalConflicts, startMs }) => ({
       endMs,
@@ -545,7 +575,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots are spread across days and come best first: first the slots that keep the most focus time (free blocks of 2 hours, or 1 hour on busy days) for the attendees, then the ones that join existing meetings instead of adding an interruption. Slots also leave each attendee a lunch break inside their lunch window and do not make a run of back-to-back meetings longer than max_back_to_back_minutes. Offer them as a short list in that order; when the requester leaves the choice to you, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots come best first: first days on which the attendees already have meetings, so days without meetings stay free; then the slots that keep the most focus time (free blocks of 2 hours, or 1 hour on days without a 2-hour block) for the attendees, then the ones that join existing meetings instead of adding an interruption. Slots also leave each attendee a lunch break inside their lunch window and do not make a run of back-to-back meetings longer than max_back_to_back_minutes. Offer them as a short list in that order; when the requester leaves the choice to you, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
