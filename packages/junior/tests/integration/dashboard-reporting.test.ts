@@ -276,6 +276,33 @@ describe("dashboard canonical event reporting", () => {
         },
       },
     ]);
+
+    // A later read adds the calls after the first read to its totals.
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: historyItemFromPiMessage(
+          { ...componentUsageMessage, timestamp: 1_001 },
+          { authority: "context" },
+        ),
+        createdAtMs: 1_001,
+      },
+    ]);
+    expect((await requireDetail(conversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: {
+          inputTokens: 20,
+          totalTokens: 27,
+          cost: {
+            input: 0.02,
+            output: 0.04,
+            cacheRead: 0.006,
+            cacheWrite: 0.008,
+            total: 0.079,
+          },
+        },
+      },
+    ]);
   });
 
   it("keys gateway assistant usage by the vendor model id", async () => {
@@ -473,6 +500,46 @@ describe("dashboard canonical event reporting", () => {
       {
         modelId: "openai/gpt-5",
         usage: expect.objectContaining({ totalTokens: 22 }),
+      },
+    ]);
+
+    // Later reads add new calls of the root, the child, and a new child.
+    const laterChildConversationId = "agent:reporting-fork-child-later";
+    await getDb()
+      .insert(juniorConversations)
+      .values({
+        conversationId: laterChildConversationId,
+        parentConversationId: rootConversationId,
+        rootConversationId,
+        createdAt: new Date(500),
+        lastActivityAt: new Date(500),
+        updatedAt: new Date(500),
+        executionStatus: "idle",
+      });
+    for (const [conversationId, timestamp, totalTokens] of [
+      [childConversationId, 300, 5],
+      [rootConversationId, 400, 4],
+      [laterChildConversationId, 500, 3],
+    ] as const) {
+      await getConversationEventStore().append(conversationId, [
+        {
+          data: historyItemFromPiMessage(assistant(timestamp, totalTokens), {
+            authority: "context",
+          }),
+          createdAtMs: timestamp,
+        },
+      ]);
+    }
+    expect((await requireDetail(childConversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 12 }),
+      },
+    ]);
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 34 }),
       },
     ]);
   });
@@ -778,7 +845,16 @@ describe("dashboard canonical event reporting", () => {
       childConversationId,
       parentConversationId: rootConversationId,
     });
-    const { getSqlExecutor } = await import("@/chat/db");
+    await appendVisibleHistory(rootConversationId);
+    // The root and its child each made one call.
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 30 }),
+      },
+    ]);
+    const { getConversationEventStore, getSqlExecutor } =
+      await import("@/chat/db");
 
     await purgeConversation(getSqlExecutor(), rootConversationId, {
       nowMs: 50,
@@ -793,6 +869,28 @@ describe("dashboard canonical event reporting", () => {
       expect(detail.events).toEqual([]);
       expect(detail.modelUsage).toBeUndefined();
     }
+
+    // New events after a purge start the totals again.
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const laterMessage = {
+      role: "assistant",
+      api: "responses",
+      provider: "openai",
+      model: "gpt-5",
+      content: [],
+      stopReason: "stop",
+      timestamp: 60,
+      usage: { totalTokens: 4 },
+    } as PiMessage;
+    await getConversationEventStore().append(rootConversationId, [
+      {
+        data: historyItemFromPiMessage(laterMessage, { authority: "context" }),
+        createdAtMs: 60,
+      },
+    ]);
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      { modelId: "openai/gpt-5", usage: { totalTokens: 4 } },
+    ]);
   });
 
   it("deletes child events when an append wins before tree purge", async () => {
