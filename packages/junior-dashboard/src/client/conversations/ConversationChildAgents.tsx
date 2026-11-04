@@ -24,6 +24,7 @@ import {
   formatUsageTotal,
 } from "../format";
 import { fetchDashboardJson } from "../http";
+import { conversationSideReadQueryKey } from "./queries";
 import { cn } from "../styles";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
@@ -56,7 +57,7 @@ export function useConversationChildAgents(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
         signal,
       ),
-    queryKey: ["conversation", conversationId, "agents"],
+    queryKey: conversationSideReadQueryKey(conversationId, "agents"),
     retry: false,
   });
 }

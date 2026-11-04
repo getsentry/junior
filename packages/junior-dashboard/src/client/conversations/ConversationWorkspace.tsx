@@ -11,10 +11,10 @@ import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
 import {
-  useCreateConversation,
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
+import { useCreateConversation } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,

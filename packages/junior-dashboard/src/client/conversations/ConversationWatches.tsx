@@ -24,6 +24,7 @@ import {
 import { DisplayText } from "../display-text/DisplayText";
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
+import { conversationSideReadQueryKey } from "./queries";
 import {
   Collapsible,
   CollapsibleContent,
@@ -41,7 +42,7 @@ export function useConversationWatches(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
         signal,
       ),
-    queryKey: ["conversation", conversationId, "watches"],
+    queryKey: conversationSideReadQueryKey(conversationId, "watches"),
     retry: false,
   });
 }

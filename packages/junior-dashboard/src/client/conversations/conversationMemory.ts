@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 import { z } from "zod";
 
 import { fetchDashboardJson } from "../http";
+import { conversationSideReadQueryKey } from "./queries";
 
 const conversationMemoryListSchema = z
   .object({
@@ -45,7 +46,7 @@ export function useConversationMemories(conversationId: string) {
         `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
         signal,
       ),
-    queryKey: ["conversation", conversationId, "memories"],
+    queryKey: conversationSideReadQueryKey(conversationId, "memories"),
     retry: false,
   });
 }

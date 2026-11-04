@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "./queries";
+import { useArchiveConversation } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { conversationPath } from "./conversationRoutes";
 import {
