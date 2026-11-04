@@ -8,6 +8,11 @@ import {
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 const STATUS_MIN_VISIBLE_MS = 1200;
 const STATUS_ROTATION_INTERVAL_MS = 30_000;
+/**
+ * How long a phase status stays ahead of tool labels. A phase names the
+ * larger step, so tool-call churn must not replace it at once.
+ */
+const PHASE_STATUS_HOLD_MS = 8_000;
 
 export type TimerHandle = ReturnType<typeof setTimeout>;
 
@@ -52,6 +57,7 @@ export function createAssistantStatusScheduler(args: {
   let currentVisibleStatus = "";
   let currentLoadingMessages: string[] | undefined;
   let lastStatusAt = 0;
+  let lastPhaseAt = Number.NEGATIVE_INFINITY;
   let pendingStatus: AssistantStatusSpec | null = null;
   let pendingKey = "";
   let pendingTimer: TimerHandle | null = null;
@@ -185,6 +191,13 @@ export function createAssistantStatusScheduler(args: {
       await postStatus("");
     },
     update(status?: AssistantStatusSpec) {
+      if (status?.source === "tool") {
+        if (now() - lastPhaseAt < PHASE_STATUS_HOLD_MS) {
+          return;
+        }
+      } else if (status) {
+        lastPhaseAt = now();
+      }
       if (!active) {
         active = true;
         clearPending();

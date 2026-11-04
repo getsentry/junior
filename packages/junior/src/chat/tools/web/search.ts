@@ -73,6 +73,7 @@ export function createWebSearchTool(
   return zodTool({
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
+    describeProgress: () => "Searching the web",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

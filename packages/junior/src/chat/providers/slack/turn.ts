@@ -1105,7 +1105,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             },
             onEvent: async (event) => {
               if (event.type === "status") {
-                status.update({ text: event.text });
+                status.update({ text: event.text, source: event.source });
                 return;
               }
               if (event.type === "tool_started") {

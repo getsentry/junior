@@ -20,6 +20,7 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   | "executionMode"
 > & {
   describeProposal?(input: z.output<TInputSchema>): string;
+  describeProgress?(input: z.output<TInputSchema>): string | undefined;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
   resolveApprovalMetadata?(

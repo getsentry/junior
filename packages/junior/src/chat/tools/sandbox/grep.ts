@@ -489,6 +489,7 @@ export function createGrepTool() {
   return zodTool({
     description:
       "Search sandbox workspace file contents. Returns bounded matching lines with file paths and line numbers. Respects path/glob filters and includes truncation notices.",
+    describeProgress: () => "Searching files",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

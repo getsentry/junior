@@ -125,6 +125,42 @@ describe("Pi tool adapter", () => {
     });
   });
 
+  it("emits a tool's progress label on direct and executeTool calls", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onStatus = vi.fn(async () => undefined);
+    const readTool = {
+      description: "read",
+      inputSchema: {} as any,
+      describeProgress: (input: unknown) =>
+        `Reading ${(input as { path: string }).path}`,
+      execute: async () => ({ ok: true }),
+    };
+    const tools = createPiAgentTools(
+      {
+        readThing: readTool,
+        lookupThing: { ...readTool, exposure: "deferred" as const },
+      },
+      sandbox,
+      {},
+      onStatus,
+    );
+    const direct = tools.find((candidate) => candidate.name === "readThing");
+    const executeTool = tools.find(
+      (candidate) => candidate.name === "executeTool",
+    );
+
+    await direct!.execute("tool-direct", { path: "a.ts" });
+    await executeTool!.execute("tool-catalog", {
+      tool_name: "lookupThing",
+      arguments: { path: "b.ts" },
+    });
+
+    expect(onStatus.mock.calls).toEqual([
+      [{ text: "Reading a.ts", source: "tool" }],
+      [{ text: "Reading b.ts", source: "tool" }],
+    ]);
+  });
+
   it("executes sandbox bash without host credential injection", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const sandboxExecutor = {
@@ -562,6 +598,7 @@ describe("Pi tool adapter", () => {
   it("reviews each attempt and interrupts after three consecutive rejections", async () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({ ok: true }));
+    const onStatus = vi.fn(async () => undefined);
     const onToolResult = vi.fn();
     const onFatal = vi.fn();
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
@@ -580,13 +617,14 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the recurring report.",
+          describeProgress: () => "Creating the report",
           inputSchema: {} as any,
           execute,
         },
       },
       sandbox,
       {},
-      undefined,
+      onStatus,
       undefined,
       undefined,
       undefined,
@@ -602,6 +640,7 @@ describe("Pi tool adapter", () => {
       "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
     );
     expect(execute).not.toHaveBeenCalled();
+    expect(onStatus).not.toHaveBeenCalled();
     expect(
       reviewState.projectToolResult("tool-demo", { isError: true }),
     ).toMatchObject({

@@ -72,6 +72,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
     description:
       "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` to read another public channel.",
+    describeProgress: () => "Reading channel history",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

@@ -351,7 +351,7 @@ function buildResumedRun(
     },
     onEvent: async (event) => {
       if (event.type === "status") {
-        statusSession.update({ text: event.text });
+        statusSession.update({ text: event.text, source: event.source });
       }
       await priorOnEvent?.(event);
     },

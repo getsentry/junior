@@ -7,3 +7,8 @@ export function parseMcpProviderFromToolName(
   const delimiterIndex = afterPrefix.indexOf("__");
   return delimiterIndex > 0 ? afterPrefix.slice(0, delimiterIndex) : undefined;
 }
+
+/** Format an MCP provider id, such as `linear`, for progress text. */
+export function mcpProviderLabel(provider: string): string {
+  return `${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
+}

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -5,6 +6,8 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 /** Create the sandbox full-file write tool definition exposed to the agent. */
 export function createWriteFileTool() {
   return zodTool({
+    describeProgress: ({ path: filePath }) =>
+      `Writing ${path.posix.basename(filePath)}`,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

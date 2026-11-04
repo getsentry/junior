@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
-
 interface FakeTimer {
   id: number;
   runAt: number;
@@ -28,13 +27,13 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        return timer.id as ReturnType<typeof setTimeout>;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    return timer.id as ReturnType<typeof setTimeout>;
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        const id = timer as number;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const id = timer as number;
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;
@@ -431,6 +430,39 @@ describe("createAssistantStatusScheduler", () => {
         text: secondReviewingStatus,
         loadingMessages: [secondReviewingStatus],
       },
+    ]);
+  });
+
+  it("holds a phase status ahead of tool labels", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.update({ text: "Reading config.ts", source: "tool" });
+    await flushAsyncWork();
+    reporter.update({ text: "Reviewing results" });
+    scheduler.advance(1200);
+    await flushAsyncWork();
+    reporter.update({ text: "Searching files", source: "tool" });
+    scheduler.advance(5000);
+    await flushAsyncWork();
+    expect(statuses).toEqual(["Reading config.ts", "Reviewing results"]);
+
+    scheduler.advance(3000);
+    reporter.update({ text: "Running pnpm", source: "tool" });
+    await flushAsyncWork();
+    expect(statuses).toEqual([
+      "Reading config.ts",
+      "Reviewing results",
+      "Running pnpm",
     ]);
   });
 });
