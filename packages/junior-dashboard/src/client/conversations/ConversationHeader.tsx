@@ -49,6 +49,7 @@ export function ConversationHeader(props: {
   privacy: ReactNode;
   search: string;
   sentryConversationUrl?: string;
+  sidebarToggle?: ReactNode;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -165,8 +166,11 @@ export function ConversationHeader(props: {
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden h-12 min-w-0 items-center justify-between gap-4 pl-7 pr-4 md:flex">
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-4 px-4 md:flex">
           <div className="flex min-w-0 items-center gap-2">
+            {props.sidebarToggle ? (
+              <div className="shrink-0">{props.sidebarToggle}</div>
+            ) : null}
             {props.agentTree ? (
               <div className="min-w-0 shrink-[2]">{props.agentTree}</div>
             ) : props.location ? (
@@ -220,9 +224,9 @@ export function ConversationHeader(props: {
             </ConversationOverflowMenu>
             <HeaderIconButton
               ref={detailsButtonRef}
+              expanded={detailsOpen}
               label="Conversation details"
               onClick={props.onDetailsClick}
-              pressed={detailsOpen}
             >
               <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
             </HeaderIconButton>
