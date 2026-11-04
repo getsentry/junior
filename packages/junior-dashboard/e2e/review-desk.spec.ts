@@ -265,6 +265,121 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
 });
 
+test("review item changes show as rows, not as context for other items", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  // Right after Junior asked for this item, the person took another item and
+  // then answered it. A Watch Event then arrived with the relay of someone's
+  // take of this item from another Conversation.
+  const takeText = `Dashboard User took review item "${answered.title}".`;
+  const answerText = `Dashboard User answered review item "${answered.title}".`;
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), "if-none-match": "" },
+      });
+      const detail = await response.json();
+      const askedAt = Date.parse(rollout.createdAt);
+      const change = (
+        seq: number,
+        kind: "submitted" | "taken",
+        text: string,
+      ) => ({
+        seq,
+        createdAt: new Date(askedAt + seq - 99_990).toISOString(),
+        data: {
+          type: "message",
+          messageId: `${kind}-initech`,
+          reviewItemChanges: [{ kind, reviewItemId: answered.id }],
+          role: "user",
+          source: "web",
+          text,
+        },
+      });
+      const relayText = `Someone took review item "${rollout.title}".`;
+      const eventBatch = {
+        seq: 100_002,
+        createdAt: new Date(askedAt + 12).toISOString(),
+        data: {
+          type: "message",
+          messageId: "event-batch",
+          eventType: "pull_request.checks.failed",
+          events: [
+            {
+              eventType: "pull_request.checks.failed",
+              trustedSummary: "CI failed on run 7.",
+            },
+          ],
+          reviewItemChanges: [{ kind: "taken", reviewItemId: rollout.id }],
+          role: "user",
+          text: `CI failed on run 7.\n\n${relayText}`,
+          trustedSummary: "CI failed on run 7.",
+        },
+      };
+      // The changes and the Event batch are the only messages after the ask.
+      const before = (detail.events as { createdAt: string }[]).filter(
+        (event) => Date.parse(event.createdAt) <= askedAt,
+      );
+      await route.fulfill({
+        response,
+        json: {
+          ...detail,
+          events: [
+            ...before,
+            change(100_000, "taken", takeText),
+            change(100_001, "submitted", answerText),
+            eventBatch,
+          ],
+        },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(
+    detail.getByText("Find the slow checkout requests"),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("region", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
+  // The Event batch stays as context, without its change row.
+  await expect(
+    detail.getByRole("button", { name: /CI failed on run 7\./ }),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("region", { name: `Took ${rollout.title}` }),
+  ).toHaveCount(0);
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  // Each message shows its own change. The take stays a take after the
+  // answer closed the item.
+  const take = page.getByRole("region", { name: `Took ${answered.title}` });
+  const answer = page.getByRole("region", {
+    name: `Answered ${answered.title}`,
+  });
+  await expect(answer.getByText("MIT license, no change.")).toBeVisible();
+  await expect(take).toBeVisible();
+  await expect(take.getByText("MIT license, no change.")).toHaveCount(0);
+  await expect(take.getByText("Done")).toHaveCount(0);
+  await expect(page.getByText(takeText)).toHaveCount(0);
+  await expect(page.getByText(answerText)).toHaveCount(0);
+  // The relay shows as its change row next to the Watch Event, not as a
+  // second Event line.
+  await expect(
+    page.getByRole("button", { name: /CI failed on run 7\./ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: `Took ${rollout.title}` }),
+  ).toBeVisible();
+  await expect(page.getByText("1 events")).toHaveCount(0);
+});
+
 test("on mobile the list opens one item at a time", async ({
   dashboard,
   page,

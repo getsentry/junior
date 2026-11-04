@@ -57,6 +57,7 @@ export const reviewItemSchema = z
   .strict();
 
 export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
+export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 /**
  * Review desk list filters. The list has the open items that the viewer can

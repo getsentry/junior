@@ -16,6 +16,7 @@ import {
   handleSlackReviewItemClick,
   handleSlackReviewItemSubmission,
 } from "./slack-review-item";
+import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 function requireSlackPayloadUserId(
@@ -75,7 +76,10 @@ export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
   isAuthorAllowed: (userId: string) => Promise<boolean>;
-  persistMessage: (message: Message) => Promise<void>;
+  persistMessage: (
+    message: Message,
+    facts?: SlackInteractionInputFacts,
+  ) => Promise<void>;
   queue: ConversationWorkQueue;
   state: StateAdapter;
   userTokenStore: UserTokenStore;

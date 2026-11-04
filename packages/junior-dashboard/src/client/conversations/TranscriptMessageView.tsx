@@ -5,6 +5,7 @@ import {
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
+import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
@@ -35,6 +36,20 @@ export const TranscriptMessageView = memo(
     const rawText = messageRawText(props.message);
     const roleKind = transcriptRoleKind(props.message.role);
     const chatText = roleKind === "assistant" || roleKind === "user";
+    const text = (
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+        {props.message.parts.map((part, index) =>
+          part.type === "text" ? (
+            <DisplayText
+              chat={chatText}
+              key={index}
+              mentions={props.message.mentions}
+              text={part.text ?? ""}
+            />
+          ) : null,
+        )}
+      </div>
+    );
 
     return (
       <TranscriptMessageShell
@@ -59,18 +74,15 @@ export const TranscriptMessageView = memo(
           message={props.message}
           conversation={props.conversation}
         />
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) =>
-            part.type === "text" ? (
-              <DisplayText
-                chat={chatText}
+        {props.message.reviewItemChanges?.length
+          ? props.message.reviewItemChanges.map((record, index) => (
+              <ReviewItemChangeRow
+                fallback={text}
                 key={index}
-                mentions={props.message.mentions}
-                text={part.text ?? ""}
+                record={record}
               />
-            ) : null,
-          )}
-        </div>
+            ))
+          : text}
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}

@@ -5,6 +5,7 @@ import {
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { z } from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
@@ -158,6 +159,8 @@ export const conversationPendingMessageSchema = z
     /** People mentioned in the text, resolved at read time. */
     mentions: z.array(actorIdentitySchema).optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
+    /** Review item change that this Message records. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -170,12 +173,15 @@ export const conversationPendingMessageSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.attachments || data.mentions)
+      (data.actorIdentity ||
+        data.attachments ||
+        data.mentions ||
+        data.reviewItemChange)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted pending messages must not expose actor identity, attachments, or mentions",
+          "redacted pending messages must not expose actor identity, attachments, mentions, or a review item",
       });
     }
   });
@@ -366,9 +372,15 @@ const conversationReportMessageEventDataSchema = z
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    /** Every Event when several arrived together in one message. */
+    /**
+     * The Watch Events when several arrived together. A message that also
+     * records Review item changes lists its own Event here even when it has
+     * one.
+     */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
+    /** Person changes to Review items that this message records. */
+    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -383,12 +395,16 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.cards || data.attachments || data.events)
+      (data.actorIdentity ||
+        data.cards ||
+        data.attachments ||
+        data.events ||
+        data.reviewItemChanges)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, or events",
+          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
       });
     }
   });

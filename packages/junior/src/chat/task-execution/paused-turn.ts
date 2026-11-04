@@ -583,7 +583,7 @@ async function runPausedTurnInContext(
         const conversationContext = dispatchId
           ? undefined
           : buildConversationContext(conversation, {
-              excludeMessageId: userMessage.id,
+              excludeMessageIds: [userMessage.id],
             });
         const sandboxRef = getPersistedSandboxState(currentState);
         const routing = await resolveTurnSessionRouting({

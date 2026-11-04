@@ -195,11 +195,22 @@ describe("conversation report event projection", () => {
       text: "audit the repo",
       meta: { agentInvocationId: "invocation-1" },
     });
+    // Each Review item change keeps its own record, so the dashboard shows
+    // what the message did, not the item's current state.
+    const answer = event(3, {
+      type: "message",
+      messageId: "answer-1",
+      role: "user",
+      text: "Alice answered review item item-1.",
+      meta: {
+        reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
+      },
+    });
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: true,
-        events: [message, agentInput],
+        events: [message, agentInput, answer],
       }),
     ).toEqual([
       {
@@ -228,12 +239,23 @@ describe("conversation report event projection", () => {
           text: "audit the repo",
         },
       },
+      {
+        seq: 3,
+        createdAt: "1970-01-01T00:00:03.000Z",
+        data: {
+          type: "message",
+          messageId: "answer-1",
+          role: "user",
+          reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
+          text: "Alice answered review item item-1.",
+        },
+      },
     ]);
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: false,
-        events: [message, agentInput],
+        events: [message, agentInput, answer],
       }),
     ).toEqual([
       {
@@ -254,6 +276,16 @@ describe("conversation report event projection", () => {
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
           agentInvocationId: "invocation-1",
+          redacted: true,
+        },
+      },
+      {
+        seq: 3,
+        createdAt: "1970-01-01T00:00:03.000Z",
+        data: {
+          type: "message",
+          messageId: "answer-1",
+          role: "user",
           redacted: true,
         },
       },
