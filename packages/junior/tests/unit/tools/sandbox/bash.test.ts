@@ -9,4 +9,17 @@ describe("commandProgramName", () => {
     expect(commandProgramName("cd /tmp")).toBeUndefined();
     expect(commandProgramName("(cd /tmp && ls)")).toBeUndefined();
   });
+
+  it("names no program that could echo a value or a script name", () => {
+    for (const command of [
+      'MSG="deploy acme-corp billing fix" ./run.sh',
+      "NOTE='Jane Doe salary' python x.py",
+      'GIT_AUTHOR_NAME="Jane Doe" git commit',
+      "cd /tmp/x\nhunter2-password",
+      "cd x; sk-live-51Habc123 --foo",
+      "./acme-q3-layoffs.sh",
+    ]) {
+      expect(commandProgramName(command)).toBeUndefined();
+    }
+  });
 });

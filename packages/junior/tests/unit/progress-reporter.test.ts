@@ -465,4 +465,44 @@ describe("createAssistantStatusScheduler", () => {
       "Running pnpm",
     ]);
   });
+
+  it("drops a finished tool's label unless the next tool replaces it", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+    const settle = async () => {
+      for (let step = 0; step < 4; step += 1) {
+        await flushAsyncWork();
+      }
+    };
+
+    reporter.update({ text: "Reviewing results" });
+    await settle();
+    scheduler.advance(9000);
+    reporter.update({ text: "Reading a.ts", source: "tool" });
+    await settle();
+    reporter.toolFinished();
+    scheduler.advance(500);
+    reporter.update({ text: "Reading b.ts", source: "tool" });
+    scheduler.advance(1200);
+    await settle();
+    expect(statuses).toEqual([
+      "Reviewing results",
+      "Reading a.ts",
+      "Reading b.ts",
+    ]);
+
+    reporter.toolFinished();
+    scheduler.advance(1200);
+    await settle();
+    expect(statuses.at(-1)).toBe("Reviewing results");
+  });
 });

@@ -352,6 +352,8 @@ function buildResumedRun(
     onEvent: async (event) => {
       if (event.type === "status") {
         statusSession.update({ text: event.text, source: event.source });
+      } else if (event.type === "tool_finished") {
+        statusSession.toolFinished();
       }
       await priorOnEvent?.(event);
     },

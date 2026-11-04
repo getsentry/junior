@@ -19,6 +19,8 @@ export type TimerHandle = ReturnType<typeof setTimeout>;
 export interface AssistantStatusSession {
   /** Activate or replace the loading state; omit status to show generic loading. */
   update: (status?: AssistantStatusSpec) => void;
+  /** Drop a finished tool's label; show the last phase or generic loading. */
+  toolFinished: () => void;
   /** Stop refresh scheduling and clear the loading state. */
   clear: () => Promise<void>;
 }
@@ -58,7 +60,10 @@ export function createAssistantStatusScheduler(args: {
   let currentLoadingMessages: string[] | undefined;
   let lastStatusAt = 0;
   let lastPhaseAt = Number.NEGATIVE_INFINITY;
+  let phaseStatus: AssistantStatusSpec | undefined;
+  let currentSource: AssistantStatusSpec["source"];
   let pendingStatus: AssistantStatusSpec | null = null;
+  let pendingRevert = false;
   let pendingKey = "";
   let pendingTimer: TimerHandle | null = null;
   let rotationTimer: TimerHandle | null = null;
@@ -151,7 +156,14 @@ export function createAssistantStatusScheduler(args: {
       presentation.visible,
     );
     currentKey = presentation.key;
+    currentSource = status.source;
     await postStatus(presentation.visible, nextLoadingMessages);
+  };
+
+  const postInitialStatus = () => {
+    currentKey = "initial";
+    currentSource = undefined;
+    void postStatus(getInitialStatusText(), loadingMessages);
   };
 
   const clearPending = () => {
@@ -161,9 +173,21 @@ export function createAssistantStatusScheduler(args: {
     }
     pendingStatus = null;
     pendingKey = "";
+    pendingRevert = false;
   };
 
   const flushPending = async () => {
+    if (active && pendingRevert) {
+      clearPending();
+      if (!phaseStatus) {
+        postInitialStatus();
+      } else if (
+        renderAssistantStatus({ status: phaseStatus }).key !== currentKey
+      ) {
+        await postRenderedStatus(phaseStatus);
+      }
+      return;
+    }
     if (!active || !pendingStatus) {
       clearPending();
       return;
@@ -188,15 +212,46 @@ export function createAssistantStatusScheduler(args: {
         rotationTimer = null;
       }
       currentKey = "";
+      currentSource = undefined;
       await postStatus("");
+    },
+    toolFinished() {
+      const pendingTool = pendingStatus?.source === "tool";
+      if (!active || (pendingStatus && !pendingTool)) {
+        return;
+      }
+      if (!pendingTool && currentSource !== "tool") {
+        return;
+      }
+      // Wait at least one debounce window, so the next tool's label replaces
+      // this one without a flash of the phase or generic loading in between.
+      pendingStatus = null;
+      pendingKey = "";
+      pendingRevert = true;
+      if (pendingTimer) {
+        return;
+      }
+      pendingTimer = setTimer(
+        () => {
+          pendingTimer = null;
+          void flushPending();
+        },
+        Math.max(
+          STATUS_UPDATE_DEBOUNCE_MS,
+          STATUS_MIN_VISIBLE_MS - (now() - lastStatusAt),
+        ),
+      );
     },
     update(status?: AssistantStatusSpec) {
       if (status?.source === "tool") {
         if (now() - lastPhaseAt < PHASE_STATUS_HOLD_MS) {
           return;
         }
-      } else if (status) {
-        lastPhaseAt = now();
+      } else {
+        phaseStatus = status;
+        if (status) {
+          lastPhaseAt = now();
+        }
       }
       if (!active) {
         active = true;
@@ -205,14 +260,12 @@ export function createAssistantStatusScheduler(args: {
           void postRenderedStatus(status);
           return;
         }
-        currentKey = "initial";
-        void postStatus(getInitialStatusText(), loadingMessages);
+        postInitialStatus();
         return;
       }
       if (!status) {
         clearPending();
-        currentKey = "initial";
-        void postStatus(getInitialStatusText(), loadingMessages);
+        postInitialStatus();
         return;
       }
       const presentation = renderAssistantStatus({
@@ -222,11 +275,16 @@ export function createAssistantStatusScheduler(args: {
         return;
       }
       if (presentation.key === currentKey || presentation.key === pendingKey) {
+        // The same label again means the tool is running again: keep it.
+        if (pendingRevert && presentation.key === currentKey) {
+          clearPending();
+        }
         return;
       }
       if (presentation.visible === currentVisibleStatus) {
         clearPending();
         currentKey = presentation.key;
+        currentSource = status.source;
         const nextLoadingMessages = getLoadingMessagesForVisibleStatus(
           presentation.visible,
         );
@@ -255,6 +313,7 @@ export function createAssistantStatusScheduler(args: {
 
       pendingStatus = status;
       pendingKey = presentation.key;
+      pendingRevert = false;
       if (pendingTimer) {
         return;
       }

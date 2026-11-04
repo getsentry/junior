@@ -1108,6 +1108,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 status.update({ text: event.text, source: event.source });
                 return;
               }
+              if (event.type === "tool_finished") {
+                status.toolFinished();
+              }
               if (event.type === "tool_started") {
                 await options.onToolInvocation?.({
                   params: event.params,
