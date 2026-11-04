@@ -38,9 +38,14 @@ export const TranscriptMessageView = memo(
     const rawText = messageRawText(props.message);
     const roleKind = transcriptRoleKind(props.message.role);
     const chatText = roleKind === "assistant" || roleKind === "user";
-    const recallTurnId = props.message.contexts?.find((context) =>
-      memoryRecallContent(context),
-    )?.turnId;
+    // One prompt can start more than one Turn, and each Turn recalls.
+    const recallTurnIds = [
+      ...new Set(
+        props.message.contexts
+          ?.filter((context) => memoryRecallContent(context))
+          .map((context) => context.turnId),
+      ),
+    ];
     const text = (
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
         {props.message.parts.map((part, index) =>
@@ -88,9 +93,9 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
-        {recallTurnId ? (
-          <TranscriptRecalledMemories turnId={recallTurnId} />
-        ) : null}
+        {recallTurnIds.map((turnId) => (
+          <TranscriptRecalledMemories key={turnId} turnId={turnId} />
+        ))}
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}

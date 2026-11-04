@@ -2562,6 +2562,13 @@ describe("memory plugin storage", () => {
                       observedAtMs: TEST_NOW_MS,
                       scope: "public",
                     },
+                    {
+                      content: "Hidden viewer memory.",
+                      id: hidden.memory.id,
+                      kind: "knowledge",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "private",
+                    },
                   ],
                 },
                 createdAt: "2026-07-28T12:01:00.000Z",
@@ -2664,8 +2671,9 @@ describe("memory plugin storage", () => {
           await conversationResponse.json(),
         ),
       ).toEqual({
-        // The viewer cannot see `hidden`, so its recall drops it, and a
-        // recall with only hidden memories drops out.
+        // The viewer cannot see `hidden` in the store, so its recall drops
+        // it even though a capture snapshot has it, and a recall with only
+        // hidden memories drops out.
         events: [
           {
             memoryIds: [publicMemory.memory.id],
@@ -2678,7 +2686,7 @@ describe("memory plugin storage", () => {
             turnId: "turn-1",
           },
           {
-            memoryIds: ["captured-memory"],
+            memoryIds: ["captured-memory", hidden.memory.id],
             source: "captured",
             turnId: "turn-2",
           },
@@ -2686,6 +2694,11 @@ describe("memory plugin storage", () => {
         ],
         memories: expect.arrayContaining([
           { content: "Use pnpm.", id: "captured-memory", visibility: "public" },
+          {
+            content: "Hidden viewer memory.",
+            id: hidden.memory.id,
+            visibility: "private",
+          },
           {
             content: "Public workspace memory.",
             id: publicMemory.memory.id,

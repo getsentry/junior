@@ -242,14 +242,15 @@ async function conversationMemories(args: {
     source: "recalled" as const,
     turnId: event.turnId,
   }));
-  const recalledIds = [
+  const capturedIds = new Set(memories.keys());
+  // A recall shows only memories the viewer can read in the store now, even
+  // when the same memory is in a capture snapshot.
+  const recalledIds = new Set<string>();
+  for (const memory of await getMemories(args.db, args.viewer.id, [
     ...new Set(recalledEvents.flatMap((event) => event.memoryIds)),
-  ].filter((id) => !memories.has(id));
-  for (const memory of await getMemories(
-    args.db,
-    args.viewer.id,
-    recalledIds,
-  )) {
+  ])) {
+    recalledIds.add(memory.id);
+    if (memories.has(memory.id)) continue;
     memories.set(memory.id, {
       content: memory.content,
       id: memory.id,
@@ -262,7 +263,8 @@ async function conversationMemories(args: {
   const events = [...recalledEvents, ...capturedEvents]
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .flatMap(({ memoryIds, source, turnId }) => {
-      const visibleIds = memoryIds.filter((id) => memories.has(id));
+      const shown = source === "captured" ? capturedIds : recalledIds;
+      const visibleIds = memoryIds.filter((id) => shown.has(id));
       if (visibleIds.length === 0) return [];
       return [
         {
