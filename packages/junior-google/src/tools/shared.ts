@@ -244,25 +244,36 @@ export function attendeeResults(
     }));
 }
 
-// Event links open the signed-in Google account that this param names, not
-// the browser's default account. The value is the account's email. On event
-// links, `authdomain`, `login_hint`, and a `/u/<email>/` path do not switch
-// the account.
-const ACCOUNT_LINK_PARAM = "authuser";
+// Personal Google accounts have no Workspace domain to choose.
+const CONSUMER_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+const ACCOUNT_CHOOSER_URL = "https://accounts.google.com/AccountChooser";
 
 /**
- * Make a Google Calendar link open in the requester's own Google account.
+ * Make a Google Calendar event link open in the viewer's Workspace account.
  *
- * Returns the link unchanged when the email is unknown or the link already
- * names an account.
+ * Google opens a plain event link in the browser's default account, which is
+ * often a personal one. AccountChooser picks the signed-in account of the
+ * Workspace domain, then continues to the event. Everyone in a Slack thread
+ * sees the same link, so the domain comes from Junior's own account, not the
+ * requester. `authuser`, `authdomain`, `login_hint`, `hd` on the event link,
+ * and `/u/<email>/` do not work for every viewer.
+ *
+ * Returns the link unchanged for a consumer domain, a link that is not an
+ * event link, or a link that already goes through AccountChooser.
  */
-export function accountLink(url: string, email: string | undefined): string {
-  const link = URL.parse(url);
-  if (!email || !link || link.searchParams.has(ACCOUNT_LINK_PARAM)) {
+export function accountChooserLink(url: string, accountEmail: string): string {
+  const domain = emailDomain(accountEmail);
+  if (
+    !domain ||
+    CONSUMER_DOMAINS.has(domain) ||
+    !URL.parse(url)?.searchParams.has("eid")
+  ) {
     return url;
   }
-  link.searchParams.set(ACCOUNT_LINK_PARAM, email);
-  return link.toString();
+  const chooser = new URL(ACCOUNT_CHOOSER_URL);
+  chooser.searchParams.set("hd", domain);
+  chooser.searchParams.set("continue", url);
+  return chooser.toString();
 }
 
 /** Event fields that Junior reads back from its own calendar. */
@@ -294,9 +305,10 @@ export type OwnEvent = z.infer<typeof ownEventSchema>;
 export function ownEventResult(
   event: OwnEvent,
   timeZone: string,
-  requester: string | undefined,
+  accountEmail: string,
 ) {
-  const url = event.htmlLink && accountLink(event.htmlLink, requester);
+  const url =
+    event.htmlLink && accountChooserLink(event.htmlLink, accountEmail);
   const startMs = Date.parse(event.start.dateTime);
   const when = formatInterval(
     startMs,
@@ -385,12 +397,15 @@ const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 /**
  * Return the event id from an id or a Google Calendar event link.
  *
- * A link's `eid` value is base64 for `<eventId> <calendar email>`.
+ * A link's `eid` value is base64 for `<eventId> <calendar email>`. An
+ * AccountChooser link holds the event link in `continue`.
  */
 export function parseEventId(value: string): string {
   let eventId = value;
   if (/^https?:\/\//.test(value)) {
-    const eid = URL.parse(value)?.searchParams.get("eid");
+    const link = URL.parse(value);
+    const target = link?.searchParams.get("continue");
+    const eid = (target ? URL.parse(target) : link)?.searchParams.get("eid");
     eventId = eid
       ? (Buffer.from(eid, "base64").toString("utf8").split(" ")[0] ?? "")
       : "";
@@ -407,13 +422,7 @@ const cancelledEventSchema = z.object({ status: z.literal("cancelled") });
 
 /** Result of reading an event that Junior organizes. */
 export type OwnEventRead =
-  | {
-      event: OwnEvent;
-      eventId: string;
-      path: string;
-      requester: string;
-      status: "active";
-    }
+  | { event: OwnEvent; eventId: string; path: string; status: "active" }
   | { eventId: string; path: string; status: "cancelled" };
 
 /**
@@ -473,5 +482,5 @@ export async function readOwnEventForRequester(
       `Only people invited to this event can ask you to ${action} it.`,
     );
   }
-  return { event, eventId, path, requester, status: "active" };
+  return { event, eventId, path, status: "active" };
 }

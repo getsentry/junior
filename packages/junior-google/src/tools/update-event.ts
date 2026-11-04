@@ -147,7 +147,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
           "This event is cancelled. Create a new event instead.",
         );
       }
-      const { event, path, requester } = read;
+      const { event, path } = read;
       const attendees = event.attendees ?? [];
       // Google can return directory capitalization; inputs are lowercased.
       const emailKey = (email: string) => email.toLowerCase();
@@ -209,7 +209,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         ...ownEventResult(
           ownEventSchema.parse(response.body),
           timeZone,
-          requester,
+          ctx.accountEmail,
         ),
       };
     },
