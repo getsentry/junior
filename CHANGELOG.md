@@ -1,5 +1,98 @@
 # Changelog
 
+## 0.277.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Pin conversations in the sidebar by @thomasjiangcy with @sentry-junior in [#2663](https://github.com/getsentry/junior/pull/2663)
+- Add a copy button and highlight untagged code blocks by @MathurAditya724 with @sentry-junior in [#2664](https://github.com/getsentry/junior/pull/2664)
+
+#### Other
+
+- (conversations) Auto-archive conversations when their work is done by @sentry-junior in [#2541](https://github.com/getsentry/junior/pull/2541)
+- (github) Check GitHub status for unexplained GitHub and CI failures by @BYK with @sentry-junior in [#2662](https://github.com/getsentry/junior/pull/2662)
+- (mcp) Record audit events for chosen MCP tools by @dcramer with @sentry-junior in [#2671](https://github.com/getsentry/junior/pull/2671)
+- (notion) Let the service account create and update pages by @dcramer with @sentry-junior in [#2670](https://github.com/getsentry/junior/pull/2670)
+- (plugins) Add an afterToolExecute hook for checks on finished tool calls by @sentry-junior in [#2646](https://github.com/getsentry/junior/pull/2646)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep the return page when Google sign-in fails by @dcramer with @sentry-junior in [#2674](https://github.com/getsentry/junior/pull/2674)
+- Refresh the details panel when conversation detail changes by @thomasjiangcy with @sentry-junior in [#2667](https://github.com/getsentry/junior/pull/2667)
+- Separate memories in popovers and the memory list by @thomasjiangcy with @sentry-junior in [#2660](https://github.com/getsentry/junior/pull/2660)
+
+#### Other
+
+- (slack) Convert canvas HTML to Markdown on read by @sentry-junior in [#2647](https://github.com/getsentry/junior/pull/2647)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Skip rebuilding unchanged conversation detail on polls by @BYK with @sentry-junior in [#2655](https://github.com/getsentry/junior/pull/2655)
+- Use shadcn primitives for hand-rolled notices and toggles by @MathurAditya724 with @sentry-junior in [#2661](https://github.com/getsentry/junior/pull/2661)
+
+## 0.276.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Open watched GitHub resources from conversation details by @sentry-junior in [#2653](https://github.com/getsentry/junior/pull/2653)
+- Show a spinner for running conversations in card lists by @BYK with @sentry-junior in [#2614](https://github.com/getsentry/junior/pull/2614)
+- Send browser performance spans to Sentry by @thomasjiangcy with @sentry-junior in [#2652](https://github.com/getsentry/junior/pull/2652)
+- Add Quick question side panel as a hidden read-only fork by @sentry-junior in [#2649](https://github.com/getsentry/junior/pull/2649)
+- Show conversation memories in popovers by @thomasjiangcy with @sentry-junior in [#2641](https://github.com/getsentry/junior/pull/2641)
+
+#### Other
+
+- (github) Link stacked pull requests into a GitHub stack by @BYK with @sentry-junior in [#2633](https://github.com/getsentry/junior/pull/2633)
+- (mcp) Redesign the MCP and ACP sign-in pages by @dcramer with @sentry-junior in [#2639](https://github.com/getsentry/junior/pull/2639)
+- (review-items) Record each review item change on its message by @sentry-junior in [#2625](https://github.com/getsentry/junior/pull/2625)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Show conversation cost in the title bar by @thomasjiangcy with @sentry-junior in [#2645](https://github.com/getsentry/junior/pull/2645)
+- Show inbox messages near the ask by @dcramer with @sentry-junior in [#2622](https://github.com/getsentry/junior/pull/2622)
+- Stop transcript jumps while scrolling up on mobile by @BYK with @sentry-junior in [#2634](https://github.com/getsentry/junior/pull/2634)
+
+#### Events
+
+- Render each linked Event person once by @BYK with @sentry-junior in [#2624](https://github.com/getsentry/junior/pull/2624)
+- Tell the agent to write "you" to an Event doer outside People involved by @BYK with @sentry-junior in [#2623](https://github.com/getsentry/junior/pull/2623)
+
+#### Other
+
+- (agent-invocations) Tell the parent when a child's work stops after its tries run out by @dcramer with @sentry-junior in [#2627](https://github.com/getsentry/junior/pull/2627)
+- (ci) Update Frameshift actions to v0.2.1 by @dcramer and @claude in [#2637](https://github.com/getsentry/junior/pull/2637)
+- (compaction) Ignore stale usage in replacement estimates by @thomasjiangcy with @sentry-junior in [#2648](https://github.com/getsentry/junior/pull/2648)
+- (github) Check for a stack before merging the base on conflicts by @sentry-junior in [#2598](https://github.com/getsentry/junior/pull/2598)
+- (mcp) Let browsers send Origin on the consent POST by @dcramer with @sentry-junior in [#2638](https://github.com/getsentry/junior/pull/2638)
+- (slack) Read channel IDs from public search permalinks by @lcian with @sentry-junior in [#2593](https://github.com/getsentry/junior/pull/2593)
+- (tests) Use webActorFromUser in web batch test by @dcramer with @sentry-junior in [#2643](https://github.com/getsentry/junior/pull/2643)
+
+### Documentation 📚
+
+- (policies) Add prompt marker policy by @dcramer with @sentry-junior in [#2628](https://github.com/getsentry/junior/pull/2628)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Read assistant usage fields once per event row by @sentry-junior in [#2650](https://github.com/getsentry/junior/pull/2650)
+- Show only a lock icon for private conversations in the title bar by @thomasjiangcy with @sentry-junior in [#2644](https://github.com/getsentry/junior/pull/2644)
+
+#### Other
+
+- (tools) Use snake_case keys in tool inputs and results by @dcramer with @sentry-junior in [#2629](https://github.com/getsentry/junior/pull/2629)
+- (web) Use the User id for web Actors by @dcramer with @sentry-junior in [#2630](https://github.com/getsentry/junior/pull/2630)
+
 ## 0.275.0
 
 ### New Features ✨

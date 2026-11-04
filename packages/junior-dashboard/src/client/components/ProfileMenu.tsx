@@ -17,6 +17,7 @@ import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button, buttonVariants } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
@@ -131,8 +132,7 @@ function SpendAmount({ value }: { value?: number }) {
   );
 }
 
-const profileLinkClass =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none";
+const profileLinkClass = buttonVariants({ size: "menu" });
 
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
@@ -218,17 +218,16 @@ export function ProfileMenu({
           {page.label}
         </Link>
       ))}
-      <button
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none"
+      <Button
         onClick={() => {
           close();
           void onSignOut();
         }}
-        type="button"
+        size="menu"
       >
         <LogOut aria-hidden="true" size={16} strokeWidth={2} />
         Log out
-      </button>
+      </Button>
     </>
   );
 

@@ -100,14 +100,6 @@ export const conversationFeedQuerySchema = z
   })
   .strict();
 
-export const archiveConversationBodySchema = z
-  .object({ archived: z.boolean(), lastSeenAt: z.string().datetime() })
-  .strict();
-
-export const archiveConversationResponseSchema = z
-  .object({ archivedAt: z.string().datetime().nullable() })
-  .strict();
-
 export const createConversationMessageBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
@@ -235,6 +227,7 @@ export const conversationSummaryReportSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
     archivedAt: z.string().datetime().nullable().optional(),
+    pinnedAt: z.string().datetime().nullable().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -792,6 +785,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Conversation last. Root Conversations omit it.
      */
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
+    /** The viewer's effective auto-archive choice. Participants only. */
+    autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
@@ -891,12 +886,6 @@ export type ConversationDetailReport = z.infer<
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type ArchiveConversationBody = z.infer<
-  typeof archiveConversationBodySchema
->;
-export type ArchiveConversationResponse = z.infer<
-  typeof archiveConversationResponseSchema
->;
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema

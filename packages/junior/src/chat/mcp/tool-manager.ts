@@ -16,6 +16,7 @@ import {
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
+  logAudit,
   logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
@@ -624,6 +625,28 @@ export class McpToolManager {
     return actorClient;
   }
 
+  /**
+   * Record a completed call to an audit tool, with the account that made it.
+   * Arguments stay out: the conversation history keeps them.
+   */
+  private logToolCallAudit(
+    plugin: PluginDefinition,
+    toolName: string,
+    attributes: Record<string, string>,
+  ): void {
+    const usedServiceAccount =
+      this.serviceAccountProviders.has(plugin.manifest.name) &&
+      serviceAccountAllows(plugin.manifest, { tool: toolName });
+    logAudit("mcp.tool_call.completed", {
+      ...attributes,
+      "mcp.method.name": "tools/call",
+      "app.plugin.name": plugin.manifest.name,
+      "app.credential.account": usedServiceAccount
+        ? "service_account"
+        : "actor",
+    });
+  }
+
   private toManagedTool(
     plugin: PluginDefinition,
     client: PluginMcpClient,
@@ -696,6 +719,14 @@ export class McpToolManager {
               );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
+              }
+              if (plugin.manifest.mcp?.auditTools?.includes(tool.name)) {
+                this.logToolCallAudit(plugin, tool.name, {
+                  "gen_ai.tool.name": managedToolName,
+                  ...(options?.toolCallId
+                    ? { "gen_ai.tool.call.id": options.toolCallId }
+                    : undefined),
+                });
               }
 
               const resultAttribute = serializeMcpPayload(

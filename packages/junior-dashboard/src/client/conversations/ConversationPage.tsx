@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router";
 import type {
@@ -17,6 +18,7 @@ import {
   useArchiveConversation,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
+import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
@@ -31,7 +33,7 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
-import { turnPrompts } from "./ConversationMemories";
+import { AutoArchiveToggle } from "./AutoArchiveToggle";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -127,6 +129,7 @@ export function ConversationPage(props: {
   data?: { conversations: ConversationFeed };
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  sidebarToggle?: ReactNode;
 }) {
   const detailsDefaultOpen = useSyncExternalStore(
     subscribeToDetailsLayout,
@@ -222,6 +225,7 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const unreadHistory = useUnreadHistory({
@@ -373,11 +377,8 @@ export function ConversationPage(props: {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
-  // Show a chosen memory at its transcript row, once the row renders.
-  const memoryPrompts = useMemo(
-    () => turnPrompts(transcript?.events),
-    [transcript?.events],
-  );
+  // Show a chosen memory at its transcript row. Wait for the first page, then
+  // load pages toward the row until it renders, or stop when history ends.
   const memorySearch =
     memoryJump && transcript ? searchHistory("any") : undefined;
   useEffect(() => {
@@ -524,6 +525,14 @@ export function ConversationPage(props: {
                 <ConversationAnnotations detail={detail.data} />
               ) : null
             }
+            pin={{
+              // The API lets only participants pin, the same as archive.
+              disabled:
+                !conversation || !detail.data?.isParticipant || pin.isPending,
+              error: Boolean(pin.error),
+              onClick: () => pin.mutate(!conversation?.pinnedAt),
+              pinned: Boolean(conversation?.pinnedAt),
+            }}
             archive={{
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
@@ -544,15 +553,17 @@ export function ConversationPage(props: {
             }
             search={search}
             sentryConversationUrl={detail.data?.sentryConversationUrl}
+            sidebarToggle={props.sidebarToggle}
             title={title}
             view={view}
           />
         }
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName={
-          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
-        }
+        scrollClassName={cn(
+          "thin-scrollbar",
+          view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
+        )}
         scroll={
           <section className="min-w-0">
             <div
@@ -657,13 +668,20 @@ export function ConversationPage(props: {
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
+            autoArchive={
+              detail.data?.autoArchive === undefined ? null : (
+                <AutoArchiveToggle
+                  autoArchive={detail.data.autoArchive}
+                  conversationId={conversationId}
+                />
+              )
+            }
             brief={detail.data?.brief}
             conversationId={conversationId}
             highlightReview={reviewOpen}
             identity={identity}
             onClose={closeDetails}
             onOpenSubagent={setSubagentTarget}
-            memoryPrompts={memoryPrompts}
             onSelectMemory={(entry) => {
               // Memory rows show only in the Conversation view, and search
               // can hide them.

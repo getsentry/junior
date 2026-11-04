@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type QueryClient,
   queryOptions,
   skipToken,
   useInfiniteQuery,
@@ -26,6 +27,7 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
+import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
 import {
   DashboardApiError,
   del,
@@ -68,7 +70,7 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
 const FAST_POLL_INTERVAL_MS = 500;
 const FAST_POLL_WINDOW_MS = 6_000;
 
-/** The cached detail with its mailbox and HTTP validator. */
+/** The cached detail report with its mailbox and revalidation ETag. */
 export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
@@ -107,6 +109,32 @@ export function useCachedConversationDetail<T>(
   }).data;
 }
 
+const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
+
+/**
+ * Key a read that shows beside the detail report, such as in the details
+ * panel. A detail change refreshes it.
+ */
+export function conversationSideReadQueryKey(
+  conversationId: string,
+  read: (typeof CONVERSATION_SIDE_READS)[number],
+) {
+  return ["conversation", conversationId, read] as const;
+}
+
+/** Refresh the side reads and Review items. Only mounted reads refetch. */
+function refreshConversationSideReads(
+  client: QueryClient,
+  conversationId: string,
+) {
+  for (const read of CONVERSATION_SIDE_READS) {
+    void client.invalidateQueries({
+      queryKey: conversationSideReadQueryKey(conversationId, read),
+    });
+  }
+  void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
+}
+
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -124,15 +152,27 @@ export function conversationDetailQueryOptions(
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
-    queryFn: ({ signal, client }) =>
-      readConversationSnapshot(
+    queryFn: async ({ signal, client }) => {
+      const previous = client.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      );
+      const next = await readConversationSnapshot(
         conversationId!,
         signal,
-        client.getQueryData<ConversationSnapshot>(
-          conversationDetailQueryKey(conversationId),
-        ),
+        previous,
         options?.unreadPage,
-      ),
+      );
+      // Side reads do not poll. A new ETag means the Conversation changed,
+      // so the details panel may be stale too.
+      if (
+        previous?.detailEtag &&
+        next.detailEtag &&
+        previous.detailEtag !== next.detailEtag
+      ) {
+        refreshConversationSideReads(client, conversationId!);
+      }
+      return next;
+    },
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;

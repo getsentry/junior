@@ -1,4 +1,5 @@
-import { index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
@@ -19,6 +20,12 @@ export const juniorConversationParticipants = pgTable(
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
     archivedAt: timestamptz("archived_at"),
+    pinnedAt: timestamptz("pinned_at"),
+    /**
+     * Per-conversation auto-archive choice for this user. Null uses the
+     * user's `autoArchiveDefault`.
+     */
+    autoArchive: boolean("auto_archive"),
   },
   (table) => [
     primaryKey({
@@ -32,5 +39,15 @@ export const juniorConversationParticipants = pgTable(
     index("junior_conversation_participants_root_idx").on(
       table.rootConversationId,
     ),
+    // The auto-archive sweep finds users who turned it on for one
+    // conversation without reading every participant row.
+    index("junior_conversation_participants_auto_archive_idx")
+      .on(table.userId)
+      .where(sql`${table.autoArchive} and ${table.archivedAt} is null`),
+    // The auto-archive sweep pages one user's unarchived rows older than the
+    // cutoff. Archived rows build up over time, so the index leaves them out.
+    index("junior_conversation_participants_unarchived_activity_idx")
+      .on(table.userId, table.lastMessageAt, table.rootConversationId)
+      .where(sql`${table.archivedAt} is null`),
   ],
 );

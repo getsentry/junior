@@ -18,6 +18,7 @@ import {
   type ConversationMemoryState,
   type MemoryAnchor,
 } from "./conversationMemory";
+import { MemoryLinkIcons } from "./MemoryIcons";
 import { memoryRecallContent } from "./turnContext";
 
 function memoryCount(count: number): string {
@@ -54,32 +55,26 @@ function MemoryPopover(props: {
         aria-label={props.label}
         className="max-h-[min(28rem,var(--available-height))] w-96 p-1.5"
       >
-        <ul className="m-0 grid list-none gap-0.5 p-0">
+        <ul className="m-0 grid list-none divide-y divide-dashboard-border-subtle p-0">
           {props.memories.map((memory) => (
-            <li
-              className={cn(
-                "grid gap-1.5 rounded-md px-2.5 py-2",
-                memory.id === highlightId && "bg-dashboard-fill-strong",
-              )}
-              key={memory.id}
-              ref={
-                memory.id === highlightId
-                  ? (node) => node?.scrollIntoView({ block: "nearest" })
-                  : undefined
-              }
-            >
-              <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
-                {memory.content}
-              </p>
-              <div className="flex items-center gap-3 text-xs text-dashboard-text-muted">
-                {memory.visibility === "private" ? <span>Private</span> : null}
-                <Link
-                  className="text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline"
-                  to={memoryPath(memory.id)}
-                >
-                  Open
-                </Link>
-              </div>
+            <li className="py-1 first:pt-0 last:pb-0" key={memory.id}>
+              <Link
+                className={cn(
+                  "group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-2.5 py-2 no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+                  memory.id === highlightId && "bg-dashboard-fill-strong",
+                )}
+                ref={
+                  memory.id === highlightId
+                    ? (node) => node?.scrollIntoView({ block: "nearest" })
+                    : undefined
+                }
+                to={memoryPath(memory.id)}
+              >
+                <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
+                  {memory.content}
+                </p>
+                <MemoryLinkIcons private={memory.visibility === "private"} />
+              </Link>
             </li>
           ))}
         </ul>

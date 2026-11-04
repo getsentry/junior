@@ -17,6 +17,7 @@ import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
+import { createChild } from "../../../fixtures/dashboard-reporting";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -117,6 +118,69 @@ describe("conversation detail API", () => {
         },
       ],
     });
+  });
+
+  it("answers unchanged polls with 304 until the subtree or annotations change", async () => {
+    const conversationId = "local:test:revalidated-detail";
+    const childConversationId = "local:test:revalidated-detail:child";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Revalidated conversation",
+      visibility: "public",
+    });
+    const app = createJuniorApi();
+    const poll = (etag?: string) =>
+      app.request(`http://localhost/api/conversations/${conversationId}`, {
+        headers: etag ? { "if-none-match": etag } : {},
+      });
+
+    const first = await poll();
+    const firstEtag = first.headers.get("etag")!;
+    expect(first.status).toBe(200);
+    expect(firstEtag).toMatch(/^W\/"/);
+    const unchanged = await poll(firstEtag);
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+
+    await createChild({
+      childConversationId,
+      parentConversationId: conversationId,
+    });
+    const withChild = await poll(firstEtag);
+    const childEtag = withChild.headers.get("etag")!;
+    expect(withChild.status).toBe(200);
+    expect(childEtag).not.toBe(firstEtag);
+
+    // A child agent writes only its own row. The parent still revalidates.
+    await getConversationEventStore().append(childConversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          messageId: "child-message",
+          role: "assistant",
+          text: "child-message",
+          type: "message",
+        },
+      },
+    ]);
+    const childChanged = await poll(childEtag);
+    const childChangedEtag = childChanged.headers.get("etag")!;
+    expect(childChanged.status).toBe(200);
+
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1",
+      label: "getsentry/junior #1",
+      url: "https://github.com/getsentry/junior/pull/1",
+    });
+    expect((await poll(childChangedEtag)).status).toBe(200);
   });
 
   it("titles an untitled conversation from its first human message", async () => {

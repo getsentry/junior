@@ -304,6 +304,8 @@ Once configured, Junior can:
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
+- Check githubstatus.com for open or recent incidents when GitHub requests or
+  checks fail
 - Watch or automate matching events when webhooks are enabled
 
 Bot-owned writes use installation credentials. Personal operations still use

@@ -49,8 +49,6 @@ export {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -79,6 +77,17 @@ export {
   conversationPendingMessageSchema,
   conversationPendingMessagesReportSchema,
 } from "./schema/conversation-pending-messages";
+export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "./schema/conversation-archive";
+export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
+  ConversationAutoArchive,
+} from "./schema/conversation-archive";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -91,10 +100,16 @@ export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export { conversationReadPositionSchema } from "./schema/conversation-read-position";
 export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+} from "./schema/conversation-pin";
+export type {
+  PinConversationBody,
+  PinConversationResponse,
+} from "./schema/conversation-pin";
 export type {
   AcceptedConversationMessage,
-  ArchiveConversationBody,
-  ArchiveConversationResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,

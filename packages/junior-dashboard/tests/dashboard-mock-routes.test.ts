@@ -78,6 +78,8 @@ describe("dashboard canonical-event mock routes", () => {
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     await expect(me.json()).resolves.toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 

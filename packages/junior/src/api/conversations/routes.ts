@@ -6,8 +6,6 @@ import {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -19,6 +17,16 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+} from "../schema/conversation-pin";
+import {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "../schema/conversation-archive";
 import {
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
@@ -34,6 +42,11 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { pinConversation } from "./pin";
+import {
+  archiveViewerDoneConversations,
+  setConversationAutoArchive,
+} from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
@@ -45,6 +58,7 @@ import {
   type WebInputServices,
 } from "./create";
 import { readConversationDetail } from "./detail";
+import { etagMatches, readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
@@ -231,6 +245,26 @@ export function createConversationRoutes(
     },
   );
 
+  app.patch(
+    "/:conversationId/pin",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest("json", pinConversationBodySchema, "Invalid request body."),
+    async (context) =>
+      jsonResponse(
+        pinConversationResponseSchema,
+        await pinConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
   app.put(
     "/:conversationId/read-position",
     requireViewer,
@@ -253,6 +287,37 @@ export function createConversationRoutes(
         await markConversationRead(viewer, conversationId, body),
       );
     },
+  );
+
+  app.post("/archive-done", requireViewer, async (context) =>
+    jsonResponse(
+      archiveDoneConversationsResponseSchema,
+      await archiveViewerDoneConversations(context.get("viewer")),
+    ),
+  );
+
+  app.patch(
+    "/:conversationId/auto-archive",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationAutoArchiveSchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationAutoArchiveSchema,
+        await setConversationAutoArchive(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json").autoArchive,
+        ),
+      ),
   );
 
   app.get(
@@ -431,12 +496,30 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const query = context.req.valid("query");
       const viewer = context.get("viewer");
+      // Polls send the last ETag. Compare it before the report is built,
+      // because building the report is the expensive part of this route.
+      const etag = await readConversationDetailEtag(conversationId, {
+        limit: query.limit,
+        ...(viewer ? { viewer } : undefined),
+      });
+      if (etag && etagMatches(context.req.header("if-none-match"), etag)) {
+        return new Response(null, {
+          status: 304,
+          headers: { "cache-control": "private, no-store", etag },
+        });
+      }
       const report = await readConversationDetail(conversationId, {
         ...query,
         ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
-      return jsonResponse(conversationDetailReportSchema, report);
+      return jsonResponse(
+        conversationDetailReportSchema,
+        report,
+        etag
+          ? { headers: { "cache-control": "private, no-store", etag } }
+          : undefined,
+      );
     },
   );
 

@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
   juniorConversationParticipants,
@@ -10,7 +11,7 @@ import { throwApiError } from "../http";
 import type {
   ArchiveConversationBody,
   ArchiveConversationResponse,
-} from "../schema/conversation";
+} from "../schema/conversation-archive";
 import { readConversationAccessFromSql } from "./access";
 
 async function setViewerArchive(args: {
@@ -40,6 +41,7 @@ async function setViewerArchive(args: {
       const archivedAt = new Date();
       const lastMessageAt = new Date(args.lastSeenAt);
       await db
+        .with(conversationDetailTouch(db, [args.rootConversationId]))
         .insert(juniorConversationParticipants)
         .values({
           archivedAt,
@@ -52,8 +54,10 @@ async function setViewerArchive(args: {
             juniorConversationParticipants.userId,
             juniorConversationParticipants.rootConversationId,
           ],
+          // Archive also unpins, so the Pinned section holds only active rows.
           set: {
             archivedAt,
+            pinnedAt: null,
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
@@ -63,9 +67,12 @@ async function setViewerArchive(args: {
       };
     }
 
+    // A manual restore means the conversation is not done for this user, so
+    // auto-archive must not archive it again.
     await db
+      .with(conversationDetailTouch(db, [args.rootConversationId]))
       .update(juniorConversationParticipants)
-      .set({ archivedAt: null })
+      .set({ archivedAt: null, autoArchive: false })
       .where(
         and(
           eq(juniorConversationParticipants.userId, args.userId),
@@ -78,31 +85,6 @@ async function setViewerArchive(args: {
       );
     return { archivedAt: null, status: "updated" as const };
   });
-}
-
-/** Read one viewer's archive timestamp for a conversation root. */
-export async function readConversationArchivedAt(
-  viewer: User,
-  conversationId: string,
-): Promise<number | undefined> {
-  const rootConversationId = await resolveRootConversationId(
-    getSqlExecutor(),
-    conversationId,
-  );
-  const [row] = await getDb()
-    .select({ archivedAt: juniorConversationParticipants.archivedAt })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(juniorConversationParticipants.userId, viewer.id),
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-      ),
-    )
-    .limit(1);
-  return row?.archivedAt?.getTime();
 }
 
 /** Archive or restore one conversation for the signed-in viewer. */
