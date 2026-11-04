@@ -13,9 +13,12 @@
  * so the transcript never has a gap. Until then the transcript ends with a
  * row that loads the next newer page. A reader who jumps to the latest skips
  * the newer pages: the transcript shows the latest page from the detail at
- * once, and earlier pages load above it as the reader scrolls up.
+ * once, and earlier pages load above it as the reader scrolls up. When a
+ * poll skips past the newer pages after they join the latest page, or past a
+ * newer page that has nothing after it, the transcript shows the latest page
+ * in the same way, so it never drops the skipped events.
  */
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   conversationEventPageSchema,
@@ -75,6 +78,7 @@ export function useUnreadHistory(input: {
     return kept;
   }, [detail?.events]);
   const latestFirstSeq = latestEvents[0]?.seq;
+  const joinedRef = useRef(false);
   const newer = useInfiniteQuery({
     // Only the page around the read position loads by itself. The data never
     // goes stale, so a refetch cannot reload every newer page at once.
@@ -126,6 +130,16 @@ export function useUnreadHistory(input: {
   const reached = lastNewerPage
     ? reachesLatest(lastNewerPage, latestFirstSeq)
     : false;
+  if (reached) joinedRef.current = true;
+  // No newer page can fill the gap before the latest page, or the latest
+  // events already on screen would leave until one does.
+  const skipped =
+    lastNewerPage !== undefined &&
+    !reached &&
+    (joinedRef.current || !lastNewerPage.nextCursor);
+  useEffect(() => {
+    if (skipped) onShowLatest();
+  }, [onShowLatest, skipped]);
   const pages = useMemo(
     () => [...(earlierPages ?? []), ...(newerPages ?? [])],
     [earlierPages, newerPages],
@@ -142,7 +156,9 @@ export function useUnreadHistory(input: {
     [detail, latestEvents, newerPages, pages, reached],
   );
 
-  if (!unreadCursor || (newer.error && !newerPages)) return undefined;
+  if (!unreadCursor || skipped || (newer.error && !newerPages)) {
+    return undefined;
+  }
 
   const hasPreviousPage = earlier.data
     ? earlier.hasNextPage
@@ -195,20 +211,18 @@ function keepLatestEvents(
 }
 
 /**
- * The newer pages reach the latest page when nothing follows them, or when
- * the latest page starts right after them.
+ * The newer pages reach the latest page when the latest page starts right
+ * after them. Without latest events, they reach it when nothing follows them.
  */
 function reachesLatest(
   page: ConversationEventPage,
   latestFirstSeq: number | undefined,
 ): boolean {
-  if (!page.nextCursor) return true;
   const lastSeq = page.events.at(-1)?.seq;
-  return (
-    lastSeq !== undefined &&
-    latestFirstSeq !== undefined &&
-    lastSeq + 1 >= latestFirstSeq
-  );
+  if (lastSeq === undefined || latestFirstSeq === undefined) {
+    return !page.nextCursor;
+  }
+  return lastSeq + 1 >= latestFirstSeq;
 }
 
 /** The first page is around the read position. The rest follow it. */

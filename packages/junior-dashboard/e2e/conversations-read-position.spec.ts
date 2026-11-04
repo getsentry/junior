@@ -697,4 +697,20 @@ test("opens far behind at the read position and loads newer pages after it", asy
   expect(cursors).not.toContain("after-100");
   expect(detailRequests.length).toBeGreaterThan(1);
   expect(detailRequests.slice(1)).not.toContain("?unreadPage=true");
+
+  // A poll that skips more than one page cannot join the newer pages, so
+  // the reader at the bottom goes to the latest page without a gap.
+  latestSeq = 201;
+  await expect(
+    transcript.getByText("Transcript message 201 "),
+  ).toBeInViewport();
+  await expect(transcript.getByText("Show newer messages")).toHaveCount(0);
+  const shown = await transcript.evaluate((element) => [
+    ...new Set(
+      [
+        ...(element.textContent ?? "").matchAll(/Transcript message (\d+) /g),
+      ].map((match) => Number(match[1])),
+    ),
+  ]);
+  expect(shown.at(-1)! - shown[0]! + 1).toBe(shown.length);
 });
