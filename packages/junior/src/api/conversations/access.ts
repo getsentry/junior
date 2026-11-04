@@ -18,8 +18,6 @@ const rootIdentity = alias(juniorIdentities, "access_root_identity");
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
   isParticipant: boolean;
-  /** Root of the Conversation tree. Missing when the stored tree is invalid. */
-  rootConversationId?: string;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
@@ -126,9 +124,6 @@ export async function readConversationAccessFromSql(
         {
           canViewPrivateContent,
           isParticipant,
-          ...(validRootConversationId !== undefined
-            ? { rootConversationId: validRootConversationId }
-            : undefined),
           visibility,
           ...(validRootConversationId !== undefined &&
           row.provider !== null &&
@@ -143,45 +138,5 @@ export async function readConversationAccessFromSql(
         },
       ];
     }),
-  );
-}
-
-/**
- * Apply `policies/conversation-access.md`: whether work in the `requester`
- * Conversation may read, find, or act on the `target` Conversation. Read
- * `target` with the person of the current Turn as viewer. A Turn with no
- * person has no viewer, so it is never a participant and gets only public
- * Conversations.
- */
-export function canAccessConversation(args: {
-  requester: ConversationAccess;
-  target: ConversationAccess;
-}): boolean {
-  const { requester, target } = args;
-  // A Turn may always use its own Conversation tree.
-  if (
-    requester.rootConversationId !== undefined &&
-    requester.rootConversationId === target.rootConversationId
-  ) {
-    return true;
-  }
-  if (
-    !requester.tenant ||
-    !target.tenant ||
-    requester.tenant.provider !== target.tenant.provider ||
-    requester.tenant.providerTenantId !== target.tenant.providerTenantId
-  ) {
-    return false;
-  }
-  if (target.visibility === "public") {
-    return true;
-  }
-  // Output of a public Conversation is visible to everyone who can see it,
-  // so it never gets private data. Missing visibility is private.
-  return (
-    target.visibility !== null &&
-    requester.visibility !== null &&
-    requester.visibility !== "public" &&
-    target.isParticipant
   );
 }

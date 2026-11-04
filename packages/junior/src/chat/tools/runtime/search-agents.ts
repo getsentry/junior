@@ -82,7 +82,7 @@ const listedAgentSchema = z
     relation: z
       .enum(AGENT_RELATIONS)
       .describe(
-        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. top_level: another root conversation that you can read.",
+        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. top_level: another public root conversation in this workspace.",
       ),
     conversation_id: z
       .string()
@@ -211,7 +211,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "relatives (default): this conversation, its parent, its child agents, and its siblings. top_level: other root conversations that you can read. Only a root conversation can search top_level.",
+        "relatives (default): this conversation, its parent, its child agents, and its siblings. top_level: other public root conversations in this workspace. Only a root conversation can search top_level.",
       ),
     conversation_ids: z
       .array(z.string().trim().min(1))
@@ -272,7 +272,7 @@ export function createSearchAgentsTool(context: {
 }) {
   return zodTool({
     description:
-      "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other root conversations that you can read. messageAgent can send to a top-level agent only when it has the same visibility as this conversation. Results of child agents arrive as new tasks, not through this tool.",
+      "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other public root conversations in this workspace. messageAgent can send to one only when this conversation is public too. Results of child agents arrive as new tasks, not through this tool.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

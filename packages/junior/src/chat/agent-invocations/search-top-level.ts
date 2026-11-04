@@ -1,8 +1,7 @@
 /**
- * Search the top-level agents that one root Conversation may reach: root
- * Conversations allowed by `policies/conversation-access.md`. The SQL query
- * selects candidates, then `canAccessConversation` decides each one, so the
- * access rule has one owner.
+ * Search the top-level agents that one root Conversation may find: public
+ * root Conversations in the same provider tenant. Private Conversations are
+ * never returned, so no result leaks private data into the requester.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -12,7 +11,6 @@ import {
   gt,
   ilike,
   inArray,
-  isNotNull,
   isNull,
   ne,
   notExists,
@@ -21,10 +19,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import {
-  canAccessConversation,
-  readConversationAccessFromSql,
-} from "@/api/conversations/access";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import type { ConversationStatus } from "@/chat/conversations/store";
@@ -34,10 +29,9 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
-  juniorIdentities,
 } from "@/db/schema";
 
-/** One top-level agent that the requester may read and find. */
+/** One public top-level agent that the requester may find. */
 export interface TopLevelAgent {
   /** The viewer archived this Conversation. */
   archived: boolean;
@@ -62,9 +56,9 @@ export interface TopLevelAgentSearch {
 }
 
 /**
- * Search root Conversations that `requesterConversationId` may reach for
- * `viewer`, the person of the current Turn. Without a viewer, only public
- * Conversations match. Newest activity first, or best match for a query.
+ * Search public root Conversations in the tenant of `requesterConversationId`.
+ * `viewer`, the person of the current Turn, only decides which ones are
+ * archived. Newest activity first, or best match for a query.
  */
 export async function searchTopLevelAgents(args: {
   requesterConversationId: string;
@@ -76,7 +70,7 @@ export async function searchTopLevelAgents(args: {
   const requester = (
     await readConversationAccessFromSql(db, [requesterConversationId], viewer)
   ).get(requesterConversationId);
-  if (!requester?.tenant || requester.visibility === null) {
+  if (!requester?.tenant) {
     return [];
   }
 
@@ -85,27 +79,9 @@ export async function searchTopLevelAgents(args: {
   const query = search.query?.trim() || undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
   const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
-  const viewerEmail = viewer?.email.trim().toLowerCase() || undefined;
-
-  // The access rule below decides. This filter only keeps the candidate
-  // set small: public targets, or private targets where the viewer is a
-  // participant.
-  const participatedByViewer =
-    viewer && requester.visibility !== "public"
-      ? or(
-          isNotNull(juniorConversationParticipants.rootConversationId),
-          eq(juniorIdentities.userId, viewer.id),
-          viewerEmail
-            ? and(
-                eq(juniorIdentities.emailVerified, true),
-                eq(juniorIdentities.emailNormalized, viewerEmail),
-              )
-            : undefined,
-        )
-      : undefined;
   const conditions: (SQL | undefined)[] = [
     isNull(juniorConversations.parentConversationId),
-    // Match the access check, so `limit` counts only valid roots.
+    // Only valid roots, so `limit` counts only real results.
     eq(
       juniorConversations.rootConversationId,
       juniorConversations.conversationId,
@@ -116,9 +92,7 @@ export async function searchTopLevelAgents(args: {
     ne(juniorConversations.conversationId, requesterConversationId),
     eq(juniorDestinations.provider, requester.tenant.provider),
     eq(juniorDestinations.providerTenantId, requester.tenant.providerTenantId),
-    participatedByViewer
-      ? or(eq(juniorDestinations.visibility, "public"), participatedByViewer)
-      : eq(juniorDestinations.visibility, "public"),
+    eq(juniorDestinations.visibility, "public"),
     search.annotation
       ? treeHasAnnotationKey(
           juniorConversations.conversationId,
@@ -161,10 +135,6 @@ export async function searchTopLevelAgents(args: {
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
     .leftJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-    )
-    .leftJoin(
       juniorConversationParticipants,
       and(
         eq(
@@ -195,29 +165,18 @@ export async function searchTopLevelAgents(args: {
     .orderBy(...order)
     .limit(search.limit);
 
-  const access = await readConversationAccessFromSql(
-    db,
-    rows.map((row) => row.conversationId),
-    viewer,
-  );
-  return rows.flatMap((row) => {
-    const target = access.get(row.conversationId);
-    if (!target || !canAccessConversation({ requester, target })) {
-      return [];
-    }
+  return rows.map((row) => {
     const brief = row.briefContent
       ? conversationBriefSchema.parse(row.briefContent)
       : undefined;
-    return [
-      {
-        archived: row.archivedAt !== null,
-        conversationId: row.conversationId,
-        status: row.status,
-        ...(brief ? { summary: brief.summary } : undefined),
-        ...(row.title ? { title: row.title } : undefined),
-        updatedAtMs: row.lastActivityAt.getTime(),
-      },
-    ];
+    return {
+      archived: row.archivedAt !== null,
+      conversationId: row.conversationId,
+      status: row.status,
+      ...(brief ? { summary: brief.summary } : undefined),
+      ...(row.title ? { title: row.title } : undefined),
+      updatedAtMs: row.lastActivityAt.getTime(),
+    };
   });
 }
 

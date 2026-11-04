@@ -68,8 +68,6 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/context-bound-systems.md`: passing authority, destination, and
   scope.
 - `policies/security.md`: credentials, sandbox, and model access.
-- `policies/conversation-access.md`: who may read, find, or act on a
-  Conversation. Applies to every surface.
 - `policies/data-redaction.md`: conversation privacy and redaction.
 - `policies/serverless-background-work.md`: work that must survive request
   edges.
