@@ -12,6 +12,7 @@ import {
   steerConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
@@ -56,7 +57,7 @@ import {
   type WebInputServices,
 } from "./create";
 import { readConversationDetail } from "./detail";
-import { etagMatches, readConversationDetailEtag } from "./detail-etag";
+import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
@@ -494,17 +495,23 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const query = context.req.valid("query");
       const viewer = context.get("viewer");
-      // Polls send the last ETag. Compare it before the report is built,
-      // because building the report is the expensive part of this route.
+      // Polls send the last version token. Compare it before the report is
+      // built, because building the report is the expensive part of this route.
       const etag = await readConversationDetailEtag(conversationId, {
         limit: query.limit,
         ...(viewer ? { viewer } : undefined),
       });
-      if (etag && etagMatches(context.req.header("if-none-match"), etag)) {
-        return new Response(null, {
-          status: 304,
-          headers: { "cache-control": "private, no-store", etag },
-        });
+      const headers = etag
+        ? {
+            "cache-control": "private, no-store",
+            [CONVERSATION_DETAIL_VERSION_HEADER]: etag,
+          }
+        : undefined;
+      if (
+        headers &&
+        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === etag
+      ) {
+        return new Response(null, { status: 304, headers });
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
@@ -514,9 +521,7 @@ export function createConversationRoutes(
       return jsonResponse(
         conversationDetailReportSchema,
         report,
-        etag
-          ? { headers: { "cache-control": "private, no-store", etag } }
-          : undefined,
+        headers ? { headers } : undefined,
       );
     },
   );

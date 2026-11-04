@@ -55,6 +55,7 @@ export {
   steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
