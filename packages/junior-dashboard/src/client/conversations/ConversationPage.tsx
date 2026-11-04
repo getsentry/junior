@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router";
 import type {
@@ -124,6 +125,7 @@ export function ConversationPage(props: {
   data?: { conversations: ConversationFeed };
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  sidebarToggle?: ReactNode;
 }) {
   const detailsDefaultOpen = useSyncExternalStore(
     subscribeToDetailsLayout,
@@ -514,15 +516,17 @@ export function ConversationPage(props: {
             }
             search={search}
             sentryConversationUrl={detail.data?.sentryConversationUrl}
+            sidebarToggle={props.sidebarToggle}
             title={title}
             view={view}
           />
         }
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName={
-          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
-        }
+        scrollClassName={cn(
+          "thin-scrollbar",
+          view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
+        )}
         scroll={
           <section className="min-w-0">
             <div

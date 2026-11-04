@@ -179,6 +179,8 @@ function ViewModeItem(props: {
 /** Shared icon control used by conversation and subagent transcript headers. */
 export function HeaderIconButton(props: {
   children: ReactNode;
+  controls?: string;
+  expanded?: boolean;
   ref?: Ref<HTMLButtonElement>;
   label: string;
   onClick(): void;
@@ -192,6 +194,8 @@ export function HeaderIconButton(props: {
         render={
           <Button
             ref={props.ref}
+            aria-controls={props.controls}
+            aria-expanded={props.expanded}
             aria-label={props.label}
             aria-pressed={props.pressed}
             className={cn(

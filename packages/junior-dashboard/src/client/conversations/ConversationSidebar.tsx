@@ -191,6 +191,7 @@ export function ConversationSidebar(props: {
       </div>
       <div className="px-4 pb-2">
         <SearchInput
+          className="border-dashboard-border-subtle bg-transparent hover:border-dashboard-border hover:bg-dashboard-fill-faint"
           label="Search your conversations"
           onChange={props.onQueryChange}
           placeholder="Search conversations…"
@@ -203,7 +204,7 @@ export function ConversationSidebar(props: {
           "px-3",
           isLanding
             ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+            : "thin-scrollbar min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
         )}
       >
         {props.error ? (
