@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { recurrenceRule } from "../src/tools/create-event";
 import { findFreeSlots } from "../src/tools/find-meeting-times";
+import { accountChooserLink, parseEventId } from "../src/tools/shared";
 import { stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";
@@ -100,6 +101,32 @@ describe("findFreeSlots", () => {
         optionalConflicts: ["dana@example.com"],
       },
     ]);
+  });
+});
+
+describe("accountChooserLink", () => {
+  const ACCOUNT = "junior@example.com";
+  // `eid` is base64 for "event1 junior@example.com".
+  const LINK =
+    "https://www.google.com/calendar/event?eid=ZXZlbnQxIGp1bmlvckBleGFtcGxlLmNvbQ==&ctz=Europe/London";
+  const CHOOSER = `https://accounts.google.com/AccountChooser?hd=example.com&continue=${encodeURIComponent(LINK)}`;
+
+  it("sends an event link through AccountChooser for Junior's domain", () => {
+    const chooser = accountChooserLink(LINK, ACCOUNT);
+    expect(chooser).toBe(CHOOSER);
+    // The event link and all its params come back unchanged.
+    expect(new URL(chooser).searchParams.get("continue")).toBe(LINK);
+    // People paste shared links back in, so the event id still resolves.
+    expect(parseEventId(chooser)).toBe("event1");
+  });
+
+  it("keeps a link that already goes through AccountChooser", () => {
+    expect(accountChooserLink(CHOOSER, ACCOUNT)).toBe(CHOOSER);
+  });
+
+  it("keeps the link without a Workspace domain", () => {
+    expect(accountChooserLink(LINK, "junior")).toBe(LINK);
+    expect(accountChooserLink(LINK, "junior@gmail.com")).toBe(LINK);
   });
 });
 
@@ -296,7 +323,8 @@ describe("Google Calendar tools", () => {
         label: "Oct 12",
         objectType: "calendar_event",
         title: "Sync",
-        url: "https://calendar.google.com/event?eid=1",
+        // The link opens in each viewer's Workspace account.
+        url: `https://accounts.google.com/AccountChooser?hd=example.com&continue=${encodeURIComponent("https://calendar.google.com/event?eid=1")}`,
         facts: {
           type: "calendar_event",
           when: "Mon, Oct 12, 10:00 – 10:30 PDT",

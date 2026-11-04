@@ -219,7 +219,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(event.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });
