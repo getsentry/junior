@@ -64,6 +64,14 @@ async function mockReadPositionConversation(
     },
   );
   await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId, messageId: "sent", status: "accepted" },
+      });
+    },
+  );
+  await page.route(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
       const { lastReadSeq } = route.request().postDataJSON() as {
@@ -288,9 +296,17 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect(marker).toBeInViewport();
   await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
   await expect(transcript.getByText("Transcript message 199 ")).toHaveCount(0);
+
+  // A send waits in the queue. The transcript does not end at the latest
+  // event yet, so the send has no place there.
+  await page.getByLabel("Continue this conversation").fill("Sent while behind");
+  await page.getByRole("button", { name: "Send" }).click();
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending.getByText("Sent while behind")).toBeVisible();
   releaseNewer();
   await expect(transcript.getByText("Transcript message 199 ")).toBeAttached();
   await expect(transcript.getByText("Transcript message 150 ")).toBeAttached();
+  await expect(pending.getByText("Sent while behind")).toBeVisible();
   await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
 });
 

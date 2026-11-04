@@ -645,9 +645,12 @@ export function ConversationPage(props: {
               // Without live history, an inline send would never leave the
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
-              // history does not have yet can start that Turn first.
+              // history does not have yet can start that Turn first. While
+              // newer pages load, the transcript tail is not the latest
+              // event, so a send waits in the queue too.
               sendsInline={
                 detail.data.eventHistory.status === "available" &&
+                !history.newer &&
                 !conversationIsResponding(detail.data) &&
                 detail.inlineMessages.length === 0
               }
