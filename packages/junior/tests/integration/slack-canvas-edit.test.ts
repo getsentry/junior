@@ -96,6 +96,9 @@ describe("Slack canvas file-like tools", () => {
         '<div data-section-style="5"><ul id="temp:C:B"><li id="temp:C:C">' +
         '<span><lnk href="https://linear.app/getsentry/issue/NET-625">NET-625</lnk>' +
         " — <code>Docs</code> fix</span><br/></li></ul></div>" +
+        '<div data-section-style="7"><ul id="temp:C:E">' +
+        '<li id="temp:C:F" class="checked"><span>Done</span><br/></li>' +
+        '<li id="temp:C:G" class=""><span>Open</span><br/></li></ul></div>' +
         '<p id="temp:C:D" class="line">Old summary</p></div>',
       "Q4 [draft] notes_v1 & more",
     );
@@ -122,7 +125,7 @@ describe("Slack canvas file-like tools", () => {
         {
           document_content: {
             markdown:
-              "## Rows\n\n- [NET-625](https://linear.app/getsentry/issue/NET-625) — `Docs` fix\n\nNew summary",
+              "## Rows\n\n- [NET-625](https://linear.app/getsentry/issue/NET-625) — `Docs` fix\n\n- [x] Done\n- [ ] Open\n\nNew summary",
           },
         },
       ],

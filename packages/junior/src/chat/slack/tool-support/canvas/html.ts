@@ -15,6 +15,22 @@ const canvasHtmlConverter = new NodeHtmlMarkdown(
   },
 );
 
+// Quip marks a checklist as `data-section-style="7"` and a done item with the
+// `checked` class. Canvas writes take `- [ ]` and `- [x]`.
+const listItemTranslator = canvasHtmlConverter.translators.get("li");
+canvasHtmlConverter.translators.set("li", (context) => {
+  const config =
+    typeof listItemTranslator === "function"
+      ? listItemTranslator(context)
+      : listItemTranslator;
+  const section = context.node.closest("[data-section-style]");
+  if (section?.getAttribute("data-section-style") !== "7") {
+    return config;
+  }
+  const checkbox = context.node.classList.contains("checked") ? "[x] " : "[ ] ";
+  return { ...config, prefix: `${config?.prefix ?? ""}${checkbox}` };
+});
+
 // A leading HTML start tag, not a Markdown autolink such as `<https://...>`.
 const leadingHtmlTag = /^\s*<[a-z][a-z0-9-]*[\s/>]/i;
 
