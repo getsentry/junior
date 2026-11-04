@@ -63,7 +63,7 @@ async function threadRootId(
     throw new Error(message);
   }
   const comment = z
-    .object({ in_reply_to_id: z.number().optional() })
+    .object({ in_reply_to_id: z.number().nullish() })
     .parse(response.body);
   return comment.in_reply_to_id ?? commentId;
 }

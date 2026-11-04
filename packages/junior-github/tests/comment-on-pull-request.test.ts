@@ -3,7 +3,8 @@ import { createGitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pu
 
 function toolContext(
   response?: Response,
-  replyTarget: { in_reply_to_id?: number } = {},
+  // GitHub sends `in_reply_to_id: null` on the first comment of a thread.
+  replyTarget: { in_reply_to_id: number | null } = { in_reply_to_id: null },
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
     if (request.method === "GET") {
