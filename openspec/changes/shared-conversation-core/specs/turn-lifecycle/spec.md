@@ -64,6 +64,24 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
   record (keyed by `(conversationId, inboundMessageId)`), then sets
   `core = old`, so today's core runs none of that state again.
 
+#### Scenario: Move back after an abandoned half-moved turn
+
+- **WHEN** a move crashed after its insert, `abandonTurnRecord` then ended
+  the Redis cursor, and a revert deploy then moves the conversation back
+- **THEN** the move back runs the C10 delete before `work()`, ends the open
+  turn row through `finishTurn` with the cursor's end status, and runs no
+  turn (C12).
+
+#### Scenario: Revert take waits out today's lease
+
+- **WHEN** a new-core take set `core = new` and waited on today's live
+  lease without a pin, and a revert deploy then makes a release without
+  `new_core` current
+- **THEN** the revert's lock take first passes the stale lease fence and
+  pins, in the C11 read order, and only then runs `work()` on the new
+  core's inbox, so no input runs on the new core while today's holder
+  runs (C14).
+
 #### Scenario: Agent invocation row without its creating record
 
 - **WHEN** the move finds an active Agent invocation row with no parent
@@ -126,7 +144,18 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 - **WHEN** an Instant Rollback makes a release from before step 3 current
 - **THEN** within 3 minutes the current row's `updatedAtMs` is too old,
   every new-core worker takes no lock and acks, pinned conversations wait
-  until a roll forward, and no guard migration runs.
+  until a roll forward, and no guard migration runs. A new-core
+  invocation that read the row before then can still pin until its
+  `maxDuration` ends, so the accepted window is 3 minutes plus one
+  invocation.
+
+#### Scenario: Short rollback below step 3
+
+- **WHEN** an Instant Rollback below step 3 is current for less than 3
+  minutes, so the current row misses one cron run, and then a roll
+  forward makes a step 15 release current
+- **THEN** the first upsert after the roll forward sets `freshSinceAtMs`,
+  and for 1,860 s a move that finds no lease and no tombstone waits (C13).
 
 #### Scenario: Abandoned half-moved turn
 

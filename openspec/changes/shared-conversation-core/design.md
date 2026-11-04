@@ -981,10 +981,15 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
     conversation mutation, before it reads `core`. Only the add that wins
     goes on. The move makes an inbox entry for each claimed id that is in
     `pendingMessages`, and copies every other claimed id as a duplicate.
-  - Check: `cutover_inboxShared` (`safety`, `noDuplicateTurn`,
-    `acceptedOnce`) holds with it, in CI. That instance still has the
-    earlier deploy gate, so it holds for the claim, not for the fence
-    (G.1f).
+  - Check: `shim_ingress` (`safety`, `noDuplicateTurn`, `acceptedOnce`,
+    `retryAfterMoveIsDuplicate`, `noLostInput`) holds with the claim under
+    the fence, in CI. Without the claim (`shim_ingressNoClaim`),
+    `acceptedOnce` fails in 3 steps, and `noDuplicateTurn` (C5) and
+    `retryAfterMoveIsDuplicate` (C6) in 10. `cutover_inboxShared` checks
+    the claim against the earlier deploy gate and is evidence only.
+  - An append after the move stays in `pendingMessages` until the next
+    new-core take moves it. Inference: the step 15 sweep or the next
+    message brings that take. No liveness check covers it (G.1f).
 - **Parent and child.** Active Agent invocation rows and dispatch records
   move into request records only when the child conversation is new-core
   or idle. Otherwise that part of the move waits for a later take.
@@ -996,13 +1001,18 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   - **That fix conflicts with the shim, so this plan does not adopt it.**
     It covers only a worker from step 3 on: a child worker from before step
     3 has no token check. It is also the kind of write check the shim does
-    not use (C3, Not chosen). In the shim's terms, "idle" must mean that
-    the child's lease and tombstone pass the stale lease fence, read in
-    the C11 order, and that the child is pinned before the row moves. No
-    model checks that rule yet (G.1f), so `tree_fenced` is not evidence
-    for it. A live
-    `replaced` row is first reported to its parent as a `failed` result, as
-    `reportReplacedAgentInvocation` does today
+    not use (C3, Not chosen). `tree_fenced` is evidence only.
+  - In the shim's terms, "idle" means that the child's lease and
+    tombstone pass the stale lease fence, read in the C11 order (the lease,
+    then the tombstone), and that the move pins the child before the row
+    moves. Check: `tree_shim` (`resultNotLost`, `resultOneOwner`) holds
+    with this rule, in CI, with a stalled step 3 child worker, one from
+    before step 3, and no result write that checks a token. Each part is
+    needed: without the child's fence (`tree_shimNoFence`, 6 steps),
+    without its pin (`tree_shimNoPin`, 5 steps) or with the tombstone read
+    first (`tree_shimEarlyTomb`, 8 steps), a result is lost.
+  - A live `replaced` row is first reported to its parent as a `failed`
+    result, as `reportReplacedAgentInvocation` does today
     (`agent-invocations/store.ts:770`).
 - **Authority of moved state.** A moved turn or record keeps the verified
   old actor and subject, or it is closed (I15):
@@ -1082,9 +1092,10 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   `currentSinceAtMs`, `freshSinceAtMs` and `updatedAtMs`. From step 3 the
   heartbeat cron upserts it each minute (`deployment.ts:4-5`, emitted by
   `nitro.ts:166-175`). It sets `currentSinceAtMs` when `deploymentId`
-  changes, and `freshSinceAtMs` when the old `updatedAtMs` is more than 3
-  minutes old. Vercel sends cron requests only to the production
-  deployment, so a promote or an Instant Rollback shows within about a
+  changes, and `freshSinceAtMs` after any missed cron run: when the old
+  `updatedAtMs` is more than one cron interval plus jitter old (C13).
+  Vercel sends cron requests only to the production deployment, so a
+  promote or an Instant Rollback shows within about a
   minute. Capabilities: `new_core` (step 15 on) and `old_core_deleted`
   (step 16 on).
   - A new-core worker on any other deployment takes no lock and acks. The
@@ -1098,6 +1109,19 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
     cleared a lease with no tombstone during the gap, and that holder can
     run up to 1,800 s after its take. So for 1,860 s after
     `freshSinceAtMs`, a move with no lease and no tombstone waits too.
+  - C13 (`shim_rollbackStale onlyWindowGap`, 9 steps): with the earlier
+    rule (a gap of more than 3 minutes), a rollback below step 3 shorter
+    than 3 minutes set no `freshSinceAtMs`. Its heartbeat cleared a
+    stalled holder's lease with no tombstone. After the roll forward, a
+    new-core move found no lease and no tombstone and pinned at once while
+    the holder still ran. A clear by the rollback's heartbeat misses at
+    least one upsert, so the fix sets `freshSinceAtMs` after any missed
+    run. `shim_rollback` holds `onlyWindowGap` with it. Without
+    `freshSinceAtMs` (`shim_rollbackNoFresh`, 9 steps), or with a row 3
+    runs old that stays current (`shim_rollbackNoStale`, 10 steps), it
+    fails. The jitter allowance stays below one cron interval, so one
+    missed run always sets it. A `freshSinceAtMs` set by a late cron run
+    with no rollback only makes an unleased move wait up to 1,860 s.
 - **Deployment rows.** From step 3, each invocation that runs work first
   upserts its own row: `deploymentId`, `capabilities`,
   `maxDurationSeconds` and `lastSeenAtMs`, all with database `now()`. The
@@ -1109,20 +1133,43 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   never gets a cron request, so no cron log can see it. Its own
   invocations always can, and only invocations read the `core` columns.
   The rows have no drain end and no write before a send.
-  - A move back runs when the current deployment lacks `new_core`: a lock
-    take on a `core = new` conversation runs the new core's `work()` until
-    the conversation has no open turn and no open record. Then it deletes
-    what a crashed move left in Redis (C10): each turn cursor that has a
-    turn row, keyed by turn id, and each waiting input that has a request
-    record, keyed by `(conversationId, inboundMessageId)`. Only then does it
-    clear the pin and set `core = old`. Without this delete, today's core
-    runs that state again after the move back (`shim_plan`, 19 steps).
-    Every release from step 3 does this delete, because each one is a
-    revert target. From step 14 the release has `work()`; an earlier
-    release moves back only a conversation with no open turn and no open
-    record, and refuses the rest until a forward deploy. Today's
-    timer job notifies each new-core conversation whose `wakeAtMs` has
-    passed, so a paused or waiting new-core turn moves back with no new
+  - A move back runs when the current deployment lacks `new_core`. A lock
+    take on a `core = new` conversation runs these steps in order:
+    1. From step 14, if it finds no pin, it first passes the stale lease
+       fence and pins, in the C11 read order (C14).
+    2. It deletes what a crashed move left in Redis (C10): each turn
+       cursor that has a turn row, keyed by turn id, and each waiting input
+       that has a request record, keyed by
+       `(conversationId, inboundMessageId)`. A cursor with an end status
+       (an `abandonTurnRecord` after the crashed move) whose turn row is
+       still open: the delete ends that row through `finishTurn` with the
+       same end status and does not run it, as the repeated move does
+       (C12).
+    3. From step 14, it runs the new core's `work()` until the
+       conversation has no open turn and no open record.
+    4. It clears the pin and sets `core = old`. This gives today's state
+       back.
+  - Without the delete, today's core runs that state again after the move
+    back (`shim_plan`, 19 steps). Every release from step 3 does this
+    delete, because each one is a revert target. A release before step 14
+    has no `work()`: it moves back only a conversation with no open turn
+    and no open record, and refuses the rest until a forward deploy.
+  - C12 (`shim_abandonPlan noSupersededRun`, 13 steps): with the delete
+    after `work()`, a move crashed after its insert, `abandonTurnRecord`
+    ended the cursor as `abandoned`, and the revert's `work()` ran the
+    open turn row. Only a new-core take ended such a row. With the delete
+    first but without the end rule, the row still runs
+    (`shim_abandonNoEnd`, 14 steps).
+  - C14 (`shim_ingressRevNoFence oneCoreLive`, 11 steps): a new-core take
+    set `core = new`, found today's live lease and waited, so nothing
+    pinned it. A revert made a release without `new_core` current, Slack
+    sent input to the new core's inbox, and the revert's take ran it with
+    `work()` while today's holder still ran T1. Only a release from step
+    14 runs `work()`, so the fix is needed from step 14 (inference,
+    `FINDINGS.md` C14).
+  - `shim_design` holds `safety` and `oneCore` with C10, C12 and C14.
+  - Today's timer job notifies each new-core conversation whose `wakeAtMs`
+    has passed, so a paused or waiting new-core turn moves back with no new
     input. History is already in SQL, so no history moves back.
 - **Rollback is a revert deploy.** A revert of step 15 makes a release
   without `new_core` current. Moves stop within about a minute, when the
@@ -1138,8 +1185,11 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
 - **Rollback below step 3.** After an Instant Rollback to a release from
   before step 3, the heartbeat saves no tombstone and no cron updates the
   current row. Within 3 minutes the row is not current, so no new-core
-  worker runs or moves. Pinned conversations wait, safe but stuck: code
-  from before step 3 busy-defers on the pin and never takes it. They run
+  lock take starts. A new-core invocation that read the row before then
+  can still pin until its `maxDuration` ends (`ex_pinAfterStale`), so the
+  window is 3 minutes plus one invocation. Pinned conversations wait, safe
+  but stuck: code from before step 3 busy-defers on the pin and never
+  takes it. They run
   again after a roll forward, from `freshSinceAtMs` on. Unmoved
   conversations run on today's core as before. If the rollback lasts past
   the 7-day TTL, pins expire and today's core runs new input on those
@@ -1164,6 +1214,8 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
 | -------------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------- |
 | `core` on the conversation row                                                                           | 3 (3.5)   | readers 16 (16.5); column 17 (17.1)                                                                |
 | The pin (today's lease, `MAX_SAFE_INTEGER`)                                                              | 15 (15.2) | writer 16 (16.3, 16.5); data: no delete step, it expires with the 7-day TTL after the last refresh |
+| The fence and the pin on the move back's take (C14)                                                      | 14 (14.2) | 16 (16.5)                                                                                          |
+| The move back's C10 delete with the end rule (C12)                                                       | 3 (3.5)   | 16 (16.5)                                                                                          |
 | `staleLeaseAcquiredAtMs`, `staleLeaseMaxDurationSeconds`                                                 | 3 (3.5)   | writers 16 (16.5); columns 17 (17.1)                                                               |
 | Lease `deploymentId`                                                                                     | 3 (3.5)   | writer 16 (16.5); data goes with the Redis lease (16.3)                                            |
 | Current row (`updatedAtMs`, `maxDurationMaxSeconds`, `freshSinceAtMs`, `currentSinceAtMs`, capabilities) | 3 (3.5)   | row and writer 17 (17.1); 16 keeps it for the guard                                                |
@@ -1202,11 +1254,13 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
   the send: the 1 h retention Junior sets on each send and the 1 h
   signature age (`queue/sign.ts:5,129-132`) both count from the send, so
   they do not add up. Then one more `maxDuration` for that delivery. The
-  2 min covers the 60 s skew: `drop_design` holds the
-  `1 h + 2×maxDuration + 2 min` wait, the model holds down to `+75 s` and
-  fails at `+60 s` (`drop_noSpare`), so the 2 min leaves 45 s to 60 s of
-  spare. A revert and a promote again within one cron interval is seen,
-  because its invocations write `lastSeenAtMs`.
+  2 min covers the 60 s skew. Check: `drop_design` holds the full
+  `1 h + 2×maxDuration + 2 min + 60 s` wait (3 min past the two
+  `maxDuration`s), with the throttle and a revert. With no revert, the
+  model holds at `+2 min 15 s` (`drop_spare`) and fails at `+2 min`
+  (`drop_noSpare`). The model rounds each bound up by at most 15 s, so the
+  3 min leaves 45 s to 60 s of spare. A revert and a promote again within
+  one cron interval is seen, because its invocations write `lastSeenAtMs`.
 - **What this design gives up:**
   - Safety rests on an invocation ending at `maxDuration`. A host that
     lets a worker run past it breaks the fence.
@@ -1219,12 +1273,16 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
     `staleLeaseAcquiredAtMs`. If it then releases before the first
     holder's `maxDuration` has passed, the move can start while that
     holder still runs. Only a chain from before step 3 does such a take.
-  - For up to 3 minutes after an Instant Rollback below step 3, the row
-    still looks current, but the heartbeat runs code that saves no
-    tombstone. If it clears the lease of a stalled holder in that window,
-    a new-core worker on the deployment the row names can move at once
-    while that holder runs. `freshSinceAtMs` covers only moves after the
-    roll forward.
+  - For up to 3 minutes plus one invocation after an Instant Rollback
+    below step 3, a new-core move can pin while the heartbeat runs code
+    that saves no tombstone. The row looks current for 3 minutes, and a
+    new-core invocation that read it in that time can still pin until its
+    `maxDuration` ends (`ex_pinAfterStale`). If the heartbeat clears the
+    lease of a stalled holder in that window, such a move can pin at once
+    while that holder runs. `freshSinceAtMs`, set after any missed cron
+    run (C13), covers every move that reads the row after the roll
+    forward. `shim_rollback` holds `onlyWindowGap` (every failure is a
+    pin in this window) and fails `safety`, as expected.
   - After a rollback below step 3, pinned conversations wait until a roll
     forward.
 - **Host assumptions.** Vercel is the only deploy host: BullMQ is for
@@ -1261,42 +1319,60 @@ C4, C10, C11), the durability and trust reviews, and the shape review.
     works only on Vercel, and a delete drops that deployment's unacked
     messages.
 - **Checks** (TLC v1.7.4, `packages/junior/verification/`, `FINDINGS.md`
-  "P45 Shim"). The design:
-  - `CutoverShim.tla` with `cfg/shim_design.cfg`: `safety` and `oneCore`
-    hold, with the C10 and C11 fixes. `cfg/shim_abandon.cfg`: `safety`
-    holds with the lease-less `abandonTurnRecord`. `cfg/shim_examples.cfg`:
-    the worked examples are reachable.
-  - `DropGuard.tla` with `cfg/drop_design.cfg`: `noReadAfterDrop` holds
-    for the column-drop guard.
-  - `cfg/shim_gap.cfg`: `noDuplicateTurn` fails in 16 steps. That is the
-    accepted give-up (a takeover from before step 3), in CI as expected.
+  "P45 Shim"). The design, in CI (`checks.txt`):
+  - `CutoverShim.tla`: `shim_design` holds `safety` and `oneCore` with the
+    C10, C11, C12 and C14 fixes. `safety` also holds for the lease-less
+    `abandonTurnRecord` (`shim_abandon`), mixed `maxDuration` with the
+    running max and the ceiling (`shim_long`), the pending stop
+    (`shim_stop`) and Agent invocation rows of each kind (`shim_inv`, I15).
+    `shim_ingress` holds the ingress properties with the shared claim (C5,
+    C6). `shim_rollback` holds `onlyWindowGap` with the C13 fix.
+    `shim_examples` and the `ex_*` checks of each instance show that the
+    worked examples are reachable.
+  - `CutoverTree.tla`: `tree_shim` holds `resultNotLost` and
+    `resultOneOwner` with C7 in the shim's terms.
+  - `DropGuard.tla`: `drop_design` holds `noReadAfterDrop` for the
+    column-drop guard.
+  - Accepted, in CI as expected: `shim_gap` fails `noDuplicateTurn` in 16
+    steps (a takeover from before step 3), and `shim_rollback` fails
+    `safety` in 8 steps (the rollback window).
 - **Evidence** (`evidence.txt`, not the design):
   - `shim_plan`: the move back without the C10 delete, 19 steps.
   - `shim_gap` `safety`: the same give-up, 9 steps.
   - `shim_noFence`: no stale lease fence, 13 steps.
   - `shim_earlyTomb`: the tombstone read before the lease (C11), 15 steps.
+  - `shim_abandonPlan`, `shim_abandonNoEnd`: C12. `shim_ingressRevNoFence`:
+    C14. `shim_rollbackStale`, `shim_rollbackNoFresh`,
+    `shim_rollbackNoStale`: C13. `shim_ingressNoClaim`: C5, C6.
+  - `shim_longCurrent`, `shim_longNoCeiling`: `D(lease)` without the
+    running max or the ceiling. `shim_stopNoMove`: the move drops the stop
+    key. `shim_invCopy`: the move trusts the stored actor.
+  - `tree_shimNoFence`, `tree_shimNoPin`, `tree_shimEarlyTomb`: C7 without
+    one part of the rule.
+  - `shim_rollbackNoRefresh` holds `onlyWindowGap` without the TTL refresh
+    (Model gap).
   - `drop_oneMax`: one `maxDuration` in the drop wait. `drop_noSpare`: a
-    wait of `1 h + 2×maxDuration + 60 s`.
+    wait of `1 h + 2×maxDuration + 2 min`. `drop_spare` holds at
+    `+2 min 15 s` with no revert.
   - The earlier `Cutover.tla` configs show the failed drafts:
     `cutover_design`, `cutover_designNoStall`, `cutover_always`,
-    `cutover_midDeployFenced`, `cutover_midDeployPinnedFenced`, and the
-    deploy gate (`cutover_gated`, `cutover_gatedSeen`). They are not this
-    design. `cutover_inboxShared` (Slack ingress, C5, C6) and
-    `CutoverTree.tla` `tree_fenced` (a parent and a child, C7) stay in CI,
-    but they model the earlier deploy gate, not the fence.
-- **Model gap** (step G, G.1f; core-model is on it):
-  - I15, with Agent invocation rows that have no parent turn id.
-  - Slack ingress, the sweep (a full lock take, root before child, the
-    TTL refresh) and a parent with a child under the stale lease fence.
-  - `D(lease)`: the running max, and the 1,800 s ceiling for a lease with
-    no `deploymentId`.
-  - An Instant Rollback below step 3: the stale row and `freshSinceAtMs`.
-  - `DropGuard.tla` with `lastSeenAtMs` from invocations, and a revert and
-    a promote again within one cron interval.
-  - The repeat that ends an abandoned half-moved turn without a run, and
-    the pending stop carried into `stopAtMs`.
-  - C7 in the shim's terms: a row moves only after the child passes the
-    fence and is pinned.
+    `cutover_midDeployFenced`, `cutover_midDeployPinnedFenced`, the inbox
+    move as written (`cutover_inbox`, `cutover_inboxBoth`) and the deploy
+    gate (`cutover_gated`, `cutover_gatedSeen`, `cutover_inboxShared`).
+    `CutoverTree.tla` `tree_plan` is the parent and child move as written
+    and `tree_fenced` core-model's result-write fence. They are not this
+    design.
+- **Model gap** (step G, G.1f):
+  - The sweep under the fence: a full lock take, the root before the
+    child, and the daily TTL refresh. No check shows why the refresh is
+    needed. Inference (`FINDINGS.md` C13): without it, code from before
+    step 3 can run new input on today's core while the moved turns wait.
+  - Liveness for an append after the move: it waits in `pendingMessages`
+    for the next new-core take.
+  - I15 beyond the Agent invocation row: moved turns, dispatch records,
+    subject checks and `pendingAuth`.
+  - A Slack retry that finds a request record but no append.
+  - The P37 target bound.
 - **What a revert cannot undo after the delete release:** today's workers
   and the move back are gone, so no conversation can go back. The moved
   Redis cursors, Agent invocation rows and dispatch records are not made
@@ -1401,14 +1477,20 @@ Decided (the planning thread).
   - `StopClock`: 1 person actor, 2 inputs, 1 stop, 2 turns, 6 clock ticks.
   - `CutoverShim`: 1 conversation, 2 inputs, a step 3 worker, a worker
     from before step 3, the new core, 3 lease takes, 2 crashes, 2 lease or
-    lock expiries, 1 revert.
+    lock expiries, 1 revert. `shim_ingress` adds 3 Slack deliveries;
+    `shim_rollback` adds a rollback below step 3, a roll forward and 1 pin
+    expiry.
+  - `CutoverTree`: 1 parent, 1 child; `tree_shim` adds a child worker from
+    before step 3 and 3 child lease takes.
   - `DropGuard`: 15 s units, `maxDuration` 300 s, 1 h retention, 60 s
-    skew, 2 step 15 invocations, 1 queue message.
+    skew, a cron run each minute, the 60 s `lastSeenAtMs` throttle, 2 step
+    15 invocations, 1 queue message, a revert and a promote again.
 - **Not modeled yet** (step G tasks G.1a–G.1f): the system actor, the
   adversarial `send`, request-record matching (I5, I6, I9, I12),
-  tree-stop results (I8), sandbox process tags (I13), the authority of
-  moved state (I15), and Slack ingress, the sweep and a parent with a
-  child under the stale lease fence. Until then, these invariants are not
+  tree-stop results (I8), sandbox process tags (I13), I15 beyond the Agent
+  invocation row, and the P45 model gap (the sweep under the fence, the
+  TTL refresh, liveness for an append after the move, a Slack retry that
+  finds a request record but no append). Until then, these are not
   checked.
 - **Bound on queue messages:** the notify queue has no cap. Each send
   comes from a bounded event, so the count stays finite (G.1i).
@@ -1485,8 +1567,8 @@ Decided (the planning thread).
   every later release keeps it green. Before the cutover release, it
   includes I15 (P45).
 - **CI:** `check.sh` runs when `packages/junior/verification/**` changes,
-  and once a week (G.1g). A full run of the 63 checks takes about
-  4 h 19 min on 4 cores; the slowest, the combined `errors_design`
+  and once a week (G.1g). A full run of the 76 checks takes about
+  5 h 25 min on 4 cores (the sum of wall times in `results.txt`); the slowest, the combined `errors_design`
   liveness check, takes about 2 h. The larger G.1f bound runs only in the
   weekly job. The
   conformance tests with the `faults` port run on every PR.

@@ -41,11 +41,26 @@ run every check with TLC and fail on any other result (Decided: P37, P40).
 ### Requirement: Cutover Model Configs
 
 `CutoverShim.tla` SHALL check the P45 shim (`cfg/shim_design.cfg`,
-`cfg/shim_abandon.cfg`, `cfg/shim_gap.cfg`, `cfg/shim_examples.cfg`), and
-`DropGuard.tla` its column-drop guard (`cfg/drop_design.cfg`) (Decided: P37,
-P45). `evidence.txt` SHALL list the failing variants that `FINDINGS.md`
-cites: `shim_plan`, `shim_gap`, `shim_noFence`, `shim_earlyTomb`,
-`drop_oneMax`, `drop_noSpare` and the earlier `Cutover.tla` drafts.
+`cfg/shim_abandon.cfg`, `cfg/shim_long.cfg`, `cfg/shim_stop.cfg`,
+`cfg/shim_inv.cfg`, `cfg/shim_ingress.cfg`, `cfg/shim_rollback.cfg`,
+`cfg/shim_gap.cfg`, `cfg/shim_examples.cfg`), `CutoverTree.tla` C7 in the
+shim's terms (`cfg/tree_shim.cfg`), and `DropGuard.tla` its column-drop
+guard (`cfg/drop_design.cfg`) (Decided: P37, P45).
+
+#### Scenario: Shim design check in CI
+
+- **WHEN** `check.sh` runs `checks.txt`
+- **THEN** each of these configs gives the result that `checks.txt`
+  records, or `check.sh` fails and names it.
+
+### Requirement: Cutover Evidence Variants
+
+`evidence.txt` SHALL list the variants that `FINDINGS.md` cites: the shim
+without one of its fixes (C10 to C14, the shared ingress claim,
+`D(lease)`, the stop key, I15, the TTL refresh), `tree_shimNoFence`,
+`tree_shimNoPin`, `tree_shimEarlyTomb`, `drop_oneMax`, `drop_noSpare`,
+`drop_spare` and the earlier `Cutover.tla` and `CutoverTree.tla` drafts
+(Decided: P37, P45).
 
 #### Scenario: Evidence variant still fails
 
