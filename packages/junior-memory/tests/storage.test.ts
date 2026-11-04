@@ -2442,6 +2442,15 @@ describe("memory plugin storage", () => {
       await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
+      // A Source without visibility can run in a public Conversation.
+      const childAgentStore = createMemoryStore(
+        memoryDb(fixture),
+        { ...privateContext, source: { kind: "agent_invocation" } },
+        { now: () => nowMs },
+      );
+      await expect(childAgentStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: publicMemory.memory.id }),
+      ]);
       await expect(
         otherUserStore.archiveMemory({ id: privateMemory.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");

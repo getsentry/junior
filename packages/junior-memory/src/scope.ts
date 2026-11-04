@@ -1,3 +1,4 @@
+import { isPrivateSource } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
@@ -66,14 +67,14 @@ export function deriveMemorySubject(
 
 /**
  * Return the memory scopes that the current Turn may read. A public
- * Conversation never reads private memory, also the person's own.
+ * Conversation never reads private memory, also the person's own. Sources
+ * without visibility (agent invocations, automations, events) may run in a
+ * public Conversation, so they read only public memory.
  */
 export function deriveVisibleMemoryScopes(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope[] {
-  const isPublic =
-    "visibility" in ctx.source && ctx.source.visibility === "public";
-  if (!ctx.userId || isPublic) {
+  if (!ctx.userId || !isPrivateSource(ctx.source)) {
     return [publicMemoryScope];
   }
   return [publicMemoryScope, privateMemoryScope(ctx.userId)];
