@@ -81,11 +81,10 @@ export function createRepositoryInstructionsContext(
   return {
     /** Re-read AGENTS.md and append a context message when it changed. */
     async applyUpdate(
-      currentUpdate: AgentLoopTurnUpdate | undefined,
       currentContext: AgentContext,
     ): Promise<AgentLoopTurnUpdate | undefined> {
       if (!options.hasSandbox()) {
-        return currentUpdate;
+        return undefined;
       }
       return await withSpan(
         "agent.repository_instructions.refresh",
@@ -96,13 +95,9 @@ export function createRepositoryInstructionsContext(
           const outcome = refreshOutcome(instructions);
           setSpanAttributes({ "app.repository_instructions.outcome": outcome });
           if (outcome === "unchanged" || outcome === "none") {
-            return currentUpdate;
+            return undefined;
           }
-          return await appendUpdate(
-            instructions,
-            currentUpdate,
-            currentContext,
-          );
+          return await appendUpdate(instructions, currentContext);
         },
       );
     },
@@ -124,7 +119,6 @@ export function createRepositoryInstructionsContext(
 
   async function appendUpdate(
     instructions: RepositoryInstructions | undefined,
-    currentUpdate: AgentLoopTurnUpdate | undefined,
     currentContext: AgentContext,
   ): Promise<AgentLoopTurnUpdate> {
     const message = instructions
@@ -135,8 +129,7 @@ export function createRepositoryInstructionsContext(
             : instructions.text,
         })
       : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
-    const context = currentUpdate?.context ?? currentContext;
-    const messages = [...(context.messages as PiMessage[]), message];
+    const messages = [...(currentContext.messages as PiMessage[]), message];
     options.setMessages(messages);
     // A final reply is committed directly after the current history, so
     // this message must be committed first.
@@ -144,9 +137,6 @@ export function createRepositoryInstructionsContext(
     visibleFingerprint = instructions?.fingerprint;
     instructionsVisible = Boolean(instructions);
     await options.onTransition?.(instructions);
-    return {
-      ...currentUpdate,
-      context: { ...context, messages },
-    };
+    return { context: { ...currentContext, messages } };
   }
 }

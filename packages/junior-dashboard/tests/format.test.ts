@@ -25,7 +25,6 @@ import {
   formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
-  parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
   summarizeMessages,
@@ -426,24 +425,5 @@ describe("dashboard conversation formatting", () => {
         channelNameRedacted: false,
       }),
     ).toBe("#proj-alpha (C1)");
-  });
-});
-
-describe("transcript blocks", () => {
-  it("keeps prose as markdown and preserves fenced languages", () => {
-    expect(
-      parseMarkdownBlocks("The function returns a const value.")[0],
-    ).toMatchObject({
-      fenced: false,
-      language: "markdown",
-    });
-    expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
-      fenced: true,
-      language: "json",
-    });
-    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
-      fenced: true,
-      language: "xml",
-    });
   });
 });

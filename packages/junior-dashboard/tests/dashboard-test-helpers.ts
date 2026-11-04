@@ -23,7 +23,7 @@ export function resetDashboardEnv(): void {
 /** Build a fixed dashboard auth edge for route tests. */
 export function auth(
   session: DashboardSession | null,
-  onSignIn?: (callbackURL: string) => void,
+  onSignIn?: (callbackURL: string, errorCallbackURL: string) => void,
 ): DashboardAuth {
   return {
     async handler() {
@@ -32,8 +32,8 @@ export function auth(
     async getSession() {
       return session;
     },
-    async signInWithGoogle(_request, callbackURL) {
-      onSignIn?.(callbackURL);
+    async signInWithGoogle(_request, callbackURL, errorCallbackURL) {
+      onSignIn?.(callbackURL, errorCallbackURL);
       return Response.redirect(
         "https://accounts.google.com/o/oauth2/v2/auth",
         302,

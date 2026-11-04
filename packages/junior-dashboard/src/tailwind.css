@@ -327,6 +327,36 @@
   }
 }
 
+@utility thin-scrollbar {
+  --thin-scrollbar-thumb: color-mix(
+    in srgb,
+    var(--color-dashboard-scrollbar-thumb) 80%,
+    transparent
+  );
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-inline: 1px solid transparent;
+    background: var(--thin-scrollbar-thumb) padding-box;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-dashboard-scrollbar-thumb-hover);
+  }
+
+  @supports not selector(::-webkit-scrollbar-thumb) {
+    scrollbar-color: var(--thin-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+}
+
 @source "./app.ts";
 @source "./dashboardLoader.ts";
 @source "./client.tsx";

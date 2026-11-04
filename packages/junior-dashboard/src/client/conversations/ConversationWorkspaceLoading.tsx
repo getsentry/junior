@@ -2,9 +2,11 @@ import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
+  const [sidebarOpen] = useConversationSidebarOpen();
   if (!props.detail) return <ConversationHomeLoading />;
   return (
     <div
@@ -12,12 +14,13 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       aria-live="polite"
       className={cn(
         dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)]",
+        "grid h-full min-h-0 grid-cols-[minmax(0,1fr)] overflow-hidden",
+        sidebarOpen && "md:grid-cols-[20rem_minmax(0,1fr)]",
       )}
       role="status"
     >
       <span className="sr-only">Loading conversation</span>
-      <ConversationSidebarLoading />
+      {sidebarOpen ? <ConversationSidebarLoading /> : null}
       <ConversationDetailLoading />
     </div>
   );
@@ -90,7 +93,7 @@ function ConversationDetailLoading() {
     >
       <ChatLayout
         scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-3 pb-1.5 md:px-7 md:pb-2"
+        scrollClassName="thin-scrollbar px-3 pb-1.5 md:px-7 md:pb-2"
         scroll={
           <section className="min-w-0">
             <div className="mb-4 grid gap-3 border-b border-dashboard-border-subtle py-4">

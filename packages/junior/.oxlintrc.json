@@ -13,6 +13,10 @@
     {
       "name": "anti-slop",
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "junior",
+      "specifier": "../../tools/oxlint/junior/index.ts"
     }
   ],
   "ignorePatterns": [
@@ -28,7 +32,8 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "tools/oxlint/junior/**"
   ],
   "rules": {
     "no-restricted-imports": [
@@ -74,6 +79,12 @@
   },
   "overrides": [
     {
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "junior/touch-conversation-detail": "error"
+      }
+    },
+    {
       "files": ["**/junior-github/src/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
@@ -108,6 +119,7 @@
     {
       "files": [
         "**/junior-github/src/credential-support.ts",
+        "**/junior-github/src/github-status.ts",
         "**/junior-github/src/webhooks/**/*.ts"
       ],
       "rules": {
@@ -148,7 +160,6 @@
         "tests/component/runtime/agent-run-agent-continue.test.ts",
         "tests/component/runtime/agent-run-error-path.test.ts",
         "tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
-        "tests/component/runtime/agent-run-model-handoff-fixture.ts",
         "tests/component/runtime/agent-run-provider-retry.test.ts",
         "tests/component/runtime/agent-run-sandbox.test.ts",
         "tests/component/runtime/agent-run-tool-timeout-continuation.test.ts",

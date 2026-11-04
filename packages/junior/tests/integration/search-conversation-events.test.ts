@@ -96,8 +96,7 @@ describe("searchConversationEvents", () => {
     await events.replaceHistory(CURRENT_CONVERSATION_ID, {
       createdAtMs: 3,
       data: {
-        type: "handoff",
-        modelProfile: "handoff",
+        type: "compaction",
         modelId: "test/model",
         replacementHistory: [
           {
@@ -128,7 +127,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },
@@ -150,7 +149,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },
@@ -169,7 +168,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },

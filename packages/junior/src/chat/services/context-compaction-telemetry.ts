@@ -15,10 +15,9 @@ import { withSpan, type SetSpanAttributes } from "@/chat/logging";
 
 /**
  * Where a compaction runs: `blocking` at Turn start, `active` between model
- * calls in a Turn, `handoff` for a model handoff, `background` in a job after
- * a Turn.
+ * calls in a Turn, `background` in a job after a Turn.
  */
-export type CompactionMode = "blocking" | "active" | "handoff" | "background";
+export type CompactionMode = "blocking" | "active" | "background";
 
 interface TurnCompactionWait {
   ms: number;

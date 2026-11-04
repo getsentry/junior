@@ -12,6 +12,7 @@ import {
   juniorAgentInvocations,
   juniorReviewItems,
 } from "@/db/schema";
+import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
@@ -360,6 +361,7 @@ export async function purgeConversationTree(
                 : undefined),
             })
             .where(inArray(juniorConversations.conversationId, ids));
+          await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },
       );

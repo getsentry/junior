@@ -167,7 +167,6 @@ describe("conversation forks", () => {
       createdAtMs: Date.now(),
       data: {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "test-model",
         replacementHistory: [
           {

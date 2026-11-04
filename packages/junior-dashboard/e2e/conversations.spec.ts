@@ -39,6 +39,29 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const conversationList = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const hideList = page.getByRole("button", { name: "Hide conversation list" });
+  await expect(conversationList).toBeVisible();
+  await expect(hideList).toHaveAttribute("aria-expanded", "true");
+  await hideList.click();
+  await expect(conversationList).toBeHidden();
+  const showList = page.getByRole("button", { name: "Show conversation list" });
+  await expect(showList).toHaveAttribute("aria-expanded", "false");
+  await expect(showList).toBeFocused();
+
+  await page.reload();
+  await expect(showList).toBeVisible();
+  await expect(conversationList).toBeHidden();
+  await showList.press("Enter");
+  await expect(conversationList).toBeVisible();
+  await expect(hideList).toBeFocused();
+
+  await page.reload();
+  await expect(hideList).toBeVisible();
+  await expect(conversationList).toBeVisible();
+
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
@@ -317,7 +340,7 @@ test("scrolls long conversation and transcript panes independently", async ({
       });
     },
   );
-  await page.route("**/api/conversations/long-0", async (route) => {
+  await page.route("**/api/conversations/long-0*", async (route) => {
     await route.fulfill({
       json: {
         ...conversations[0],

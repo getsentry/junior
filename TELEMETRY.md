@@ -33,6 +33,9 @@ move to the domain below.
 - Production keeps only audit info events (`app.log.audit:true`), such as
   `sandbox.egress.upstream.requested` for write grants. Outside production,
   that event is logged for every forwarded request.
+- `mcp.tool_call.completed` is an audit event for each successful call to a
+  tool in a plugin's `mcp.audit-tools`. `app.credential.account` is
+  `service_account` or `actor`.
 
 ## Query Recipes
 
@@ -157,6 +160,14 @@ in production. Other info events stay out of Sentry in production.
 ```text
 dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
 fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when,app.task.id,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code
+sort=-timestamp
+```
+
+MCP audit tool calls, with the account that made them.
+
+```text
+dataset=logs query='app.log.audit:true event.name:mcp.tool_call.completed'
+fields=timestamp,user.id,app.actor.type,app.task.id,gen_ai.conversation.id,app.plugin.name,gen_ai.tool.name,app.credential.account
 sort=-timestamp
 ```
 
@@ -314,7 +325,7 @@ Attributes on the `agent.context_compaction` span:
 
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
-| `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
+| `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
 | `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
@@ -329,7 +340,6 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
-  `handoff` runs for a model handoff.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
@@ -351,13 +361,10 @@ result.
 - `not_ready`: the job has not written a ready summary, or it failed. A
   blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
-  `profile_changed`, `over_target`, `conflict` (another replacement committed
-  first), or `split_tool_call` (the mark falls between a tool call and its
-  result).
+  `over_target`, `conflict` (another replacement committed first), or
+  `split_tool_call` (the mark falls between a tool call and its result).
 - A swap also sets `app.compaction.input.estimate`,
   `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
-- A `handoff` span has only `app.compaction.mode`. A failed handoff or an
-  input above the limit sets `error.type`.
 
 ### Background Compaction
 

@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
 import { QueryClient } from "@tanstack/react-query";
 import { webMessageId } from "@sentry/junior/api/schema";
@@ -15,9 +16,11 @@ import { dashboardVersionDrift } from "../src/client/components/VersionDriftBann
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
+  conversationSideReadQueryKey,
   readConversationData,
   readConversationEvents,
 } from "../src/client/conversations/queries";
+import { REVIEW_ITEMS_QUERY_KEY } from "../src/client/review-desk/queries";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -133,10 +136,19 @@ describe("dashboard client API", () => {
     const client = new QueryClient();
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
+    // The details panel reads these beside the detail report.
+    const sideReads = [
+      conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
+      [...REVIEW_ITEMS_QUERY_KEY, "list", "conversationId=x"],
+    ];
+    const sideReadsInvalidated = () =>
+      sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
     try {
       const first = await client.fetchQuery(options);
+      for (const key of sideReads) client.setQueryData(key, {});
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
+      expect(sideReadsInvalidated()).toEqual([false, false]);
       expect(reads).toEqual([
         [`${detailPath}/pending-messages`, 200],
         [detailPath, 200],
@@ -150,12 +162,15 @@ describe("dashboard client API", () => {
       expect(changed.archivedAt).toBeUndefined();
       expect(changed.detailEtag).not.toBe(first.detailEtag);
       expect(reads.at(-1)).toEqual([detailPath, 200]);
+      expect(sideReadsInvalidated()).toEqual([true, true]);
 
       // The detail endpoint must also reject a valid old validator after logout.
       signedIn = false;
       const denied = await app.fetch(
         new Request(`http://localhost${detailPath}`, {
-          headers: { "if-none-match": changed.detailEtag! },
+          headers: {
+            [CONVERSATION_DETAIL_VERSION_HEADER]: changed.detailEtag!,
+          },
         }),
       );
       expect(denied.status).toBe(401);

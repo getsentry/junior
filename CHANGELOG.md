@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.277.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Pin conversations in the sidebar by @thomasjiangcy with @sentry-junior in [#2663](https://github.com/getsentry/junior/pull/2663)
+- Add a copy button and highlight untagged code blocks by @MathurAditya724 with @sentry-junior in [#2664](https://github.com/getsentry/junior/pull/2664)
+
+#### Other
+
+- (conversations) Auto-archive conversations when their work is done by @sentry-junior in [#2541](https://github.com/getsentry/junior/pull/2541)
+- (github) Check GitHub status for unexplained GitHub and CI failures by @BYK with @sentry-junior in [#2662](https://github.com/getsentry/junior/pull/2662)
+- (mcp) Record audit events for chosen MCP tools by @dcramer with @sentry-junior in [#2671](https://github.com/getsentry/junior/pull/2671)
+- (notion) Let the service account create and update pages by @dcramer with @sentry-junior in [#2670](https://github.com/getsentry/junior/pull/2670)
+- (plugins) Add an afterToolExecute hook for checks on finished tool calls by @sentry-junior in [#2646](https://github.com/getsentry/junior/pull/2646)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep the return page when Google sign-in fails by @dcramer with @sentry-junior in [#2674](https://github.com/getsentry/junior/pull/2674)
+- Refresh the details panel when conversation detail changes by @thomasjiangcy with @sentry-junior in [#2667](https://github.com/getsentry/junior/pull/2667)
+- Separate memories in popovers and the memory list by @thomasjiangcy with @sentry-junior in [#2660](https://github.com/getsentry/junior/pull/2660)
+
+#### Other
+
+- (slack) Convert canvas HTML to Markdown on read by @sentry-junior in [#2647](https://github.com/getsentry/junior/pull/2647)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Skip rebuilding unchanged conversation detail on polls by @BYK with @sentry-junior in [#2655](https://github.com/getsentry/junior/pull/2655)
+- Use shadcn primitives for hand-rolled notices and toggles by @MathurAditya724 with @sentry-junior in [#2661](https://github.com/getsentry/junior/pull/2661)
+
 ## 0.276.0
 
 ### New Features ✨

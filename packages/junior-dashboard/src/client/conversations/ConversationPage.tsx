@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router";
 import type {
@@ -12,11 +13,12 @@ import type {
   ConversationFeed,
 } from "@sentry/junior/api/schema";
 
+import type { ConversationData } from "./queries";
 import {
   useArchiveConversation,
-  useConversationData,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
+import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
@@ -31,7 +33,7 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
-import { turnPrompts } from "./ConversationMemories";
+import { AutoArchiveToggle } from "./AutoArchiveToggle";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -96,6 +98,10 @@ import {
   useReadPositionAtOpen,
 } from "./transcriptReadPosition";
 import { TranscriptLoading } from "./TranscriptLoading";
+import {
+  useUnreadHistory,
+  type TranscriptHistory,
+} from "./transcriptUnreadHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
   SubagentTranscriptDrawer,
@@ -121,8 +127,14 @@ function subscribeToDetailsLayout(onChange: () => void) {
 export function ConversationPage(props: {
   conversationId: string;
   data?: { conversations: ConversationFeed };
+  /**
+   * This Conversation's data. The shell fetches it, so a direct load does
+   * not wait for the dashboard core reads, and each visit fetches it once.
+   */
+  detail: ConversationData;
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  sidebarToggle?: ReactNode;
 }) {
   const detailsDefaultOpen = useSyncExternalStore(
     subscribeToDetailsLayout,
@@ -197,7 +209,15 @@ export function ConversationPage(props: {
   const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const detail = useConversationData(conversationId);
+  // The page keeps the start preference from when the Conversation opened.
+  const [startAtUnread] = useState(
+    () => readConversationStartPosition() === "unread",
+  );
+  const detail = props.detail;
+  // Jump to latest, a send, or the mobile keyboard skips the newer pages for
+  // the rest of the visit. It can come before the unread page loads.
+  const [showLatest, setShowLatest] = useState(false);
+  const opensAtUnread = startAtUnread && !showLatest;
   const memoryList = useConversationMemories(conversationId).data;
   const memoryState = useMemo<ConversationMemoryState>(
     () => ({
@@ -208,8 +228,41 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
+  const unreadHistory = useUnreadHistory({
+    conversationId,
+    // Cached earlier pages from a past visit would look like newer events.
+    detail: detail.latest,
+    onShowLatest: () => setShowLatest(true),
+    unreadCursor: opensAtUnread ? readAtOpen.unreadCursor : undefined,
+    unreadPage: readAtOpen.unreadPage,
+  });
+  // The page is keyed by Conversation, so this is the cached copy at open.
+  const [cachedAtOpen] = useState(() => detail.data);
+  // A reader far behind sees the events from their read position. Others
+  // see the latest page and the pages before it. A cached transcript stays
+  // on screen until this visit's fetch tells where to open and the unread
+  // events load. It loads no earlier pages and shows no marker: both would
+  // come from the cached read position. It reports no reads, because it sits
+  // at rows the reader has not read yet. Then the transcript opens at the
+  // "New" marker, if the reader has not moved.
+  const holdCachedTranscript = Boolean(
+    cachedAtOpen &&
+    (unreadHistory?.isPending || (opensAtUnread && !detail.fetchedAtOpen)),
+  );
+  const history: TranscriptHistory = holdCachedTranscript
+    ? {
+        ...detail,
+        data: cachedAtOpen,
+        hasPreviousPage: false,
+        isLoadingPreviousPage: false,
+        loadPreviousPage: () => {},
+      }
+    : (unreadHistory ?? detail);
+  const transcriptPending =
+    detail.isPending || Boolean(unreadHistory?.isPending && !cachedAtOpen);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -232,7 +285,7 @@ export function ConversationPage(props: {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
-  const transcript = detail.data;
+  const transcript = history.data;
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -284,27 +337,31 @@ export function ConversationPage(props: {
     },
     [eventOpen, setSelectedEventSeq],
   );
-  // A linked event can be older than the first page. Load earlier pages until
-  // it is present or history ends.
-  const loadPreviousPageRef = useRef(detail.loadPreviousPage);
-  loadPreviousPageRef.current = detail.loadPreviousPage;
+  // A linked event, Turn, or memory can be outside the loaded pages. Look
+  // for it one page at a time, in the direction where it can be.
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const loadToward = useCallback((search: HistorySearch | undefined) => {
+    if (search === "load-earlier") historyRef.current.loadPreviousPage();
+    else if (search === "load-newer") historyRef.current.newer?.load();
+  }, []);
+  const searchHistory = (direction: HistorySearchDirection) =>
+    nextHistorySearch(history, direction, holdCachedTranscript);
   const oldestLoadedSeq = transcript?.events[0]?.seq;
-  const linkedEventMissing =
-    selectedEventSeq !== undefined &&
-    oldestLoadedSeq !== undefined &&
-    selectedEventSeq < oldestLoadedSeq;
-  const loadLinkedEvent =
-    linkedEventMissing &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
-  useEffect(() => {
-    if (loadLinkedEvent) loadPreviousPageRef.current();
-  }, [loadLinkedEvent, oldestLoadedSeq]);
-  // Load earlier pages until the linked Turn starts or history ends. Then
-  // replace the Turn link with a link to its first event, or drop it when
-  // history has no such event. A history error keeps the link, so a retry
-  // or reload can still find the Turn.
+  const newestLoadedSeq = transcript?.events.at(-1)?.seq;
+  const linkedEventDirection: HistorySearchDirection | undefined =
+    selectedEventSeq === undefined ||
+    oldestLoadedSeq === undefined ||
+    newestLoadedSeq === undefined
+      ? undefined
+      : selectedEventSeq < oldestLoadedSeq
+        ? "earlier"
+        : selectedEventSeq > newestLoadedSeq &&
+            (history.newer || holdCachedTranscript)
+          ? "newer"
+          : undefined;
+  // Replace a found Turn link with a link to its first event, or drop it
+  // when history has no such event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
     : undefined;
@@ -312,28 +369,21 @@ export function ConversationPage(props: {
     linkedTurnId !== undefined &&
     linkedTurnSeq === undefined &&
     transcript !== undefined;
-  const loadLinkedTurn =
-    linkedTurnMissing &&
-    detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage &&
-    !detail.historyError;
-  const linkedTurnNotFound =
-    linkedTurnMissing &&
-    !detail.hasPreviousPage &&
-    !detail.isLoadingPreviousPage;
-  useEffect(() => {
-    if (loadLinkedTurn) loadPreviousPageRef.current();
-  }, [loadLinkedTurn, oldestLoadedSeq]);
+  const linkedSearch = linkedEventDirection
+    ? searchHistory(linkedEventDirection)
+    : linkedTurnMissing
+      ? searchHistory("any")
+      : undefined;
+  useEffect(() => loadToward(linkedSearch), [linkedSearch, loadToward]);
+  const linkedTurnNotFound = linkedTurnMissing && linkedSearch === "end";
   useEffect(() => {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
   // Show a chosen memory at its transcript row. Wait for the first page, then
-  // load earlier pages until the row renders, or stop when history ends.
-  const memoryPrompts = useMemo(
-    () => turnPrompts(transcript?.events),
-    [transcript?.events],
-  );
+  // load pages toward the row until it renders, or stop when history ends.
+  const memorySearch =
+    memoryJump && transcript ? searchHistory("any") : undefined;
   useEffect(() => {
     if (!memoryJump || !transcript) return;
     const anchor = pageRef.current?.querySelector(
@@ -343,33 +393,22 @@ export function ConversationPage(props: {
       anchor.scrollIntoView({ block: "center" });
       setMemoryPopover(memoryJump);
       setMemoryJump(undefined);
-    } else if (
-      detail.hasPreviousPage &&
-      !detail.isLoadingPreviousPage &&
-      !detail.historyError
-    ) {
-      loadPreviousPageRef.current();
-    } else if (!detail.isLoadingPreviousPage) {
+    } else if (memorySearch === "failed" || memorySearch === "end") {
       setMemoryJump(undefined);
+    } else {
+      loadToward(memorySearch);
     }
-  }, [
-    detail.hasPreviousPage,
-    detail.historyError,
-    detail.isLoadingPreviousPage,
-    memoryJump,
-    transcript,
-    view,
-  ]);
+  }, [loadToward, memoryJump, memorySearch, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
     eventOpen &&
     !selectedEvent &&
-    (detail.isPending ||
+    (transcriptPending ||
       linkedTurnSeq !== undefined ||
-      ((linkedEventMissing || linkedTurnMissing) &&
-        (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
-        !detail.historyError));
+      linkedSearch === "load-earlier" ||
+      linkedSearch === "load-newer" ||
+      linkedSearch === "wait");
   const showEvent = Boolean(selectedEvent) || eventLoading;
   // Step through the same filtered rows that the event log shows.
   const events = transcript?.events;
@@ -392,6 +431,7 @@ export function ConversationPage(props: {
     [turnContext?.id],
   );
   const requestPin = useCallback(() => {
+    setShowLatest(true);
     setPinRequestVersion((version) => version + 1);
   }, []);
   const onOpenSubagentTranscript = useCallback(
@@ -488,6 +528,14 @@ export function ConversationPage(props: {
                 <ConversationAnnotations detail={detail.data} />
               ) : null
             }
+            pin={{
+              // The API lets only participants pin, the same as archive.
+              disabled:
+                !conversation || !detail.data?.isParticipant || pin.isPending,
+              error: Boolean(pin.error),
+              onClick: () => pin.mutate(!conversation?.pinnedAt),
+              pinned: Boolean(conversation?.pinnedAt),
+            }}
             archive={{
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
@@ -508,15 +556,17 @@ export function ConversationPage(props: {
             }
             search={search}
             sentryConversationUrl={detail.data?.sentryConversationUrl}
+            sidebarToggle={props.sidebarToggle}
             title={title}
             view={view}
           />
         }
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName={
-          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
-        }
+        scrollClassName={cn(
+          "thin-scrollbar",
+          view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
+        )}
         scroll={
           <section className="min-w-0">
             <div
@@ -526,7 +576,7 @@ export function ConversationPage(props: {
                   : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
               }
             >
-              {detail.isPending ? (
+              {transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -546,30 +596,36 @@ export function ConversationPage(props: {
                   ) : null}
                   <ConversationMemoryContext value={memoryState}>
                     <Transcript
-                      hasPreviousPage={detail.hasPreviousPage}
-                      historyError={detail.historyError}
-                      historyVersion={detail.historyVersion}
+                      hasPreviousPage={history.hasPreviousPage}
+                      historyError={history.historyError}
+                      historyVersion={history.historyVersion}
                       lastReadSeq={readAtOpen.lastReadSeq}
                       live={live}
-                      loadingPreviousPage={detail.isLoadingPreviousPage}
-                      onLoadPreviousPage={detail.loadPreviousPage}
-                      onRead={markRead}
+                      loadingPreviousPage={history.isLoadingPreviousPage}
+                      newerHistory={history.newer}
+                      onLoadPreviousPage={history.loadPreviousPage}
+                      onRead={holdCachedTranscript ? undefined : markRead}
                       onSelectedEventSeqChange={setSelectedEventSeq}
-                      pendingMessages={detail.inlineMessages}
+                      // Sends and the thinking row belong after the latest event.
+                      pendingMessages={
+                        history.newer ? undefined : detail.inlineMessages
+                      }
                       pinRequestVersion={pinRequestVersion}
                       responding={
-                        !detail.error && conversationIsResponding(transcript)
+                        !detail.error &&
+                        !history.newer &&
+                        conversationIsResponding(detail.data)
                       }
                       onOpenSubagentTranscript={onOpenSubagentTranscript}
                       search={search}
                       onSearchChange={setSearch}
                       selectedEventSeq={selectedEventSeq}
-                      startAtUnread={
-                        readConversationStartPosition() === "unread"
-                      }
+                      startAtUnread={startAtUnread}
                       transcript={transcript}
                       turnContextPanel={turnContextPanel}
-                      unread={readAtOpen.unread}
+                      unread={
+                        holdCachedTranscript ? undefined : readAtOpen.unread
+                      }
                       view={view}
                     />
                   </ConversationMemoryContext>
@@ -598,9 +654,12 @@ export function ConversationPage(props: {
               // Without live history, an inline send would never leave the
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
-              // history does not have yet can start that Turn first.
+              // history does not have yet can start that Turn first. While
+              // newer pages are not loaded, the transcript tail is not the
+              // latest event, so a send waits in the queue too.
               sendsInline={
                 detail.data.eventHistory.status === "available" &&
+                !history.newer &&
                 !conversationIsResponding(detail.data) &&
                 detail.inlineMessages.length === 0
               }
@@ -612,13 +671,20 @@ export function ConversationPage(props: {
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
+            autoArchive={
+              detail.data?.autoArchive === undefined ? null : (
+                <AutoArchiveToggle
+                  autoArchive={detail.data.autoArchive}
+                  conversationId={conversationId}
+                />
+              )
+            }
             brief={detail.data?.brief}
             conversationId={conversationId}
             highlightReview={reviewOpen}
             identity={identity}
             onClose={closeDetails}
             onOpenSubagent={setSubagentTarget}
-            memoryPrompts={memoryPrompts}
             onSelectMemory={(entry) => {
               // Memory rows show only in the Conversation view, and search
               // can hide them.
@@ -740,3 +806,33 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+type HistorySearchDirection = "any" | "earlier" | "newer";
+type HistorySearch = "end" | "failed" | "load-earlier" | "load-newer" | "wait";
+
+/**
+ * The next step to find a row that the loaded pages do not have: load one
+ * more page toward it, or wait for the page that loads. "any" looks at newer
+ * pages first. A failed page stops the search, but the link stays, so a
+ * retry can still find the row.
+ */
+function nextHistorySearch(
+  history: TranscriptHistory,
+  direction: HistorySearchDirection,
+  held: boolean,
+): HistorySearch {
+  if (held || history.isLoadingPreviousPage || history.newer?.loading) {
+    return "wait";
+  }
+  if (direction !== "earlier" && history.newer && !history.newer.error) {
+    return "load-newer";
+  }
+  if (
+    direction !== "newer" &&
+    history.hasPreviousPage &&
+    !history.historyError
+  ) {
+    return "load-earlier";
+  }
+  return history.historyError || history.newer?.error ? "failed" : "end";
+}

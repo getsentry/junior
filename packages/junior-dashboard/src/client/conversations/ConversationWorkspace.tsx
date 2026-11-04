@@ -1,6 +1,6 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useState } from "react";
-import { Globe2, LockKeyhole } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
@@ -10,18 +10,20 @@ import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
+import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
-  useCreateConversation,
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
+import { useCreateConversation, type ConversationData } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
-  attentionFirst,
+  pinnedAndAttentionFirst,
 } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
+import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import {
@@ -30,13 +32,19 @@ import {
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
+import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
 /** Render the conversation home page or one selected conversation. */
-export function ConversationWorkspace() {
+export function ConversationWorkspace(props: {
+  /** The selected Conversation's data, from the shell. */
+  detail: ConversationData;
+}) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
+  const sidebarId = useId();
   const search = useDebouncedValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
@@ -73,7 +81,7 @@ export function ConversationWorkspace() {
   const pagedConversations = useMemo(
     () =>
       pageItems(
-        attentionFirst(
+        pinnedAndAttentionFirst(
           conversations,
           attentionConversationIds(
             waitingConversationIds,
@@ -147,8 +155,19 @@ export function ConversationWorkspace() {
   }
 
   return (
-    <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]">
-      <div className="hidden h-full min-h-0 overflow-hidden md:block">
+    <div
+      className={cn(
+        "grid h-full min-h-0 w-full grid-cols-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg",
+        sidebarOpen && "md:grid-cols-[20rem_minmax(0,1fr)]",
+      )}
+    >
+      <div
+        className={cn(
+          "hidden h-full min-h-0 overflow-hidden",
+          sidebarOpen && "md:block",
+        )}
+        id={sidebarId}
+      >
         <ConversationSidebar
           conversations={conversations}
           error={feed.error?.message}
@@ -170,6 +189,7 @@ export function ConversationWorkspace() {
         <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
           <ConversationPage
             conversationId={selectedId}
+            detail={props.detail}
             data={
               feed.data
                 ? {
@@ -181,6 +201,20 @@ export function ConversationWorkspace() {
             pendingArchiveUpdate={pendingArchiveUpdates.find(
               (update) => update.conversationId === selectedId,
             )}
+            sidebarToggle={
+              <HeaderIconButton
+                controls={sidebarId}
+                expanded={sidebarOpen}
+                label={
+                  sidebarOpen
+                    ? "Hide conversation list"
+                    : "Show conversation list"
+                }
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
+              </HeaderIconButton>
+            }
           />
         </UnsentAnswersProvider>
       </section>

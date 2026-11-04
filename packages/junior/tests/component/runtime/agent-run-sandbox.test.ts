@@ -7,8 +7,6 @@ const {
   activeSandboxVersion,
   preparedMessages,
   repositoryInstructionsAvailable,
-  repositoryInstructionsRead,
-  routerSawRepositoryInstructionsRead,
   sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
   sessionRecordResumed,
@@ -33,12 +31,6 @@ const {
   },
   repositoryInstructionsAvailable: {
     value: true,
-  },
-  repositoryInstructionsRead: {
-    value: false,
-  },
-  routerSawRepositoryInstructionsRead: {
-    value: undefined as boolean | undefined,
   },
   sessionRecordPiMessageProvenance: {
     value: [] as unknown[],
@@ -204,9 +196,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const memoryConfig = original.readChatConfig({
     ...process.env,
     AI_FAST_MODEL: "test-fast-model",
-    AI_HANDOFF_MODEL: "test-handoff-model",
     AI_MODEL: "test-model",
-    AI_MODEL_PROFILES: JSON.stringify({ standard: "test-model" }),
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -221,59 +211,8 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,
-  completeObject: async ({ prompt }: { prompt: string }) => {
-    const instructionMatch = prompt.match(
-      /<current-instruction>\n([\s\S]*?)\n<\/current-instruction>/,
-    );
-    const instruction = instructionMatch?.[1] ?? "";
-
-    if (instruction === "route while the sandbox reads AGENTS.md") {
-      const deadline = Date.now() + 2_000;
-      while (!repositoryInstructionsRead.value && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      routerSawRepositoryInstructionsRead.value =
-        repositoryInstructionsRead.value;
-    }
-
-    if (prompt.includes("TypeError: x is undefined")) {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "attachment stack trace",
-        },
-      };
-    }
-    if (instruction === "hello") {
-      return {
-        object: {
-          reasoning_level: "none",
-          profile: "standard",
-          confidence: 1,
-          reason: "ack",
-        },
-      };
-    }
-    if (instruction === "fix the failing test in chat") {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "code change request",
-        },
-      };
-    }
-    return {
-      object: {
-        reasoning_level: "medium",
-        profile: "standard",
-        confidence: 1,
-        reason: "test-router",
-      },
-    };
+  completeObject: async () => {
+    throw new Error("unexpected structured completion");
   },
   getGatewayApiKey: () => "unauthenticated",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
@@ -291,7 +230,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   loadConnectedMcpProviders: async () => [],
-  openConversationProjection: async () => ({ modelProfile: "standard" }),
+  openConversationProjection: async () => ({}),
   recordMcpProviderConnected: async () => undefined,
   recordToolExecutionStarted: async () => undefined,
 }));
@@ -423,7 +362,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
     };
     return {
       captureRepositoryInstructions: async () => {
-        repositoryInstructionsRead.value = true;
         return repositoryInstructionsAvailable.value &&
           (options.sandboxRef || createSandboxCallCount.value > 0)
           ? {
@@ -563,8 +501,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     activeSandboxVersion.value = 1;
     preparedMessages.value = [];
     repositoryInstructionsAvailable.value = true;
-    repositoryInstructionsRead.value = false;
-    routerSawRepositoryInstructionsRead.value = undefined;
     sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
     sessionRecordResumed.value = false;
@@ -579,7 +515,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
-    expect(selectedThinkingLevels.value).toEqual(["off"]);
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {
@@ -591,7 +527,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
-    expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
   it("does not create a sandbox for restored skill history at turn start", async () => {
@@ -721,61 +656,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).toContain(
       "Use the current repository formatter.",
     );
-  });
-
-  it("reads AGENTS.md from an existing sandbox while the router runs", async () => {
-    const reply = await generateLocalReply(
-      "route while the sandbox reads AGENTS.md",
-      {
-        state: {
-          sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
-        },
-      },
-    );
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(routerSawRepositoryInstructionsRead.value).toBe(true);
-  });
-
-  it("uses a high thinking level for explicit code-change asks", async () => {
-    const reply = await generateLocalReply("fix the failing test in chat");
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
-  });
-
-  it("uses attachment text when routing the turn thinking level", async () => {
-    const reply = await generateLocalReply("can you fix this?", {
-      instruction: {
-        attachments: [
-          {
-            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
-            filename: "error.txt",
-            mediaType: "text/plain",
-          },
-        ],
-      },
-    });
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
-  });
-
-  it("uses structured-suffix attachment text when the media type has parameters", async () => {
-    const reply = await generateLocalReply("can you fix this?", {
-      instruction: {
-        attachments: [
-          {
-            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
-            filename: "error.json",
-            mediaType: "application/vnd.api+json; charset=utf-8",
-          },
-        ],
-      },
-    });
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
   it("retains and reports the sandbox reference after lazy boot on error turns", async () => {

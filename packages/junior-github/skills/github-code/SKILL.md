@@ -13,16 +13,17 @@ Use `git` and `gh` for repository work.
 | Update PR title/body/base/state | `github_updatePullRequest`                                                                                    |
 | Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`                                                |
 | Submit PR review                | `github_submitPullRequestReview`                                                                              |
+| Comment on PR / reply in thread | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                              |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
 | Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
 
-| Need                          | Read                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| Commands and permissions      | [references/api-surface.md](references/api-surface.md)                                 |
-| Edit, verify, and open a PR   | [references/workflow.md](references/workflow.md)                                       |
-| Command or permission failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                               | Read                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Commands and permissions           | [references/api-surface.md](references/api-surface.md)                                 |
+| Edit, verify, and open a PR        | [references/workflow.md](references/workflow.md)                                       |
+| Command, permission, or CI failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Always
 

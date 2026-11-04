@@ -56,32 +56,22 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   /** People mentioned in the summary, resolved by the API. */
   mentions?: ActorIdentity[];
-  event:
-    | {
-        createdAt: string;
-        type: "compaction";
-        modelId?: string;
-        modelProfile?: string;
-        summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
-      }
-    | {
-        createdAt: string;
-        modelId: string;
-        modelProfile: string;
-        reasoningLevel?: string;
-        summary?: string;
-        type: "handoff";
-      };
+  event: {
+    createdAt: string;
+    type: "compaction";
+    modelId?: string;
+    summary?: string;
+    details?: {
+      reason: "capacity";
+      estimatedInputTokens: number;
+      replacementInputTokens?: number;
+      triggerTokens: number;
+      inputLimitTokens: number;
+      inputMessageCount: number;
+      retainedMessageCount: number;
+      summaryChars: number;
+    };
+  };
   type: "context_event";
 };
 
@@ -150,13 +140,6 @@ export type TranscriptViewMessage = {
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */
   pending?: boolean;
-  route?: {
-    confidence?: number;
-    modelId: string;
-    modelProfile: string;
-    reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
-  };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
@@ -178,6 +161,7 @@ export type Conversation = {
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
+  pinnedAt?: string | null;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;

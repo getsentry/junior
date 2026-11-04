@@ -32,11 +32,9 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "turn_routed",
   "turn_completed",
   "turn_failed",
   "compaction",
-  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -450,19 +448,6 @@ function reportEventData(args: {
         type: "attachments_delivered",
         attachments: data.attachments,
       };
-    case "turn_routed":
-      return {
-        type: "turn_routed",
-        turnId: data.turnId,
-        modelProfile: data.modelProfile,
-        modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
-        reasoningLevel: data.reasoningLevel,
-        ...(data.confidence !== undefined
-          ? { confidence: data.confidence }
-          : undefined),
-        source: data.source,
-      };
     case "guardian_action_reviewed":
       return {
         type: "guardian_action_reviewed",
@@ -499,7 +484,6 @@ function reportEventData(args: {
     case "compaction":
       return {
         type: "compaction",
-        modelProfile: data.modelProfile,
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
@@ -669,21 +653,6 @@ export function projectConversationReportEventPage(args: {
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }
-    } else if (event.data.type === "handoff") {
-      data = {
-        type: "handoff",
-        modelProfile: event.data.modelProfile,
-        modelId: event.data.modelId,
-        ...(event.data.reasoningLevel
-          ? { reasoningLevel: event.data.reasoningLevel }
-          : undefined),
-        ...(event.data.triggeringToolCallId
-          ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : undefined),
-        ...(args.canExposePayload && event.data.summary
-          ? { summary: event.data.summary }
-          : undefined),
-      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,

@@ -2729,6 +2729,13 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
       }),
+    ).rejects.toThrow("must use the github_commentOnPullRequest tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.comment.create",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
+      }),
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",

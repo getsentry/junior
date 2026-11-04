@@ -50,6 +50,7 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
+import { nextDetailVersion } from "./detail-version";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
   "legacyArchivedAt"
@@ -573,6 +574,7 @@ export class SqlStore implements ConversationStore {
               metricRunId: args.execution.runId,
               executionDurationMs: args.metrics.durationMs,
               executionUsage: args.metrics.usage ?? null,
+              detailVersion: nextDetailVersion,
             })
             .where(eq(juniorConversations.conversationId, args.conversationId));
         }
@@ -851,6 +853,7 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          detailVersion: nextDetailVersion,
         },
       })
       .returning({

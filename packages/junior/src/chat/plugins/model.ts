@@ -1,12 +1,13 @@
 import type {
+  PluginDecider,
   PluginEmbedder,
   PluginModel,
   PluginModelConfig,
   PluginReranker,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import {
+  completeDecision,
   completeObject,
   embedTexts,
   GEN_AI_PROVIDER_NAME,
@@ -24,7 +25,7 @@ export function createPluginModel(
       const modelId =
         options.structuredModelId ??
         (options.structuredModel === "default"
-          ? defaultModelId(botConfig)
+          ? botConfig.modelId
           : botConfig.fastModelId);
       const result = await completeObject({
         modelId,
@@ -89,6 +90,52 @@ export function createPluginReranker(pluginName: string): PluginReranker {
           pluginModelRole: "reranking",
         },
       });
+    },
+  };
+}
+
+/** Create the host-owned decision model capability exposed to tool hooks. */
+export function createPluginDecider(
+  pluginName: string,
+  runtime: { signal?: AbortSignal } = {},
+): PluginDecider {
+  return {
+    async decide<TChoice extends string>(input: {
+      criteria: Record<TChoice, string>;
+      instructions: string;
+      state: string;
+    }) {
+      const result = await completeDecision({
+        modelId: botConfig.decisionModelId,
+        state: input.state,
+        questions: {
+          answer: {
+            type: "choice",
+            instructions: input.instructions,
+            criteria: input.criteria,
+          },
+        },
+        signal: runtime.signal,
+        promptName: `${pluginName}.decision`,
+        metadata: {
+          pluginName,
+          pluginModelRole: "decision",
+        },
+      });
+      const answer = result.answers.answer;
+      return {
+        choice: answer.choice as TChoice,
+        ...(answer.probabilities
+          ? {
+              probabilities: answer.probabilities as Partial<
+                Record<TChoice, number>
+              >,
+            }
+          : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
+      };
     },
   };
 }

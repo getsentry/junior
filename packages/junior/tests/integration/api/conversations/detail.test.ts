@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
@@ -17,6 +18,10 @@ import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
+import {
+  createChild,
+  insertLegacyEvent,
+} from "../../../fixtures/dashboard-reporting";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -79,27 +84,28 @@ describe("conversation detail API", () => {
           version: 1,
         },
       },
-      {
-        createdAtMs: 4,
-        data: {
-          confidence: 0.9,
-          costUsd: 0.0002,
-          modelId: "openai/gpt-5-mini",
-          modelProfile: "standard",
-          reasoningLevel: "medium",
-          source: "router",
-          turnId: "turn-1",
-          type: "turn_routed",
-        },
-      },
     ]);
+    // Turns routed before the Turn router was retired keep their router cost.
+    await insertLegacyEvent(conversationId, {
+      createdAtMs: 4,
+      data: {
+        confidence: 0.9,
+        costUsd: 0.0002,
+        modelId: "openai/gpt-5-mini",
+        modelProfile: "standard",
+        reasoningLevel: "medium",
+        source: "router",
+        turnId: "turn-1",
+        type: "turn_routed",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
+    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
     expect(refreshed.auxiliaryCosts).toEqual({
       costUsd: 0.0006,
       operations: [
@@ -117,6 +123,72 @@ describe("conversation detail API", () => {
         },
       ],
     });
+  });
+
+  it("answers unchanged polls with 304 until the subtree or annotations change", async () => {
+    const conversationId = "local:test:revalidated-detail";
+    const childConversationId = "local:test:revalidated-detail:child";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Revalidated conversation",
+      visibility: "public",
+    });
+    const app = createJuniorApi();
+    const poll = (etag?: string) =>
+      app.request(`http://localhost/api/conversations/${conversationId}`, {
+        headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {},
+      });
+
+    const first = await poll();
+    const firstEtag = first.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
+    expect(first.status).toBe(200);
+    const unchanged = await poll(firstEtag);
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+
+    await createChild({
+      childConversationId,
+      parentConversationId: conversationId,
+    });
+    const withChild = await poll(firstEtag);
+    const childEtag = withChild.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
+    expect(withChild.status).toBe(200);
+    expect(childEtag).not.toBe(firstEtag);
+
+    // A child agent writes only its own row. The parent still revalidates.
+    await getConversationEventStore().append(childConversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          messageId: "child-message",
+          role: "assistant",
+          text: "child-message",
+          type: "message",
+        },
+      },
+    ]);
+    const childChanged = await poll(childEtag);
+    const childChangedEtag = childChanged.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
+    expect(childChanged.status).toBe(200);
+
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1",
+      label: "getsentry/junior #1",
+      url: "https://github.com/getsentry/junior/pull/1",
+    });
+    expect((await poll(childChangedEtag)).status).toBe(200);
   });
 
   it("titles an untitled conversation from its first human message", async () => {

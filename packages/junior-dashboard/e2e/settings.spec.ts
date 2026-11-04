@@ -67,3 +67,33 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
 });
+
+test("saves the auto-archive default and wait time", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const autoArchive = page.getByRole("checkbox", {
+    name: /Auto-archive conversations when done/,
+  });
+  const waitTime = page.getByLabel("Wait time", { exact: true });
+  await expect(autoArchive).not.toBeChecked();
+  await expect(waitTime).toHaveValue("24");
+
+  await autoArchive.click();
+  await expect(autoArchive).toBeChecked();
+  await waitTime.selectOption({ label: "3 days" });
+  await expect(waitTime).toHaveValue("72");
+  await expect(waitTime).toBeEnabled();
+
+  await page.reload();
+  await expect(autoArchive).toBeChecked();
+  await expect(waitTime).toHaveValue("72");
+
+  await page.getByRole("button", { name: "Archive done now" }).click();
+  await expect(page.getByRole("status")).toHaveText("Archived 1 conversation.");
+  await screenshot(page, "settings-auto-archive", {
+    target: page.getByRole("heading", { name: "Conversations" }).locator(".."),
+    view: "desktop",
+  });
+});

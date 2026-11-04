@@ -338,12 +338,6 @@ export function readCallEvents(args: {
       compactions += 1;
       continue;
     }
-    // A handoff replaces agent history, so its tool call gets no tool result.
-    // The handoff event completes the call, as the dashboard shows it.
-    if (data.type === "handoff" && data.triggeringToolCallId) {
-      const call = toolCalls.get(data.triggeringToolCallId);
-      if (call) call.status = "completed";
-    }
   }
 
   for (const turn of turns.values()) {

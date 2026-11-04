@@ -49,14 +49,9 @@ export {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
@@ -64,10 +59,6 @@ export {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingAuthorizationSchema,
-  conversationPendingMessageDeliverySchema,
-  conversationPendingMessageSchema,
-  conversationPendingMessagesReportSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
@@ -77,6 +68,27 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingAuthorizationSchema,
+  conversationPendingMessageDeliverySchema,
+  conversationPendingMessageSchema,
+  conversationPendingMessagesReportSchema,
+} from "./schema/conversation-pending-messages";
+export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "./schema/conversation-archive";
+export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
+  ConversationAutoArchive,
+} from "./schema/conversation-archive";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -89,14 +101,16 @@ export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export { conversationReadPositionSchema } from "./schema/conversation-read-position";
 export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+} from "./schema/conversation-pin";
+export type {
+  PinConversationBody,
+  PinConversationResponse,
+} from "./schema/conversation-pin";
 export type {
   AcceptedConversationMessage,
-  ArchiveConversationBody,
-  ArchiveConversationResponse,
-  CancelConversationPendingMessagesBody,
-  CancelConversationPendingMessagesResponse,
-  SteerConversationPendingMessagesBody,
-  SteerConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -106,9 +120,6 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
-  ConversationPendingMessage,
-  ConversationPendingMessageDelivery,
-  ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -124,6 +135,15 @@ export type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "./schema/conversation";
+export type {
+  CancelConversationPendingMessagesBody,
+  CancelConversationPendingMessagesResponse,
+  SteerConversationPendingMessagesBody,
+  SteerConversationPendingMessagesResponse,
+  ConversationPendingMessage,
+  ConversationPendingMessageDelivery,
+  ConversationPendingMessagesReport,
+} from "./schema/conversation-pending-messages";
 export {
   conversationChildAgentSchema,
   conversationChildAgentsReportSchema,

@@ -19,7 +19,7 @@ test("opens scheduled and event automations in the native Automations view", asy
       });
     },
   );
-  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+  await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     const card = { key: "scheduled-1", kind: "object", plugin: "junior" };
     await route.fulfill({
       json: {

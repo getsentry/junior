@@ -53,6 +53,10 @@ export async function recordConversationParticipant(
     args.conversationId,
   );
   const at = new Date(args.atMs);
+  // Each caller bumps the Conversation in the same transaction: event appends
+  // carry the touch, and the root upsert sets `detailVersion`. The root needs
+  // no bump, because its detail version sums its subtree.
+  // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
   await executor
     .db()
     .insert(juniorConversationParticipants)

@@ -22,7 +22,6 @@ import {
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
-import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -38,8 +37,6 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import type { ModelProfile } from "@/chat/model-profile";
-import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -119,7 +116,7 @@ function durableMessageIdentity(message: PiMessage): unknown {
  *
  * Returns `current.length` only when every committed message still matches by
  * durable identity. A shorter `next` or a content/role/timestamp change is a
- * branch that only compaction/handoff may perform.
+ * branch that only compaction may perform.
  */
 function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
   if (next.length < current.length) {
@@ -225,9 +222,7 @@ export async function loadProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  }).messages;
+  return projectConversationEvents(events).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -237,9 +232,7 @@ export async function loadConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return projectConversationEvents(events);
 }
 
 /** Load the active Pi projection before a conversation's next request. */
@@ -249,9 +242,7 @@ export async function openConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return projectConversationEvents(events);
 }
 
 /**
@@ -276,7 +267,6 @@ export async function loadTurnProjection(args: {
   if (args.committedSeq < 0) {
     return projectConversationEvents(
       await eventStore.loadCurrentHistory(args.conversationId),
-      { defaultProfile: botConfig.defaultProfile },
     );
   }
   const historyEvents = await eventStore.loadHistoryContaining(
@@ -287,9 +277,7 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return projectConversationEvents(historyEvents);
 }
 
 /** Load MCP providers the credential subject connected in this conversation. */
@@ -313,7 +301,7 @@ function messageTimestamp(message: PiMessage): number {
  *
  * Checkpoints are append-only against the durable identity of the committed
  * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction and handoff may
+ * history or a true content branch is rejected — only compaction may
  * intentionally replace active model history. In-place Pi mutations of already
  * committed assistant envelopes (usage/stopReason) do not block the suffix.
  */
@@ -411,9 +399,7 @@ async function commitMessagesLocked(
   const currentEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const current = projectConversationEvents(currentEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  const current = projectConversationEvents(currentEvents);
   const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
@@ -772,78 +758,6 @@ export async function recordSubscribedReplyRoute(args: {
             ? { shouldUnsubscribe: args.shouldUnsubscribe }
             : undefined),
         },
-      },
-    },
-  ]);
-}
-
-/**
- * Load the profile of the newest Turn route or handoff.
- *
- * The projection profile is not enough: a Turn route does not replace history.
- */
-export async function loadLastModelProfile(
-  args: ScopedConversation,
-): Promise<ModelProfile | undefined> {
-  const page = await getConversationEventStore().query(args.conversationId, {
-    limit: 1,
-    types: ["turn_routed", "handoff"],
-  });
-  const data = page.events[0]?.data;
-  return data?.type === "turn_routed" || data?.type === "handoff"
-    ? data.modelProfile
-    : undefined;
-}
-
-/** Load a previously selected model profile for a resumed turn. */
-export async function loadTurnRoute(args: {
-  conversationId: string;
-  turnId: string;
-}): Promise<
-  | (Extract<ConversationEvent["data"], { type: "turn_routed" }> & {
-      seq: number;
-    })
-  | undefined
-> {
-  const event = await getConversationEventStore().loadByIdempotencyKey(
-    args.conversationId,
-    `turn:${args.turnId}:routed`,
-  );
-  if (!event) {
-    return undefined;
-  }
-  if (event.data.type !== "turn_routed" || event.data.turnId !== args.turnId) {
-    throw new Error(`Turn route key for "${args.turnId}" has invalid data`);
-  }
-  return { ...event.data, seq: event.seq };
-}
-
-/** Record the model profile selected for one turn without changing agent history. */
-export async function recordTurnRoute(args: {
-  conversationId: string;
-  turnId: string;
-  modelProfile: ModelProfile;
-  modelId: string;
-  costUsd?: number;
-  reasoningLevel: TurnReasoningLevel;
-  confidence?: number;
-  source: "configured" | "inherited" | "router";
-}): Promise<void> {
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `turn:${args.turnId}:routed`,
-      createdAtMs: Date.now(),
-      data: {
-        type: "turn_routed",
-        turnId: args.turnId,
-        modelProfile: args.modelProfile,
-        modelId: args.modelId,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-        reasoningLevel: args.reasoningLevel,
-        ...(args.confidence !== undefined
-          ? { confidence: args.confidence }
-          : undefined),
-        source: args.source,
       },
     },
   ]);

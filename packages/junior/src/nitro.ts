@@ -18,6 +18,8 @@ import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-co
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
@@ -181,6 +183,16 @@ function configureVercelDeployment(
     nitro.options.vercel.config.crons.push({
       path: JUNIOR_RETENTION_ROUTE,
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
+    });
+  }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_AUTO_ARCHIVE_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+      schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
     });
   }
 

@@ -7,6 +7,10 @@ import {
   actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
   conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -66,6 +70,9 @@ import {
   readMockAutomationExecutions,
   readMockAutomationList,
   setMockConversationArchived,
+  setMockConversationPinned,
+  setMockConversationAutoArchive,
+  archiveMockDoneConversations,
 } from "./fixtures";
 import { readMockConversationWatches } from "./watches";
 
@@ -190,7 +197,9 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    if (!query.success) {
+    // Mock details fit one page and have no unread cursor, so mock history
+    // only pages backward.
+    if (!query.success || !("before" in query.data)) {
       return errorResponse("Invalid query parameters.", 400);
     }
     if (!readMockConversationDetail(params.data.conversationId)) {
@@ -287,6 +296,46 @@ export function createMockReportingApi(): Hono<{
     );
     return result
       ? jsonResponse(archiveConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/pin", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = pinConversationBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationPinned(
+      params.data.conversationId,
+      body.data.pinned,
+    );
+    return result
+      ? jsonResponse(pinConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.post("/conversations/archive-done", () =>
+    jsonResponse(
+      archiveDoneConversationsResponseSchema,
+      archiveMockDoneConversations(),
+    ),
+  );
+  app.patch("/conversations/:conversationId/auto-archive", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationAutoArchiveSchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationAutoArchive(
+      params.data.conversationId,
+      body.data.autoArchive,
+    );
+    return result
+      ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   // Fixed bodies so dashboard mock can exercise image/file attachment cards.

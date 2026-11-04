@@ -171,6 +171,40 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
+### Audit tools
+
+List the MCP tools that change provider data in `mcp.audit-tools`. Each tool
+must be in `mcp.allowed-tools` or `mcp.wrapped-tools` when the plugin sets an
+allow-list:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  allowed-tools:
+    - search
+    - create-page
+  audit-tools:
+    - create-page
+```
+
+Each successful call to an audit tool emits the `mcp.tool_call.completed`
+audit event. Sentry keeps audit events in production. The event records the
+accountable person, the Conversation, the tool, and the account that made the
+call: `service_account` or `actor`. It does not record the tool arguments. The
+Conversation history keeps them.
+
+An install can change the list in `plugins.ts`:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
+  manifests: {
+    notion: { mcp: { auditTools: ["notion-create-pages"] } },
+  },
+});
+```
+
+Set `auditTools: null` to stop audit events for the plugin.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:
@@ -276,6 +310,7 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                      |
 | `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
+| `afterToolExecute(ctx)`  | Check a finished tool call, such as the files it changed. Add guidance to its result or reject the result.                                                                                   |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
@@ -291,6 +326,23 @@ In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
 
 Both return the message to the agent as the tool result. Neither ends the
 turn, and neither is reported to Sentry as an exception.
+
+`afterToolExecute` runs after each tool call that finishes without an error,
+including `bash` and Code Mode script calls. Return early for tools that the
+check does not cover. `ctx.sandbox` runs commands in the Run's sandbox, and
+`ctx.workspace` gives the active Workspace name and its repositories with their
+checkout paths. To run a check in some Workspaces only, return early when
+`ctx.workspace?.name` is not one of them. Use `ctx.decider.decide(...)` for a fast classifier choice, or
+`ctx.model.completeObject(...)` for a judgment that needs reasoning.
+
+- `ctx.decision.nudge(message)`: add guidance after the tool result. The agent
+  reads both. The tool output does not change, so JSON output stays valid. In
+  a Code Mode script, the script gets the unchanged value, and the guidance
+  shows under that call in the `codemode` result.
+- `ctx.decision.deny(reason)`: replace the result with a policy refusal. The
+  tool already ran, so undo its effects first when they must not stay.
+
+A hook that throws is logged, and the tool result stays unchanged.
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked

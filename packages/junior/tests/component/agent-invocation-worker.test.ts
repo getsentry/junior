@@ -566,8 +566,8 @@ describe("agent invocation worker", () => {
         ).rejects.toThrow("stop after reading the run");
       }
       expect(runs.map((run) => run.disabledFeatures)).toEqual([
-        ["handoff", "interactive-auth"],
-        ["handoff", "interactive-auth", "subagents"],
+        ["interactive-auth"],
+        ["interactive-auth", "subagents"],
       ]);
     } finally {
       await fixture.close();

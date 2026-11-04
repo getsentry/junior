@@ -11,11 +11,15 @@ import { QUIET_MARKER } from "@/chat/no-reply";
 
 /**
  * Shared closing lines. Automations pass outcomes and end with a declared
- * result. Watches follow the Conversation's reply rules.
+ * result. Watches follow the Conversation's reply rules. A Watch reply goes
+ * only to the Conversation, so a question asked in the provider must also get
+ * its answer there. Watch instructions often say to stay silent, so this rule
+ * sits in the contract, not in plugin guidance.
  */
 function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
   if (!outcomes) {
     return [
+      "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
       "When you reply, follow any reply format in the instructions.",
       `When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly ${QUIET_MARKER}. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.`,
     ];

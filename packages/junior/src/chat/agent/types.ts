@@ -23,7 +23,6 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { ModelProfile } from "@/chat/model-profile";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
 import type {
   ImageGenerateToolDeps,
@@ -74,7 +73,6 @@ export type AgentSteeringMessage = {
 export type SpawnAgentInput = {
   agentType?: AgentType;
   name?: string;
-  profile: ModelProfile;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
   title?: string;
@@ -158,11 +156,7 @@ export type AgentDispatch = {
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
-export const AGENT_RUN_FEATURES = [
-  "handoff",
-  "interactive-auth",
-  "subagents",
-] as const;
+export const AGENT_RUN_FEATURES = ["interactive-auth", "subagents"] as const;
 
 /** One optional agent capability controlled per run. */
 export type AgentFeature = (typeof AGENT_RUN_FEATURES)[number];
@@ -309,9 +303,7 @@ export type AgentRun = {
   deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
-  /** Fixed model profile for this run. */
-  modelProfile?: ModelProfile;
-  /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
+  /** Explicit per-agent reasoning level. Overrides the configured default. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;
 

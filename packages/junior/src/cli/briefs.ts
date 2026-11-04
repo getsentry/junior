@@ -21,7 +21,6 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
-import { defaultModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
 import { CLI_USAGE } from "./run";
 
@@ -117,7 +116,7 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
  */
 async function configuredDefaultModelId(): Promise<string> {
   const { botConfig } = await import("@/chat/config");
-  return defaultModelId(botConfig);
+  return botConfig.modelId;
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
