@@ -1,4 +1,6 @@
 import { describe, expect } from "vitest";
+import { mockGeneratedImage } from "@junior-evals/fixture/gateway";
+import { redPandaPng } from "@junior-evals/fixture/images";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
@@ -71,6 +73,8 @@ describe("Slack Message Delivery", () => {
   test("when asked to show an image, attach it without process chatter", async ({
     run,
   }) => {
+    // The default 1x1 stub looks blank, so the agent may not send it.
+    mockGeneratedImage(redPandaPng());
     const conversation = await run(
       slackMention("show me an image of a red panda"),
     );
