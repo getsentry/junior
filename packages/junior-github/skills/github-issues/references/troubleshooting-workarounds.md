@@ -18,7 +18,7 @@ Use this table to recover quickly while keeping operations deterministic.
 
 ## Retry guidance
 
-- Retry once for transient transport failures after verifying repo context.
+- Retry once for transient transport failures after verifying repo context. If it fails again, call `github_getStatus`. Report a related open or recent incident with its link. With no related incident, do not blame an outage.
 - Do not loop retries on repeated 401/403/404 validation errors.
 - Treat missing or stale `user-read`/`user-write` grants as private GitHub App OAuth work. Treat all `installation-*` failures as App permission, installation scope, or host environment setup; they do not fall back to user OAuth.
 - For persistent permission problems, return explicit remediation and stop.

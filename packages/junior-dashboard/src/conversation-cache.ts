@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 
-/** Revalidate dashboard detail reads only after the route checks viewer access. */
+/** Revalidate mock detail reads on content, after the route checks viewer access. */
 export const revalidateConversation: MiddlewareHandler = async (
   context,
   next,

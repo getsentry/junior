@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { CollapsibleTrigger } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 
 /**
@@ -87,21 +88,20 @@ export function DetailsList<T>(props: {
 /**
  * Lay out one details list row: an icon, a title, and short trailing text on
  * the first line, then optional lines under the title. A row with `href`
- * opens that link in a new tab. A row with `onToggle` is a disclosure button
- * that shows or hides content the caller renders under it.
+ * opens that link in a new tab. A `disclosure` row is the trigger of the
+ * enclosing `Collapsible`, so it shows or hides the content under it.
  */
 export function DetailsRow(props: {
   children?: ReactNode;
-  expanded?: boolean;
+  disclosure?: boolean;
   href?: string;
   icon: ReactNode;
   meta?: ReactNode;
-  onToggle?(): void;
   title: ReactNode;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {
-  const interactive = props.href !== undefined || props.onToggle !== undefined;
+  const interactive = props.href !== undefined || props.disclosure === true;
   const className = cn(
     "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 rounded-md px-1.5 py-1.5 text-left text-inherit no-underline",
     interactive &&
@@ -134,17 +134,11 @@ export function DetailsRow(props: {
       </a>
     );
   }
-  if (props.onToggle) {
+  if (props.disclosure) {
     return (
-      <button
-        aria-expanded={props.expanded ?? false}
-        className={className}
-        onClick={props.onToggle}
-        title={props.tooltip}
-        type="button"
-      >
+      <CollapsibleTrigger className={className} title={props.tooltip}>
         {content}
-      </button>
+      </CollapsibleTrigger>
     );
   }
   return (

@@ -49,8 +49,6 @@ export {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
@@ -77,6 +75,17 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "./schema/conversation-archive";
+export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
+  ConversationAutoArchive,
+} from "./schema/conversation-archive";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -97,10 +106,16 @@ export type {
   ConversationCatchUp,
   ConversationCatchUpBody,
 } from "./schema/conversation-catch-up";
+export {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+} from "./schema/conversation-pin";
+export type {
+  PinConversationBody,
+  PinConversationResponse,
+} from "./schema/conversation-pin";
 export type {
   AcceptedConversationMessage,
-  ArchiveConversationBody,
-  ArchiveConversationResponse,
   CancelConversationPendingMessagesBody,
   CancelConversationPendingMessagesResponse,
   SteerConversationPendingMessagesBody,

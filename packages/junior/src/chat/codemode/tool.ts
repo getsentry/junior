@@ -36,6 +36,7 @@ import {
   SEARCH_TOOLS_NAME,
   summarizeModelVisibleDescription,
 } from "@/chat/tools/search-tools";
+import { renderToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -191,11 +192,14 @@ const STATUS_TEXT: Record<CodeModeCallStatus, string> = {
 
 function renderCall(call: CodeModeCall, index: number): string {
   const line = `${index + 1}. ${call.toolName}: ${STATUS_TEXT[call.status]}`;
-  if (!call.error) {
-    return line;
-  }
-  const error = call.error.replace(/\n/g, "\n   ");
-  return `${line}\n   ${error}`;
+  const notes = [
+    ...(call.error ? [call.error] : []),
+    ...(call.nudges ?? []).map(renderToolResultNudge),
+  ];
+  return [
+    line,
+    ...notes.map((note) => `   ${note.replace(/\n/g, "\n   ")}`),
+  ].join("\n");
 }
 
 /** The output and return value sections, cut or in full. */

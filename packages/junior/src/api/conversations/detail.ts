@@ -29,7 +29,8 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
-import { readConversationArchivedAt } from "./archive";
+import { readConversationViewerMarks } from "./membership";
+import { readConversationAutoArchive } from "./auto-archive";
 import { readConversationAuthors } from "./participants";
 import { readConversationForks } from "./fork";
 import { readConversationAgentTree } from "./agent-tree";
@@ -39,6 +40,7 @@ import { readConversationReadPosition } from "./read-position";
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
+  pinnedAtMs?: number;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -68,9 +70,8 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
-      ...(args.archivedAtMs === undefined
-        ? undefined
-        : { archivedAtMs: args.archivedAtMs }),
+      archivedAtMs: args.archivedAtMs,
+      pinnedAtMs: args.pinnedAtMs,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -122,8 +123,8 @@ async function readConversationDetailFromSql(
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
-  const archivedAtMs = options.viewer
-    ? await readConversationArchivedAt(options.viewer, conversationId)
+  const viewerMarks = options.viewer
+    ? await readConversationViewerMarks(options.viewer, conversationId)
     : undefined;
 
   const executor = getSqlExecutor();
@@ -193,7 +194,7 @@ async function readConversationDetailFromSql(
   return projectConversationDetail({
     ...record,
     access,
-    ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+    ...viewerMarks,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
@@ -240,11 +241,14 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const [forks, agentTree, readPosition] = await Promise.all([
+  const [forks, agentTree, readPosition, autoArchive] = await Promise.all([
     readConversationForks(conversationId, options.viewer),
     readConversationAgentTree(conversationId, options.viewer),
     options.viewer
       ? readConversationReadPosition(options.viewer, conversationId)
+      : undefined,
+    options.viewer && report.isParticipant
+      ? readConversationAutoArchive(options.viewer, conversationId)
       : undefined,
   ]);
   return conversationDetailReportSchema.parse({
@@ -252,5 +256,6 @@ export async function readConversationDetail(
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
     ...(readPosition ? { readPosition } : undefined),
+    ...(autoArchive === undefined ? undefined : { autoArchive }),
   });
 }

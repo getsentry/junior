@@ -5,8 +5,12 @@ import {
   createJuniorApi,
   jsonResponse,
   readViewerAvatarUrl,
+  DEFAULT_AUTO_ARCHIVE_SETTINGS,
+  readUserAutoArchiveSettings,
   resolveViewerUser,
+  updateUserAutoArchiveSettings,
   updateViewerDisplayName,
+  type AutoArchiveSettings,
   type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
@@ -38,7 +42,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
-import { resetMockConversationArchiveState } from "./mock-reporting/fixtures";
+import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
@@ -62,8 +66,9 @@ const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
-/** Process-local display names for mock reporting only. */
+/** Process-local profile settings for mock reporting only. */
 const mockDisplayNamesByEmail = new Map<string, string>();
+const mockAutoArchiveSettingsByEmail = new Map<string, AutoArchiveSettings>();
 
 /**
  * Clear process-local mock reporting state so tests sharing a worker do not
@@ -74,7 +79,8 @@ const mockDisplayNamesByEmail = new Map<string, string>();
  */
 export function resetMockDashboardState(): void {
   mockDisplayNamesByEmail.clear();
-  resetMockConversationArchiveState();
+  resetMockConversationViewerState();
+  mockAutoArchiveSettingsByEmail.clear();
   resetMockReadPositions();
 }
 
@@ -255,6 +261,25 @@ function callbackUrl(
   return url.toString();
 }
 
+/**
+ * Restart sign-in with the same return path when the Google callback fails,
+ * for example on a stale OAuth state cookie. Without it, Better Auth sends
+ * the person to `/` and the page is lost.
+ */
+function signInRetryUrl(
+  request: Request,
+  basePath: string,
+  options: DashboardReturnPathOptions = {},
+): string {
+  const url = new URL(request.url);
+  const returnPath = requestedReturnPath(url, basePath, options);
+  url.search = "";
+  if (returnPath) {
+    url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
+  }
+  return url.toString();
+}
+
 function unauthorized(
   request: Request,
   basePath: string,
@@ -397,7 +422,11 @@ export function createDashboardApp(
     if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
-    return auth.signInWithGoogle(c.req.raw, returnUrl);
+    return auth.signInWithGoogle(
+      c.req.raw,
+      returnUrl,
+      signInRetryUrl(c.req.raw, basePath, { authenticatedRoutes }),
+    );
   });
 
   if (auth) {
@@ -508,7 +537,11 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
-  app.use("/api/conversations/:conversationId", revalidateConversation);
+  // Core detail reads set a version ETag before they build the report. Mock
+  // reporting has no stored version, so it revalidates on content instead.
+  if (options.mockConversations) {
+    app.use("/api/conversations/:conversationId", revalidateConversation);
+  }
 
   for (const route of authenticatedRoutes) {
     const handler = (c: Context<{ Variables: Variables }>) => {
@@ -576,11 +609,23 @@ export function createDashboardApp(
     userId && !options.mockConversations
       ? await readViewerAvatarUrl(userId)
       : undefined;
+  async function readViewerAutoArchiveSettings(viewer: {
+    email: string;
+    id: string;
+  }): Promise<AutoArchiveSettings> {
+    return (
+      (options.mockConversations
+        ? mockAutoArchiveSettingsByEmail.get(viewer.email)
+        : await readUserAutoArchiveSettings(viewer.id)) ??
+      DEFAULT_AUTO_ARCHIVE_SETTINGS
+    );
+  }
   app.get("/api/me", async (c) => {
     const session = c.get("authSession");
     const viewer = c.get("viewer");
     const avatarUrl = await viewerAvatarUrl(viewer?.id);
     return jsonResponse(dashboardIdentitySchema, {
+      ...(viewer ? await readViewerAutoArchiveSettings(viewer) : undefined),
       user: {
         ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
@@ -618,22 +663,34 @@ export function createDashboardApp(
       );
     }
     const session = c.get("authSession");
+    const { displayName, ...autoArchive } = parsed.data;
+    // Parsed bodies omit settings the request did not send.
+    const changesAutoArchive = Object.keys(autoArchive).length > 0;
     // Mock reporting keeps profile edits process-local and out of SQL.
     if (options.mockConversations) {
-      mockDisplayNamesByEmail.set(viewer.email, parsed.data.displayName);
+      if (displayName !== undefined) {
+        mockDisplayNamesByEmail.set(viewer.email, displayName);
+      }
+      if (changesAutoArchive) {
+        mockAutoArchiveSettingsByEmail.set(viewer.email, {
+          ...(await readViewerAutoArchiveSettings(viewer)),
+          ...autoArchive,
+        });
+      }
       return jsonResponse(dashboardIdentitySchema, {
+        ...(await readViewerAutoArchiveSettings(viewer)),
         user: {
           email: session.user.email,
           emailVerified: session.user.emailVerified,
           isAdmin: viewer.isAdmin === true,
-          name: parsed.data.displayName,
+          name: mockDisplayNamesByEmail.get(viewer.email) ?? viewer.displayName,
         },
       });
     }
-    const updated = await updateViewerDisplayName(
-      viewer.id,
-      parsed.data.displayName,
-    );
+    const updated =
+      displayName === undefined
+        ? viewer
+        : await updateViewerDisplayName(viewer.id, displayName);
     if (!updated) {
       return jsonResponse(
         apiErrorSchema,
@@ -642,13 +699,24 @@ export function createDashboardApp(
       );
     }
     const avatarUrl = await viewerAvatarUrl(updated.id);
+    const savedAutoArchive = changesAutoArchive
+      ? await updateUserAutoArchiveSettings(viewer.id, autoArchive)
+      : await readUserAutoArchiveSettings(viewer.id);
+    if (!savedAutoArchive) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "User not found." },
+        { status: 404 },
+      );
+    }
     return jsonResponse(dashboardIdentitySchema, {
+      ...savedAutoArchive,
       user: {
         ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: updated.isAdmin === true,
-        name: updated.displayName,
+        name: updated.displayName ?? session.user.name,
       },
     });
   });

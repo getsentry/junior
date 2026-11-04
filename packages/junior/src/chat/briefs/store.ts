@@ -1,6 +1,7 @@
 import { and, desc, eq, lte, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { conversationBriefSchema, type ConversationBrief } from "./schema";
 
@@ -92,6 +93,7 @@ export async function appendConversationBrief(
       .where(eq(juniorConversationBriefs.conversationId, input.conversationId));
     const version = (versions[0]?.version ?? 0) + 1;
     const inserted = await tx
+      .with(conversationDetailTouch(tx, [input.conversationId]))
       .insert(juniorConversationBriefs)
       .values({
         conversationId: input.conversationId,

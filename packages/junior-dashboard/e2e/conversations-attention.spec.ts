@@ -118,6 +118,70 @@ test.describe("conversation sections", () => {
     await expect(waitingCard).toBeVisible();
   });
 
+  test("pinning moves a conversation to Pinned only", async ({
+    page,
+    dashboard,
+  }) => {
+    await mockWaitingConversation(page, ACTIVE_CONVERSATION_ID);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const sectionButtons = sidebar.getByRole("button", {
+      name: /^(Pinned|Needs attention)/,
+    });
+    const activeRows = sidebar.getByRole("link", {
+      name: /Investigate checkout latency/,
+    });
+    await expect(sidebar.getByRole("button").first()).toHaveText(
+      /^Needs attention/,
+    );
+
+    // Pin from the row's hover action in the sidebar.
+    const pinRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/pin"),
+    );
+    await activeRows.hover();
+    await sidebar
+      .getByRole("button", { name: "Pin Investigate checkout latency" })
+      .click();
+    expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
+
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
+    // Pinned wins over Needs attention, so the section is gone.
+    await expect(sectionButtons).toHaveCount(1);
+    await expect(activeRows).toHaveCount(1);
+    await expect(
+      activeRows.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    await activeRows.hover();
+    await expect(
+      sidebar.getByRole("button", {
+        name: "Unpin Investigate checkout latency",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await screenshot(page, "conversations-pinned", {
+      lightTheme: true,
+      view: "desktop",
+    });
+
+    await page.reload();
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
+
+    // Unpin from the conversation `⋯` menu.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("button", { name: "Unpin", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Pin", exact: true }),
+    ).toBeVisible();
+    await expect(sidebar.getByRole("button").first()).toHaveText(
+      /^Needs attention/,
+    );
+  });
+
   test("keeps an opened unread conversation in place until another opens", async ({
     page,
     dashboard,

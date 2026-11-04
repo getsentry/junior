@@ -4,6 +4,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { ConversationEvent } from "./history";
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
+import { nextDetailVersion } from "./sql/detail-version";
 import { withConversationEventLock } from "./sql/event-lock";
 import {
   createConversationId,
@@ -185,6 +186,7 @@ export async function forkConversation(input: {
           ...(input.quickQuestion
             ? { quickQuestionAt: new Date(nowMs) }
             : undefined),
+          detailVersion: nextDetailVersion,
         })
         .where(eq(juniorConversations.conversationId, conversationId));
       await copyForkEvents({
@@ -228,7 +230,7 @@ export async function keepQuickQuestion(conversationId: string): Promise<void> {
     const kept = await executor
       .db()
       .update(juniorConversations)
-      .set({ quickQuestionAt: null })
+      .set({ quickQuestionAt: null, detailVersion: nextDetailVersion })
       .where(
         and(
           eq(juniorConversations.conversationId, conversationId),

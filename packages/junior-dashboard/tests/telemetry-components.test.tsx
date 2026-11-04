@@ -378,6 +378,12 @@ describe("dashboard canonical-event components", () => {
           live={false}
           onSearchChange={() => {}}
           onViewChange={() => {}}
+          pin={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            pinned: false,
+          }}
           privacy={null}
           search=""
           title="Header QA"

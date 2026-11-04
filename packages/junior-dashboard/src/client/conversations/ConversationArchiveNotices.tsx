@@ -5,7 +5,7 @@ import { Notice, NoticeAction } from "../components/Notice";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { conversationDisplayTitle } from "../format";
-import { useArchiveConversation } from "./queries";
+import { useArchiveConversation } from "./conversationArchive";
 
 /** Show archive errors and the most recent reversible archive action. */
 export function ConversationArchiveNotices(props: {

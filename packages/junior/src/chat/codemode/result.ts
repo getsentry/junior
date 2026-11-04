@@ -1,5 +1,6 @@
 import type { CodeModeErrorKind } from "@/chat/codemode/telemetry";
 import type { ToolActionRejectionMarker } from "@/chat/guardian/history";
+import type { ToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 
 /**
  * Name of the tool that runs a Code Mode script. Nested calls use it as
@@ -32,6 +33,8 @@ export interface CodeModeCall {
    * `deny`). `guardian/history.ts` restores it at the start of a Run.
    */
   guardianActionRejection?: ToolActionRejectionMarker;
+  /** Guidance from `afterToolExecute` hooks about this call. */
+  nudges?: ToolResultNudge[];
 }
 
 /**

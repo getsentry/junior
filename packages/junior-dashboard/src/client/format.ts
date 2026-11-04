@@ -1,5 +1,4 @@
 import type { BundledLanguage } from "shiki/bundle/web";
-import { dashboardCodeLanguages } from "./code-languages";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
@@ -8,7 +7,6 @@ import type {
   ConversationUsage,
 } from "@sentry/junior/api/schema";
 import type {
-  CodeBlock,
   Conversation,
   ConversationTranscript,
   TranscriptViewMessage,
@@ -815,28 +813,6 @@ export function automationPath(
   return tab === "overview" ? base : `${base}/${tab}`;
 }
 
-function normalizeLanguage(language: string | undefined): BundledLanguage {
-  const normalized = language?.trim().toLowerCase();
-  if (!normalized) return "markdown";
-  const aliases: Record<string, BundledLanguage> = {
-    console: "shellscript",
-    htm: "html",
-    js: "javascript",
-    jsonl: "json",
-    md: "markdown",
-    ndjson: "json",
-    sh: "shellscript",
-    text: "markdown",
-    txt: "markdown",
-    xml: "xml",
-    yml: "yaml",
-  };
-  const candidate = aliases[normalized] ?? normalized;
-  return Object.hasOwn(dashboardCodeLanguages, candidate)
-    ? (candidate as BundledLanguage)
-    : "markdown";
-}
-
 function prettyJson(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
@@ -863,12 +839,9 @@ function prettyJsonl(text: string): string | undefined {
   return formatted.join("\n");
 }
 
-function prettyJsonData(text: string): string | undefined {
+/** Pretty-print JSON or JSONL text, or return undefined for other text. */
+export function prettyJsonData(text: string): string | undefined {
   return prettyJson(text) ?? prettyJsonl(text);
-}
-
-function formatCodeBlock(code: string, language: BundledLanguage): string {
-  return language === "json" ? (prettyJsonData(code) ?? code) : code;
 }
 
 /**
@@ -889,44 +862,6 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
-/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
-export function parseMarkdownBlocks(text: string): CodeBlock[] {
-  const blocks: CodeBlock[] = [];
-  const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = fence.exec(text))) {
-    const prose = text.slice(cursor, match.index).trim();
-    if (prose) {
-      const language = detectOutputLanguage(prose);
-      blocks.push({
-        code: formatCodeBlock(prose, language),
-        fenced: false,
-        language,
-      });
-    }
-    const language = normalizeLanguage(match[1]);
-    blocks.push({
-      code: formatCodeBlock(match[2] ?? "", language),
-      fenced: true,
-      language,
-    });
-    cursor = match.index + match[0].length;
-  }
-  const rest = text.slice(cursor).trim();
-  if (rest) {
-    const language = detectOutputLanguage(rest);
-    blocks.push({
-      code: formatCodeBlock(rest, language),
-      fenced: false,
-      language,
-    });
-  }
-  if (blocks.length > 0) return blocks;
-  const language = detectOutputLanguage(text);
-  return [{ code: formatCodeBlock(text, language), fenced: false, language }];
-}
-
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
   summaries: ConversationSummaryReport[],
@@ -937,6 +872,7 @@ export function buildConversations(
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
+      pinnedAt: summary.pinnedAt,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,

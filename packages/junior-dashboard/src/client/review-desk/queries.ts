@@ -20,7 +20,8 @@ import {
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
-const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
+/** Prefix of every Review item read, for refreshes after a change. */
+export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
 /**
