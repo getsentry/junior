@@ -283,6 +283,7 @@ const conversationReportMessageEventDataSchema = z
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
+    quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
     /**
      * The Watch Events when several arrived together. A message that also

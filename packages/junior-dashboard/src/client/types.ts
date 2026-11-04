@@ -128,6 +128,8 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
   /** Person changes to Review items that this message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */

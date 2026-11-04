@@ -46,6 +46,8 @@ export interface ConversationMessageMeta {
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
   replied?: boolean;
   /** Person changes to Review items that this Message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
