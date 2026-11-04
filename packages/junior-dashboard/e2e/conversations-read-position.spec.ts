@@ -253,6 +253,47 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
     .toBeGreaterThanOrEqual(52);
 });
 
+test("opens at new messages after earlier pages were cached", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 80,
+    lastReadSeq: 79,
+  });
+  mock.pagedDetail = true;
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("Transcript message 79 ")).toBeInViewport();
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+
+  // The earlier page stays cached. It is not the latest page, so the
+  // transcript still waits for the newer pages after the read position.
+  await page.getByRole("link", { name: "Back to conversations" }).click();
+  mock.eventCount = 200;
+  mock.newerGateAfter = 80;
+  let releaseNewer = () => {};
+  mock.newerGate = new Promise((resolve) => {
+    releaseNewer = resolve;
+  });
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .click();
+  const marker = transcript.getByRole("separator", { name: "New messages" });
+  await expect(marker).toBeInViewport();
+  await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
+  await expect(transcript.getByText("Transcript message 199 ")).toHaveCount(0);
+  releaseNewer();
+  await expect(transcript.getByText("Transcript message 199 ")).toBeAttached();
+  await expect(transcript.getByText("Transcript message 150 ")).toBeAttached();
+  await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
+});
+
 test("opens linked events and Turns that newer pages have not loaded yet", async ({
   page,
   dashboard,

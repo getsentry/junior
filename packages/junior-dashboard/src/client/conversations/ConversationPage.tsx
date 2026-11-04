@@ -207,7 +207,8 @@ export function ConversationPage(props: {
   const startAtUnread = readConversationStartPosition() === "unread";
   const unreadHistory = useUnreadHistory({
     conversationId,
-    detail: detail.data,
+    // Cached earlier pages from a past visit would look like newer events.
+    detail: detail.latest,
     unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
   });
   // The page is keyed by Conversation, so this is the cached copy at open.
@@ -382,20 +383,23 @@ export function ConversationPage(props: {
       anchor.scrollIntoView({ block: "center" });
       setMemoryPopover(memoryJump);
       setMemoryJump(undefined);
+    } else if (newerPending) {
+      // The row can be in a newer page. Look back only after they load.
     } else if (
-      detail.hasPreviousPage &&
-      !detail.isLoadingPreviousPage &&
-      !detail.historyError
+      history.hasPreviousPage &&
+      !history.isLoadingPreviousPage &&
+      !history.historyError
     ) {
       loadPreviousPageRef.current();
-    } else if (!detail.isLoadingPreviousPage) {
+    } else if (!history.isLoadingPreviousPage) {
       setMemoryJump(undefined);
     }
   }, [
-    detail.hasPreviousPage,
-    detail.historyError,
-    detail.isLoadingPreviousPage,
+    history.hasPreviousPage,
+    history.historyError,
+    history.isLoadingPreviousPage,
     memoryJump,
+    newerPending,
     transcript,
     view,
   ]);
@@ -595,9 +599,11 @@ export function ConversationPage(props: {
                       onLoadPreviousPage={history.loadPreviousPage}
                       onRead={markRead}
                       onSelectedEventSeqChange={setSelectedEventSeq}
-                      pendingMessages={detail.inlineMessages}
+                      // Sends and the thinking row belong after the latest event.
+                      pendingMessages={
+                        history.newer ? undefined : detail.inlineMessages
+                      }
                       pinRequestVersion={pinRequestVersion}
-                      // The thinking row belongs after the latest event.
                       responding={
                         !detail.error &&
                         !history.newer &&

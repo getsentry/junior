@@ -892,6 +892,11 @@ export function useConversationData(conversationId: string | undefined) {
 
   return {
     data,
+    /**
+     * The latest page alone, without earlier pages. It is not deferred, so it
+     * matches `fetchedDetail` and the read position that came with it.
+     */
+    latest: detail.data,
     error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),
