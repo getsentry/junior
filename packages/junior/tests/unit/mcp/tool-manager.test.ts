@@ -58,12 +58,17 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
+import { type EmittedLogRecord, registerLogRecordSink } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 
 function buildPlugin(
   name = "demo",
-  options: { allowedTools?: string[]; wrappedTools?: string[] } = {},
+  options: {
+    allowedTools?: string[];
+    auditTools?: string[];
+    wrappedTools?: string[];
+  } = {},
 ): PluginDefinition {
   return {
     dir: `/tmp/plugins/${name}`,
@@ -82,6 +87,7 @@ function buildPlugin(
         ...(options.wrappedTools
           ? { wrappedTools: options.wrappedTools }
           : undefined),
+        ...(options.auditTools ? { auditTools: options.auditTools } : undefined),
       },
     },
   };
@@ -569,6 +575,50 @@ describe("McpToolManager", () => {
       toolName: "save_issue",
     });
     await manager.close();
+  });
+
+  it("records audit events only for successful calls to audit tools", async () => {
+    const plugin = buildPlugin("demo", { auditTools: ["save_issue"] });
+    listToolsMock.mockResolvedValue(
+      ["ping", "save_issue"].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: "object", properties: {} },
+      })),
+    );
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const manager = new McpToolManager([plugin]);
+    try {
+      await manager.activateProvider("demo");
+      const [ping, saveIssue] = manager.getResolvedActiveTools();
+      await ping!.execute({});
+      await saveIssue!.execute({}, { toolCallId: "call-1" });
+      callToolMock.mockResolvedValueOnce({
+        content: [{ type: "text", text: "rejected" }],
+        isError: true,
+      });
+      await expect(saveIssue!.execute({})).rejects.toThrow("rejected");
+    } finally {
+      unregister();
+      await manager.close();
+    }
+
+    const audits = records.filter(
+      (record) => record.attributes["app.log.audit"] === true,
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      eventName: "mcp.tool_call.completed",
+      attributes: {
+        "app.credential.account": "actor",
+        "app.plugin.name": "demo",
+        "gen_ai.tool.call.id": "call-1",
+        "gen_ai.tool.name": "mcp__demo__save_issue",
+      },
+    });
   });
 
   it("hides wrapped tools from discovery but keeps them callable", async () => {
