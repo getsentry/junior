@@ -19,8 +19,9 @@ export interface ResolvedMemorySubject {
 }
 
 /**
- * Memory is public only. Reads and writes use this scope. Stored rows with
- * the legacy private scope stay in the table, but no read returns them.
+ * Memory is public only. Reads and writes use this scope. A migration deletes
+ * legacy private rows. Reads still filter by scope, so a private row that an
+ * older deploy writes during a rollout stays hidden.
  */
 export const publicMemoryScope: ResolvedMemoryScope = {
   scope: "public",

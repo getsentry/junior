@@ -1,7 +1,7 @@
 /**
  * Memory access for an authenticated User.
  *
- * Every User can read public memory. Reads never return stored private rows.
+ * Every User can read public memory.
  */
 import {
   and,

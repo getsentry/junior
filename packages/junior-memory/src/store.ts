@@ -1153,7 +1153,7 @@ async function searchExactVectorRows(args: VectorSearchArgs) {
  */
 async function searchHnswVectorRows(args: VectorSearchArgs) {
   const embedding = args.embedding;
-  // Other Users' private memories and vectors of other models use part of the
+  // Inactive memories and vectors of other models use part of the
   // budget before the filters run, so it is larger than the limit.
   const candidateLimit = Math.max(
     HNSW_MIN_CANDIDATES,
