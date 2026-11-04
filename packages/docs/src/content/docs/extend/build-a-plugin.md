@@ -302,7 +302,9 @@ checkout paths. To run a check in some Workspaces only, return early when
 `ctx.model.completeObject(...)` for a judgment that needs reasoning.
 
 - `ctx.decision.nudge(message)`: add guidance after the tool result. The agent
-  reads both.
+  reads both. The tool output does not change, so JSON output stays valid. In
+  a Code Mode script, the script gets the unchanged value, and the guidance
+  shows under that call in the `codemode` result.
 - `ctx.decision.deny(reason)`: replace the result with a policy refusal. The
   tool already ran, so undo its effects first when they must not stay.
 

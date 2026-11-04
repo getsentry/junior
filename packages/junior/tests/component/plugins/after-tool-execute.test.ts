@@ -1,7 +1,10 @@
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { Type } from "@sinclair/typebox";
 import { describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -198,5 +201,70 @@ describe("afterToolExecute plugin hooks", () => {
       content: [{ type: "text", text: '{"ok":true}' }],
       details: { ok: true },
     });
+  });
+
+  it("keeps a JSON result intact for a Code Mode script and puts the nudge in the codemode result", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "edit-check",
+            displayName: "Edit check",
+            description: "Nudges every edit.",
+          },
+          hooks: {
+            afterToolExecute(ctx) {
+              ctx.decision.nudge("Check this edit.");
+            },
+          },
+        }),
+      ]),
+    });
+    const tools = createPiAgentTools(
+      {
+        editFile: {
+          description: "Edit a file.",
+          inputSchema: Type.Object({ path: Type.String() }),
+          execute: async () => ({ ok: true, path: "evals/a.eval.ts" }),
+        },
+      } as never,
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createPluginHookRunner({
+        sandbox: () => ({
+          workspace: fakeSandbox(""),
+          workspaceId: () => undefined,
+        }),
+      }),
+      undefined,
+      undefined,
+      undefined,
+      { countToolCall: () => 1 },
+    );
+    const codemode = tools.find((tool) => tool.name === CODEMODE_TOOL_NAME)!;
+
+    const result = (await codemode.execute("call-5", {
+      code: `return await tools.editFile({ path: "evals/a.eval.ts" });`,
+    })) as AgentToolResult<unknown>;
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      value: { ok: true, path: "evals/a.eval.ts" },
+      calls: [
+        {
+          toolName: "editFile",
+          status: "ok",
+          nudges: [{ message: "Check this edit.", pluginName: "edit-check" }],
+        },
+      ],
+    });
+    const [content] = result.content as Array<{ text: string }>;
+    expect(content!.text).toContain(
+      '1. editFile: ok\n   <plugin-note plugin="edit-check">Check this edit.</plugin-note>',
+    );
   });
 });

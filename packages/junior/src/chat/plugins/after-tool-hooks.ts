@@ -14,6 +14,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { getWorkspace } from "@/chat/workspaces/store";
+import { escapeXml } from "@/chat/xml";
 
 /** The Run's sandbox, read when an `afterToolExecute` hook runs. */
 export interface ToolHookSandbox {
@@ -33,6 +34,11 @@ export interface AfterToolHookInput {
 export interface ToolResultNudge {
   message: string;
   pluginName: string;
+}
+
+/** Render a nudge as the marked text the agent reads. */
+export function renderToolResultNudge(nudge: ToolResultNudge): string {
+  return `<plugin-note plugin="${nudge.pluginName}">${escapeXml(nudge.message)}</plugin-note>`;
 }
 
 async function activeWorkspace(
