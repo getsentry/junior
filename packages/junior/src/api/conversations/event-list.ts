@@ -52,7 +52,7 @@ export async function readConversationEvents(
     conversationId,
     limit: options.limit ?? 500,
   };
-  const page: Awaited<ReturnType<typeof readConversationEventPageAfter>> =
+  const page: Awaited<ReturnType<typeof readConversationEventPageAround>> =
     transcriptPurgedAtMs !== undefined
       ? { events: [] }
       : "after" in boundary

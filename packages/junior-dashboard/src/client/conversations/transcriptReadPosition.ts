@@ -44,11 +44,6 @@ export type ReadPositionAtOpen = {
   unread?: TranscriptUnreadRange;
   /** Set when unread events start before the latest page. */
   unreadCursor?: string;
-  /**
-   * Set when only the fetched detail has `unreadCursor`. The cached
-   * transcript already shows the latest page then.
-   */
-  unreadCursorAfterCache?: boolean;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -81,10 +76,9 @@ export function readConversationStartPosition(): ConversationStartPosition {
  * The read position comes from the first detail, which can be a cached copy.
  * The last unread row comes from the first detail fetched in this visit, so a
  * stale cache cannot hide messages that arrived while the reader was away,
- * and later polls cannot add rows that arrived after open. For the same
- * reason, the fetched detail supplies `unreadCursor` when the cache has none:
- * a cache from a visit that read to the end has no cursor, even when more
- * than a page arrived after that visit.
+ * and later polls cannot add rows that arrived after open. `unreadCursor`
+ * comes from that fetch too: a cache from a visit that read to the end has
+ * no cursor, even when more than a page arrived after that visit.
  */
 export function useReadPositionAtOpen(
   detail: DetailAtOpen | undefined,
@@ -92,46 +86,30 @@ export function useReadPositionAtOpen(
   fetched: DetailAtOpen | undefined,
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
-  const [opened, setOpened] = useState<{
-    lastReadSeq?: number;
-    unreadCursor?: string;
-  }>();
-  const [fetchedAtOpen, setFetchedAtOpen] = useState<{
+  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [fetchedEnd, setFetchedEnd] = useState<{
     throughSeq?: number;
     unreadCursor?: string;
   }>();
   const read =
     opened ??
-    (detail
-      ? {
-          lastReadSeq: detail.readPosition?.lastReadSeq,
-          unreadCursor: detail.unreadCursor,
-        }
-      : undefined);
+    (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
   if (!opened && read) setOpened(read);
   const end =
-    fetchedAtOpen ??
+    fetchedEnd ??
     (fetched
       ? {
           throughSeq: fetched.events.at(-1)?.seq,
           unreadCursor: fetched.unreadCursor,
         }
       : undefined);
-  if (!fetchedAtOpen && end) setFetchedAtOpen(end);
-  const unreadCursor = read?.unreadCursor ?? end?.unreadCursor;
+  if (!fetchedEnd && end) setFetchedEnd(end);
   return {
     ...readPositionAtOpen(
       read?.lastReadSeq,
       end ? end.throughSeq : detail?.events.at(-1)?.seq,
     ),
-    ...(unreadCursor
-      ? {
-          unreadCursor,
-          ...(read?.unreadCursor
-            ? undefined
-            : { unreadCursorAfterCache: true }),
-        }
-      : undefined),
+    ...(end?.unreadCursor ? { unreadCursor: end.unreadCursor } : undefined),
   };
 }
 
@@ -169,15 +147,9 @@ export function useMarkConversationRead(conversationId: string) {
         { lastReadSeq },
       ),
     onSuccess: (readPosition) => {
-      // The unread cursor belongs to the old position. The next visit that
-      // opens from this cache starts at the latest page instead.
       queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
-        (detail) => {
-          if (!detail) return detail;
-          const { unreadCursor: _unreadCursor, ...rest } = detail;
-          return { ...rest, readPosition };
-        },
+        (detail) => (detail ? { ...detail, readPosition } : detail),
       );
     },
   });

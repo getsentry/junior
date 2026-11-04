@@ -4,15 +4,14 @@
  * The detail holds the latest page of events. When the read position is
  * older than that page, the transcript starts with the page around the read
  * position instead: the last read events and the unread events after them.
- * Newer pages then load one at a time in the background, until they reach
- * the latest page. Earlier pages load on scroll, from the read position back
- * toward the start.
+ * Like earlier pages, newer pages load when the reader scrolls near them, so
+ * the server reads only the pages that the reader reaches.
  *
  * The latest page joins the transcript only after the newer pages reach it,
  * so the transcript never has a gap. Until then the transcript ends with a
- * row that shows the newer pages load.
+ * row that loads the next newer page.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   conversationEventPageSchema,
@@ -39,8 +38,9 @@ export type TranscriptHistory = {
   /** Set while newer pages have not reached the latest page. */
   newer?: {
     error: Error | null;
-    /** Retry a failed page. */
+    /** Load the next newer page, or retry a failed one. */
     load: () => void;
+    loading: boolean;
   };
 };
 
@@ -65,7 +65,10 @@ export function useUnreadHistory(input: {
   }, [detail?.events]);
   const latestFirstSeq = latestEvents[0]?.seq;
   const newer = useInfiniteQuery({
-    enabled: false,
+    // Only the page around the read position loads by itself. The data never
+    // goes stale, so a refetch cannot reload every newer page at once.
+    enabled: Boolean(unreadCursor),
+    staleTime: Infinity,
     queryKey: ["conversation", conversationId, "unread", unreadCursor, "newer"],
     queryFn: ({ pageParam, signal }) =>
       readConversationEventsFrom(conversationId, pageParam, signal),
@@ -115,18 +118,6 @@ export function useUnreadHistory(input: {
     [detail, latestEvents, newerPages, pages, reached],
   );
 
-  // Load newer pages one at a time until they reach the latest page. A
-  // failed page stops the loop; the reader can retry it.
-  const fetchNewerPage = newer.fetchNextPage;
-  const loadNewer =
-    Boolean(unreadCursor) &&
-    !newer.isFetching &&
-    !newer.error &&
-    (!newerPages || newer.hasNextPage);
-  useEffect(() => {
-    if (loadNewer) void fetchNewerPage();
-  }, [fetchNewerPage, loadNewer, newerPages?.length]);
-
   if (!unreadCursor || (newer.error && !newerPages)) return undefined;
 
   const hasPreviousPage = earlier.data
@@ -150,8 +141,11 @@ export function useUnreadHistory(input: {
           newer: {
             error: newer.error,
             load: () => {
-              if (!newer.isFetching) void newer.fetchNextPage();
+              if (newer.hasNextPage && !newer.isFetching) {
+                void newer.fetchNextPage();
+              }
             },
+            loading: newer.isFetchingNextPage,
           },
         }),
   };

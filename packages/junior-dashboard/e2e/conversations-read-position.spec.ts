@@ -1,9 +1,19 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
 const PAGE_SIZE = 40;
+
+/** Scroll to the end of the transcript until `row` renders. */
+async function scrollDownTo(transcript: Locator, row: Locator) {
+  await expect(async () => {
+    await transcript.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(row).toBeAttached({ timeout: 500 });
+  }).toPass();
+}
 
 /** Mock one completed Conversation whose server read position moves forward. */
 async function mockReadPositionConversation(
@@ -280,7 +290,7 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
 
   // The earlier page stays cached. It is not the latest page, so the
-  // transcript still waits for the newer pages after the read position.
+  // transcript still needs the newer pages after the read position.
   await page.getByRole("link", { name: "Back to conversations" }).click();
   mock.eventCount = 200;
   mock.newerGateAfter = 80;
@@ -294,7 +304,9 @@ test("opens at new messages after earlier pages were cached", async ({
     .click();
   const marker = transcript.getByRole("separator", { name: "New messages" });
   await expect(marker).toBeInViewport();
-  await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
+  await expect(
+    transcript.getByRole("button", { name: "Load newer events" }),
+  ).toBeAttached();
   await expect(transcript.getByText("Transcript message 199 ")).toHaveCount(0);
 
   // A send waits in the queue. The transcript does not end at the latest
@@ -304,10 +316,15 @@ test("opens at new messages after earlier pages were cached", async ({
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Sent while behind")).toBeVisible();
   releaseNewer();
-  await expect(transcript.getByText("Transcript message 199 ")).toBeAttached();
+  await scrollDownTo(
+    transcript,
+    transcript.getByText("Transcript message 199 "),
+  );
   await expect(transcript.getByText("Transcript message 150 ")).toBeAttached();
   await expect(pending.getByText("Sent while behind")).toBeVisible();
-  await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
+  await expect(
+    transcript.getByRole("button", { name: "Load newer events" }),
+  ).toHaveCount(0);
 });
 
 test("opens linked events and Turns that newer pages have not loaded yet", async ({
@@ -500,11 +517,13 @@ test("opens far behind at the read position and loads newer pages after it", asy
   expect(cursors[0]).toBe("around-20");
 
   // The latest page waits below until the newer pages reach it, so the
-  // transcript has no gap.
-  await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
+  // transcript has no gap. Newer pages load only when the reader scrolls to
+  // them, so the server reads nothing the reader does not reach.
+  await expect(transcript.getByText("Show newer messages")).toBeAttached();
   await expect(
     transcript.getByText(`Transcript message ${latestSeq} `),
   ).toHaveCount(0);
+  expect(cursors).toEqual(["around-20"]);
 
   // The read events before the marker come in the same page, so no earlier
   // page loads above the reader.
@@ -513,12 +532,16 @@ test("opens far behind at the read position and loads newer pages after it", asy
   ).toBeAttached();
   await expect(transcript.getByText("Transcript message 0 ")).toHaveCount(0);
 
+  await transcript.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(transcript.getByText("Loading newer messages…")).toBeAttached();
   releaseNewerPage();
-  await expect(
+  await scrollDownTo(
+    transcript,
     transcript.getByText(`Transcript message ${latestSeq} `),
-  ).toBeAttached();
-  await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
-  await expect(firstUnread).toBeInViewport();
+  );
+  await expect(transcript.getByText("Show newer messages")).toHaveCount(0);
   await expect(marker).toHaveCount(1);
   // The pages from the latest page back are never read.
   expect(cursors).not.toContain("before-100");

@@ -20,7 +20,7 @@ import {
 } from "./transcriptScrollAnchor";
 
 const BOTTOM_PROXIMITY_PX = 96;
-const PREVIOUS_PAGE_PROXIMITY_PX = 600;
+const HISTORY_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
@@ -780,8 +780,12 @@ export function usePinnedTranscriptBottom(input: {
   );
 }
 
-/** Load the previous history page when the reader scrolls near the top. */
-export function useAutoLoadPreviousPage(input: {
+/**
+ * Load the next history page when the reader scrolls near the edge where it
+ * goes: the top for earlier pages, the bottom for newer pages.
+ */
+export function useAutoLoadHistoryPage(input: {
+  edge: "bottom" | "top";
   enabled: boolean;
   historyVersion: string;
   onLoad: () => void;
@@ -803,12 +807,15 @@ export function useAutoLoadPreviousPage(input: {
       },
       {
         root: root && !isWindowRoot(root) ? root : null,
-        rootMargin: `${PREVIOUS_PAGE_PROXIMITY_PX}px 0px 0px 0px`,
+        rootMargin:
+          input.edge === "top"
+            ? `${HISTORY_PAGE_PROXIMITY_PX}px 0px 0px 0px`
+            : `0px 0px ${HISTORY_PAGE_PROXIMITY_PX}px 0px`,
       },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [input.enabled, input.historyVersion, sentinel]);
+  }, [input.edge, input.enabled, input.historyVersion, sentinel]);
 
   return setSentinel;
 }

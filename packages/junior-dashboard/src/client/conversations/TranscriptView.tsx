@@ -14,7 +14,7 @@ import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
-  useAutoLoadPreviousPage,
+  useAutoLoadHistoryPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -38,7 +38,7 @@ export function Transcript(props: {
   /** The read position when the Conversation opened. */
   lastReadSeq?: number;
   loadingPreviousPage?: boolean;
-  /** Newer pages that still load between the read position and the latest. */
+  /** Newer pages between the read position and the latest. They load on scroll. */
   newerHistory?: TranscriptHistory["newer"];
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
@@ -92,7 +92,8 @@ export function Transcript(props: {
     paused: view !== "rich" || search.trim().length > 0,
   });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
-  const previousPageRef = useAutoLoadPreviousPage({
+  const previousPageRef = useAutoLoadHistoryPage({
+    edge: "top",
     enabled: Boolean(
       props.onLoadPreviousPage &&
       props.hasPreviousPage &&
@@ -101,6 +102,13 @@ export function Transcript(props: {
     ),
     historyVersion: props.historyVersion ?? "empty",
     onLoad: loadPreviousPage,
+  });
+  const newer = props.newerHistory;
+  const newerPageRef = useAutoLoadHistoryPage({
+    edge: "bottom",
+    enabled: Boolean(newer && !newer.loading && !newer.error),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: () => newer?.load(),
   });
 
   if (!props.transcript) {
@@ -163,9 +171,9 @@ export function Transcript(props: {
             />
           </TurnContextPanelProvider>
         )}
-        {props.newerHistory ? (
+        {newer ? (
           <>
-            {props.newerHistory.error ? (
+            {newer.error ? (
               <div
                 aria-live="polite"
                 className="mt-2 text-center font-sans text-xs text-amber-100/65"
@@ -176,12 +184,13 @@ export function Transcript(props: {
             <HistoryPageControl
               className="mt-3"
               label="Load newer events"
-              loading={!props.newerHistory.error}
-              onClick={props.newerHistory.load}
+              loading={newer.loading}
+              onClick={newer.load}
+              ref={newerPageRef}
             >
-              {props.newerHistory.error
-                ? `Show newer ${historyLabel}`
-                : `Loading newer ${historyLabel}…`}
+              {newer.loading
+                ? `Loading newer ${historyLabel}…`
+                : `Show newer ${historyLabel}`}
             </HistoryPageControl>
           </>
         ) : null}

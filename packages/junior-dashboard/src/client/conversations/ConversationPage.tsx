@@ -214,29 +214,24 @@ export function ConversationPage(props: {
   // The page is keyed by Conversation, so this is the cached copy at open.
   const [cachedAtOpen] = useState(() => detail.data);
   // A reader far behind sees the events from their read position. Others
-  // see the latest page and the pages before it. When the cached transcript
-  // is already on screen, it stays until the unread events load, because the
-  // fetch that brings the cursor replaces it with the latest page. Then the
-  // transcript opens at the "New" marker, if the reader has not moved.
+  // see the latest page and the pages before it. A cached transcript stays
+  // on screen until the unread events load, and it loads no earlier pages:
+  // they would come from before the latest page, not before the cached rows.
+  // Then the transcript opens at the "New" marker, if the reader has not moved.
   const holdCachedTranscript = Boolean(
-    readAtOpen.unreadCursorAfterCache && unreadHistory?.isPending,
+    cachedAtOpen && unreadHistory?.isPending,
   );
-  const showUnreadHistory = holdCachedTranscript ? undefined : unreadHistory;
-  // The held copy loads no earlier pages: they would come from before the
-  // latest page, not before the cached rows.
-  const history: TranscriptHistory =
-    showUnreadHistory ??
-    (holdCachedTranscript
-      ? {
-          ...detail,
-          data: cachedAtOpen,
-          hasPreviousPage: false,
-          isLoadingPreviousPage: false,
-          loadPreviousPage: () => {},
-        }
-      : detail);
+  const history: TranscriptHistory = holdCachedTranscript
+    ? {
+        ...detail,
+        data: cachedAtOpen,
+        hasPreviousPage: false,
+        isLoadingPreviousPage: false,
+        loadPreviousPage: () => {},
+      }
+    : (unreadHistory ?? detail);
   const transcriptPending =
-    detail.isPending || Boolean(showUnreadHistory?.isPending);
+    detail.isPending || Boolean(unreadHistory?.isPending && !cachedAtOpen);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -311,37 +306,31 @@ export function ConversationPage(props: {
     },
     [eventOpen, setSelectedEventSeq],
   );
-  // A linked event can be older than the first page. Load earlier pages until
-  // it is present or history ends.
-  const loadPreviousPageRef = useRef(history.loadPreviousPage);
-  loadPreviousPageRef.current = history.loadPreviousPage;
+  // A linked event, Turn, or memory can be outside the loaded pages. Look
+  // for it one page at a time, in the direction where it can be.
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const loadToward = useCallback((search: HistorySearch | undefined) => {
+    if (search === "load-earlier") historyRef.current.loadPreviousPage();
+    else if (search === "load-newer") historyRef.current.newer?.load();
+  }, []);
+  const searchHistory = (direction: HistorySearchDirection) =>
+    nextHistorySearch(history, direction, holdCachedTranscript);
   const oldestLoadedSeq = transcript?.events[0]?.seq;
-  const linkedEventEarlier =
-    selectedEventSeq !== undefined &&
-    oldestLoadedSeq !== undefined &&
-    selectedEventSeq < oldestLoadedSeq;
-  // From the read position, newer pages load by themselves until they reach
-  // the latest page. A linked event or Turn after them waits for them.
-  const newerPending =
-    holdCachedTranscript || Boolean(history.newer && !history.newer.error);
   const newestLoadedSeq = transcript?.events.at(-1)?.seq;
-  const linkedEventNewer =
-    newerPending &&
-    selectedEventSeq !== undefined &&
-    newestLoadedSeq !== undefined &&
-    selectedEventSeq > newestLoadedSeq;
-  const loadLinkedEvent =
-    linkedEventEarlier &&
-    history.hasPreviousPage &&
-    !history.isLoadingPreviousPage &&
-    !history.historyError;
-  useEffect(() => {
-    if (loadLinkedEvent) loadPreviousPageRef.current();
-  }, [loadLinkedEvent, oldestLoadedSeq]);
-  // Load earlier pages until the linked Turn starts or history ends. Then
-  // replace the Turn link with a link to its first event, or drop it when
-  // history has no such event. A history error keeps the link, so a retry
-  // or reload can still find the Turn.
+  const linkedEventDirection: HistorySearchDirection | undefined =
+    selectedEventSeq === undefined ||
+    oldestLoadedSeq === undefined ||
+    newestLoadedSeq === undefined
+      ? undefined
+      : selectedEventSeq < oldestLoadedSeq
+        ? "earlier"
+        : selectedEventSeq > newestLoadedSeq &&
+            (history.newer || holdCachedTranscript)
+          ? "newer"
+          : undefined;
+  // Replace a found Turn link with a link to its first event, or drop it
+  // when history has no such event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
     : undefined;
@@ -349,31 +338,24 @@ export function ConversationPage(props: {
     linkedTurnId !== undefined &&
     linkedTurnSeq === undefined &&
     transcript !== undefined;
-  const loadLinkedTurn =
-    linkedTurnMissing &&
-    history.hasPreviousPage &&
-    !history.isLoadingPreviousPage &&
-    !history.historyError;
-  const linkedTurnNotFound =
-    linkedTurnMissing &&
-    // A failed newer page also keeps the link, so its retry can find the Turn.
-    !holdCachedTranscript &&
-    !history.newer &&
-    !history.hasPreviousPage &&
-    !history.isLoadingPreviousPage;
-  useEffect(() => {
-    if (loadLinkedTurn) loadPreviousPageRef.current();
-  }, [loadLinkedTurn, oldestLoadedSeq]);
+  const linkedSearch = linkedEventDirection
+    ? searchHistory(linkedEventDirection)
+    : linkedTurnMissing
+      ? searchHistory("any")
+      : undefined;
+  useEffect(() => loadToward(linkedSearch), [linkedSearch, loadToward]);
+  const linkedTurnNotFound = linkedTurnMissing && linkedSearch === "end";
   useEffect(() => {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
-  // Show a chosen memory at its transcript row. Wait for the first page, then
-  // load earlier pages until the row renders, or stop when history ends.
+  // Show a chosen memory at its transcript row, once the row renders.
   const memoryPrompts = useMemo(
     () => turnPrompts(transcript?.events),
     [transcript?.events],
   );
+  const memorySearch =
+    memoryJump && transcript ? searchHistory("any") : undefined;
   useEffect(() => {
     if (!memoryJump || !transcript) return;
     const anchor = pageRef.current?.querySelector(
@@ -383,26 +365,12 @@ export function ConversationPage(props: {
       anchor.scrollIntoView({ block: "center" });
       setMemoryPopover(memoryJump);
       setMemoryJump(undefined);
-    } else if (newerPending) {
-      // The row can be in a newer page. Look back only after they load.
-    } else if (
-      history.hasPreviousPage &&
-      !history.isLoadingPreviousPage &&
-      !history.historyError
-    ) {
-      loadPreviousPageRef.current();
-    } else if (!history.isLoadingPreviousPage) {
+    } else if (memorySearch === "failed" || memorySearch === "end") {
       setMemoryJump(undefined);
+    } else {
+      loadToward(memorySearch);
     }
-  }, [
-    history.hasPreviousPage,
-    history.historyError,
-    history.isLoadingPreviousPage,
-    memoryJump,
-    newerPending,
-    transcript,
-    view,
-  ]);
+  }, [loadToward, memoryJump, memorySearch, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
@@ -410,10 +378,9 @@ export function ConversationPage(props: {
     !selectedEvent &&
     (transcriptPending ||
       linkedTurnSeq !== undefined ||
-      ((linkedEventEarlier || linkedTurnMissing) &&
-        (history.hasPreviousPage || history.isLoadingPreviousPage) &&
-        !history.historyError) ||
-      ((linkedEventNewer || linkedTurnMissing) && newerPending));
+      linkedSearch === "load-earlier" ||
+      linkedSearch === "load-newer" ||
+      linkedSearch === "wait");
   const showEvent = Boolean(selectedEvent) || eventLoading;
   // Step through the same filtered rows that the event log shows.
   const events = transcript?.events;
@@ -646,8 +613,8 @@ export function ConversationPage(props: {
               // transcript tail. A started Turn reads a new send only later.
               // Keep those sends in the queue. An earlier inline send that
               // history does not have yet can start that Turn first. While
-              // newer pages load, the transcript tail is not the latest
-              // event, so a send waits in the queue too.
+              // newer pages are not loaded, the transcript tail is not the
+              // latest event, so a send waits in the queue too.
               sendsInline={
                 detail.data.eventHistory.status === "available" &&
                 !history.newer &&
@@ -772,3 +739,33 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+type HistorySearchDirection = "any" | "earlier" | "newer";
+type HistorySearch = "end" | "failed" | "load-earlier" | "load-newer" | "wait";
+
+/**
+ * The next step to find a row that the loaded pages do not have: load one
+ * more page toward it, or wait for the page that loads. "any" looks at newer
+ * pages first. A failed page stops the search, but the link stays, so a
+ * retry can still find the row.
+ */
+function nextHistorySearch(
+  history: TranscriptHistory,
+  direction: HistorySearchDirection,
+  held: boolean,
+): HistorySearch {
+  if (held || history.isLoadingPreviousPage || history.newer?.loading) {
+    return "wait";
+  }
+  if (direction !== "earlier" && history.newer && !history.newer.error) {
+    return "load-newer";
+  }
+  if (
+    direction !== "newer" &&
+    history.hasPreviousPage &&
+    !history.historyError
+  ) {
+    return "load-earlier";
+  }
+  return history.historyError || history.newer?.error ? "failed" : "end";
+}

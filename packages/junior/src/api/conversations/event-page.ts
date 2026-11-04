@@ -276,11 +276,12 @@ export async function readConversationEventPageAround(
       limit: args.limit - beforeLimit,
     }),
   ]);
-  const previousSeq = before ? before.previousSeq : after.previousSeq;
   return {
     events: [...(before?.events ?? []), ...after.events],
     ...(after.nextSeq === undefined ? undefined : { nextSeq: after.nextSeq }),
-    ...(previousSeq === undefined ? undefined : { previousSeq }),
+    ...(before?.previousSeq === undefined
+      ? undefined
+      : { previousSeq: before.previousSeq }),
   };
 }
 
@@ -288,8 +289,8 @@ export async function readConversationEventPageAround(
  * Read the earliest reporting events after an exclusive boundary.
  *
  * This is the forward twin of `readConversationEventPage`. It returns
- * `nextSeq` when newer events follow the page, and `previousSeq` when older
- * events come before it, so a reader can page both ways from the boundary.
+ * `nextSeq` when newer events follow the page. Earlier pages start from the
+ * page around the read position, so this page reads nothing before it.
  */
 export async function readConversationEventPageAfter(
   executor: JuniorSqlDatabase,
@@ -302,7 +303,6 @@ export async function readConversationEventPageAfter(
 ): Promise<{
   events: ConversationReportEvent[];
   nextSeq?: number;
-  previousSeq?: number;
 }> {
   const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
   const rows: ConversationEventRow[] = [];
@@ -329,20 +329,10 @@ export async function readConversationEventPageAfter(
   }
 
   const events = projected.slice(0, args.limit);
-  const first = events[0];
-  const [older] = first
-    ? await readConversationEventRows(executor, {
-        beforeSeq: first.seq,
-        conversationId: args.conversationId,
-        direction: "backward",
-        limit: 1,
-      })
-    : [];
   return {
     events,
     ...(projected.length > events.length
       ? { nextSeq: events.at(-1)!.seq }
       : undefined),
-    ...(older && first ? { previousSeq: first.seq } : undefined),
   };
 }
