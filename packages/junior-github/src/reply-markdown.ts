@@ -94,7 +94,10 @@ function linkifyLine(line: string): string {
       continue;
     }
 
-    if (line.startsWith("https://", index) || line.startsWith("http://", index)) {
+    if (
+      line.startsWith("https://", index) ||
+      line.startsWith("http://", index)
+    ) {
       const match = /^https?:\/\/\S+/.exec(line.slice(index));
       if (match) {
         output += match[0];
@@ -120,7 +123,13 @@ function linkifyLine(line: string): string {
   return output;
 }
 
-/** Linkify GitHub issue and pull request shorthand outside Markdown code. */
+/**
+ * Linkify GitHub issue and pull request shorthand outside Markdown code.
+ *
+ * GitHub bodies need this too: a repository autolink prefix such as `SENTRY-`
+ * can claim part of bare `getsentry/sentry-docs#1` and link the rest as a
+ * same-repository reference. GitHub does not rewrite Markdown link labels.
+ */
 export function linkifyGitHubReferences(text: string): string {
   let openFenceLength = 0;
   return text

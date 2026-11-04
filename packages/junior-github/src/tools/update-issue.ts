@@ -21,6 +21,7 @@ import {
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
+import { linkifyGitHubReferences } from "../reply-markdown.js";
 
 const inputSchema = z
   .object({
@@ -141,7 +142,7 @@ export function createGitHubUpdateIssueTool(ctx: {
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  update.body,
+                  linkifyGitHubReferences(update.body),
                   ctx,
                   await resolveGitHubRequester(ctx),
                 ),

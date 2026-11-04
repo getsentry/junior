@@ -23,6 +23,7 @@ import {
 import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
+import { linkifyGitHubReferences } from "../reply-markdown.js";
 
 const inputSchema = z
   .object({
@@ -226,7 +227,11 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                appendGitHubRequesterAttribution(update.body, ctx, requester),
+                appendGitHubRequesterAttribution(
+                  linkifyGitHubReferences(update.body),
+                  ctx,
+                  requester,
+                ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),

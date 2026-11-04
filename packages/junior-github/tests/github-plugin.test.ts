@@ -1498,7 +1498,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
-          body: "PR body",
+          body: "PR body for getsentry/sentry-docs#20303",
           draft: true,
         },
         { toolCallId: "call-create-pull-request" },
@@ -1573,7 +1573,7 @@ Conversation: \`local:test:old-conversation\`
       title: "Typed PR",
       head: "dcramer/gh-660-pr-create",
       base: "main",
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body for [getsentry/sentry-docs#20303](https://github.com/getsentry/sentry-docs/issues/20303)\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
   });
