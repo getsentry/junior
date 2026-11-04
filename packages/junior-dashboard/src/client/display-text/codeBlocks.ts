@@ -78,7 +78,13 @@ function guessLanguage(code: string): BundledLanguage {
 // indent, as CommonMark does.
 function stripFenceIndent(code: string, indent: number): string {
   if (indent === 0) return code;
-  return code.replace(new RegExp(`^[ \\t]{0,${indent}}`, "gm"), "");
+  return code
+    .split("\n")
+    .map((line) => {
+      const lead = line.length - line.trimStart().length;
+      return line.slice(Math.min(indent, lead));
+    })
+    .join("\n");
 }
 
 function formatCodeBlock(code: string, language: BundledLanguage): string {
