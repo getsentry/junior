@@ -568,6 +568,37 @@ export function conversationLocation(
   );
 }
 
+/**
+ * Show the estimated cost of a conversation with its breakdown tooltip.
+ * Returns null until there is a cost or a live run to show.
+ */
+export function conversationCost(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+  tooltipPlacement?: "above" | "below",
+): ReactNode {
+  if (!conversation) return null;
+  const costSummary = summarizeCost(
+    detail?.cumulativeUsage ?? conversation.cumulativeUsage,
+  );
+  const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
+  const live = (detail?.status ?? conversation.status) === "active";
+  if (!costSummary && !auxiliaryCosts && !live) return null;
+  return (
+    <CostMetric
+      auxiliaryCosts={auxiliaryCosts}
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      live={live}
+      liveModelId={liveModelId(detail)}
+      modelUsage={detail?.modelUsage}
+      summary={costSummary}
+      tooltipPlacement={tooltipPlacement}
+    />
+  );
+}
+
 function conversationStatItems(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -580,7 +611,6 @@ function conversationStatItems(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const costSummary = summarizeCost(usage);
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -589,8 +619,9 @@ function conversationStatItems(props: {
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
   const location = conversationLocation(props.conversation, props.detail);
+  const cost = conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
-    // The desktop title bar shows the location. Mobile hides that bar.
+    // The desktop title bar shows the location and cost. Mobile hides that bar.
     location
       ? {
           content: location,
@@ -660,26 +691,12 @@ function conversationStatItems(props: {
           label: "Tokens",
         }
       : undefined,
-    costSummary ||
-    props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts ||
-    live
+    cost
       ? {
-          content: (
-            <CostMetric
-              auxiliaryCosts={
-                props.detail?.auxiliaryCosts ??
-                props.conversation.auxiliaryCosts
-              }
-              childAgentTotals={childAgentTotals}
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={costSummary}
-            />
-          ),
+          content: cost,
           key: "cost",
           label: "Cost",
+          mobileOnly: true,
         }
       : undefined,
     childAgentTotals

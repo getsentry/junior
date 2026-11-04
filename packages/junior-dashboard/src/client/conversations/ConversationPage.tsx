@@ -50,6 +50,7 @@ import { ConversationAgentTree } from "./ConversationAgentTree";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
   ConversationAnnotations,
+  conversationCost,
   conversationLocation,
   ConversationPrivacyChip,
   ConversationStats,
@@ -373,6 +374,7 @@ export function ConversationPage(props: {
               agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
             }
             conversationId={conversationId}
+            cost={conversationCost(conversation, detail.data, "below")}
             detailsOpen={showDetails}
             onDetailsClick={() => {
               if (eventOpen) setSelectedEventSeq(undefined);

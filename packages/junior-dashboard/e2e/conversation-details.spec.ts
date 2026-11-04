@@ -48,11 +48,11 @@ test("opens conversation details beside the chat", async ({
   });
   // Wide viewports open details beside the chat by default.
   await expect(details).toBeVisible();
-  // Run facts live in details only, not in the title bar.
+  // Cost stays in the title bar. Desktop details hide their copy of it.
   const costMetric = page
     .getByRole("main")
     .locator('span[tabindex="0"]')
-    .filter({ hasText: /^\$0\.03$/ });
+    .filter({ hasText: /^\$0\.03$/, visible: true });
   await expect(costMetric).toHaveCount(1);
   // Tooltips open on keyboard focus, not on focus after a mouse click. A key
   // press first makes this a keyboard focus.
@@ -72,7 +72,7 @@ test("opens conversation details beside the chat", async ({
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
   await detailsButton.click();
   await expect(details).toBeHidden();
-  await expect(costMetric).toHaveCount(0);
+  await expect(costMetric).toHaveCount(1);
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: dashboard.baseURL,
   });
