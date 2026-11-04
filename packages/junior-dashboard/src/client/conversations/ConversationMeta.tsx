@@ -488,11 +488,14 @@ export function liveModelId(
   return openTurns.size > 0 ? modelId : undefined;
 }
 
-/** True when runtime stats have content to show in details. */
-export function hasConversationStats(props: {
+type ConversationStatsProps = {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-}): boolean {
+  showUsageBreakdown?: boolean;
+};
+
+/** True when runtime stats have content to show in details. */
+export function hasConversationStats(props: ConversationStatsProps): boolean {
   return conversationStatItems(props).length > 0;
 }
 
@@ -505,10 +508,7 @@ type ConversationStatItem = {
 };
 
 /** Render runtime, source, token, and cost metadata as a labeled list. */
-export function ConversationStats(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-}) {
+export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
   return (
@@ -581,10 +581,9 @@ export function conversationCost(
   );
 }
 
-function conversationStatItems(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-}): ConversationStatItem[] {
+function conversationStatItems(
+  props: ConversationStatsProps,
+): ConversationStatItem[] {
   if (!props.conversation) return [];
   const completeDetail = props.detail?.previousCursor
     ? undefined
@@ -601,9 +600,11 @@ function conversationStatItems(props: {
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
   const location = conversationLocation(props.conversation, props.detail);
-  const cost = conversationCost(props.conversation, props.detail);
+  const cost = props.showUsageBreakdown
+    ? null
+    : conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
-    // The desktop title bar shows the location and cost. Mobile hides that bar.
+    // The desktop title bar shows the location. Mobile hides that bar.
     location
       ? {
           content: location,
@@ -651,7 +652,7 @@ function conversationStatItems(props: {
           label: "Runtime",
         }
       : undefined,
-    tokenSummary
+    tokenSummary && !props.showUsageBreakdown
       ? {
           content: (
             <TokenMetric
@@ -678,7 +679,6 @@ function conversationStatItems(props: {
           content: cost,
           key: "cost",
           label: "Cost",
-          mobileOnly: true,
         }
       : undefined,
     childAgentTotals

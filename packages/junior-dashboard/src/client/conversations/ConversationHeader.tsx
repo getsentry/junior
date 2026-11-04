@@ -216,14 +216,16 @@ export function ConversationHeader(props: {
             <ConversationOverflowMenu>
               {(close) => menuActions("desktop", close)}
             </ConversationOverflowMenu>
-            <HeaderIconButton
-              ref={detailsButtonRef}
-              expanded={detailsOpen}
-              label="Conversation details"
-              onClick={props.onDetailsClick}
-            >
-              <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
-            </HeaderIconButton>
+            {detailsOpen ? null : (
+              <HeaderIconButton
+                ref={detailsButtonRef}
+                expanded={false}
+                label="Conversation details"
+                onClick={props.onDetailsClick}
+              >
+                <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+              </HeaderIconButton>
+            )}
           </div>
         </div>
         {props.forks ? (

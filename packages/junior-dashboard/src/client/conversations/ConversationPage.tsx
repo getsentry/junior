@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -132,6 +133,7 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
+  const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -189,6 +191,14 @@ export function ConversationPage(props: {
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
+  useLayoutEffect(() => {
+    if (!showDetails || !focusDetailsOnOpen.current) return;
+    focusDetailsOnOpen.current = false;
+    // The inline opener leaves the tab order while details are visible.
+    pageRef.current
+      ?.querySelector<HTMLButtonElement>('[data-slot="details-panel-close"]')
+      ?.focus({ preventScroll: true });
+  }, [showDetails]);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     eventOpen ? "raw" : "rich",
   );
@@ -227,6 +237,10 @@ export function ConversationPage(props: {
     ) : null;
   const conversationDetail = detail.data;
   const links = conversationLinks(conversationDetail);
+  const showUsageBreakdown = hasConversationUsageBreakdown({
+    conversation,
+    detail: conversationDetail,
+  });
   const title =
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
@@ -435,7 +449,7 @@ export function ConversationPage(props: {
       className={cn(
         "grid h-full min-h-0 min-w-0",
         (showDetails || showEvent || turnContext || showQuickQuestion) &&
-          "xl:grid-cols-[minmax(0,1fr)_25rem]",
+          "xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
     >
       <ChatLayout
@@ -452,8 +466,12 @@ export function ConversationPage(props: {
               if (eventOpen) setSelectedEventSeq(undefined);
               setTurnContext(undefined);
               quickQuestion.close();
-              if (showDetails) closeDetails();
-              else setDetailsChoice(true);
+              if (showDetails) {
+                closeDetails();
+              } else {
+                focusDetailsOnOpen.current = true;
+                setDetailsChoice(true);
+              }
             }}
             forks={
               detail.data?.forkedFromConversationId ||
@@ -650,18 +668,17 @@ export function ConversationPage(props: {
               hasConversationStats({
                 conversation,
                 detail: detail.data,
+                showUsageBreakdown,
               }) ? (
                 <ConversationStats
                   conversation={conversation}
                   detail={detail.data}
+                  showUsageBreakdown={showUsageBreakdown}
                 />
               ) : null
             }
             usage={
-              hasConversationUsageBreakdown({
-                conversation,
-                detail: detail.data,
-              }) ? (
+              showUsageBreakdown ? (
                 <ConversationUsageBreakdown
                   conversation={conversation}
                   detail={detail.data}
