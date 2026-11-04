@@ -33,7 +33,7 @@ import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
-import { useCachedConversationDetail } from "./conversations/queries";
+import { useConversationData } from "./conversations/queries";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -154,11 +154,8 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // The detail title keeps titles outside the top-50 feed accurate.
-  const detailTitle = useCachedConversationDetail(
-    conversationId,
-    conversationDetailTitle,
-  );
+  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
+  const conversationDetail = useConversationData(conversationId);
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -168,7 +165,8 @@ export function DashboardShell() {
   // Create mode is a landing page (normal app chrome), not a thread destination.
   // Only open conversations use the mobile back chevron + title row.
   const mobileConversationTitle = conversationId
-    ? (detailTitle ?? conversationDisplayTitle(mobileConversation))
+    ? (conversationDetailTitle(conversationDetail.data) ??
+      conversationDisplayTitle(mobileConversation))
     : undefined;
   const reviewCountQuery = useReviewItemCountData(loggedIn);
   const primaryNavItems = buildPrimaryNavItems({

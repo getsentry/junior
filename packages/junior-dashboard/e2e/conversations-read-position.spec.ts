@@ -612,8 +612,12 @@ test("opens far behind at the read position and loads newer pages after it", asy
     },
   );
 
-  // A direct load also mounts the app shell, which reads the same detail.
-  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+  // Open from the list, so the page makes the first detail fetch.
+  await page.goto(`${dashboard.baseURL}/conversations`);
+  await page
+    .getByRole("link", { name: /Far behind/ })
+    .first()
+    .click();
   const transcript = page.getByLabel("Conversation transcript");
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
