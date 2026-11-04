@@ -25,6 +25,7 @@ import {
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import {
@@ -49,6 +50,8 @@ export interface TopLevelAgent {
 
 /** Filters for one top-level agent search. All are optional. */
 export interface TopLevelAgentSearch {
+  /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
+  annotation?: string;
   conversationIds?: readonly string[];
   /** Include Conversations that the person archived. */
   includeArchived: boolean;
@@ -108,6 +111,9 @@ export async function searchTopLevelAgents(args: {
     ownedByViewer
       ? or(eq(juniorDestinations.visibility, "public"), ownedByViewer)
       : eq(juniorDestinations.visibility, "public"),
+    search.annotation
+      ? hasAnnotationKey(juniorConversations.conversationId, search.annotation)
+      : undefined,
     search.conversationIds
       ? inArray(juniorConversations.conversationId, [...search.conversationIds])
       : undefined,

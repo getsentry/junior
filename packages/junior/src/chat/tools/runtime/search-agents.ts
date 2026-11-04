@@ -8,7 +8,9 @@ import {
   searchTopLevelAgents,
   type TopLevelAgent,
 } from "@/chat/agent-invocations/search-top-level";
+import { conversationIdsWithAnnotation } from "@/chat/conversations/sql/annotation-filter";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -217,8 +219,16 @@ const searchAgentsInputSchema = z
       .max(CONVERSATION_IDS_MAX)
       .nullable()
       .optional()
+      .describe("Return only these conversation IDs."),
+    annotation: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+      .nullable()
+      .optional()
       .describe(
-        "Return only these conversation IDs, for example the owners that a pull request lists.",
+        "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Finds the conversations that created, changed, or read the resource.",
       ),
     query: z
       .string()
@@ -272,6 +282,7 @@ export function createSearchAgentsTool(context: {
     inputSchema: searchAgentsInputSchema,
     outputSchema: searchAgentsOutputSchema,
     execute: async (input) => {
+      const annotation = input.annotation ?? undefined;
       const conversationIds = input.conversation_ids ?? undefined;
       const query = input.query ?? undefined;
       if (input.scope === "top_level") {
@@ -286,6 +297,7 @@ export function createSearchAgentsTool(context: {
         const agents = await searchTopLevelAgents({
           requesterConversationId: context.conversationId,
           search: {
+            ...(annotation ? { annotation } : undefined),
             ...(conversationIds ? { conversationIds } : undefined),
             includeArchived: input.include_archived ?? false,
             limit: input.limit ?? TOP_LEVEL_DEFAULT_LIMIT,
@@ -318,10 +330,19 @@ export function createSearchAgentsTool(context: {
           : undefined),
         ...(query ? { query } : undefined),
       };
+      const matches = agents.filter((agent) =>
+        matchesRelativeFilters(agent, filters),
+      );
+      if (!annotation) {
+        return { agents: matches };
+      }
+      const annotated = await conversationIdsWithAnnotation(
+        getDb(),
+        matches.map((agent) => agent.conversation_id),
+        annotation,
+      );
       return {
-        agents: agents.filter((agent) =>
-          matchesRelativeFilters(agent, filters),
-        ),
+        agents: matches.filter((agent) => annotated.has(agent.conversation_id)),
       };
     },
   });

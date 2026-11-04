@@ -23,7 +23,6 @@ via **Alex**.
 <!-- junior-request-attribution:end -->
 
 <!-- junior-session-footer:start -->
-<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->
 [View Session](https://example.com/session)
 <!-- junior-session-footer:end -->
 <!-- unfinished comment`,
@@ -73,7 +72,6 @@ describe("getPullRequest", () => {
           },
         },
       ],
-      conversation_ids: ["slack:C123:1712345.0001"],
       head_sha: HEAD_SHA,
       number: 691,
       subscribable: {

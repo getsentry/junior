@@ -16,6 +16,7 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import {
+  juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversationParticipants,
   juniorConversations,
@@ -128,6 +129,27 @@ function readRunsAgentRunner() {
     },
     runs,
   };
+}
+
+const PULL_REQUEST_KEY = "getsentry/junior#1591";
+
+async function annotatePullRequest(conversationId: string): Promise<void> {
+  await getDb()
+    .insert(juniorConversationAnnotations)
+    .values({
+      annotation: {
+        key: PULL_REQUEST_KEY,
+        kind: "resource_link",
+        label: "getsentry/junior#1591",
+        url: "https://github.com/getsentry/junior/pull/1591",
+      },
+      conversationId,
+      createdAt: new Date(1),
+      key: PULL_REQUEST_KEY,
+      kind: "resource_link",
+      plugin: "github",
+      updatedAt: new Date(1),
+    });
 }
 
 describe("messageAgent", () => {
@@ -268,6 +290,15 @@ describe("messageAgent", () => {
       ).resolves.toEqual({ agents: [] });
       await expect(
         relatives.execute!({ conversation_ids: ["slack:COTHER:1.0"] }, {}),
+      ).resolves.toEqual({ agents: [] });
+      await annotatePullRequest(child.childConversationId);
+      await expect(
+        relatives.execute!({ annotation: PULL_REQUEST_KEY }, {}),
+      ).resolves.toMatchObject({
+        agents: [{ conversation_id: child.childConversationId }],
+      });
+      await expect(
+        relatives.execute!({ annotation: "getsentry/junior#2" }, {}),
       ).resolves.toEqual({ agents: [] });
     } finally {
       await fixture.close();
@@ -488,6 +519,11 @@ describe("messageAgent", () => {
       await expect(
         searchTopLevel(privateSender, { query: "classifier" }),
       ).resolves.toEqual([privateOwned]);
+      // A linked resource finds the conversations that touched it.
+      await annotatePullRequest(publicTarget);
+      await expect(
+        searchTopLevel(privateSender, { annotation: PULL_REQUEST_KEY }),
+      ).resolves.toEqual([publicTarget]);
       await expect(
         createSearchAgentsTool({
           actor: parentActor,

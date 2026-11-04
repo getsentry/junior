@@ -11,7 +11,6 @@ import {
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
-import { githubConversationIds } from "./footer.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -22,12 +21,6 @@ const inputSchema = z
   .strict();
 const pullRequestSchema = z.object({
   base: z.string(),
-  conversation_ids: z
-    .array(z.string().min(1))
-    .optional()
-    .describe(
-      "Conversations that own this pull request, from its footer. Pass them to searchAgents as conversation_ids.",
-    ),
   draft: z.boolean(),
   head: z.string(),
   head_sha: commitShaSchema,
@@ -108,7 +101,6 @@ export function createGitHubGetPullRequestTool(ctx: {
       const providerResult = z
         .object({
           base: z.object({ ref: z.string() }),
-          body: z.string().nullable().optional(),
           draft: z.boolean(),
           head: z.object({ ref: z.string(), sha: commitShaSchema }),
           html_url: z.string(),
@@ -123,12 +115,8 @@ export function createGitHubGetPullRequestTool(ctx: {
         number: providerResult.number,
         repo: repo.ref,
       });
-      const conversationIds = githubConversationIds(providerResult.body);
       const data: PullRequest = {
         base: providerResult.base.ref,
-        ...(conversationIds.length > 0
-          ? { conversation_ids: conversationIds }
-          : undefined),
         draft: providerResult.draft,
         head: providerResult.head.ref,
         head_sha: providerResult.head.sha.toLowerCase(),
