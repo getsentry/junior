@@ -154,8 +154,13 @@ describe("conversation read position API", () => {
       expect(response.status).toBe(200);
       return conversationEventPageSchema.parse(await response.json());
     };
+    // The page around the read position ends half of its events with the
+    // last read event. The unread events follow it.
     const unread = await readPage(
-      `after=${encodeURIComponent(detail.unreadCursor!)}`,
+      `around=${encodeURIComponent(detail.unreadCursor!)}`,
+    );
+    expect(unread.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 1 + index),
     );
     const newer: number[] = [];
     let page = unread;
@@ -164,14 +169,12 @@ describe("conversation read position API", () => {
       if (!page.nextCursor) break;
       page = await readPage(`after=${encodeURIComponent(page.nextCursor)}`);
     }
-    expect(newer).toEqual(Array.from({ length: 24 }, (_, index) => 6 + index));
+    expect(newer).toEqual(Array.from({ length: 29 }, (_, index) => 1 + index));
 
     const earlier = await readPage(
       `before=${encodeURIComponent(unread.previousCursor!)}`,
     );
-    expect(earlier.events.map((event) => event.seq)).toEqual([
-      0, 1, 2, 3, 4, 5,
-    ]);
+    expect(earlier.events.map((event) => event.seq)).toEqual([0]);
     expect(earlier.previousCursor).toBeUndefined();
 
     // Once the reader is inside the latest page, it opens there.

@@ -241,6 +241,50 @@ export async function readConversationEventPage(
 }
 
 /**
+ * Read reporting events on both sides of one event.
+ *
+ * Half of the page ends with the event at `seq`, and the rest follows it. A
+ * reader who opens at a read position gets the context before it and the
+ * unread events after it in one page.
+ */
+export async function readConversationEventPageAround(
+  executor: JuniorSqlDatabase,
+  args: {
+    canExposePayload: boolean;
+    conversationId: string;
+    limit: number;
+    seq: number;
+  },
+): Promise<{
+  events: ConversationReportEvent[];
+  nextSeq?: number;
+  previousSeq?: number;
+}> {
+  const { seq, ...pageArgs } = args;
+  const beforeLimit = Math.floor(args.limit / 2);
+  const [before, after] = await Promise.all([
+    beforeLimit > 0
+      ? readConversationEventPage(executor, {
+          ...pageArgs,
+          beforeSeq: seq + 1,
+          limit: beforeLimit,
+        })
+      : undefined,
+    readConversationEventPageAfter(executor, {
+      ...pageArgs,
+      afterSeq: seq,
+      limit: args.limit - beforeLimit,
+    }),
+  ]);
+  const previousSeq = before ? before.previousSeq : after.previousSeq;
+  return {
+    events: [...(before?.events ?? []), ...after.events],
+    ...(after.nextSeq === undefined ? undefined : { nextSeq: after.nextSeq }),
+    ...(previousSeq === undefined ? undefined : { previousSeq }),
+  };
+}
+
+/**
  * Read the earliest reporting events after an exclusive boundary.
  *
  * This is the forward twin of `readConversationEventPage`. It returns

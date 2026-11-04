@@ -68,13 +68,19 @@ const conversationEventsLimitSchema = z.coerce
   .max(1_000)
   .default(500);
 
-/** Page toward the start with `before`, or toward the latest with `after`. */
+/**
+ * Page toward the start with `before`, toward the latest with `after`, or
+ * both ways from one event with `around`.
+ */
 export const conversationEventsQuerySchema = z.union([
   z
     .object({ before: z.string().min(1), limit: conversationEventsLimitSchema })
     .strict(),
   z
     .object({ after: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ around: z.string().min(1), limit: conversationEventsLimitSchema })
     .strict(),
 ]);
 
@@ -812,7 +818,7 @@ export const conversationEventPageSchema = z
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),
-    /** Present on `after` pages when newer events follow the page. */
+    /** Present on `after` and `around` pages when newer events follow. */
     nextCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
   })

@@ -2,10 +2,11 @@
  * Open a long Conversation at the reader's read position.
  *
  * The detail holds the latest page of events. When the read position is
- * older than that page, the transcript starts with the page after the read
- * position instead. Newer pages then load one at a time in the background,
- * until they reach the latest page. Earlier pages load on scroll, from the
- * read position back toward the start.
+ * older than that page, the transcript starts with the page around the read
+ * position instead: the last read events and the unread events after them.
+ * Newer pages then load one at a time in the background, until they reach
+ * the latest page. Earlier pages load on scroll, from the read position back
+ * toward the start.
  *
  * The latest page joins the transcript only after the newer pages reach it,
  * so the transcript never has a gap. Until then the transcript ends with a
@@ -67,10 +68,12 @@ export function useUnreadHistory(input: {
     enabled: false,
     queryKey: ["conversation", conversationId, "unread", unreadCursor, "newer"],
     queryFn: ({ pageParam, signal }) =>
-      readConversationEventsAfter(conversationId, pageParam, signal),
-    initialPageParam: unreadCursor ?? "",
-    getNextPageParam: (page) =>
-      reachesLatest(page, latestFirstSeq) ? undefined : page.nextCursor,
+      readConversationEventsFrom(conversationId, pageParam, signal),
+    initialPageParam: { around: unreadCursor ?? "" } as NewerPageParam,
+    getNextPageParam: (page): NewerPageParam | undefined =>
+      reachesLatest(page, latestFirstSeq) || !page.nextCursor
+        ? undefined
+        : { after: page.nextCursor },
     retry: false,
   });
   const firstNewerPage = newer.data?.pages[0];
@@ -189,19 +192,22 @@ function reachesLatest(
   );
 }
 
-/** Read one bounded page of events after the supplied history cursor. */
-function readConversationEventsAfter(
+/** The first page is around the read position. The rest follow it. */
+type NewerPageParam = { around: string } | { after: string };
+
+/** Read one bounded page of events around or after a history cursor. */
+function readConversationEventsFrom(
   conversationId: string,
-  after: string,
+  param: NewerPageParam,
   signal?: AbortSignal,
 ): Promise<ConversationEventPage> {
-  const query = new URLSearchParams({ after });
+  const query = new URLSearchParams(param);
   return fetchDashboardJson(
     conversationEventPageSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
     signal,
   ).then((page) => {
-    if (page.nextCursor === after) {
+    if ("after" in param && page.nextCursor === param.after) {
       throw new Error("Conversation history cursor did not advance");
     }
     return page;

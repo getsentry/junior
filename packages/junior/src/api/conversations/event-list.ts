@@ -5,6 +5,7 @@ import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
 import {
   readConversationEventPage,
   readConversationEventPageAfter,
+  readConversationEventPageAround,
 } from "./event-page";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
@@ -15,10 +16,10 @@ import {
   type ConversationEventPage,
 } from "../schema/conversation";
 
-/** Read one bounded page of reporting events before or after a signed cursor. */
+/** Read one bounded page of reporting events before, after, or around a signed cursor. */
 export async function readConversationEvents(
   conversationId: string,
-  boundary: { after: string } | { before: string },
+  boundary: { after: string } | { around: string } | { before: string },
   options: {
     limit?: number;
     viewer?: User;
@@ -29,7 +30,12 @@ export async function readConversationEvents(
 
   const cursor = decodeConversationCursor({
     conversationId,
-    cursor: "after" in boundary ? boundary.after : boundary.before,
+    cursor:
+      "after" in boundary
+        ? boundary.after
+        : "around" in boundary
+          ? boundary.around
+          : boundary.before,
   });
   if (!cursor) throwApiError(400, "Invalid conversation cursor.");
 
@@ -54,10 +60,15 @@ export async function readConversationEvents(
             ...pageArgs,
             afterSeq: cursor.seq,
           })
-        : await readConversationEventPage(getSqlExecutor(), {
-            ...pageArgs,
-            beforeSeq: cursor.seq,
-          });
+        : "around" in boundary
+          ? await readConversationEventPageAround(getSqlExecutor(), {
+              ...pageArgs,
+              seq: cursor.seq,
+            })
+          : await readConversationEventPage(getSqlExecutor(), {
+              ...pageArgs,
+              beforeSeq: cursor.seq,
+            });
   const cursorAt = (seq: number) =>
     encodeConversationCursor({ conversationId, seq });
 

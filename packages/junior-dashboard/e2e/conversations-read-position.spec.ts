@@ -28,11 +28,11 @@ async function mockReadPositionConversation(
     eventCount: input.eventCount,
     /** Holds detail responses until it resolves. */
     detailGate: Promise.resolve(),
-    /** Holds `after` page responses until it resolves. */
+    /** Holds `around` and `after` page responses until it resolves. */
     newerGate: Promise.resolve(),
-    /** The first `after` cursor that `newerGate` holds. */
+    /** The first `around` or `after` cursor that `newerGate` holds. */
     newerGateAfter: 0,
-    /** Fail the `after` pages that `newerGate` holds. */
+    /** Fail the pages that `newerGate` holds. */
     failNewer: false,
     /** The event that starts Turn `turn-<seq>`. */
     turnStartSeq: -1,
@@ -102,7 +102,9 @@ async function mockReadPositionConversation(
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
-      if (after && Number(after) >= state.newerGateAfter) {
+      const around = query.get("around");
+      const newer = after ?? around;
+      if (newer && Number(newer) >= state.newerGateAfter) {
         await state.newerGate;
         if (state.failNewer) {
           await route.fulfill({ status: 500, json: { error: "failed" } });
@@ -110,12 +112,19 @@ async function mockReadPositionConversation(
         }
       }
       const latestSeq = state.eventCount - 1;
-      const from = after
-        ? Number(after) + 1
-        : Math.max(0, Number(query.get("before")) - PAGE_SIZE);
-      const to = after
-        ? Math.min(from + PAGE_SIZE - 1, latestSeq)
-        : Number(query.get("before")) - 1;
+      // Like the server, an `around` page ends half of its events with the
+      // cursor event.
+      const [from, to] = after
+        ? [Number(after) + 1, Math.min(Number(after) + PAGE_SIZE, latestSeq)]
+        : around
+          ? [
+              Math.max(0, Number(around) - PAGE_SIZE / 2 + 1),
+              Math.min(Number(around) + PAGE_SIZE / 2, latestSeq),
+            ]
+          : [
+              Math.max(0, Number(query.get("before")) - PAGE_SIZE),
+              Number(query.get("before")) - 1,
+            ];
       await route.fulfill({
         json: {
           eventHistory: { status: "available" },
@@ -216,7 +225,7 @@ test("opens at new messages after a cached reopen and keeps a quick exit", async
     releaseNewer = resolve;
   });
   const newerRequest = page.waitForRequest((request) =>
-    request.url().includes("/events?after="),
+    request.url().includes("/events?around="),
   );
   await page
     .getByRole("link", { name: /Read position/ })
@@ -254,14 +263,14 @@ test("opens linked events and Turns that newer pages have not loaded yet", async
     lastReadSeq: 10,
   });
   mock.pagedDetail = true;
-  // The first page after the read position loads. The next one waits.
+  // The page around the read position loads. The next one waits.
   mock.newerGateAfter = 11;
   let releaseNewer = () => {};
   mock.newerGate = new Promise((resolve) => {
     releaseNewer = resolve;
   });
   const heldRequest = page.waitForRequest((request) =>
-    request.url().includes("/events?after=50"),
+    request.url().includes("/events?after=30"),
   );
   await page.goto(
     `${dashboard.baseURL}/conversations/${mock.conversationId}?event=70`,
@@ -361,8 +370,28 @@ test("opens far behind at the read position and loads newer pages after it", asy
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
+      const around = query.get("around");
       const before = query.get("before");
-      cursors.push(after ? `after-${after}` : `before-${before}`);
+      cursors.push(
+        after
+          ? `after-${after}`
+          : around
+            ? `around-${around}`
+            : `before-${before}`,
+      );
+      if (around) {
+        const to = Number(around) + 20;
+        await route.fulfill({
+          json: {
+            eventHistory: { status: "available" },
+            events: events(Number(around) - 19, to),
+            generatedAt,
+            previousCursor: String(Number(around) - 19),
+            nextCursor: String(to),
+          },
+        });
+        return;
+      }
       if (after) {
         const from = Number(after) + 1;
         const to = Math.min(from + 39, latestSeq);
@@ -410,6 +439,8 @@ test("opens far behind at the read position and loads newer pages after it", asy
   const firstUnread = transcript.getByText("Transcript message 21 ");
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
+  // One page brings the last read events and the unread events after them.
+  expect(cursors[0]).toBe("around-20");
 
   // The latest page waits below until the newer pages reach it, so the
   // transcript has no gap.
@@ -418,9 +449,12 @@ test("opens far behind at the read position and loads newer pages after it", asy
     transcript.getByText(`Transcript message ${latestSeq} `),
   ).toHaveCount(0);
 
-  // Earlier context loads above the reader without moving them.
-  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
-  await expect(firstUnread).toBeInViewport();
+  // The read events before the marker come in the same page, so no earlier
+  // page loads above the reader.
+  await expect(
+    transcript.getByText("Transcript message 1 with", { exact: false }),
+  ).toBeAttached();
+  await expect(transcript.getByText("Transcript message 0 ")).toHaveCount(0);
 
   releaseNewerPage();
   await expect(
