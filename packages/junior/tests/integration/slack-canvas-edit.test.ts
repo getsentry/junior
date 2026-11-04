@@ -87,7 +87,8 @@ describe("Slack canvas file-like tools", () => {
   it("edits a canvas served as Quip HTML and writes Markdown back", async () => {
     queueCanvasRead(
       "F0PREVIOUS",
-      '<div class="quip-canvas-content"><h2 id="temp:C:A">Rows</h2>' +
+      '<div class="quip-canvas-content"><h1 id="temp:C:T">Reference Canvas</h1>' +
+        '<h2 id="temp:C:A">Rows</h2>' +
         '<div data-section-style="5"><ul id="temp:C:B"><li id="temp:C:C">' +
         '<span><lnk href="https://linear.app/getsentry/issue/NET-625">NET-625</lnk>' +
         " — <code>Docs</code> fix</span><br/></li></ul></div>" +

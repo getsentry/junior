@@ -237,13 +237,14 @@ export async function readCanvas(
   }
 
   const buffer = await downloadPrivateSlackFile(downloadUrl);
+  const title = file.title ?? file.name;
   return {
     canvasId,
-    title: file.title ?? file.name,
+    title,
     permalink: file.permalink,
     mimetype: file.mimetype,
     filetype: file.filetype,
-    content: canvasBodyToMarkdown(buffer.toString("utf-8")),
+    content: canvasBodyToMarkdown(buffer.toString("utf-8"), title),
     byteLength: buffer.byteLength,
   };
 }
