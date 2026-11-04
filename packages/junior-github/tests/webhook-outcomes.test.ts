@@ -85,9 +85,10 @@ import {
 } from "./github-db";
 import { mswServer } from "./msw";
 
-it("returns only candidate conversations with unmerged pull requests", async () => {
+it("combines open, merged, and closed pull requests into conversation work", async () => {
   const fixture = await createGitHubFixture();
   const at = new Date("2026-07-01T12:00:00.000Z");
+  const closedAt = new Date("2026-07-02T12:00:00.000Z");
   try {
     await fixture
       .db()
@@ -114,12 +115,24 @@ it("returns only candidate conversations with unmerged pull requests", async () 
           mergedAt: at,
           updatedAt: at,
         },
+        {
+          pullRequestId: "closed-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 3,
+          state: "closed_unmerged",
+          conversationIds: ["conversation-closed", "conversation-merged"],
+          openedAt: at,
+          closedAt: closedAt,
+          updatedAt: closedAt,
+        },
       ]);
 
     await expect(
       listGitHubUnfinishedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]),
@@ -128,21 +141,25 @@ it("returns only candidate conversations with unmerged pull requests", async () 
       listGitHubFinishedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]),
     ).resolves.toEqual({
-      "conversation-merged": "2026-07-01T12:00:00.000Z",
+      "conversation-merged": "2026-07-02T12:00:00.000Z",
+      "conversation-closed": "2026-07-02T12:00:00.000Z",
       "conversation-shared": "2026-07-01T12:00:00.000Z",
     });
     await expect(
       listGitHubAssignedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]).then((ids) => [...ids].sort()),
     ).resolves.toEqual([
+      "conversation-closed",
       "conversation-merged",
       "conversation-open",
       "conversation-shared",

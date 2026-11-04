@@ -6,8 +6,6 @@ import {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
@@ -28,6 +26,12 @@ import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
 } from "../schema/conversation-pin";
+import {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "../schema/conversation-archive";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -37,6 +41,10 @@ import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
 import { pinConversation } from "./pin";
+import {
+  archiveViewerDoneConversations,
+  setConversationAutoArchive,
+} from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
@@ -277,6 +285,37 @@ export function createConversationRoutes(
         await markConversationRead(viewer, conversationId, body),
       );
     },
+  );
+
+  app.post("/archive-done", requireViewer, async (context) =>
+    jsonResponse(
+      archiveDoneConversationsResponseSchema,
+      await archiveViewerDoneConversations(context.get("viewer")),
+    ),
+  );
+
+  app.patch(
+    "/:conversationId/auto-archive",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationAutoArchiveSchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationAutoArchiveSchema,
+        await setConversationAutoArchive(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json").autoArchive,
+        ),
+      ),
   );
 
   app.get(

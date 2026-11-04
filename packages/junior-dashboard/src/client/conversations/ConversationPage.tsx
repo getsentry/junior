@@ -32,6 +32,7 @@ import {
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
+import { AutoArchiveToggle } from "./AutoArchiveToggle";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -617,6 +618,14 @@ export function ConversationPage(props: {
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
+            autoArchive={
+              detail.data?.autoArchive === undefined ? null : (
+                <AutoArchiveToggle
+                  autoArchive={detail.data.autoArchive}
+                  conversationId={conversationId}
+                />
+              )
+            }
             brief={detail.data?.brief}
             conversationId={conversationId}
             highlightReview={reviewOpen}

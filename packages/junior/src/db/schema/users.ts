@@ -1,5 +1,14 @@
-import { boolean, text, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  text,
+  pgTable,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { timestamptz } from "./timestamps";
+
+/** Hours auto-archive waits when the user has not picked a grace period. */
+export const AUTO_ARCHIVE_DEFAULT_GRACE_HOURS = 24;
 
 export const juniorUsers = pgTable(
   "junior_users",
@@ -13,6 +22,14 @@ export const juniorUsers = pgTable(
     customization: text("customization"),
     /** Junior-wide admin role. Only the `junior admin` CLI changes it. */
     isAdmin: boolean("is_admin").notNull().default(false),
+    /** Auto-archive this user's conversations when their work is done. */
+    autoArchiveDefault: boolean("auto_archive_default")
+      .notNull()
+      .default(false),
+    /** Hours done work and the conversation stay quiet before auto-archive. */
+    autoArchiveGraceHours: integer("auto_archive_grace_hours")
+      .notNull()
+      .default(AUTO_ARCHIVE_DEFAULT_GRACE_HOURS),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

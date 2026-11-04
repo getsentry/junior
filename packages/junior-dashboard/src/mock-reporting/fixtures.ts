@@ -138,14 +138,18 @@ const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
 const mockPinnedConversationIds = new Set<string>();
 
+/** Process-local auto-archive choices for mock visual QA. */
+const mockAutoArchiveByConversationId = new Map<string, boolean>();
+
 /**
- * Restore process-local archive and pin state so tests sharing a worker do
- * not leak state.
+ * Restore process-local archive, pin, and auto-archive state so tests sharing
+ * a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.clear();
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
+  mockAutoArchiveByConversationId.clear();
 }
 
 /** Add the viewer's mock archive and pin times to one conversation. */
@@ -1942,6 +1946,8 @@ export function setMockConversationArchived(
     mockPinnedConversationIds.delete(conversationId);
   } else {
     mockArchivedConversationIds.delete(conversationId);
+    // Match the API: a manual restore turns auto-archive off.
+    mockAutoArchiveByConversationId.set(conversationId, false);
   }
   return { archivedAt: archived ? NOW : null };
 }
@@ -1963,6 +1969,39 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
+}
+
+/** Archive every done mock conversation once, like the archive-done API. */
+export function archiveMockDoneConversations(): { archived: number } {
+  let archived = 0;
+  for (const summary of mockConversationFeed(NOW_MS).conversations) {
+    if (
+      summary.archivedAt ||
+      summary.pinnedAt ||
+      !summary.assignedWork ||
+      summary.unfinishedWork ||
+      !summary.finishedWorkAt ||
+      mockAutoArchiveByConversationId.get(summary.conversationId) === false
+    ) {
+      continue;
+    }
+    mockArchivedConversationIds.add(summary.conversationId);
+    archived += 1;
+  }
+  return { archived };
+}
+
+/** Save a mock auto-archive choice for local dashboard visual QA. */
+export function setMockConversationAutoArchive(
+  conversationId: string,
+  autoArchive: boolean,
+): { autoArchive: boolean } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockAutoArchiveByConversationId.set(conversationId, autoArchive);
+  return { autoArchive };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -2187,6 +2226,12 @@ export function readMockConversationDetail(
     canFork:
       !parentConversationId &&
       conversationDetail.eventHistory.status !== "redacted",
+    ...(conversationDetail.isParticipant
+      ? {
+          autoArchive:
+            mockAutoArchiveByConversationId.get(conversationId) ?? false,
+        }
+      : undefined),
   };
   const withViewerState = withMockViewerState(detail);
   const events = withViewerState.events.slice(-limit);

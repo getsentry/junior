@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { runRetentionPurge } from "@/chat/conversations/retention";
 import {
   getAttachmentStorage,
@@ -6,28 +5,7 @@ import {
 } from "@/chat/attachments/storage";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
-
-function getRetentionSecret(): string | undefined {
-  return (
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim()
-  );
-}
-
-function verifyRetentionRequest(request: Request): boolean {
-  const secret = getRetentionSecret();
-  if (!secret) {
-    return false;
-  }
-
-  const authorization = request.headers.get("authorization")?.trim();
-  if (!authorization?.startsWith("Bearer ")) {
-    return false;
-  }
-  const actual = Buffer.from(authorization.slice("Bearer ".length));
-  const expected = Buffer.from(secret);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
+import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
 
 /**
  * Handle the authenticated internal retention cron. One request runs a single
@@ -38,7 +16,7 @@ export async function GET(
   request: Request,
   options: { attachmentStorage?: AttachmentStorage } = {},
 ): Promise<Response> {
-  if (!verifyRetentionRequest(request)) {
+  if (!verifySchedulerRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

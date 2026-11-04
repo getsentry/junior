@@ -13,9 +13,16 @@ export const dashboardSessionSchema = z
   .object({ user: dashboardSessionUserSchema })
   .strict();
 
+/** Longest auto-archive grace period a user can pick: one week. */
+export const AUTO_ARCHIVE_MAX_GRACE_HOURS = 7 * 24;
+
 /** Signed-in viewer returned by `/api/me`. */
 export const dashboardIdentitySchema = z
   .object({
+    /** Auto-archive the viewer's conversations when their work is done. */
+    autoArchiveDefault: z.boolean().optional(),
+    /** Hours done work and the conversation stay quiet before auto-archive. */
+    autoArchiveGraceHours: z.number().int().positive().optional(),
     user: dashboardSessionUserSchema
       .extend({
         /** Junior API path of the viewer's Slack photo, then Google photo. */
@@ -29,9 +36,20 @@ export const dashboardIdentitySchema = z
 
 export const dashboardProfileUpdateSchema = z
   .object({
-    displayName: z.string().trim().min(1).max(80),
+    autoArchiveDefault: z.boolean().optional(),
+    autoArchiveGraceHours: z
+      .number()
+      .int()
+      .min(1)
+      .max(AUTO_ARCHIVE_MAX_GRACE_HOURS)
+      .optional(),
+    displayName: z.string().trim().min(1).max(80).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (body) => Object.values(body).some((value) => value !== undefined),
+    "Change at least one setting.",
+  );
 
 export const dashboardConfigSchema = z
   .object({

@@ -63,6 +63,7 @@ import {
 import { GET as healthGET } from "@/handlers/health";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as retentionGET } from "@/handlers/retention";
+import { GET as autoArchiveGET } from "@/handlers/auto-archive";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
@@ -72,6 +73,7 @@ import {
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
@@ -865,6 +867,10 @@ export async function createApp(
 
   app.get("/api/internal/retention", (c) => {
     return retentionGET(c.req.raw);
+  });
+
+  app.get(JUNIOR_AUTO_ARCHIVE_ROUTE, (c) => {
+    return autoArchiveGET(c.req.raw);
   });
 
   app.post("/api/webhooks/slack", (c) => {
