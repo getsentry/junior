@@ -35,26 +35,93 @@ async function selectReplyText(page: Page): Promise<string> {
   });
 }
 
+/**
+ * Serve a hidden fork from the source Conversation of the mock API: the
+ * history through the selected reply, then `messages`. Mocks run no model.
+ */
+async function serveQuickQuestionFork(
+  page: Page,
+  forks: ReadonlyArray<{ messageId: string }>,
+  messages: Array<{ role: "assistant" | "user"; text: string }>,
+) {
+  const source = `/api/conversations/${encodeURIComponent(conversationId)}`;
+  const fork = `/api/conversations/${encodeURIComponent(forkId)}`;
+  await page.route(
+    (url) => url.pathname.startsWith(fork),
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const response = await route.fetch({
+        url: url.toString().replace(fork, source),
+      });
+      if (url.pathname !== fork) return route.fulfill({ response });
+      const detail = await response.json();
+      const reply = detail.events.findIndex(
+        (event: { data: { messageId?: string } }) =>
+          event.data.messageId === forks[0]!.messageId,
+      );
+      detail.events = detail.events.slice(0, reply + 1);
+      const last = detail.events.at(-1);
+      detail.conversationId = forkId;
+      detail.status = "completed";
+      detail.events.push(
+        ...messages.map((message, index) => ({
+          seq: last.seq + index + 1,
+          createdAt: last.createdAt,
+          data: {
+            type: "message",
+            messageId: `qq-${index}`,
+            role: message.role,
+            text: message.text,
+          },
+        })),
+      );
+      await route.fulfill({ json: detail });
+    },
+  );
+}
+
+const forkId = "local:web:qq-fork";
+
 test("asks a quick question about selected reply text", async ({
   page,
   dashboard,
 }) => {
-  const requests: Array<{
+  const forks: Array<{
+    idempotencyKey: string;
     messageId: string;
-    messages: Array<{ role: string; text: string }>;
-    quote: string;
+    quickQuestion: { quote: string };
   }> = [];
   await page.route(
-    `**/api/conversations/${encodeURIComponent(conversationId)}/quick-questions`,
+    `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
     async (route) => {
-      requests.push(route.request().postDataJSON());
+      forks.push(route.request().postDataJSON());
       await route.fulfill(
-        requests.length === 1
+        forks.length === 1
           ? { status: 503, json: { error: "The model is busy." } }
-          : { json: { text: `Answer ${requests.length - 1}.` } },
+          : { json: { conversationId: forkId } },
       );
     },
   );
+  const messages: Array<{ role: "assistant" | "user"; text: string }> = [];
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}/messages`,
+    async (route) => {
+      const { message } = route.request().postDataJSON();
+      messages.push(
+        { role: "user", text: message },
+        { role: "assistant", text: `Answer ${messages.length / 2 + 1}.` },
+      );
+      await route.fulfill({
+        json: {
+          conversationId: forkId,
+          messageId: `qq-message-${messages.length}`,
+          status: "accepted",
+        },
+      });
+    },
+  );
+  await serveQuickQuestionFork(page, forks, messages);
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
@@ -74,6 +141,9 @@ test("asks a quick question about selected reply text", async ({
   await expect(
     panel.getByRole("button", { name: "Explain this", exact: true }),
   ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Keep as fork", exact: true }),
+  ).toBeDisabled();
   await screenshot(page, "conversation-quick-question");
 
   await panel
@@ -88,54 +158,34 @@ test("asks a quick question about selected reply text", async ({
   await composer.fill("And then?");
   await composer.press("Enter");
   await expect(panel.getByText("Answer 2.")).toBeVisible();
-  expect(requests.at(-1)).toEqual({
-    messageId: requests[0]!.messageId,
-    quote,
-    messages: [
-      { role: "user", text: "Why?" },
-      { role: "assistant", text: "Answer 1." },
-      { role: "user", text: "And then?" },
-    ],
-  });
+  // The retry finds the same fork. Follow-ups go to that fork.
+  expect(forks).toEqual([
+    {
+      idempotencyKey: forks[0]!.idempotencyKey,
+      messageId: forks[0]!.messageId,
+      quickQuestion: { quote },
+    },
+    forks[0],
+  ]);
+  expect(messages.filter((message) => message.role === "user")).toEqual([
+    { role: "user", text: "Why?" },
+    { role: "user", text: "And then?" },
+  ]);
   await screenshot(page, "conversation-quick-question-answered");
 
-  const forks: Array<{ messageId: string }> = [];
-  const firstMessages: Array<{ message: string }> = [];
+  let kept = 0;
   await page.route(
-    `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
+    `**/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
     async (route) => {
-      forks.push(route.request().postDataJSON());
-      await route.fulfill({ json: { conversationId: "local:web:qq-fork" } });
-    },
-  );
-  await page.route(
-    `**/api/conversations/${encodeURIComponent("local:web:qq-fork")}/messages`,
-    async (route) => {
-      firstMessages.push(route.request().postDataJSON());
-      await route.fulfill({
-        json: {
-          conversationId: "local:web:qq-fork",
-          messageId: "qq-fork-first-message",
-          status: "accepted",
-        },
-      });
+      kept += 1;
+      await route.fulfill({ json: { conversationId: forkId } });
     },
   );
   await panel
     .getByRole("button", { name: "Keep as fork", exact: true })
     .click();
   await expect(page).toHaveURL(/qq-fork/);
-  expect(forks[0]?.messageId).toBe(requests[0]!.messageId);
-  expect(firstMessages[0]?.message).toBe(
-    [
-      "About this part of your reply:",
-      `> ${quote}`,
-      "Quick question: Why?",
-      "Your answer: Answer 1.",
-      "Quick question: And then?",
-      "Your answer: Answer 2.",
-    ].join("\n\n"),
-  );
+  expect(kept).toBe(1);
 });
 
 test("closes a quick question and shows details again", async ({

@@ -47,6 +47,8 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
@@ -83,12 +85,6 @@ export type {
   GuardianMetricDay,
   GuardianStats,
 } from "./schema/conversation-stats";
-export {
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
-  quickQuestionBodySchema,
-  quickQuestionResponseSchema,
-} from "./schema/conversation-fork";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export { conversationReadPositionSchema } from "./schema/conversation-read-position";

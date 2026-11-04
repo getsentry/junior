@@ -24,7 +24,6 @@ import {
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
-  quickQuestionResponseSchema,
   steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
@@ -291,22 +290,6 @@ export function useForkConversation(sourceConversationId: string) {
         queryKey: ["dashboard", "conversations"],
       });
     },
-  });
-}
-
-/** Ask one Quick question. The caller holds the thread; nothing is saved. */
-export function useQuickQuestion(conversationId: string) {
-  return useMutation({
-    mutationFn: (args: {
-      messageId: string;
-      quote: string;
-      messages: Array<{ role: "user" | "assistant"; text: string }>;
-    }) =>
-      post(
-        quickQuestionResponseSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/quick-questions`,
-        args,
-      ),
   });
 }
 

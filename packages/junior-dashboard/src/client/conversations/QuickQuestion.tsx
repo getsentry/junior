@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 
 import { getDashboardAgentName } from "../agentName";
@@ -15,11 +16,19 @@ import { DetailsPanel } from "../components/DetailsPanel";
 import { ShimmerText } from "../components/ShimmerText";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
-import { DashboardApiError } from "../http";
+import { DashboardApiError, post } from "../http";
+import {
+  acceptedConversationMessageSchema,
+  forkConversationResponseSchema,
+  type ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 import { cn } from "../styles";
 import { ConversationComposer } from "./ConversationComposer";
 import { conversationPath } from "./conversationRoutes";
-import { useForkConversation, useQuickQuestion } from "./queries";
+import {
+  conversationDetailQueryKey,
+  conversationDetailQueryOptions,
+} from "./queries";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 const HIGHLIGHT_NAME = "quick-question";
@@ -36,8 +45,12 @@ type QuickQuestionSelection = {
 
 type QuickQuestionThread = QuickQuestionSelection & {
   conversationId: string;
+  /** Hidden fork that the first question starts. */
+  forkId?: string;
   id: string;
-  messages: QuickQuestionMessage[];
+  /** Questions sent from this page, shown until the fork history has them. */
+  asked: string[];
+  askedAtMs?: number;
 };
 
 /** Show or clear the selection highlight. Browsers without the API skip it. */
@@ -138,15 +151,73 @@ export function QuickQuestionSelectionButton(props: {
 }
 
 /**
+ * Ask in a Quick question. The first question starts the hidden, read-only
+ * fork. A retry with the same thread key finds that fork again.
+ */
+function useAskQuickQuestion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      forkId?: string;
+      messageId: string;
+      quote: string;
+      sourceConversationId: string;
+      text: string;
+      threadKey: string;
+    }) => {
+      const forkId =
+        args.forkId ??
+        (
+          await post(
+            forkConversationResponseSchema,
+            `/api/conversations/${encodeURIComponent(args.sourceConversationId)}/forks`,
+            {
+              idempotencyKey: args.threadKey,
+              messageId: args.messageId,
+              quickQuestion: { quote: args.quote },
+            },
+          )
+        ).conversationId;
+      return post(
+        acceptedConversationMessageSchema,
+        `/api/conversations/${encodeURIComponent(forkId)}/messages`,
+        { idempotencyKey: crypto.randomUUID(), message: args.text },
+      );
+    },
+    onSuccess: (accepted) =>
+      queryClient.invalidateQueries({
+        queryKey: conversationDetailQueryKey(accepted.conversationId),
+      }),
+  });
+}
+
+/** Keep a Quick question as a fork that lists show. */
+function useKeepQuickQuestion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (forkId: string) =>
+      post(
+        forkConversationResponseSchema,
+        `/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
+        {},
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      }),
+  });
+}
+
+/**
  * Own one Quick question thread for a Conversation page. The page keeps it,
- * so an answer that arrives while another panel shows is not lost. Only the
- * browser holds the thread: closing or reloading discards it.
+ * so an answer that arrives while another panel shows is not lost. Closing
+ * leaves the hidden fork unlisted, so the question is gone for the reader.
  */
 export function useQuickQuestionThread(conversationId: string) {
   const [saved, setThread] = useState<QuickQuestionThread>();
   // The page stays mounted across Conversations. A thread belongs to one.
   const thread = saved?.conversationId === conversationId ? saved : undefined;
-  const ask = useQuickQuestion(conversationId);
+  const ask = useAskQuickQuestion();
   const { mutateAsync, reset } = ask;
 
   const open = useCallback(
@@ -155,9 +226,9 @@ export function useQuickQuestionThread(conversationId: string) {
       setHighlight(selection.range);
       setThread({
         ...selection,
+        asked: [],
         conversationId,
         id: crypto.randomUUID(),
-        messages: [],
       });
     },
     [conversationId, reset],
@@ -179,40 +250,27 @@ export function useQuickQuestionThread(conversationId: string) {
   const submit = useCallback(
     async (text: string) => {
       if (!thread) return;
-      const messages: QuickQuestionMessage[] = [
-        ...thread.messages,
-        { role: "user", text },
-      ];
-      setThread({ ...thread, messages });
-      try {
-        const answer = await mutateAsync({
-          messageId: thread.messageId,
-          quote: thread.quote,
-          messages,
-        });
-        // A closed or replaced thread drops its late answer.
-        setThread((current) =>
-          current?.id === thread.id
-            ? {
-                ...current,
-                messages: [
-                  ...messages,
-                  { role: "assistant", text: answer.text },
-                ],
-              }
-            : current,
-        );
-      } catch (error) {
-        // The composer puts the question back in the draft.
-        setThread((current) =>
-          current?.id === thread.id
-            ? { ...current, messages: thread.messages }
-            : current,
-        );
-        throw error;
-      }
+      const accepted = await mutateAsync({
+        forkId: thread.forkId,
+        messageId: thread.messageId,
+        quote: thread.quote,
+        sourceConversationId: conversationId,
+        text,
+        threadKey: thread.id,
+      });
+      // A closed or replaced thread drops its late result.
+      setThread((current) =>
+        current?.id === thread.id
+          ? {
+              ...current,
+              asked: [...current.asked, text],
+              askedAtMs: Date.now(),
+              forkId: accepted.conversationId,
+            }
+          : current,
+      );
     },
-    [mutateAsync, thread],
+    [conversationId, mutateAsync, thread],
   );
 
   return {
@@ -223,6 +281,24 @@ export function useQuickQuestionThread(conversationId: string) {
     submit,
     thread,
   };
+}
+
+/** Messages of the fork after the selected reply: the questions and answers. */
+function forkThreadMessages(
+  snapshot: ConversationDetailReport | undefined,
+  replyMessageId: string,
+): QuickQuestionMessage[] {
+  const messages = (snapshot?.events ?? []).flatMap(({ data }) =>
+    data.type === "message" &&
+    (data.role === "user" || data.role === "assistant") &&
+    data.text
+      ? [{ id: data.messageId, role: data.role, text: data.text }]
+      : [],
+  );
+  // The copied history ends with the selected reply. A page that does not
+  // reach back to it holds only new messages.
+  const reply = messages.findIndex((message) => message.id === replyMessageId);
+  return messages.slice(reply + 1);
 }
 
 /** Side panel for one Quick question thread. */
@@ -240,6 +316,21 @@ export function QuickQuestionPanel(props: {
   const me = useDashboardCoreData().data?.me.user;
   const viewerName = me?.name?.trim() || me?.email || "You";
   const agentName = getDashboardAgentName();
+  const fork = useQuery(
+    conversationDetailQueryOptions(thread.forkId, {
+      fastPollUntilMs: thread.askedAtMs && thread.askedAtMs + 10_000,
+    }),
+  ).data;
+  const saved = forkThreadMessages(fork, thread.messageId);
+  const unsaved = thread.asked
+    .slice(saved.filter((message) => message.role === "user").length)
+    .map((text) => ({ role: "user" as const, text }));
+  const messages = [...saved, ...unsaved];
+  // A failed Turn ends without an answer. The person can then ask again.
+  const thinking =
+    props.pending ||
+    unsaved.length > 0 ||
+    (fork?.status === "active" && messages.at(-1)?.role === "user");
 
   useEffect(() => {
     footerRef.current?.querySelector("textarea")?.focus();
@@ -249,7 +340,7 @@ export function QuickQuestionPanel(props: {
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  }, [thread.messages.length, props.pending]);
+  }, [messages.length, thinking]);
 
   return (
     <DetailsPanel
@@ -270,12 +361,11 @@ export function QuickQuestionPanel(props: {
           <blockquote className="m-0 border-l-2 border-dashboard-accent pl-3 text-sm whitespace-pre-wrap text-dashboard-text">
             {thread.quote}
           </blockquote>
-          {thread.messages.length === 0 ? (
+          {messages.length === 0 && !props.pending ? (
             <div className="flex flex-wrap gap-2">
               {STARTER_PROMPTS.map((prompt) => (
                 <Button
                   className="h-8 rounded-full"
-                  disabled={props.pending}
                   key={prompt}
                   // The panel shows the error.
                   onClick={() => void props.onSubmit(prompt).catch(() => {})}
@@ -285,7 +375,7 @@ export function QuickQuestionPanel(props: {
               ))}
             </div>
           ) : (
-            thread.messages.map((message, index) => (
+            messages.map((message, index) => (
               <TranscriptMessageShell
                 actor={message.role === "user" ? viewerName : agentName}
                 avatarUrl={message.role === "user" ? me?.avatarUrl : undefined}
@@ -305,7 +395,7 @@ export function QuickQuestionPanel(props: {
               </TranscriptMessageShell>
             ))
           )}
-          {props.pending ? (
+          {thinking ? (
             <TranscriptMessageShell actor={agentName} role="assistant">
               <span className="text-sm font-semibold text-dashboard-accent-text">
                 {agentName}
@@ -322,22 +412,20 @@ export function QuickQuestionPanel(props: {
         >
           <ConversationComposer
             compact
-            disabled={props.pending}
+            disabled={thinking}
             draftId={`quick-question:${props.conversationId}`}
             error={
               props.error
                 ? (props.error instanceof DashboardApiError &&
                     props.error.apiError) ||
-                  "Could not answer. Try again."
+                  "Could not ask. Try again."
                 : undefined
             }
             key={thread.id}
             label="Quick question"
             onSubmit={(text) => props.onSubmit(text)}
             placeholder={
-              thread.messages.length
-                ? "Ask a follow-up…"
-                : "Ask a quick question…"
+              messages.length ? "Ask a follow-up…" : "Ask a quick question…"
             }
             restoreDraftOnError
             submitLabel="Ask"
@@ -345,11 +433,10 @@ export function QuickQuestionPanel(props: {
           <div className="flex items-center justify-between gap-2 px-1 text-xs text-dashboard-text-muted">
             <span>Closing discards this question.</span>
             <KeepAsForkButton
-              conversationId={props.conversationId}
-              disabled={props.pending}
-              // A new thread needs a new fork request and idempotency key.
+              disabled={thinking}
+              forkId={thread.forkId}
+              // A new thread needs a new keep request.
               key={thread.id}
-              thread={thread}
             />
           </div>
         </div>
@@ -358,52 +445,25 @@ export function QuickQuestionPanel(props: {
   );
 }
 
-/**
- * Promote the thread to a fork after the selected reply. The fork's first
- * message carries the selection and the thread, and starts a full Turn.
- */
-function KeepAsForkButton(props: {
-  conversationId: string;
-  disabled: boolean;
-  thread: QuickQuestionThread;
-}) {
+/** Keep the hidden fork: it shows in lists and is no longer read-only. */
+function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
   const navigate = useNavigate();
-  const fork = useForkConversation(props.conversationId);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const keep = useKeepQuickQuestion();
+  const forkId = props.forkId;
   return (
     <Button
       className="h-7 px-2 text-xs"
-      disabled={props.disabled || fork.isPending}
+      disabled={!forkId || props.disabled || keep.isPending}
       onClick={() =>
-        fork.mutate(
-          {
-            idempotencyKey,
-            message: forkMessage(props.thread),
-            messageId: props.thread.messageId,
-          },
-          {
-            onSuccess: (accepted) =>
-              navigate(conversationPath(accepted.conversationId)),
-          },
-        )
+        forkId &&
+        keep.mutate(forkId, {
+          onSuccess: () => navigate(conversationPath(forkId)),
+        })
       }
       variant="quiet"
     >
       <GitFork aria-hidden="true" size={13} />
-      {fork.isError ? "Retry fork" : "Keep as fork"}
+      {keep.isError ? "Retry keep" : "Keep as fork"}
     </Button>
   );
-}
-
-function forkMessage(thread: QuickQuestionThread): string {
-  const quote = thread.quote
-    .split("\n")
-    .map((line) => `> ${line}`)
-    .join("\n");
-  const turns = thread.messages.map((message) =>
-    message.role === "user"
-      ? `Quick question: ${message.text}`
-      : `Your answer: ${message.text}`,
-  );
-  return [`About this part of your reply:\n\n${quote}`, ...turns].join("\n\n");
 }

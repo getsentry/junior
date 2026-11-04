@@ -4,6 +4,8 @@ import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
@@ -22,12 +24,6 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import {
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
-  quickQuestionBodySchema,
-  quickQuestionResponseSchema,
-} from "../schema/conversation-fork";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -47,8 +43,7 @@ import {
   type WebInputServices,
 } from "./create";
 import { readConversationDetail } from "./detail";
-import { forkConversationForViewer } from "./fork";
-import { answerQuickQuestionForViewer } from "./quick-question";
+import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { markConversationRead } from "./read-position";
@@ -169,7 +164,8 @@ export function createConversationRoutes(
   app.post(
     "/:conversationId/forks",
     requireViewer,
-    bodyLimit({ maxSize: 4096 }),
+    // A Quick question quote is up to 4,000 characters.
+    bodyLimit({ maxSize: 32_768 }),
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -192,22 +188,19 @@ export function createConversationRoutes(
   );
 
   app.post(
-    "/:conversationId/quick-questions",
+    "/:conversationId/quick-question/keep",
     requireViewer,
-    bodyLimit({ maxSize: 512_000 }),
     validateRequest(
       "param",
       conversationParamsSchema,
       "Invalid route parameters.",
     ),
-    validateRequest("json", quickQuestionBodySchema, "Invalid request body."),
     async (context) =>
       jsonResponse(
-        quickQuestionResponseSchema,
-        await answerQuickQuestionForViewer(
+        forkConversationResponseSchema,
+        await keepQuickQuestionForViewer(
           context.get("viewer"),
           context.req.valid("param").conversationId,
-          context.req.valid("json"),
         ),
       ),
   );

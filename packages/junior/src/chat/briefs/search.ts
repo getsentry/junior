@@ -104,6 +104,8 @@ export async function searchConversationBriefs(
         ),
     ),
     isNull(juniorConversations.parentConversationId),
+    // An unkept Quick question is a private side thread.
+    isNull(juniorConversations.quickQuestionAt),
     ne(juniorConversations.conversationId, args.currentConversationId),
     eq(juniorDestinations.visibility, "public"),
   ];

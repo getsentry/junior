@@ -73,6 +73,9 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
       { onDelete: "set null" },
     ),
+    // Set while a fork is a Quick question that nobody kept. Lists and search
+    // hide it. Keep as fork clears it.
+    quickQuestionAt: timestamptz("quick_question_at"),
     // Roots reference themselves; descendants reference the root whose actor
     // and destination own their privacy boundary.
     rootConversationId: text("root_conversation_id").references(

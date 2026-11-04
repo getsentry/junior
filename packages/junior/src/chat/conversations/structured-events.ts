@@ -173,27 +173,11 @@ export const conversationNoteEvent = defineConversationEvent({
   },
 });
 
-/** Cost of one answered Quick question. It has no transcript row. */
-export const quickQuestionAnsweredEvent = defineConversationEvent({
-  name: "quick_question_answered",
-  version: 1,
-  schema: z
-    .object({
-      costUsd: z.number().finite().nonnegative().optional(),
-      modelId: z.string().min(1),
-    })
-    .strict(),
-  renderEvent() {
-    return undefined;
-  },
-});
-
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   agentsInstructionsUpdatedEvent,
   conversationNoteEvent,
-  quickQuestionAnsweredEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */
