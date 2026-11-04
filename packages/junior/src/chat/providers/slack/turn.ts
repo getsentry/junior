@@ -1064,7 +1064,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await getConversationStore().get({ conversationId })
           )?.location;
           const savedInput = await savedInputInstruction({
-            dispatch: Boolean(options.execution?.dispatch),
+            runtime: Boolean(options.execution?.dispatch),
             reviewItemChange: getMessageReviewItemChange(message),
             text: effectiveUserText,
           });

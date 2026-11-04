@@ -72,19 +72,20 @@ export async function loadReviewItemInput(
 }
 
 /**
- * Return the instruction of one saved input. A dispatch is an Automation
- * `<task>`, and an answer or a dismiss is its Review item tag. Neither is
- * typed text, so neither goes in `<current-instruction>`.
+ * Return the instruction of one saved input. `runtime` text, such as an
+ * Automation dispatch or an Event Turn, is already rendered as its tags.
+ * An answer or a dismiss is its Review item tag. Neither is typed text, so
+ * neither goes in `<current-instruction>`.
  */
 export async function savedInputInstruction(args: {
-  dispatch: boolean;
+  runtime: boolean;
   reviewItemChange: ReviewItemChangeRecord | undefined;
   text: string;
 }): Promise<Pick<AgentInstruction, "inputs" | "text">> {
-  const reviewItemInput = args.dispatch
+  const reviewItemInput = args.runtime
     ? undefined
     : await loadReviewItemInput(args.reviewItemChange);
-  if (!args.dispatch && !reviewItemInput) return { text: args.text };
+  if (!args.runtime && !reviewItemInput) return { text: args.text };
   return instructionForInputs([
     { kind: "runtime", text: reviewItemInput ?? args.text },
   ]);

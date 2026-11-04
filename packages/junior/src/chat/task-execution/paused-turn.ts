@@ -630,7 +630,9 @@ async function runPausedTurnInContext(
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               ...(await savedInputInstruction({
-                dispatch: Boolean(dispatchId),
+                runtime:
+                  Boolean(dispatchId) ||
+                  isEventConversationMessage(userMessage),
                 reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
                 text: userMessage.text,
               })),
