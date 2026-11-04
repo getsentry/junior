@@ -160,7 +160,7 @@ describe("sandbox file tools", () => {
     const result = await editFile({
       fs: memory.fs,
       path: "src/app.ts",
-      edits: [{ oldText: "two\nthree", newText: "TWO\nTHREE" }],
+      edits: [{ old_text: "two\nthree", new_text: "TWO\nTHREE" }],
     });
 
     expect(memory.read("src/app.ts")).toBe("one\r\nTWO\r\nTHREE\r\n");
@@ -182,8 +182,8 @@ describe("sandbox file tools", () => {
       fs: memory.fs,
       path: "large.ts",
       edits: [
-        { oldText: "line 2\n", newText: "changed\ninserted\n" },
-        { oldText: "line 998\n", newText: "" },
+        { old_text: "line 2\n", new_text: "changed\ninserted\n" },
+        { old_text: "line 998\n", new_text: "" },
       ],
     });
 
@@ -220,7 +220,7 @@ describe("sandbox file tools", () => {
       const result = await editFile({
         fs: memory.fs,
         path: "file.txt",
-        edits: [{ oldText, newText }],
+        edits: [{ old_text: oldText, new_text: newText }],
       });
       expect(result.details.diff).toBe(diff);
       expect(result.details.truncated).toBe(false);
@@ -237,8 +237,8 @@ describe("sandbox file tools", () => {
       path: "generated.js",
       edits: [
         {
-          oldText: "a".repeat(100_000),
-          newText: "b".repeat(100_000),
+          old_text: "a".repeat(100_000),
+          new_text: "b".repeat(100_000),
         },
       ],
     });
@@ -253,12 +253,12 @@ describe("sandbox file tools", () => {
     expect(
       prepareEditFileArguments({
         path: "src/app.ts",
-        old_text: "before",
-        new_text: "after",
+        oldText: "before",
+        newText: "after",
       }),
     ).toEqual({
       path: "src/app.ts",
-      edits: [{ oldText: "before", newText: "after" }],
+      edits: [{ old_text: "before", new_text: "after" }],
     });
   });
 
@@ -527,11 +527,11 @@ describe("sandbox file tools", () => {
     expect(
       tool.prepareArguments?.({
         pattern: "hello",
-        ignoreCase: "false",
+        ignore_case: "false",
         literal: "true",
       }),
     ).toMatchObject({
-      ignoreCase: false,
+      ignore_case: false,
       literal: true,
     });
   });
@@ -629,7 +629,7 @@ describe("sandbox file tools", () => {
       editFile({
         fs: memory.fs,
         path: "src/app.ts",
-        edits: [{ oldText: "same", newText: "changed" }],
+        edits: [{ old_text: "same", new_text: "changed" }],
       }),
     ).rejects.toThrow("Found 2 occurrences");
   });
@@ -643,7 +643,7 @@ describe("sandbox file tools", () => {
       editFile({
         fs: memory.fs,
         path: "src/app.ts",
-        edits: [{ oldText: "missing text", newText: "new" }],
+        edits: [{ old_text: "missing text", new_text: "new" }],
       }),
     ).rejects.toThrow("Could not find edits[0]");
   });

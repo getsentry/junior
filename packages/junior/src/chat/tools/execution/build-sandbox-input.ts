@@ -15,8 +15,8 @@ export function buildSandboxInput(
       !Array.isArray(params.env)
         ? { env: params.env }
         : undefined),
-      ...(optionalNumber(params.timeoutMs)
-        ? { timeoutMs: optionalNumber(params.timeoutMs) }
+      ...(optionalNumber(params.timeout_ms)
+        ? { timeoutMs: optionalNumber(params.timeout_ms) }
         : undefined),
     };
   }
@@ -42,8 +42,8 @@ export function buildSandboxInput(
       pattern: String(params.pattern ?? ""),
       ...(typeof params.path === "string" ? { path: params.path } : undefined),
       ...(typeof params.glob === "string" ? { glob: params.glob } : undefined),
-      ...(typeof params.ignoreCase === "boolean"
-        ? { ignoreCase: params.ignoreCase }
+      ...(typeof params.ignore_case === "boolean"
+        ? { ignoreCase: params.ignore_case }
         : undefined),
       ...(typeof params.literal === "boolean"
         ? { literal: params.literal }

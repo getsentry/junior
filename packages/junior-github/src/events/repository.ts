@@ -1,4 +1,5 @@
 import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import { gitHubRepoDataSchema } from "./scope.js";
 import { GITHUB_DEPLOYMENT_EVENTS } from "./deployment.js";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
 import {
@@ -50,8 +51,9 @@ export function gitHubRepositorySubscribable(input: {
   if (!input.canSubscribe) return undefined;
   return {
     ...gitHubRepositoryResource(input),
-    suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
-    supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+    match: { repo: gitHubRepoDataSchema.parse(input.repo) },
+    suggested_events: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+    supported_events: [...GITHUB_REPOSITORY_EVENTS],
     type: "repository",
   };
 }

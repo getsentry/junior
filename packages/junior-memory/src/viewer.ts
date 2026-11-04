@@ -313,9 +313,11 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
         sql<number>`count(*) filter (where ${juniorMemoryMemories.createdAtMs} >= ${nowMs - 30 * DAY_MS})`.mapWith(
           Number,
         ),
-      embedded: sql<number>`count(${juniorMemoryEmbeddings.memoryId})`.mapWith(
-        Number,
-      ),
+      // EXISTS, not a join: a memory can have one vector per model.
+      embedded:
+        sql<number>`count(*) filter (where exists (select 1 from ${juniorMemoryEmbeddings} where ${juniorMemoryEmbeddings.memoryId} = ${juniorMemoryMemories.id}))`.mapWith(
+          Number,
+        ),
       explicit:
         sql<number>`count(*) filter (where ${juniorMemoryMemories.idempotencyKey} like 'tool:%')`.mapWith(
           Number,
@@ -342,10 +344,6 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
         ),
     })
     .from(juniorMemoryMemories)
-    .leftJoin(
-      juniorMemoryEmbeddings,
-      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-    )
     .where(activeMemoryPredicate(userId, nowMs));
   if (!counts) throw new Error("Memory stats query returned no row.");
   return counts;

@@ -1,17 +1,16 @@
 import { z } from "zod";
 import {
-  canExposeConversationPayload,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
-import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
   type ConversationEventPage,
   type KnownConversationEventType,
 } from "@/chat/conversations/history";
-import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  assertCanReadConversationEvents,
+  stripReplacementHistory,
+} from "@/chat/conversations/event-access";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -44,7 +43,11 @@ const projectedEventSchema = z
       .min(1)
       .optional()
       .describe("Retry-stable event identity, when assigned."),
-    data: z.record(z.string(), z.unknown()).describe("Bounded event data."),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe(
+        "Bounded event data. Read an omitted payload with readConversationEvent.",
+      ),
   })
   .strict();
 
@@ -60,13 +63,6 @@ const searchConversationEventsOutputSchema = juniorToolOutputSchema.extend({
     .optional()
     .describe("Events omitted by the response byte limit."),
 });
-
-interface ConversationEventAccessScope {
-  currentConversationId: string;
-  currentRootConversationId?: string;
-  provider?: string;
-  providerTenantId?: string;
-}
 
 /** Create a deferred tool that searches one conversation's durable event log. */
 export function createSearchConversationEventsTool(
@@ -145,41 +141,7 @@ export function createSearchConversationEventsTool(
         );
       }
 
-      const conversationStore = getConversationStore();
-      const target = await conversationStore.get({ conversationId });
-      if (!target) {
-        throw new ToolInputError(`Conversation not found: ${conversationId}`);
-      }
-      if (target.transcriptPurgedAtMs !== undefined) {
-        throw new ToolInputError(
-          `Conversation transcript was purged: ${conversationId}`,
-        );
-      }
-
-      const accessScope = await resolveAccessScope(
-        conversationStore,
-        context,
-        currentConversationId,
-      );
-      // A Conversation with a parent uses the root privacy boundary.
-      const targetRootConversationId = await resolveRootConversationId(
-        conversationStore,
-        conversationId,
-        target.parentConversationId,
-      );
-      const targetRoot =
-        targetRootConversationId === conversationId
-          ? target
-          : await conversationStore.get({
-              conversationId: targetRootConversationId,
-            });
-      assertCanSearchConversationEvents({
-        accessScope,
-        targetConversationId: conversationId,
-        targetRootConversationId,
-        targetVisibility: targetRoot?.visibility ?? target.visibility,
-        targetDestination: targetRoot?.destination ?? target.destination,
-      });
+      await assertCanReadConversationEvents(context, conversationId);
 
       const page = await getConversationEventStore().query(conversationId, {
         limit,
@@ -204,141 +166,6 @@ export function createSearchConversationEventsTool(
       };
     },
   });
-}
-
-async function resolveAccessScope(
-  conversationStore: ConversationStore,
-  context: ToolRuntimeContext,
-  currentConversationId: string,
-): Promise<ConversationEventAccessScope> {
-  const current = await conversationStore.get({
-    conversationId: currentConversationId,
-  });
-  const currentRootConversationId = current
-    ? await resolveRootConversationId(
-        conversationStore,
-        currentConversationId,
-        current.parentConversationId,
-      )
-    : currentConversationId;
-
-  if (context.location?.provider === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.location.teamId,
-    };
-  }
-
-  // TODO(dcramer): Remove the Source and Destination fallbacks after every
-  // deployed Slack Conversation has a stored Location and AgentRun no longer
-  // has Destination.
-  if (context.source.kind === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.source.teamId,
-    };
-  }
-
-  if (
-    context.destination.platform === "slack" &&
-    "teamId" in context.destination
-  ) {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.destination.teamId,
-    };
-  }
-
-  return {
-    currentConversationId,
-    currentRootConversationId,
-  };
-}
-
-async function resolveRootConversationId(
-  conversationStore: ConversationStore,
-  conversationId: string,
-  parentConversationId: string | undefined,
-): Promise<string> {
-  if (!parentConversationId) {
-    return conversationId;
-  }
-
-  let cursor: string | undefined = parentConversationId;
-  const seen = new Set<string>([conversationId]);
-  while (cursor) {
-    if (seen.has(cursor)) {
-      // Fail closed on cycles; callers treat missing root as unauthorized.
-      return conversationId;
-    }
-    seen.add(cursor);
-    const parent = await conversationStore.get({ conversationId: cursor });
-    if (!parent) {
-      return conversationId;
-    }
-    if (!parent.parentConversationId) {
-      return parent.conversationId;
-    }
-    cursor = parent.parentConversationId;
-  }
-  return conversationId;
-}
-
-function assertCanSearchConversationEvents(args: {
-  accessScope: ConversationEventAccessScope;
-  targetConversationId: string;
-  targetRootConversationId?: string;
-  targetVisibility?: ConversationPrivacy;
-  targetDestination?: {
-    platform: string;
-    teamId?: string;
-    channelId?: string;
-    conversationId?: string;
-  };
-}): void {
-  const {
-    accessScope,
-    targetConversationId,
-    targetRootConversationId,
-    targetVisibility,
-    targetDestination,
-  } = args;
-
-  if (
-    targetConversationId === accessScope.currentConversationId ||
-    (targetRootConversationId !== undefined &&
-      targetRootConversationId === accessScope.currentRootConversationId)
-  ) {
-    return;
-  }
-
-  const publicPayloadAllowed = canExposeConversationPayload(
-    targetVisibility ? { visibility: targetVisibility } : {},
-  );
-  if (!publicPayloadAllowed) {
-    throw new ToolInputError(
-      `Conversation events are not accessible: ${targetConversationId}`,
-    );
-  }
-
-  if (
-    accessScope.provider === "slack" &&
-    targetDestination?.platform === "slack" &&
-    accessScope.providerTenantId &&
-    targetDestination.teamId === accessScope.providerTenantId
-  ) {
-    return;
-  }
-
-  throw new ToolInputError(
-    `Conversation events are not accessible: ${targetConversationId}`,
-  );
 }
 
 function projectEventsForTool(
@@ -429,37 +256,6 @@ function eventIdentity(data: Record<string, unknown>) {
         : [];
     }),
   );
-}
-
-function stripReplacementHistory(
-  data: ConversationEvent["data"],
-): ConversationEvent["data"] | Record<string, unknown> {
-  if (data.type === "unknown") {
-    return {
-      ...data,
-      payload: stripReplacementHistoryField(data.payload),
-    };
-  }
-  if (data.type === "compaction" || data.type === "handoff") {
-    return stripReplacementHistoryField(data) as Record<string, unknown>;
-  }
-  return data;
-}
-
-function stripReplacementHistoryField(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const { replacementHistory, ...rest } = value as Record<string, unknown>;
-  if (replacementHistory === undefined) {
-    return value;
-  }
-  return {
-    ...rest,
-    replacement_history_count: Array.isArray(replacementHistory)
-      ? replacementHistory.length
-      : 0,
-  };
 }
 
 export type { KnownConversationEventType };

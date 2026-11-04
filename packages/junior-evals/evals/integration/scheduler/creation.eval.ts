@@ -26,16 +26,16 @@ describe("Schedule Creation", () => {
       }),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       outcomes: [{ action: "send_message", destination: "task_creator" }],
-      schedule: {
-        kind: "one_off",
-        timing: { type: "after", value: 1, unit: "minute" },
+      trigger: {
+        type: "schedule",
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
       },
     });
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
@@ -62,21 +62,21 @@ describe("Schedule Creation", () => {
       }),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
-      schedule: {
-        kind: "one_off",
-        timing: { type: "after", value: 1, unit: "minute" },
+      trigger: {
+        type: "schedule",
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 1, unit: "minute" },
+        },
       },
     });
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  test("when a reminder for the requester posts to the channel, save it for the Automation creator without conversation references", async ({
+  test("when a reminder posts to the channel, save it without conversation references", async ({
     run,
   }) => {
     const conversation = await run(
@@ -85,15 +85,11 @@ describe("Schedule Creation", () => {
       ),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     // The run does not see this request, so "this channel" would mean nothing.
+    // `createAutomation` rejects it, so a saved instruction never has it.
     const { instruction } = creates[0]!.input as { instruction?: string };
-    expect(instruction).toMatch(/\bAutomation creator\b/i);
-    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
     expect(instruction).not.toMatch(/\bthis channel\b/i);
   });
 
@@ -104,18 +100,18 @@ describe("Schedule Creation", () => {
       slackMention("in 2 minutes tell the channel standup moved"),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
-      schedule: {
-        kind: "one_off",
-        timing: { type: "after", value: 2, unit: "minute" },
+      trigger: {
+        type: "schedule",
+        schedule: {
+          kind: "one_off",
+          timing: { type: "after", value: 2, unit: "minute" },
+        },
       },
     });
     const { instruction } = creates[0]!.input as { instruction?: string };
@@ -134,19 +130,19 @@ describe("Schedule Creation", () => {
       ),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     const { outcomes } = creates[0]!.input as { outcomes?: unknown[] };
     expect(outcomes ?? []).toEqual([]);
     expect(creates[0]!.input).toMatchObject({
-      schedule: {
-        kind: "recurring",
-        frequency: "daily",
-        time: "02:00",
-        timezone: "America/Los_Angeles",
+      trigger: {
+        type: "schedule",
+        schedule: {
+          kind: "recurring",
+          frequency: "daily",
+          time: "02:00",
+          timezone: "America/Los_Angeles",
+        },
       },
     });
   });
@@ -174,20 +170,20 @@ describe("Schedule Creation", () => {
       }),
     );
 
-    const creates = completedToolCalls(
-      "slackScheduleCreateAutomation",
-      conversation,
-    );
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
-      schedule: {
-        kind: "recurring",
-        frequency: "weekly",
-        time: "09:00",
-        weekdays: ["monday"],
+      trigger: {
+        type: "schedule",
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          time: "09:00",
+          weekdays: ["monday"],
+        },
       },
     });
   });

@@ -24,6 +24,7 @@ import {
   getPluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -36,11 +37,12 @@ import { serializeGenAiAttribute, type LogContext } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
+import { listWorkspaces } from "@/chat/workspaces/store";
+import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
 import type {
   AgentAttachment,
@@ -79,6 +81,28 @@ export interface PromptAssembly {
   promptHistoryMessages: PiMessage[];
   shouldPromptAgent: boolean;
   turnContexts: PluginTurnContext[];
+  userContentParts: UserContentPart[];
+}
+
+/** Context that plugin prompt hooks and the user customization read. */
+export type PromptHookContext = Parameters<
+  typeof getPluginUserPromptContributions
+>[0]["context"];
+
+/** Per-Turn prompt context that `assemblePrompt` adds to a new prompt. */
+export interface PromptTurnContext {
+  conversationNotes?: Awaited<ReturnType<typeof loadTurnConversationNotes>>;
+  pluginUserPromptContributions: Awaited<
+    ReturnType<typeof getPluginUserPromptContributions>
+  >;
+  userCustomization?: string;
+  workspaces?: Workspace[];
+}
+
+interface PromptReplayArgs {
+  existingSessionPiMessages?: PiMessage[];
+  existingTurnStartMessageIndex?: number;
+  resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
 
@@ -446,7 +470,7 @@ function isUserContentPart(value: unknown): value is UserContentPart {
 // Load the saved text of the person who sent this Turn, so each person in a
 // shared thread gets only their own customization.
 async function loadUserCustomization(
-  context: Pick<ToolRuntimeContext, "resolveActorIdentity">,
+  context: Pick<PromptHookContext, "resolveActorIdentity">,
 ): Promise<string | undefined> {
   if (!isExperimentalFeatureEnabled("user-customization")) return undefined;
   const user = (await context.resolveActorIdentity?.())?.user;
@@ -515,6 +539,73 @@ function checkpointedPrompt(args: {
   };
 }
 
+// A resumed slice continues its checkpointed prompt. A redelivered prompt
+// reuses its checkpointed copy. Only a new prompt gets new Turn context.
+function planPromptReplay(args: PromptReplayArgs) {
+  const hasPromptCheckpoint =
+    args.resumedFromSessionRecord &&
+    args.existingTurnStartMessageIndex !== undefined;
+  const shouldPromptAgent =
+    !args.resumedFromSessionRecord || !hasPromptCheckpoint;
+  const replayedPrompt =
+    shouldPromptAgent && !args.resumedFromSessionRecord
+      ? checkpointedPrompt({
+          messages: args.existingSessionPiMessages,
+          turnStartMessageIndex: args.existingTurnStartMessageIndex,
+          userContentParts: args.userContentParts,
+        })
+      : undefined;
+  return {
+    loadsTurnContext: shouldPromptAgent && !replayedPrompt,
+    replayedPrompt,
+    shouldPromptAgent,
+  };
+}
+
+/**
+ * Load the Turn context for a new prompt: plugin prompt hooks, such as
+ * memory recall, Conversation notes, and the user customization.
+ *
+ * It needs no tool wiring or Turn route, so the caller can run it while the
+ * router and sandbox setup run.
+ */
+export async function loadPromptTurnContext(
+  args: PromptReplayArgs & {
+    context: PromptHookContext;
+    currentActor?: Actor;
+    turnId: string;
+  },
+): Promise<PromptTurnContext> {
+  if (!planPromptReplay(args).loadsTurnContext) {
+    return { pluginUserPromptContributions: [] };
+  }
+  const [
+    pluginUserPromptContributions,
+    conversationNotes,
+    userCustomization,
+    workspaces,
+  ] = await Promise.all([
+    getPluginUserPromptContributions({
+      context: args.context,
+      turnId: args.turnId,
+    }),
+    loadTurnConversationNotes({
+      conversationId: args.context.conversationId,
+      turnId: args.turnId,
+    }),
+    isUserActor(args.currentActor)
+      ? loadUserCustomization(args.context)
+      : undefined,
+    listWorkspaces(getDb()),
+  ]);
+  return {
+    conversationNotes,
+    pluginUserPromptContributions,
+    userCustomization,
+    workspaces,
+  };
+}
+
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
@@ -539,22 +630,19 @@ export async function assemblePrompt(args: {
     | "parentConversationId"
   >;
   spanContext: LogContext;
-  turnId: string;
   disabledTools: DisabledToolPromptContext[];
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
     promptSnippet: AnyToolDefinition["promptSnippet"];
   }>;
-  toolRuntimeContext: ToolRuntimeContext;
+  /** Result of `loadPromptTurnContext` for the same prompt arguments. */
+  turnContext: PromptTurnContext;
   userContentParts: UserContentPart[];
 }): Promise<PromptAssembly> {
   const source = args.run.source;
-  const hasPromptCheckpoint =
-    args.resumedFromSessionRecord &&
-    args.existingTurnStartMessageIndex !== undefined;
-  const shouldPromptAgent =
-    !args.resumedFromSessionRecord || !hasPromptCheckpoint;
+  const { loadsTurnContext, replayedPrompt, shouldPromptAgent } =
+    planPromptReplay(args);
   const requestContentParts = args.userContentParts;
   // Every re-prompt shape must trim a trailing checkpointed copy of the same
   // user prompt, including redelivery of the same inbound message after a
@@ -567,14 +655,6 @@ export async function assemblePrompt(args: {
       )
     : { messages: args.existingSessionPiMessages! };
   const promptHistoryMessages = trimmedPrompt.messages;
-  const replayedPrompt =
-    shouldPromptAgent && !args.resumedFromSessionRecord
-      ? checkpointedPrompt({
-          messages: args.existingSessionPiMessages,
-          turnStartMessageIndex: args.existingTurnStartMessageIndex,
-          userContentParts: requestContentParts,
-        })
-      : undefined;
   const needsBootstrapContextForPrompt =
     shouldPromptAgent &&
     !replayedPrompt &&
@@ -602,27 +682,15 @@ export async function assemblePrompt(args: {
   ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
-  const pluginUserPromptContributions =
-    !shouldPromptAgent || replayedPrompt
-      ? []
-      : await getPluginUserPromptContributions({
-          context: args.toolRuntimeContext,
-          turnId: args.turnId,
-        });
-  const disabledTools =
-    !shouldPromptAgent || replayedPrompt ? [] : args.disabledTools;
-  // A replayed or checkpointed prompt already holds the notes of this Turn.
-  const conversationNotes =
-    !shouldPromptAgent || replayedPrompt
-      ? undefined
-      : await loadTurnConversationNotes({
-          conversationId: args.toolRuntimeContext.conversationId,
-          turnId: args.turnId,
-        });
-  const userCustomization =
-    !shouldPromptAgent || replayedPrompt || !isUserActor(args.currentActor)
-      ? undefined
-      : await loadUserCustomization(args.toolRuntimeContext);
+  // A replayed or checkpointed prompt already holds the context of this Turn,
+  // so `loadPromptTurnContext` returns nothing for it.
+  const {
+    conversationNotes,
+    pluginUserPromptContributions,
+    userCustomization,
+    workspaces,
+  } = args.turnContext;
+  const disabledTools = loadsTurnContext ? args.disabledTools : [];
   const turnContextPrompt =
     needsBootstrapContextForPrompt ||
     pluginUserPromptContributions.length > 0 ||
@@ -638,6 +706,7 @@ export async function assemblePrompt(args: {
           pluginPromptContributions: pluginUserPromptContributions,
           toolGuidance: args.toolGuidance,
           userCustomization,
+          workspaces,
           runtime: {
             conversationId: args.spanContext.conversationId,
             slackConversation: args.run.slackConversation,

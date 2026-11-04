@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
   EgressAuthRequired,
+  type PluginSandbox,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
   type ToolRegistrationHookContext,
@@ -17,7 +18,11 @@ import {
   vi,
 } from "vitest";
 import { githubPlugin } from "../src/index";
-import { gitHooksPath, REPOSITORY_HOOK_NAMES } from "../src/git-config";
+import {
+  gitHooksPath,
+  REPOSITORY_HOOK_NAMES,
+  repositoryHook,
+} from "../src/git-config";
 import { gitHubDeploymentSourceResource } from "../src/events/deployment";
 import { gitHubIssueResource } from "../src/events/issue";
 import { gitHubPullRequestResource } from "../src/events/pull-request";
@@ -149,46 +154,62 @@ const pluginLog = {
 };
 
 /**
- * Recover the exact hook scripts sandboxPrepare writes and stage them with a
- * seeded commit message file, so tests execute the real generated bash
- * instead of asserting on script text.
+ * Sandbox that runs commands on this host in a temp dir, with Git's global
+ * config file in that dir, so tests run the real sandboxPrepare command.
  */
-async function prepareCommitMsgHookFixture(initialMessage: string) {
-  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+async function localSandbox() {
+  const { mkdtempSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  const { basename, join } = await import("node:path");
+  const { join } = await import("node:path");
   const { spawnSync } = await import("node:child_process");
 
-  const hookScripts = new Map<string, string>();
+  const dir = mkdtempSync(join(tmpdir(), "junior-github-sandbox-"));
+  const gitConfigPath = join(dir, ".gitconfig");
+  const calls: string[] = [];
+  const sandbox: PluginSandbox = {
+    juniorRoot: dir,
+    root: dir,
+    async readFile() {
+      calls.push("readFile");
+      return null;
+    },
+    async run(input) {
+      calls.push(`run ${input.cmd}`);
+      const result = spawnSync(input.cmd, input.args ?? [], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: dir, GIT_CONFIG_GLOBAL: gitConfigPath },
+      });
+      return {
+        exitCode: result.status ?? 1,
+        stderr: result.stderr,
+        stdout: result.stdout,
+      };
+    },
+    async writeFile() {
+      calls.push("writeFile");
+    },
+  };
+  return { calls, dir, gitConfigPath, sandbox };
+}
+
+/**
+ * Run sandboxPrepare in a local sandbox and seed a commit message file, so
+ * tests execute the real generated hooks instead of asserting on script text.
+ */
+async function prepareCommitMsgHookFixture(initialMessage: string) {
+  const { writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+
+  const { dir, sandbox } = await localSandbox();
   await githubPlugin().hooks?.sandboxPrepare?.({
     db,
     log: pluginLog,
     plugin: { name: "github" },
-    sandbox: {
-      juniorRoot: "/vercel/sandbox/.junior",
-      root: "/vercel/sandbox",
-      async readFile() {
-        return null;
-      },
-      async run() {
-        return { exitCode: 0, stderr: "", stdout: "" };
-      },
-      async writeFile(input) {
-        hookScripts.set(basename(input.path), String(input.content));
-      },
-    },
+    sandbox,
   } as SandboxPrepareHookContext);
-  if (!hookScripts.has("prepare-commit-msg")) {
-    throw new Error("prepare-commit-msg hook was not written");
-  }
 
-  const dir = mkdtempSync(join(tmpdir(), "junior-github-hook-"));
-  const hooksDir = gitHooksPath(dir);
-  mkdirSync(hooksDir);
-  for (const [name, script] of hookScripts) {
-    writeFileSync(join(hooksDir, name), script, { mode: 0o755 });
-  }
-  const hookPath = join(hooksDir, "prepare-commit-msg");
+  const hookPath = join(gitHooksPath(dir), "prepare-commit-msg");
   const messagePath = join(dir, "COMMIT_EDITMSG");
   writeFileSync(messagePath, initialMessage);
 
@@ -627,11 +648,13 @@ describe("github plugin", () => {
     expect(events?.events).toMatchObject({
       "pull_request.checks.failed": {
         reach: { anyOf: ["repo"] },
-        guidance: "Inspect the failed checks.",
+        guidance: expect.stringMatching(
+          /^Fix only failures .* Inspect the failed checks\.$/,
+        ),
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
-          "exact repo, commentId, and commentKind from Verified details",
+          "exact repo, comment_id, and comment_kind from Verified details",
         ),
       },
       "pull_request.review_comment.created": {
@@ -944,7 +967,7 @@ describe("github plugin", () => {
         namespace: "github",
         identifier: "getsentry/junior#660",
         type: "issue",
-        supportedEvents: [
+        supported_events: [
           "issue.comment.created",
           "issue.opened",
           "issue.closed",
@@ -1497,7 +1520,7 @@ Conversation: \`local:test:old-conversation\`
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
-        suggestedEvents: [
+        suggested_events: [
           "pull_request.checks.failed",
           "pull_request.comment.created",
           "pull_request.ready_for_review",
@@ -1506,8 +1529,9 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
@@ -1519,6 +1543,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         type: "pull_request",
       },
@@ -1584,7 +1609,7 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject({
       subscribable: {
-        suggestedEvents: expect.not.arrayContaining([
+        suggested_events: expect.not.arrayContaining([
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
         ]),
@@ -1593,18 +1618,22 @@ Conversation: \`local:test:old-conversation\`
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.merge_conflict",
           "pull_request.review.approved",
           "pull_request.merged",
         ],
         id: "subscription-1",
       },
     });
-    // Approval and merge always reach the people involved, so the Watch
-    // stores guidance for those outcomes.
+    // Merge conflicts always reach the Watch, so Junior keeps its pull
+    // request ready to merge. Approval and merge always reach the people
+    // involved, so the Watch stores guidance for those outcomes. A merge
+    // restacks the open pull requests above it first.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
         "pull_request.review.changes_requested",
+        "pull_request.merge_conflict",
         "pull_request.review.approved",
         "pull_request.merged",
       ],
@@ -1612,8 +1641,8 @@ Conversation: \`local:test:old-conversation\`
         "pull_request.review.approved": expect.stringContaining(
           "Mention each person in People involved",
         ),
-        "pull_request.merged": expect.stringContaining(
-          "Mention each person in People involved",
+        "pull_request.merged": expect.stringMatching(
+          /gh stack sync[\s\S]*mention each person in People involved/,
         ),
       },
       intent: "Report failed checks and requested changes.",
@@ -1654,7 +1683,9 @@ Conversation: \`local:test:old-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
       subscribable: {
-        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
+        suggested_events: expect.arrayContaining([
+          "pull_request.checks.failed",
+        ]),
       },
     });
     expect(result).not.toHaveProperty("subscription");
@@ -1742,6 +1773,88 @@ Conversation: \`local:test:old-conversation\`
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
+
+  it.each([
+    {
+      name: "creates a stack with the pull request below",
+      stacks: [],
+      write: {
+        operation: "github.stack.create",
+        url: "https://api.github.com/repos/getsentry/junior/stacks",
+        pullRequests: [700, 701],
+      },
+      stack: [700, 701],
+    },
+    {
+      name: "adds to the stack whose top is the pull request below",
+      stacks: [
+        { number: 9, pull_requests: [{ number: 699 }, { number: 700 }] },
+      ],
+      write: {
+        operation: "github.stack.add",
+        url: "https://api.github.com/repos/getsentry/junior/stacks/9/add",
+        pullRequests: [701],
+      },
+      stack: [699, 700, 701],
+    },
+  ])(
+    "links a pull request based on another pull request branch: $name",
+    async ({ stack, stacks, write }) => {
+      const repo = { default_branch: "main", full_name: "getsentry/junior" };
+      const ctx = githubToolsContext({
+        egressFetch: async ({ operation, request }) => {
+          if (operation === "github.pull.create") {
+            return Response.json(
+              {
+                number: 701,
+                html_url: "https://github.com/getsentry/junior/pull/701",
+                head: { ref: "feat/top", repo },
+                base: { ref: "feat/bottom", repo },
+              },
+              { status: 201 },
+            );
+          }
+          if (operation === "github.pull.list") {
+            // Only feat/bottom has an open pull request, so main is the trunk.
+            return Response.json(
+              new URL(request.url).searchParams.get("head") ===
+                "getsentry:feat/bottom"
+                ? [{ number: 700, base: { ref: "main" } }]
+                : [],
+            );
+          }
+          if (operation === "github.stack.read") return Response.json(stacks);
+          return Response.json({
+            number: 9,
+            pull_requests: stack.map((number) => ({ number })),
+          });
+        },
+      });
+      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Top of the stack",
+            head: "feat/top",
+            base: "feat/bottom",
+          },
+          { toolCallId: "call-create-stacked-pull-request" },
+        ),
+      ).resolves.toMatchObject({
+        number: 701,
+        stack: { number: 9, pull_requests: stack },
+      });
+      const stackWrite = ctx.egressRequests().at(-1)!;
+      expect(stackWrite).toMatchObject({ operation: write.operation });
+      expect(stackWrite.request.method).toBe("POST");
+      expect(stackWrite.request.url).toBe(write.url);
+      await expect(stackWrite.request.json()).resolves.toEqual({
+        pull_requests: write.pullRequests,
+      });
+    },
+  );
 
   it("omits requester attribution when identity and actor names are unresolved", async () => {
     const ctx = githubToolsContext({
@@ -3423,58 +3536,59 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("prepares git attribution hooks and sandbox git config", async () => {
-    const started: string[] = [];
-    const writes: Array<{ content: string | Uint8Array; path: string }> = [];
+    const { readdirSync, readFileSync, rmSync, statSync, writeFileSync } =
+      await import("node:fs");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
 
-    const plugin = githubPlugin();
+    const { calls, dir, gitConfigPath, sandbox } = await localSandbox();
+    const hooksPath = gitHooksPath(dir);
     const ctx: SandboxPrepareHookContext = {
       db,
-      log: {
-        error() {},
-        info() {},
-        warn() {},
-      },
+      log: pluginLog,
       plugin: { name: "github" },
-      sandbox: {
-        juniorRoot: "/vercel/sandbox/.junior",
-        root: "/vercel/sandbox",
-        async readFile() {
-          return null;
-        },
-        async run(input) {
-          expect(input.cmd).toBe("git");
-          expect(input.args?.slice(0, 2)).toEqual(["config", "--global"]);
-
-          started.push(String(input.args?.[2]));
-
-          return { exitCode: 0, stderr: "", stdout: "" };
-        },
-        async writeFile(input) {
-          writes.push({ content: input.content, path: input.path });
-        },
-      },
+      sandbox,
     };
+    try {
+      await githubPlugin().hooks?.sandboxPrepare?.(ctx);
+      // A resumed sandbox already has the hooks, maybe from an older Junior.
+      writeFileSync(join(hooksPath, "pre-commit"), "stale\n", { mode: 0o644 });
+      await githubPlugin().hooks?.sandboxPrepare?.(ctx);
 
-    await plugin.hooks?.sandboxPrepare?.(ctx);
+      // Each sandbox call is a provider round trip on every sandbox acquire.
+      expect(calls).toEqual(["run bash", "run bash"]);
+      const hookNames = ["prepare-commit-msg", ...REPOSITORY_HOOK_NAMES];
+      expect(readdirSync(hooksPath).sort()).toEqual(hookNames.sort());
+      for (const name of hookNames) {
+        expect(statSync(join(hooksPath, name)).mode & 0o777).toBe(0o755);
+      }
+      expect(readFileSync(join(hooksPath, "pre-commit"), "utf8")).toBe(
+        repositoryHook("pre-commit"),
+      );
+      const prepareCommitMsg = readFileSync(
+        join(hooksPath, "prepare-commit-msg"),
+        "utf8",
+      );
+      expect(prepareCommitMsg).toContain("JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS");
+      expect(prepareCommitMsg).not.toContain("JUNIOR_GIT_COAUTHOR");
+      expect(prepareCommitMsg).toContain(
+        "Git author was not set to the configured identity",
+      );
 
-    expect(writes.map((write) => write.path)).toEqual(
-      ["prepare-commit-msg", ...REPOSITORY_HOOK_NAMES].map(
-        (name) => `/vercel/sandbox/.junior/git-hooks/${name}`,
-      ),
-    );
-    expect(String(writes[0]?.content)).toContain(
-      "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
-    );
-    expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
-    expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the configured identity",
-    );
-    expect(started).toEqual([
-      "core.hooksPath",
-      "commit.gpgsign",
-      "credential.helper",
-      "http.emptyAuth",
-    ]);
+      const globalConfig = spawnSync(
+        "git",
+        ["config", "--file", gitConfigPath, "--list"],
+        { encoding: "utf8" },
+      );
+      expect(globalConfig.stdout).toBe(
+        `core.hookspath=${hooksPath}\n` +
+          "commit.gpgsign=false\n" +
+          "credential.helper=\n" +
+          "http.emptyauth=true\n",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("preloads workspace repositories through sandbox egress", async () => {

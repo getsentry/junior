@@ -177,7 +177,9 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice. When the merged pull request is in a stack, Junior also restacks the open pull requests above it whose branches it pushed, and resolves conflicts. GitHub rebases the next pull request in a stack after a merge, but it stops at a conflict and sends no event for it.
+
+When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. When the repository has no stacked pull requests, or the pull request below is not on top of its stack, the pull request stays unstacked.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
@@ -319,15 +321,17 @@ every item of that kind in a repository with `owner/repo`. Deployment events can
 target one commit with `deployment_source`, or every deployment in a repository
 with `owner/repo`.
 
-Deployment events carry `repo`, `commitSha`, `deploymentId`, `environment`,
+Deployment events carry `repo`, `commit_sha`, `deployment_id`, `environment`,
 and, when GitHub Actions made the deployment for a job with `environment:`,
-`workflowId`, `workflowPath`, and `workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+`workflow_id`, `workflow_path`, and `workflow_run_id`. Match `environment`, `workflow_id`, or `workflow_path` to limit a
 repository automation to one environment or one workflow. For example, an
 automation on `getsentry/toolkit` for `deployment.failed` can match
-`environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
+`environment: "production"` and `workflow_path: ".github/workflows/deploy.yml"`.
 
-An event automation can also run for every repository, with no identifier.
-Deployment events (`deployment.created`, `deployment.queued`,
+An event automation selects one item with filters instead: `repo` and
+`issue` or `pull_request`, `repo` and `tag`, or `repo`, `commit_sha`, and
+`environment`. Lookup tools return these filters as `match`. With fewer filters,
+it runs for more items. Deployment events (`deployment.created`, `deployment.queued`,
 `deployment.pending`, `deployment.in_progress`, `deployment.succeeded`,
 `deployment.failed`, `deployment.error`) can run that way with no filter.
 Release, issue, and pull request events need a `repo` filter, because they
@@ -337,7 +341,9 @@ so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
 To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
+app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+also always gets `pull_request.review.approved`, `pull_request.merged`, and
+`pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
 `pullRequestEvents.guidance`. The guidance applies within each watch or event
 automation instruction. It does not replace or expand that instruction.
@@ -434,19 +440,19 @@ The issue was reopened.
 #### `pull_request`
 
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
-`pullRequest` in trusted data.
+`pull_request` in trusted data.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
 
 </details>
 
@@ -513,6 +519,27 @@ The pull request closed without merging.
 
 </details>
 
+<details class="event">
+<summary><code>pull_request.merge_conflict</code></summary>
+
+The pull request has merge conflicts with its base branch. GitHub sends no
+webhook for this. When a webhook delivers another event for an open pull
+request, such as a comment, a review, or a check result, and a watch or event
+automation wants this event, Junior checks its mergeability. A `pull_request`
+webhook includes mergeability, so Junior uses it when GitHub knows it. Review,
+comment, and check webhooks do not include it, so Junior reads the pull
+request. If GitHub reports a conflict, Junior publishes this event. Each head commit publishes once. GitHub
+calculates mergeability only when someone reads the pull request, so the first
+read can be unknown, and a later event reads it again. A pull request that gets
+no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
+and `url`. Filters can match only `repo` and `pull_request`. The watch that
+Junior creates after it opens a pull request always gets this event, and the
+default guidance tells the agent to merge the base branch, not rebase. For a
+pull request in a stack, the guidance tells the agent to restack with
+`gh stack rebase`, because a stack merges only with a linear history.
+
+</details>
+
 #### `release_source`
 
 One repository, optionally limited to a tag. Identifier:
@@ -529,7 +556,7 @@ A release was published.
 
 Every deployment, issue, and pull request in `owner/repo`. Supports the same
 `deployment`, `issue`, and `pull_request` events listed above. Check suites with no pull request also
-publish here, so you can match branch builds with `headBranch`.
+publish here, so you can match branch builds with `head_branch`.
 
 ## Verify
 

@@ -19,7 +19,9 @@ const systemTimeInputSchema = z.object({
 });
 
 const systemTimeOutputSchema = juniorToolOutputSchema.extend({
-  unix_ms: z.number(),
+  unix_ms: z
+    .number()
+    .describe("Current time in epoch milliseconds, for millisecond inputs."),
   iso_utc: z.string(),
   iso_local: z.string(),
   timezone: z.string().nullable(),

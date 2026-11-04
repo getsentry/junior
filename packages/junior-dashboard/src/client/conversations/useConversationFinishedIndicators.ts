@@ -12,6 +12,12 @@ type StoredConversationStates = Record<string, StoredConversationState>;
 
 type ConversationFinishedIndicators = {
   finishedConversationIds: ReadonlySet<string>;
+  /**
+   * The selected conversation when it was unread at the moment it opened.
+   * Lists keep it in its unread place until another conversation opens, so
+   * the row does not move under the pointer.
+   */
+  heldConversationId?: string;
   markRead(conversationId: string, lastReadAt: string): void;
 };
 
@@ -23,6 +29,23 @@ export function useConversationFinishedIndicators(
   pruneMissing: boolean,
 ): ConversationFinishedIndicators {
   const [storedStates, setStoredStates] = useState(readStoredStates);
+  const [held, setHeld] = useState<{ heldId?: string; selectedId?: string }>(
+    {},
+  );
+  // Read the unread state when the selection changes, before the effect
+  // below or the opened page marks it read. Hold only a row that the list
+  // already showed. A deep link has no row under the pointer, and the
+  // selected row never leads its section, so it does not move.
+  if (held.selectedId !== selectedId) {
+    const selected = conversations.find(({ id }) => id === selectedId);
+    setHeld({
+      heldId:
+        selected && finishedSinceRead(storedStates, selected)
+          ? selected.id
+          : undefined,
+      selectedId,
+    });
+  }
 
   useEffect(() => {
     if (!ready) return;
@@ -55,6 +78,7 @@ export function useConversationFinishedIndicators(
       () => finishedConversationIds(storedStates, conversations, selectedId),
       [conversations, selectedId, storedStates],
     ),
+    heldConversationId: held.heldId,
     markRead,
   };
 }
@@ -67,16 +91,24 @@ export function finishedConversationIds(
 ): ReadonlySet<string> {
   return new Set(
     conversations
-      .filter((conversation) => {
-        const state = states[conversation.id];
-        return (
+      .filter(
+        (conversation) =>
           conversation.id !== selectedId &&
-          conversation.status === "completed" &&
-          state !== undefined &&
-          isAfter(conversation.lastSeenAt, state.lastReadAt)
-        );
-      })
+          finishedSinceRead(states, conversation),
+      )
       .map((conversation) => conversation.id),
+  );
+}
+
+function finishedSinceRead(
+  states: StoredConversationStates,
+  conversation: Conversation,
+): boolean {
+  const state = states[conversation.id];
+  return (
+    conversation.status === "completed" &&
+    state !== undefined &&
+    isAfter(conversation.lastSeenAt, state.lastReadAt)
   );
 }
 

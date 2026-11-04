@@ -18,6 +18,7 @@ import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import {
+  loadPullRequest,
   loadPullRequestCommitPages,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -63,11 +64,8 @@ import {
 } from "./pull-request-outcomes/store.js";
 import {
   additionalActorCoauthorTrailers,
-  configureGit,
   gitHooksPath,
-  prepareCommitMsgHook,
-  REPOSITORY_HOOK_NAMES,
-  repositoryHook,
+  prepareSandboxGit,
   setGitHooksPathEnv,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
@@ -362,6 +360,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
+            loadPullRequest: async (pullRequest) =>
+              await loadPullRequest(installationEnv, pullRequest),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
@@ -369,6 +369,7 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
+            reviewItems: ctx.reviewItems,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
@@ -381,25 +382,7 @@ export function githubPlugin(
         );
       },
       workspacePrepare: prepareWorkspace,
-      async sandboxPrepare(ctx) {
-        const hooksPath = gitHooksPath(ctx.sandbox.juniorRoot);
-        await ctx.sandbox.writeFile({
-          path: `${hooksPath}/prepare-commit-msg`,
-          mode: 0o755,
-          content: prepareCommitMsgHook(),
-        });
-        for (const name of REPOSITORY_HOOK_NAMES) {
-          await ctx.sandbox.writeFile({
-            path: `${hooksPath}/${name}`,
-            mode: 0o755,
-            content: repositoryHook(name),
-          });
-        }
-        await configureGit(ctx, "core.hooksPath", hooksPath);
-        await configureGit(ctx, "commit.gpgsign", "false");
-        await configureGit(ctx, "credential.helper", "");
-        await configureGit(ctx, "http.emptyAuth", "true");
-      },
+      sandboxPrepare: prepareSandboxGit,
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
           return;

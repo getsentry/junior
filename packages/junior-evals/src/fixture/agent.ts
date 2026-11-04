@@ -16,11 +16,8 @@ import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { forkConversationResponseSchema } from "@/api/schema";
-import {
-  createConversationId,
-  webActorFromEmail,
-} from "@/chat/conversations/web-input";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { createConversationId } from "@/chat/conversations/web-input";
+import { findUserByEmail, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
@@ -47,6 +44,7 @@ import {
   hasHistory,
   loadHistory,
   WEB_VIEWER_EMAIL,
+  webViewerActor,
   type LoadedConversation,
 } from "./history";
 import type { VisibleMessage } from "./judge";
@@ -59,6 +57,7 @@ import {
   readCallEvents,
   readFailedCallRun,
   readConversationDetail,
+  participantSlackUserIds,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
@@ -138,6 +137,8 @@ export interface Conversation extends HarnessRun {
   threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Slack user ids of the participants that the dashboard lists after the call. */
+  participantSlackUserIds: string[];
   /**
    * The label of the connect prompt that the dashboard shows to the person
    * after the call, when a turn waits for their authorization.
@@ -222,6 +223,10 @@ export async function createFixtureAgent(
     pluginTaskQueue: (consume) => ({
       send: async (message) => track(consume(message)),
     }),
+    // Background compaction jobs also run in process.
+    backgroundCompactionQueue: (consume) => ({
+      send: async (message) => track(consume(message)),
+    }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in
@@ -245,15 +250,17 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
-      // Each Slack person is also a dashboard person with their email.
+      // Each Slack person is also a dashboard person with their email. A web
+      // Actor id is the User id.
+      const authors = slack.authors();
+      const webUsers = await Promise.all(
+        [WEB_VIEWER_EMAIL, ...authors.map(slackAuthorEmail)].map((email) =>
+          findUserByEmail(email),
+        ),
+      );
       await forgetAuthorizations([
-        webActorFromEmail(WEB_VIEWER_EMAIL).userId,
-        ...slack
-          .authors()
-          .flatMap((author) => [
-            author.userId,
-            webActorFromEmail(slackAuthorEmail(author)).userId,
-          ]),
+        ...authors.map((author) => author.userId),
+        ...webUsers.flatMap((user) => (user ? [user.id] : [])),
       ]);
     }
   };
@@ -352,7 +359,7 @@ export async function createFixtureAgent(
           app,
           link: prompt.url,
           provider: input.provider,
-          userId: webActorFromEmail(record.viewerEmail).userId,
+          userId: (await webViewerActor(record.viewerEmail)).userId,
         });
         return;
       }
@@ -745,6 +752,7 @@ export async function createFixtureAgent(
       reactions,
       replies,
       statuses,
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles,
       title: detail.displayTitle,
       toolCalls: events.toolCalls,
@@ -855,6 +863,7 @@ export async function createFixtureAgent(
       reactions: [],
       replies: [],
       statuses: [],
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles: [],
       title: detail.displayTitle,
       toolCalls: [],

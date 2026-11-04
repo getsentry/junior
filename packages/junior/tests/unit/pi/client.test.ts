@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
+    rerankingModel: vi.fn((modelId: string) => ({ modelId })),
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
   registerApiProvider: vi.fn(),
+  rerank: vi.fn(),
   resolveGatewayCredential: vi.fn(),
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
@@ -52,8 +54,6 @@ vi.mock("@/chat/pi/gateway-auth", () => ({
     const credential = await mocks.resolveGatewayCredential();
     return credential?.token;
   }),
-  MISSING_GATEWAY_CREDENTIALS_ERROR:
-    "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
   resolveGatewayCredential: mocks.resolveGatewayCredential,
 }));
 
@@ -67,6 +67,7 @@ vi.mock("ai", () => ({
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
   },
+  rerank: mocks.rerank,
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -425,6 +426,32 @@ describe("completeText", () => {
     });
   });
 
+  it("sends the input type only to models that embed queries differently", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2, 0.3]],
+      usage: { tokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    await embedTexts({
+      inputType: "query",
+      modelId: "voyage/voyage-4-lite",
+      texts: ["one"],
+    });
+    await embedTexts({
+      inputType: "query",
+      modelId: "openai/text-embedding-3-small",
+      texts: ["one"],
+    });
+
+    expect(mocks.embedMany.mock.calls[0]?.[0]).toMatchObject({
+      providerOptions: { voyage: { inputType: "query" } },
+    });
+    expect(mocks.embedMany.mock.calls[1]?.[0]).not.toHaveProperty(
+      "providerOptions",
+    );
+  });
+
   it("leaves embedding cost unknown for models without a verified rate", async () => {
     mocks.embedMany.mockResolvedValue({
       embeddings: [[0.1, 0.2, 0.3]],
@@ -459,5 +486,28 @@ describe("completeText", () => {
       }),
     ).rejects.toThrow("AI provider error: invalid_response");
     expect(mocks.setSpanAttributes).not.toHaveBeenCalled();
+  });
+
+  it("returns rerank scores in input order with the gateway cost", async () => {
+    // The SDK sorts by score and AI Gateway reports cost as a decimal string.
+    mocks.rerank.mockResolvedValue({
+      providerMetadata: { gateway: { cost: "0.0000074" } },
+      ranking: [
+        { originalIndex: 1, score: 0.9 },
+        { originalIndex: 0, score: 0.2 },
+      ],
+    });
+
+    const { rerankTexts } = await import("@/chat/pi/client");
+    const result = await rerankTexts({
+      documents: ["one", "two"],
+      modelId: "voyage/rerank-2.5-lite",
+      query: "which one",
+    });
+
+    expect(result).toEqual({ costUsd: 0.0000074, scores: [0.2, 0.9] });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.total_usd": 0.0000074,
+    });
   });
 });

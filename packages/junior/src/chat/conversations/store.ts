@@ -131,6 +131,16 @@ export interface ConversationStore {
     providerTenantId?: string;
   }): Promise<ConversationPrivacy | undefined>;
   /**
+   * Store live visibility for a Destination that has no Conversation yet,
+   * such as a channel that an Automation moves to.
+   */
+  recordDestinationVisibility(args: {
+    channelName?: string;
+    destination: Destination;
+    nowMs?: number;
+    visibility: ConversationPrivacy;
+  }): Promise<void>;
+  /**
    * Resolve one Slack channel id from a known destination display name.
    *
    * Matches only destinations Junior already stored for this workspace. Exact

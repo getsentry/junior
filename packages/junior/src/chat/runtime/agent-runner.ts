@@ -10,6 +10,8 @@ import {
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
@@ -21,13 +23,17 @@ export function createAgentRunner(
   execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
+    backgroundCompactionQueue?: BackgroundCompactionQueue;
     bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
+  const backgroundCompactionQueue = options?.backgroundCompactionQueue;
+  const conversationWorkQueue = options?.conversationWorkQueue;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
@@ -53,6 +59,11 @@ export function createAgentRunner(
           ...run.environment,
           attachmentStorage:
             run.environment?.attachmentStorage ?? attachmentStorage,
+          backgroundCompactionQueue:
+            run.environment?.backgroundCompactionQueue ??
+            backgroundCompactionQueue,
+          conversationWorkQueue:
+            run.environment?.conversationWorkQueue ?? conversationWorkQueue,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
         },

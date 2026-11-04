@@ -394,29 +394,32 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("groups the signed-in profile and session actions in the header", async ({
+test("groups the signed-in profile and session actions in the nav rail", async ({
   page,
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
 
-  const trigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User",
+  const rail = page.locator('[data-slot="sidebar"]').filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
+  });
+  const trigger = rail.getByRole("button", {
+    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.46");
-  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
+  await expect(popover).toContainText("7d $0.46");
+  await expect(popover).toContainText("30d $0.46");
   await expect(
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "API tokens" }),
-  ).toHaveAttribute("href", "/settings/api-tokens");
+    popover.getByRole("link", { name: "Settings", exact: true }),
+  ).toHaveAttribute("href", "/settings");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -430,7 +433,10 @@ test("groups the signed-in profile and session actions in the header", async ({
       request.method() === "POST",
   );
   await page.getByRole("button", { name: "Log out" }).click();
-  await signOutRequest;
+  // Better Auth returns 415 for a sign-out body without a JSON content type.
+  expect((await signOutRequest).headers()["content-type"]).toBe(
+    "application/json",
+  );
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {
@@ -485,15 +491,15 @@ test("inspects and copies a child agent transcript", async ({
     name: "Conversation details",
     exact: true,
   });
-  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
-  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
-  await subagentsTab.click();
+  await expect(
+    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+  ).toBeVisible();
   const subagents = details.getByRole("list", { name: "Subagents" });
   await expect(subagents.getByRole("listitem")).toHaveCount(2);
   await expect(subagents.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
-  await screenshot(page, "conversation-subagents-tab");
+  await screenshot(page, "conversation-subagents");
   // A row opens the same child transcript drawer as the transcript row.
   await subagents
     .getByRole("button", {

@@ -80,7 +80,7 @@ describe("viewImage", () => {
       () => true,
     );
     await expect(textTool.execute?.({ path: "notes.txt" }, {})).rejects.toThrow(
-      "unsupported image format",
+      "not a readable image",
     );
   });
 

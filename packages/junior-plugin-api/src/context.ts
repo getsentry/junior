@@ -80,15 +80,35 @@ export interface PluginModel {
   }>;
 }
 
+/** How embedded text is used. Some models embed queries and documents differently. */
+export type PluginEmbeddingInputType = "document" | "query";
+
 export interface PluginEmbedder {
+  /** Configured embedding model id; embedTexts() reports the same value. */
+  model: string;
+  /** Provider name that embedTexts() reports. */
+  provider: string;
   /** Embed plugin-owned text for derived retrieval without exposing provider credentials. */
-  embedTexts(input: { texts: string[] }): Promise<{
+  embedTexts(input: {
+    inputType?: PluginEmbeddingInputType;
+    texts: string[];
+  }): Promise<{
     /** Best-effort estimated provider cost for this embedding call. */
     costUsd?: number;
     dimensions: number;
     model: string;
     provider: string;
     vectors: number[][];
+  }>;
+}
+
+export interface PluginReranker {
+  /** Score plugin-owned documents against one query without exposing provider credentials. */
+  rerank(input: { documents: string[]; query: string }): Promise<{
+    /** Best-effort provider cost for this reranking call. */
+    costUsd?: number;
+    /** One relevance score per document, in input order. Higher is more relevant. */
+    scores: number[];
   }>;
 }
 

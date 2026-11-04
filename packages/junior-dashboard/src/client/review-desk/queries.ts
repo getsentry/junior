@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
@@ -19,38 +20,49 @@ import {
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
-/** Review desk views. Each shows open items, or archived ones. */
-export const REVIEW_DESK_VIEWS = ["mine", "everyone", "all"] as const;
-export type ReviewDeskView = (typeof REVIEW_DESK_VIEWS)[number];
-
 const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 const COUNT_REFRESH_MS = 60_000;
 
-/** List the Review items that the viewer can see in one view. */
+/**
+ * List the open Review items that the viewer can see, one page at a time.
+ * A search also finds archived items, with the first page. `items` holds the
+ * items of every loaded page, and `query` loads more. `forViewer` drops the
+ * items that are assigned only to other people.
+ */
 export function useReviewItemsData(filters: {
-  archived: boolean;
   conversationId?: string;
+  forViewer?: boolean;
   q?: string;
-  view: ReviewDeskView;
 }) {
-  const params = new URLSearchParams({ view: filters.view });
-  if (filters.archived) params.set("archived", "true");
+  const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
   }
+  if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
   const search = params.toString();
-  return useQuery({
+  const query = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const pageParams = new URLSearchParams(search);
+      if (pageParam) pageParams.set("cursor", pageParam);
+      return fetchDashboardJson(
         reviewItemListSchema,
-        `/api/review-items?${search}`,
+        `/api/review-items?${pageParams.toString()}`,
         signal,
-      ),
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     placeholderData: keepPreviousData,
     retry: false,
   });
+  const pages = query.data?.pages;
+  const items = useMemo(
+    () => (pages ?? []).flatMap((page) => page.items),
+    [pages],
+  );
+  return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
 }
 
 /** Read one Review item, for a link to an item outside the current list. */
@@ -92,7 +104,7 @@ export function useLinkedConversationTitles(
   }).map((query) => query.data ?? undefined);
 }
 
-/** Count the open Review items assigned to the viewer, for the nav. */
+/** Count the open action items assigned to the viewer, for the nav. */
 export function useReviewItemCountData(enabled: boolean) {
   return useQuery({
     enabled,
@@ -126,7 +138,7 @@ export function useBlockedAutomationsData(enabled: boolean) {
   });
 }
 
-/** Take, submit, complete, or dismiss one Review item. */
+/** Take, submit, or dismiss one Review item. */
 export function useReviewItemAction() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -141,13 +153,20 @@ export function useReviewItemAction() {
   });
 }
 
-const NO_CONVERSATIONS: ReadonlySet<string> = new Set();
+/** Newest open Review item title and item count for one waiting Conversation. */
+export type WaitingConversation = { count: number; title: string };
+
+const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
 /**
- * Return the Conversations that wait on the viewer. Today only the review
- * desk sets this: an open linked item assigned to the viewer or Everyone.
+ * Return the Conversations that wait on the viewer, by Conversation id. Today
+ * only the review desk sets this: a linked open action item assigned to the
+ * viewer.
  */
-export function useWaitingConversationIds(): ReadonlySet<string> {
+export function useWaitingConversations(): ReadonlyMap<
+  string,
+  WaitingConversation
+> {
   const query = useQuery({
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
     queryFn: ({ signal }) =>
@@ -159,6 +178,23 @@ export function useWaitingConversationIds(): ReadonlySet<string> {
     refetchInterval: COUNT_REFRESH_MS,
     retry: false,
   });
-  const ids = query.data?.conversationIds;
-  return useMemo(() => (ids ? new Set(ids) : NO_CONVERSATIONS), [ids]);
+  const conversations = query.data?.conversations;
+  return useMemo(
+    () =>
+      conversations
+        ? new Map(
+            conversations.map(({ conversationId, count, title }) => [
+              conversationId,
+              { count, title },
+            ]),
+          )
+        : NO_WAITING,
+    [conversations],
+  );
+}
+
+/** Return the ids of the Conversations that wait on the viewer. */
+export function useWaitingConversationIds(): ReadonlySet<string> {
+  const waiting = useWaitingConversations();
+  return useMemo(() => new Set(waiting.keys()), [waiting]);
 }

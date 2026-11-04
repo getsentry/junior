@@ -88,15 +88,6 @@ const context: ToolRuntimeContext = {
   },
   // Guardian evals never run a tool, so no tool touches the sandbox.
   workspace: {} as ToolRuntimeContext["workspace"],
-  // The agent has publishImage only with attachment storage.
-  attachmentStorage: {
-    provider: "guardian-eval",
-    async put() {},
-    async get() {
-      return null;
-    },
-    async delete() {},
-  },
 };
 
 let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;

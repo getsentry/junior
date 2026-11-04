@@ -156,6 +156,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
+    convertToLlm(messages: unknown[]) {
+      return messages;
+    }
+
     subscribe(subscriber: (event: unknown) => unknown) {
       this.subscribers.push(subscriber);
       return () => {
@@ -245,6 +249,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         );
         await this.prepareNextTurn?.({
           context: { messages: this.state.messages },
+          toolResults: [toolResult],
         });
         // The compaction checkpoint is the resume point if this slice stops.
         compactionState.checkpointTurnStartMessageIndex = (
@@ -334,6 +339,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         try {
           await this.prepareNextTurn?.({
             context: { messages: this.state.messages },
+            toolResults: [],
           });
         } catch (error) {
           this.recordRunFailure(error);
@@ -364,6 +370,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         try {
           await this.prepareNextTurn?.({
             context: { messages: this.state.messages },
+            toolResults: [],
           });
         } catch (error) {
           this.recordRunFailure(error);
@@ -547,17 +554,26 @@ vi.mock("@/chat/pi/client", () => ({
       reason: "test-router",
     },
   }),
-  completeText: async () => {
-    compactionState.summaryCalls += 1;
-    return {
-      text:
-        agentMode.value === "activeCompaction"
-          ? "No outstanding asks."
-          : "The edit completed; verify the changed file.",
-    };
-  },
+  completeText: async () => ({ text: "Conversation title" }),
   getGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
+}));
+
+// MockAgent never streams. Only the capacity compaction summary does.
+vi.mock("@/chat/pi/traced-stream", () => ({
+  createTracedStreamFn: () => async () => {
+    compactionState.summaryCalls += 1;
+    const text =
+      agentMode.value === "activeCompaction"
+        ? "No outstanding asks."
+        : "The edit completed; verify the changed file.";
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: `<summary>${text}</summary>` }],
+      stopReason: "stop",
+    };
+    return { result: async () => message };
+  },
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => {

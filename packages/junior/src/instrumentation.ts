@@ -1,4 +1,5 @@
 import * as Sentry from "@/chat/sentry";
+import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
   scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
@@ -77,4 +78,5 @@ export function initSentry(): void {
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.
   Sentry.getGlobalScope().setAttributes(deploymentSpanAttributes);
+  subscribeGatewayRequestTiming();
 }

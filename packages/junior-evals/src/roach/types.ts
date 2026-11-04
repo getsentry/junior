@@ -1,6 +1,7 @@
 /**
  * The public types of Roach: rules, modes, runs, and the results of a run.
- * See `README.md` in this directory.
+ * Local change from upstream (see `client.ts`): adds `RunConfig` and
+ * `RemoteRun` from `src/service.ts`.
  */
 import type { ValuePatterns } from "./values.ts";
 

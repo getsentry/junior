@@ -4,6 +4,7 @@ import type {
   InputImage,
 } from "@sentry/junior/api/schema";
 import type { Route } from "@playwright/test";
+import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
@@ -715,8 +716,8 @@ test("stops the active Turn and returns queued text to the composer", async ({
   // The worker removes stopped rows later, so polls can still list them. Keep
   // them hidden, also after leaving the view remounts the footer.
   queued = [queuedMessage, sentMessage];
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
-  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
+  await chooseTranscriptView(page, "Conversation");
   await expect(composer).toBeVisible();
   await expect(pending).toBeHidden();
 

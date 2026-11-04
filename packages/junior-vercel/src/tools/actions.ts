@@ -15,7 +15,7 @@ const team = text
     "Vercel team slug or team_ ID. Omit for the token's default account.",
   )
   .optional();
-const deploymentId = z
+const deploymentIdSchema = z
   .string()
   .regex(/^dpl_[a-zA-Z0-9]+$/)
   .describe("Exact Vercel deployment ID, not an alias.");
@@ -36,12 +36,12 @@ const deploymentSchema = z.object({
 });
 const deploymentOutput = pluginToolOutputSchema.extend({
   target: z.literal("deployment"),
-  deploymentId: text,
+  deployment_id: text,
   url: text,
   state: text,
-  deploymentTarget: z.string().nullable(),
-  projectId: text.nullable(),
-  commitSha: text.nullable(),
+  deployment_target: z.string().nullable(),
+  project_id: text.nullable(),
+  commit_sha: text.nullable(),
   ref: text.nullable(),
 });
 const aliasSchema = z.object({
@@ -52,7 +52,7 @@ const aliasSchema = z.object({
 const aliasOutput = pluginToolOutputSchema.extend({
   target: z.literal("alias"),
   alias: text,
-  deploymentId: text.nullable(),
+  deployment_id: text.nullable(),
   redirect: text.nullable(),
 });
 
@@ -60,12 +60,12 @@ function deploymentResult(data: unknown) {
   const value = deploymentSchema.parse(data);
   return {
     target: "deployment" as const,
-    deploymentId: value.id,
+    deployment_id: value.id,
     url: `https://${value.url}`,
     state: value.readyState,
-    deploymentTarget: value.target ?? null,
-    projectId: value.projectId ?? null,
-    commitSha: value.gitSource?.sha ?? null,
+    deployment_target: value.target ?? null,
+    project_id: value.projectId ?? null,
+    commit_sha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
     objectAnnotations: [
       {
@@ -138,7 +138,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
     return {
       target: "alias" as const,
       alias: result.alias,
-      deploymentId: result.deploymentId,
+      deployment_id: result.deploymentId,
       redirect: result.redirect ?? null,
     };
   }
@@ -159,7 +159,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
           ref: text.describe(
             "Git branch, tag, or full commit SHA in the project's linked repository.",
           ),
-          commitSha: z
+          commit_sha: z
             .string()
             .regex(/^[a-f0-9]{40}$/i)
             .describe(
@@ -201,7 +201,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
           type: "github",
           repoId: project.link.repoId,
           ref: input.ref,
-          sha: input.commitSha?.toLowerCase(),
+          sha: input.commit_sha?.toLowerCase(),
         };
         return deploymentResult(
           await request(
@@ -257,12 +257,14 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
       description:
         "Assign an alias hostname to a deployment ID. This can replace live traffic. Reads the alias back and returns matches=false if its target changed or it redirects.",
-      inputSchema: z.object({ deploymentId, alias: aliasName, team }).strict(),
+      inputSchema: z
+        .object({ deployment_id: deploymentIdSchema, alias: aliasName, team })
+        .strict(),
       outputSchema: aliasOutput.extend({ matches: z.boolean() }),
       async execute(input) {
         await request(
           "vercel.alias.assign",
-          `/v2/deployments/${encodeURIComponent(input.deploymentId)}/aliases`,
+          `/v2/deployments/${encodeURIComponent(input.deployment_id)}/aliases`,
           input.team,
           "POST",
           { alias: input.alias },
@@ -271,7 +273,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         return {
           ...result,
           matches:
-            result.deploymentId === input.deploymentId && !result.redirect,
+            result.deployment_id === input.deployment_id && !result.redirect,
         };
       },
     }),
@@ -298,22 +300,24 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
       description:
         "Delete a Vercel deployment by ID. This can remove a live deployment. Does not delete its database or other external state.",
-      inputSchema: z.object({ deploymentId, team }).strict(),
+      inputSchema: z
+        .object({ deployment_id: deploymentIdSchema, team })
+        .strict(),
       outputSchema: pluginToolOutputSchema.extend({
         target: z.literal("deployment"),
-        deploymentId: text,
+        deployment_id: text,
         deleted: z.literal(true),
       }),
       async execute(input) {
         await request(
           "vercel.deployment.delete",
-          `/v13/deployments/${encodeURIComponent(input.deploymentId)}`,
+          `/v13/deployments/${encodeURIComponent(input.deployment_id)}`,
           input.team,
           "DELETE",
         );
         return {
           target: "deployment" as const,
-          deploymentId: input.deploymentId,
+          deployment_id: input.deployment_id,
           deleted: true as const,
         };
       },

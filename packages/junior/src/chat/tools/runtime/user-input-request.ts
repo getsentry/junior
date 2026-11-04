@@ -34,6 +34,12 @@ const optionSchema = z.object({
   description: descriptionSchema.describe(
     "Optional short note about what this choice does.",
   ),
+  recommended: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true on the choice that you recommend, and say why in its description. A `choice` field can recommend one option.",
+    ),
 });
 
 const fieldBase = {
@@ -108,8 +114,27 @@ export const userInputRequestSchema = z
           message: "Each choice of a field needs a different label.",
         });
       }
+      if (
+        field.kind === "choice" &&
+        field.options.filter((option) => option.recommended).length > 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "A `choice` field can recommend only one option.",
+        });
+      }
     }
   });
+
+/**
+ * Label and help text of the free-text input that every form adds after the
+ * fields. The text goes with the picked answers and does not replace them, so
+ * every surface says that in the same words.
+ */
+export const USER_INPUT_NOTE = {
+  label: "Anything else?",
+  description: "Optional. This note is sent together with your answers above.",
+} as const;
 
 /** One field of a user input request. */
 export type UserInputField = z.output<typeof userInputFieldSchema>;

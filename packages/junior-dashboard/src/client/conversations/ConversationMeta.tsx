@@ -10,7 +10,7 @@ import {
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -30,7 +30,6 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
@@ -507,52 +506,64 @@ export function liveModelId(
   return openTurns.size > 0 ? modelId : undefined;
 }
 
-/** True when runtime stats have content for the requested presentation. */
+/** True when runtime stats have content to show in details. */
 export function hasConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
 }): boolean {
   return conversationStatItems(props).length > 0;
 }
 
-type ConversationStatItem = MetricListItem & { label: string };
+type ConversationStatItem = {
+  content: ReactNode;
+  key: string;
+  label: string;
+  /** Shown below `md` only, where the title bar is hidden. */
+  mobileOnly?: boolean;
+};
 
-/**
- * Render runtime, source, token, and cost metadata. The compact variant is one
- * line under the conversation title. The full variant is a labeled list for
- * conversation details.
- */
+/** Render runtime, source, token, and cost metadata as a labeled list. */
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
 }) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
-
-  if ((props.variant ?? "full") === "full") {
-    return (
-      <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
-        {stats.map((item) => (
-          <div
-            className="flex min-w-0 items-baseline justify-between gap-4"
-            key={item.key}
-          >
-            <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
-            <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
-              {item.content}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-
   return (
-    <MetricList
-      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-      items={stats}
+    <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
+      {stats.map((item) => (
+        <div
+          className={cn(
+            "flex min-w-0 items-baseline justify-between gap-4",
+            item.mobileOnly && "md:hidden",
+          )}
+          key={item.key}
+        >
+          <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
+          <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+            {item.content}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * Name where a conversation runs, linked when the source has a URL. Returns
+ * null without a location, so callers can drop the slot around it.
+ */
+export function conversationLocation(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+): ReactNode {
+  if (!conversation) return null;
+  const location = slackLocationLabel(conversation, { includeId: false });
+  if (!location) return null;
+  return (
+    <LocationLink
+      label={location}
+      locationUrl={detail?.locationUrl ?? conversation.locationUrl}
     />
   );
 }
@@ -560,10 +571,8 @@ export function ConversationStats(props: {
 function conversationStatItems(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
 }): ConversationStatItem[] {
   if (!props.conversation) return [];
-  const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
@@ -572,11 +581,6 @@ function conversationStatItems(props: {
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const costSummary = summarizeCost(usage);
-  const location = slackLocationLabel(props.conversation, {
-    includeId: false,
-  });
-  const locationUrl =
-    props.detail?.locationUrl ?? props.conversation.locationUrl;
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -584,22 +588,25 @@ function conversationStatItems(props: {
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
+  const location = conversationLocation(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
+    // The desktop title bar shows the location. Mobile hides that bar.
     location
       ? {
-          content: <LocationLink label={location} locationUrl={locationUrl} />,
+          content: location,
           key: "location",
           label: "Location",
+          mobileOnly: true,
         }
       : undefined,
-    variant === "full" && sourceTask
+    sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
           label: "Source",
         }
       : undefined,
-    variant === "full" && lastActivityAt
+    lastActivityAt
       ? {
           content: (
             <time
@@ -635,7 +642,6 @@ function conversationStatItems(props: {
       ? {
           content: (
             <TokenMetric
-              detailsHint={variant === "compact"}
               childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
@@ -661,7 +667,6 @@ function conversationStatItems(props: {
       ? {
           content: (
             <CostMetric
-              detailsHint={variant === "compact"}
               auxiliaryCosts={
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts

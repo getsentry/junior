@@ -12,11 +12,6 @@ export type MetricTooltipLine = {
   valueStyle?: "heading";
 };
 
-export type MetricListItem = {
-  content: ReactNode;
-  key: string;
-};
-
 function TooltipLines(props: { lines: MetricTooltipLine[] }) {
   return (
     <span className="grid min-w-0 self-start grid-cols-[minmax(0,1fr)_auto] content-start gap-x-3 gap-y-1.5">
@@ -124,32 +119,5 @@ export function MetricValue(props: {
         ) : null}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-/** Render inline metadata with consistent dot spacing across dashboard headers. */
-export function MetricList(props: {
-  className?: string;
-  items: MetricListItem[];
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-x-1.5 gap-y-1",
-        props.className,
-      )}
-    >
-      {props.items.map((item, index) => (
-        <span
-          className="inline-flex min-w-0 items-center gap-x-1.5"
-          key={item.key}
-        >
-          {index > 0 ? (
-            <span className="text-dashboard-text-muted">·</span>
-          ) : null}
-          <span className="min-w-0">{item.content}</span>
-        </span>
-      ))}
-    </div>
   );
 }

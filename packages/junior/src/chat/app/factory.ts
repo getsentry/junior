@@ -93,7 +93,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
   });
   const executeSlackTurn = createSlackTurn({
-    contextCompactor: services.contextCompactor,
     executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns: options.pausedTurns ?? createPausedTurns(),

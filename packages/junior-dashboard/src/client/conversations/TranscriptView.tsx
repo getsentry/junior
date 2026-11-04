@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 
 import type {
   ConversationTranscript,
@@ -8,11 +8,6 @@ import type {
 } from "../types";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
@@ -22,6 +17,10 @@ import {
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import {
+  useTranscriptReadReporter,
+  type TranscriptUnreadRange,
+} from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
 import {
   TurnContextPanelProvider,
@@ -34,9 +33,13 @@ export function Transcript(props: {
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
+  /** The read position when the Conversation opened. */
+  lastReadSeq?: number;
   loadingPreviousPage?: boolean;
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
+  /** Receive the last event sequence the reader saw in the transcript. */
+  onRead?: (seq: number) => void;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
@@ -51,6 +54,10 @@ export function Transcript(props: {
   transcript?: ConversationTranscript;
   /** Show turn context in the owner's panel. Without it, a drawer opens. */
   turnContextPanel?: TurnContextPanel;
+  /** Open at the "New" marker instead of the latest message. */
+  startAtUnread?: boolean;
+  /** Rows that were unread when the Conversation opened get a marker. */
+  unread?: TranscriptUnreadRange;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
@@ -63,8 +70,8 @@ export function Transcript(props: {
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
-    loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
+    startAtUnread: view === "rich" && props.startAtUnread,
     view,
     versions: {
       rich: transcriptBottomVersion(props.transcript, "rich"),
@@ -72,10 +79,15 @@ export function Transcript(props: {
     },
   });
 
-  const loadPreviousPage = () => {
-    bottomPinning.preserveViewportForPrepend();
-    props.onLoadPreviousPage?.();
-  };
+  // Read positions follow the transcript rows, not the event log. Search
+  // results skip rows, so they do not move the read position.
+  useTranscriptReadReporter({
+    content: bottomPinning.contentElement,
+    lastReadSeq: props.lastReadSeq,
+    onRead: props.onRead,
+    paused: view !== "rich" || search.trim().length > 0,
+  });
+  const loadPreviousPage = () => props.onLoadPreviousPage?.();
   const previousPageRef = useAutoLoadPreviousPage({
     enabled: Boolean(
       props.onLoadPreviousPage &&
@@ -97,7 +109,11 @@ export function Transcript(props: {
 
   return (
     <TranscriptSearchProvider query={search}>
-      <div className="grid min-w-0" ref={bottomPinning.contentRef}>
+      {/* The pinning hook holds the reader's place; browser anchoring would fight it. */}
+      <div
+        className="grid min-w-0 [overflow-anchor:none]"
+        ref={bottomPinning.contentRef}
+      >
         {redacted ? (
           <div className="mb-2 min-w-0 break-words text-sm leading-relaxed text-dashboard-text-muted">
             Hidden because this conversation is not public.
@@ -144,6 +160,7 @@ export function Transcript(props: {
               conversation={props.transcript}
               pendingMessages={props.pendingMessages}
               responding={props.responding ?? props.live ?? false}
+              unread={props.unread}
             />
           </TurnContextPanelProvider>
         )}
@@ -169,33 +186,21 @@ function JumpToLatestButton(props: {
 }) {
   if (!props.visible) return null;
 
-  const label = props.hasPendingUpdate
-    ? "Jump to latest update"
-    : "Jump to latest";
-
   return (
-    <div className="pointer-events-none sticky bottom-3 z-20 flex h-0 justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:h-auto md:justify-end md:px-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={label}
-              className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
-              onClick={props.onClick}
-              size="icon"
-            >
-              <ArrowDownToLine aria-hidden="true" size={16} strokeWidth={2} />
-              {props.hasPendingUpdate ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 size-2 bg-emerald-300"
-                />
-              ) : null}
-            </Button>
-          }
-        />
-        <TooltipContent size="compact">{label}</TooltipContent>
-      </Tooltip>
+    // Sticky offsets count from inside the scroll region's bottom padding
+    // (pb-4 / md:pb-6). The negative offsets cancel most of it, so the pill
+    // sits 12px (16px on md) above the composer, centered on the transcript.
+    <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center md:-bottom-5">
+      <Button
+        aria-label={
+          props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
+        }
+        className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+        onClick={props.onClick}
+      >
+        <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
+        Jump to latest
+      </Button>
     </div>
   );
 }

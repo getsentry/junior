@@ -74,112 +74,167 @@ const oneOffScheduleIntentSchema = z
   })
   .strict();
 
+const recurringScheduleFields = {
+  kind: z.literal("recurring").describe("A repeating calendar schedule."),
+  frequency: z
+    .enum(["daily", "weekly", "monthly", "yearly"])
+    .describe("Recurring tasks can run at most once per day."),
+  interval: z
+    .number()
+    .int()
+    .positive()
+    .max(365)
+    .describe("Repeat every N frequency units. Defaults to 1.")
+    .nullable()
+    .optional(),
+  time: localTimeSchema.describe(
+    "Local wall-clock time for each occurrence in HH:MM format.",
+  ),
+  weekdays: z
+    .array(weekdaySchema)
+    .min(1)
+    .max(7)
+    .describe("Required for weekly schedules.")
+    .nullable()
+    .optional(),
+  month: z
+    .number()
+    .int()
+    .min(1)
+    .max(12)
+    .describe("Required for yearly schedules, where January is 1.")
+    .nullable()
+    .optional(),
+  timezone: timezoneSchema,
+};
+const dayOfMonthSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(31)
+  .describe("Required for monthly and yearly schedules.")
+  .nullable()
+  .optional();
+const startDateSchema = localDateSchema
+  .describe(
+    "Optional local calendar date that anchors the recurrence. Omit to start with the next matching occurrence.",
+  )
+  .nullable()
+  .optional();
+
+function checkRecurringSchedule(
+  schedule: {
+    frequency: "daily" | "weekly" | "monthly" | "yearly";
+    weekdays?: unknown;
+    month?: number | null;
+  },
+  dayOfMonth: { key: string; value: number | null | undefined },
+  context: z.RefinementCtx,
+): void {
+  if (schedule.frequency === "weekly" && schedule.weekdays == null) {
+    context.addIssue({
+      code: "custom",
+      message: "Weekly schedules require weekdays.",
+      path: ["weekdays"],
+    });
+  }
+  if (
+    (schedule.frequency === "monthly" || schedule.frequency === "yearly") &&
+    dayOfMonth.value == null
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: `${schedule.frequency} schedules require ${dayOfMonth.key}.`,
+      path: [dayOfMonth.key],
+    });
+  }
+  if (schedule.frequency === "yearly" && schedule.month == null) {
+    context.addIssue({
+      code: "custom",
+      message: "Yearly schedules require month.",
+      path: ["month"],
+    });
+  }
+  if (schedule.frequency !== "weekly" && schedule.weekdays != null) {
+    context.addIssue({
+      code: "custom",
+      message: "weekdays applies only to weekly schedules.",
+      path: ["weekdays"],
+    });
+  }
+  if (
+    schedule.frequency !== "monthly" &&
+    schedule.frequency !== "yearly" &&
+    dayOfMonth.value != null
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: `${dayOfMonth.key} applies only to monthly or yearly schedules.`,
+      path: [dayOfMonth.key],
+    });
+  }
+  if (schedule.frequency !== "yearly" && schedule.month != null) {
+    context.addIssue({
+      code: "custom",
+      message: "month applies only to yearly schedules.",
+      path: ["month"],
+    });
+  }
+}
+
 const recurringScheduleIntentSchema = z
   .object({
-    kind: z.literal("recurring").describe("A repeating calendar schedule."),
-    frequency: z
-      .enum(["daily", "weekly", "monthly", "yearly"])
-      .describe("Recurring tasks can run at most once per day."),
-    interval: z
-      .number()
-      .int()
-      .positive()
-      .max(365)
-      .describe("Repeat every N frequency units. Defaults to 1.")
-      .nullable()
-      .optional(),
-    time: localTimeSchema.describe(
-      "Local wall-clock time for each occurrence in HH:MM format.",
-    ),
-    weekdays: z
-      .array(weekdaySchema)
-      .min(1)
-      .max(7)
-      .describe("Required for weekly schedules.")
-      .nullable()
-      .optional(),
-    dayOfMonth: z
-      .number()
-      .int()
-      .min(1)
-      .max(31)
-      .describe("Required for monthly and yearly schedules.")
-      .nullable()
-      .optional(),
-    month: z
-      .number()
-      .int()
-      .min(1)
-      .max(12)
-      .describe("Required for yearly schedules, where January is 1.")
-      .nullable()
-      .optional(),
-    startDate: localDateSchema
-      .describe(
-        "Optional local calendar date that anchors the recurrence. Omit to start with the next matching occurrence.",
-      )
-      .nullable()
-      .optional(),
-    timezone: timezoneSchema,
+    ...recurringScheduleFields,
+    dayOfMonth: dayOfMonthSchema,
+    startDate: startDateSchema,
   })
   .strict()
-  .superRefine((schedule, context) => {
-    if (schedule.frequency === "weekly" && schedule.weekdays == null) {
-      context.addIssue({
-        code: "custom",
-        message: "Weekly schedules require weekdays.",
-        path: ["weekdays"],
-      });
-    }
-    if (
-      (schedule.frequency === "monthly" || schedule.frequency === "yearly") &&
-      schedule.dayOfMonth == null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: `${schedule.frequency} schedules require dayOfMonth.`,
-        path: ["dayOfMonth"],
-      });
-    }
-    if (schedule.frequency === "yearly" && schedule.month == null) {
-      context.addIssue({
-        code: "custom",
-        message: "Yearly schedules require month.",
-        path: ["month"],
-      });
-    }
-    if (schedule.frequency !== "weekly" && schedule.weekdays != null) {
-      context.addIssue({
-        code: "custom",
-        message: "weekdays applies only to weekly schedules.",
-        path: ["weekdays"],
-      });
-    }
-    if (
-      schedule.frequency !== "monthly" &&
-      schedule.frequency !== "yearly" &&
-      schedule.dayOfMonth != null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "dayOfMonth applies only to monthly or yearly schedules.",
-        path: ["dayOfMonth"],
-      });
-    }
-    if (schedule.frequency !== "yearly" && schedule.month != null) {
-      context.addIssue({
-        code: "custom",
-        message: "month applies only to yearly schedules.",
-        path: ["month"],
-      });
-    }
-  });
+  .superRefine((schedule, context) =>
+    checkRecurringSchedule(
+      schedule,
+      { key: "dayOfMonth", value: schedule.dayOfMonth },
+      context,
+    ),
+  );
+
+// Tool inputs use snake_case keys. The dashboard API keeps camelCase, so
+// `scheduleIntentFromTool` maps this shape to `ScheduleIntent`.
+const recurringToolScheduleIntentSchema = z
+  .object({
+    ...recurringScheduleFields,
+    day_of_month: dayOfMonthSchema,
+    start_date: startDateSchema,
+  })
+  .strict()
+  .superRefine((schedule, context) =>
+    checkRecurringSchedule(
+      schedule,
+      { key: "day_of_month", value: schedule.day_of_month },
+      context,
+    ),
+  );
 
 export const scheduleIntentSchema = z.union([
   oneOffScheduleIntentSchema,
   recurringScheduleIntentSchema,
 ]);
 export type ScheduleIntent = z.infer<typeof scheduleIntentSchema>;
+
+/** Model-facing schedule intent of the Automation tools. */
+export const toolScheduleIntentSchema = z.union([
+  oneOffScheduleIntentSchema,
+  recurringToolScheduleIntentSchema,
+]);
+type ToolScheduleIntent = z.infer<typeof toolScheduleIntentSchema>;
+
+/** Map a tool schedule intent to the shape that core compiles and saves. */
+export function scheduleIntentFromTool(
+  intent: ToolScheduleIntent,
+): ScheduleIntent {
+  if (intent.kind === "one_off") return intent;
+  const { day_of_month, start_date, ...rest } = intent;
+  return { ...rest, dayOfMonth: day_of_month, startDate: start_date };
+}
 
 const WEEKDAY_INDEX = {
   sunday: 0,

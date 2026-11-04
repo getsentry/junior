@@ -39,19 +39,27 @@ import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import {
+  bindMessageAuthorIdentityId,
+  ensureSlackMessageActorIdentity,
+  getMessageAuthorIdentityId,
+} from "@/chat/services/message-actor-identity";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
+import {
+  createSlackActor,
+  parseActorUserId,
+  type SlackActorProfile,
+} from "@/chat/actor";
+import { getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import {
-  botConfig,
-  getChatConfig,
-  type CrossActorMidRunMode,
-} from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -445,7 +453,6 @@ interface SlackInboxTurnRuntime {
 }
 
 export interface CreateSlackConversationWorkerOptions {
-  crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
     teamId: string,
@@ -453,7 +460,7 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean },
+    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -552,6 +559,8 @@ function restoreMessage(args: {
     args.adapter.rehydrateAttachment(attachment),
   );
   rehydrateAttachmentFetchers(message);
+  bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
+  bindMessageReviewItemChange(message, args.record.input.reviewItemChange);
   return message;
 }
 
@@ -581,6 +590,17 @@ async function bindSlackActorIdentities(args: {
           ),
         ),
       );
+      if (profile && messages.some(getMessageAuthorIdentityId)) {
+        // Ingress resolved the Identity without a profile lookup. Save the
+        // profile names on it. Message writes never saved the email.
+        await resolveActorIdentityId(
+          getSqlExecutor(),
+          createSlackActor(args.teamId, authorId, {
+            fullName: profile.fullName,
+            userName: profile.userName,
+          }),
+        );
+      }
     }),
   );
 }
@@ -633,8 +653,6 @@ function getPendingRecords(
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
-  const crossActorMidRunMode =
-    options.crossActorMidRunMode ?? botConfig.crossActorMidRunMode;
   return async (context) => {
     const adapter = options.getSlackAdapter();
     const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
@@ -657,6 +675,7 @@ export function createSlackConversationWorker(
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
               shouldYield: context.shouldYield,
+              stopSignal: context.stopSignal?.(),
             });
           },
         });
@@ -743,9 +762,11 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit Slack interruptions enter the active turn. Deferred
-        // work and steered messages from other sources, such as the
-        // dashboard, stay pending for their own turn.
+        // Only explicit Slack interruptions from the active author enter the
+        // active turn. The turn runs with that author's credentials, so another
+        // person's message always waits for its own turn. Deferred work and
+        // steered messages from other sources, such as the dashboard, stay
+        // pending for their own turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
@@ -763,9 +784,7 @@ export function createSlackConversationWorker(
               }))
               .filter(
                 (candidate) =>
-                  crossActorMidRunMode === "steer" ||
-                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
-                  hasSteeringOverride(candidate.message.text),
+                  requireSlackAuthorId(candidate.message) === activeAuthorId,
               );
             return candidates.length > 0 ? await accept(candidates) : [];
           });
@@ -839,10 +858,12 @@ export function buildSlackInboundMessage(args: {
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
+  reviewItemChange?: ReviewItemChangeRecord;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {
   const authorId = requireSlackAuthorId(args.message);
+  const authorIdentityId = getMessageAuthorIdentityId(args.message);
   const destination = createSlackDestination({
     channelId: args.thread.channelId,
     teamId: args.installation?.teamId,
@@ -868,7 +889,11 @@ export function buildSlackInboundMessage(args: {
     input: {
       text: args.message.text || " ",
       authorId,
+      ...(authorIdentityId ? { authorIdentityId } : undefined),
       attachments: args.message.attachments,
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
+        : undefined),
       metadata: {
         platform: "slack",
         route: args.route,

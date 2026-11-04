@@ -15,6 +15,7 @@ import {
 import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
@@ -25,6 +26,7 @@ import {
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -98,6 +100,10 @@ type RollupLikeConfig = {
 
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
+// Code Mode loads `quickjs.wasm` and its worker file from the installed
+// packages at run time. A trailing `*` tells Nitro to keep these packages
+// external and copy each whole package into the server output.
+const CODEMODE_TRACE_DEPS = ["@earendil-works/pi-codemode*", "quickjs-wasi*"];
 
 function isPluginModuleReference(
   value: JuniorNitroPluginSource | undefined,
@@ -211,6 +217,11 @@ function configureVercelDeployment(
   );
   addQueueTrigger(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, CACHE_WARMUP_QUEUE_TOPIC);
 
+  addQueueTrigger(
+    JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+    BACKGROUND_COMPACTION_QUEUE_TOPIC,
+  );
+
   return defaultMaxDuration;
 }
 
@@ -231,6 +242,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         );
 
         applyRolldownTreeshakeWorkaround(nitro);
+        nitro.options.traceDeps = [
+          ...(nitro.options.traceDeps ?? []),
+          ...CODEMODE_TRACE_DEPS,
+        ];
         const pluginSource = options.plugins;
         const pluginModule = isPluginModuleReference(pluginSource)
           ? resolvePluginModule(cwd, pluginSource)

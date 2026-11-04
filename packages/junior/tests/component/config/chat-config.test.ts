@@ -225,15 +225,17 @@ describe("chat config", () => {
     });
   });
 
-  it("fails when a durable profile is no longer configured", async () => {
+  it("binds a durable profile that is no longer configured to the default", async () => {
     delete process.env.AI_MODEL_PROFILES;
 
     const { botConfig } = await loadConfig();
-    const { modelIdForProfile, ModelProfileNotConfiguredError } =
+    const { boundProfile, modelIdForProfile, ModelProfileNotConfiguredError } =
       await import("@/chat/model-profile");
     expect(() => modelIdForProfile(botConfig, "coding")).toThrowError(
       ModelProfileNotConfiguredError,
     );
+    expect(boundProfile(botConfig, "coding")).toBe(botConfig.defaultProfile);
+    expect(boundProfile(botConfig, "handoff")).toBe("handoff");
   });
 
   it.each([
@@ -284,7 +286,7 @@ describe("chat config", () => {
     process.env.AI_IMAGE_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.imageGenerationModelId).toBe("google/gemini-3-pro-image");
+    expect(botConfig.imageGenerationModelId).toBe("openai/gpt-image-2");
   });
 
   it("uses AI_IMAGE_MODEL when configured", async () => {
@@ -573,25 +575,6 @@ describe("chat config", () => {
     expect(getChatConfig().slack.processingReactionEmoji).toBe("eyes");
     expect(getChatConfig().slack.completedReactionEmoji).toBe(
       "white_check_mark",
-    );
-  });
-
-  it("defaults cross-actor mid-run messages to follow-up", async () => {
-    delete process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE;
-    const { botConfig } = await loadConfig();
-    expect(botConfig.crossActorMidRunMode).toBe("follow_up");
-  });
-
-  it("supports collaborative cross-actor steering", async () => {
-    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "steer";
-    const { botConfig } = await loadConfig();
-    expect(botConfig.crossActorMidRunMode).toBe("steer");
-  });
-
-  it("rejects unsupported cross-actor mid-run modes", async () => {
-    process.env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE = "router";
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer",
     );
   });
 

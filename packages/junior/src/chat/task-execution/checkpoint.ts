@@ -12,7 +12,7 @@
  */
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
-import { getActiveTraceContext, logException } from "@/chat/logging";
+import { getActiveTraceContext, logException, withSpan } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -176,17 +176,35 @@ export function saveTurnCheckpoint(args: TerminalCheckpointArgs): Promise<void>;
 export async function saveTurnCheckpoint(
   args: SaveTurnCheckpointArgs,
 ): Promise<TurnRecord | undefined | void> {
-  if (args.mode === "running") {
-    return await saveRunning(args);
-  }
-  if (args.mode === "paused") {
-    return await savePaused(args);
-  }
-  await saveDone(args);
-  return undefined;
+  // A resumed turn continues the trace from the caller's span, not from the
+  // save span.
+  const traceContext = getActiveTraceContext();
+  // The agent loop waits for running saves after each tool step.
+  return await withSpan(
+    "turn.checkpoint.save",
+    "turn.checkpoint.save",
+    {},
+    async () => {
+      if (args.mode === "running") {
+        return await saveRunning(args, traceContext);
+      }
+      if (args.mode === "paused") {
+        return await savePaused(args, traceContext);
+      }
+      await saveDone(args, traceContext);
+      return undefined;
+    },
+    { "app.turn.checkpoint.mode": args.mode },
+  );
 }
 
-function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
+type TraceContext = ReturnType<typeof getActiveTraceContext>;
+
+function sharedWrite(
+  args: TurnCheckpointWrite,
+  traceContext: TraceContext,
+  latest?: TurnRecord,
+) {
   return {
     conversationId: args.conversationId,
     turnId: args.turnId,
@@ -199,7 +217,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       dispatchId: args.dispatchId ?? latest?.dispatchId,
       source: args.source,
       surface: args.surface ?? latest?.surface,
-      traceContext: latest?.traceContext ?? getActiveTraceContext(),
+      traceContext: latest?.traceContext ?? traceContext,
       turnStartMessageIndex:
         args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
@@ -213,6 +231,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
 
 async function saveRunning(
   args: Extract<SaveTurnCheckpointArgs, { mode: "running" }>,
+  traceContext: TraceContext,
 ): Promise<TurnRecord | undefined> {
   if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
     return undefined;
@@ -220,7 +239,7 @@ async function saveRunning(
   try {
     const latest = await getTurnRecord(args.conversationId, args.turnId);
     return await upsertTurnRecord({
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
         trailingMessageProvenance: args.trailingMessageProvenance,
         turnContexts: args.turnContexts,
@@ -246,6 +265,7 @@ async function saveRunning(
 
 async function savePaused(
   args: Extract<SaveTurnCheckpointArgs, { mode: "paused" }>,
+  traceContext: TraceContext,
 ): Promise<TurnRecord | undefined> {
   // Yield keeps the current slice; auth/timeout/retry advance it.
   const keepSlice = args.reason === "yield";
@@ -272,7 +292,7 @@ async function savePaused(
     }
 
     const base = {
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
         cumulativeDurationMs: addDurationMs(
           latest?.cumulativeDurationMs,
@@ -325,6 +345,7 @@ async function savePaused(
 
 async function saveDone(
   args: Extract<SaveTurnCheckpointArgs, { mode: "completed" | "failed" }>,
+  traceContext: TraceContext,
 ): Promise<void> {
   let latest: TurnRecord | undefined;
   await persistWithRetry(async () => {
@@ -338,7 +359,7 @@ async function saveDone(
   }
   await persistWithRetry(async () => {
     await upsertTurnRecord({
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
         cumulativeDurationMs: addDurationMs(
           latest?.cumulativeDurationMs,

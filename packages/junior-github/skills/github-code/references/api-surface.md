@@ -56,7 +56,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
-- Stacks: open each PR with `github_createPullRequest`, based on the branch below, before `gh stack link`. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
+- Stacks: open each PR with `github_createPullRequest`, based on the branch below. When its base is the head of another open PR, the tool links it into a GitHub stack and returns `stack`; do not run `gh stack link` for it. No `stack` means GitHub could not stack it. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.

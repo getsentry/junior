@@ -1,8 +1,10 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
+import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
@@ -26,6 +28,22 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
+
+/** Identity of the viewer, for the outbox rows that they send. */
+export function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
 
 /** Stable React Query key for one conversation's local send outbox. */
 export function conversationOutboxQueryKey(conversationId: string | undefined) {
@@ -140,10 +158,20 @@ function sameMailboxMessage(
     left.createdAt === right.createdAt &&
     left.receivedAt === right.receivedAt &&
     left.idempotencyKey === right.idempotencyKey &&
-    // Pending rows render actorLabel(actorIdentity). Live polls may enrich
-    // identity after the first accept; keep that change visible.
-    sameActorIdentity(left.actorIdentity, right.actorIdentity)
+    // Pending rows render actorLabel(actorIdentity) and mention names. Live
+    // polls may enrich them after the first accept; keep that change visible.
+    sameActorIdentity(left.actorIdentity, right.actorIdentity) &&
+    sameMentions(left.mentions, right.mentions)
   );
+}
+
+function sameMentions(
+  left: ConversationMailboxMessage["mentions"],
+  right: ConversationMailboxMessage["mentions"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((person, index) => sameActorIdentity(person, right[index]));
 }
 
 function sameActorIdentity(
@@ -153,6 +181,7 @@ function sameActorIdentity(
   if (left === right) return true;
   if (!left || !right) return false;
   return (
+    left.avatarUrl === right.avatarUrl &&
     left.email === right.email &&
     left.fullName === right.fullName &&
     left.slackUserId === right.slackUserId &&

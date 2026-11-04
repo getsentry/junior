@@ -1,4 +1,8 @@
+import { sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import type { ConversationEvent } from "@/chat/conversations/history";
 import { openConversationProjection } from "@/chat/conversations/projection";
+import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentInvocation } from "./types";
 
@@ -52,4 +56,42 @@ export async function loadForkHistory(
     conversationId: invocation.parentConversationId,
   });
   return forkHistoryFrom(parent.messages, invocation.parentToolCallId);
+}
+
+// The child commits that start history in its first Turn, with the parent's
+// timestamps. So it comes after the first `turn_started` but is older than
+// it. A Turn's own agent history cannot be older than the Turn. The parent
+// Conversation already shows and counts the inherited history.
+
+/** True for agent history that a fork child inherited from its parent. */
+export function isInheritedForkHistory(
+  event: ConversationEvent,
+  firstTurnStart: ConversationEvent | undefined,
+): boolean {
+  return (
+    firstTurnStart !== undefined &&
+    event.seq > firstTurnStart.seq &&
+    event.createdAtMs < firstTurnStart.createdAtMs &&
+    (event.data.type === "assistant_message" ||
+      event.data.type === "tool_result")
+  );
+}
+
+const firstTurn = alias(juniorConversationEvents, "first_turn");
+
+/**
+ * SQL filter for event rows that a fork child did not inherit from its
+ * parent. Usage reports use it, so inherited model calls count only in the
+ * parent.
+ */
+export function notInheritedByForkChild(): SQL {
+  return sql`not coalesce(${juniorConversationEvents.createdAt} < (
+    select ${firstTurn.createdAt}
+    from ${juniorConversationEvents} as ${sql.identifier("first_turn")}
+    where ${firstTurn.conversationId} = ${juniorConversationEvents.conversationId}
+      and ${firstTurn.type} = 'turn_started'
+      and ${firstTurn.seq} < ${juniorConversationEvents.seq}
+    order by ${firstTurn.seq}
+    limit 1
+  ), false)`;
 }

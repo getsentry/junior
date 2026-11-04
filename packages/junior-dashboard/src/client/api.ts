@@ -33,23 +33,9 @@ import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
 const dashboardMetadataStaleTimeMs = 5 * 60_000;
-const PERSONAL_SPEND_REFRESH_MS = 5 * 60_000;
-const MIN_PERSONAL_SPEND_REFRESH_MS = 1_000;
-
-/** Schedule the next spend refresh from the age of the server-cached report. */
-export function personalSpendRefreshDelay(
-  generatedAt: string | undefined,
-  nowMs = Date.now(),
-): number {
-  if (!generatedAt) return PERSONAL_SPEND_REFRESH_MS;
-  const generatedAtMs = Date.parse(generatedAt);
-  if (!Number.isFinite(generatedAtMs)) return PERSONAL_SPEND_REFRESH_MS;
-  const ageMs = Math.max(0, nowMs - generatedAtMs);
-  return Math.max(
-    MIN_PERSONAL_SPEND_REFRESH_MS,
-    PERSONAL_SPEND_REFRESH_MS - ageMs,
-  );
-}
+// The server reuses its cached report until the viewer's spend changes, so a
+// short poll shows a finished Turn without a full aggregate query each time.
+const PERSONAL_SPEND_REFRESH_MS = 10_000;
 
 /** Fetch dashboard shell data shared across browser routes. */
 export function useDashboardCoreData() {
@@ -314,8 +300,7 @@ export function usePersonalSpendData(enabled: boolean) {
         "/api/people/me/spend",
         signal,
       ),
-    refetchInterval: (query) =>
-      personalSpendRefreshDelay(query.state.data?.generatedAt),
+    refetchInterval: PERSONAL_SPEND_REFRESH_MS,
     retry: false,
     staleTime: 0,
   });

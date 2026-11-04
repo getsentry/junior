@@ -35,7 +35,12 @@ import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { botConfig } from "@/chat/config";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   Conversation,
@@ -126,12 +131,7 @@ export interface TurnRecord {
    * omit Actor.
    */
   actor?: Actor;
-  /**
-   * Identity id of `actor`, the Actor that started this Turn.
-   *
-   * TODO(dcramer): Set this at every ingress after every deployed worker keeps
-   * it when it rewrites the Turn cursor.
-   */
+  /** Identity id of `actor`, the Actor that started this Turn. */
   actorIdentityId?: string;
   channelName?: string;
   /** Delegated subject the Turn started with. Resume must verify it again. */
@@ -908,8 +908,17 @@ async function upsertTurnRecordLocked(
           turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
 
+  const turnActor = existingRecord?.actor ?? args.actor;
+  // The Turn keeps the Identity of its starting Actor. An event Turn runs as
+  // the system Actor, so it gets the system Identity, not the event author.
+  const actorIdentityId =
+    existingRecord?.actorIdentityId ??
+    (turnActor
+      ? await resolveActorIdentityId(getSqlExecutor(), turnActor)
+      : undefined);
+
   return await setStoredRecord({
-    actor: existingRecord?.actor ?? args.actor,
+    actor: turnActor,
     fence,
     conversationStore: args.conversationStore,
     destination: args.destination,
@@ -931,7 +940,7 @@ async function upsertTurnRecordLocked(
     ...definedProps({ indexTtlMs: args.ttlMs }),
     turnStartMessageIndex,
     record: buildStoredRecord({
-      actor: existingRecord?.actor ?? args.actor,
+      actor: turnActor,
       conversationId: args.conversationId,
       turnId: args.turnId,
       sliceId: args.sliceId,
@@ -940,7 +949,7 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
-        actorIdentityId: existingRecord?.actorIdentityId,
+        actorIdentityId,
         credentialSubject:
           existingRecord?.credentialSubject ?? args.credentialSubject,
         cumulativeToolCallCount:

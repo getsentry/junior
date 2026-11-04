@@ -1,6 +1,8 @@
 import {
+  agentEventKeys,
+  agentEventMatchKey,
   eventMatchFieldSchema,
-  eventReachSchema,
+  type EventReach,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
@@ -14,29 +16,43 @@ const searchedResourceTypeSchema = z
   .object({
     namespace: z.string(),
     type: z.string(),
-    identifierFormat: z.string().optional(),
-    supportedEvents: z.array(z.string()),
-    suggestedEvents: z.array(z.string()).optional(),
+    identifier_format: z.string().optional(),
+    supported_events: z.array(z.string()),
+    suggested_events: z.array(z.string()).optional(),
     // Use the plugin contract schema, so new filter field keys such as
     // `events` reach the agent instead of failing this output.
-    matchFields: z.record(z.string(), eventMatchFieldSchema).optional(),
+    match_fields: z.record(z.string(), eventMatchFieldSchema).optional(),
   })
   .strict();
 
-// The reach of each event, once for each namespace in the results.
+// The reach of each event, once for each namespace in the results. Filter
+// names are the snake_case match keys that the tools accept.
 const searchedNamespaceSchema = z
   .object({
     namespace: z.string(),
-    reach: z.record(z.string(), eventReachSchema),
+    reach: z.record(
+      z.string(),
+      z.union([
+        z.literal("all"),
+        z.literal("resource"),
+        z.object({ any_of: z.array(z.string()).min(1) }).strict(),
+      ]),
+    ),
   })
   .strict();
+
+function agentReach(reach: EventReach) {
+  return typeof reach === "string"
+    ? reach
+    : { any_of: reach.anyOf.map(agentEventMatchKey) };
+}
 
 const outputSchema = juniorToolOutputSchema
   .extend({
     query: z.string().nullable(),
     namespace: z.string().nullable(),
-    totalMatches: z.number().int().nonnegative(),
-    resourceTypes: z.array(searchedResourceTypeSchema),
+    total_matches: z.number().int().nonnegative(),
+    resource_types: z.array(searchedResourceTypeSchema),
     namespaces: z.array(searchedNamespaceSchema),
   })
   .strict();
@@ -51,12 +67,12 @@ function normalizeSearchText(value: string): string {
 // The reach of the events of these resource types, once for each namespace.
 function namespaceReach(
   catalog: EventCatalog,
-  resourceTypes: readonly { namespace: string; supportedEvents: string[] }[],
+  resourceTypes: readonly { namespace: string; supported_events: string[] }[],
 ) {
   const events = new Map<string, Set<string>>();
   for (const resourceType of resourceTypes) {
     const set = events.get(resourceType.namespace) ?? new Set<string>();
-    for (const eventType of resourceType.supportedEvents) set.add(eventType);
+    for (const eventType of resourceType.supported_events) set.add(eventType);
     events.set(resourceType.namespace, set);
   }
   return [...events].map(([namespace, eventTypes]) => ({
@@ -64,7 +80,7 @@ function namespaceReach(
     reach: Object.fromEntries(
       [...eventTypes].sort().flatMap((eventType) => {
         const reach = catalog[namespace]?.events[eventType]?.reach;
-        return reach ? [[eventType, reach]] : [];
+        return reach ? [[eventType, agentReach(reach)]] : [];
       }),
     ),
   }));
@@ -77,14 +93,14 @@ function searchableResourceTypes(catalog: EventCatalog) {
         namespace,
         type: resourceType.type,
         ...(resourceType.identifier
-          ? { identifierFormat: resourceType.identifier.format }
+          ? { identifier_format: resourceType.identifier.format }
           : undefined),
-        supportedEvents: [...resourceType.supportedEvents].sort(),
+        supported_events: [...resourceType.supportedEvents].sort(),
         ...(resourceType.suggestedEvents
-          ? { suggestedEvents: [...resourceType.suggestedEvents].sort() }
+          ? { suggested_events: [...resourceType.suggestedEvents].sort() }
           : undefined),
         ...(resourceType.matchFields
-          ? { matchFields: resourceType.matchFields }
+          ? { match_fields: agentEventKeys(resourceType.matchFields) }
           : undefined),
       })),
     )
@@ -105,7 +121,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       readOnlyHint: true,
     },
     description:
-      'Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. namespaces gives the reach of each event. With reach "all" or { anyOf }, an event can start an event automation for every resource of its namespace: leave out identifier and resourceType, and narrow it with match filters from that namespace. For { anyOf }, set at least one of those filters. With reach "resource", the automation needs an identifier. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.',
+      'Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. namespaces gives the reach of each event. An event automation selects its events with match filters from the match_fields of its namespace. With reach "all", match can be left out to run for every resource. With { any_of }, match must set at least one of those filters. With reach "resource", only watchEvents can use the event. Use watchEvents for temporary updates in the current conversation; use createAutomation with an event trigger for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.',
     inputSchema: z
       .object({
         query: z
@@ -119,7 +135,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
           .nullable()
           .describe("Optional enabled plugin namespace to search within.")
           .optional(),
-        maxResults: z
+        max_results: z
           .number()
           .int()
           .min(1)
@@ -130,7 +146,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       })
       .strict(),
     outputSchema,
-    async execute({ query, namespace, maxResults }) {
+    async execute({ query, namespace, max_results: maxResults }) {
       const normalizedQuery = normalizeSearchText(query ?? "");
       const terms = normalizedQuery.split(/\s+/).filter(Boolean);
       const candidates = searchableResourceTypes(catalog).filter(
@@ -147,9 +163,9 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
                   [
                     resourceType.namespace,
                     resourceType.type,
-                    ...resourceType.supportedEvents,
-                    ...(resourceType.suggestedEvents ?? []),
-                    ...Object.keys(resourceType.matchFields ?? {}),
+                    ...resourceType.supported_events,
+                    ...(resourceType.suggested_events ?? []),
+                    ...Object.keys(resourceType.match_fields ?? {}),
                   ].join(" "),
                 );
                 return {
@@ -167,8 +183,8 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       const details = {
         query: query ?? null,
         namespace: namespace ?? null,
-        totalMatches: matches.length,
-        resourceTypes,
+        total_matches: matches.length,
+        resource_types: resourceTypes,
         namespaces: namespaceReach(catalog, resourceTypes),
       };
       return {

@@ -73,6 +73,8 @@ The Docker provider needs a Docker daemon on a unix socket. It uses `/var/run/do
 
 The first sandbox builds the `junior-sandbox-runtime` image. This takes a few minutes. Later sandboxes start in seconds. `pnpm dev` and `pnpm cli -- chat ...` both use the provider. Each process runs its own egress proxy, and the process that last acquired a sandbox carries its web traffic.
 
+Docker sandboxes have a small toolset: `gh`, `jq`, and `ripgrep`. They do not include other plugin CLIs, browsers, or Docker. The agent installs other tools with `sudo` when it needs them. Vercel sandboxes still include every tool that the plugins declare.
+
 Optional settings:
 
 - `JUNIOR_DOCKER_SANDBOX_DIR` sets the directory of the local egress CA. The default is `~/.cache/junior/docker-sandbox`.
@@ -86,7 +88,7 @@ docker network prune -f --filter label=dev.junior.sandbox
 docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
 ```
 
-The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
+This provider is for local development and QA only. Do not run untrusted workloads with it.
 
 ## Work in isolated branches
 

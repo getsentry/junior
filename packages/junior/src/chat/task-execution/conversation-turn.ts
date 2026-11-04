@@ -57,13 +57,13 @@ import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-r
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
   coerceThreadConversationState,
+  type ConversationMessage,
   type ThreadConversationState,
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   abandonTurnRecord,
   getTurnRecord,
-  listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import type {
@@ -77,23 +77,27 @@ import {
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   getEventBatchDelayMs,
+  listActiveMailboxTurns,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import {
+  joinMailboxText,
+  savedTurnInputMessages,
+  webConversationMessage,
+} from "@/chat/task-execution/mailbox-input";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  eventBatchMessageEvents,
+  eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchText,
   timerWatchCredentialSubject,
-  type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
@@ -192,6 +196,19 @@ async function completeCancelledConversationTurn(args: {
 }
 
 /**
+ * Return the author Identity id that every batched input shares.
+ * A batch with more than one author has no single author yet.
+ */
+function sharedAuthorIdentityId(
+  messages: readonly InboundMessage[],
+): string | undefined {
+  const ids = new Set(
+    messages.map((message) => message.input.authorIdentityId),
+  );
+  return ids.size === 1 ? [...ids][0] : undefined;
+}
+
+/**
  * Create the shared mailbox worker for web and event Turns.
  */
 export function createConversationTurnWorker(
@@ -223,8 +240,9 @@ export function createConversationTurnWorker(
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
-    let event: EventMailboxMetadata["event"] | undefined;
-    let batchEvents: ConversationMessageEvent[] = [];
+    let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
+    let authorIdentityId: string | undefined;
+    let webInputMessages: ConversationMessage[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -246,10 +264,12 @@ export function createConversationTurnWorker(
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
         text = renderEventBatchText(messages);
-        event = firstMetadata.event;
-        batchEvents = eventBatchMessageEvents(messages);
+        eventMeta = eventBatchMessageMeta(messages);
       } else {
         text = joinMailboxText(messages);
+        webInputMessages = resolved.batch.map((entry) =>
+          webConversationMessage(entry.message, entry.author),
+        );
       }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
@@ -260,6 +280,7 @@ export function createConversationTurnWorker(
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
+      authorIdentityId = sharedAuthorIdentityId(messages);
       turnInputFacts = first;
     } else {
       turnId = resolved.turnId;
@@ -293,11 +314,22 @@ export function createConversationTurnWorker(
         savedSource: savedTurn?.source,
         visibility: storedConversation?.visibility,
       });
+      // Rebuild the joined input from every saved input Message.
+      const turnInputs = savedTurnInputMessages(
+        conversation,
+        userMessage,
+        await lifecycle.loadInputMessageIds(context.conversationId, turnId),
+      );
       userMessageId = userMessage.id;
-      text = userMessage.text;
-      attachments = userMessage.meta?.attachments ?? [];
+      text = turnInputs
+        .map((message) => message.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      attachments = turnInputs.flatMap(
+        (message) => message.meta?.attachments ?? [],
+      );
       startedAtMs = userMessage.createdAtMs;
-      inputMessageIds = [userMessageId];
+      inputMessageIds = turnInputs.map((message) => message.id);
     }
     if (!turnInputFacts) {
       throw new Error(
@@ -396,33 +428,33 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
         } else {
-          upsertConversationMessage(conversation, {
-            id: userMessageId,
-            role: "user",
-            text: normalizeConversationText(text),
-            createdAtMs: startedAtMs,
-            author,
-            meta: {
-              ...(attachments.length ? { attachments } : undefined),
-              explicitMention: true,
-              replied: false,
-              ...(source.kind === "web"
-                ? { source: "web" as const }
-                : undefined),
-              ...(event
-                ? {
-                    eventType: event.eventType,
-                    eventObjectType: event.objectType,
-                    ...(event.trustedSummary
-                      ? { trustedSummary: event.trustedSummary }
-                      : undefined),
-                    ...(batchEvents.length > 1
-                      ? { events: batchEvents }
-                      : undefined),
-                  }
-                : undefined),
-            },
-          });
+          // Save each web Message apart, so an answer in a batch stays an
+          // answer in the transcript. The model still gets one joined prompt.
+          for (const [index, message] of webInputMessages.entries()) {
+            upsertConversationMessage(
+              conversation,
+              index === 0
+                ? { ...message, meta: { ...message.meta, replied: false } }
+                : message,
+            );
+          }
+          // An Event batch saves one Message with the rendered Events.
+          if (webInputMessages.length === 0) {
+            upsertConversationMessage(conversation, {
+              id: userMessageId,
+              role: "user",
+              text: normalizeConversationText(text),
+              createdAtMs: startedAtMs,
+              author,
+              ...(authorIdentityId ? { authorIdentityId } : undefined),
+              meta: {
+                ...(attachments.length ? { attachments } : undefined),
+                explicitMention: true,
+                replied: false,
+                ...eventMeta,
+              },
+            });
+          }
           await persistConversationMessages({
             conversation,
             conversationId: context.conversationId,
@@ -499,28 +531,23 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
           if (!isResume) {
-            // Match Slack: new input supersedes an auth-paused Turn
-            // instead of leaving two active Turns or letting a late OAuth
-            // wake resume stale work.
+            // Match Slack: new input supersedes every other open mailbox
+            // Turn. New input starts only when no yielded Turn waits, so an
+            // open Turn here waits for OAuth or was left open by a failed or
+            // stopped Run. A second open Turn makes every later resume fail.
             const pendingAuthorizationActorId =
               conversation.processing.pendingAuth?.actorId;
-            const authParked = (
-              await listTurnSummaries(context.conversationId)
-            ).filter(
-              (summary) =>
-                summary.surface === "api" &&
-                !summary.dispatchId &&
-                summary.state === "paused" &&
-                summary.resumeReason === "auth",
-            );
-            for (const parked of authParked) {
+            const superseded = (
+              await listActiveMailboxTurns(context.conversationId)
+            ).filter((record) => record.turnId !== turnId);
+            for (const stale of superseded) {
               if (stopSignal?.aborted) {
                 return await completeCancelledTurn();
               }
               await abandonTurnRecord({
                 conversationId: context.conversationId,
-                turnId: parked.turnId,
-                errorMessage: "Auth-paused Turn superseded by new input",
+                turnId: stale.turnId,
+                errorMessage: "Turn superseded by new input",
               });
               // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
               // connect and store credentials. The abandoned turn record makes a
@@ -528,10 +555,14 @@ export function createConversationTurnWorker(
               markTurnClosed({
                 conversation,
                 nowMs: Date.now(),
-                sessionId: parked.turnId,
+                sessionId: stale.turnId,
               });
             }
-            if (authParked.length > 0 && pendingAuthorizationActorId) {
+            const authParked = superseded.some(
+              (record) =>
+                record.state === "paused" && record.resumeReason === "auth",
+            );
+            if (authParked && pendingAuthorizationActorId) {
               // Drop the dashboard connect prompt so a superseded OAuth flow
               // cannot leave a stale banner after the user moves on.
               await deleteWebAuthorization({
@@ -563,7 +594,7 @@ export function createConversationTurnWorker(
                 text,
                 storedAttachments: attachments,
                 context: buildConversationContext(conversation, {
-                  excludeMessageId: userMessageId,
+                  excludeMessageIds: inputMessageIds,
                 }),
               },
               history: piMessages,

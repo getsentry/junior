@@ -22,9 +22,8 @@ import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
 /**
- * Header actions for one Automation: Edit, then creator-only Pause or Resume
- * and Delete. Public readers can edit settings, but only the creator controls
- * lifecycle. Lifecycle actions re-read the revision before they apply.
+ * Header actions for one Automation: Edit, Pause or Resume, and Delete.
+ * Lifecycle actions re-read the revision before they apply.
  */
 export function AutomationActions({
   automation,
@@ -43,7 +42,7 @@ export function AutomationActions({
   const completed = automation.status === "completed";
   const paused = automation.status === "paused";
   const blocked = automation.status === "blocked";
-  const canPause = automation.ownedByViewer && !completed;
+  const canPause = !completed;
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
     mutationFn: async () => {
@@ -135,25 +134,23 @@ export function AutomationActions({
             </Popover>
           </>
         ) : null}
-        {automation.ownedByViewer ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  focusableWhenDisabled
-                  aria-label="Delete automation"
-                  size="icon"
-                  variant="danger"
-                  onClick={(event) => onDelete(event.currentTarget)}
-                  disabled={mutation.isPending}
-                >
-                  <Trash2 aria-hidden="true" size={16} />
-                </Button>
-              }
-            />
-            <TooltipContent size="compact">Delete automation</TooltipContent>
-          </Tooltip>
-        ) : null}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                focusableWhenDisabled
+                aria-label="Delete automation"
+                size="icon"
+                variant="danger"
+                onClick={(event) => onDelete(event.currentTarget)}
+                disabled={mutation.isPending}
+              >
+                <Trash2 aria-hidden="true" size={16} />
+              </Button>
+            }
+          />
+          <TooltipContent size="compact">Delete automation</TooltipContent>
+        </Tooltip>
       </div>
       {mutation.error ? (
         <div className="max-w-sm">

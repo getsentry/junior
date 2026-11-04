@@ -111,20 +111,19 @@ export async function startConnection(
 }
 
 /**
- * Remove the user's stored connection for one provider and the provider
- * identity that the connection linked to the viewer's user.
+ * Remove the viewer's stored connection for one provider and the provider
+ * identity that the connection linked to the viewer's User.
  */
 export async function disconnectConnection(
   userId: string,
   provider: string,
   userTokenStore: UserTokenStore,
-  viewerUserId: string,
 ): Promise<void> {
   const tokens = await userTokenStore.get(userId, provider);
   if (tokens?.account) {
     await deleteProviderIdentityForUser(
       getSqlExecutor(),
-      viewerUserId,
+      userId,
       provider,
       tokens.account.id,
     );

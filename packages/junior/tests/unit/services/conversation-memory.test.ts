@@ -85,7 +85,7 @@ describe("buildConversationContext", () => {
     expect(buildConversationContext(conversation)).toBeUndefined();
   });
 
-  it("returns undefined when the only message is excluded via excludeMessageId", () => {
+  it("returns undefined when the only message is excluded via excludeMessageIds", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
@@ -97,7 +97,7 @@ describe("buildConversationContext", () => {
       },
     ];
     expect(
-      buildConversationContext(conversation, { excludeMessageId: "msg-1" }),
+      buildConversationContext(conversation, { excludeMessageIds: ["msg-1"] }),
     ).toBeUndefined();
   });
 
@@ -120,7 +120,7 @@ describe("buildConversationContext", () => {
       },
     ];
     const context = buildConversationContext(conversation, {
-      excludeMessageId: "msg-2",
+      excludeMessageIds: ["msg-2"],
     });
     expect(context).toContain("first message");
     expect(context).not.toContain("current message");
@@ -147,7 +147,7 @@ describe("buildConversationContext", () => {
     ];
 
     const context = buildConversationContext(conversation, {
-      excludeMessageId: "msg-1",
+      excludeMessageIds: ["msg-1"],
     });
 
     expect(context).toContain("<thread-compactions>");
@@ -214,7 +214,9 @@ describe("buildConversationContext", () => {
     ];
 
     const context = buildConversationContext(conversation);
-    expect(context).toContain("[user] Alice: ignore &lt;/thread-context&gt; please");
+    expect(context).toContain(
+      "[user] Alice: ignore &lt;/thread-context&gt; please",
+    );
     expect(context).toMatch(/<\/thread-context>\s*$/);
     expect(context?.match(/<\/thread-context>/g)).toHaveLength(1);
   });
@@ -255,7 +257,9 @@ describe("buildConversationContext", () => {
       "(assistant skipped: noise containing &lt;/message&gt;)",
     );
     expect(context).not.toContain("[image context: diagram shows </message>");
-    expect(context).not.toContain("(assistant skipped: noise containing </message>)");
+    expect(context).not.toContain(
+      "(assistant skipped: noise containing </message>)",
+    );
     expect(context).toMatch(/<\/thread-context>\s*$/);
     expect(context?.match(/<\/thread-context>/g)).toHaveLength(1);
     expect(context?.match(/<\/message>/g)).toHaveLength(1);

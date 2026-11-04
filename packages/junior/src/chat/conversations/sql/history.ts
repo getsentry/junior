@@ -22,6 +22,7 @@ import {
   type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
+  type HistoryReplacementResult,
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
@@ -114,7 +115,7 @@ function insertFromEvent(
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
-function eventFromRow(row: ConversationEventRow): ConversationEvent {
+export function eventFromRow(row: ConversationEventRow): ConversationEvent {
   const payload =
     row.actorIdentityId &&
     typeof row.payload === "object" &&
@@ -239,16 +240,16 @@ class SqlConversationEventStore implements ConversationEventStore {
               actorIdentityId,
             ),
           );
-          if (actorIdentityId) {
-            await recordConversationParticipant(this.executor, {
-              actorIdentityId,
-              conversationId,
-              atMs: event.createdAtMs,
-              restoreArchive: eventUnarchivesConversation(event.data),
-            });
-          }
         }
         await this.executor.db().insert(juniorConversationEvents).values(rows);
+        for (const event of pending) {
+          if (event.data.type === "turn_started") {
+            await this.recordTurnInputParticipants(
+              conversationId,
+              event.data.inputMessageIds,
+            );
+          }
+        }
         return rows.map((row) => ({
           seq: row.seq,
           historyVersion: row.historyVersion,
@@ -257,27 +258,80 @@ class SqlConversationEventStore implements ConversationEventStore {
     );
   }
 
+  /**
+   * Add the authors of Turn input messages to the conversation.
+   * Only people who start a Turn join it. Thread context, such as backfilled
+   * or skipped messages, keeps its author without membership.
+   */
+  private async recordTurnInputParticipants(
+    conversationId: string,
+    inputMessageIds: readonly string[],
+  ): Promise<void> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "message"),
+          inArray(
+            sql<string>`${juniorConversationEvents.payload}->>'messageId'`,
+            [...inputMessageIds],
+          ),
+        ),
+      );
+    for (const row of rows) {
+      const { data } = eventFromRow(row);
+      if (!row.actorIdentityId || data.type !== "message") continue;
+      await recordConversationParticipant(this.executor, {
+        actorIdentityId: row.actorIdentityId,
+        conversationId,
+        atMs: row.createdAt.getTime(),
+        restoreArchive: eventUnarchivesConversation(data),
+      });
+    }
+  }
+
   async replaceHistory(
     conversationId: string,
     replacement: HistoryReplacement,
-  ): Promise<void> {
+    options: { expectedHistoryVersion?: number } = {},
+  ): Promise<HistoryReplacementResult> {
     const parsed = historyReplacementSchema.parse(replacement);
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      await ensureConversationRow(this.executor, conversationId, Date.now());
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
-      await this.executor
-        .db()
-        .insert(juniorConversationEvents)
-        .values(
-          insertFromEvent(
-            conversationId,
-            cursor.nextSeq,
-            historyVersion,
-            parsed,
-          ),
-        );
-    });
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const cursor = await this.readCursor(conversationId);
+        const currentHistoryVersion = cursor.maxHistoryVersion ?? 0;
+        // Checked under the event lock so a concurrent replacement or a newer
+        // compaction cannot slip in between the check and the write.
+        if (
+          options.expectedHistoryVersion !== undefined &&
+          options.expectedHistoryVersion !== currentHistoryVersion
+        ) {
+          return {
+            status: "conflict" as const,
+            historyVersion: currentHistoryVersion,
+          };
+        }
+        await ensureConversationRow(this.executor, conversationId, Date.now());
+        const historyVersion = currentHistoryVersion + 1;
+        await this.executor
+          .db()
+          .insert(juniorConversationEvents)
+          .values(
+            insertFromEvent(
+              conversationId,
+              cursor.nextSeq,
+              historyVersion,
+              parsed,
+            ),
+          );
+        return { status: "replaced" as const, historyVersion };
+      },
+    );
   }
 
   async loadCurrentHistoryVersion(conversationId: string): Promise<number> {

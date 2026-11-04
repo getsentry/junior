@@ -131,6 +131,14 @@ export function projectConversationEvents(
         `Unsupported conversation event "${event.data.originalType}" at seq ${event.seq} (schema version ${event.schemaVersion})`,
       );
     }
+    // Background compaction bookkeeping. A prepared summary enters model
+    // context only through the `compaction` event that swaps it in.
+    if (
+      event.data.type === "compaction_requested" ||
+      event.data.type === "compaction_prepared"
+    ) {
+      continue;
+    }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
       modelProfile = event.data.modelProfile;
       replacementSeq = event.seq;

@@ -1,5 +1,6 @@
+import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 import { mockDashboardApis } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -51,7 +52,7 @@ test("inspects all reporting events and searches full event data", async ({
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
 
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button", { name: /^Event \d+:/ });
   await expect(entries).toHaveCount(report.events.length);
@@ -273,7 +274,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(log.getByText("No events match your search.")).toBeVisible();
   await search.fill("");
   await expect(entries).toHaveCount(report.events.length);
-  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await chooseTranscriptView(page, "Conversation");
   await expect(log).toBeHidden();
   await expect(
     page.getByText(
@@ -301,7 +302,7 @@ test("inspects all reporting events and searches full event data", async ({
   await forkDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(forkDialog).toBeHidden();
   await expect(forkAction).toBeFocused();
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
   const reply = report.events.findLast(
     (event: { data: { type: string; role?: string } }) =>
       event.data.type === "message" && event.data.role === "assistant",
@@ -421,7 +422,7 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
     log.getByRole("button", { name: "Event 2: tool_calls", exact: true }),
@@ -502,10 +503,8 @@ for (const width of [1440, 390]) {
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
 
-    for (const view of ["Event log", "Conversation"]) {
-      if (width < 768)
-        await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("button", { name: view, exact: true }).click();
+    for (const view of ["Event log", "Conversation"] as const) {
+      await chooseTranscriptView(page, view);
       const first =
         view === "Event log"
           ? page.getByRole("button", { name: "Event 0: message", exact: true })
@@ -575,5 +574,129 @@ for (const width of [1440, 390]) {
       page.getByText("Next live update", { exact: true }),
     ).toBeInViewport({ timeout: 15_000 });
     await expect(jump).toBeHidden();
+  });
+}
+
+for (const view of [desktop, mobile]) {
+  test(`leads the reader to a new review item question (${view.name})`, async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(view);
+    const conversationId = "slack:CQA123:1770003600.000200";
+    const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const response = await page.request.get(`${dashboard.baseURL}${api}`);
+    const report = await response.json();
+    const item = {
+      addedByConversationId: conversationId,
+      assignedToEveryone: false,
+      assignees: [
+        {
+          displayName: "Dashboard User",
+          email: "dev@example.com",
+          userId: "u-dev",
+        },
+      ],
+      body: "The rollout plan has three open decisions.",
+      canAct: true,
+      canTake: false,
+      conversationIds: [conversationId],
+      createdAt: report.startedAt,
+      id: "item-tall",
+      kind: "action",
+      request: {
+        question: "How should the payments-v42 rollout go?",
+        fields: ["Region", "Window", "Owner"].map((label) => ({
+          id: label.toLowerCase(),
+          kind: "choice",
+          label,
+          options: ["First", "Second", "Third", "Fourth"].map((option) => ({
+            description: `${option} ${label.toLowerCase()} option for the rollout.`,
+            label: `${option} ${label.toLowerCase()}`,
+          })),
+        })),
+      },
+      status: "open",
+      title: "Plan the payments-v42 rollout",
+      updatedAt: report.startedAt,
+      visibility: "public",
+    };
+    let dismissed = false;
+    const current = () =>
+      dismissed
+        ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
+        : item;
+    await page.route(`**/api/review-items/${item.id}`, (route) =>
+      route.fulfill({ json: current() }),
+    );
+    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      dismissed = true;
+      return route.fulfill({ json: current() });
+    });
+    // The Conversation also lists the open item above the message box.
+    await page.route(`**/api/review-items?*`, (route) =>
+      route.fulfill({ json: { items: dismissed ? [] : [item] } }),
+    );
+    report.events = [
+      ...Array.from({ length: 20 }, (_, seq) => ({
+        seq,
+        createdAt: report.startedAt,
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: "user",
+          text: `Message ${seq}`,
+        },
+      })),
+      {
+        seq: 20,
+        createdAt: report.lastSeenAt,
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              input: { kind: "action", title: item.title },
+              name: "addReviewItem",
+              output: JSON.stringify({ item: { id: item.id } }),
+              status: "completed",
+              toolCallId: "review-1",
+            },
+          ],
+        },
+      },
+    ];
+    // Junior asked and ended its Turn, so it waits for the answer.
+    report.status = "completed";
+    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+
+    // The reader must see the title and question first, not the end of the form.
+    const card = page.getByRole("region", {
+      name: `Review item: ${item.title}`,
+    });
+    await expect(card.getByRole("button", { name: "Send" })).toBeAttached();
+    await expect(
+      card.getByRole("heading", { name: item.title }),
+    ).toBeInViewport();
+    // The message box and queued messages hide while Junior waits, so the
+    // question is last and the reader does not type the answer as a new
+    // message.
+    const composer = page.getByLabel("Continue this conversation");
+    const queue = page.getByRole("button", { name: /queued messages/ });
+    await expect(composer).toBeHidden();
+    await expect(queue).toBeHidden();
+    await screenshot(page, "conversation-review-item-card", {
+      view: view.name,
+    });
+
+    // Dismiss closes the item and shows the message box and queue again.
+    await card.getByRole("button", { name: "Dismiss" }).click();
+    await expect(composer).toBeVisible();
+    await expect(queue).toBeVisible();
+    await screenshot(page, "conversation-review-item-dismissed", {
+      view: view.name,
+    });
   });
 }

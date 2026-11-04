@@ -26,7 +26,7 @@ export const sandboxFileReferenceSchema = z.object({
     .describe(
       "Optional filename override shown to the recipient. Null is treated as omitted.",
     ),
-  mimeType: z
+  mime_type: z
     .string()
     .min(1)
     .nullable()
@@ -61,7 +61,7 @@ export type SandboxFileMaterializationInput = WithoutNull<
 export const generatedArtifactFileRefSchema = sandboxFileReferenceSchema
   .extend({
     filename: z.string().min(1),
-    mimeType: z.string().min(1).optional(),
+    mime_type: z.string().min(1).optional(),
     bytes: z.number().int().nonnegative(),
   })
   .strict();
@@ -205,7 +205,7 @@ export async function readSandboxFileUpload(
   const detectedMimeType = await detectMimeType(workspace, targetPath);
   const resolvedMimeType = inferMimeType(
     resolvedFilename,
-    input.mimeType ?? detectedMimeType,
+    input.mime_type ?? detectedMimeType,
   );
 
   return {

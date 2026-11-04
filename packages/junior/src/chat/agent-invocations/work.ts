@@ -15,6 +15,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   AgentRunError,
@@ -75,6 +76,9 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
+  ACTIVE_AGENT_INVOCATION_STATUSES,
+  listAgentInvocationsForConversation,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -134,6 +138,8 @@ export function buildAgentInvocationInboundMessage(
     inboundMessageId: getAgentInvocationMessageId(invocation.invocationId),
     input: {
       authorId: invocation.invocationId,
+      // A parent agent wrote the task, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       text: "[agent invocation]",
       metadata: {
         agentInvocationId: invocation.invocationId,
@@ -254,12 +260,15 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A stop request can outlive the run that it stopped and wake the child
-  // again. The stopped agent invocation handles that wake.
+  // A child Conversation never runs on a root worker. A wake after its last
+  // agent invocation ended, such as a late stop request, goes to that agent
+  // invocation, which only repeats its idempotent finish. A paused Turn of an
+  // ended agent invocation can have an event Source, and a root worker would
+  // try to resume it.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.status === "stopped" ? latest.invocationId : undefined;
+  return latest?.invocationId;
 }
 
 /**
@@ -393,12 +402,15 @@ async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
 ): Promise<void> {
   const turnId = getAgentInvocationTurnId(terminal.invocationId);
-  if (terminal.status === "stopped") {
-    // A child stopped between slices has a paused Turn record. Nothing may
+  if (terminal.status !== "completed") {
+    // A child that ends between slices has a paused Turn record. Nothing may
     // resume it.
     await abandonTurnRecord({
       conversationId: terminal.childConversationId,
-      errorMessage: "Turn cancelled",
+      errorMessage:
+        terminal.status === "stopped"
+          ? "Turn cancelled"
+          : terminal.errorMessage,
       turnId,
     });
   }
@@ -412,6 +424,7 @@ async function persistTerminalLifecycle(
 /** Stop an invocation whose worker died, or project its terminal turn result. */
 async function projectTerminalTurn(
   invocation: AgentInvocation,
+  options: { reportNow?: boolean } = {},
 ): Promise<AgentInvocation | undefined> {
   let turn = await getTurnRecord(
     invocation.childConversationId,
@@ -446,6 +459,7 @@ async function projectTerminalTurn(
       ? undefined
       : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
   return await completeAgentInvocation({
+    ...options,
     invocationId: invocation.invocationId,
     ...(failed
       ? {
@@ -462,6 +476,63 @@ async function projectTerminalTurn(
             status: "completed" as const,
           }),
   });
+}
+
+/**
+ * End an agent invocation that is still running or paused while other work
+ * of its child starts. A saved finished Turn gives its result. Otherwise it
+ * fails. The newer work does not continue this task, so the result goes to
+ * the parent on its own.
+ */
+async function endOtherActiveAgentInvocation(
+  invocation: AgentInvocation,
+): Promise<AgentInvocation | undefined> {
+  return (
+    (await projectTerminalTurn(invocation, { reportNow: true })) ??
+    (await completeAgentInvocation({
+      invocationId: invocation.invocationId,
+      errorMessage:
+        "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
+      reportNow: true,
+      status: "failed",
+    }))
+  );
+}
+
+/**
+ * End every agent invocation of a child whose last attempt lost its worker and
+ * whose input reached the child's mailbox. The worker ran no failure path, and
+ * the stop drops the mailbox, so none of them can run. The heartbeat sends
+ * each result.
+ */
+export async function endAgentInvocationsOfStoppedWork(
+  conversationId: string,
+  inboundMessageIds: readonly string[],
+): Promise<void> {
+  for (const invocation of await listAgentInvocationsForConversation(
+    conversationId,
+    NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  )) {
+    // Its append runs after the stop and starts new work for the child.
+    if (
+      !inboundMessageIds.includes(
+        getAgentInvocationMessageId(invocation.invocationId),
+      )
+    ) {
+      continue;
+    }
+    const terminal =
+      (await projectTerminalTurn(invocation, { reportNow: true })) ??
+      (await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage: "This task stopped because its worker failed repeatedly.",
+        reportNow: true,
+        status: "failed",
+      }));
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await persistTerminalLifecycle(terminal);
+    }
+  }
 }
 
 /** Classify authorization failures that terminally block background work. */
@@ -681,6 +752,16 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
+      // A child has at most one running or paused agent invocation. End any
+      // other active one first. Each one reports its own result.
+      for (const active of await listAgentInvocationsForConversation(
+        invocation.childConversationId,
+        ACTIVE_AGENT_INVOCATION_STATUSES,
+      )) {
+        if (active.invocationId !== invocation.invocationId) {
+          await finish(await endOtherActiveAgentInvocation(active));
+        }
+      }
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;
@@ -784,10 +865,9 @@ export function createAgentInvocationWorker(
           }),
       );
     } catch (error) {
-      if (!(error instanceof AgentRunError)) {
-        throw error;
-      }
-      const runError = error.cause;
+      // A save error has no AgentRunError wrapper. On the final attempt it
+      // must also fail the agent invocation, or the child stays open.
+      const runError = error instanceof AgentRunError ? error.cause : error;
       if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
@@ -864,25 +944,5 @@ export function createAgentInvocationWorker(
     }
     await acknowledge();
     return { status: "completed" };
-  };
-}
-
-/** Route invocation-backed work before falling through to existing consumers. */
-export function routeAgentInvocationWork(options: {
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-  invocationWorker: (
-    context: ConversationWorkerContext,
-    invocationId: string,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const invocationId = await resolveAgentInvocationId(context);
-    return invocationId
-      ? await options.invocationWorker(context, invocationId)
-      : await options.fallbackWorker(context);
   };
 }

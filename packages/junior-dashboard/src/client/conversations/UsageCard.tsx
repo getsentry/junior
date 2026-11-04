@@ -27,8 +27,6 @@ export type UsageCardSplit = {
 };
 
 export type UsageCardProps = {
-  /** Closing hint, such as where to find the full breakdown. */
-  footer?: string;
   /** Muted detail after the title, such as a compaction count. */
   note?: string;
   sections: UsageCardSection[];
@@ -64,8 +62,7 @@ export function UsageCard(props: UsageCardProps) {
       <span
         className={cn(
           "grid gap-2.5",
-          (props.sections.length > 0 || props.footer) &&
-            "border-b border-dashboard-border pb-3",
+          props.sections.length > 0 && "border-b border-dashboard-border pb-3",
         )}
       >
         <span className="flex items-baseline justify-between gap-3">
@@ -156,17 +153,6 @@ export function UsageCard(props: UsageCardProps) {
           ) : null}
         </span>
       ))}
-      {props.footer ? (
-        <span
-          className={cn(
-            "text-dashboard-text-faint",
-            props.sections.length > 0 &&
-              "border-t border-dashboard-border pt-3",
-          )}
-        >
-          {props.footer}
-        </span>
-      ) : null}
     </span>
   );
 }

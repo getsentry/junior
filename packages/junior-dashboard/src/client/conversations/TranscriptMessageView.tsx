@@ -5,6 +5,7 @@ import {
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
+import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
@@ -21,7 +22,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
-import { TranscriptText } from "./TranscriptText";
+import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { showsSlackSourceIcon } from "./transcriptSource";
@@ -33,12 +34,30 @@ export const TranscriptMessageView = memo(
     conversation: ConversationTranscript;
   }) {
     const rawText = messageRawText(props.message);
-    const role = props.message.role;
+    const roleKind = transcriptRoleKind(props.message.role);
+    const chatText = roleKind === "assistant" || roleKind === "user";
+    const text = (
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+        {props.message.parts.map((part, index) =>
+          part.type === "text" ? (
+            <DisplayText
+              chat={chatText}
+              key={index}
+              mentions={props.message.mentions}
+              text={part.text ?? ""}
+            />
+          ) : null,
+        )}
+      </div>
+    );
 
     return (
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
+        avatarUrl={
+          transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+        }
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
@@ -55,18 +74,15 @@ export const TranscriptMessageView = memo(
           message={props.message}
           conversation={props.conversation}
         />
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) =>
-            part.type === "text" ? (
-              <TranscriptText
+        {props.message.reviewItemChanges?.length
+          ? props.message.reviewItemChanges.map((record, index) => (
+              <ReviewItemChangeRow
+                fallback={text}
                 key={index}
-                mentions={props.message.mentions ?? []}
-                role={role}
-                text={part.text ?? ""}
+                record={record}
               />
-            ) : null,
-          )}
-        </div>
+            ))
+          : text}
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}
@@ -96,7 +112,8 @@ export const TranscriptMessageView = memo(
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
     previous.conversation.canFork === next.conversation.canFork &&
-    previous.conversation.actorIdentity === next.conversation.actorIdentity,
+    previous.conversation.actorIdentity === next.conversation.actorIdentity &&
+    previous.conversation.authors === next.conversation.authors,
 );
 
 /** Render a redacted primary chat message without exposing body content. */
@@ -108,6 +125,9 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
+      avatarUrl={
+        transcriptMessageActor(props.conversation, props.message)?.avatarUrl
+      }
     >
       <TranscriptMessageHeader
         message={props.message}

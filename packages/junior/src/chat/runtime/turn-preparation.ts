@@ -273,7 +273,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     }
 
     const conversationContext = buildConversationContext(conversation, {
-      excludeMessageId: userMessageId,
+      excludeMessageIds: [userMessageId],
     });
 
     setSpanAttributes({

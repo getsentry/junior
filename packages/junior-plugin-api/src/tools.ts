@@ -327,8 +327,26 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
-/** Control whether a tool is visible to the model and available in the tool catalog. */
-export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+/**
+ * Control who may call a tool.
+ *
+ * | Exposure    | Model tool list | Tool catalog | Code Mode script |
+ * | ----------- | --------------- | ------------ | ---------------- |
+ * | `direct`    | yes             | yes          | yes              |
+ * | `deferred`  | no              | yes          | yes              |
+ * | `modelOnly` | yes             | no           | no               |
+ * | `codemode`  | no              | no           | yes              |
+ * | `hidden`    | no              | no           | no               |
+ *
+ * The tool catalog is `searchTools` and `executeTool`. Use `modelOnly` for
+ * tools that control the agent loop or dispatch other tools.
+ */
+export type ToolExposure =
+  | "direct"
+  | "deferred"
+  | "modelOnly"
+  | "codemode"
+  | "hidden";
 
 export interface PluginToolDefinition<
   TInput = unknown,

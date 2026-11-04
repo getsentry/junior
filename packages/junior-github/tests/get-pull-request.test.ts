@@ -72,11 +72,12 @@ describe("getPullRequest", () => {
           },
         },
       ],
-      headSha: HEAD_SHA,
+      head_sha: HEAD_SHA,
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
         identifier: "getsentry/junior#691",
+        match: { repo: "getsentry/junior", pull_request: 691 },
         type: "pull_request",
       },
     });

@@ -1,17 +1,12 @@
+import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
+import { formatRelativeTime, formatTime } from "../format";
+import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
+import { dashboardDisclosureChevronClass } from "../styles";
+import { ConversationBrief } from "./ConversationBrief";
 import {
   ConversationChildAgents,
   useConversationChildAgents,
@@ -29,62 +24,33 @@ import {
   useConversationWatches,
 } from "./ConversationWatches";
 import { DetailsCard } from "./DetailsList";
-import { ShareConversationButton } from "./ShareConversationButton";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-type DetailsTab = "agents" | "summary" | "memories";
-
-/** Keep the tabs fixed while each panel scrolls to the frame edge. */
-const detailsPanelClass =
-  "min-h-0 overflow-y-auto overscroll-contain rounded-none px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2";
+type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
 /**
- * Show conversation details: the brief, participants, and run facts first,
- * then watches, linked work, and the usage breakdown. Share and Sentry links
- * stay in the header so every tab can reach them.
+ * Show conversation details in the order a reader asks about them: what the
+ * work is (the Brief), what needs them, what it changed or waits on, who did
+ * it, and what it cost. Each fact shows here only, not in the title bar.
  */
 export function ConversationDetails(props: {
-  brief: ReactNode;
+  brief?: Brief;
   conversationId: string;
+  /** True when a sidebar review chip opened details. */
+  highlightReview: boolean;
   identity: ReactNode;
   links: ConversationLink[];
   onClose(): void;
   /** Open one child agent transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
   overview: ReactNode;
-  sentryConversationUrl?: string;
   usage: ReactNode;
 }) {
-  const [tab, setTab] = useState<DetailsTab>("summary");
   const panel = useDetailsPanel();
-  // Load both lists with details so each tab can show its count.
-  const memories = useConversationMemories(props.conversationId);
-  const agents = useConversationChildAgents(props.conversationId);
-  const watches = useConversationWatches(props.conversationId).data?.watches;
-
-  // People first, then run facts. Watches come before linked work: they say
-  // what can wake this agent later, so readers see them without another tab.
-  const sections = [
-    { content: props.identity, key: "participants", title: "Participants" },
-    { content: props.overview, key: "overview", title: undefined },
-    {
-      content: watches?.length ? (
-        <ConversationWatches watches={watches} />
-      ) : null,
-      count: watches?.length,
-      key: "watching",
-      title: "Watching",
-    },
-    {
-      content: props.links.length ? (
-        <ConversationLinkedWork links={props.links} />
-      ) : null,
-      count: props.links.length,
-      key: "linked-work",
-      title: "Linked work",
-    },
-    { content: props.usage, key: "usage", title: "Usage" },
-  ].filter((section) => section.content != null);
+  const memories = useConversationMemories(props.conversationId).data?.memories;
+  const agents = useConversationChildAgents(props.conversationId).data?.agents;
+  const watches =
+    useConversationWatches(props.conversationId).data?.watches ?? [];
 
   return (
     <DetailsPanel
@@ -92,126 +58,115 @@ export function ConversationDetails(props: {
       title={
         <h2
           aria-label="Conversation details"
-          className="m-0 text-base font-semibold text-dashboard-text"
+          className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm"
         >
-          Details
+          {props.brief ? (
+            <>
+              <span className="font-semibold text-dashboard-text">Brief</span>
+              <span aria-hidden="true" className="text-dashboard-text-faint">
+                ·
+              </span>
+              <time
+                className="truncate font-normal text-dashboard-text-muted"
+                dateTime={props.brief.updatedAt}
+                title={formatTime(props.brief.updatedAt, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              >
+                Updated {formatRelativeTime(props.brief.updatedAt)}
+              </time>
+            </>
+          ) : (
+            <span className="font-semibold text-dashboard-text">Details</span>
+          )}
         </h2>
-      }
-      actions={
-        <>
-          <ShareConversationButton
-            key={props.conversationId}
-            conversationId={props.conversationId}
-            layout="icon"
-          />
-          {props.sentryConversationUrl ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <a
-                    aria-label="Open in Sentry"
-                    className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                    href={props.sentryConversationUrl}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    <SentryGlyph />
-                  </a>
-                }
-              />
-              <TooltipContent size="compact" side="bottom">
-                Open in Sentry
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-        </>
       }
       onClose={props.onClose}
     >
-      <Tabs
-        className="h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0"
-        onValueChange={(value: DetailsTab) => setTab(value)}
-        value={tab}
-      >
-        <TabsList
-          activateOnFocus
-          aria-label="Conversation details"
-          className="m-4"
-        >
-          <TabsTrigger value="summary">
-            <span className="truncate">Summary</span>
-          </TabsTrigger>
-          <TabsTrigger value="memories">
-            <span className="truncate">Memories</span>
-            <TabCount count={memories.data?.memories.length} />
-          </TabsTrigger>
-          <TabsTrigger value="agents">
-            <span className="truncate">Subagents</span>
-            <TabCount count={agents.data?.agents.length} />
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent className={detailsPanelClass} value="summary">
-          {props.brief != null || sections.length > 0 ? (
-            <div className="grid min-w-0 gap-3">
-              {props.brief != null ? (
-                <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-                  {props.brief}
-                </div>
-              ) : null}
-              {sections.map((section) => (
-                <DetailsCard
-                  count={section.count}
-                  key={section.key}
-                  title={section.title}
-                >
-                  {section.content}
-                </DetailsCard>
-              ))}
-            </div>
-          ) : (
-            <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              No additional conversation details.
-            </p>
-          )}
-        </TabsContent>
-        <TabsContent className={detailsPanelClass} value="memories">
-          <ConversationMemories conversationId={props.conversationId} />
-        </TabsContent>
-        <TabsContent className={detailsPanelClass} value="agents">
-          <ConversationChildAgents
-            conversationId={props.conversationId}
-            onOpenAgent={(target) => {
-              // The panel stays beside the drawer. A modal sheet cannot.
-              if (!panel) props.onClose();
-              props.onOpenSubagent(target);
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+      <div className="grid min-w-0 content-start gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {props.brief ? (
+          <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            <ConversationBrief brief={props.brief} variant="summary" />
+          </div>
+        ) : null}
+        <ConversationReviewItems
+          conversationId={props.conversationId}
+          highlight={props.highlightReview}
+        />
+        {props.links.length > 0 || watches.length > 0 ? (
+          // A Watch waits on something. It shows with linked work, so the
+          // work and what Junior waits on read as one list.
+          <DetailsCard
+            count={props.links.length || watches.length}
+            title={props.links.length > 0 ? "Linked work" : "Waiting on"}
+          >
+            {props.links.length > 0 ? (
+              <ConversationLinkedWork links={props.links} />
+            ) : null}
+            {props.links.length > 0 && watches.length > 0 ? (
+              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-medium text-dashboard-text-faint">
+                Also waiting on
+              </h4>
+            ) : null}
+            {watches.length > 0 ? (
+              <ConversationWatches watches={watches} />
+            ) : null}
+          </DetailsCard>
+        ) : null}
+        {agents?.length ? (
+          <DetailsCard count={agents.length} title="Subagents">
+            <ConversationChildAgents
+              conversationId={props.conversationId}
+              onOpenAgent={(target) => {
+                // The panel stays beside the drawer. A modal sheet cannot.
+                if (!panel) props.onClose();
+                props.onOpenSubagent(target);
+              }}
+            />
+          </DetailsCard>
+        ) : null}
+        {props.overview != null ? (
+          <DetailsCard>{props.overview}</DetailsCard>
+        ) : null}
+        {props.usage != null ? (
+          <DetailsCard title="Usage">{props.usage}</DetailsCard>
+        ) : null}
+        {props.identity != null ? (
+          <DetailsCard title="Participants">{props.identity}</DetailsCard>
+        ) : null}
+        {memories?.length ? (
+          <DetailsCard count={memories.length} title="Memories">
+            <Disclosure label="memories">
+              <ConversationMemories conversationId={props.conversationId} />
+            </Disclosure>
+          </DetailsCard>
+        ) : null}
+      </div>
     </DetailsPanel>
   );
 }
 
-/** Show a panel's entry count. Zero and unknown counts are hidden. */
-function TabCount(props: { count: number | undefined }) {
-  if (!props.count) return null;
+/** Hide long, rarely read content behind one show/hide row. */
+function Disclosure(props: { children: ReactNode; label: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <span className="min-w-5 shrink-0 rounded-full bg-dashboard-fill-strong px-1.5 text-center text-xs font-semibold leading-5 tabular-nums">
-      {props.count.toLocaleString("en-US")}
-    </span>
-  );
-}
-
-/** Draw the Sentry glyph in the current text color, sized like a header icon. */
-function SentryGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-4"
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z" />
-    </svg>
+    <div className="grid min-w-0 gap-2">
+      <button
+        aria-expanded={open}
+        className="group -mx-1.5 -my-1 flex min-h-8 items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        onClick={() => setOpen((value) => !value)}
+        type="button"
+      >
+        <span className="grid size-5 shrink-0 place-items-center">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
+        </span>
+        {open ? `Hide ${props.label}` : `Show ${props.label}`}
+      </button>
+      {open ? props.children : null}
+    </div>
   );
 }

@@ -51,7 +51,7 @@ export function buildPrimaryNavItems(input: {
           {
             count: input.reviewCount,
             key: "review",
-            label: "Review desk",
+            label: "Inbox",
             to: "/review",
           },
         ]

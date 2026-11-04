@@ -22,7 +22,6 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { cosineDistance } from "drizzle-orm/sql/functions";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
@@ -33,9 +32,20 @@ import {
   juniorMemoryMemories,
   juniorMemorySignals,
 } from "./db/schema";
+import {
+  EMBEDDING_METRIC,
+  embeddingDistance,
+  embeddingWithinDistance,
+  hasHnswIndex,
+  hashEmbeddedContent,
+  parseEmbeddingBatch,
+  sameEmbeddingModel,
+  sameEmbeddingSize,
+  type MemoryEmbedding,
+  type MemoryEmbeddingProvider,
+} from "./embedding";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
-  MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
@@ -70,6 +80,10 @@ const RECALL_RETRIEVAL_OVERFETCH = 2;
  * single healthy leg can still fill the caller's requested result window.
  */
 const MAX_RETRIEVAL_LEG_CANDIDATES = 200;
+/** Smallest HNSW candidate budget. 200 kept the exact top 40 on prod data. */
+const HNSW_MIN_CANDIDATES = 200;
+/** HNSW candidates per requested result. pgvector caps ef_search at 1,000. */
+const HNSW_CANDIDATES_PER_RESULT = 5;
 /** Cap ts_rank_cd work after GIN filtering; ranking is not indexable. */
 const MAX_LEXICAL_RANK_CANDIDATES = 200;
 /** Expand the GIN match window before ts_rank_cd, still under the hard cap. */
@@ -77,7 +91,6 @@ const LEXICAL_RANK_WINDOW_MULTIPLIER = 4;
 /** Bound query text before embedding / FTS construction. */
 const MAX_RETRIEVAL_QUERY_CHARS = 1_500;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
-const EMBEDDING_METRIC = "cosine";
 /**
  * Cosine distance cutoff for automatic recall only (not explicit search).
  * Tuned for text-embedding-3-small; retune if the embedding model changes.
@@ -87,12 +100,6 @@ const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
-
-interface MemoryEmbedding {
-  model: string;
-  provider: string;
-  vector: number[];
-}
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryContentSchema = z
@@ -227,18 +234,6 @@ const memoryRecordSchema = z
     kind: z.enum(MEMORY_KINDS),
   })
   .strict();
-const embeddingVectorSchema = z
-  .array(numberSchema)
-  .length(MEMORY_EMBEDDING_DIMENSIONS);
-const embeddingResultSchema = z
-  .object({
-    costUsd: z.number().finite().nonnegative().optional(),
-    dimensions: z.literal(MEMORY_EMBEDDING_DIMENSIONS),
-    model: nonEmptyStringSchema,
-    provider: nonEmptyStringSchema,
-    vectors: z.array(embeddingVectorSchema),
-  })
-  .strict();
 const memorySupersessionCandidateSchema = z
   .object({
     content: z.string().min(1),
@@ -322,16 +317,7 @@ export interface ArchiveExpiredMemoriesResult {
   archivedCount: number;
 }
 
-export interface MemoryEmbeddingProvider {
-  /** Embed normalized memory text for derived vector retrieval. */
-  embedTexts(input: { texts: string[] }): Promise<{
-    costUsd?: number;
-    dimensions: number;
-    model: string;
-    provider: string;
-    vectors: number[][];
-  }>;
-}
+export type { MemoryEmbeddingProvider } from "./embedding";
 
 export type MemorySupersessionInput = z.output<
   typeof memorySupersessionInputSchema
@@ -379,12 +365,9 @@ export interface MemoryStore {
   searchMemories(input: SearchMemoriesInput): Promise<MemoryRecord[]>;
 }
 
-function normalizeContent(content: string): string {
+/** Collapse whitespace the same way for stored, embedded, and searched text. */
+export function normalizeContent(content: string): string {
   return content.replace(/\s+/g, " ").trim();
-}
-
-function hashEmbeddedContent(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 function idempotencyAliasId(args: {
@@ -572,7 +555,8 @@ async function findByIdempotencyKey(args: {
 }
 
 /**
- * Archive a bounded batch of expired active rows and remove their derived vectors.
+ * Archive a bounded batch of expired active rows in the given scopes and
+ * remove their derived vectors.
  */
 export async function archiveExpiredMemoryBatch(args: {
   db: MemoryDb;
@@ -585,18 +569,44 @@ export async function archiveExpiredMemoryBatch(args: {
   if (!scopePredicate) {
     return { archivedCount: 0 };
   }
+  const filters: SQL[] = [scopePredicate];
+  if (args.idempotencyKey !== undefined) {
+    filters.push(eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey));
+  }
+  return await archiveExpiredRows({
+    db: args.db,
+    filters,
+    limit: args.limit,
+    nowMs: args.nowMs,
+  });
+}
+
+/**
+ * Archive a bounded batch of expired active rows in every scope and remove
+ * their derived vectors. Reads already hide expired rows, so this is cleanup
+ * that the memory heartbeat owns.
+ */
+export async function archiveExpiredMemoriesInAllScopes(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+}): Promise<ArchiveExpiredMemoriesResult> {
+  return await archiveExpiredRows({ ...args, filters: [] });
+}
+
+async function archiveExpiredRows(args: {
+  db: MemoryDb;
+  filters: SQL[];
+  limit?: number;
+  nowMs: number;
+}): Promise<ArchiveExpiredMemoriesResult> {
   const predicates: SQL[] = [
-    scopePredicate,
+    ...args.filters,
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
     lte(juniorMemoryMemories.expiresAtMs, args.nowMs),
   ];
-  if (args.idempotencyKey !== undefined) {
-    predicates.push(
-      eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
-    );
-  }
 
   const archivedIds = await args.db.transaction(async (tx) => {
     const expired = await tx
@@ -651,16 +661,18 @@ function withDenseRanks<T>(
 async function embedOne(
   embedder: MemoryEmbeddingProvider,
   text: string,
+  inputType: "document" | "query",
 ): Promise<MemoryEmbedding> {
   const normalized = normalizeContent(text);
   if (!normalized) {
     throw new Error("Embedding text is required.");
   }
-  const result = embeddingResultSchema.parse(
-    await embedder.embedTexts({ texts: [normalized] }),
+  const result = parseEmbeddingBatch(
+    await embedder.embedTexts({ inputType, texts: [normalized] }),
+    1,
   );
   const [vector] = result.vectors;
-  if (result.vectors.length !== 1 || !vector) {
+  if (!vector) {
     throw new Error("Embedding provider returned an unexpected vector count.");
   }
   return {
@@ -679,14 +691,21 @@ async function storeEmbedding(args: {
   memoryId: string;
   nowMs: number;
 }): Promise<void> {
-  if (!args.embedder && !args.embedding) {
+  const target = args.embedding ?? args.embedder;
+  if (!target) {
     return;
   }
   try {
     const existing = await args.db
       .select({ memoryId: juniorMemoryEmbeddings.memoryId })
       .from(juniorMemoryEmbeddings)
-      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
+      .where(
+        and(
+          eq(juniorMemoryEmbeddings.memoryId, args.memoryId),
+          eq(juniorMemoryEmbeddings.provider, target.provider),
+          eq(juniorMemoryEmbeddings.model, target.model),
+        ),
+      )
       .limit(1);
     if (existing[0]) {
       return;
@@ -703,7 +722,7 @@ async function storeEmbedding(args: {
       return;
     }
     try {
-      embedding = await embedOne(embedder, args.content);
+      embedding = await embedOne(embedder, args.content, "document");
     } catch {
       return;
     }
@@ -714,7 +733,7 @@ async function storeEmbedding(args: {
       .values({
         contentHash: hashEmbeddedContent(args.content),
         createdAtMs: args.nowMs,
-        dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+        dimensions: embedding.vector.length,
         embedding: embedding.vector,
         memoryId: args.memoryId,
         metric: EMBEDDING_METRIC,
@@ -900,10 +919,7 @@ async function listVectorAdjudicationCandidates(args: {
   scope: ResolvedMemoryScope;
   subject: ResolvedMemorySubject;
 }): Promise<MemoryRecord[]> {
-  const distance = cosineDistance(
-    juniorMemoryEmbeddings.embedding,
-    args.embedding.vector,
-  );
+  const distance = embeddingDistance(args.embedding);
   const rows = await args.db
     .select({
       contentHash: juniorMemoryEmbeddings.contentHash,
@@ -918,10 +934,7 @@ async function listVectorAdjudicationCandidates(args: {
     .where(
       and(
         activeScopedSubjectPredicate(args),
-        eq(juniorMemoryEmbeddings.provider, args.embedding.provider),
-        eq(juniorMemoryEmbeddings.model, args.embedding.model),
-        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
-        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+        sameEmbeddingModel(args.embedding),
       ),
     )
     .orderBy(
@@ -1119,6 +1132,112 @@ async function searchVisibleLexicalMemories(args: {
   );
 }
 
+interface VectorSearchArgs {
+  db: MemoryDb;
+  embedding: MemoryEmbedding;
+  limit: number;
+  maxDistance?: number;
+  predicate: SQL;
+}
+
+/** Search every visible vector of the query model. Exact, but reads each one. */
+async function searchExactVectorRows(args: VectorSearchArgs) {
+  const embedding = args.embedding;
+  const distance = embeddingDistance(embedding);
+  // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
+  const distancePredicate =
+    args.maxDistance === undefined
+      ? undefined
+      : embeddingWithinDistance(embedding, args.maxDistance);
+  return await args.db
+    .select({
+      contentHash: juniorMemoryEmbeddings.contentHash,
+      distance,
+      memory: juniorMemoryMemories,
+    })
+    .from(juniorMemoryMemories)
+    .innerJoin(
+      juniorMemoryEmbeddings,
+      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
+    )
+    .where(
+      and(
+        args.predicate,
+        sameEmbeddingModel(embedding),
+        ...(distancePredicate ? [distancePredicate] : []),
+      ),
+    )
+    .orderBy(
+      distance,
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(args.limit);
+}
+
+/**
+ * Take the nearest vectors of the query size from the HNSW index, then apply
+ * the model, visibility, and cutoff filters to those candidates only.
+ */
+async function searchHnswVectorRows(args: VectorSearchArgs) {
+  const embedding = args.embedding;
+  // Other Users' private memories and vectors of other models use part of the
+  // budget before the filters run, so it is larger than the limit.
+  const candidateLimit = Math.max(
+    HNSW_MIN_CANDIDATES,
+    args.limit * HNSW_CANDIDATES_PER_RESULT,
+  );
+  return await args.db.transaction(async (tx) => {
+    // Stored vectors are TOASTed, and the planner does not cost TOAST reads.
+    // So it picks an exact scan of every visible vector over the index. Turn
+    // off the other scans for this transaction only. Do not turn on
+    // hnsw.iterative_scan: with the cutoff it can scan the whole index.
+    await tx.execute(
+      sql`SELECT set_config('enable_seqscan', 'off', true), set_config('enable_bitmapscan', 'off', true), set_config('hnsw.ef_search', ${String(candidateLimit)}, true)`,
+    );
+    // The index predicate must be the only filter, or Postgres does not use
+    // the index for the ORDER BY.
+    const candidates = tx
+      .select({
+        contentHash: juniorMemoryEmbeddings.contentHash,
+        dimensions: juniorMemoryEmbeddings.dimensions,
+        distance: sql<number>`${embeddingDistance(embedding)}`.as("distance"),
+        memoryId: juniorMemoryEmbeddings.memoryId,
+        metric: juniorMemoryEmbeddings.metric,
+        model: juniorMemoryEmbeddings.model,
+        provider: juniorMemoryEmbeddings.provider,
+      })
+      .from(juniorMemoryEmbeddings)
+      .where(sameEmbeddingSize(embedding))
+      .orderBy(sql`distance`)
+      .limit(candidateLimit)
+      .as("hnsw_candidates");
+    return await tx
+      .select({
+        contentHash: candidates.contentHash,
+        distance: candidates.distance,
+        memory: juniorMemoryMemories,
+      })
+      .from(juniorMemoryMemories)
+      .innerJoin(candidates, eq(candidates.memoryId, juniorMemoryMemories.id))
+      .where(
+        and(
+          args.predicate,
+          sameEmbeddingModel(embedding, candidates),
+          ...(args.maxDistance === undefined
+            ? []
+            : [lte(candidates.distance, args.maxDistance)]),
+        ),
+      )
+      .orderBy(
+        candidates.distance,
+        desc(juniorMemoryMemories.createdAtMs),
+        asc(juniorMemoryMemories.id),
+      )
+      .limit(args.limit);
+  });
+}
+
 /** Search active visible records with pgvector cosine distance. */
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
@@ -1132,43 +1251,16 @@ async function searchVisibleVectorMemories(args: {
   if (!predicate) {
     return [];
   }
-  const embedding = args.embedding;
-  const distance = cosineDistance(
-    juniorMemoryEmbeddings.embedding,
-    embedding.vector,
-  );
-  // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
-  const distancePredicate =
-    args.maxDistance === undefined
-      ? undefined
-      : sql`${distance} <= ${args.maxDistance}`;
-  const rows = await args.db
-    .select({
-      contentHash: juniorMemoryEmbeddings.contentHash,
-      distance,
-      memory: juniorMemoryMemories,
-    })
-    .from(juniorMemoryMemories)
-    .innerJoin(
-      juniorMemoryEmbeddings,
-      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-    )
-    .where(
-      and(
-        predicate,
-        eq(juniorMemoryEmbeddings.provider, embedding.provider),
-        eq(juniorMemoryEmbeddings.model, embedding.model),
-        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
-        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
-        ...(distancePredicate ? [distancePredicate] : []),
-      ),
-    )
-    .orderBy(
-      distance,
-      desc(juniorMemoryMemories.createdAtMs),
-      asc(juniorMemoryMemories.id),
-    )
-    .limit(args.limit);
+  // Public memory makes the visible set large, so the exact search is slow.
+  // Without it the visible set is one User's private memory: the exact search
+  // is fast, and a shared nearest-vector budget could miss all of it.
+  const useHnsw =
+    hasHnswIndex(args.embedding) &&
+    args.scopes.some((scope) => scope.scope === "public");
+  const searchArgs = { ...args, predicate };
+  const rows = useHnsw
+    ? await searchHnswVectorRows(searchArgs)
+    : await searchExactVectorRows(searchArgs);
   return withDenseRanks(rows, (row) => Number(row.distance)).flatMap(
     ({ rank, value: row }) => {
       const distanceValue = Number(row.distance);
@@ -1260,11 +1352,9 @@ export function createMemoryStore(
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }
-    await archiveExpiredMemoryBatch({
-      db,
-      nowMs,
-      scopes: [scope],
-    });
+    // An expired row still holds its idempotency key in the unique index, so
+    // archive it first. Otherwise a retry with the same key cannot recreate
+    // the memory. Other expired rows are left to the heartbeat.
     await archiveExpiredMemoryBatch({
       db,
       idempotencyKey: input.idempotencyKey,
@@ -1315,7 +1405,7 @@ export function createMemoryStore(
     let candidateEmbedding: MemoryEmbedding | undefined;
     if (embedder) {
       try {
-        candidateEmbedding = await embedOne(embedder, content);
+        candidateEmbedding = await embedOne(embedder, content, "document");
       } catch {
         candidateEmbedding = undefined;
       }
@@ -1475,11 +1565,6 @@ export function createMemoryStore(
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const scopes = deriveVisibleMemoryScopes(runtimeContext);
-    await archiveExpiredMemoryBatch({
-      db,
-      nowMs,
-      scopes,
-    });
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
     const overfetch =
       vectorMaxDistance === undefined
@@ -1492,14 +1577,29 @@ export function createMemoryStore(
     const probePrivate =
       vectorMaxDistance !== undefined && privateScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
-    let queryEmbedding: MemoryEmbedding | undefined;
-    if (embedder && query) {
-      try {
-        queryEmbedding = await embedOne(embedder, query);
-      } catch {
-        queryEmbedding = undefined;
+    // Embed once for both vector probes. A failed embed means lexical-only.
+    const queryEmbedding =
+      embedder && query
+        ? embedOne(embedder, query, "query").catch(() => undefined)
+        : Promise.resolve(undefined);
+    const vectorMatches = async (
+      vectorScopes: ResolvedMemoryScope[],
+    ): Promise<MemoryMatch[]> => {
+      const embedding = await queryEmbedding;
+      if (!embedding) {
+        return [];
       }
-    }
+      return await searchVisibleVectorMemories({
+        db,
+        embedding,
+        limit: candidateLimit,
+        ...(vectorMaxDistance !== undefined
+          ? { maxDistance: vectorMaxDistance }
+          : undefined),
+        nowMs,
+        scopes: vectorScopes,
+      });
+    };
     const emptyMatches = Promise.resolve([] as MemoryMatch[]);
     const lexicalArgs = {
       db,
@@ -1509,34 +1609,14 @@ export function createMemoryStore(
     };
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
-    // Embed once up front; vector probes only run when that embedding exists.
+    // Lexical probes do not need the embedding, so they start while it runs.
     const matches = await Promise.all([
-      queryEmbedding
-        ? searchVisibleVectorMemories({
-            db,
-            embedding: queryEmbedding,
-            limit: candidateLimit,
-            ...(vectorMaxDistance !== undefined
-              ? { maxDistance: vectorMaxDistance }
-              : undefined),
-            nowMs,
-            scopes,
-          })
-        : emptyMatches,
+      vectorMatches(scopes),
       searchVisibleLexicalMemories({
         ...lexicalArgs,
         scopes,
       }),
-      queryEmbedding && probePrivate
-        ? searchVisibleVectorMemories({
-            db,
-            embedding: queryEmbedding,
-            limit: candidateLimit,
-            maxDistance: vectorMaxDistance,
-            nowMs,
-            scopes: privateScopes,
-          })
-        : emptyMatches,
+      probePrivate ? vectorMatches(privateScopes) : emptyMatches,
       probePrivate
         ? searchVisibleLexicalMemories({
             ...lexicalArgs,
@@ -1572,11 +1652,6 @@ export function createMemoryStore(
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      await archiveExpiredMemoryBatch({
-        db,
-        nowMs,
-        scopes,
-      });
       return await listVisibleMemories({
         db,
         limit: input.limit,

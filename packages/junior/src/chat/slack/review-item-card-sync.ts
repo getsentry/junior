@@ -4,6 +4,7 @@ import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { getReviewItem, type ReviewItem } from "@/chat/review-items/store";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
@@ -123,6 +124,16 @@ export async function readSlackReviewItemCardConversationId(card: {
 
 // Long enough for the sync that holds the lock to post or change a few cards.
 const SYNC_LOCK_WAIT_MS = 10_000;
+
+/**
+ * Return the Slack `ShowReviewItem` for app setup. Pass `getSlackAdapter`
+ * outside Slack work so each card uses the token of its workspace.
+ */
+export function createSlackReviewItemShow(
+  getSlackAdapter?: () => SlackAdapter,
+): ShowReviewItem {
+  return (itemId) => syncReviewItemSlackCards({ getSlackAdapter, itemId });
+}
 
 /**
  * Show the current state of a Review item in its linked Slack threads. An

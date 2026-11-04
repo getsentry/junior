@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Identity, PluginContext, User } from "./context";
+import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
@@ -10,12 +10,15 @@ import type {
   PluginConversationEventStats,
 } from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
+import type { PluginConversationReviewItems } from "./review-items";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
+  /** Host embedder bound to the configured embedding model. */
+  embedder: PluginEmbedder;
   nowMs: number;
   state: PluginState;
 }
@@ -161,6 +164,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  /** Review desk items that the plugin adds and closes from its events. */
+  reviewItems: PluginConversationReviewItems;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

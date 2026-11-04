@@ -1,3 +1,4 @@
+import { getMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { getSlackFileId } from "@/chat/slack/attachments";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
@@ -9,7 +10,10 @@ import {
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import {
+  getMessageActorIdentity,
+  getMessageAuthorIdentityId,
+} from "@/chat/services/message-actor-identity";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
@@ -40,10 +44,15 @@ export function toConversationMessage(
   const imageAttachmentCount = messageHasPotentialImageAttachment
     ? countPotentialImageAttachments(args.entry.attachments)
     : 0;
+  const authorIdentityId = args.entry.author.isMe
+    ? undefined
+    : getMessageAuthorIdentityId(args.entry);
+  const reviewItemChange = getMessageReviewItemChange(args.entry);
 
   return {
     id: args.entry.id,
     role: args.entry.author.isMe ? "assistant" : "user",
+    ...(authorIdentityId ? { authorIdentityId } : undefined),
     text: resolveMessageText(args),
     createdAtMs: args.entry.metadata.dateSent.getTime(),
     author: {
@@ -65,6 +74,9 @@ export function toConversationMessage(
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
+      ...(reviewItemChange
+        ? { reviewItemChanges: [reviewItemChange] }
+        : undefined),
       source: "slack",
       ...(slackTs ? { slackTs } : undefined),
     },

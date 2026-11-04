@@ -1,7 +1,11 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
 import { z } from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
-import type { ReviewItem, ReviewItemAssignee } from "@/chat/review-items/store";
+import {
+  REVIEW_ITEM_REPLIED_REASON,
+  type ReviewItem,
+  type ReviewItemAssignee,
+} from "@/chat/review-items/store";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
@@ -18,7 +22,6 @@ export const SLACK_REVIEW_ITEM_VIEW_ID = "junior_review_item";
 const ACTION_ID_PREFIX = "junior_review_item:";
 const CHOICE_ACTION_ID_PREFIX = `${ACTION_ID_PREFIX}choice:`;
 const ANSWER_ACTION_ID = `${ACTION_ID_PREFIX}answer`;
-const DONE_ACTION_ID = `${ACTION_ID_PREFIX}done`;
 const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
 // Slack allows 12,000 characters in all markdown blocks of one message.
 const MAX_BODY_CHARS = 3_000;
@@ -63,18 +66,9 @@ function controls(item: ReviewItem): Button[] {
     text: plainText("Dismiss"),
     value: item.id,
   };
-  if (item.kind === "notice" || !item.request) {
-    return [
-      {
-        type: "button",
-        action_id: DONE_ACTION_ID,
-        style: "primary",
-        text: plainText("Done"),
-        value: item.id,
-      },
-      dismiss,
-    ];
-  }
+  // A notice has nothing to answer, and it can close by itself, so a person
+  // can only dismiss it.
+  if (item.kind === "notice" || !item.request) return [dismiss];
   const buttonField = buttonUserInputField(item.request);
   if (!buttonField) {
     return [
@@ -94,6 +88,7 @@ function controls(item: ReviewItem): Button[] {
         type: "button",
         // Slack requires a unique action_id for each element in one message.
         action_id: `${CHOICE_ACTION_ID_PREFIX}${index}`,
+        ...(option.recommended ? { style: "primary" as const } : undefined),
         text: plainText(option.label),
         // The label goes with the click, so a click on a stale card cannot
         // pick another option after the request changes.
@@ -113,6 +108,9 @@ function controls(item: ReviewItem): Button[] {
 /** The note that replaces the controls of a closed item. */
 function closedNote(item: ReviewItem): string {
   const who = item.closedBy ? personName(item.closedBy) : undefined;
+  if (item.closeReason === REVIEW_ITEM_REPLIED_REASON) {
+    return `${who ?? "A person"} replied in the thread`;
+  }
   if (item.status === "done" && item.request && item.answer && who) {
     return slackUserInputAnswerNote({
       answer: item.answer,
@@ -134,8 +132,8 @@ function closedNote(item: ReviewItem): string {
 /**
  * Render a Review item as one Slack message. An open item shows its
  * controls: one button per choice when one click can answer it, an Answer
- * button that opens a form otherwise, and Done for a notice. A closed item
- * shows a note instead, so nobody can act on it again.
+ * button that opens a form otherwise, and only Dismiss for a notice. A
+ * closed item shows a note instead, so nobody can act on it again.
  */
 export function buildSlackReviewItemCard(item: ReviewItem): {
   blocks: KnownBlock[];
@@ -183,7 +181,6 @@ export function buildHiddenSlackReviewItemCard(item: ReviewItem): {
 export type SlackReviewItemClick =
   | { kind: "choice"; itemId: string; label: string }
   | { kind: "answer"; itemId: string }
-  | { kind: "done"; itemId: string }
   | { kind: "dismiss"; itemId: string };
 
 const choiceValueSchema = z.object({
@@ -218,9 +215,6 @@ export function parseSlackReviewItemClick(action: {
   if (action.action_id === ANSWER_ACTION_ID) {
     return { kind: "answer", itemId: value };
   }
-  if (action.action_id === DONE_ACTION_ID) {
-    return { kind: "done", itemId: value };
-  }
   if (action.action_id === DISMISS_ACTION_ID) {
     return { kind: "dismiss", itemId: value };
   }
@@ -235,7 +229,7 @@ const formTargetSchema = z.object({
 });
 
 /** The card and thread that a Review item form answers. */
-export type SlackReviewItemFormTarget = z.output<typeof formTargetSchema>;
+type SlackReviewItemFormTarget = z.output<typeof formTargetSchema>;
 
 /** Render the answer form of an action item. */
 export function buildSlackReviewItemModal(

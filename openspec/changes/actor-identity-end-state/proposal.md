@@ -7,6 +7,13 @@ Identity. Junior resolves each Identity one time, at ingress, and stores its
 id. Later code reads the stored id. It does not guess the Identity again from
 platform strings, the Source, the Location, or id patterns.
 
+The Owner is the existing `junior_conversations.actor_identity_id` column.
+Code and docs call it the Owner.
+
+Junior migrates an old data shape only when special code exists because of
+it, and only with a rule that a read-only dry run proves. Then Junior deletes
+that code.
+
 This plan is the end state for #2439. It fixes the target and the rules.
 Each step decides its own implementation details when it is built
 (`tasks.md`, How To Use This Plan). `design.md` has the model and the known
@@ -17,23 +24,33 @@ gaps.
 - The runtime `Actor` is typed. Stored state changes it to a Slack-only
   shape. Many write and read paths then guess the Identity again. Each guess
   can drift.
-- The Conversation write keeps the newest non-empty Identity. So a human who
-  replies can replace the system Identity of an automation Conversation
-  (#2431). #2436 fixed one case in app code.
-- One Conversation column does four jobs: the root that the dashboard shows,
-  private access, spend, and the personal feed.
+- On `main`, the Conversation write keeps the newest non-empty Identity. So
+  a human who replies can replace the system Identity of an automation
+  Conversation (#2431). #2436 fixed one case in app code. #2482 makes the
+  write keep the first value.
+- The Conversation Identity column does four jobs: the root that the
+  dashboard shows, private access, spend, and the personal feed. Each job
+  must read the root Owner. Today a child row has its own copy, so child
+  spend can go to the child's own Identity.
 - No inbound event Message has an author Identity.
+- Old rows have data shapes that only special code can read. That code stays
+  until the data migrates.
 
 ## Scope
 
-- One Owner per root Conversation, set at insert.
+- One Owner per root Conversation, in the existing Conversation Identity
+  column. Junior sets it one time.
 - One system Identity.
 - A required author Identity on each new user Message.
 - The Identity of web users, bots, and event authors.
-- The move of every reader from the old Conversation column to the Owner.
+- Every reader of the Owner uses the root Owner.
+- One data migration for the old data shapes that have special code.
+- A separate repair of old Owner damage (#2431), only for rules that a dry
+  run proves.
 
 ## Non-Goals
 
+- Add a new Owner column, or rename the existing column.
 - Key user credentials by User. Connections stay keyed per platform. This is a
   separate change.
 - Change `SystemActor` names or the `Actor` schema.
@@ -42,6 +59,8 @@ gaps.
   #2181 and #2260 own those. This plan only widens which event authors
   #2260 trusts.
 - Change visibility. #2382 owns it.
+- Migrate legacy `junior/<email>` web Identities.
+- Migrate Redis or Turn checkpoint data. Junior waits for it to expire.
 
 ## Decisions
 
@@ -94,6 +113,7 @@ These are David Cramer's answers in the Slack thread for #2439.
   hidden Messages: "untrusted events wont actually ever be seen so i think
   (2/3) is not relevant? system events might have untrusted text but we
   already handle that"
+- On Cursor Bugbot: "yeah Bugbot and sentry will end up on trusted actors"
 
 His answers to the 14 earlier proposals:
 
@@ -114,24 +134,33 @@ His answers to the 14 earlier proposals:
 | 13  | "creator" for the Automation's "owner" in `TERMINOLOGY.md`  | "sure, we dont really have "owners" on automations anyways"          |
 | 14  | #2260's instruction record keeps the author Identity id     | "ok"                                                                 |
 
+His answers to the three questions on old data and the Owner column. The
+topic column gives the plan's proposal. The quote is his exact reply.
+
+| #   | Topic                                                             | His words                                                                                                              |
+| --- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Old event Messages get the system Identity as their author        | "(1) yes"                                                                                                              |
+| 2   | Old user Messages whose author cannot be proven                   | "(2), why not just make them system? if they dont have an author just make them without an author? should be uncommon" |
+| 3   | Keep `junior_conversations.actor_identity_id` as the Owner column | "(3) i guess? usually theres just like one actor.. everything else is metadata"                                        |
+
 ### Delegated Decisions
 
-David handed these four to the plan. His words are in the table above. Each
-one is a current proposal. The step that builds it confirms it.
+David handed these four to the plan. His words are in the first table above.
+Each one is a current proposal. The step that builds it confirms it.
 
 - **Local auth bypass (2).** The bypass viewer gets an Identity that only the
   bypass writes, so it can never match a production User. The dashboard
   refuses the bypass on a production deploy. _Why:_ the bypass has no Google
-  sign-in, but its Messages still need an author. Confirm in step 3.
-- **Owner repair (7).** Junior repairs an old root only when the repair is
-  clearly correct, and only after a dry run. Every other row keeps its
-  current Identity. `design.md`, Owner Repair, gives the current proposal.
-  Confirm in step 4b.
+  sign-in, but its Messages still need an author. Confirm in step 4.
+- **Owner repair (7).** Junior repairs an old root only when a dry run proves
+  the rule. Every other row keeps its current Owner. `design.md`, Owner
+  Repair, gives the rules. Confirm in step 7.
 - **System Identity key (10).** One system Identity, with a key that no
-  plugin or OAuth link can write. #2443 (step 1) builds this key.
+  plugin or OAuth link can write. #2443 (step 1) built the one entry point.
+  #2482 (step 2) gives the system Identity the fixed id `system`.
 - **Mock viewer key (12).** The mock viewer gets an Identity in memory only.
   Mock reporting writes no rows today, so it cannot collide with a real row.
-  Confirm in step 3.
+  Confirm in step 4.
 
 ### Plan Decisions
 
@@ -144,6 +173,10 @@ These follow from the answers above. They are the target. Where a bullet says
   its own Conversation, so it is system work.
 - Junior sets the Owner one time, at insert. A reply never changes it.
 - A child Conversation stores no Owner. It reads the Owner of its root.
+- **The Owner column.** The existing `junior_conversations.actor_identity_id`
+  column is the Owner (answer 3 on old data). Code and docs call it the
+  Owner. There is no new Owner column and no rename. #2482 makes the
+  Conversation write keep the first value, which is the Owner rule.
 - **One system Identity.** "Which system" is provenance: the Source and the
   Automation or dispatch record (#2211). `SystemActor.name` stays as runtime
   provenance.
@@ -159,11 +192,31 @@ These follow from the answers above. They are the target. Where a bullet says
   the `Actor`.
 - **No unknown authors.** Every new user Message has an author Identity.
   Assistant output has none.
-- **Normalized schema.** The Owner replaces the old Conversation Identity
-  column. The unused Identity columns and the stored Actor JSON go away.
-- **Legacy `junior/<email>` rows.** One migration is clearly correct: a
-  `junior/<email>` row and a sign-in row that link the same User. Junior moves
-  references only in that case. Every other legacy row stays as it is.
+- **Normalized schema.** The Owner is the existing Conversation Identity
+  column. The two unused Conversation Identity columns
+  (`creator_identity_id`, `credential_subject_identity_id`) and the stored
+  Actor JSON (`actor_json`) go away.
+- **Legacy data rule.** Junior migrates an old data shape only when special
+  code exists because of it, and only with a rule that a read-only dry run
+  proves. Then Junior deletes that code. `design.md`, Legacy Data, lists the
+  shapes.
+- **Old event Messages.** An old event Message gets the system Identity as
+  its author (answer 1 on old data). Those Turns ran as system, and Junior
+  never saved the real writer of a PR comment.
+- **Old user Messages with no provable author.** Plan reading of answer 2 on
+  old data: these Messages stay with no author. Junior does not guess one.
+  The dry run counts them to confirm that they are uncommon. _Why not the
+  system Identity:_ a human Message stored as system could later read as a
+  system or automation Message in history.
+- **Legacy `junior/<email>` rows.** No migration is needed. They are valid
+  Identities, and they link to the right User. Readers group by User, so
+  these rows show correctly. A merge into the sign-in Identity is optional.
+- **Redis and Turn checkpoint data.** No migration is needed. Junior waits
+  for the data to expire. Redis work state expires after 7 days. The plan
+  waits 14 days.
+- **Owner repair is separate from the migration.** It fixes wrong data, not
+  a code path. It runs only for the rules that the dry run proves
+  (`design.md`, Owner Repair).
 - **Participants are users.** Only Identities of kind `user` with a User get
   participant rows. The dashboard participant list uses the same rule.
 - **An event is a user Message.** Its author is the Identity of the person or
@@ -202,6 +255,12 @@ These follow from the answers above. They are the target. Where a bullet says
 - **The list can name bots and people.** Plan reading: the list is an
   explicit exception to the domain rule. A listed login needs no linked
   account and no allowed-domain email.
+- **Bugbot and Sentry are trusted authors.** Plan reading: David wrote
+  "trusted actors", and the plan reads this as the GitHub plugin
+  `trustedAuthors` list. Cursor Bugbot and Sentry's GitHub bot go on that
+  list in the deployed app config. Step 4 confirms the exact logins from real
+  event senders. That config ships with the trust rule, or their PR feedback
+  stops starting runs.
 - **Only the author's own text counts.** Lines that the author only quotes
   are not the author's text (#2260 removes them today).
 - **A bot is an Actor in David's sense.** Plan reading: the bot has its own
@@ -219,12 +278,7 @@ These follow from the answers above. They are the target. Where a bullet says
 
 ## Open Questions
 
-This waits for David, with the current plan reading.
-
-1. **Cursor Bugbot.** Does Cursor Bugbot go on `trustedAuthors`? Under the
-   trust rule, its review events stop starting runs unless it is listed.
-   _Plan reading:_ not listed yet. Unless David says to list it, Bugbot
-   reviews stop starting runs when step 3 ships (Risks).
+None.
 
 Resolved:
 
@@ -232,6 +286,10 @@ Resolved:
   David: "untrusted events wont actually ever be seen so i think (2/3) is not
   relevant?" Junior drops them before batching (Plan Decisions). The plan
   adds no separate path to deliver or hide them.
+- **Cursor Bugbot on `trustedAuthors`.** David: "yeah Bugbot and sentry will
+  end up on trusted actors" (Plan Decisions).
+- **Old data and the Owner column.** David answered the three questions in
+  the second table above (Plan Decisions).
 
 ## Behavior Changes
 
@@ -240,20 +298,26 @@ Resolved:
   participant, not as Owner.
 - Child spend rolls up to the root Owner. Today it can go to the child's own
   Identity.
-- A web user's Messages and Conversations use their sign-in Identity. People
-  still groups them with the same User.
+- A web user's new Messages and Conversations use their sign-in Identity.
+  People still groups them with the same User as the old `junior/<email>`
+  rows.
 - Text from a trusted author counts the same as a chat message from that
   author. Events from an untrusted or unknown author do not run, and the
   agent never sees them. Today an untrusted author's event runs, with its
   text as data.
 - The dashboard participant list stops showing system Identities.
 - Locations show one row per User.
+- Old event Messages show the system Identity as their author.
+- Old user Messages with no provable author show no author.
 
 ## Risks
 
-- The Owner backfill changes access, the feed, People, and spend. It runs
-  only after a dry run and David's approval. Humans who lose the root keep
-  access as participants.
+- The Owner repair changes access, the feed, People, and spend. It runs only
+  for the rules that the dry run proves, and only after David's OK. Humans
+  who lose the root keep access as participants.
+- Until #2482 runs on every worker, a human Turn can still replace the Owner
+  of a system root. So damage can keep happening until then. The repair runs
+  after that point.
 - Old workers keep running during a deploy. They can reject new fields,
   write rows without new values, and select old columns. `tasks.md`, Release
   Rules, gives the rules.
@@ -261,8 +325,8 @@ Resolved:
   account. That new account then passes as a trusted author. The trusted
   authors docs must say to list stable logins and to review the list.
 - An untrusted author's event stops starting a run. A review bot that is not
-  on the trusted authors list no longer starts PR maintenance work (Open
-  Questions, 1).
-- After step 5, a write with no author Identity fails. A missed ingress path
-  shows up as an error, not as wrong data. The legacy fallback logs first, so
-  the logs find missed paths before enforcement ships.
+  on the trusted authors list no longer starts PR maintenance work. Bugbot
+  and Sentry's bot go on the list with the trust rule (Plan Decisions).
+- After step 8, a write with no author Identity fails. A missed ingress path
+  shows up as an error, not as wrong data. The step 2 fallback logs show
+  missed paths before enforcement ships.

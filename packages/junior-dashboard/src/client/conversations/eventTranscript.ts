@@ -93,6 +93,13 @@ export function pendingTranscriptMessage(
     ...(message.actorIdentity
       ? { actorIdentity: message.actorIdentity }
       : undefined),
+    ...(message.actorIdentityId
+      ? { actorIdentityId: message.actorIdentityId }
+      : undefined),
+    ...(message.mentions ? { mentions: message.mentions } : undefined),
+    ...(message.reviewItemChange
+      ? { reviewItemChanges: [message.reviewItemChange] }
+      : undefined),
   };
 }
 
@@ -221,6 +228,9 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
+        ...(data.actorIdentityId
+          ? { actorIdentityId: data.actorIdentityId }
+          : undefined),
         ...(data.agentInvocationId
           ? { agentInvocationId: data.agentInvocationId }
           : undefined),
@@ -232,6 +242,9 @@ export function transcriptMessagesFromEvents(
         ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
+          : undefined),
+        ...(data.reviewItemChanges
+          ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };

@@ -1,8 +1,8 @@
 /**
  * Conversation notes: short facts that core attaches to a Conversation without
  * starting a Turn. The next Turn shows them to the model in its runtime turn
- * context. A failed Turn also becomes a note for the next Turn. See
- * "Conversation Notes" in README.md.
+ * context. A failed Turn also becomes a note for the next Turn. A note is
+ * context, never user intent, and only core adds one.
  */
 import { getConversationEventStore } from "@/chat/db";
 import {

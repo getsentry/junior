@@ -7,10 +7,9 @@ export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
-  formatUserInputAnswer,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
-  userInputRequestSchema,
+  USER_INPUT_NOTE,
 } from "../chat/tools/runtime/user-input-request";
 export type {
   UserInputAnswer,
@@ -88,6 +87,8 @@ export type {
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export type {
   AcceptedConversationMessage,
   ArchiveConversationBody,
@@ -291,5 +292,6 @@ export {
 } from "./schema/review-item";
 export type {
   ReviewItemActionBody,
+  ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";

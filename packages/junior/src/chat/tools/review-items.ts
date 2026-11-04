@@ -1,9 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
-import { sendReviewItemMessages } from "@/chat/review-items/messages";
-import { syncReviewItemSlackCards } from "@/chat/slack/review-item-card-sync";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import {
+  deliverReviewItemChange,
+  type ReviewItemDelivery,
+  type ShowReviewItem,
+} from "@/chat/review-items/changes";
 import {
   canAgentChangeReviewItem,
+  PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   canReadReviewItem,
   readReviewItemAgentScope,
   requireReviewItemAssignees,
@@ -11,9 +17,12 @@ import {
   type ReviewItemAgentScope,
 } from "@/chat/review-items/access";
 import {
+  automationCreatorUserId,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
   resolveAssignees,
+  type ResolvedAssignees,
+  type FindMentionedUserId,
 } from "@/chat/review-items/assignees";
 import {
   closeReviewItem,
@@ -34,11 +43,11 @@ import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request"
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
-/** Deferred tool catalog source for Review items. */
+/** Deferred tool catalog source for the Review item tools after add. */
 export const REVIEW_DESK_TOOL_SOURCE = {
   id: "review-desk",
   description:
-    "Add, update, and search Review items: work on the review desk that needs a person.",
+    "Update and search Review items: work on the review desk that needs a person.",
 } as const;
 
 const DEFAULT_LIMIT = 10;
@@ -49,7 +58,7 @@ const assigneesSchema = z
   .min(1)
   .max(20)
   .describe(
-    "Who can act on the item. Each entry is `everyone`, an email, or a Slack mention such as `<@U123>`. Everyone means any person who can see the item.",
+    "Who can act on the item. Each entry is `everyone`, an email, or a mention such as `<@U123>`. Everyone means any person who can see the item.",
   );
 
 const subjectSchema = z
@@ -81,8 +90,37 @@ const bodySchema = z
 
 type ReviewItemToolContext = Pick<
   ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source"
+  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
 >;
+
+/**
+ * Pick the assignees of a new item when the agent names none: the User of
+ * the Actor, or else the creator of the Automation of this run. A Slack
+ * Actor without a Junior User gets an item with no assignees, so that the
+ * agent can still ask; any person in the thread can then answer it.
+ */
+async function defaultAssignees(
+  scope: ReviewItemAgentScope,
+): Promise<ResolvedAssignees> {
+  const userId =
+    scope.user?.id ??
+    (scope.reader.automationId
+      ? await automationCreatorUserId(getDb(), scope.reader.automationId)
+      : undefined);
+  return { everyone: false, userIds: userId ? [userId] : [] };
+}
+
+/** What app setup gives the Review item tools. */
+export interface ReviewItemToolServices {
+  findMentionedUserId: FindMentionedUserId;
+  /** Read only after a change, so tool setup does not create a queue. */
+  queue: () => ConversationWorkQueue;
+  show: ShowReviewItem;
+}
+
+function delivery(services: ReviewItemToolServices): ReviewItemDelivery {
+  return { queue: services.queue(), show: services.show };
+}
 
 function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "action" && !hasRequest) {
@@ -146,12 +184,12 @@ function subjectInput(
 }
 
 /** Create the tool that adds a Review item or updates the open one. */
-export function createAddReviewItemTool(context: ReviewItemToolContext) {
+export function createAddReviewItemTool(
+  context: ReviewItemToolContext,
+  services: ReviewItemToolServices,
+) {
   return zodTool({
-    description:
-      "Add an item to the review desk when work needs a person. A `notice` only tells them something. An `action` asks for an answer with a `request`: a question and 1-4 fields, the same shape as requestUserInput. The answer arrives later as a message from the person who answered, so do not wait for it. The current Conversation is always linked. If an open item has the same `dedupe_key`, this updates that item instead of adding another.",
-    exposure: "deferred",
-    source: REVIEW_DESK_TOOL_SOURCE,
+    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Write the question so it stands alone: a person who sees only the card must understand it. Put the option that you recommend first, set \`recommended: true\` on it, and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, or to the Automation creator in an Automation run. The current Conversation is always linked. The answer arrives later as a message from the person who answered. A reply that the assignee types in the thread also closes the item when the reply answers it. If your next step needs the answer, end the Turn now: the card is your reply, so end with exactly ${NO_REPLY_MARKER}, or finish the Automation run. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -163,14 +201,21 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         kind: z.enum(["notice", "action"]),
         title: titleSchema,
         body: bodySchema,
-        assignees: assigneesSchema,
+        assignees: assigneesSchema
+          .nullable()
+          .optional()
+          .describe(
+            "Who can act on the item. Omit to assign the default person. Each entry is `everyone`, an email, or a Slack mention such as `<@U123>`. Everyone means any person who can see the item.",
+          ),
         dedupe_key: z
           .string()
           .trim()
           .min(1)
           .max(200)
+          .nullable()
+          .optional()
           .describe(
-            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run.",
+            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run. Omit for a one-time question.",
           ),
         request: userInputRequestSchema
           .nullable()
@@ -184,13 +229,22 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,
-    execute: async (input) => {
+    execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
+      if (input.dedupe_key?.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          `A \`dedupe_key\` that starts with \`${PLUGIN_REVIEW_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
+        );
+      }
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
+      // A retry of the same tool call keeps the same key, so it updates the
+      // item that the first attempt added.
+      const dedupeKey =
+        input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`;
       const existing = await getOpenReviewItemByDedupeKey(
         db,
-        input.dedupe_key,
+        dedupeKey,
         scope.tenant,
       );
       if (
@@ -224,11 +278,19 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
         tenant: existing ? existing.tenant : scope.tenant,
         visibility,
       });
-      const assignees = await resolveAssignees(
-        db,
-        input.assignees,
-        existing ? existing.tenant : scope.tenant,
-      );
+      const assignees = input.assignees
+        ? await resolveAssignees(
+            db,
+            input.assignees,
+            existing ? existing.tenant : scope.tenant,
+            services.findMentionedUserId,
+          )
+        : existing
+          ? {
+              everyone: existing.assignedToEveryone,
+              userIds: existing.assignees.map((assignee) => assignee.userId),
+            }
+          : await defaultAssignees(scope);
       await requireReviewItemAssignees({
         assignees,
         automationId: existing
@@ -260,6 +322,13 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           ...content,
           id: existing.id,
           nowMs: Date.now(),
+          // The latest add in the Conversation that added the item has the
+          // most context. A Turn of another Conversation would not match
+          // `addedByConversationId`, so it keeps the stored Turn.
+          ...(context.turnId &&
+          existing.addedByConversationId === context.conversationId
+            ? { addedByTurnId: context.turnId }
+            : undefined),
         });
         if (!updated) {
           throw new ToolInputError(
@@ -267,13 +336,18 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           );
         }
         const item = await readableItem(existing.id, scope);
-        await syncReviewItemSlackCards({ itemId: item.id });
+        await deliverReviewItemChange({
+          delivery: delivery(services),
+          item,
+          nowMs: Date.now(),
+        });
         return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
         ...content,
         addedByConversationId: context.conversationId,
-        dedupeKey: input.dedupe_key,
+        dedupeKey,
+        ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
         ...(scope.reader.automationId
           ? { automationId: scope.reader.automationId }
@@ -285,9 +359,11 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
           "Another open item started to use this `dedupe_key`. Add the item again.",
         );
       }
-      // A Slack turn has the token of its workspace. Other runs use the
-      // default bot token.
-      await syncReviewItemSlackCards({ itemId: item.id });
+      await deliverReviewItemChange({
+        delivery: delivery(services),
+        item,
+        nowMs: Date.now(),
+      });
       return { created: true, item: itemResult(item) };
     },
   });
@@ -295,15 +371,15 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
 
 /**
  * Create the tool that changes or closes a Review item. A close tells the
- * other linked Conversations through `queue`.
+ * other linked Conversations.
  */
 export function createUpdateReviewItemTool(
   context: ReviewItemToolContext,
-  queue: () => ConversationWorkQueue,
+  services: ReviewItemToolServices,
 ) {
   return zodTool({
     description:
-      "Change an open review desk item, or close it. Set `status` to `done` or `dismissed` with a `reason`, for example when its pull request merged. An item never closes on its own. You cannot submit the answer to an action item: only an assignee can.",
+      "Change an open review desk item, or close it. Set `status` to `done` or `dismissed` with a `reason`, for example when its pull request merged. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
     exposure: "deferred",
     source: REVIEW_DESK_TOOL_SOURCE,
     annotations: {
@@ -356,6 +432,11 @@ export function createUpdateReviewItemTool(
       if (item.status !== "open" && !retriesClose) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
+      if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          "A plugin added this item. Only the plugin or a person can change it.",
+        );
+      }
       if (!canAgentChangeReviewItem(item, scope)) {
         throw new ToolInputError(
           "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
@@ -386,7 +467,12 @@ export function createUpdateReviewItemTool(
           visibility,
         });
         const assignees = input.assignees
-          ? await resolveAssignees(db, input.assignees, item.tenant)
+          ? await resolveAssignees(
+              db,
+              input.assignees,
+              item.tenant,
+              services.findMentionedUserId,
+            )
           : {
               everyone: item.assignedToEveryone,
               userIds: item.assignees.map((assignee) => assignee.userId),
@@ -434,25 +520,31 @@ export function createUpdateReviewItemTool(
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
         const closedItem = await readableItem(item.id, scope);
-        await syncReviewItemSlackCards({ itemId: closedItem.id });
-        await sendReviewItemMessages({
+        await deliverReviewItemChange({
           change: { kind: "closed", reason: input.reason },
+          delivery: delivery(services),
           exceptConversationId: context.conversationId,
           item: closedItem,
           nowMs,
-          queue: queue(),
         });
         return { item: itemResult(closedItem) };
       }
       const changed = await readableItem(item.id, scope);
-      await syncReviewItemSlackCards({ itemId: changed.id });
+      await deliverReviewItemChange({
+        delivery: delivery(services),
+        item: changed,
+        nowMs: Date.now(),
+      });
       return { item: itemResult(changed) };
     },
   });
 }
 
 /** Create the tool that searches Review items. */
-export function createSearchReviewItemsTool(context: ReviewItemToolContext) {
+export function createSearchReviewItemsTool(
+  context: ReviewItemToolContext,
+  services: Pick<ReviewItemToolServices, "findMentionedUserId">,
+) {
   return zodTool({
     description:
       "Search review desk items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
@@ -479,7 +571,7 @@ export function createSearchReviewItemsTool(context: ReviewItemToolContext) {
           .max(320)
           .nullable()
           .optional()
-          .describe("`everyone`, an email, or a Slack mention."),
+          .describe("`everyone`, an email, or a mention such as `<@U123>`."),
         automation_id: z.string().trim().min(1).nullable().optional(),
         conversation_id: z.string().trim().min(1).nullable().optional(),
         limit: z
@@ -504,7 +596,12 @@ export function createSearchReviewItemsTool(context: ReviewItemToolContext) {
         statuses,
         ...(input.assignee
           ? {
-              assignee: await resolveAssignee(db, input.assignee, scope.tenant),
+              assignee: await resolveAssignee(
+                db,
+                input.assignee,
+                scope.tenant,
+                services.findMentionedUserId,
+              ),
             }
           : undefined),
         ...(input.automation_id

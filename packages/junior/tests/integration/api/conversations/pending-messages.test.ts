@@ -9,7 +9,9 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
@@ -36,6 +38,18 @@ describe("conversation pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
+    // The row names its author, so the client can read the author photo from
+    // the Conversation authors before the Message reaches history.
+    const [author] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.emailNormalized, actor.email.toLowerCase()),
+          isNotNull(juniorIdentities.userId),
+        ),
+      )
+      .limit(1);
 
     const app = createJuniorApi();
     const response = await app.request(
@@ -53,6 +67,7 @@ describe("conversation pending messages API", () => {
           email: actor.email,
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
+        actorIdentityId: author!.id,
         createdAt: expect.any(String),
         delivery: "defer",
         inboundMessageId: accepted.messageId,
@@ -65,7 +80,7 @@ describe("conversation pending messages API", () => {
     ]);
   });
 
-  it("returns accepted slack interrupt mailbox rows before history commit", async () => {
+  it("returns accepted slack interrupt mailbox rows with Slack mention tokens", async () => {
     const { state } = await createConversationFixture();
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
@@ -73,6 +88,13 @@ describe("conversation pending messages API", () => {
         userName: "slack.person",
         realName: "Slack Person",
         email: "slack.person@example.com",
+      }),
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "U0MENTIONED",
+        userName: "mentioned.person",
+        realName: "Mentioned Person",
       }),
     });
     const conversationId = "slack:C123:1712345.0001";
@@ -123,8 +145,9 @@ describe("conversation pending messages API", () => {
                 dateSent: new Date(3_000).toISOString(),
                 edited: false,
               },
-              raw: {},
-              text: "slack interrupt",
+              // The SDK text drops the `<@U…>` token that Slack sent.
+              raw: { text: "<@U0MENTIONED> slack interrupt :smile:" },
+              text: "@U0MENTIONED slack interrupt :smile:",
               threadId: "1712345.0001",
             },
             platform: "slack",
@@ -137,7 +160,7 @@ describe("conversation pending messages API", () => {
               isDM: false,
             },
           },
-          text: "slack interrupt",
+          text: "@U0MENTIONED slack interrupt :smile:",
         },
         receivedAtMs: 3_100,
         source: "slack",
@@ -166,11 +189,18 @@ describe("conversation pending messages API", () => {
         createdAt: new Date(3_000).toISOString(),
         delivery: "interrupt",
         inboundMessageId: "slack:T123:slack:C123:1712345.0001:1712345.0099",
+        mentions: [
+          {
+            fullName: "Mentioned Person",
+            slackUserId: "U0MENTIONED",
+            slackUserName: "mentioned.person",
+          },
+        ],
         messageId: "1712345.0099",
         receivedAt: new Date(3_100).toISOString(),
         role: "user",
         source: "slack",
-        text: "slack interrupt",
+        text: "<@U0MENTIONED> slack interrupt :smile:",
       },
     ]);
   });

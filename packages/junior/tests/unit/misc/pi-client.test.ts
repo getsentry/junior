@@ -15,7 +15,6 @@ vi.mock("@vercel/oidc", () => ({
 
 import {
   getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
 } from "@/chat/pi/gateway-auth";
 
@@ -43,7 +42,9 @@ describe("resolveGatewayCredential", () => {
 
   it("falls back to AI_GATEWAY_API_KEY when OIDC is unavailable", async () => {
     mocks.getVercelOidcToken.mockRejectedValue(
-      new Error("The 'x-vercel-oidc-token' header is missing from the request."),
+      new Error(
+        "The 'x-vercel-oidc-token' header is missing from the request.",
+      ),
     );
     mocks.getEnvApiKey.mockReturnValue("  api-key  ");
 
@@ -53,8 +54,11 @@ describe("resolveGatewayCredential", () => {
     });
   });
 
-  it("returns undefined when neither OIDC nor API key is available", async () => {
-    await expect(resolveGatewayCredential()).resolves.toBeUndefined();
+  it("returns a placeholder so auth fails on the server side", async () => {
+    await expect(resolveGatewayCredential()).resolves.toEqual({
+      mode: "none",
+      token: "unauthenticated",
+    });
   });
 
   it("ignores blank OIDC tokens and continues to the API key", async () => {
@@ -82,14 +86,7 @@ describe("getGatewayApiKey", () => {
     await expect(getGatewayApiKey()).resolves.toBe("oidc-token");
   });
 
-  it("returns undefined when no credential is available", async () => {
-    await expect(getGatewayApiKey()).resolves.toBeUndefined();
-  });
-});
-
-describe("MISSING_GATEWAY_CREDENTIALS_ERROR", () => {
-  it("points operators at OIDC first", () => {
-    expect(MISSING_GATEWAY_CREDENTIALS_ERROR).toContain("Vercel OIDC");
-    expect(MISSING_GATEWAY_CREDENTIALS_ERROR).toContain("AI_GATEWAY_API_KEY");
+  it("returns the placeholder token when no credential is available", async () => {
+    await expect(getGatewayApiKey()).resolves.toBe("unauthenticated");
   });
 });

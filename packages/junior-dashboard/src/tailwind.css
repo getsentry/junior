@@ -4,7 +4,7 @@
 @import "shadcn/tailwind.css";
 
 /*
- * Dashboard design tokens. components/README.md explains each role.
+ * Dashboard design tokens. `pnpm dashboard-style:check` enforces their use.
  * Keep structural UI colors here so a second theme can redefine them.
  * Prefer roles over opacity ladders. Status accents stay as Tailwind palette utilities.
  */
@@ -294,6 +294,10 @@
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
+/* Desktop windows tall enough to afford the top bar. Shorter windows, such as
+   most laptops, keep the nav rail so conversations get the height. */
+@custom-variant tall (@media (min-height: 62.5rem));
+
 @layer base {
   :root {
     color-scheme: var(--dashboard-color-scheme, dark);
@@ -358,10 +362,5 @@
   .mobile-conversation-row {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
-  }
-
-  .mobile-transcript-row {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 12rem;
   }
 }

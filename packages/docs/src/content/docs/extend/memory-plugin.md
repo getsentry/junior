@@ -16,7 +16,7 @@ New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by 
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
+Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1024- or 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on 1024-dimensional embeddings for hybrid recall. Vector search on 1536-dimensional embeddings scans the matching rows without an index. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Install
 
@@ -48,7 +48,7 @@ Pass plugin options to `memoryPlugin({ ... })` in `plugins.ts`. Set deployment v
 <details class="plugin-config">
 <summary><code>modelId</code></summary>
 
-Model used for memory classification, consolidation, and automatic recall relevance.
+Model used for memory classification and consolidation.
 
 - **Define:** `memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" })` in `plugins.ts`
 - **Default:** The app's structured model
@@ -132,7 +132,25 @@ Embedding model used for vector search.
 - **Required:** No
 - **Environment override:** `AI_EMBEDDING_MODEL`
 
-The model must produce 1536-dimensional vectors. Changing it after memories exist requires flushing `junior_memory_embeddings` so embeddings can be regenerated. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
+The model must produce 1024- or 1536-dimensional vectors. Junior stores one vector per memory for each model and only compares vectors from the same model, so you can change the model without data loss. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
+
+To change the model after memories exist, set `AI_EMBEDDING_MODEL` to the new model and deploy. Each minute, the memory heartbeat embeds active memories that have no current vector for the configured model, in batches, for up to about 15 seconds. Until it finishes, vector search finds only the memories that it already embedded, and full-text search still finds all of them. The heartbeat also repairs vectors that a failed write left out.
+
+To roll back, set `AI_EMBEDDING_MODEL` back to the old model. The old vectors stay until you delete them.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>AI_RERANKING_MODEL</code></summary>
+
+Reranking model that scores recall candidates against the user's message.
+
+- **Define:** Set `AI_RERANKING_MODEL` in the deployment environment
+- **Default:** `voyage/rerank-2.5-lite`
+- **Required:** No
+- **Environment override:** `AI_RERANKING_MODEL`
+
+Automatic recall adds a candidate to the prompt only when its score is at least `0.55`. This threshold is tuned for the default model. If the reranking call fails, the turn continues without recalled memories.
 
 </details>
 
@@ -170,7 +188,7 @@ After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin
 pnpm junior upgrade
 ```
 
-On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column plus its HNSW cosine index.
+On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector` column plus an HNSW cosine index for 1024-dimensional vectors.
 
 ## Verify
 
@@ -203,8 +221,9 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 - **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
-- **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.
-- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance or may not be directly relevant to the request.
+- **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
+- **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
+- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 

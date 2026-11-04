@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import {
-  startAgentInvocationsForChildInput,
-  withAgentInvocationResultActors,
-} from "@/chat/agent-invocations/result";
-import {
   completeAgentInvocation,
   createAgentInvocation,
   getAgentInvocation,
@@ -14,18 +10,21 @@ import {
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
-import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { getConversationStore, getDb } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -49,6 +48,38 @@ function parentRun(): AgentRun {
     }),
     turnId: "parent-turn",
   };
+}
+
+/** Save one top-level Slack Conversation with its visibility. */
+async function topLevelConversation(args: {
+  channelId: string;
+  teamId?: string;
+  visibility: "private" | "public";
+}): Promise<string> {
+  const teamId = args.teamId ?? "T123";
+  const conversationId = `slack:${args.channelId}:1712345.0001`;
+  await getConversationStore().recordActivity({
+    conversationId,
+    destination: { channelId: args.channelId, platform: "slack", teamId },
+    nowMs: 1_000,
+    sessionSource: createSlackSource({
+      channelId: args.channelId,
+      teamId,
+      threadTs: "1712345.0001",
+      visibility: args.visibility,
+    }),
+    source: "slack",
+    visibility: args.visibility,
+  });
+  return conversationId;
+}
+
+/** A Run of one top-level Conversation. */
+function topLevelRun(
+  conversationId: string,
+  actor: AgentRun["actor"] = parentActor,
+): AgentRun {
+  return { ...parentRun(), actor, conversationId, turnId: "top-level-turn" };
 }
 
 /** The Run of one child agent invocation, as the invocation worker builds it. */
@@ -75,21 +106,20 @@ async function eventMessages(
   return work?.messages.filter((message) => message.source === "event") ?? [];
 }
 
-function context(
-  conversationId: string,
-  messages: InboundMessage[],
-): ConversationWorkerContext {
+/**
+ * Integration tests do not run the agent. This runner reads each run and
+ * stops it, so the work retries.
+ */
+function readRunsAgentRunner() {
+  const runs: AgentRun[] = [];
   return {
-    attempt: {
-      ack: async () => undefined,
-      conversationId,
-      drain: async () => [],
-      isFinalAttempt: false,
-      messages,
+    agentRunner: {
+      run: async (run: AgentRun): Promise<never> => {
+        runs.push(run);
+        throw new Error("stop after reading the run");
+      },
     },
-    checkIn: async () => true,
-    conversationId,
-    shouldYield: () => false,
+    runs,
   };
 }
 
@@ -101,9 +131,9 @@ describe("messageAgent", () => {
 
   it("gives a busy child more work and lets a child message its parent", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const parent = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(parent.agentRunner);
+    const { queue, state } = harness;
     const mailbox = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
@@ -150,7 +180,7 @@ describe("messageAgent", () => {
         ),
       ).resolves.toMatchObject({ modelProfile: "handoff" });
       await expect(sendFromParent("nobody", "call-unknown")).rejects.toThrow(
-        /"nobody" is not "parent" or a child agent/,
+        /"nobody" is not "parent", a child agent/,
       );
 
       // Child to parent: the message wakes the parent as the child's Actor.
@@ -188,15 +218,13 @@ describe("messageAgent", () => {
       expect(parentMessages[0]!.input.text).toContain(
         "Found the bug in the retry path.",
       );
-      const turn = await withAgentInvocationResultActors(
-        (await resolveMailboxTurnWork(
-          context(slackParentConversationId, parentMessages),
-        ))!,
-      );
-      expect(turn).toMatchObject({
-        batch: [{ actor: parentActor }],
-        kind: "mailbox",
-      });
+      // The parent Turn runs after the Event burst window.
+      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+      await harness.process(queue.takeMessageFor(slackParentConversationId));
+      vi.mocked(Date.now).mockRestore();
+      expect(parent.runs).toEqual([
+        expect.objectContaining({ actor: parentActor }),
+      ]);
 
       // The first work finishes. The queued message reports for both.
       await expect(
@@ -226,9 +254,9 @@ describe("messageAgent", () => {
 
   it("starts a new agent invocation when a grandchild messages a child, even after a stop", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const { queue, state } = harness;
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -256,25 +284,20 @@ describe("messageAgent", () => {
         childConversationId: helper.childConversationId,
         parentConversationId: child.childConversationId,
       });
-      // A retried delivery starts the same agent invocation.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await expect(
-          startAgentInvocationsForChildInput(
-            context(child.childConversationId, messages),
-            { queue, state },
-          ),
-        ).resolves.toEqual({ status: "completed" });
-      }
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
-        ),
-      ).resolves.toMatchObject({
+      // The message starts and runs a new agent invocation on the child.
+      await harness.process(queue.takeMessageFor(child.childConversationId));
+      const started = await getAgentInvocation(
+        getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
+      );
+      expect(started).toMatchObject({
         childConversationId: child.childConversationId,
         input: expect.stringContaining("Halfway there."),
         parentConversationId: slackParentConversationId,
-        status: "pending",
+        status: "running",
       });
+      expect(runner.runs).toEqual([
+        expect.objectContaining({ runId: started!.invocationId }),
+      ]);
     } finally {
       await fixture.close();
     }
@@ -282,9 +305,8 @@ describe("messageAgent", () => {
 
   it("drops a grandchild message when the tree of its parent is stopped", async () => {
     const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
+    const harness = await createConversationWorkHarness(neverRunAgentRunner());
+    const { queue, state } = harness;
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -327,16 +349,162 @@ describe("messageAgent", () => {
       const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(
-        startAgentInvocationsForChildInput(
-          context(child.childConversationId, messages),
-          { queue, state },
-        ),
-      ).resolves.toEqual({ status: "completed" });
+        harness.process(queue.takeMessageFor(child.childConversationId)),
+      ).resolves.toMatchObject({ status: "completed" });
       await expect(
         getAgentInvocation(
           getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
         ),
       ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("lets top-level agents message each other only with the same visibility", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const { queue, state } = harness;
+    try {
+      const publicTarget = await topLevelConversation({
+        channelId: "CPUB",
+        visibility: "public",
+      });
+      const otherWorkspace = await topLevelConversation({
+        channelId: "CFAR",
+        teamId: "T999",
+        visibility: "public",
+      });
+      const privateSender = await topLevelConversation({
+        channelId: "CPRIV1",
+        visibility: "private",
+      });
+      const privateMember = await topLevelConversation({
+        channelId: "CPRIV2",
+        visibility: "private",
+      });
+      const privateOther = await topLevelConversation({
+        channelId: "CPRIV3",
+        visibility: "private",
+      });
+      // The person behind the Slack Actor is a member of one private target.
+      const ana = await resolveViewerUserFromSql(getDb(), "ana@example.com");
+      await getDb()
+        .insert(juniorIdentities)
+        .values({
+          createdAt: new Date(1),
+          id: "identity:T123:U123",
+          kind: "user",
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: "T123",
+          updatedAt: new Date(1),
+          userId: ana!.id,
+        })
+        .onConflictDoUpdate({
+          target: juniorIdentities.id,
+          set: { userId: ana!.id },
+        });
+      await getDb()
+        .insert(juniorConversationParticipants)
+        .values({
+          lastMessageAt: new Date(1),
+          rootConversationId: privateMember,
+          userId: ana!.id,
+        });
+      const send = async (
+        run: AgentRun,
+        to: string,
+        toolCallId = "call-top-level",
+      ) =>
+        await createMessageAgentTool(bindMessageAgent(run, { queue, state })!)
+          .execute!(
+          { text: "Can you take the deploy check?", to },
+          {
+            toolCallId,
+          },
+        );
+
+      // Public to public, in the same Slack workspace. A replay adds no
+      // second message.
+      const fromPublic = topLevelRun(slackParentConversationId);
+      await expect(send(fromPublic, publicTarget)).resolves.toEqual({
+        conversation_id: publicTarget,
+        delivery: "queued",
+      });
+      await send(fromPublic, publicTarget);
+      const messages = await eventMessages(publicTarget);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({
+        input: {
+          metadata: {
+            event: {
+              eventType: "agent.top_level_message",
+              identifier: slackParentConversationId,
+              namespace: "junior",
+            },
+          },
+        },
+      });
+      expect(messages[0]!.input.text).toContain(
+        "It is not a message from a person",
+      );
+      expect(messages[0]!.input.text).toContain(
+        `to set to "${slackParentConversationId}"`,
+      );
+
+      // Not the same visibility, another workspace, or the sender itself.
+      await expect(send(fromPublic, privateMember)).rejects.toThrow(
+        "is a private conversation and this conversation is public",
+      );
+      await expect(send(fromPublic, otherWorkspace)).rejects.toThrow(
+        "a top-level agent that you can message",
+      );
+      await expect(send(fromPublic, slackParentConversationId)).rejects.toThrow(
+        "is this conversation",
+      );
+
+      // Private to private needs a member. A private target that the person
+      // is not in looks like a missing one.
+      const fromPrivate = topLevelRun(privateSender);
+      await expect(send(fromPrivate, privateMember)).resolves.toEqual({
+        conversation_id: privateMember,
+        delivery: "queued",
+      });
+      expect((await eventMessages(privateMember))[0]!.input.text).toContain(
+        "cannot message private conversations",
+      );
+      await expect(send(fromPrivate, privateOther)).rejects.toThrow(
+        "a top-level agent that you can message",
+      );
+      await expect(send(fromPrivate, publicTarget)).rejects.toThrow(
+        "is a public conversation and this conversation is private",
+      );
+      // An event Turn has no person, so it reaches no private agent.
+      await expect(
+        send(topLevelRun(privateSender, EVENT_SYSTEM_ACTOR), privateMember),
+      ).rejects.toThrow("a top-level agent that you can message");
+
+      // A child agent reaches only its own tree.
+      const child = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "top-level-child",
+      });
+      await expect(
+        send(childRun(child), publicTarget, "call-from-child"),
+      ).rejects.toThrow(`"${publicTarget}" is not "parent" or a child agent`);
+
+      // The target runs the message as an Event, not as the sender's Actor.
+      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+      await harness.process(queue.takeMessageFor(publicTarget));
+      vi.mocked(Date.now).mockRestore();
+      expect(runner.runs).toEqual([
+        expect.objectContaining({
+          actor: EVENT_SYSTEM_ACTOR,
+          conversationId: publicTarget,
+        }),
+      ]);
     } finally {
       await fixture.close();
     }

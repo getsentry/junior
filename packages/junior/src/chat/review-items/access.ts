@@ -19,8 +19,8 @@ import {
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
 
-// Every Review item access rule lives in this file. See "Visibility" in
-// README.md for the product rules that each function applies.
+// Every Review item access rule lives in this file. Callers must not copy a
+// rule.
 
 /**
  * Who reads Review items. An item is visible when it is public and its
@@ -37,7 +37,7 @@ export interface ReviewItemReader {
 }
 
 /** Return whether two tenants are the same. Two missing tenants match. */
-export function isSameTenant(
+function isSameTenant(
   a: ProviderTenant | undefined,
   b: ProviderTenant | undefined,
 ): boolean {
@@ -69,6 +69,34 @@ export function reviewItemReaderForUser(user: User): ReviewItemReader {
 /** SQL: the Review item has this assigned User. */
 export function reviewItemAssignedTo(userId: string): SQL {
   return sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id} and ${juniorReviewItemAssignees.userId} = ${userId})`;
+}
+
+/**
+ * SQL: the Review item needs this User. Only an open `action` item that is
+ * assigned to the User needs them. A notice, an item for Everyone, and an
+ * item without assignees need no one. An assigned User can always see the
+ * item, so this rule needs no visibility check. The nav count and the
+ * "Waiting on you" marker use this rule.
+ */
+export function reviewItemNeedsUser(userId: string): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+    reviewItemAssignedTo(userId),
+  )!;
+}
+
+/**
+ * SQL: the Review item is not assigned only to other people. It is assigned
+ * to this User, to Everyone, or to no one. This is the assignee rule of
+ * `canActOnReviewItem`; keep the two the same.
+ */
+export function reviewItemForUser(userId: string): SQL {
+  return or(
+    eq(juniorReviewItems.assignedToEveryone, true),
+    sql`not exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+    reviewItemAssignedTo(userId),
+  )!;
 }
 
 /** SQL: the Review item links this Conversation. */
@@ -170,15 +198,23 @@ export async function readReviewItemAgentScope(
 }
 
 /**
+ * Dedupe keys with this prefix belong to plugins. Only the plugin that added
+ * the item, or a person, can change it. An agent cannot use the prefix.
+ */
+export const PLUGIN_REVIEW_ITEM_KEY_PREFIX = "plugin:";
+
+/**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public
  * Conversation, so private content never reaches its readers. A private
- * item changes only from the Conversation or Automation that added it.
+ * item changes only from the Conversation or Automation that added it. An
+ * agent never changes an item that a plugin added.
  */
 export function canAgentChangeReviewItem(
   item: ReviewItem,
   scope: ReviewItemAgentScope,
 ): boolean {
+  if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
@@ -275,6 +311,7 @@ export async function requireReviewItemAssignees(args: {
  * Return whether a User can act on an open Review item: an assigned User,
  * anyone for an item assigned to Everyone, and anyone for an item with no
  * assignees. The caller checks that the User can see the item.
+ * `reviewItemForUser` is the SQL form of the assignee rule.
  */
 export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   if (item.status !== "open") return false;

@@ -1,8 +1,17 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
   type UserInputAnswer,
   type UserInputField,
   type UserInputRequest,
@@ -20,10 +29,37 @@ import { Textarea } from "./ui/textarea";
 const optionClass =
   "flex cursor-pointer items-start gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5 text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover has-[[data-checked]]:border-dashboard-accent/60 has-[[data-checked]]:bg-dashboard-accent/10 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60";
 
-function OptionText(props: { description?: string; label: string }) {
+// A described choice is one button row, so its description stays beside its
+// label and one click is still the answer. The picked row keeps the accent
+// while the answer sends.
+const choiceButtonClass =
+  "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
+
+// Marks the choice that Junior recommends, next to its label.
+function SuggestedLabel(props: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "ml-2 text-xs font-normal text-dashboard-accent-text/80",
+        props.className,
+      )}
+    >
+      Suggested
+    </span>
+  );
+}
+
+function OptionText(props: {
+  description?: string;
+  label: string;
+  recommended?: boolean;
+}) {
   return (
     <span className="grid min-w-0 gap-0.5 break-words">
-      <span className="font-medium text-dashboard-text">{props.label}</span>
+      <span className="font-medium text-dashboard-text">
+        {props.label}
+        {props.recommended ? <SuggestedLabel /> : null}
+      </span>
       {props.description ? (
         <span className="text-xs text-dashboard-text-muted">
           {props.description}
@@ -41,9 +77,15 @@ function ChoiceField(props: {
 }) {
   const id = useId();
   const { field } = props;
+  // Radios already say that one choice counts. Say it for checkboxes only.
   const legend = (
     <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
       {field.label}
+      {field.kind === "multi_choice" ? (
+        <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
+          Pick any
+        </span>
+      ) : null}
     </legend>
   );
   const description = field.description ? (
@@ -71,6 +113,7 @@ function ChoiceField(props: {
               <OptionText
                 description={option.description}
                 label={option.label}
+                recommended={option.recommended}
               />
             </label>
           ))}
@@ -100,7 +143,11 @@ function ChoiceField(props: {
                 )
               }
             />
-            <OptionText description={option.description} label={option.label} />
+            <OptionText
+              description={option.description}
+              label={option.label}
+              recommended={option.recommended}
+            />
           </label>
         ))}
       </div>
@@ -138,20 +185,25 @@ function TextField(props: {
 }
 
 /**
- * Render the answer controls of a `requestUserInput` request. A request with
+ * Render the answer controls of an action item request. A request with
  * one short choice field shows one button per choice, and a click is the
- * answer. Other requests show a form that the reader submits once. A failed
- * `onSubmit` lets the reader try again. `secondaryActions`, such as Dismiss,
- * sit in the same action row, after the answer controls.
+ * answer. Choices with descriptions stack as rows, so each description stays
+ * with its choice. Other requests show a form that the reader submits once.
+ * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
+ * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
+ * the form has picks or text that the reader has not sent.
  */
 export function UserInputForm(props: {
   onSubmit(answer: UserInputAnswer): Promise<void>;
+  onUnsentChange?(unsent: boolean): void;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
 }) {
   const [sending, setSending] = useState(false);
+  const [picked, setPicked] = useState<string>();
   const [failed, setFailed] = useState(false);
+  const choicesId = useId();
   const [values, setValues] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState("");
   const buttonField = buttonUserInputField(props.request);
@@ -170,8 +222,15 @@ export function UserInputForm(props: {
     } catch {
       sendLock.current = false;
       setSending(false);
+      setPicked(undefined);
       setFailed(true);
     }
+  }
+
+  /** Send one button choice as the whole answer. */
+  function pick(fieldId: string, label: string) {
+    setPicked(label);
+    void send({ requestId: props.requestId, values: { [fieldId]: [label] } });
   }
 
   const answer: UserInputAnswer = {
@@ -179,11 +238,19 @@ export function UserInputForm(props: {
     requestId: props.requestId,
     values,
   };
+  const normalized = normalizeUserInputAnswer(props.request, answer);
+  const answeredCount = Object.keys(normalized.values).length;
+  const fieldCount = props.request.fields.length;
+  // A button answer sends on click, so only the form can hold unsent input.
+  const unsent =
+    !buttonField && !sending && !isEmptyUserInputAnswer(normalized);
+  const onUnsentChange = props.onUnsentChange;
+  useEffect(() => {
+    onUnsentChange?.(unsent);
+  }, [onUnsentChange, unsent]);
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      !isEmptyUserInputAnswer(normalizeUserInputAnswer(props.request, answer))
-    ) {
+    if (!isEmptyUserInputAnswer(normalized)) {
       void send(answer);
     }
   }
@@ -196,41 +263,70 @@ export function UserInputForm(props: {
 
   return (
     <>
-      {buttonField ? (
+      {buttonField?.options.some((option) => option.description) ? (
         <>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {buttonField.options.map((option) => (
-              <Button
+          <div
+            aria-label={buttonField.label}
+            className="mt-3 grid gap-2"
+            role="group"
+          >
+            {buttonField.options.map((option, index) => (
+              <button
+                aria-describedby={
+                  option.description ? `${choicesId}-${index}` : undefined
+                }
+                aria-labelledby={`${choicesId}-${index}-label`}
+                className={choiceButtonClass}
+                data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
                 key={option.label}
-                onClick={() =>
-                  void send({
-                    requestId: props.requestId,
-                    values: { [buttonField.id]: [option.label] },
-                  })
-                }
-                title={option.description}
+                onClick={() => pick(buttonField.id, option.label)}
+                type="button"
               >
-                {option.label}
-              </Button>
-            ))}
-            {secondary}
-          </div>
-          {buttonField.options.some((option) => option.description) ? (
-            <ul className="mb-0 mt-2 list-none p-0 text-xs text-dashboard-text-muted">
-              {buttonField.options
-                .filter((option) => option.description)
-                .map((option) => (
-                  <li key={option.label}>
-                    <span className="font-medium text-dashboard-text">
-                      {option.label}
+                <span className="grid min-w-0 flex-1 gap-0.5 break-words">
+                  <span
+                    className="font-medium text-dashboard-text"
+                    id={`${choicesId}-${index}-label`}
+                  >
+                    {option.label}
+                    {option.recommended ? <SuggestedLabel /> : null}
+                  </span>
+                  {option.description ? (
+                    <span
+                      className="text-xs text-dashboard-text-muted"
+                      id={`${choicesId}-${index}`}
+                    >
+                      {option.description}
                     </span>
-                    : {option.description}
-                  </li>
-                ))}
-            </ul>
+                  ) : null}
+                </span>
+                <ArrowRight
+                  aria-hidden="true"
+                  className="shrink-0 text-dashboard-text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[picked]:opacity-100"
+                  size={16}
+                />
+              </button>
+            ))}
+          </div>
+          {secondary ? (
+            <div className="mt-3 flex flex-wrap items-center">{secondary}</div>
           ) : null}
         </>
+      ) : buttonField ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {buttonField.options.map((option) => (
+            <Button
+              disabled={sending}
+              key={option.label}
+              onClick={() => pick(buttonField.id, option.label)}
+            >
+              {option.label}
+              {/* The button gap already spaces the label. */}
+              {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
+            </Button>
+          ))}
+          {secondary}
+        </div>
       ) : (
         <form className="mt-4 grid gap-5" onSubmit={submit}>
           {props.request.fields.map((field) =>
@@ -259,9 +355,9 @@ export function UserInputForm(props: {
           )}
           <TextField
             className="min-h-16"
-            description="Optional. Anything else, or an answer that is not listed."
+            description={USER_INPUT_NOTE.description}
             disabled={sending}
-            label="Other"
+            label={USER_INPUT_NOTE.label}
             onChange={setOther}
             value={other}
           />
@@ -269,6 +365,14 @@ export function UserInputForm(props: {
             <Button disabled={sending} type="submit" variant="primary">
               Send
             </Button>
+            {fieldCount > 1 ? (
+              <span
+                aria-live="polite"
+                className="text-xs text-dashboard-text-muted"
+              >
+                {answeredCount} of {fieldCount} answered
+              </span>
+            ) : null}
             {secondary}
           </div>
         </form>

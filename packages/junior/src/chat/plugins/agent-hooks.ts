@@ -41,9 +41,18 @@ import {
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import { logInfo, logWarn } from "@/chat/logging";
+import {
+  logInfo,
+  logWarn,
+  withSpan,
+  type SetSpanAttributes,
+} from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import {
+  createPluginEmbedder,
+  createPluginModel,
+  createPluginReranker,
+} from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import {
@@ -82,6 +91,8 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
 export interface ToolHookInput {
@@ -239,6 +250,32 @@ function pluginInvocationContext(
   }
 }
 
+/**
+ * Let a plugin add numeric diagnostics to its hook span. Plugins own the
+ * meaning of these attributes, so they stay in the plugin's `app.<name>.`
+ * namespace and cannot overwrite host attributes or carry text.
+ */
+function pluginSpanAttributeSetter(
+  pluginName: string,
+  setSpanAttributes: SetSpanAttributes,
+): UserPromptContext["setSpanAttributes"] {
+  const prefix = `app.${pluginName}.`;
+  return (attributes) => {
+    const allowed = Object.fromEntries(
+      Object.entries(attributes).filter(
+        ([key, value]) =>
+          key.length > prefix.length &&
+          key.startsWith(prefix) &&
+          typeof value === "number" &&
+          Number.isFinite(value),
+      ),
+    );
+    if (Object.keys(allowed).length > 0) {
+      setSpanAttributes(allowed);
+    }
+  };
+}
+
 function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
@@ -251,6 +288,7 @@ function invocationPluginContext(
     | "source"
     | "userText"
   >,
+  setSpanAttributes: SetSpanAttributes,
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
@@ -270,6 +308,11 @@ function invocationPluginContext(
         }
       : undefined),
     model: createPluginModel(plugin.manifest.name, plugin.model),
+    reranker: createPluginReranker(plugin.manifest.name),
+    setSpanAttributes: pluginSpanAttributeSetter(
+      plugin.manifest.name,
+      setSpanAttributes,
+    ),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
@@ -313,6 +356,24 @@ function pluginMcpContext(
       );
     },
   };
+}
+
+/** Time one plugin hook call so slow plugins show up in turn traces. */
+async function withPluginHookSpan<T>(
+  pluginName: string,
+  hookName: "beforeToolExecute" | "sandboxPrepare" | "userPrompt",
+  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
+): Promise<T> {
+  return await withSpan(
+    `plugin.hook ${hookName}`,
+    "plugin.hook",
+    {},
+    callback,
+    {
+      "app.plugin.name": pluginName,
+      "app.plugin.hook": hookName,
+    },
+  );
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -558,9 +619,19 @@ export async function getPluginUserPromptContributions(args: {
       continue;
     }
     try {
-      const rawResult = await hook({
-        ...invocationPluginContext(plugin, args.context, args.turnId),
-      });
+      const rawResult = await withPluginHookSpan(
+        pluginName,
+        "userPrompt",
+        async (setSpanAttributes) =>
+          await hook({
+            ...invocationPluginContext(
+              plugin,
+              args.context,
+              setSpanAttributes,
+              args.turnId,
+            ),
+          }),
+      );
       if (rawResult === undefined) {
         continue;
       }
@@ -914,6 +985,8 @@ function requirePublishedEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  /** Shows a Review item that a plugin route changed. App setup supplies it. */
+  showReviewItem?: ShowReviewItem;
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
@@ -946,6 +1019,14 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      reviewItems: {
+        forConversation: (conversationId) =>
+          createPluginReviewItems({
+            conversationId,
+            plugin: pluginName,
+            show: options.showReviewItem ?? (async () => {}),
+          }),
+      },
       users: { readIdentity: readIdentityById },
       events: {
         async hasMatch(event) {
@@ -1681,11 +1762,16 @@ export function createPluginHookRunner(
         logInfo("agent.plugin.sandbox_preparation.started", {
           "app.plugin.name": pluginName,
         });
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          sandbox: sandboxCapability,
-        });
+        await withPluginHookSpan(
+          pluginName,
+          "sandboxPrepare",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              sandbox: sandboxCapability,
+            }),
+        );
       }
     },
     async beforeToolExecute(tool) {
@@ -1703,39 +1789,46 @@ export function createPluginHookRunner(
         }
         let replacement: Record<string, unknown> | undefined;
         let blocked: PluginToolDeniedError | ToolInputError | undefined;
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          actors,
-          tool: {
-            name: tool.name,
-            input: nextInput,
-          },
-          users: {
-            resolveActor: async () =>
-              input.actor ? await readActorIdentity(input.actor) : undefined,
-          },
-          juniorRoot: SANDBOX_JUNIOR_ROOT,
-          env: {
-            get(key) {
-              return env[key] ?? normalizeEnv(nextInput.env)[key];
-            },
-            set(key, value) {
-              env[key] = value;
-            },
-          },
-          decision: {
-            deny(reason) {
-              blocked = new PluginToolDeniedError(reason);
-            },
-            redirect(message) {
-              blocked = new ToolInputError(message);
-            },
-            replaceInput(input) {
-              replacement = input;
-            },
-          },
-        });
+        await withPluginHookSpan(
+          pluginName,
+          "beforeToolExecute",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              actors,
+              tool: {
+                name: tool.name,
+                input: nextInput,
+              },
+              users: {
+                resolveActor: async () =>
+                  input.actor
+                    ? await readActorIdentity(input.actor)
+                    : undefined,
+              },
+              juniorRoot: SANDBOX_JUNIOR_ROOT,
+              env: {
+                get(key) {
+                  return env[key] ?? normalizeEnv(nextInput.env)[key];
+                },
+                set(key, value) {
+                  env[key] = value;
+                },
+              },
+              decision: {
+                deny(reason) {
+                  blocked = new PluginToolDeniedError(reason);
+                },
+                redirect(message) {
+                  blocked = new ToolInputError(message);
+                },
+                replaceInput(input) {
+                  replacement = input;
+                },
+              },
+            }),
+        );
 
         if (blocked) {
           throw blocked;

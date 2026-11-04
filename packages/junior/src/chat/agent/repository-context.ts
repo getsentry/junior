@@ -5,6 +5,7 @@ import type {
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { UserContentPart } from "@/chat/agent/prompt";
 import type { PiMessage } from "@/chat/pi/messages";
+import { withSpan } from "@/chat/logging";
 import {
   AGENTS_REMOVAL_NOTICE,
   AGENTS_REPLACEMENT_NOTICE,
@@ -12,6 +13,14 @@ import {
   findVisibleAgentsInstructions,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
+
+/** Result of one AGENTS.md check before a model call. */
+type RepositoryInstructionsRefreshOutcome =
+  | "added"
+  | "none"
+  | "removed"
+  | "unchanged"
+  | "updated";
 
 type RepositoryInstructionsContextOptions = {
   capture(): Promise<RepositoryInstructions | undefined>;
@@ -70,6 +79,7 @@ export function createRepositoryInstructionsContext(
       ? options.initialInstructions.fingerprint
       : undefined;
   return {
+    /** Re-read AGENTS.md and append a context message when it changed. */
     async applyUpdate(
       currentUpdate: AgentLoopTurnUpdate | undefined,
       currentContext: AgentContext,
@@ -77,39 +87,66 @@ export function createRepositoryInstructionsContext(
       if (!options.hasSandbox()) {
         return currentUpdate;
       }
-      const instructions = await options.capture();
-      if (
-        instructions &&
-        instructions.fingerprint === visibleFingerprint &&
-        instructionsVisible
-      ) {
-        return currentUpdate;
-      }
-      if (!instructions && !instructionsVisible) {
-        return currentUpdate;
-      }
-
-      const message = instructions
-        ? buildAgentsInstructionsMessage({
-            directory: instructions.directory,
-            text: instructionsVisible
-              ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
-              : instructions.text,
-          })
-        : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
-      const context = currentUpdate?.context ?? currentContext;
-      const messages = [...(context.messages as PiMessage[]), message];
-      options.setMessages(messages);
-      // A final reply is committed directly after the current history, so
-      // this message must be committed first.
-      await options.commit(messages);
-      visibleFingerprint = instructions?.fingerprint;
-      instructionsVisible = Boolean(instructions);
-      await options.onTransition?.(instructions);
-      return {
-        ...currentUpdate,
-        context: { ...context, messages },
-      };
+      return await withSpan(
+        "agent.repository_instructions.refresh",
+        "agent.repository_instructions.refresh",
+        {},
+        async (setSpanAttributes) => {
+          const instructions = await options.capture();
+          const outcome = refreshOutcome(instructions);
+          setSpanAttributes({ "app.repository_instructions.outcome": outcome });
+          if (outcome === "unchanged" || outcome === "none") {
+            return currentUpdate;
+          }
+          return await appendUpdate(
+            instructions,
+            currentUpdate,
+            currentContext,
+          );
+        },
+      );
     },
   };
+
+  function refreshOutcome(
+    instructions: RepositoryInstructions | undefined,
+  ): RepositoryInstructionsRefreshOutcome {
+    if (!instructions) {
+      return instructionsVisible ? "removed" : "none";
+    }
+    if (!instructionsVisible) {
+      return "added";
+    }
+    return instructions.fingerprint === visibleFingerprint
+      ? "unchanged"
+      : "updated";
+  }
+
+  async function appendUpdate(
+    instructions: RepositoryInstructions | undefined,
+    currentUpdate: AgentLoopTurnUpdate | undefined,
+    currentContext: AgentContext,
+  ): Promise<AgentLoopTurnUpdate> {
+    const message = instructions
+      ? buildAgentsInstructionsMessage({
+          directory: instructions.directory,
+          text: instructionsVisible
+            ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
+            : instructions.text,
+        })
+      : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
+    const context = currentUpdate?.context ?? currentContext;
+    const messages = [...(context.messages as PiMessage[]), message];
+    options.setMessages(messages);
+    // A final reply is committed directly after the current history, so
+    // this message must be committed first.
+    await options.commit(messages);
+    visibleFingerprint = instructions?.fingerprint;
+    instructionsVisible = Boolean(instructions);
+    await options.onTransition?.(instructions);
+    return {
+      ...currentUpdate,
+      context: { ...context, messages },
+    };
+  }
 }

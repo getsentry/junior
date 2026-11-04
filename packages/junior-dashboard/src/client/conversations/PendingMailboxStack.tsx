@@ -6,7 +6,10 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { INPUT_IMAGE_TYPES } from "@sentry/junior/api/schema";
+import {
+  INPUT_IMAGE_TYPES,
+  type ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 import {
   AlertCircle,
   Clock3,
@@ -38,6 +41,9 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
+import { DisplayText } from "../display-text/DisplayText";
+import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
+import { displayPlainText } from "../display-text/plainText";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -228,14 +234,17 @@ function PendingMetaIcons(props: {
   );
 }
 
-function PendingAuthorAvatar(props: { message: ConversationMailboxMessage }) {
+function PendingAuthorAvatar(props: {
+  authors?: ConversationDetailReport["authors"];
+  message: ConversationMailboxMessage;
+}) {
+  const { actorIdentityId } = props.message;
   // Pending rows can come from web or Slack. Redacted rows hide the author.
-  if (!props.message.actorIdentity) {
-    return <ActorAvatar name="?" size="list" />;
-  }
-  return (
-    <ParticipantAvatar participant={props.message.actorIdentity} size="list" />
-  );
+  const author =
+    (actorIdentityId ? props.authors?.[actorIdentityId] : undefined) ??
+    props.message.actorIdentity;
+  if (!author) return <ActorAvatar name="?" size="list" />;
+  return <ParticipantAvatar participant={author} size="list" />;
 }
 
 /** Show small previews so the reader can tell which images a queued message has. */
@@ -292,6 +301,7 @@ function PendingAttachmentThumbnails(props: {
 
 function PendingRow(props: {
   actionsDisabled: boolean;
+  authors?: ConversationDetailReport["authors"];
   cancelError: boolean;
   cancelPending: boolean;
   canEdit: boolean;
@@ -306,6 +316,7 @@ function PendingRow(props: {
   steerPending: boolean;
 }) {
   const text = props.message.text ?? "";
+  const mentions = props.message.mentions ?? [];
   const redacted = Boolean(props.message.redacted);
   const showSlack = props.message.source === "slack";
   const canRetry =
@@ -319,7 +330,10 @@ function PendingRow(props: {
         className="items-center"
         left={
           <>
-            <PendingAuthorAvatar message={props.message} />
+            <PendingAuthorAvatar
+              authors={props.authors}
+              message={props.message}
+            />
             {redacted ? null : (
               <PendingAttachmentThumbnails
                 conversationId={props.conversationId}
@@ -334,9 +348,18 @@ function PendingRow(props: {
               // One line keeps the queue short. The title shows the full text.
               <p
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
-                title={text}
+                title={displayPlainText(text, mentions)}
               >
-                {text}
+                {props.message.reviewItemChange ? (
+                  <ReviewItemChangeLabel
+                    fallback={
+                      <DisplayText inline mentions={mentions} text={text} />
+                    }
+                    record={props.message.reviewItemChange}
+                  />
+                ) : (
+                  <DisplayText inline mentions={mentions} text={text} />
+                )}
               </p>
             ) : null}
           </>
@@ -435,6 +458,8 @@ function sameEmail(left: string | undefined, right: string | undefined) {
 
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
+  /** Author of each row, by `actorIdentityId`. */
+  authors?: ConversationDetailReport["authors"];
   cancelError?: boolean;
   cancelPending?: boolean;
   cancelTargetInboundMessageId?: string;
@@ -503,6 +528,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
     return (
       <PendingRow
         actionsDisabled={actionsDisabled}
+        authors={props.authors}
         cancelError={Boolean(props.cancelError && isTarget)}
         cancelPending={Boolean(props.cancelPending && isTarget)}
         canEdit={ownWebRow}

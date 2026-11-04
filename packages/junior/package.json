@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.268.0",
+  "version": "0.275.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -64,6 +64,7 @@
     "typecheck": "tsc --noEmit",
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
+    "tool-key-casing:check": "node --test scripts/check-tool-key-casing.test.mjs && node scripts/check-tool-key-casing.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
@@ -75,6 +76,7 @@
     "@chat-adapter/state-redis": "4.29.0",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-codemode": "1.4.0",
     "@hono/zod-validator": "^0.9.0",
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.32.0",

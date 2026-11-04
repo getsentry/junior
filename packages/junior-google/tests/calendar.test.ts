@@ -151,14 +151,14 @@ describe("Google Calendar tools", () => {
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
-        maxResults: 1,
-        optionalAttendees: [REQUESTER],
+        max_results: 1,
+        optional_attendees: [REQUESTER],
         // 14 days on the Los Angeles clock, from Monday 09:00 PDT to Monday
         // 09:00 PST. Daylight saving ends inside it, so it is 14 days and
         // one hour long.
-        timeMax: "2026-11-09T17:00:00Z",
-        timeMin: "2026-10-26T16:00:00Z",
-        timeZone: LA,
+        time_max: "2026-11-09T17:00:00Z",
+        time_min: "2026-10-26T16:00:00Z",
+        time_zone: LA,
         weekdays: ["Tue"],
       }),
       { toolCallId: "call-1" },
@@ -181,16 +181,16 @@ describe("Google Calendar tools", () => {
     expect(bobZone.searchParams.has("timeZone")).toBe(false);
     expect(result).toMatchObject({
       checked: [
-        { email: "bob@example.com", timeZone: "America/New_York" },
-        { email: REQUESTER, timeZone: LA },
+        { email: "bob@example.com", time_zone: "America/New_York" },
+        { email: REQUESTER, time_zone: LA },
       ],
       // Tuesday 10:00 in Los Angeles, after Bob's 09:00-13:00 in New York.
       // The requester listed themselves as optional, so the hold does not
       // block it. Monday is open earlier, but only Tuesdays were asked for.
       slots: [
         {
-          optionalConflicts: [REQUESTER],
-          otherTimeZoneLabels: ["Tue, Oct 27, 13:00 – 13:30 EDT"],
+          optional_conflicts: [REQUESTER],
+          other_time_zone_labels: ["Tue, Oct 27, 13:00 – 13:30 EDT"],
           start: "2026-10-27T17:00:00.000Z",
         },
       ],
@@ -207,7 +207,7 @@ describe("Google Calendar tools", () => {
           attendees: ["mallory@elsewhere.com"],
           end: "2026-10-12T10:30:00-07:00",
           start: "2026-10-12T10:00:00-07:00",
-          timeZone: "America/Los_Angeles",
+          time_zone: "America/Los_Angeles",
           title: "Sync",
         }),
         { toolCallId: "call-2" },
@@ -232,10 +232,10 @@ describe("Google Calendar tools", () => {
       attendees: ["bob@example.com"],
       end: "2026-10-12T10:30:00-07:00",
       location: "Bug Tracer",
-      optionalAttendees: ["dana@example.com", REQUESTER],
+      optional_attendees: ["dana@example.com", REQUESTER],
       repeat: { frequency: "weekly" },
       start: "2026-10-12T10:00:00-07:00",
-      timeZone: "America/Los_Angeles",
+      time_zone: "America/Los_Angeles",
       title: "Sync",
     };
     const first = calendarTools(Response.json({ ...event, id: "x" }));
@@ -282,9 +282,9 @@ describe("Google Calendar tools", () => {
     );
     expect(result).toMatchObject({
       created: false,
-      eventId: body.id,
+      event_id: body.id,
       label: "Mon, Oct 12, 10:00 – 10:30 PDT",
-      videoCallUrl: "https://meet.google.com/abc-defg-hij",
+      video_call_url: "https://meet.google.com/abc-defg-hij",
     });
     // Core saves this annotation and shows its card with the next reply.
     expect(
@@ -362,9 +362,9 @@ describe("Google Calendar tools", () => {
     );
     const input = {
       calendar: "Bob@example.com",
-      timeMax: "2026-10-13T00:00:00Z",
-      timeMin: "2026-10-12T00:00:00Z",
-      timeZone: "America/Los_Angeles",
+      time_max: "2026-10-13T00:00:00Z",
+      time_min: "2026-10-12T00:00:00Z",
+      time_zone: "America/Los_Angeles",
     };
 
     const result = await tools.listCalendarEvents!.execute!(
@@ -386,21 +386,21 @@ describe("Google Calendar tools", () => {
             { email: "bob@example.com", response: "accepted" },
             { email: REQUESTER, optional: true, response: "declined" },
           ],
-          eventId: "event1",
-          organizedByJunior: false,
+          event_id: "event1",
+          organized_by_junior: false,
           organizer: "bob@example.com",
           title: "Planning",
         },
-        { eventId: "event2", organizedByJunior: false },
+        { event_id: "event2", organized_by_junior: false },
         {
-          eventId: "series1_20261012T190000Z",
-          organizedByJunior: true,
-          seriesEventId: "series1",
+          event_id: "series1_20261012T190000Z",
+          organized_by_junior: true,
+          series_event_id: "series1",
         },
-        { end: "2026-10-12", eventId: "allDay", label: "2026-10-12, all day" },
+        { end: "2026-10-12", event_id: "allDay", label: "2026-10-12, all day" },
         {
           end: "2026-10-14",
-          eventId: "offsite",
+          event_id: "offsite",
           label: "2026-10-12 to 2026-10-14, all day",
         },
       ],
@@ -420,9 +420,9 @@ describe("Google Calendar tools", () => {
 
     const result = await tools.listCalendarEvents!.execute!(
       tools.listCalendarEvents!.prepareArguments!({
-        timeMax: "2026-10-13T00:00:00Z",
-        timeMin: "2026-10-12T00:00:00Z",
-        timeZone: "America/Los_Angeles",
+        time_max: "2026-10-13T00:00:00Z",
+        time_min: "2026-10-12T00:00:00Z",
+        time_zone: "America/Los_Angeles",
       }),
       { toolCallId: "call-own" },
     );
@@ -450,14 +450,14 @@ describe("Google Calendar tools", () => {
       summary: "Sync",
     };
     const input = {
-      addAttendees: ["carol@example.com"],
-      addOptionalAttendees: ["dana@example.com"],
+      add_attendees: ["carol@example.com"],
+      add_optional_attendees: ["dana@example.com"],
       end: "2026-10-13T11:30:00-07:00",
-      eventId: "event1",
+      event_id: "event1",
       location: "Bug Tracer",
-      removeAttendees: ["bob@example.com"],
+      remove_attendees: ["bob@example.com"],
       start: "2026-10-13T11:00:00-07:00",
-      timeZone: "America/Los_Angeles",
+      time_zone: "America/Los_Angeles",
     };
 
     const outsider = calendarTools(
@@ -514,7 +514,7 @@ describe("Google Calendar tools", () => {
         { email: "carol@example.com" },
         { email: "dana@example.com", optional: true },
       ],
-      eventId: "event1",
+      event_id: "event1",
       // The same key replaces the saved card with the new time.
       objectAnnotations: [
         {
@@ -540,9 +540,9 @@ describe("Google Calendar tools", () => {
     };
     // People often paste the Google Calendar link instead of an id.
     const input = {
-      eventId:
+      event_id:
         "https://www.google.com/calendar/event?eid=ZXZlbnQxIGp1bmlvckBleGFtcGxlLmNvbQ==",
-      timeZone: "America/Los_Angeles",
+      time_zone: "America/Los_Angeles",
     };
     const cancel = (tools: ReturnType<typeof calendarTools>["tools"]) =>
       tools.cancelCalendarEvent!.execute!(
@@ -579,7 +579,7 @@ describe("Google Calendar tools", () => {
     expect(url.searchParams.get("sendUpdates")).toBe("all");
     expect(result).toMatchObject({
       cancelled: true,
-      eventId: "event1",
+      event_id: "event1",
       // The saved card now shows that the event is cancelled.
       objectAnnotations: [{ key: "event1", status: "cancelled" }],
       title: "Sync",
@@ -601,7 +601,7 @@ describe("Google Calendar tools", () => {
       expect(await cancel(again.tools)).toEqual({
         target: "cancelCalendarEvent",
         cancelled: false,
-        eventId: "event1",
+        event_id: "event1",
       });
       expect(again.fetch).toHaveBeenCalledTimes(1);
     }

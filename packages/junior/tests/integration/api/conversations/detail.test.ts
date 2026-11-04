@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
@@ -13,6 +14,8 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation detail API", () => {
@@ -325,6 +328,79 @@ describe("conversation detail API", () => {
         slackUserId: "UOWNER1",
       },
     ]);
+  });
+
+  it("names the participant who wrote each message", async () => {
+    const conversationId = "slack:C123:author-photos";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "Author photos",
+      visibility: "public",
+    });
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id, userId: juniorIdentities.userId });
+    // The same person can send next from the web before history has it.
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        id: "identity-owner-google",
+        createdAt: new Date(1_000),
+        kind: "user",
+        provider: "google",
+        providerSubjectId: "google-owner",
+        updatedAt: new Date(1_000),
+        userId: owner!.userId,
+      });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          authorIdentityId: owner!.id,
+          messageId: "owner-1",
+          meta: { author: { fullName: "Owner Person", userId: "UOWNER1" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+    ]);
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer("owner@example.com"),
+    });
+    // Messages name their author. The detail carries each author once.
+    expect(detail?.events[0]?.data).toMatchObject({
+      actorIdentityId: owner!.id,
+    });
+    expect(detail?.events[0]?.data).not.toHaveProperty(
+      "actorIdentity.avatarUrl",
+    );
+    expect(detail?.authors?.[owner!.id]).toMatchObject({
+      avatarUrl: avatarPath(owner!.id),
+      fullName: "Owner Person",
+      slackUserId: "UOWNER1",
+    });
+    expect(detail?.authors?.["identity-owner-google"]).toEqual(
+      detail?.authors?.[owner!.id],
+    );
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

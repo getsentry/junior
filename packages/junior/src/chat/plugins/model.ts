@@ -2,10 +2,16 @@ import type {
   PluginEmbedder,
   PluginModel,
   PluginModelConfig,
+  PluginReranker,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
-import { completeObject, embedTexts } from "@/chat/pi/client";
+import {
+  completeObject,
+  embedTexts,
+  GEN_AI_PROVIDER_NAME,
+  rerankTexts,
+} from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
 export function createPluginModel(
@@ -37,7 +43,9 @@ export function createPluginModel(
       });
       return {
         object: result.object,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
   };
@@ -49,14 +57,36 @@ export function createPluginEmbedder(
   runtime: { signal?: AbortSignal } = {},
 ): PluginEmbedder {
   return {
+    model: botConfig.embeddingModelId,
+    provider: GEN_AI_PROVIDER_NAME,
     async embedTexts(input) {
       return await embedTexts({
         modelId: botConfig.embeddingModelId,
         texts: input.texts,
+        ...(input.inputType !== undefined
+          ? { inputType: input.inputType }
+          : undefined),
         signal: runtime.signal,
         metadata: {
           pluginName,
           pluginModelRole: "embedding",
+        },
+      });
+    },
+  };
+}
+
+/** Create the host-owned reranking capability exposed to prompt hooks. */
+export function createPluginReranker(pluginName: string): PluginReranker {
+  return {
+    async rerank(input) {
+      return await rerankTexts({
+        documents: input.documents,
+        modelId: botConfig.rerankingModelId,
+        query: input.query,
+        metadata: {
+          pluginName,
+          pluginModelRole: "reranking",
         },
       });
     },

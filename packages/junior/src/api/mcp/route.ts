@@ -4,6 +4,7 @@
  */
 import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
 import { handleMcpAuthorize } from "./oauth/authorization";
 import { authenticateMcpAccessToken } from "./oauth/grants";
@@ -11,7 +12,6 @@ import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
   MCP_PATH,
-  MCP_SCOPE,
   MCP_TOKEN_PATH,
   MCP_RESOURCE_METADATA_PATH,
   authorizationServerMetadata,
@@ -19,6 +19,7 @@ import {
   resolveMcpUrls,
   type McpUrls,
 } from "./oauth/metadata";
+import { MCP_ALL_SCOPES } from "./oauth/scopes";
 import { handleMcpServerRequest } from "./server";
 import type { McpState } from "./oauth/state";
 import { handleMcpToken, mcpTokenBodyLimit } from "./oauth/token";
@@ -37,6 +38,8 @@ type McpHttpHandlerOptions = {
   allowedDomains: readonly string[];
   /** Configured public origin. Unset allows only loopback request origins. */
   baseURL?: string;
+  /** Conversation work queue. Stopping a Turn clears its queued work. */
+  queue: ConversationWorkQueue;
   state: McpState;
 };
 
@@ -50,7 +53,7 @@ function unauthorized(urls: McpUrls, sentToken: boolean): Response {
     status: 401,
     headers: {
       "cache-control": "no-store",
-      "www-authenticate": `Bearer ${error}resource_metadata="${urls.resourceMetadata}", scope="${MCP_SCOPE}"`,
+      "www-authenticate": `Bearer ${error}resource_metadata="${urls.resourceMetadata}", scope="${MCP_ALL_SCOPES}"`,
     },
   });
 }
@@ -90,7 +93,7 @@ export function createMcpHttpHandler(
   app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
     const requestUrls = urls(c.req.raw);
     const token = bearerToken(c.req.raw);
-    const email = token
+    const grant = token
       ? await authenticateMcpAccessToken({
           resource: requestUrls.resource,
           state: options.state,
@@ -98,15 +101,19 @@ export function createMcpHttpHandler(
         })
       : undefined;
     const user =
-      email && isAllowedSignInEmail(email, options.allowedDomains)
-        ? await resolveViewerUser(email)
+      grant && isAllowedSignInEmail(grant.email, options.allowedDomains)
+        ? await resolveViewerUser(grant.email)
         : undefined;
-    if (!user) return unauthorized(requestUrls, token !== undefined);
+    if (!grant || !user) return unauthorized(requestUrls, token !== undefined);
     // The stateless transport has no session to stream or delete.
     if (c.req.method !== "POST") {
       return new Response(null, { status: 405, headers: { allow: "POST" } });
     }
-    return await handleMcpServerRequest(c.req.raw, user);
+    return await handleMcpServerRequest(c.req.raw, {
+      queue: options.queue,
+      scopes: grant.scopes,
+      user,
+    });
   });
 
   return app.fetch;

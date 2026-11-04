@@ -1,6 +1,7 @@
 // Core owns host-level route ordering for Junior. ACP and MCP mount before
 // plugin routes, and plugin routes mount before the dashboard (see
 // dashboard-routes).
+
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -11,12 +12,10 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
-  setCrossActorMidRunMode,
   setProfiles,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
-  type CrossActorMidRunMode,
   type RuntimeLimits,
   setSlackReactionConfig,
 } from "@/chat/config";
@@ -74,6 +73,7 @@ import {
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -108,6 +108,17 @@ import {
   workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
 import {
+  backgroundCompactionQueueConsumer,
+  createVercelBackgroundCompactionCallback,
+  registerVercelBackgroundCompactionDevConsumer,
+} from "@/chat/services/background-compaction-callback";
+import { processBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  vercelBackgroundCompactionQueue,
+  type BackgroundCompactionMessage,
+  type BackgroundCompactionQueue,
+} from "@/chat/services/background-compaction-queue";
+import {
   getQueueProvider,
   type QueueConsumer,
   type QueueWorker,
@@ -117,7 +128,9 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
+  getProductionSlackAdapter,
 } from "@/chat/app/production";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -204,16 +217,16 @@ export interface JuniorAppOptions extends BotModelConfig {
     /** Slack emoji shown after a turn completes. Defaults to `white_check_mark`. */
     completedReactionEmoji?: string;
     /**
-     * What a mention from another person does while a turn runs: `follow_up`
-     * waits for its own turn, `steer` joins the running turn. Defaults to
-     * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
-     */
-    crossActorMidRunMode?: CrossActorMidRunMode;
-    /**
      * Slack user IDs of bots that may start a Turn from a mention or DM. Bots
      * have no profile email, so `allowedDomains` blocks them otherwise.
      */
     allowedBotUserIds?: string[];
+    /**
+     * Join each public channel created after this is on. Existing channels
+     * are not joined. The Slack app must subscribe to `channel_created`.
+     * Defaults to `false`.
+     */
+    autoJoinNewChannels?: boolean;
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -240,6 +253,13 @@ export interface JuniorAppOptions extends BotModelConfig {
   pluginTaskQueue?: (
     consume: (message: PluginTaskQueueMessage) => Promise<void>,
   ) => { send(message: PluginTaskQueueMessage): Promise<void> };
+  /**
+   * Replace the Vercel Queue transport for background compaction jobs, for
+   * example with an in-process queue. `consume` runs one job.
+   */
+  backgroundCompactionQueue?: (
+    consume: (message: BackgroundCompactionMessage) => Promise<void>,
+  ) => BackgroundCompactionQueue;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -546,9 +566,6 @@ export async function createApp(
     setBotModelConfig(options ?? {});
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
-    if (options?.slack?.crossActorMidRunMode) {
-      setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
-    }
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = resolveAllowedDomains(options?.allowedDomains);
@@ -572,7 +589,10 @@ export async function createApp(
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ events });
+    pluginRoutes = getPluginRoutes({
+      events,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+    });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
@@ -593,13 +613,19 @@ export async function createApp(
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const backgroundCompactionQueue =
+    options?.backgroundCompactionQueue?.((message) =>
+      processBackgroundCompaction(message),
+    ) ?? vercelBackgroundCompactionQueue;
   const attachmentStorage = getAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
+    backgroundCompactionQueue,
     bindMessageAgent: (request) =>
       bindMessageAgent(request, { queue: conversationWorkQueue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
+    conversationWorkQueue,
     tracePropagation,
   });
   const runtimeServiceOverrides = {
@@ -716,6 +742,7 @@ export async function createApp(
     }),
     allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
     allowedDomains,
+    autoJoinNewChannels: options?.slack?.autoJoinNewChannels === true,
   };
 
   const app = new Hono();
@@ -742,6 +769,7 @@ export async function createApp(
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
         baseURL: resolvePublicBaseURL(dashboard),
+        queue: conversationWorkQueue,
         state: getMcpState(),
       });
       return handleMcpRequest(c.req.raw);
@@ -811,6 +839,7 @@ export async function createApp(
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
     registerVercelCacheWarmupDevConsumer();
+    registerVercelBackgroundCompactionDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -835,6 +864,13 @@ export async function createApp(
   app.post(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, (c) => {
     cacheWarmupPOST ??= createVercelCacheWarmupCallback();
     return cacheWarmupPOST(c.req.raw);
+  });
+  let backgroundCompactionPOST:
+    | ReturnType<typeof createVercelBackgroundCompactionCallback>
+    | undefined;
+  app.post(JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE, (c) => {
+    backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
+    return backgroundCompactionPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -863,6 +899,7 @@ export async function createApp(
           pluginTaskQueueConsumer(),
           workspaceSnapshotJobQueueConsumer(),
           cacheWarmupQueueConsumer(),
+          backgroundCompactionQueueConsumer(),
         ],
         backgroundWork,
       ),

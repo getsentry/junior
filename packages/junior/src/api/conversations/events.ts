@@ -1,9 +1,12 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
@@ -312,6 +315,22 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
+const storedReviewItemChangesSchema = z
+  .array(reviewItemChangeRecordSchema)
+  .min(1);
+
+/** Read the Review item changes that a message records. */
+function reportReviewItemChanges(
+  meta: Record<string, unknown> | undefined,
+):
+  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | undefined {
+  const parsed = storedReviewItemChangesSchema.safeParse(
+    meta?.reviewItemChanges,
+  );
+  return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
+}
+
 // The report has no `cancelled` state. A cancelled Turn has no reply.
 const TURN_COMPLETED_STATES = {
   success: "succeeded",
@@ -357,8 +376,17 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        ...(args.canExposePayload &&
+        data.role === "user" &&
+        data.authorIdentityId &&
+        data.authorIdentityId !== SYSTEM_IDENTITY_ID
+          ? { actorIdentityId: data.authorIdentityId }
+          : undefined),
         ...(typeof data.meta?.agentInvocationId === "string"
           ? { agentInvocationId: data.meta.agentInvocationId }
+          : undefined),
+        ...(args.canExposePayload
+          ? reportReviewItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
@@ -506,6 +534,8 @@ function reportSubagentLabel(
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
+  /** `turn_started` of the Conversation's first Turn. */
+  firstTurnStart?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -543,6 +573,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -552,6 +583,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);

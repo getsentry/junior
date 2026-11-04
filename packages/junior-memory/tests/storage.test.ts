@@ -6,16 +6,18 @@ import {
   createSlackSource,
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
+  type HeartbeatHookContext,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
+  type PluginReranker,
   type PluginRunTranscriptEntry,
   type PluginState,
   type PluginTaskContext,
   type Actor,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
@@ -38,6 +40,7 @@ import {
   type MemoryReviewer,
 } from "../src/tools";
 import { listMemories } from "../src/viewer";
+import { hashEmbeddedContent } from "../src/embedding";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
@@ -66,6 +69,30 @@ const memoryState: PluginState = {
     return await callback();
   },
 };
+
+function memoryHeartbeatContext(args: {
+  embedder: HeartbeatHookContext["embedder"];
+  fixture: MemoryFixture;
+  nowMs: number;
+}): HeartbeatHookContext {
+  return {
+    agent: {
+      dispatch: vi.fn(),
+      get: vi.fn(),
+    },
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+    },
+    db: memoryDb(args.fixture),
+    embedder: args.embedder,
+    log: noopLogger,
+    nowMs: args.nowMs,
+    plugin: { name: "memory" },
+    state: memoryState,
+  };
+}
 
 function createMemoryState(): PluginState {
   const values = new Map<string, unknown>();
@@ -191,8 +218,11 @@ CREATE TABLE junior_conversation_participants (
 `);
 }
 
-function unitEmbedding(index: number): number[] {
-  const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
+function unitEmbedding(
+  index: number,
+  dimensions: number = TEST_EMBEDDING_DIMENSIONS,
+): number[] {
+  const embedding = Array.from({ length: dimensions }, () => 0);
   embedding[index] = 1;
   return embedding;
 }
@@ -214,56 +244,51 @@ function createTestEmbedder(
   } = {},
 ) {
   const calls: string[][] = [];
+  const inputTypes: Array<string | undefined> = [];
+  const model = overrides.model ?? "test-embedding-model";
+  const provider = overrides.provider ?? "test-embedding-provider";
   return {
     calls,
-    async embedTexts(input: { texts: string[] }) {
+    inputTypes,
+    model,
+    provider,
+    async embedTexts(input: { inputType?: string; texts: string[] }) {
       calls.push(input.texts);
+      inputTypes.push(input.inputType);
       return {
         ...(overrides.costUsd !== undefined
           ? { costUsd: overrides.costUsd }
           : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
-        model: overrides.model ?? "test-embedding-model",
-        provider: overrides.provider ?? "test-embedding-provider",
+        model,
+        provider,
         vectors: input.texts.map((text) => vectors[text] ?? defaultEmbedding),
       };
     },
   };
 }
 
-function recallModel(
-  select: (candidates: string[]) => string[],
+/** Fake reranker that scores each candidate memory by its content. */
+function testReranker(
+  score: (content: string) => number = () => 0.9,
   costUsd?: number,
-): PluginModel {
+): PluginReranker {
   return {
-    async completeObject(input) {
-      const encoded =
-        /<candidate-memories>\n(.+)\n<\/candidate-memories>/s.exec(
-          input.prompt,
-        )?.[1];
-      const candidates = JSON.parse(
-        (encoded ?? "[]")
-          .replaceAll("&lt;", "<")
-          .replaceAll("&gt;", ">")
-          .replaceAll("&amp;", "&"),
-      ) as Array<{
-        content: string;
-        id: string;
-      }>;
+    async rerank({ documents }) {
       return {
         ...(costUsd !== undefined ? { costUsd } : undefined),
-        object: {
-          relevantIds: select(candidates.map(({ content }) => content)).map(
-            (content) =>
-              candidates.find((candidate) => candidate.content === content)!.id,
-          ),
-        },
+        scores: documents.map(score),
       };
     },
   };
 }
 
-const selectAllRecallModel = recallModel((candidates) => candidates);
+// Automatic recall ranks with the reranker and never calls the model.
+const recallOnlyModel: PluginModel = {
+  async completeObject() {
+    throw new Error("automatic recall must not call the model");
+  },
+};
 
 function extractionModel(
   memories: Array<{
@@ -572,43 +597,6 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
-  });
-
-  it("normalizes recall selection to known unique candidate ids", async () => {
-    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
-    const model: PluginModel = {
-      async completeObject(input) {
-        calls.push(input);
-        return {
-          costUsd: 0.0042,
-          object: {
-            relevantIds: ["memory-2", "unknown", "memory-2", "memory-1"],
-          },
-        };
-      },
-    };
-    const agent = createMemoryAgent(model);
-
-    await expect(
-      agent.selectRelevantMemories({
-        candidates: [
-          { content: "Release notes live in Notion.", id: "memory-1" },
-          {
-            content: "getsentry/junior CI runs package tests with pnpm.",
-            id: "memory-2",
-          },
-        ],
-        userRequest: "How does CI work in getsentry/junior?",
-      }),
-    ).resolves.toEqual({
-      costUsd: 0.0042,
-      relevantIds: ["memory-2", "memory-1"],
-    });
-    expect(calls[0]?.system).toContain(
-      "Reject memories that merely share a company",
-    );
-    expect(calls[0]?.prompt).toContain("<candidate-memories>");
     expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
@@ -3028,6 +3016,117 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("moves memory vectors to a new embedding model in the heartbeat", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const reactMemory = "Uses React hooks for UI state.";
+      const mangoMemory = "Favorite CLI QA snack is mango chips.";
+      const oldMemory = "Prefers superseded memories to keep old vectors.";
+      const expiredMemory = "Prefers expired memories to keep old vectors.";
+      const query = "client rendering library";
+      const oldStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: createTestEmbedder({
+          [reactMemory]: unitEmbedding(1),
+          [mangoMemory]: unitEmbedding(2),
+          [oldMemory]: unitEmbedding(3),
+          [expiredMemory]: unitEmbedding(4),
+        }),
+        now: () => TEST_NOW_MS,
+      });
+      const react = await oldStore.createMemory({
+        content: reactMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-react",
+      });
+      const mango = await oldStore.createMemory({
+        content: mangoMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-mango",
+      });
+      const superseded = await oldStore.createMemory({
+        content: oldMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-superseded",
+      });
+      const expired = await oldStore.createMemory({
+        content: expiredMemory,
+        kind: "preference",
+        idempotencyKey: "memory-test:reembed-expired",
+      });
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET superseded_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${superseded.memory.id}'
+`);
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET expires_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${expired.memory.id}'
+`);
+
+      const newEmbedder = createTestEmbedder(
+        {
+          [reactMemory]: unitEmbedding(1, 1024),
+          [mangoMemory]: unitEmbedding(2, 1024),
+          [query]: unitEmbedding(1, 1024),
+        },
+        { dimensions: 1024, model: "new-model" },
+      );
+      const heartbeatContext = memoryHeartbeatContext({
+        embedder: newEmbedder,
+        fixture,
+        nowMs: TEST_NOW_MS,
+      });
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.inputTypes).toEqual(["document"]);
+      expect(newEmbedder.calls.map((texts) => [...texts].sort())).toEqual([
+        [mangoMemory, reactMemory].sort(),
+      ]);
+
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryEmbeddings);
+      expect(
+        rows
+          .map((row) => `${row.memoryId}:${row.model}:${row.dimensions}`)
+          .sort(),
+      ).toEqual(
+        [
+          `${react.memory.id}:test-embedding-model:1536`,
+          `${react.memory.id}:new-model:1024`,
+          `${mango.memory.id}:test-embedding-model:1536`,
+          `${mango.memory.id}:new-model:1024`,
+          `${superseded.memory.id}:test-embedding-model:1536`,
+          `${expired.memory.id}:test-embedding-model:1536`,
+        ].sort(),
+      );
+
+      const newStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder: newEmbedder,
+        now: () => TEST_NOW_MS,
+      });
+      const [top] = await newStore.searchMemories({ query });
+      expect(top).toEqual(expect.objectContaining({ id: react.memory.id }));
+      expect(newEmbedder.inputTypes.at(-1)).toBe("query");
+
+      // A rerun finds nothing to embed.
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls).toHaveLength(2);
+
+      // A vector whose content hash went stale is embedded again.
+      await fixture.execute(`
+UPDATE junior_memory_embeddings
+SET content_hash = 'stale'
+WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
+`);
+      await memoryPlugin().hooks!.heartbeat!(heartbeatContext);
+      expect(newEmbedder.calls.at(-1)).toEqual([reactMemory]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("applies the vector cutoff to automatic recall without narrowing explicit search", async () => {
     const fixture = await createMemoryFixture();
 
@@ -3066,6 +3165,127 @@ WHERE id = '${superseded.memory.id}'
       await fixture.close();
     }
   }, 15_000);
+
+  it("searches the HNSW index for public recall with exact-search results", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      // Production embeds with a 1024-dimensional model, the only size with an
+      // HNSW index. Each memory has cosine `cosine` to the query, so the exact
+      // distance order is known. Vectors lie on a 3-dimensional sphere: HNSW
+      // cannot navigate vectors that are all at the same distance from each
+      // other.
+      const dimensions = 1024;
+      const query = "nearest neighbor probe";
+      const context = slackContext();
+      const ownerScopeKey = context.userId;
+      const otherScopeKey = "user:T123:U999";
+      const seeds: Array<{
+        cosine: number;
+        id: string;
+        scope: "private" | "public";
+        scopeKey: string;
+      }> = [
+        // Other Users' private memories are closest, so they use part of the
+        // HNSW candidate budget before visibility filters them out.
+        ...Array.from({ length: 100 }, (_, index) => ({
+          cosine: 0.99 - index * 0.0001,
+          id: `mem_hnsw_other_${index}`,
+          scope: "private" as const,
+          scopeKey: otherScopeKey,
+        })),
+        ...Array.from({ length: 300 }, (_, index) => ({
+          cosine: 0.98 - index * 0.003,
+          id: `mem_hnsw_public_${index}`,
+          scope: "public" as const,
+          scopeKey: "public",
+        })),
+        {
+          cosine: 0.9765,
+          id: "mem_hnsw_owner_close",
+          scope: "private",
+          scopeKey: ownerScopeKey,
+        },
+        // More than the HNSW candidate budget is closer than this memory.
+        {
+          cosine: 0.6,
+          id: "mem_hnsw_owner_far",
+          scope: "private",
+          scopeKey: ownerScopeKey,
+        },
+      ];
+      const db = memoryDb(fixture);
+      await db.insert(memorySqlSchema.juniorMemoryMemories).values(
+        seeds.map((seed) => ({
+          content: `Seeded memory ${seed.id}.`,
+          createdAtMs: TEST_NOW_MS,
+          id: seed.id,
+          kind: "knowledge" as const,
+          observedAtMs: TEST_NOW_MS,
+          scope: seed.scope,
+          scopeKey: seed.scopeKey,
+          sourceKey: "slack:T123:C123:1718800000.000000",
+          sourcePlatform: "slack" as const,
+          subjectType: "general" as const,
+        })),
+      );
+      await db.insert(memorySqlSchema.juniorMemoryEmbeddings).values(
+        seeds.map((seed, index) => {
+          const sine = Math.sqrt(1 - seed.cosine * seed.cosine);
+          const angle = index * 2.399963;
+          const embedding = unitEmbedding(0, dimensions);
+          embedding[0] = seed.cosine;
+          embedding[1] = sine * Math.cos(angle);
+          embedding[2] = sine * Math.sin(angle);
+          return {
+            contentHash: hashEmbeddedContent(`Seeded memory ${seed.id}.`),
+            createdAtMs: TEST_NOW_MS,
+            dimensions,
+            embedding,
+            memoryId: seed.id,
+            metric: "cosine" as const,
+            model: "test-embedding-model",
+            provider: "test-embedding-provider",
+          };
+        }),
+      );
+      const store = createMemoryStore(db, context, {
+        embedder: createTestEmbedder(
+          { [query]: unitEmbedding(0, dimensions) },
+          { dimensions },
+        ),
+        now: () => TEST_NOW_MS,
+      });
+      const visibleByDistance = seeds
+        .filter((seed) => seed.scopeKey !== otherScopeKey)
+        .sort((left, right) => right.cosine - left.cosine)
+        .map((seed) => seed.id);
+      const ids = (memories: Array<{ id: string }>) =>
+        memories.map((memory) => memory.id);
+
+      await expect(
+        store.searchMemories({ limit: 10, query }).then(ids),
+      ).resolves.toEqual(visibleByDistance.slice(0, 10));
+      // The private search is exact, so it finds the far private memory.
+      await expect(
+        store.recallMemories({ limit: 5, query }).then(ids),
+      ).resolves.toContain("mem_hnsw_owner_far");
+      // The recall cutoff keeps cosine >= 0.55 (distance <= 0.45) only.
+      const withinCutoff = seeds
+        .filter(
+          (seed) => seed.scopeKey !== otherScopeKey && seed.cosine >= 0.55,
+        )
+        .map((seed) => seed.id)
+        .sort();
+      await expect(
+        store
+          .recallMemories({ limit: 200, query })
+          .then((memories) => ids(memories).sort()),
+      ).resolves.toEqual(withinCutoff);
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
 
   it("keeps lexical recall when an acceptable vector distractor exists", async () => {
     const fixture = await createMemoryFixture();
@@ -3580,29 +3800,43 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("archives expired visible memories during reads", async () => {
+  it("hides expired memories from reads and archives them in the heartbeat", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       const expiredContent = "Temporary CLI memory should expire cleanly.";
+      const privateContent = "Temporary CLI memory from a private DM.";
       const activeContent = "Persistent CLI memory should remain visible.";
       const supersededContent = "Superseded CLI memory stays superseded.";
       const embedder = createTestEmbedder({
         [expiredContent]: unitEmbedding(1),
+        [privateContent]: unitEmbedding(1),
         [activeContent]: unitEmbedding(2),
         [supersededContent]: unitEmbedding(3),
+        "Temporary CLI memory": unitEmbedding(1),
       });
       let nowMs = TEST_NOW_MS;
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
+      const privateStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123", userId: "U999" }),
+        { embedder, now: () => nowMs },
+      );
 
       const expired = await store.createMemory({
         content: expiredContent,
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:read-expired",
+      });
+      const privateExpired = await privateStore.createMemory({
+        content: privateContent,
+        kind: "preference",
+        expiresAtMs: TEST_NOW_MS + 10,
+        idempotencyKey: "memory-test:read-expired-private",
       });
       const active = await store.createMemory({
         content: activeContent,
@@ -3621,38 +3855,55 @@ WHERE id = '${superseded.memory.id}'
         .where(
           eq(memorySqlSchema.juniorMemoryMemories.id, superseded.memory.id),
         );
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toHaveLength(3);
 
       nowMs = TEST_NOW_MS + 11;
+      const query = "Temporary CLI memory";
       await expect(store.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: active.memory.id }),
       ]);
-      await expect(
-        memoryDb(fixture)
-          .select()
-          .from(memorySqlSchema.juniorMemoryMemories)
-          .where(
-            eq(memorySqlSchema.juniorMemoryMemories.id, expired.memory.id),
-          ),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          archiveReason: "expired",
-          archivedAtMs: TEST_NOW_MS + 11,
-        }),
+      await expect(store.searchMemories({ query })).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
       ]);
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ memoryId: active.memory.id }),
-          expect.objectContaining({ memoryId: superseded.memory.id }),
-        ]),
+      await expect(store.recallMemories({ query })).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
+      ]);
+      await expect(privateStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
+      ]);
+      const archived = async () =>
+        (
+          await memoryDb(fixture)
+            .select()
+            .from(memorySqlSchema.juniorMemoryMemories)
+            .where(isNotNull(memorySqlSchema.juniorMemoryMemories.archivedAtMs))
+        )
+          .map((row) => `${row.id}:${row.archiveReason}:${row.archivedAtMs}`)
+          .sort();
+      const vectorMemoryIds = async () =>
+        (
+          await memoryDb(fixture)
+            .select()
+            .from(memorySqlSchema.juniorMemoryEmbeddings)
+        )
+          .map((row) => row.memoryId)
+          .sort();
+      // Reads leave expired rows for the heartbeat to archive.
+      await expect(archived()).resolves.toEqual([]);
+      await expect(vectorMemoryIds()).resolves.toHaveLength(4);
+
+      await memoryPlugin().hooks!.heartbeat!(
+        memoryHeartbeatContext({ embedder, fixture, nowMs }),
       );
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toHaveLength(2);
+
+      await expect(archived()).resolves.toEqual(
+        [
+          `${expired.memory.id}:expired:${TEST_NOW_MS + 11}`,
+          `${privateExpired.memory.id}:expired:${TEST_NOW_MS + 11}`,
+        ].sort(),
+      );
+      await expect(vectorMemoryIds()).resolves.toEqual(
+        [active.memory.id, superseded.memory.id].sort(),
+      );
       await expect(
         memoryDb(fixture)
           .select()
@@ -3889,7 +4140,7 @@ WHERE id = '${superseded.memory.id}'
         created: true,
         memory: {
           content: "Prefers valid expiration to be stored.",
-          expiresAtMs: Date.parse("2026-06-19T13:00:00+00:00"),
+          expires_at: "2026-06-19T13:00:00.000Z",
         },
       });
       await expect(
@@ -4021,8 +4272,14 @@ WHERE id = '${superseded.memory.id}'
           },
         },
         log: noopLogger,
-        model: recallModel((candidates) => candidates, 0.0042),
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        // The lower-ranked memory scores higher, so the prompt leads with it.
+        reranker: testReranker(
+          (content) => (content === personal.memory.content ? 0.9 : 0.7),
+          0.0042,
+        ),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Draft a PR summary and mention release notes.",
       });
@@ -4038,17 +4295,17 @@ WHERE id = '${superseded.memory.id}'
         content: {
           memories: [
             {
-              id: conversation.memory.id,
-              content: conversation.memory.content,
-              kind: conversation.memory.kind,
-              observedAtMs: conversation.memory.observedAtMs,
-              scope: "personal",
-            },
-            {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
+              scope: "personal",
+            },
+            {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
               scope: "personal",
             },
           ],
@@ -4065,7 +4322,7 @@ WHERE id = '${superseded.memory.id}'
         expect.objectContaining({
           data: {
             costUsd: 0.0045,
-            memories: [conversation.memory.id, personal.memory.id],
+            memories: [personal.memory.id, conversation.memory.id],
           },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
@@ -4113,8 +4370,10 @@ WHERE id = '${superseded.memory.id}'
           },
         },
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Walk through the deploy checklist steps.",
       });
@@ -4166,8 +4425,10 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: "Where do release notes live?",
       });
@@ -4205,7 +4466,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("filters candidates that only share repository and CI vocabulary", async () => {
+  it("admits only candidates whose rerank score clears the threshold", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4218,7 +4479,7 @@ WHERE id = '${superseded.memory.id}'
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-relevant",
       });
-      await store.createConversationMemory({
+      const vocabulary = await store.createConversationMemory({
         content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-vocabulary",
@@ -4238,10 +4499,13 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
-        model: recallModel((candidates) =>
-          candidates.filter((content) => content.includes("getsentry/junior")),
-        ),
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker((content) => {
+          if (content === relevant.memory.content) return 0.8;
+          return content === vocabulary.memory.content ? 0.4 : 0.3;
+        }),
+        setSpanAttributes() {},
         state: memoryState,
         text: "How does CI work in getsentry/junior?",
       });
@@ -4289,8 +4553,10 @@ WHERE id = '${superseded.memory.id}'
             },
           },
           log: noopLogger,
-          model: recallModel(() => [], 0.0017),
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => 0.2, 0.0017),
+          setSpanAttributes() {},
           state: memoryState,
           text: "How do autofix PR tests use the dashboard workflow?",
         }),
@@ -4329,12 +4595,12 @@ WHERE id = '${superseded.memory.id}'
             },
           },
           log: noopLogger,
-          model: {
-            async completeObject() {
-              throw new Error("Recall model should not run without candidates");
-            },
-          },
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => {
+            throw new Error("Reranker should not run without candidates");
+          }),
+          setSpanAttributes() {},
           state: memoryState,
           text: "Where do release notes live?",
         }),
@@ -4353,7 +4619,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("continues without recalled context when relevance selection fails", async () => {
+  it("continues without recalled context when reranking fails", async () => {
     const fixture = await createMemoryFixture();
     const warnings: string[] = [];
     const log: PluginLogger = {
@@ -4383,17 +4649,17 @@ WHERE id = '${superseded.memory.id}'
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log,
-          model: {
-            async completeObject() {
-              throw new Error("model unavailable");
-            },
-          },
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(() => {
+            throw new Error("reranker unavailable");
+          }),
+          setSpanAttributes() {},
           state: memoryState,
           text: "Where do release notes live?",
         }),
       ).resolves.toBeUndefined();
-      expect(warnings).toEqual(["memory_recall_selection_failed"]);
+      expect(warnings).toEqual(["memory_recall_rerank_failed"]);
     } finally {
       await fixture.close();
     }
@@ -4419,8 +4685,10 @@ WHERE id = '${superseded.memory.id}'
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log: noopLogger,
-          model: selectAllRecallModel,
+          model: recallOnlyModel,
           plugin: { name: "memory" },
+          reranker: testReranker(),
+          setSpanAttributes() {},
           state: memoryState,
           text: "   ",
         }),
@@ -4458,8 +4726,10 @@ WHERE id = '${superseded.memory.id}'
         db: memoryDb(fixture),
         embedder,
         log: noopLogger,
-        model: selectAllRecallModel,
+        model: recallOnlyModel,
         plugin: { name: "memory" },
+        reranker: testReranker(),
+        setSpanAttributes() {},
         state: memoryState,
         text: query,
       });

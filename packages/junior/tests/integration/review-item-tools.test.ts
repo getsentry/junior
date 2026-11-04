@@ -2,7 +2,7 @@ import type { Identity, User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { closeReviewItem } from "@/chat/review-items/store";
+import { closeReviewItem, getReviewItem } from "@/chat/review-items/store";
 import {
   juniorAutomations,
   juniorConversationParticipants,
@@ -13,26 +13,30 @@ import {
   createSearchReviewItemsTool,
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
 type Context = Pick<
   ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source"
+  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
 >;
 
+// Parse the input first, as the agent runtime does.
 async function execute(tool: any, input: unknown): Promise<any> {
-  return await tool.execute(input, {} as any);
+  return await tool.execute(tool.prepareArguments(input), {} as any);
 }
 
 const queue = createConversationWorkQueueTestAdapter();
 
+const services = createSlackReviewItemToolServices(() => queue);
+
 function tools(context: Context) {
   return {
-    add: createAddReviewItemTool(context),
-    search: createSearchReviewItemsTool(context),
-    update: createUpdateReviewItemTool(context, () => queue),
+    add: createAddReviewItemTool(context, services),
+    search: createSearchReviewItemsTool(context, services),
+    update: createUpdateReviewItemTool(context, services),
   };
 }
 
@@ -77,11 +81,12 @@ const REQUEST = {
   ],
 };
 
-function automationRun(conversationId: string): Context {
+function automationRun(conversationId: string, turnId?: string): Context {
   return {
     conversationId,
     resolveActorIdentity: asActor(undefined),
     source: { kind: "scheduled_automation" },
+    ...(turnId ? { turnId } : undefined),
   };
 }
 
@@ -95,8 +100,8 @@ describe("review item tools", () => {
     await conversation("slack:CPUB:1.000002", "CPUB", "public");
     const ana = await user("ana@example.com");
     await user("ben@example.com");
-    const first = tools(automationRun("slack:CPUB:1.000001"));
-    const second = tools(automationRun("slack:CPUB:1.000002"));
+    const first = tools(automationRun("slack:CPUB:1.000001", "turn-1"));
+    const second = tools(automationRun("slack:CPUB:1.000002", "turn-2"));
     const add = {
       kind: "action",
       title: "Review acme entry",
@@ -110,6 +115,21 @@ describe("review item tools", () => {
     await expect(
       execute(first.add, { ...add, request: undefined }),
     ).rejects.toThrow("An action item needs a `request`.");
+    const recommendBoth = {
+      ...REQUEST,
+      fields: [
+        {
+          ...REQUEST.fields[0],
+          options: [
+            { label: "Approve", recommended: true },
+            { label: "Reject", recommended: true },
+          ],
+        },
+      ],
+    };
+    await expect(
+      execute(first.add, { ...add, request: recommendBoth }),
+    ).rejects.toThrow("can recommend only one option");
     const added = await execute(first.add, add);
     const again = await execute(second.add, {
       ...add,
@@ -128,6 +148,19 @@ describe("review item tools", () => {
         visibility: "public",
       },
     });
+    // The item points to the Turn that added it. An add from another
+    // Conversation keeps that Turn; a later add in the same Conversation
+    // moves it to the newer Turn.
+    expect((await getReviewItem(getDb(), added.item.id))?.addedByTurnId).toBe(
+      "turn-1",
+    );
+    await execute(
+      tools(automationRun("slack:CPUB:1.000001", "turn-3")).add,
+      add,
+    );
+    expect((await getReviewItem(getDb(), added.item.id))?.addedByTurnId).toBe(
+      "turn-3",
+    );
 
     // A person in another public Conversation finds it by subject.
     await conversation("slack:COTHER:1.000003", "COTHER", "public");
@@ -346,12 +379,13 @@ describe("review item tools", () => {
       dedupe_key: "digest",
     };
 
-    // A new run has no Actor and no people yet. It can still assign the
-    // creator of its Automation, but nobody else.
+    // A new run has no Actor and no people yet. It assigns the creator of
+    // its Automation by default, and nobody else.
     await conversation("slack:DRUN:1.000003", "DRUN", "private");
     await user("ben@example.com");
     const fresh = await execute(run("slack:DRUN:1.000003").add, {
       ...notice,
+      assignees: undefined,
       dedupe_key: "digest-fresh",
     });
     expect(fresh.item.assignees).toEqual(["ana@example.com"]);

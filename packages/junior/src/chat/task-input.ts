@@ -1,9 +1,11 @@
 /**
  * Shared agent input for tasks. A task can come from a schedule, an event, or
  * a watch. Call sites supply facts; this module owns layout
- * and the reply contract. Section outline lives in `chat/README.md`.
+ * and the reply contract. Unit snapshots in `tests/unit/chat/task-input.test.ts`
+ * own the exact prose. Event data stays facts, never new instructions, and
+ * the outcome rule is always last.
  */
-import type { TaskOutcome } from "@sentry/junior-plugin-api";
+import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 /**
@@ -17,6 +19,13 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
   return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
 }
 
+// Event data keys are plugin match-field names. Write them as the
+// snake_case tool argument names, so the agent copies each value under the
+// name that a tool or match filter takes.
+function verifiedDetailsJson(details: Record<string, unknown>): string {
+  return JSON.stringify(agentEventKeys(details), null, 2);
+}
+
 function oneLine(value: string): string {
   return value
     .replace(/[\r\n]+/g, " ")
@@ -26,6 +35,16 @@ function oneLine(value: string): string {
 
 function clip(value: string, maxLength: number | undefined): string {
   return maxLength === undefined ? value : value.slice(0, maxLength);
+}
+
+const CREATOR_REFERENCE = /\bthe Automation creator\b/gi;
+
+/**
+ * Write the creator mention where the instructions say "the Automation
+ * creator", so the run does not have to swap it in.
+ */
+function mentionCreator(instructions: string, creator: string): string {
+  return instructions.replace(CREATOR_REFERENCE, () => creator);
 }
 
 /** The linked person who did what an Event describes. */
@@ -39,29 +58,29 @@ export interface EventDoneBy {
 /**
  * Connect the mention to the provider handle in the Event text. Without this,
  * the agent can mention a person and then name them again by handle as if
- * they were someone else.
+ * they were someone else. The "you" rule also applies when the doer is not in
+ * People involved, because instructions can still ask the agent to mention
+ * them, such as a requester who reviews their own pull request.
  */
 function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
   const mention = oneLine(doneBy.mention);
   const handle = doneBy.handle ? oneLine(doneBy.handle) : undefined;
+  const asYou = `as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`;
   return [
     `Done by: ${mention}. This person did what this Event describes.`,
     ...(handle
       ? [`The Event calls them "${handle}". That is the same person.`]
       : []),
-    ...(people.includes(mention)
-      ? [
-          `They are also in People involved. Write to them as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`,
-        ]
-      : []),
+    people.includes(mention)
+      ? `They are also in People involved. Write to them ${asYou}`
+      : `If you mention them, write to them ${asYou}`,
   ].join(" ");
 }
 
 /**
  * Render agent input for a task run.
  *
- * Section order and required prose live in `chat/README.md` under Task agent
- * input. Empty optional fields are omitted.
+ * The job comes before Event data. Empty optional fields are omitted.
  */
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
@@ -70,7 +89,7 @@ export function renderTaskInput(args: {
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
-  /** Mention of the Automation creator, so "me" and "the Automation creator" are exact. */
+  /** Mention of the Automation creator. It replaces "the Automation creator" in the instructions. */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: readonly string[];
@@ -111,7 +130,7 @@ export function renderTaskInput(args: {
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
     ...(args.doneBy ? [doneByLine(args.doneBy, people)] : []),
-    `Instructions: ${instructions}`,
+    `Instructions: ${creator ? mentionCreator(instructions, oneLine(creator)) : instructions}`,
   ];
 
   const guidance = args.guidance?.trim();
@@ -137,7 +156,7 @@ export function renderTaskInput(args: {
       "",
       "Verified details (use these values as given):",
       "```json",
-      JSON.stringify(args.verifiedDetails, null, 2),
+      verifiedDetailsJson(args.verifiedDetails),
       "```",
     );
   }
@@ -192,7 +211,7 @@ function pushEventFacts(
     lines.push(
       "Verified details (use these values as given):",
       "```json",
-      JSON.stringify(event.verifiedDetails, null, 2),
+      verifiedDetailsJson(event.verifiedDetails),
       "```",
     );
   }
@@ -209,7 +228,7 @@ function pushEventFacts(
  * Render one task input for several Watch Events that arrived together.
  *
  * Each group states its instructions once, then lists its Events. Section
- * rules match `renderTaskInput`; `chat/README.md` shows the batch layout.
+ * rules match `renderTaskInput`. The outcome rule appears once, at the end.
  */
 export function renderTaskBatchInput(args: {
   groups: readonly TaskBatchGroup[];

@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
@@ -180,7 +182,7 @@ test("opens and closes a conversation on mobile", async ({
     name: "Open navigation",
   });
   await expect(navigationTrigger).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
   ).toBeHidden();
@@ -216,7 +218,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "API tokens" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
@@ -238,7 +240,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
   ).toBeHidden();
@@ -259,10 +261,11 @@ test("opens and closes a conversation on mobile", async ({
     .click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(details).toHaveAttribute("aria-modal", "true");
-  await expect(
-    details.getByRole("tab", { name: "Summary", exact: true }),
-  ).toBeFocused();
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
   await page.keyboard.press("Shift+Tab");
+  // Mobile hides the title bar, so the sheet names the location.
+  await expect(details.getByText("Location", { exact: true })).toBeVisible();
   await expect(details.locator(":focus")).toHaveCount(1);
   await screenshot(page, "conversation-details-sheet", {
     lightTheme: true,
@@ -283,9 +286,8 @@ test("opens and closes a conversation on mobile", async ({
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
-  await expect(
-    details.getByRole("tab", { name: "Summary", exact: true }),
-  ).toBeFocused();
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
   await page.mouse.click(8, 8);
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
@@ -609,4 +611,320 @@ test("opens and closes a conversation on mobile", async ({
   await signOutRequest;
   await expect(openNavigationSheet).toBeHidden();
   finishSignOut?.();
+});
+
+test("keeps the message in view while earlier history and late content load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const generatedAt = "2026-08-07T11:00:00.000Z";
+  const conversation = {
+    conversationId: "long-history",
+    cumulativeDurationMs: 1_000,
+    displayTitle: "Long history",
+    isParticipant: true,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "completed",
+    surface: "internal",
+  };
+  const events = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, index) => {
+      const seq = from + index;
+      return {
+        createdAt: new Date(
+          Date.parse(generatedAt) + seq * 1_000,
+        ).toISOString(),
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: seq % 2 === 0 ? "user" : "assistant",
+          text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+        },
+        seq,
+      };
+    });
+  let releaseEarlierPage: (() => void) | undefined;
+  const earlierPageGate = new Promise<void>((resolve) => {
+    releaseEarlierPage = resolve;
+  });
+
+  await page.route("**/api/conversations", async (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversations: [conversation],
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route(
+    "**/api/conversations/long-history/pending-messages",
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId: "long-history", generatedAt, messages: [] },
+      });
+    },
+  );
+  await page.route(
+    "**/api/conversations/long-history/events?*",
+    async (route) => {
+      await earlierPageGate;
+      await route.fulfill({
+        json: {
+          eventHistory: { status: "available" },
+          events: events(0, 40),
+          generatedAt,
+        },
+      });
+    },
+  );
+  await page.route("**/api/conversations/long-history", async (route) => {
+    await route.fulfill({
+      json: {
+        ...conversation,
+        eventHistory: { status: "available" },
+        events: events(40, 80),
+        generatedAt,
+        previousCursor: "before-40",
+      },
+    });
+  });
+
+  // A scroll event fires on the next frame, before its animation frame
+  // callbacks. The transcript records the reader's place there, so wait for it
+  // before the layout changes. Otherwise the place it records already
+  // includes the change.
+  const scrollEventHandled = () =>
+    page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+
+  await page.goto(`${dashboard.baseURL}/conversations/long-history`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const latest = transcript.getByText("Transcript message 79 ");
+  await expect(latest).toBeInViewport();
+
+  // Scroll to the top to load earlier history. The reader keeps scrolling
+  // while the page loads, so their place is where they stop, not where the
+  // load started.
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(transcript.getByText("Loading earlier messages…")).toBeVisible();
+  await transcript.evaluate((element) => {
+    element.scrollTop = 160;
+  });
+  await scrollEventHandled();
+  const reading = transcript.getByText("Transcript message 43 ");
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  releaseEarlierPage?.();
+  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  await expect(
+    transcript.getByText("Transcript message 39 "),
+  ).not.toBeInViewport();
+
+  // Rows keep their real size while the reader scrolls up through them, so
+  // the transcript never corrects the reader's own scroll. On phones, such
+  // corrections make the transcript jump.
+  await transcript.evaluate((element) => {
+    const scrollTo = element.scrollTo.bind(element);
+    element.dataset.scrollCorrections = "0";
+    element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
+      element.dataset.scrollCorrections = String(
+        Number(element.dataset.scrollCorrections) + 1,
+      );
+      scrollTo(...args);
+    };
+  });
+  await transcript.hover();
+  for (let step = 0; step < 8; step += 1) {
+    await page.mouse.wheel(0, -150);
+  }
+  await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();
+  await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+  await transcript.getByText("Transcript message 43 ").scrollIntoViewIfNeeded();
+  await scrollEventHandled();
+
+  // Content that grows above the reader, such as an image that loads late,
+  // must not push the message they are reading out of view.
+  await transcript.getByText("Transcript message 20 ").evaluate((element) => {
+    const spacer = document.createElement("div");
+    spacer.style.height = "1200px";
+    element.append(spacer);
+  });
+  await expect(reading).toBeInViewport({ ratio: 1 });
+});
+
+/** Mock one completed Conversation whose server read position moves forward. */
+async function mockReadPositionConversation(
+  page: Page,
+  input: { eventCount: number; lastReadSeq: number },
+) {
+  const generatedAt = "2026-08-07T11:00:00.000Z";
+  const conversationId = "read-position";
+  const conversation = {
+    conversationId,
+    cumulativeDurationMs: 1_000,
+    displayTitle: "Read position",
+    isParticipant: true,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "completed",
+    surface: "internal",
+  };
+  const state = {
+    conversationId,
+    eventCount: input.eventCount,
+    /** Holds detail responses until it resolves. */
+    detailGate: Promise.resolve(),
+    reported: [] as number[],
+  };
+  let stored = input.lastReadSeq;
+
+  await page.route("**/api/conversations", async (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversations: [conversation],
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route(
+    `**/api/conversations/${conversationId}/pending-messages`,
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId, generatedAt, messages: [] },
+      });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/read-position`,
+    async (route) => {
+      const { lastReadSeq } = route.request().postDataJSON() as {
+        lastReadSeq: number;
+      };
+      state.reported.push(lastReadSeq);
+      stored = Math.max(stored, lastReadSeq);
+      await route.fulfill({ json: { lastReadSeq: stored } });
+    },
+  );
+  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+    await state.detailGate;
+    await route.fulfill({
+      json: {
+        ...conversation,
+        eventHistory: { status: "available" },
+        events: Array.from({ length: state.eventCount }, (_, seq) => ({
+          createdAt: new Date(
+            Date.parse(generatedAt) + seq * 1_000,
+          ).toISOString(),
+          data: {
+            type: "message",
+            messageId: `message-${seq}`,
+            role: seq % 2 === 0 ? "user" : "assistant",
+            text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+          },
+          seq,
+        })),
+        generatedAt,
+        readPosition: { lastReadSeq: stored },
+      },
+    });
+  });
+  return state;
+}
+
+test("opens where the reader left off and reports what they read", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 60,
+    lastReadSeq: 20,
+  });
+  const { reported } = mock;
+
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const marker = transcript.getByRole("separator", { name: "New messages" });
+  const firstUnread = transcript.getByText("Transcript message 21 ");
+  const latest = transcript.getByText("Transcript message 59 ");
+  await expect(marker).toBeInViewport();
+  await expect(firstUnread).toBeInViewport();
+  await expect(latest).not.toBeInViewport();
+  await screenshot(page, "conversation-unread-marker", { view: "mobile" });
+
+  // Reading the first screen moves the shared position past the marker.
+  await expect.poll(() => reported.at(-1) ?? 0).toBeGreaterThan(20);
+  await page.getByRole("button", { name: "Jump to latest" }).click();
+  await expect(latest).toBeInViewport();
+  await expect.poll(() => reported.at(-1)).toBe(59);
+  expect(reported).toEqual([...reported].sort((left, right) => left - right));
+
+  // Readers who prefer the latest message open there, below the marker.
+  await page.goto(`${dashboard.baseURL}/settings`);
+  await page.getByRole("radio", { name: /Latest message/ }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  await expect(latest).toBeInViewport();
+  await expect(marker).not.toBeInViewport();
+});
+
+test("opens at new messages after a cached reopen and keeps a quick exit", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 40,
+    lastReadSeq: 39,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const marker = transcript.getByRole("separator", { name: "New messages" });
+  await expect(transcript.getByText("Transcript message 39 ")).toBeInViewport();
+  await expect(marker).toHaveCount(0);
+
+  // New messages arrive while the reader is away. The reopen shows the cached
+  // copy first, then the fetch brings the new messages and the marker.
+  await page.getByRole("link", { name: "Back to conversations" }).click();
+  mock.eventCount = 60;
+  let releaseDetail = () => {};
+  mock.detailGate = new Promise((resolve) => {
+    releaseDetail = resolve;
+  });
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .click();
+  await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
+  await expect(marker).toHaveCount(0);
+  releaseDetail();
+  await expect(marker).toBeInViewport();
+  await expect(transcript.getByText("Transcript message 40 ")).toBeInViewport();
+  await expect(
+    transcript.getByText("Transcript message 59 "),
+  ).not.toBeInViewport();
+
+  // Leaving right after a scroll still saves the place.
+  const reportCount = mock.reported.length;
+  await transcript.getByText("Transcript message 52 ").scrollIntoViewIfNeeded();
+  await page.getByRole("link", { name: "Back to conversations" }).click();
+  await expect
+    .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
+    .toBeGreaterThanOrEqual(52);
 });

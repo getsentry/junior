@@ -3,6 +3,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   findActorIdentityId,
   resolveActorIdentityId,
+  SYSTEM_IDENTITY_ID,
 } from "@/chat/identities/actor";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
@@ -95,7 +96,7 @@ describe("identity read", () => {
         name: "scheduled-automation",
         platform: "system",
       });
-      expect(systemId).toBeDefined();
+      expect(systemId).toBe(SYSTEM_IDENTITY_ID);
       const local = { platform: "local", userId: "local-cli" } as const;
       expect(await resolveActorIdentityId(fixture.sql, local)).toBe(systemId);
       expect(

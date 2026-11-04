@@ -52,7 +52,7 @@ describe("Slack Turn Steering", () => {
     ]);
   });
 
-  test("when other people mention Junior during a turn, each person gets a follow-up turn unless they override with !!", async ({
+  test("when other people mention Junior during a turn, each person gets a follow-up turn, even with !!", async ({
     run,
   }) => {
     // Only routing is asserted, so the inputs are manufactured and short.
@@ -72,42 +72,19 @@ describe("Slack Turn Steering", () => {
       },
     );
 
-    // Sam's turn, then Rio, Kai, and Rio again in arrival order. Alex's !!
-    // mention joins Sam's running turn.
+    // Sam's turn, then Rio, Kai, Rio again, and Alex in arrival order. The
+    // running turn uses Sam's credentials, so !! does not let Alex join it.
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
       "succeeded",
       "succeeded",
       "succeeded",
-    ]);
-  });
-
-  test("when cross-actor steering is configured, another person's mention joins the running turn", async ({
-    agent,
-  }) => {
-    const { run } = await agent({
-      slack: { crossActorMidRunMode: "steer" },
-    });
-    const conversation = await run(
-      slackMention(INCIDENT_REQUEST, { author: person("U0SAM", "Sam") }),
-      {
-        onProgress: sendDuringFirstModelRequest([
-          slackMention("include the rollback owner: Dana", {
-            author: person("U0RIO", "Rio"),
-          }),
-        ]),
-      },
-    );
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: ["The summary names Dana as the rollback owner."],
-      }),
-    );
-
-    expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
     ]);
+    // Each person whose mention got its own turn joins the conversation.
+    expect(conversation.participantSlackUserIds).toEqual(
+      expect.arrayContaining(["U0SAM", "U0RIO", "U0KAI", "U0ALEX"]),
+    );
   });
 
   test("when a thread message needs no reply, Junior consumes it without a turn", async ({
@@ -179,6 +156,37 @@ describe("Dashboard Turn Steering", () => {
       expect.objectContaining({
         content: "include the rollback owner: Dana",
       }),
+    ]);
+  });
+
+  test("when the author sends dashboard messages during a turn, one follow-up turn takes them and the transcript keeps each", async ({
+    run,
+  }) => {
+    // Only batching is asserted, so the inputs are short.
+    const conversation = await run(
+      webMessage("Reply with only the word ready."),
+      {
+        onProgress: sendDuringFirstModelRequest([
+          webMessage("Reply with only the word one."),
+          webMessage("Reply with only the word two."),
+        ]),
+      },
+    );
+
+    // Both queued messages wait for the same follow-up turn.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ]);
+    // That turn gets both messages, but each stays its own user message.
+    expect(
+      conversation.session.events.filter(
+        (event) => event.type === "message" && event.role === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({ content: "Reply with only the word ready." }),
+      expect.objectContaining({ content: "Reply with only the word one." }),
+      expect.objectContaining({ content: "Reply with only the word two." }),
     ]);
   });
 });

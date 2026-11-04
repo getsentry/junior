@@ -115,7 +115,6 @@ function modelHeading(
 /** Rows shown before the rest of a list rolls into one "N more" line. */
 const MODEL_LIMIT = 4;
 const AUXILIARY_LIMIT = 3;
-const DETAILS_FOOTER = "Full breakdown in Details";
 
 type RankedRow = UsageCardRow & { amount: number };
 
@@ -222,7 +221,6 @@ function tokenCard(
   compactionCount: number | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps {
   const models = modelRows(
     modelUsage,
@@ -232,7 +230,6 @@ function tokenCard(
     formatCompactNumber,
   );
   return {
-    footer: detailsHint && models.length ? DETAILS_FOOTER : undefined,
     note: compactionCount ? plural("compaction", compactionCount) : undefined,
     sections: models.length
       ? [
@@ -278,7 +275,6 @@ function costCard(
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps | undefined {
   const total = totalConversationCost(summary, auxiliaryCosts);
   if (!total) return undefined;
@@ -315,10 +311,6 @@ function costCard(
     });
   }
   return {
-    footer:
-      detailsHint && (models.length || operations.length)
-        ? DETAILS_FOOTER
-        : undefined,
     sections,
     split: agentSplit(
       childAgentTotals,
@@ -354,8 +346,6 @@ export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   childAgentTotals?: ConversationChildAgentTotals;
-  /** Point to conversation details, which has the full breakdown. */
-  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
@@ -375,7 +365,6 @@ export function CostMetric(props: {
     props.auxiliaryCosts,
     props.liveModelId,
     props.childAgentTotals,
-    Boolean(props.detailsHint),
   );
   return (
     <MetricValue
@@ -398,8 +387,6 @@ export function TokenMetric(props: {
   align?: "left" | "right";
   childAgentTotals?: ConversationChildAgentTotals;
   compactionCount?: number;
-  /** Point to conversation details, which has the full breakdown. */
-  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
@@ -417,7 +404,6 @@ export function TokenMetric(props: {
             props.compactionCount,
             props.liveModelId,
             props.childAgentTotals,
-            Boolean(props.detailsHint),
           )}
         />
       }

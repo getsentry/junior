@@ -28,18 +28,18 @@ import {
   parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
-  setDashboardTimeZone,
   summarizeMessages,
   summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
+  transcriptMessageActor,
 } from "../src/client/format";
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
   vi.useRealTimers();
-  setDashboardTimeZone("America/Los_Angeles");
+  vi.unstubAllEnvs();
 });
 
 function event(
@@ -166,7 +166,7 @@ describe("dashboard conversation formatting", () => {
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     const details = formatTranscriptTimestampDetails(
       Date.parse("2026-08-10T16:00:00.000Z"),
     );
@@ -174,15 +174,15 @@ describe("dashboard conversation formatting", () => {
     expect(details.utc).toContain("4:00:00 PM");
   });
 
-  it("formats absolute timestamps in the configured dashboard timezone", () => {
+  it("formats absolute timestamps in the viewer's browser timezone", () => {
     const value = "2026-08-10T16:00:00.000Z";
     const options: Intl.DateTimeFormatOptions = {
       dateStyle: "medium",
       timeStyle: "short",
     };
-    setDashboardTimeZone("UTC");
+    vi.stubEnv("TZ", "UTC");
     expect(formatTime(value, options)).toContain("4:00 PM");
-    setDashboardTimeZone("America/Los_Angeles");
+    vi.stubEnv("TZ", "America/Los_Angeles");
     expect(formatTime(value, options)).toContain("9:00 AM");
   });
 
@@ -222,6 +222,52 @@ describe("dashboard conversation formatting", () => {
     expect(formatConversationDuration(conversation!)).toBe("none");
   });
 
+  it("reads each message author from the conversation authors", () => {
+    const owner = {
+      avatarUrl: "/api/people/avatars/identity-web?v=1",
+      email: "owner@example.com",
+      fullName: "Owner Person",
+    };
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "web",
+          role: "user",
+          text: "ship it",
+          actorIdentityId: "identity-web",
+          actorIdentity: { fullName: "Saved Name" },
+        }),
+      ],
+      {
+        actorIdentity: { fullName: "Alice" },
+        authors: { "identity-slack": owner, "identity-web": owner },
+      },
+    );
+
+    expect(summarizeMessages(conversation).items).toEqual([
+      { author: "Owner Person", bytes: 7 },
+    ]);
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentityId: "identity-slack",
+        parts: [],
+        role: "user",
+        sourceSeq: 1,
+      }),
+    ).toBe(owner);
+    // An author who is not in the Conversation yet keeps the saved identity.
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentity: { fullName: "New Person" },
+        actorIdentityId: "identity-new",
+        parts: [],
+        role: "user",
+        sourceSeq: 2,
+      }),
+    ).toEqual({ fullName: "New Person" });
+  });
+
   it("summarizes visible canonical messages and structural tools", () => {
     const conversation = transcript(
       [
@@ -230,7 +276,9 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          // A web send carries an email, but the label is the name.
           actorIdentity: {
+            email: "taylor@example.com",
             fullName: "Taylor Chen",
             slackUserName: "taylor",
           },

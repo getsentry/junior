@@ -1,7 +1,12 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import {
+  identityAvatarUrl,
+  readUserAvatarUrls,
+} from "@/chat/identities/avatar";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
+  juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
   juniorUsers,
@@ -9,6 +14,7 @@ import {
 import type { ActorIdentity } from "../schema/conversation";
 
 const identityColumns = {
+  avatarUrl: juniorIdentities.avatarUrl,
   displayName: juniorIdentities.displayName,
   email: juniorIdentities.email,
   handle: juniorIdentities.handle,
@@ -21,6 +27,7 @@ const identityColumns = {
 };
 
 type ParticipantIdentityRow = {
+  avatarUrl: string | null;
   displayName: string | null;
   email: string | null;
   handle: string | null;
@@ -34,11 +41,14 @@ type ParticipantIdentityRow = {
 
 function participantIdentity(
   row: ParticipantIdentityRow,
+  userAvatarUrls: ReadonlyMap<string, string>,
 ): ActorIdentity | undefined {
+  const avatarUrl = identityAvatarUrl(row, userAvatarUrls);
   const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
   const email = row.email?.trim() || row.userEmail?.trim();
   const slack = row.provider === "slack";
   const participant = {
+    ...(avatarUrl ? { avatarUrl } : undefined),
     ...(email ? { email } : undefined),
     ...(fullName ? { fullName } : undefined),
     ...(slack && row.providerSubjectId
@@ -49,13 +59,20 @@ function participantIdentity(
   return Object.keys(participant).length > 0 ? participant : undefined;
 }
 
-/** Read actor identities in first-appearance order for each Conversation. */
-export async function readConversationParticipants(
+type ConversationParticipantRow = ParticipantIdentityRow & {
+  conversationId: string;
+};
+
+// One person can write from several Identities, such as Slack and web.
+function participantKey(row: { identityId: string; userId: string | null }) {
+  return row.userId ? `user:${row.userId}` : `identity:${row.identityId}`;
+}
+
+// Read the root actor and each message author, in first-appearance order.
+async function readParticipantRows(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-): Promise<Map<string, ActorIdentity[]>> {
-  if (conversationIds.length === 0) return new Map();
-
+): Promise<ConversationParticipantRow[]> {
   const [rootRows, eventRows] = await Promise.all([
     db
       .select({
@@ -87,6 +104,24 @@ export async function readConversationParticipants(
         eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .innerJoin(
+        juniorConversations,
+        eq(
+          juniorConversations.conversationId,
+          juniorConversationEvents.conversationId,
+        ),
+      )
+      // Message authors show only when they joined by starting a Turn.
+      .innerJoin(
+        juniorConversationParticipants,
+        and(
+          eq(juniorConversationParticipants.userId, juniorIdentities.userId),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+          ),
+        ),
+      )
       .where(
         inArray(juniorConversationEvents.conversationId, [...conversationIds]),
       )
@@ -96,36 +131,84 @@ export async function readConversationParticipants(
         asc(juniorConversationEvents.seq),
       ),
   ]);
+  return [
+    ...rootRows,
+    ...eventRows.sort((left, right) => left.seq - right.seq),
+  ];
+}
 
-  const ordered = new Map<
-    string,
-    { identities: ActorIdentity[]; keys: Set<string> }
-  >();
-  const add = (conversationId: string, row: ParticipantIdentityRow) => {
-    const participant = participantIdentity(row);
-    if (!participant) return;
-    const group = ordered.get(conversationId) ?? {
-      identities: [],
-      keys: new Set<string>(),
-    };
-    const key = row.userId
-      ? `user:${row.userId}`
-      : `identity:${row.identityId}`;
-    if (!group.keys.has(key)) {
-      group.keys.add(key);
-      group.identities.push(participant);
-    }
-    ordered.set(conversationId, group);
-  };
-
-  for (const row of rootRows) add(row.conversationId, row);
-  for (const row of eventRows.sort((left, right) => left.seq - right.seq)) {
-    add(row.conversationId, row);
+// Group rows by Conversation, then by person, in first-appearance order.
+async function groupParticipants(
+  db: JuniorDatabase,
+  rows: readonly ConversationParticipantRow[],
+): Promise<Map<string, Map<string, ActorIdentity>>> {
+  const userAvatarUrls = await readUserAvatarUrls(
+    db,
+    rows.flatMap((row) => (row.userId ? [row.userId] : [])),
+  );
+  const groups = new Map<string, Map<string, ActorIdentity>>();
+  for (const row of rows) {
+    const participant = participantIdentity(row, userAvatarUrls);
+    if (!participant) continue;
+    const group = groups.get(row.conversationId) ?? new Map();
+    const key = participantKey(row);
+    if (!group.has(key)) group.set(key, participant);
+    groups.set(row.conversationId, group);
   }
+  return groups;
+}
+
+/** Read actor identities in first-appearance order for each Conversation. */
+export async function readConversationParticipants(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, ActorIdentity[]>> {
+  if (conversationIds.length === 0) return new Map();
+  const groups = await groupParticipants(
+    db,
+    await readParticipantRows(db, conversationIds),
+  );
   return new Map(
-    [...ordered].map(([conversationId, group]) => [
+    [...groups].map(([conversationId, group]) => [
       conversationId,
-      group.identities,
+      [...group.values()],
     ]),
   );
+}
+
+/**
+ * Read the participants of one Conversation, and each of them by each of
+ * their Identity ids. A person is listed under every Identity of their
+ * user, so a pending Message from another provider resolves too.
+ */
+export async function readConversationAuthors(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<{
+  authors: Record<string, ActorIdentity>;
+  participants: ActorIdentity[];
+}> {
+  const rows = await readParticipantRows(db, [conversationId]);
+  const userIds = [
+    ...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : []))),
+  ];
+  const [groups, userIdentities] = await Promise.all([
+    groupParticipants(db, rows),
+    userIds.length > 0
+      ? db
+          .select({
+            identityId: juniorIdentities.id,
+            userId: juniorIdentities.userId,
+          })
+          .from(juniorIdentities)
+          .where(inArray(juniorIdentities.userId, userIds))
+      : [],
+  ]);
+  const group = groups.get(conversationId) ?? new Map<string, ActorIdentity>();
+  const authors: Record<string, ActorIdentity> = {};
+  for (const row of [...rows, ...userIdentities]) {
+    const participant = group.get(participantKey(row));
+    if (participant) authors[row.identityId] = participant;
+  }
+  return { authors, participants: [...group.values()] };
 }

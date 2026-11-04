@@ -1,41 +1,24 @@
+import { githubPlugin } from "@sentry/junior-github";
+import { vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
-import { eventCatalogEntry, type EventCatalog } from "@/chat/events/catalog";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 export const teamId = `TEVENT${Date.now()}`;
-export const EVENT_CATALOG: EventCatalog = {
-  github: eventCatalogEntry({
-    resourceTypes: [
-      {
-        type: "pull_request",
-        supportedEvents: [
-          "pull_request.review.changes_requested",
-          "pull_request.review.commented",
-        ],
-      },
-      {
-        type: "review_target",
-        supportedEvents: [
-          "pull_request.review.changes_requested",
-          "pull_request.review.commented",
-        ],
-      },
-    ],
-    events: {
-      "pull_request.review.changes_requested": { reach: "resource" },
-      "pull_request.review.commented": { reach: "resource" },
-    },
-    normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
-  }),
-  sentry: eventCatalogEntry({
-    resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
-    events: { "issue.closed": { reach: "resource" } },
-  }),
-};
+/**
+ * Enable the GitHub plugin, so the tools and ingest use the same event
+ * catalog. Call `vi.unstubAllEnvs()` after the test.
+ */
+export async function useGitHubEvents(): Promise<void> {
+  vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+  await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+}
 
 /** Build the source and actor for an Automation tool call. */
 export function context(
@@ -106,6 +89,7 @@ export function changesRequestedEvent(eventKey: string) {
     namespace: "github",
     identifier: "getsentry/junior#1174",
     trustedSummary: "A reviewer requested changes.",
+    data: { repo: "getsentry/junior", pullRequest: 1174 },
   };
 }
 
@@ -117,16 +101,16 @@ export async function createTask(
   taskContext = context(),
 ) {
   return (await execute(
-    createEventAutomationTool(taskContext, EVENT_CATALOG),
+    createAutomationTool(automationToolContext(taskContext), getEventCatalog()),
     {
       instruction,
       outcomes: [],
       trigger: {
+        type: "event",
         namespace: "github",
-        identifier: "getsentry/junior#1174",
-        resourceType: "pull_request",
         label: "GitHub PR getsentry/junior#1174",
         events,
+        match: { repo: "getsentry/junior", pull_request: 1174 },
       },
     },
     toolCallId ?? instruction,

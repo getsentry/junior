@@ -14,8 +14,12 @@ import {
   type ReviewItemAction,
 } from "@/chat/review-items/actions";
 import {
+  deliverReviewItemChange,
+  type ReviewItemDelivery,
+} from "@/chat/review-items/changes";
+import {
   renderReviewItemMessage,
-  sendReviewItemMessages,
+  reviewItemChangeRecord,
 } from "@/chat/review-items/messages";
 import type { ReviewItem } from "@/chat/review-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
@@ -29,6 +33,7 @@ import {
   type SlackReviewItemClick,
 } from "@/chat/slack/review-item-card";
 import {
+  createSlackReviewItemShow,
   readSlackReviewItemCardConversationId,
   syncReviewItemSlackCards,
 } from "@/chat/slack/review-item-card-sync";
@@ -43,14 +48,20 @@ import {
   buttonUserInputField,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
-import { buildSlackInteractionInput } from "./slack-interaction-input";
+import {
+  buildSlackInteractionInput,
+  type SlackInteractionInputFacts,
+} from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 /** What a Review item interaction handler needs from Slack ingress. */
 export interface SlackReviewItemServices {
   adapter: SlackAdapter;
   isAuthorAllowed: (userId: string) => Promise<boolean>;
-  persistMessage: (message: Message) => Promise<void>;
+  persistMessage: (
+    message: Message,
+    facts?: SlackInteractionInputFacts,
+  ) => Promise<void>;
   queue: ConversationWorkQueue;
   state: StateAdapter;
 }
@@ -128,8 +139,8 @@ async function refreshCards(
 
 /**
  * Do one person action from a Slack card. The thread of the card gets the
- * action as Slack input from the person, like an answer to
- * `requestUserInput`. The other linked Conversations get messages from
+ * action as Slack input from the person, like a typed reply. The other
+ * linked Conversations get messages from
  * `actOnReviewItem`. An expected failure, such as an item that is already
  * closed, goes to the person as an ephemeral message.
  */
@@ -151,6 +162,10 @@ async function act(args: {
       ...target,
       itemId: args.itemId,
     })) ?? `slack:${target.channelId}:${target.threadTs}`;
+  const delivery: ReviewItemDelivery = {
+    queue: services.queue,
+    show: createSlackReviewItemShow(() => services.adapter),
+  };
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
@@ -160,9 +175,8 @@ async function act(args: {
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn.
       firstCloseOnly: true,
-      getSlackAdapter: () => services.adapter,
+      delivery,
       id: current.id,
-      queue: services.queue,
       user: actor.user,
       ...(args.answer ? { answer: args.answer(current) } : undefined),
     });
@@ -187,6 +201,7 @@ async function act(args: {
         threadTs: target.threadTs,
         userId: actor.slackUserId,
       }),
+      { reviewItemChange: reviewItemChangeRecord(item, change) },
     );
   } catch (error) {
     // The item is already closed, so the thread must still learn about it.
@@ -194,11 +209,11 @@ async function act(args: {
     logException(error, "review_item.slack_input.persist.failed", {
       "app.review_item.id": item.id,
     });
-    await sendReviewItemMessages({
+    await deliverReviewItemChange({
       change,
+      delivery,
       item,
       nowMs: Date.now(),
-      queue: services.queue,
     });
   }
 }
@@ -278,10 +293,6 @@ export async function handleSlackReviewItemClick(args: {
     services,
     target,
   };
-  if (click.kind === "done") {
-    await act({ ...common, action: "complete" });
-    return;
-  }
   if (click.kind === "dismiss") {
     await act({ ...common, action: "dismiss" });
     return;

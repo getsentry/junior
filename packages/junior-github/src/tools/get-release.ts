@@ -25,15 +25,15 @@ const inputSchema = z
   .strict();
 const releaseSchema = z
   .object({
-    createdAt: z.string(),
+    created_at: z.string(),
     draft: z.boolean(),
-    htmlUrl: z.string(),
+    html_url: z.string(),
     id: z.number(),
     name: z.string().nullable(),
     prerelease: z.boolean(),
-    publishedAt: z.string().nullable(),
-    tagName: z.string(),
-    targetCommitish: z.string(),
+    published_at: z.string().nullable(),
+    tag_name: z.string(),
+    target_commitish: z.string(),
   })
   .strict();
 const releaseSourceSchema = z
@@ -96,15 +96,15 @@ function mapRelease(
   providerRelease: z.output<typeof providerReleaseSchema>,
 ): z.output<typeof releaseSchema> {
   return {
-    createdAt: providerRelease.created_at,
+    created_at: providerRelease.created_at,
     draft: providerRelease.draft,
-    htmlUrl: providerRelease.html_url,
+    html_url: providerRelease.html_url,
     id: providerRelease.id,
     name: providerRelease.name,
     prerelease: providerRelease.prerelease,
-    publishedAt: providerRelease.published_at,
-    tagName: providerRelease.tag_name,
-    targetCommitish: providerRelease.target_commitish,
+    published_at: providerRelease.published_at,
+    tag_name: providerRelease.tag_name,
+    target_commitish: providerRelease.target_commitish,
   };
 }
 

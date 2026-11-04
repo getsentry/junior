@@ -25,7 +25,6 @@ related:
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
-| `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
 | `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
@@ -33,8 +32,9 @@ related:
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
 | `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
-| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
-| `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
+| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
+| `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
+| `AI_VISION_MODEL`                           | No          | Image summary model for thread history and text-only profiles. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                         |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
@@ -82,11 +82,6 @@ deployed bundle. Give the queue its own Redis URL. If two dev servers share one
 Redis, each one can take the other's jobs.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
-
-`JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
-for its own turn. Set it to `steer` to preserve collaborative steering across
-actors. In `follow_up` mode, a user can start one message with `!!` to steer the
-active turn explicitly.
 
 Model profile names are durable conversation bindings. Each later turn resolves
 the stored name through current configuration; the exact model ID recorded when
@@ -319,8 +314,9 @@ const app = await createApp({
   fastModelId: "openai/gpt-6-luna",
   guardianModelId: "openai/gpt-6-luna",
   embeddingModelId: "openai/text-embedding-3-small",
+  rerankingModelId: "voyage/rerank-2.5-lite",
   webSearchModelId: "openai/gpt-6-luna",
-  imageGenerationModelId: "google/gemini-3-pro-image",
+  imageGenerationModelId: "openai/gpt-image-2",
   visionModelId: "openai/gpt-5.6-sol",
 });
 ```

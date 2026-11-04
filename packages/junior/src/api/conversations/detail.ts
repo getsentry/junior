@@ -30,9 +30,10 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationArchivedAt } from "./archive";
-import { readConversationParticipants } from "./participants";
+import { readConversationAuthors } from "./participants";
 import { readConversationForks } from "./fork";
 import { readConversationAgentTree } from "./agent-tree";
+import { readConversationReadPosition } from "./read-position";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -51,6 +52,7 @@ function projectConversationDetail(args: {
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   participants: NonNullable<ConversationDetailReport["participants"]>;
+  authors: NonNullable<ConversationDetailReport["authors"]>;
   previousSeq?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -88,7 +90,7 @@ function projectConversationDetail(args: {
     ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
     ...(canExposePayload && args.participants.length > 0
-      ? { participants: args.participants }
+      ? { authors: args.authors, participants: args.participants }
       : undefined),
     ...(args.previousSeq !== undefined
       ? {
@@ -134,7 +136,7 @@ async function readConversationDetailFromSql(
     firstHumanMessageTextByConversation,
     modelUsage,
     metricsByConversation,
-    participantsByConversation,
+    people,
     sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
@@ -148,7 +150,7 @@ async function readConversationDetailFromSql(
       ? readConversationModelUsageFromSql(executor, { conversationId })
       : Promise.resolve([]),
     readConversationTreeMetricsFromSql(getDb(), [conversationId]),
-    readConversationParticipants(getDb(), [conversationId]),
+    readConversationAuthors(getDb(), conversationId),
     readConversationSourceTask({
       conversationId,
       ...(options.viewer ? { viewer: options.viewer } : undefined),
@@ -214,7 +216,8 @@ async function readConversationDetailFromSql(
     firstHumanMessageText:
       firstHumanMessageTextByConversation.get(conversationId),
     modelUsage,
-    participants: participantsByConversation.get(conversationId) ?? [],
+    authors: people.authors,
+    participants: people.participants,
     ...(sourceTask ? { sourceTask } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
@@ -237,13 +240,17 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const [forks, agentTree] = await Promise.all([
+  const [forks, agentTree, readPosition] = await Promise.all([
     readConversationForks(conversationId, options.viewer),
     readConversationAgentTree(conversationId, options.viewer),
+    options.viewer
+      ? readConversationReadPosition(options.viewer, conversationId)
+      : undefined,
   ]);
   return conversationDetailReportSchema.parse({
     ...report,
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
+    ...(readPosition ? { readPosition } : undefined),
   });
 }

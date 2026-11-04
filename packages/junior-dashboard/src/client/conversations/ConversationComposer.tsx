@@ -26,6 +26,7 @@ import {
 } from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
+import { useComposerAutocorrect } from "./composerAutocorrect";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -90,6 +91,11 @@ type ConversationComposerProps = {
   /** Lets the parent put a message taken out of the queue back in the draft. */
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
+  /**
+   * Return a promise to ask the reader before a send. The draft stays when it
+   * resolves false. Return undefined to send at once.
+   */
+  confirmSubmit?: () => Promise<boolean> | undefined;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -127,6 +133,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
+  const [autocorrect] = useComposerAutocorrect();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef(initialDraft);
@@ -140,6 +147,8 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
+  // Blocks a second send while the reader answers `confirmSubmit`.
+  const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
@@ -255,18 +264,30 @@ export const ConversationComposer = memo(function ConversationComposer(
     syncTextareaHeight();
   };
 
+  const canSubmit = () =>
+    Boolean(draftRef.current.text.trim() || imagesRef.current.length) &&
+    online &&
+    !submittingRef.current &&
+    !confirmingRef.current &&
+    !sendLocked &&
+    !readingImagesRef.current;
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (!canSubmit()) return;
+    const confirmation = props.confirmSubmit?.();
+    if (confirmation) {
+      confirmingRef.current = true;
+      let confirmed: boolean;
+      try {
+        confirmed = await confirmation;
+      } finally {
+        confirmingRef.current = false;
+      }
+      if (!confirmed) return;
+    }
     const text = draftRef.current.text.trim();
     const submittedImages = imagesRef.current;
-    if (
-      (!text && !submittedImages.length) ||
-      !online ||
-      submittingRef.current ||
-      sendLocked ||
-      readingImagesRef.current
-    )
-      return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,
@@ -471,10 +492,11 @@ export const ConversationComposer = memo(function ConversationComposer(
         </label>
         <textarea
           // Chat is technical: ids, paths, code. Keep the keyboard chat-like
-          // (Send) and suppress browser IME assist that fights identifiers.
-          autoCapitalize="off"
+          // (Send) and suppress browser IME assist that fights identifiers,
+          // unless the user turns autocorrect on in settings.
+          autoCapitalize={autocorrect ? "sentences" : "off"}
           autoComplete="off"
-          autoCorrect="off"
+          autoCorrect={autocorrect ? "on" : "off"}
           className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
@@ -491,7 +513,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           placeholder="Message Junior…"
           ref={textareaRef}
           rows={1}
-          spellCheck={false}
+          spellCheck={autocorrect}
         />
         <div
           className={cn(

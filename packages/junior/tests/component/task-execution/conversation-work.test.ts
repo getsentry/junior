@@ -75,6 +75,7 @@ function failingMetadataStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
@@ -92,6 +93,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
@@ -1646,7 +1648,7 @@ describe("conversation work execution", () => {
           await drain(context);
           // A queued message steered after the attempt started joins it.
           await steerWebPendingMessages({
-            authorId: "dashboard:reader",
+            authorIds: ["dashboard:reader"],
             conversationId: CONVERSATION_ID,
             inboundMessageIds: ["m3"],
           });
@@ -1692,7 +1694,7 @@ describe("conversation work execution", () => {
           message: webMessage("b1", "dashboard:b"),
         });
         await steerWebPendingMessages({
-          authorId: "dashboard:b",
+          authorIds: ["dashboard:b"],
           conversationId: CONVERSATION_ID,
           inboundMessageIds: ["b1"],
         });

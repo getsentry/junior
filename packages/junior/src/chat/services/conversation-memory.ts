@@ -230,11 +230,12 @@ export function markConversationMessage(
 export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
-    excludeMessageId?: string;
+    /** Turn input Messages, which the prompt already holds. */
+    excludeMessageIds?: readonly string[];
   } = {},
 ): string | undefined {
   const messages = conversation.messages.filter(
-    (entry) => entry.id !== options.excludeMessageId,
+    (entry) => !options.excludeMessageIds?.includes(entry.id),
   );
   if (messages.length === 0 && conversation.compactions.length === 0) {
     return undefined;

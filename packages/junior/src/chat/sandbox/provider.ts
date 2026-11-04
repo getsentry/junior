@@ -3,6 +3,10 @@ import type {
   WorkspaceSnapshotBuilder,
 } from "@/chat/sandbox/snapshot/workspace";
 import { getChatConfig } from "@/chat/config";
+import type {
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+} from "@/chat/plugins/types";
 import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
 import { vercelSandboxProvider } from "@/chat/sandbox/vercel/provider";
 import type {
@@ -34,6 +38,12 @@ export interface SandboxErrorChecks {
   isCommandStreamInterrupted(error: unknown): boolean;
 }
 
+/** Runtime dependencies and postinstall commands that one snapshot installs. */
+export interface SnapshotRuntime {
+  dependencies: PluginRuntimeDependency[];
+  postinstall: PluginRuntimePostinstallCommand[];
+}
+
 /** Sandbox lifecycle operations that each sandbox provider implements. */
 export interface SandboxProvider {
   /** Error checks for errors thrown by this provider's operations. */
@@ -55,6 +65,11 @@ export interface SandboxProvider {
   ): Promise<WorkspaceSnapshotBuilder>;
   /** Permanently delete named Workspace builders. Missing builders are ignored. */
   deleteWorkspaceSnapshotBuilders(names: Iterable<string>): Promise<void>;
+  /**
+   * Narrow what a snapshot installs. Without it, a snapshot installs every
+   * declared runtime dependency and postinstall command.
+   */
+  selectSnapshotRuntime?(runtime: SnapshotRuntime): SnapshotRuntime;
 }
 
 /** Return the sandbox provider for this deployment. */

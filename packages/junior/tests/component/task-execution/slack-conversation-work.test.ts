@@ -769,7 +769,7 @@ describe("Slack conversation work execution", () => {
     const runNextPausedTurn = vi.fn(
       async (
         _conversationId: string,
-        options: { shouldYield: () => boolean },
+        options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
       ) => {
         expect(options.shouldYield()).toBe(false);
         calls.push("resume");
@@ -823,6 +823,8 @@ describe("Slack conversation work execution", () => {
     expect(runNextPausedTurn).toHaveBeenCalledOnce();
     expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
       shouldYield: expect.any(Function),
+      // The resumed Run must observe a stop like a first Run does.
+      stopSignal: expect.any(AbortSignal),
     });
     expect(calls).toEqual([
       expect.stringContaining("follow-up"),
@@ -839,7 +841,7 @@ describe("Slack conversation work execution", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
   });
 
-  it("drains Slack messages that arrive during an active turn into steering", async () => {
+  it("drains only the active author's Slack messages into steering", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -861,15 +863,31 @@ describe("Slack conversation work execution", () => {
     });
 
     const injected: string[][] = [];
+    const turns: string[] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
-      handleNewMention: async (_thread, _message, hooks) => {
+      handleNewMention: async (_thread, message, hooks) => {
+        turns.push(message.id);
         await hooks.ack?.();
+        if (turns.length > 1) return;
         await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
             slackEnvelope({
               text: `<@${SLACK_BOT_USER_ID}> steer this`,
               ts: "1712345.0002",
               threadTs: "1712345.0001",
+            }),
+          ),
+          services: ingressServices,
+        });
+        // The turn runs with U123's credentials, so another person cannot
+        // join it, even with the !! marker.
+        await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              text: `<@${SLACK_BOT_USER_ID}> !! steer this too`,
+              ts: "1712345.0003",
+              threadTs: "1712345.0001",
+              user: "U456",
             }),
           ),
           services: ingressServices,
@@ -893,6 +911,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(injected).toEqual([["1712345.0002"]]);
+    expect(turns).toEqual(["1712345.0001", "1712345.0003"]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
@@ -901,6 +920,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.execution.inboundMessageIds).toEqual([
       "slack:T123:slack:C123:1712345.0001:1712345.0001",
       "slack:T123:slack:C123:1712345.0001:1712345.0002",
+      "slack:T123:slack:C123:1712345.0001:1712345.0003",
     ]);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
     await expectRemainingQueuedSlackWorkIsNoop({

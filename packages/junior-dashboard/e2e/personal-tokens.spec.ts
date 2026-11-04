@@ -41,7 +41,7 @@ test("lists and creates personal API tokens from settings", async ({
 
   await page.goto(`${dashboard.baseURL}/settings/api-tokens`);
   await expect(
-    page.getByRole("heading", { name: "Personal API Tokens" }),
+    page.getByRole("heading", { name: "API Tokens", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
   await screenshot(page, "settings-api-tokens", { view: "desktop" });

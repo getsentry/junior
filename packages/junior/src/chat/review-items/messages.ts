@@ -3,10 +3,12 @@ import { and, inArray, isNull } from "drizzle-orm";
 import {
   acceptsWebMessages,
   appendAndEnqueueWebMessage,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
   type EventMailboxMetadata,
@@ -15,15 +17,29 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorConversations } from "@/db/schema";
+import type { ReviewItemChangeRecord } from "./change-record";
 import type { ReviewItem } from "./store";
 
 /** One change to a Review item that linked Conversations learn about. */
 export type ReviewItemChange =
   | { kind: "submitted"; user: User }
-  | { kind: "completed"; user: User }
   | { kind: "dismissed"; user: User }
   | { kind: "taken"; user: User }
+  | { kind: "replied"; who: string }
   | { kind: "closed"; reason: string };
+
+/**
+ * Return the record that a message about a person change carries. A reply or
+ * an agent close is not a person change, so it has no record.
+ */
+export function reviewItemChangeRecord(
+  item: ReviewItem,
+  change: ReviewItemChange,
+): ReviewItemChangeRecord | undefined {
+  return "user" in change
+    ? { kind: change.kind, reviewItemId: item.id }
+    : undefined;
+}
 
 function personName(user: User): string {
   return user.displayName ? `${user.displayName} (${user.email})` : user.email;
@@ -49,11 +65,6 @@ export function renderReviewItemMessage(
           ? formatUserInputAnswer(item.request, item.answer)
           : "(no answer)",
       ].join("\n");
-    case "completed":
-      return [
-        `${personName(change.user)} marked ${label} done.`,
-        ...question,
-      ].join("\n");
     case "dismissed":
       return [
         `${personName(change.user)} dismissed ${label}.`,
@@ -62,6 +73,13 @@ export function renderReviewItemMessage(
     case "taken":
       return [
         `${personName(change.user)} took ${label}. They are now its only assignee.`,
+        ...question,
+      ].join("\n");
+    case "replied":
+      return [
+        `[review item]`,
+        "",
+        `${change.who} replied in a thread linked to ${label}, so the item closed as done. The reply went to that thread, not here, so it does not give user approval.`,
         ...question,
       ].join("\n");
     case "closed":
@@ -100,7 +118,7 @@ function messageKey(item: ReviewItem, change: ReviewItemChange): string {
 }
 
 function eventMessageText(text: string, change: ReviewItemChange): string {
-  if (change.kind === "closed") return text;
+  if (!("user" in change)) return text;
   // This Conversation does not take web Messages, so Junior relays the
   // person action as an event.
   return [
@@ -121,7 +139,8 @@ async function sendOne(args: {
   text: string;
 }): Promise<void> {
   const key = messageKey(args.item, args.change);
-  if (args.change.kind !== "closed") {
+  const record = reviewItemChangeRecord(args.item, args.change);
+  if ("user" in args.change) {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
@@ -129,14 +148,11 @@ async function sendOne(args: {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {
-          actor: webActorFromEmail(args.change.user.email, {
-            ...(args.change.user.displayName
-              ? { fullName: args.change.user.displayName }
-              : undefined),
-          }),
+          actor: webActorFromUser(args.change.user),
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,
+          reviewItemChange: record,
         },
         { nowMs: args.nowMs, queue: args.queue },
       );
@@ -161,7 +177,9 @@ async function sendOne(args: {
       inboundMessageId: `${key}:${args.conversationId}`,
       input: {
         authorId: EVENT_AUTHOR_ID,
+        authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
+        ...(record ? { reviewItemChange: record } : undefined),
         text: eventMessageText(args.text, args.change),
       },
       receivedAtMs: args.nowMs,
@@ -195,7 +213,17 @@ export async function sendReviewItemMessages(args: {
     ),
   );
   // Try every Conversation first, so one failure does not hide the change
-  // from the others. A retry sends only the missing messages.
+  // from the others. A retry sends only the missing messages. The caller
+  // reports the error; this log names each Conversation that missed it.
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logWarn("review_item.message.failed", {
+        "app.review_item.id": args.item.id,
+        "app.review_item.change": args.change.kind,
+        "gen_ai.conversation.id": conversationIds[index],
+      });
+    }
+  });
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;
 }

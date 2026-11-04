@@ -17,6 +17,7 @@ export function createExecuteToolTool() {
     description:
       "Execute any catalog tool by exact tool_name from searchTools or a tool-result execution hint. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",
+    exposure: "modelOnly",
     inputSchema: z
       .object({
         tool_name: z

@@ -12,7 +12,11 @@ import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
-import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { parseAvatarUrl } from "@/chat/identities/avatar";
+import {
+  GOOGLE_IDENTITY_PROVIDER,
+  normalizeIdentityEmail,
+} from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { isAllowedDomain, readEnvList } from "./allowlist";
@@ -172,6 +176,9 @@ function createBetterAuth(config: SignInAuthConfig) {
         // Junior signs in only through the redirect flow. Turn off direct
         // ID-token sign-in, so `getUserInfo` only reads tokens from Google.
         disableIdTokenSignIn: true,
+        // Refresh the name and photo from Google on each sign-in. Without
+        // this, Better Auth keeps the values from the first sign-in.
+        overrideUserInfoOnSignIn: true,
         // Replaces Better Auth's default, which can check only one `hd`.
         // The ID token comes from Google's token endpoint over TLS, so this
         // reads its claims without a signature check.
@@ -184,7 +191,8 @@ function createBetterAuth(config: SignInAuthConfig) {
             user: {
               email: claims.email,
               emailVerified: claims.email_verified === true,
-              image: claims.picture,
+              // `null` clears a photo that the person removed.
+              image: claims.picture ?? null,
               name: claims.name,
             },
             data: claims,
@@ -228,6 +236,10 @@ function createBetterAuth(config: SignInAuthConfig) {
           email,
           subject: google.accountId,
           displayName: created.user.name || undefined,
+          avatarUrl: parseAvatarUrl(
+            created.user.image,
+            GOOGLE_IDENTITY_PROVIDER,
+          ),
         });
       }),
     },

@@ -6,13 +6,14 @@ import {
   TraceCollapsibleContent,
   TraceCollapsibleTrigger,
 } from "../components/ui/trace";
+import { DisplayText } from "../display-text/DisplayText";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewReasoningPart } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { useTranscriptSearch } from "./transcriptSearch";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
@@ -50,7 +51,7 @@ export function TranscriptReasoningView(props: {
                 </span>
               ) : (
                 <span className="block min-w-0 truncate italic text-dashboard-text-muted">
-                  {rendered}
+                  <DisplayText inline links={false} text={rendered} />
                 </span>
               )
             }
@@ -67,9 +68,7 @@ export function TranscriptReasoningView(props: {
       </TraceCollapsibleTrigger>
       {/* Keep closed reasoning in the page, so browser find can reach it. */}
       <TraceCollapsibleContent className="px-3 py-2.5" hiddenUntilFound>
-        <div className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-subtle">
-          <HighlightText text={rendered} />
-        </div>
+        <DisplayText text={rendered} />
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );

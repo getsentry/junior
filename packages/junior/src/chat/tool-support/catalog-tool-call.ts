@@ -59,8 +59,14 @@ export function resolveCatalogToolCall(
   return { arguments: args as Record<string, unknown>, definition, toolName };
 }
 
-/** Apply a catalog tool's own argument preparation and schema boundary. */
-export function prepareCatalogToolCall(call: CatalogToolCall): CatalogToolCall {
+/**
+ * Apply a tool's own argument preparation and schema boundary to a call that
+ * a dispatcher (`executeTool` or a Code Mode script) makes for the model.
+ */
+export function prepareCatalogToolCall(
+  call: CatalogToolCall,
+  dispatcherName = "executeTool",
+): CatalogToolCall {
   const prepared = call.definition.prepareArguments
     ? call.definition.prepareArguments(call.arguments)
     : call.arguments;
@@ -69,12 +75,12 @@ export function prepareCatalogToolCall(call: CatalogToolCall): CatalogToolCall {
     !Value.Check(call.definition.inputSchema, prepared)
   ) {
     throw new ToolInputError(
-      `executeTool arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition.inputSchema, prepared)}`,
+      `${dispatcherName} arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition.inputSchema, prepared)}`,
     );
   }
   if (!prepared || typeof prepared !== "object" || Array.isArray(prepared)) {
     throw new ToolInputError(
-      `executeTool arguments must prepare to an object for ${call.toolName}.`,
+      `${dispatcherName} arguments must prepare to an object for ${call.toolName}.`,
     );
   }
   return {

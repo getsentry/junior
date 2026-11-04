@@ -31,7 +31,10 @@ function NavCount(props: { count?: number }) {
   );
 }
 
-/** Render the primary dashboard shell header and optional mobile nav sheet. */
+/**
+ * Render the shell header: the mobile bar and navigation sheet, and the
+ * desktop top bar on tall windows. Short desktop windows use `NavRail`.
+ */
 export function DashboardHeader(props: {
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
@@ -45,7 +48,7 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
-  /** Compact desktop header control. */
+  /** Spend and account control at the right of the tall desktop top bar. */
   profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
@@ -92,66 +95,16 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg">
-      <div
-        className={cn(
-          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-7 md:py-3",
-          props.profile
-            ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
-            : "md:grid-cols-[auto_minmax(0,1fr)]",
-        )}
-      >
-        {conversationMode && props.mobileBackTo ? (
-          <Link
-            aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
-            to={props.mobileBackTo}
-          >
-            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
-          </Link>
-        ) : (
-          <button
-            aria-controls="mobile-navigation"
-            aria-expanded={props.mobileNavigationOpen}
-            aria-hidden={props.mobileNavigationOpen || undefined}
-            aria-label="Open navigation"
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
-            onClick={() => props.onMobileNavigationOpenChange(true)}
-            tabIndex={props.mobileNavigationOpen ? -1 : undefined}
-            type="button"
-          >
-            <Menu aria-hidden="true" size={20} strokeWidth={2} />
-          </button>
-        )}
-        {conversationMode ? (
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
-            {mobileTitle ? (
-              <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
-                {mobileTitle}
-              </h1>
-            ) : null}
-            <MobileHeaderLiveSlot />
-          </div>
-        ) : null}
+    <header className="relative bg-dashboard-bg md:hidden md:tall:block">
+      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
         <Link
           aria-label={`${getDashboardAgentName()} home`}
-          className={cn(
-            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
-            conversationMode ? "hidden" : "flex",
-          )}
+          className="flex items-center text-inherit no-underline"
           to="/"
         >
-          <span className="truncate font-sans text-sm font-semibold md:hidden">
-            {getDashboardAgentName()}
-          </span>
-          <span className="hidden md:block">
-            <JuniorLogo />
-          </span>
+          <JuniorLogo />
         </Link>
-        <nav
-          aria-label="Primary"
-          className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start"
-        >
+        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
           <Link
             aria-current={props.workspaceActive ? "page" : undefined}
             className={navLinkClass({ isActive: props.workspaceActive })}
@@ -166,12 +119,56 @@ export function DashboardHeader(props: {
             </NavLink>
           ))}
         </nav>
-        {conversationMode ? <MobileHeaderActionsSlot /> : null}
         {props.profile ? (
-          <div className="col-start-3 hidden justify-self-end md:block">
-            {props.profile}
+          <div className="justify-self-end">{props.profile}</div>
+        ) : null}
+      </div>
+      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
+        {conversationMode && props.mobileBackTo ? (
+          <Link
+            aria-label="Back to conversations"
+            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+            to={props.mobileBackTo}
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
+          </Link>
+        ) : (
+          <button
+            aria-controls="mobile-navigation"
+            aria-expanded={props.mobileNavigationOpen}
+            aria-hidden={props.mobileNavigationOpen || undefined}
+            aria-label="Open navigation"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+            onClick={() => props.onMobileNavigationOpenChange(true)}
+            tabIndex={props.mobileNavigationOpen ? -1 : undefined}
+            type="button"
+          >
+            <Menu aria-hidden="true" size={20} strokeWidth={2} />
+          </button>
+        )}
+        {conversationMode ? (
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
+            {mobileTitle ? (
+              <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
+                {mobileTitle}
+              </h1>
+            ) : null}
+            <MobileHeaderLiveSlot />
           </div>
         ) : null}
+        <Link
+          aria-label={`${getDashboardAgentName()} home`}
+          className={cn(
+            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
+            conversationMode ? "hidden" : "flex",
+          )}
+          to="/"
+        >
+          <span className="truncate font-sans text-sm font-semibold">
+            {getDashboardAgentName()}
+          </span>
+        </Link>
+        {conversationMode ? <MobileHeaderActionsSlot /> : null}
       </div>
       {props.mobileNavigationOpen ? (
         <MobileNavigationSheet

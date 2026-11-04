@@ -26,8 +26,7 @@ import {
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
-import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
-import { TranscriptText } from "../src/client/conversations/TranscriptText";
+import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
@@ -118,7 +117,6 @@ function systemData(): SystemData {
       authRequired: false,
       basePath: "/",
       sentryConversationLinks: false,
-      timeZone: "UTC",
       version: "0.0.0-test",
     },
     me: { user: { email: "viewer@example.com", isAdmin: false } },
@@ -195,7 +193,7 @@ describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="line">
-        <TranscriptMarkdown
+        <DisplayText
           text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
         />
       </TranscriptSearchProvider>,
@@ -210,7 +208,7 @@ describe("dashboard canonical-event components", () => {
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="docs.sentry.io">
-        <TranscriptMarkdown text="[product docs](https://docs.sentry.io/platforms/)" />
+        <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
       </TranscriptSearchProvider>,
     );
 
@@ -224,7 +222,7 @@ describe("dashboard canonical-event components", () => {
   it("preserves snake_case identifiers while rendering emphasis", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text="some_var_name and *italic text*" />
+        <DisplayText text="some_var_name and *italic text*" />
       </TranscriptSearchProvider>,
     );
 
@@ -237,7 +235,7 @@ describe("dashboard canonical-event components", () => {
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
       </TranscriptSearchProvider>,
     );
 
@@ -253,9 +251,8 @@ describe("dashboard canonical-event components", () => {
   it("renders code-like user prose as markdown", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText
-          mentions={[]}
-          role="user"
+        <DisplayText
+          chat
           text="The function reads a const value and returns it."
         />
       </QueryClientProvider>,
@@ -269,11 +266,7 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText
-          mentions={[]}
-          role="user"
-          text={"```xml\n<root />\n```"}
-        />
+        <DisplayText chat text={"```xml\n<root />\n```"} />
       </QueryClientProvider>,
     );
 
@@ -285,7 +278,7 @@ describe("dashboard canonical-event components", () => {
   it("renders labeled event sections followed by semantic lists", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text={"Handling:\n- first item\n- second item"} />
+        <DisplayText text={"Handling:\n- first item\n- second item"} />
       </TranscriptSearchProvider>,
     );
 
@@ -296,7 +289,7 @@ describe("dashboard canonical-event components", () => {
 
     const slackHtml = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown
+        <DisplayText
           text={"Checking:\n• first item\n• second item\n\n2) next step"}
         />
       </TranscriptSearchProvider>,
@@ -309,7 +302,7 @@ describe("dashboard canonical-event components", () => {
 
     const nestedHtml = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown
+        <DisplayText
           text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
         />
       </TranscriptSearchProvider>,
@@ -368,34 +361,36 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("5.0s · 5kb");
   });
 
-  it("exposes pressed state for transcript view controls", () => {
+  it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <ConversationHeader
-        archive={{
-          archived: false,
-          disabled: false,
-          error: false,
-          onClick: () => {},
-          pending: false,
-        }}
-        conversationId="conversation-1"
-        detailsOpen={false}
-        onDetailsClick={() => {}}
-        live={false}
-        onSearchChange={() => {}}
-        onViewChange={() => {}}
-        privacy={null}
-        search=""
-        title="Header QA"
-        view="raw"
-      />,
+      <MemoryRouter>
+        <ConversationHeader
+          archive={{
+            archived: false,
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            pending: false,
+          }}
+          conversationId="conversation-1"
+          detailsOpen={false}
+          onDetailsClick={() => {}}
+          live={false}
+          onSearchChange={() => {}}
+          onViewChange={() => {}}
+          privacy={null}
+          search=""
+          title="Header QA"
+          view="raw"
+        />
+      </MemoryRouter>,
     );
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Conversation"');
-    expect(html).toContain('aria-label="Event log"');
+    expect(html).toContain('aria-label="Close event log"');
     expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
-    expect(html).toContain('aria-label="Archive"');
+    expect(html).toContain('aria-label="Conversation menu"');
+    // Archive and the view switch wait in the closed menu.
+    expect(html).not.toContain('aria-label="Archive"');
   });
 
   it("shows responding state independently from live transcript following", () => {

@@ -17,7 +17,7 @@ export function ActorAvatar(props: {
   return (
     <Avatar aria-hidden="true" size={props.size === "list" ? "sm" : "default"}>
       <AvatarImage
-        alt=""
+        alt="User avatar"
         loading="lazy"
         referrerPolicy="no-referrer"
         src={props.imageUrl}

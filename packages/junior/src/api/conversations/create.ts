@@ -5,7 +5,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
   acceptsWebMessages,
-  webActorFromEmail,
+  webActorFromUser,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
@@ -13,10 +13,10 @@ import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getProductionSlackAdapter } from "@/chat/app/production";
+import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { webUserInputAnswerNote } from "@/chat/slack/user-input";
-import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
-import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
@@ -39,8 +39,7 @@ function parseImages(images: InputImage[] | undefined) {
 
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
-  return webActorFromEmail(normalized, {
-    ...(viewer.displayName ? { fullName: viewer.displayName } : undefined),
+  return webActorFromUser(viewer, {
     userName: normalized.split("@")[0] || normalized,
   });
 }
@@ -121,41 +120,38 @@ export async function appendConversationMessageForViewer(
         queue: services.queue,
       },
     );
-  const destination = conversation.destination;
+  // A dashboard message answers the open questions that the agent asked in
+  // this Conversation, like a typed Slack reply.
+  const closeAnswered = () =>
+    closeReviewItemsAnsweredByReply({
+      conversationId,
+      delivery: {
+        queue: services.queue,
+        show: createSlackReviewItemShow(getProductionSlackAdapter),
+      },
+      resolveUser: async () => viewer,
+      text: body.message,
+    });
   try {
-    if (destination?.platform !== "slack") return await append();
-    // A dashboard message answers an open request in the Slack thread, like a
-    // typed Slack reply, so its buttons close and a later click does nothing.
-    return await runWithWorkspaceTeamId(destination.teamId, async () => {
+    let accepted: AcceptedConversationMessage;
+    try {
+      accepted = await append();
+    } catch (error) {
+      // A failed queue send can follow a saved append. The message still
+      // answers then.
       const state = getStateAdapter();
       await state.connect();
-      return persistSlackUserInputReply({
-        channelId: destination.channelId,
-        claimedBy: viewer.email,
-        // A failed queue send can follow a saved append. Keep the claim then,
-        // so a click or a retry does not add a second answer.
-        isSaved: async () => {
-          const [messageId, work] = await Promise.all([
-            webMessageId({
-              conversationId,
-              idempotencyKey: body.idempotencyKey,
-            }),
-            getConversationWorkState({ conversationId, state }),
-          ]);
-          return work?.execution.inboundMessageIds.includes(messageId) === true;
-        },
-        note: () => webUserInputAnswerNote(viewer.displayName ?? viewer.email),
-        persist: append,
-        state,
-        // Destination is the channel. Location keeps the Slack thread. Like
-        // the Slack tool context, fall back to the Slack session Source.
-        threadTs:
-          conversation.location?.threadTs ??
-          (conversation.sessionSource?.kind === "slack"
-            ? conversation.sessionSource.threadTs
-            : undefined),
-      });
-    });
+      const [messageId, work] = await Promise.all([
+        webMessageId({ conversationId, idempotencyKey: body.idempotencyKey }),
+        getConversationWorkState({ conversationId, state }),
+      ]);
+      if (work?.execution.inboundMessageIds.includes(messageId)) {
+        await closeAnswered();
+      }
+      throw error;
+    }
+    await closeAnswered();
+    return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);
   }
