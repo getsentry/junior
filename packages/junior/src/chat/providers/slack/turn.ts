@@ -9,7 +9,6 @@ import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
@@ -337,7 +336,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         destinationName: channelId,
         runId,
         assistantUserName: botConfig.userName,
-        modelId: defaultModelId(botConfig),
+        modelId: botConfig.modelId,
       },
       async () => {
         // Save Location and visibility before the agent reads the Conversation.

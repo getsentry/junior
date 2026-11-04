@@ -545,19 +545,6 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   ],
 );
 
-const conversationReportTurnRoutedEventDataSchema = z
-  .object({
-    type: z.literal("turn_routed"),
-    turnId: z.string().min(1),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    costUsd: z.number().finite().nonnegative().optional(),
-    reasoningLevel: z.string().min(1),
-    confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
-  })
-  .strict();
-
 const conversationReportGuardianActionReviewedEventDataSchema = z
   .object({
     type: z.literal("guardian_action_reviewed"),
@@ -602,7 +589,6 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
-    modelProfile: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     summary: z.string().min(1).optional(),
     details: z
@@ -618,17 +604,6 @@ const conversationReportCompactionEventDataSchema = z
       })
       .strict()
       .optional(),
-  })
-  .strict();
-
-const conversationReportHandoffEventDataSchema = z
-  .object({
-    type: z.literal("handoff"),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    reasoningLevel: z.string().min(1).optional(),
-    triggeringToolCallId: z.string().min(1).optional(),
-    summary: z.string().min(1).optional(),
   })
   .strict();
 
@@ -657,10 +632,8 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
-  conversationReportTurnRoutedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
-  conversationReportHandoffEventDataSchema,
   conversationReportSubagentEventDataSchema,
 ]);
 
@@ -675,8 +648,6 @@ export const conversationReportEventSchema = z
     model: z
       .object({
         modelId: z.string().min(1),
-        modelProfile: z.string().min(1).optional(),
-        reasoningLevel: z.string().min(1).optional(),
       })
       .strict()
       .optional(),

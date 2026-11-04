@@ -101,7 +101,7 @@ async function projectConversationEventRows(
     .map(eventFromRow)
     .sort((left, right) => left.seq - right.seq);
   // Resolve context before the scanned page, not from today's model config.
-  // Keep the last route boundary and actual call so pages have the same model.
+  // Keep the last Turn boundary and actual call so pages have the same model.
   const modelContextRows = events[0]
     ? (
         await Promise.all([
@@ -110,13 +110,7 @@ async function projectConversationEventRows(
             beforeSeq: events[0].seq,
             direction: "backward",
             limit: 1,
-            types: [
-              "turn_started",
-              "turn_routed",
-              "handoff",
-              "turn_completed",
-              "turn_failed",
-            ],
+            types: ["turn_started", "turn_completed", "turn_failed"],
           }),
           readConversationEventRows(executor, {
             conversationId: args.conversationId,

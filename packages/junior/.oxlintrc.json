@@ -160,7 +160,6 @@
         "tests/component/runtime/agent-run-agent-continue.test.ts",
         "tests/component/runtime/agent-run-error-path.test.ts",
         "tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
-        "tests/component/runtime/agent-run-model-handoff-fixture.ts",
         "tests/component/runtime/agent-run-provider-retry.test.ts",
         "tests/component/runtime/agent-run-sandbox.test.ts",
         "tests/component/runtime/agent-run-tool-timeout-continuation.test.ts",

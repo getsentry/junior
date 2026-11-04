@@ -232,9 +232,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       keyPrefix={props.conversation.conversationId}
       unread={props.unread}
       renderContext={(entry) => (
-        <TranscriptRailEvent
-          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
-        >
+        <TranscriptRailEvent kind="compaction">
           <TranscriptContextEventView
             part={entry.part}
             timestamp={entry.timestamp}
@@ -523,9 +521,7 @@ function RedactedTranscriptView(props: {
       entries={groupTranscriptMessages(props.messages)}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
       renderContext={(entry) => (
-        <TranscriptRailEvent
-          kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
-        >
+        <TranscriptRailEvent kind="compaction">
           <TranscriptContextEventView
             part={entry.part}
             timestamp={entry.timestamp}

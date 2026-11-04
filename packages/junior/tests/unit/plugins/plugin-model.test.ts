@@ -23,12 +23,9 @@ const embedTexts = vi.fn(async () => ({
 vi.mock("@/chat/config", () => ({
   botConfig: {
     decisionModelId: "typesafe-ai/jev",
-    defaultProfile: "standard",
     embeddingModelId: "test-embedding-model",
     fastModelId: "openai/gpt-5.4-mini",
-    profiles: {
-      standard: { modelId: "openai/gpt-5.5" },
-    },
+    modelId: "openai/gpt-5.5",
   },
 }));
 

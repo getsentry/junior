@@ -17,7 +17,10 @@ import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
-import { createChild } from "../../../fixtures/dashboard-reporting";
+import {
+  createChild,
+  insertLegacyEvent,
+} from "../../../fixtures/dashboard-reporting";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -80,27 +83,28 @@ describe("conversation detail API", () => {
           version: 1,
         },
       },
-      {
-        createdAtMs: 4,
-        data: {
-          confidence: 0.9,
-          costUsd: 0.0002,
-          modelId: "openai/gpt-5-mini",
-          modelProfile: "standard",
-          reasoningLevel: "medium",
-          source: "router",
-          turnId: "turn-1",
-          type: "turn_routed",
-        },
-      },
     ]);
+    // Turns routed before the Turn router was retired keep their router cost.
+    await insertLegacyEvent(conversationId, {
+      createdAtMs: 4,
+      data: {
+        confidence: 0.9,
+        costUsd: 0.0002,
+        modelId: "openai/gpt-5-mini",
+        modelProfile: "standard",
+        reasoningLevel: "medium",
+        source: "router",
+        turnId: "turn-1",
+        type: "turn_routed",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
+    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
     expect(refreshed.auxiliaryCosts).toEqual({
       costUsd: 0.0006,
       operations: [

@@ -10,7 +10,6 @@ import type { Actor, Destination, Source } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { ModelProfile } from "@/chat/model-profile";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
@@ -95,7 +94,6 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     agentType: text("agent_type").$type<AgentType>(),
-    modelProfile: text("model_profile").$type<ModelProfile>(),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.

@@ -72,7 +72,7 @@ test("inspects all reporting events and searches full event data", async ({
   await screenshot(page, "conversation-event-log");
 
   const entry = log.getByRole("button", {
-    name: "Event 3: turn_routed",
+    name: "Event 3: assistant_message",
     exact: true,
   });
   await page
@@ -91,10 +91,12 @@ test("inspects all reporting events and searches full event data", async ({
     name: "Event details",
     exact: true,
   });
-  await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Call usage", { exact: true })).toBeVisible();
   // The open entry is in the URL, so a reader can share a link to it.
   await expect(page).toHaveURL(/[?&]event=3(&|$)/);
-  await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("openai/gpt-5.6-sol", { exact: true }),
+  ).toBeVisible();
   await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
   // The log stays interactive while the selected event is open.
@@ -133,7 +135,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(page).toHaveURL(/[?&]event=1(&|$)/);
   await entry.click();
   await expect(
-    panel.getByRole("heading", { name: "turn_routed", exact: true }),
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
   ).toBeVisible();
   // Conversation details were open before the event, so they come back.
   await close.click();
@@ -242,7 +244,7 @@ test("inspects all reporting events and searches full event data", async ({
   // The sheet title names the event, so find the sheet by its label.
   const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
   await expect(
-    sheet.getByRole("heading", { name: "turn_routed", exact: true }),
+    sheet.getByRole("heading", { name: "assistant_message", exact: true }),
   ).toBeVisible();
   await expect(
     sheet.getByRole("button", { name: "Close", exact: true }),

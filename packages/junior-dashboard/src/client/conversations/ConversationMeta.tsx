@@ -469,7 +469,7 @@ function SourceTask(props: {
   );
 }
 
-/** Resolve the model still running an open turn, including mid-turn handoffs. */
+/** Resolve the model that an open turn last called. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
 ): string | undefined {
@@ -484,12 +484,7 @@ export function liveModelId(
       if (openTurns.size === 0) modelId = undefined;
       continue;
     }
-    if (openTurns.size === 0) continue;
-    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
-      modelId = data.modelId;
-      continue;
-    }
-    if (data.type === "handoff") modelId = data.modelId;
+    if (openTurns.size > 0 && event.model) modelId = event.model.modelId;
   }
   return openTurns.size > 0 ? modelId : undefined;
 }

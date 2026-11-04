@@ -140,7 +140,7 @@ export async function readConversationModelUsageFromSql(
   options: { conversationId: string },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
   // Prefer the model field when it already carries a vendor prefix so usage keys
-  // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
+  // match configured model ids (openai/gpt-5.6-sol), not the transport
   // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
   const modelText = sql`(${model} #>> '{}')`;
   const modelId = sql<string>`case
