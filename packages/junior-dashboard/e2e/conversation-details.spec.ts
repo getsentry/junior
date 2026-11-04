@@ -35,8 +35,7 @@ test("opens conversation details beside the chat", async ({
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
   await expect(page).toHaveTitle("Checkout latency triage - Junior");
-  await expect(page.getByRole("note")).toContainText("Public conversation");
-  await expect(page.getByRole("note")).toContainText("Public");
+  await expect(page.getByRole("note")).toHaveCount(0);
 
   const detailsButton = page.getByRole("button", {
     name: "Conversation details",
@@ -173,5 +172,4 @@ test("opens conversation details beside the chat", async ({
   // Each conversation opens with details beside the chat.
   await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");
-  await expect(page.getByRole("note")).toContainText("Private");
 });
