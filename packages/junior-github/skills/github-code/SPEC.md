@@ -14,6 +14,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - After each push to a branch with an open PR, check mergeability. Resolve conflicts without asking, by merging the PR base branch (usually the default branch). Never rebase for this, except in a stack: a stack merges only with a linear history, so stacked PRs restack with `gh stack`. When a stacked PR merges, restack the open PRs above it, because GitHub sends them no event when its own rebase stops at a conflict. GitHub sends no event for a new conflict, and conflicted PRs get no new checks. The plugin publishes `pull_request.merge_conflict` for a watched PR only when another webhook event arrives for it, so the post-push check stays.
 - Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
 - Report exact validation and permission failures.
+- For 5xx, timeout, and connection failures, and for stalled or unexplained check failures, check GitHub status before diagnosing. Report a matching incident as the likely cause; with no match, do not blame an outage.
 
 ## Runtime architecture
 
