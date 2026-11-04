@@ -14,18 +14,18 @@ unless a section names another revision.
 Models: `CutoverShim.tla` (the fence, the tombstone, the pin, the move,
 the move back) and `DropGuard.tla` (the column-drop guard).
 
-| Check                               | Result          | States | Plan                             |
-| ----------------------------------- | --------------- | ------ | -------------------------------- |
-| `shim_design` safety                | holds           | 4.28M  | `:869-917`, `:990-1019`, C10 fix |
-| `shim_design` oneCore               | holds           | 4.28M  | same                             |
-| `shim_abandon` safety               | holds           | 4.59M  | `:963-976`                       |
-| `shim_gap` noDuplicateTurn          | fails, 16 steps | 1.50M  | the give-up at `:1061-1065`      |
-| `shim_gap` safety                   | fails, 9 steps  | 32K    | same (`noOldWriteAfterPin`)      |
-| `shim_plan` safety, noDuplicateTurn | fails, 19 steps | 2.4M   | C10: `:916-917`, `:1006-1014`    |
-| `shim_noFence` noDuplicateTurn      | fails, 13 steps | 289K   | the fence at `:877-882` removed  |
-| `shim_earlyTomb` noDuplicateTurn    | fails, 15 steps | 837K   | C11: read order, `:877-898`      |
-| `drop_design` noReadAfterDrop       | holds           | 4.03M  | `:1042-1052`                     |
-| `drop_oneMax` noReadAfterDrop       | fails           | 4.02M  | one `maxDuration` instead of two |
+| Check                               | Result           | States | Plan                             |
+| ----------------------------------- | ---------------- | ------ | -------------------------------- |
+| `shim_design` safety                | holds            | 4.28M  | `:869-917`, `:990-1019`, C10 fix |
+| `shim_design` oneCore               | holds            | 4.28M  | same                             |
+| `shim_abandon` safety               | holds            | 4.59M  | `:963-976`                       |
+| `shim_gap` noDuplicateTurn          | fails, 16 steps  | 1.50M  | the give-up at `:1061-1065`      |
+| `shim_gap` safety                   | fails, 9 steps   | 32K    | same (`noOldWriteAfterPin`)      |
+| `shim_plan` safety, noDuplicateTurn | fails, 19 steps  | 2.4M   | C10: `:916-917`, `:1006-1014`    |
+| `shim_noFence` noDuplicateTurn      | fails, 13 steps  | 286K   | the fence at `:877-882` removed  |
+| `shim_earlyTomb` noDuplicateTurn    | fails, 15 steps  | 785K   | C11: read order, `:877-898`      |
+| `drop_design` noReadAfterDrop       | holds            | 4.03M  | `:1042-1052`                     |
+| `drop_oneMax` noReadAfterDrop       | fails, 268 ticks | 4.02M  | one `maxDuration` instead of two |
 
 `safety` is `oneCoreLive`, `noDuplicateTurn`, `noStrandedCursor`,
 `moveIdempotent`, `noTurnOpenedAfterMove` and `noOldWriteAfterPin`.
@@ -140,16 +140,17 @@ accepts.
 ### Column-drop guard (`:1042-1052`)
 
 `DropGuard.tla` checks that no step 15 invocation runs at the drop.
-`drop_design` (the 1 h + 2 `maxDuration` + 2 min wait) holds. `drop_oneMax` (1 h + one `maxDuration` + 2 min)
-fails: a step 15 invocation that started just before the cron saw the
-new row sends a message near its `maxDuration`; the message is delivered
-just before its 1 h retention ends, and that delivery runs for one more
-`maxDuration`. The model holds with a wait down to 1 h + 2 `maxDuration`
-+ 75 s and fails at + 60 s (`drop_noSpare`, the skew alone). It rounds
-each bound up by at most 15 s, so it is stricter than the host, where the
-last step 15 read is before `currentSinceAtMs` + 1 h + 2 `maxDuration`
-and the skew can move the check 60 s early. The 2 min wait has 45 s to
-60 s of spare.
+`drop_design` (the 1 h + 2 `maxDuration` + 2 min wait) holds.
+`drop_oneMax` (1 h + one `maxDuration` + 2 min) fails: a step 15
+invocation that started just before the cron saw the new row sends a
+message near its `maxDuration`; the message is delivered just before its
+1 h retention ends, and that delivery runs for one more `maxDuration`.
+The model holds with a wait down to 1 h + 2 `maxDuration` + 75 s and
+fails at 1 h + 2 `maxDuration` + 60 s (`drop_noSpare`, the skew alone).
+It rounds each bound up by at most 15 s, so it is stricter than the
+host, where the last step 15 read is before `currentSinceAtMs` + 1 h + 2
+`maxDuration` and the skew can move the check 60 s early. The 2 min wait
+has 45 s to 60 s of spare.
 
 Not modeled: an Instant Rollback to step 15 and a promote again (a
 draft with them passed 30M states without an end).
@@ -168,16 +169,16 @@ replaced the deploy gate (C9) and the delete and drop releases (C8) with
 the shim above; `cutover_gated` and `cutover_gatedSeen` are now evidence.
 C5, C6 (`cutover_inboxShared`) and C7 (`tree_fenced`) stay in CI.
 
-| Check                                                     | Result | Plan                         |
-| --------------------------------------------------------- | ------ | ---------------------------- |
-| `cutover_gated` safety, noDuplicateTurn                   | holds  | P45 with the C8 and C9 fixes |
-| `cutover_gated` sweepMoves (fairness: repair job, time)   | holds  | background sweep (`:962`)    |
-| `cutover_gatedSeen` noDuplicateTurn                       | fails  | C9: the gate at `:869-885`   |
-| `cutover_inbox` (the inbox move as written)               | fails  | C5, C6                       |
-| `cutover_inboxShared` safety, noDuplicateTurn, acceptedOnce | holds | fixes for C5, C6, C8         |
-| `cutover_inboxShared` noOldStateAfterDelete               | fails  | C8: the guard at `:996-1002` |
-| `tree_plan` resultNotLost                                 | fails  | C7                           |
-| `tree_fenced` resultNotLost, resultOneOwner               | holds  | fix for C7                   |
+| Check                                                       | Result | Plan                         |
+| ----------------------------------------------------------- | ------ | ---------------------------- |
+| `cutover_gated` safety, noDuplicateTurn                     | holds  | P45 with the C8 and C9 fixes |
+| `cutover_gated` sweepMoves (fairness: repair job, time)     | holds  | background sweep (`:962`)    |
+| `cutover_gatedSeen` noDuplicateTurn                         | fails  | C9: the gate at `:869-885`   |
+| `cutover_inbox` (the inbox move as written)                 | fails  | C5, C6                       |
+| `cutover_inboxShared` safety, noDuplicateTurn, acceptedOnce | holds  | fixes for C5, C6, C8         |
+| `cutover_inboxShared` noOldStateAfterDelete                 | fails  | C8: the guard at `:996-1002` |
+| `tree_plan` resultNotLost                                   | fails  | C7                           |
+| `tree_fenced` resultNotLost, resultOneOwner                 | holds  | fix for C7                   |
 
 Model rules:
 
@@ -340,5 +341,6 @@ hold. `errors_rev3 errorBudget` and `errors_noPause oneChargePerAttempt`
 - `wakeLive_rev3 l3_pausedResumedNoRepair`: at `5ed29c2` L3 needed the
   repair job.
 - `stop_receive_noJoinFix`: P44 without the join fix.
-- Accepted, in CI: `lock_design i3_noStalePost`, `cutover_gated oneCore`
-  (P5 "Limit"), `lock_design lostTurnPickedUpNoRepair` (P7 part 2).
+- Accepted, in CI: `lock_design i3_noStalePost` (P5 "Limit"),
+  `lock_design lostTurnPickedUpNoRepair` (P7 part 2),
+  `shim_gap noDuplicateTurn` (the P45 give-up).

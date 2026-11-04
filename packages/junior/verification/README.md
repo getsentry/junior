@@ -105,7 +105,7 @@ step.
 
 ## Results
 
-`results.txt`: 66 checks. TLC only, exhaustive within the bounds. No
-Apalache and no inductive invariants. Largest: `wake_design` safety, 14.7M
-states, 25 minutes; each `errors_design` liveness check takes about 14
-minutes. A full run takes about 1 h 45 min on 4 cores.
+`results.txt`: 63 checks. TLC only, exhaustive within the bounds. No
+Apalache and no inductive invariants. Largest: `wake_design` safety, 32.8M
+states, 52 minutes. The `errors_design` liveness check (three properties,
+one run) takes 2 h. A full run takes about 4 h 20 min on 4 cores.
