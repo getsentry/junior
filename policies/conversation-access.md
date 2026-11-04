@@ -7,6 +7,9 @@ It applies to every surface: agent tools, Code Mode scripts, the dashboard,
 the API, MCP, memory, Briefs, search, and plugins. A new feature uses this
 rule. It does not add its own rule.
 
+Invariant: a public Conversation never reads, finds, or acts on a private
+Conversation. No row, filter, or Owner match changes this.
+
 ## Terms
 
 - **Target**: the Conversation whose data is read, found, or acted on.
@@ -32,6 +35,9 @@ Check the scenarios in this order. The first match decides.
 | 6   | Private                                 | Private | Not the Owner | Deny   |
 | 7   | Private                                 | Private | The Owner     | Allow  |
 
+- Row 1: a tree has one root, so the requester and the target have the
+  same visibility. This row never lets a public requester reach a private
+  target.
 - Row 4: anyone who can see a public Conversation can see its output, so it
   never gets private data. This is true also when the person owns the
   target.
