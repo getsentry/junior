@@ -9,7 +9,7 @@ import type { CodeBlock } from "../types";
 const SCRIPT_PATTERN =
   /^javascript:|=>|\b(?:const|let|var)\s+[\w$]+\s*=|\bfunction\b\s*[\w$]*\s*\(|^\s*(?:import\s.+\sfrom\s|export\s+(?:(?:async|class|const|default|enum|function|interface|let|type|var)\s|[{*]))/m;
 const PYTHON_PATTERN =
-  /^\s*(?:(?:async\s+)?def\s+\w+\s*\(.*\)\s*(?:->.*)?:|class\s+\w+(?:\([^)]*\))?\s*:\s*$|from\s+[\w.]+\s+import\s|import\s+[\w.]+\s*$)/m;
+  /^\s*(?:(?:async\s+)?def\s+\w+\s*\(.*\)\s*(?:->.*)?:|class\s+\w+(?:\([^)]*\))?\s*:|from\s+[\w.]+\s+import\s|import\s+[\w.]+\s*$)/m;
 const SHELL_PATTERN =
   /^\s*(?:\$\s|(?:bun|brew|cargo|cat|cd|cp|curl|docker|echo|export|gh|git|go|grep|kubectl|ls|make|mkdir|mv|npm|npx|pip|pnpm|rm|ssh|sudo|uv|wget|yarn)\s)/;
 

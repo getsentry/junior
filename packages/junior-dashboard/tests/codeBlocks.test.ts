@@ -31,6 +31,7 @@ describe("transcript blocks", () => {
     ["export var=1", "shellscript"],
     ["def handler(event):\n    return event", "python"],
     ["class Store(Base):\n    pass", "python"],
+    ["class Empty: pass", "python"],
     ["class Store { size: number }", "markdown"],
     ["pnpm install --frozen-lockfile", "shellscript"],
     ["$ git status", "shellscript"],
