@@ -266,14 +266,17 @@ version SHALL never go down.
 ### Requirement: Start A Turn In One Transaction
 
 `startTurn` SHALL check the lock and the stop time, create the turn row with
-its request ids, and commit the prompt to history in one transaction. A
-message SHALL leave the inbox only after that commit. A redelivered message
-SHALL reuse its saved copy and turn context, and SHALL NOT load new context.
+its request ids, set each record's `turnId`, and commit the prompt to
+history in one transaction. A record SHALL leave the inbox only in that
+transaction. A redelivered message SHALL reuse its saved copy and turn
+context, and SHALL NOT load new context (Decided: P23).
 
-#### Scenario: Crash between commit and inbox removal
+#### Scenario: Crash after the start commit
 
-- **WHEN** a worker dies after the commit and before the inbox removal
-- **THEN** the next worker removes the message and does not add it again.
+- **WHEN** a worker dies right after the `startTurn` commit
+- **THEN** each record has the turn as its `turnId`, so it is not in the
+  inbox, and the next worker resumes the turn and does not add the input
+  again.
 
 ### Requirement: History Only Grows
 
@@ -293,24 +296,29 @@ A worker SHALL save a checkpoint and release the lock at the next safe point
 before its 5-minute attempt limit. The turn SHALL continue on a new worker. A
 queue message SHALL carry only the conversation id.
 
-#### Scenario: Hard time limit
+#### Scenario: Attempt limit reached
 
-- **WHEN** an attempt hits the hard time limit before it saves anything new
-- **THEN** the turn pauses `hard_time_limit` again, and the attempt limit
-  stops repeats (Decided: P10, P11).
+- **WHEN** an attempt reaches its time limit
+- **THEN** the turn pauses `continue`, and a new worker resumes it from the
+  checkpoint (Decided: P10).
 
 ### Requirement: A Turn Must Make Progress
 
-A turn that pauses `soft_time_limit` at the boundary it resumed from SHALL
-end `failed: no_progress`. A `post_retry` pause SHALL be exempt until its
-delivery reaches 5 post attempts; then the turn SHALL end
-`failed: post_failed` (Decided: P11).
+A resume that saves nothing new SHALL count one error under the turn error
+limit. A new checkpoint or a delivery attempt SHALL count as progress
+(Decided: P11).
 
 #### Scenario: Same boundary twice
 
-- **WHEN** a resumed attempt pauses `soft_time_limit` at the boundary it
-  resumed from
-- **THEN** the turn ends `failed: no_progress` with a visible error message.
+- **WHEN** a resumed attempt pauses at the boundary it resumed from
+- **THEN** the turn counts one error, and at the fifth error it ends
+  `failed: error` with a visible error message.
+
+#### Scenario: Post retries are progress
+
+- **WHEN** a mid-turn post fails and its delivery is retried
+- **THEN** the failure counts one error, each retry counts only as a
+  delivery attempt (up to 5), and the retries use no more errors.
 
 ### Requirement: Per-Turn Limits
 
@@ -326,11 +334,12 @@ the first try after one wrap-up step, outside the retry limit (Decided: P12).
 
 ### Requirement: Retry Limit Per Turn
 
-A turn SHALL have one retry limit (Decided). An error after take-in SHALL
-pause the turn `error_retry`, count one error, and release the lock
-(Decided: P31). A lost-worker restart SHALL also count one error. The limit
-SHALL be 5 errors, restarts included; one failure SHALL count once
-(Decided: P4).
+A turn SHALL have one error limit of 5 (Decided: P4). An error after
+take-in SHALL pause the turn `continue` with `nextAttemptAtMs`, count one
+error, and release the lock (Decided: P31). A lost-worker restart, a resume
+that saves nothing new and a mid-turn post failure SHALL each count one
+error. One failure SHALL count once. At the limit the turn SHALL end
+`failed: error`.
 
 #### Scenario: Retries run out
 
@@ -341,8 +350,8 @@ SHALL be 5 errors, restarts included; one failure SHALL count once
 #### Scenario: An error is not a lost worker
 
 - **WHEN** an attempt fails with an error and releases the lock
-- **THEN** the next worker resumes the `error_retry` pause, counts no second
-  error, and does not use the restart.
+- **THEN** the next worker resumes the `continue` pause after
+  `nextAttemptAtMs` and counts no second error.
 
 ### Requirement: Errors Before The Input Is Saved
 
@@ -359,19 +368,18 @@ turn error limit, because no turn started (Decided: P22).
 - **THEN** nothing showed for the 4 failures, and the turn starts with
   `errors: 0`.
 
-### Requirement: Lost Worker Gets One Restart
+### Requirement: Lost Worker Restarts
 
-After a lost worker, every kind of turn SHALL get one restart from its last
-checkpoint (Decided). A turn SHALL count as lost only when it is `running`
-and the worker took an expired lock (Decided: P8). The restart SHALL count
-one error against the retry limit. `restarts` SHALL only enforce the one
-restart (Decided: P4).
+After a lost worker, every kind of turn SHALL restart from its last
+checkpoint. A turn SHALL count as lost only when it is `running` and the
+worker took an expired lock (Decided: P8). Each restart SHALL count one
+error. There SHALL be no separate restart count or cap (Decided: P4).
 
-#### Scenario: Lost twice
+#### Scenario: Lost again
 
-- **WHEN** the worker is lost again after the restart, or the restart would
-  be the fifth error
-- **THEN** the turn ends `failed: lost_worker` with a visible error message.
+- **WHEN** a worker finds a lost turn that already has 4 errors
+- **THEN** the turn ends `failed: error` with a visible error message,
+  because the restart would be the fifth error.
 
 #### Scenario: Pause save fails
 
@@ -405,7 +413,7 @@ worker SHALL check for the delivery id before it posts again, and SHALL send
 the saved text, not new text (Decided: P5). A repeat post
 SHALL be detected; it is not prevented.
 
-#### Scenario: Two outcomes, second fails
+#### Scenario: Two posts, second fails
 
 - **WHEN** the second of two posts fails
 - **THEN** the first is not posted again.
@@ -419,9 +427,8 @@ SHALL be detected; it is not prevented.
 
 ### Requirement: One Way To End A Turn
 
-Every end of a turn SHALL go through `finishTurn`: done, error, stop, no
-progress, a limit, the last retry, a lost worker with no restart left,
-dropped input, sign-in expiry or supersede. It SHALL record the outcome
+Every end of a turn SHALL go through `finishTurn`: done, the last error, a
+stop, a limit, dropped input, sign-in expiry or supersede. It SHALL record the outcome
 once, show it once, move its request records out of `open`, apply the
 no-credentials sandbox policy, and write one `turn.terminal` event. It SHALL
 be resumable.
@@ -463,22 +470,22 @@ without the agent (Decided: P30).
 
 ### Requirement: One Repair Job
 
-One repair job SHALL resend lost input, stamp records on `accepted` or
-`duplicate`, stop after 5 attempts or 24 h, and notify workers for records
-it gave up on, past wake times (from a wake-time index) and
-`running` turns whose lock expired. It SHALL write no status (Decided: P7).
+One repair job SHALL notify a worker for each conversation with no live
+lock whose `wakeAtMs` has passed, found by a SQL index on `wakeAtMs`, and
+for each `running` turn whose lock expired. It SHALL write nothing. There
+SHALL be no resend of input: the request record is the inbox entry
+(Decided: P7, P23).
 
-#### Scenario: Parent turn fails after saving the record
+#### Scenario: Notify lost after send
 
-- **WHEN** a record is saved, its input is not added, and the caller fails
-- **THEN** after 60 s the repair job sends it again with the fixed inbound
-  message id, and the target gets it once.
+- **WHEN** `send()` commits a record and its notify is lost
+- **THEN** the repair job finds the past `wakeAtMs` and notifies a worker,
+  and the record runs once.
 
-#### Scenario: Repair gives up
+#### Scenario: Caller fails after send
 
-- **WHEN** the repair job reaches its limit for a record
-- **THEN** it stamps the record and notifies a worker, which closes it with
-  a closing turn.
+- **WHEN** a caller fails after `send()` committed a record
+- **THEN** the record is already in the inbox, and nothing sends it again.
 
 ### Requirement: Usage And Route Belong To The Turn
 

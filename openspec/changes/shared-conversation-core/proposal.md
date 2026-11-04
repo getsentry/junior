@@ -38,13 +38,18 @@ requirements. `tasks.md` has the migration steps.
   turn, and the store enforces it.
 - Every save and every post carries the lock version. An old version is
   refused.
-- One `finishTurn` ends every turn: done, error, stop, no progress, a limit,
-  the last retry, a lost worker with no restart left, sign-in expiry or
-  supersede. It is the only writer of turn and request record status.
+- One `finishTurn` ends every turn: done, error, stop, a limit, the error
+  limit, sign-in expiry or supersede. It is the only writer of turn and
+  request record status. A lost worker, a resume that saves nothing new and
+  a mid-turn post failure each count as one error.
 - A request record holds who asked, with whose access, and where results go.
-  Core mints one for every input. It has no run status. `spawnAgent` and
-  `messageAgent` save one and put one message in the child's inbox. They never
+  Core mints one for every input, and it is the inbox entry: the inbox is
+  in SQL, and the new core keeps no state in Redis. It has no run status.
+  `spawnAgent` and `messageAgent` save one in the child's inbox. They never
   start a second runner.
+- Each turn makes one result. Its reply targets are a list: a Slack
+  thread, a parent agent or an Automation Destination. An empty list means
+  history only.
 - A child's turn result goes to the parent's inbox as new input, with its
   own record in the parent. The parent checks the sender from the child's
   turn row.

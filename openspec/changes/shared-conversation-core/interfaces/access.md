@@ -107,7 +107,8 @@ function applySandboxPass(
 ): Promise<SandboxPass>;
 
 /**
- * finishTurn and the sign_in, post_retry and error_retry pauses call this.
+ * finishTurn, the sign_in pause and a continue pause with nextAttemptAtMs
+ * call this (P36).
  * The VM keeps its files. Requests to declared domains get no credentials.
  */
 function applyNoCredentialsPolicy(sandbox: SandboxRef): Promise<void>;
@@ -157,9 +158,10 @@ function pauseForSignIn(
 ): Promise<TurnRecord>;
 
 /**
- * Sign-in callback. Saves turn_authorized for (turnId, provider), raises
- * inboxSeq and sets wakeAtMs to now (P32), then notifies a worker. A
- * worker that holds the lock then sees the change before it releases.
+ * Sign-in callback. One transaction under the conversation row lock: save
+ * turn_authorized for (turnId, provider) and set wakeAtMs to now (P32).
+ * Then notify a worker. A worker that holds the lock sees the change in
+ * its release, which locks the same row.
  * Writes no history. Only work() resumes the turn.
  */
 function recordSignIn(
@@ -203,8 +205,7 @@ Before: T1 for A, paused `sign_in`, link expires 12:10. B posts `b1` at
 
 1. `send(b1)` sets `wakeAtMs` to now, so a worker runs at 12:03. Input is
    from B, so it waits. Before release, `nextRunAtMs` is the link expiry,
-   so the worker sets `wakeAtMs` to 12:10 (compare-and-set on
-   `inboxSeq`).
+   so the release sets `wakeAtMs` to 12:10 under the row lock (P32).
 2. 12:10: a worker runs. `finishTurn(T1, stopped: sign_in_expired)`. The
    thread gets the short ending note.
 3. T2 starts for B with `[b1]`.
@@ -222,7 +223,7 @@ A's Linear account.
 
 Before: T1 for A, attempt 1 on W1 (v7), pass `p1` applied.
 
-1. W1 is lost. W2 takes the lock (v8) and restarts T1.
+1. W1 is lost. W2 takes the lock (v8) and resumes T1 from its checkpoint.
 2. `applySandboxPass` finds `sandboxPassId: p1` on T1 and the same actor.
    It renews `p1`'s expiry. No processes are killed.
 3. Between W1's loss and W2's restart, T1 stayed `running`. The proxy

@@ -12,7 +12,7 @@ one inbox message. They SHALL NOT start a runner.
 #### Scenario: messageAgent to an idle child
 
 - **WHEN** the parent messages an idle child
-- **THEN** the child's inbox gets one message and a worker starts its next
+- **THEN** the child's inbox gets one record and a worker starts its next
   turn
 - **AND** no second runner starts.
 
@@ -23,7 +23,7 @@ key with different input SHALL throw. A different title SHALL NOT count.
 
 #### Scenario: Retried tool call
 
-- **WHEN** the parent's turn restarts and calls `spawnAgent` again with the
+- **WHEN** the parent's turn resumes and calls `spawnAgent` again with the
   same tool call id
 - **THEN** the first child and record are returned and nothing new starts.
 
@@ -116,17 +116,19 @@ the parent SHALL tell a follow-up from their status, not from the message
 
 ### Requirement: Only Matching Results Are Accepted
 
-A parent SHALL accept a result or child message only when its own record
-in the parent matches the message, the `sentBy` turn row belongs to a child
-of the parent, and every `answers` record belongs to that child and names
-the parent as its reply target. Message fields SHALL NOT decide it
+A parent SHALL accept a result or child message only when the `sentBy` turn
+row of its record belongs to a child of the parent, and every `answers`
+record belongs to that child and has a `parent` reply target that names the
+parent. The record is the inbox entry, so no message points at a record
+(Decided: P23). Message fields SHALL NOT decide it
 (Decided: P26). Only core agent code SHALL make
 `source: "agent"` messages.
 
-#### Scenario: Forged result
+#### Scenario: Answers from another child
 
-- **WHEN** a result names a record in another conversation
-- **THEN** it is dropped with a recorded reason and starts no turn.
+- **WHEN** a result's `answers` name a record that belongs to another
+  conversation
+- **THEN** it is dropped with reason `sender_mismatch` and starts no turn.
 
 #### Scenario: Sender is not a child
 
@@ -173,7 +175,8 @@ toward it (Decided).
 
 A child message to its parent SHALL reach the parent as agent input, marked as
 not from a person, acting for the child turn's actor. It SHALL have its own
-record in the parent, minted in a fenced save of the child (Decided: P26). With
+record in the parent. A fenced save of the child records it as a delivery
+intent, and `send()` inserts it keyed by the delivery id (Decided: P26). With
 no open record on the child's turn, the send SHALL fail.
 
 #### Scenario: Message with no open record

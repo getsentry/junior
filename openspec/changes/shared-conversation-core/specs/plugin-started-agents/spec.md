@@ -4,22 +4,22 @@
 
 ### Requirement: Created Once
 
-A plugin-started agent SHALL be created once per plugin and key. A copy
-SHALL return the first one. Its request record SHALL replace the dispatch
-record. Lost input SHALL go through the one repair job, and a run the job
-gives up on SHALL end through a closing turn (Decided: P7, P30). There
-SHALL be no separate age rule.
+A plugin-started agent SHALL be created once per plugin and key: the key
+fixes the record's inbound message id, so a copy is a duplicate and returns
+the first one. Its request record SHALL replace the dispatch record. The
+record is the inbox entry, so there is no input to resend (Decided: P7,
+P23). There SHALL be no separate age rule.
 
 #### Scenario: Copy from the plugin
 
 - **WHEN** a plugin starts a run with a key that it already used
 - **THEN** it gets the first run's id and nothing new starts.
 
-#### Scenario: Input never reaches the inbox
+#### Scenario: Notify lost after the run is saved
 
-- **WHEN** a run's input is not added and the repair job reaches its limit
-- **THEN** a closing turn ends the run `failed` and the plugin sees
-  `failed`.
+- **WHEN** a run's record is saved and its notify is lost
+- **THEN** the repair job finds the past `wakeAtMs` and notifies a worker,
+  and the run starts once.
 
 ### Requirement: Own Conversation And System Actor
 
@@ -59,8 +59,8 @@ turn, and SHALL never change after it is final (Decided: P21).
 
 An Automation run SHALL be a conversation with no Slack reply target. Its
 responses SHALL go only to the web and dashboard view. The run SHALL make
-one result, which its outcomes deliver (Decided: P18). A `failed` or
-`stopped` run SHALL post nothing to the outcomes.
+one result, which each `destination` reply target gets (Decided: P18). A
+`failed` or `stopped` run SHALL post nothing to its destinations.
 
 #### Scenario: Draft stays in the web view
 
@@ -77,7 +77,7 @@ The result SHALL come from the finished run: its final response, or a
 
 - **WHEN** the run completes with a final response and no
   `finishAutomationRun` call
-- **THEN** that response is the result, and each outcome gets it.
+- **THEN** that response is the result, and each destination gets it.
 
 #### Scenario: Result from the tool call
 
@@ -100,23 +100,32 @@ The result SHALL come from the finished run: its final response, or a
 - **WHEN** the result is `misconfigured`
 - **THEN** nothing is posted and the run is `blocked`.
 
-### Requirement: Outcomes
+### Requirement: Destinations
 
-A run SHALL post its result only to its stored outcomes, in order, once
-each.
-`current_conversation` SHALL be the Automation's Location. `task_creator`
-SHALL be the creator's DM. An empty list SHALL post nothing. A failure SHALL
-NOT be posted to the outcomes.
+A run SHALL post its result only to the `destination` reply targets on its
+request record, in order, once each. Core's Automation runner SHALL copy
+one per outcome that Automation creation saved: `current_conversation` is
+the Automation's Location, and `task_creator` is the creator's DM. Only
+Automation creation SHALL set a destination. A run with no reply target
+SHALL be stored and post nothing. A failure SHALL NOT be posted to the
+destinations (Decided: P18).
 
-#### Scenario: Empty outcomes
+#### Scenario: No destinations
 
-- **WHEN** a run has an empty outcome list
+- **WHEN** a run's record has an empty `replyTo` list
 - **THEN** nothing is posted, not even a failure.
+
+#### Scenario: Plugin asks for a destination
+
+- **WHEN** a plugin calls `startPluginAgent` with a `destination` reply
+  target
+- **THEN** the call is refused, because only Automation creation sets
+  one.
 
 ### Requirement: One Run Per Scheduled Time
 
 The scheduler SHALL make at most one run per task and scheduled time. That
-pair SHALL be the request record's idempotency key.
+pair SHALL fix the request record's inbound message id.
 
 #### Scenario: Late run
 

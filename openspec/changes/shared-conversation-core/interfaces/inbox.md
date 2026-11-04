@@ -25,6 +25,12 @@ type Conversation = {
   stopAtMs?: number;
   /** Who stopped it. finishTurn reads it to choose the child result. */
   stopBy?: StopBy["kind"];
+  /**
+   * Next wake. send() sets it to now; the release sets it to nextRunAtMs.
+   * Both lock this row (P32). A SQL index on it is the wake-time index
+   * that the repair job reads (P7).
+   */
+  wakeAtMs?: number;
 };
 
 /**
@@ -46,114 +52,87 @@ type ConversationPolicy = {
 type Outcome = "completed" | "failed" | "blocked" | "stopped";
 ```
 
-## Inbox And Inbound Message
+## Request Record And Inbox
+
+One kind of record for every input (P23). The record is the inbox entry:
+the inbox is the `open` records with no `turnId`. There is no other inbox
+store.
 
 ```ts
-/** Redis. The inbox and wake time. No lock, no turn status. */
-type ConversationInbox = {
-  conversationId: ConversationId;
-  inbox: InboundMessage[];
-  /** Duplicate check. Kept 7 days. */
-  seenInboundMessageIds: string[];
-  /** Raised by every send(). The pre-release wake set compares it (P32). */
-  inboxSeq: number;
-  /**
-   * Next wake. send() sets it to now; before release, a worker sets it to
-   * nextRunAtMs with a compare-and-set on inboxSeq. Mirrored in the
-   * wake-time index, a Redis sorted set the repair job reads (P7, P32).
-   */
-  wakeAtMs?: number;
-};
-
-/** One normalized input. It grants no access by itself (rule 10). */
-type InboundMessage = {
-  /** From the source's own id, so a provider retry gets the same id. */
-  inboundMessageId: string;
-  conversationId: ConversationId;
-  /** Minted by core (P26). Its record must match this message. */
-  requestId: RequestId;
-  source: "slack" | "web" | "acp" | "cli" | "event" | "agent" | "plugin";
-  join: "now" | "wait";
-  /** When it was sent. Orders input. */
-  createdAtMs: number;
-  /** Database now() at inbox append. Drives the event window and judges
-   * stops (P44). */
-  receivedAtMs: number;
-  /** Delivery attempts before a turn takes it in. Limit 5. */
-  attemptCount: number;
-  input: { text: string; attachments?: Attachment[]; eventKind?: string };
-  traceContext?: TraceContext;
-};
-```
-
-## Request Record
-
-One kind of record for every input (P23).
-
-```ts
-/** SQL. Who asked, with whose access, and where results go. No run status. */
+/**
+ * SQL. Who asked, with whose access, where results go, and the input
+ * itself. No run status. Unique on (conversationId, inboundMessageId): the
+ * one duplicate check (P23).
+ */
 type RequestRecord = {
   /** `req_…`, minted by core. Callers never choose it (P26). */
   requestId: RequestId;
   /** The conversation that does the work. */
   conversationId: ConversationId;
-  /** The one inbox message for this record. */
+  /** From the source's own id, so a provider retry gets the same id. For
+   * input that core makes, a fixed key: parent turnId + toolCallId, or a
+   * delivery id. */
   inboundMessageId: string;
-  /** Same key with other input throws. Example: parent turnId + toolCallId. */
-  idempotencyKey: string;
   /** A person actor needs a VerifiedPersonActor, which only core person
    * ingress makes (rule 12, P39). The record write asserts it. */
   actor: Actor;
   /** Only with a system actor. Bound and signed by core (P17). */
   credentialSubject?: SignedCredentialSubject;
-  replyTo: ReplyTarget;
-  /** Automation runs only (P18). finishTurn delivers the run's one result
-   * to each, in order. */
-  outcomes?: TaskOutcome[];
+  /** Where results go. Empty: stored, history only (P18). */
+  replyTo: ReplyTarget[];
   /** The record whose turn created this one. Result turns reply there (P6). */
   onBehalfOf?: RequestId;
   /** Result and parent-message records only (P26). The asked records. */
   answers?: RequestId[];
-  /** Result and parent-message records only. Read from the child's own
-   * save, never from a message. The parent checks this turn row. */
+  /** Result and parent-message records only. Core reads it from the
+   * child's own save, never from input. The parent checks this turn row. */
   sentBy?: { conversationId: ConversationId; turnId: TurnId };
   /** Child agents: what the parent asked for. The agent type and route are
    * set once at spawn, so they live on the child's ConversationPolicy. */
   task?: { title: string; text: string };
+  source: "slack" | "web" | "acp" | "cli" | "event" | "agent" | "plugin";
+  join: "now" | "wait";
+  /** When it was sent. Orders input. */
+  createdAtMs: number;
+  /** Database now() of the insert; for a result or parent message, of the
+   * child's save that recorded it (P26). Drives the event window, judges
+   * stops and orders results against a stop (P34, P35, P44). */
+  receivedAtMs: number;
+  /** Delivery attempts before a turn takes it in. Limit 5 (P22). */
+  attemptCount: number;
+  input: { text: string; attachments?: Attachment[]; eventKind?: string };
+  traceContext?: TraceContext;
+  /** The turn that took it in, set in that turn's save (rule 6). None: it
+   * is in the inbox. finishTurn(stopped) clears it for input that goes
+   * back (P34). */
+  turnId?: TurnId;
   /** Only finishTurn changes it, with `WHERE status = 'open'` (rule 7). */
   status: "open" | "answered" | "stopped";
   outcome?: Outcome;
-  /** The repair job writes only these stamps (P7). */
-  repair: {
-    inputAppendedAtMs?: number;
-    attempts: number;
-    gaveUpAtMs?: number;
-  };
-  /** Database now() of the transaction that mints it (P44). */
-  createdAtMs: number;
 };
 
 /** Where a turn's responses go. Never inferred. The kind fixes what it
  * gets (edges.md, P18). */
 type ReplyTarget =
-  | { kind: "location" } // the conversation's Slack thread
-  | { kind: "stored" } // web, ACP, CLI, Automation runs: history only
+  | { kind: "location" } // the conversation's Slack thread: each response
   | {
-      kind: "parent";
+      kind: "parent"; // the one result
       parentConversationId: ConversationId;
       toolCallId: string;
-    };
+    }
+  | { kind: "destination"; destination: Destination }; // the one result; only Automation creation sets it
 ```
 
 ## Functions
 
 ```ts
 /**
- * Core only; plugins cannot import it (P39). Add one message to a
- * conversation's inbox, raise inboxSeq, set wakeAtMs to now, and notify a
- * worker. Never runs work. The same inboundMessageId is accepted once.
+ * Core only; plugins cannot import it (P39). One transaction: lock the
+ * conversation row FOR UPDATE, insert the record, set wakeAtMs to now.
+ * Then notify a worker. Never runs work. The unique key makes a repeat a
+ * duplicate (P23, P32).
  */
-function send(message: InboundMessage): Promise<SendResult>;
+function send(record: RequestRecord): Promise<SendResult>;
 
 /** send() never refuses. Busy (ACP) and the automated-turn limit are
  * checked before createRequest saves anything. */
@@ -161,42 +140,38 @@ type SendResult = { status: "accepted" } | { status: "duplicate" }; // a waiting
 
 /**
  * Core only; plugins cannot import it (P39). Mint the request id, bind the
- * unbound subject to it (bindSubject, P17), save the record, then send its
- * message. Safe to retry with the same idempotency key. Stamps
- * inputAppendedAtMs on accepted or duplicate. Throws, and saves nothing, for
- * an event or a top-level agent message when the conversation is at the
- * automated-turn limit, so messageAgent gets a sync error.
+ * unbound subject to it (bindSubject, P17), then send() the record. Safe to
+ * retry: the same inboundMessageId is a duplicate. Throws, and saves
+ * nothing, for an event or a top-level agent message when the conversation
+ * is at the automated-turn limit, so messageAgent gets a sync error.
  */
 function createRequest(
   record: Omit<
     RequestRecord,
-    "requestId" | "status" | "repair" | "createdAtMs" | "credentialSubject"
+    "requestId" | "status" | "turnId" | "receivedAtMs" | "credentialSubject"
   > & {
     subject?: {
       unbound: UnboundCredentialSubject;
       scope: SignedCredentialSubject["scope"];
     };
   },
-  input: Omit<InboundMessage, "requestId">,
 ): Promise<{ record: RequestRecord; send: SendResult }>;
 
 /**
- * Pure. Pick the next turn's input: one contiguous run with one actor, one
- * exact signed subject and one source. Join now before wait, people before
- * events, then createdAtMs, receivedAtMs, id. Events wait for their window.
- * Returns the messages to drop: no record, a record whose conversationId or
- * inboundMessageId does not match (`record_mismatch`), or a result whose
+ * Pure. Pick the next turn's input from the inbox: one contiguous run with
+ * one actor, one exact signed subject and one source. Join now before
+ * wait, people before events, then createdAtMs, receivedAtMs, id. Events
+ * wait for their window. Returns the records to drop: a result whose
  * sentBy turn row is not in a child of this conversation or whose answers
  * do not name this parent (`sender_mismatch`) (P26).
  */
 function selectTurnInput(
-  inbox: ConversationInbox,
-  records: ReadonlyMap<RequestId, RequestRecord>,
+  inbox: RequestRecord[],
   senders: ReadonlyMap<TurnId, TurnRecord>,
   nowMs: number,
 ): {
-  take: InboundMessage[];
-  drop: { message: InboundMessage; reason: string }[];
+  take: RequestRecord[];
+  drop: { record: RequestRecord; reason: string }[];
 };
 
 /**
@@ -206,7 +181,6 @@ function selectTurnInput(
  */
 function canJoin(
   turn: TurnRecord,
-  message: InboundMessage,
   record: RequestRecord,
   policy: ConversationPolicy,
 ): boolean;
@@ -215,15 +189,15 @@ function canJoin(
 `canJoin` sketch:
 
 ```ts
-function canJoin(turn, message, record, policy) {
-  if (message.source === "event" || message.source === "plugin") return false;
-  if (isChildResult(message)) return false; // results never join (today's rule)
+function canJoin(turn, record, policy) {
+  if (record.source === "event" || record.source === "plugin") return false;
+  if (isChildResult(record)) return false; // results never join (today's rule)
   if (!sameActor(record.actor, turn.actor)) return false;
   // Exact signed-subject equality, scope included (P20).
   if (!sameSignedSubject(record.credentialSubject, turn.credentialSubject))
     return false;
-  if (message.source !== turn.source) return false;
-  return message.join === "now" || policy.joinRule === "now_or_wait";
+  if (record.source !== turn.source) return false;
+  return record.join === "now" || policy.joinRule === "now_or_wait";
 }
 ```
 
@@ -231,16 +205,16 @@ function canJoin(turn, message, record, policy) {
 
 ### E1. Duplicate Slack delivery
 
-Before: inbox `[]`, seen `[]`.
+Before: inbox `[]`.
 
-1. Slack ingress mints `req_1` (A, `location`), then `send(m1)` with id
-   `slack:T:C:111`. Result `accepted`. Inbox `[m1]`.
-2. Slack retries with the same id and a file. Ingress finds `req_1` by its
-   idempotency key (the message id) and does not mint again. `send(m1')`
-   returns `duplicate`. The waiting entry gets the file and keeps its
-   timestamps.
+1. Slack ingress calls `createRequest` with id `slack:T:C:111` (A,
+   `[location]`). `send()` inserts `req_1`. Result `accepted`. Inbox
+   `[req_1]`.
+2. Slack retries with the same id and a file. The insert hits the unique
+   key, so `send()` returns `duplicate`. The waiting record gets the file
+   and keeps its timestamps.
 
-After: inbox `[m1 + file]`. One record. One worker notification.
+After: inbox `[req_1 + file]`. One record. One worker notification.
 
 ### E2. Batch split by actor
 
@@ -274,11 +248,15 @@ Before: T1 running for A. A posts a plain thread reply (`join: wait`).
 1. `canJoin(T1, reply)` is false: Slack's `joinRule` is `now`.
 2. The reply waits. When T1 ends, T2 starts with it (Decided).
 
-### E5. A message that points at another record (P26, Decided)
+### E5. A result from a conversation that is not a child (P26, Decided)
 
-Before: conversation X's inbox gets `m9` with `requestId: req_7`. `req_7`
-belongs to conversation Y and has A's delegated subject.
+Before: conversation X's inbox has `req_9`, a result record whose `sentBy`
+names turn T7 of conversation Y. Y is not a child of X.
 
-1. `selectTurnInput` loads `req_7`. Its `conversationId` is Y, not X.
-2. `m9` goes in `drop` with reason `record_mismatch`. No turn starts.
-3. The worker records the drop. X never runs with A's access.
+1. `selectTurnInput` loads T7. Its conversation is not a child of X.
+2. `req_9` goes in `drop` with reason `sender_mismatch`. No turn starts.
+3. The worker closes it through a closing turn. X never takes in Y's
+   result.
+
+A message cannot point at another conversation's record: the record is the
+inbox entry (P23).

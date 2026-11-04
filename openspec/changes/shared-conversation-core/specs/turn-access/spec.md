@@ -133,8 +133,8 @@ actor with no user credentials, as today.
 
 A turn SHALL have at most one pass, saved on its turn row (Decided: ends with
 its turn). Each attempt SHALL renew the same pass, with an expiry capped near
-the attempt limit. `finishTurn` and the `sign_in`, `post_retry` and
-`error_retry` pauses SHALL apply a no-credentials policy (Decided: P36).
+the attempt limit. `finishTurn`, the `sign_in` pause and a `continue` pause
+with `nextAttemptAtMs` SHALL apply a no-credentials policy (Decided: P36).
 Undeclared hosts SHALL stay open with no credentials (Decided).
 
 #### Scenario: Background process after the turn

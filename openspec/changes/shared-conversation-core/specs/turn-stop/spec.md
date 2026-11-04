@@ -51,9 +51,9 @@ than the stop time. A new turn after the stop SHALL run normally.
 
 Every fenced save and every delivery intent save of a turn under the stop
 SHALL refuse, except the saves of `finishTurn(stopped)`. The stop SHALL be
-compared only with the receive stamp of input, database `now()` at inbox
-append, or of its own transaction for core-minted input (Decided: P34,
-P44).
+compared only with the receive stamp of input, database `now()` of the
+record insert, or of the child's save that recorded it for a result or
+parent message (Decided: P34, P44).
 
 #### Scenario: Slack message received late
 
@@ -118,12 +118,12 @@ conversation's `finishTurn` and closing turns SHALL mark its records
 #### Scenario: Late result after a tree stop
 
 - **WHEN** a child turn ends after a tree stop
-- **THEN** its asked record is `stopped`, no result record is minted, and
+- **THEN** its asked record is `stopped`, no result record is sent, and
   no turn starts (Decided: P35).
 
 #### Scenario: Result in flight at the stop
 
-- **WHEN** a result minted before a tree stop reaches the parent after it
+- **WHEN** a result recorded before a tree stop reaches the parent after it
 - **THEN** a closing turn records it and no turn starts.
 
 ### Requirement: Stopping A Child

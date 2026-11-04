@@ -62,9 +62,9 @@ From the #2567 decision comments and the planning thread:
   the turn's own person waits. Events never join.
 - A message to a busy child joins its running turn (join now or wait, same
   actor and access). One result covers both requests.
-- After a lost worker, every kind of turn gets one restart from its last
-  checkpoint, and the restart counts as an error (P4). One retry limit per
-  turn. Message delivery attempts stay separate.
+- Plain errors (P4): a lost-worker restart, a resume that saves nothing
+  new and a mid-turn post failure each count as one error. One error limit
+  of 5 per turn. Message delivery attempts stay a separate count.
 - Every save and every post checks the lock version. A worker that lost its
   lock stops at its next check-in, save or post.
 - An error after the input is saved retries from the last save. On the last
@@ -142,11 +142,10 @@ MB --> W["One worker: work()"]
 W --> T["Turn row<br/>(only turn status)"]
 T --> AL["Agent loop"]
 T --> F["finishTurn<br/>(only status writer)"]
-F --> OUT{"replyTo"}
+F --> OUT{"replyTo (empty: saved only)"}
 OUT --> SL["Slack thread"]
-OUT --> ST["Saved only"]
 OUT --> PI["Parent inbox"]
-OUT --> AR["Automation outcomes"]
+OUT --> AR["Automation Destination"]
 PI --> MB
 ```
 
@@ -155,9 +154,9 @@ Turn states:
 ```mermaid
 stateDiagram-v2
 [*] --> running: startTurn
-running --> paused: time limit, post_retry,<br/>error_retry, sign_in
+running --> paused: continue, sign_in
 paused --> running: resume
-running --> running: restart after lost worker
+running --> running: restart after lost worker (one error)
 running --> finishing
 paused --> finishing: stop, supersede,<br/>sign-in expiry
 finishing --> completed
@@ -176,8 +175,10 @@ Each fact has one owner and one store.
 | -------------------------------------------------- | -------------- | -------------------------- |
 | Worker lock expiry and lock version                | worker lock    | SQL conversation row (P5)  |
 | Stop time                                          | stop module    | SQL conversation row (P34) |
-| Inbox, duplicate check, `inboxSeq`, wake time      | inbox module   | Redis conversation record  |
 | Request records                                    | request module | SQL                        |
+| Inbox: open request records that no turn took      | inbox module   | SQL request records (P23)  |
+| Duplicate check                                    | inbox module   | SQL unique constraint      |
+| Wake time                                          | inbox module   | SQL conversation row (P32) |
 | Turn status, requests taken in, totals, deliveries | turn module    | SQL turn row (P2)          |
 | Agent history and `turn_*` events                  | history module | SQL conversation events    |
 | Sandbox ref                                        | sandbox module | SQL conversation row       |
@@ -186,8 +187,12 @@ Each fact has one owner and one store.
 
 Deleted copies: Agent invocation run statuses and parent mailbox statuses,
 dispatch progress statuses, Slack thread `activeTurnId` and `pendingAuth`,
-the Redis turn cursor, the Redis worker lock, and the copied SQL
-`execution_status` (P3).
+the Redis turn cursor, the Redis worker lock, the Redis inbox, and the
+copied SQL `execution_status` (P3).
+
+The new core keeps no state in Redis. Only the cutover shim uses Redis,
+for today's state: it reads and moves that state, pins today's lease and
+makes the shared ingress claim (P45). Steps 16 and 17 delete the shim.
 
 ### Rules The Model Holds
 
@@ -204,20 +209,21 @@ the Redis turn cursor, the Redis worker lock, and the copied SQL
    same signed subject and the same source (Decided, P20).
 5. Another person's message never joins a running turn. Events never join
    (Decided). Results never join (today's rule).
-6. A message is taken into a turn only after the turn row lists its request
-   id. Then the inbox entry is removed. Never the other order.
+6. A request record leaves the inbox only in the transaction that lists it
+   on a turn row: the record's `turnId` and the turn's `requestIds` are
+   written together.
 7. Only `finishTurn` writes a finished turn status, and only `finishTurn`
    moves a request record out of `open`. Both writes are conditional: the
    turn row must still be open, and the record must still have
    `status = 'open'` (P30).
 8. Only `credentialsForTurn` builds credentials.
 9. A request record has no run status: `open`, `answered` or `stopped`.
-10. Inbox entries hold no access. Core mints request ids. Access lives only
-    on a request record in the receiving conversation whose
-    `conversationId` and `inboundMessageId` match the message. A result or
-    a message to the parent has its own record there, minted in the child's
-    transaction. Its sender comes from the child's turn row, never from
-    message fields (P26).
+10. Core mints request ids. Access lives only on a request record in the
+    receiving conversation, and that record is the inbox entry, so no
+    message points at a record. A result or a message to the parent has
+    its own record there, which core inserts after the child's save. Its
+    sender comes from the child's turn row, never from message fields
+    (P26).
 11. What differs by kind is stored data. The core takes no per-kind
     callbacks and has no per-kind branch.
 12. Only core person ingress (Slack, web, ACP, CLI) makes a
@@ -238,36 +244,38 @@ conversation's worker lock:
 1. Worker lock: one compare-and-set `UPDATE` on its SQL conversation row.
    It returns the new lock version.
 2. Inside one save transaction: the conversation row (`FOR SHARE`, to check
-   the version and a live expiry), then the turn row, then conversation
-   events.
-3. Redis inbox writes happen only after the SQL transaction commits. They
-   are never inside one.
+   the version and a live expiry), then the turn row, then the request
+   records it takes in, then conversation events.
+3. `send()` and the lock release each lock the conversation row
+   (`FOR UPDATE`) in their own transaction (P32).
 
-Writes to another conversation are `send()` calls, which touch only the
-target's Redis record, and the insert of a result record in the child's save
-transaction, which takes no lock on the parent's row. `askChild` takes the
-parent conversation row `FOR UPDATE` for the caps and the stop check,
-inserts the child conversation and request record, commits, then calls
-`send()`. This removes the per-turn Redis mutation lock
-(`task-execution/turn-cursor.ts`, `withTurnCursorMutation`).
+A transaction holds at most one existing conversation row. A write to
+another conversation is a `send()` after the caller's commit. `askChild`
+takes the parent conversation row `FOR UPDATE` for the caps and the stop
+check, and in the same transaction inserts a new child conversation and its
+request record, a new row that no one else can lock. A message to an
+existing child is a `send()` after that commit. This removes the per-turn
+Redis mutation lock (`task-execution/turn-cursor.ts`,
+`withTurnCursorMutation`).
 
 ### What Differs By Kind
 
 Stored once on the conversation (`ConversationPolicy`) and on each request
-record (`replyTo`). There is no `kind` field: the rows below differ only in
-these values. The only per-kind code is at the edges: ingress parsing, and
-one delivery adapter per `replyTo.kind`, plus one outcome adapter for
-Automation outcomes (`interfaces/edges.md`).
+record (`replyTo`, a list of reply targets). There is no `kind` field: the
+rows below differ only in these values. The only per-kind code is at the
+edges: ingress parsing, and one delivery adapter per reply target kind
+(`interfaces/edges.md`). An empty `replyTo` means stored: history is the
+delivery.
 
-| Kind           | Actor from                     | `canAskUser` | `joinRule`    | Default `replyTo`         |
-| -------------- | ------------------------------ | ------------ | ------------- | ------------------------- |
-| Slack          | verified message author        | yes          | `now`         | `location`                |
-| Web            | session user                   | yes          | `now`         | `stored`                  |
-| ACP            | session user                   | yes          | `now`         | `stored`                  |
-| CLI            | local CLI user                 | yes          | `now`         | `stored`                  |
-| Child agent    | request record from the parent | no           | `now_or_wait` | `parent`                  |
-| Plugin-started | request record, system actor   | no           | `now`         | `location`                |
-| Automation run | request record, system actor   | no           | `now`         | `stored`, plus `outcomes` |
+| Kind           | Actor from                     | `canAskUser` | `joinRule`    | Default `replyTo`                   |
+| -------------- | ------------------------------ | ------------ | ------------- | ----------------------------------- |
+| Slack          | verified message author        | yes          | `now`         | `[location]`                        |
+| Web            | session user                   | yes          | `now`         | `[]`                                |
+| ACP            | session user                   | yes          | `now`         | `[]`                                |
+| CLI            | local CLI user                 | yes          | `now`         | `[]`                                |
+| Child agent    | request record from the parent | no           | `now_or_wait` | `[parent]`                          |
+| Plugin-started | request record, system actor   | no           | `now`         | `[location]`                        |
+| Automation run | request record, system actor   | no           | `now`         | one `destination` per outcome (P18) |
 
 `send()` never refuses input. ACP ingress refuses a prompt while the
 conversation has an open turn, before it calls `createRequest`.
@@ -329,18 +337,26 @@ numbers say where they went.
 - **Alternatives:** keep one column with one writer.
 - **Evidence:** `conversations/sql/store.ts` (`recordExecution`).
 
-### P4. Restart and the retry limit (Q3 open part) — Decided
+### P4. Plain errors (Q3 open part) — Decided
 
-- **Decided:** one restart after a lost worker, and the restart counts as
-  an error. One retry limit per turn: 5 errors, restarts included. Message
-  delivery attempts stay separate. Source: the planning thread.
-- **Detail:** one failure counts once. `errors` counts every failure of the
-  turn: an error after take-in (P31) and a lost-worker restart. `restarts`
-  counts restarts only, and is at most 1. The turn fails when `errors`
-  reaches 5: `failed: error`, or `failed: lost_worker` when the restart
-  would be the fifth error. A second lost worker ends it
-  `failed: lost_worker`.
-- **What stops a double count:** P31. An error saves `paused: error_retry`
+- **Decided:** plain errors. Source: David's answer on the reopen card
+  (review item 0d751ba0), which replaces the one-restart rule from the
+  planning thread.
+- **Detail:** one failure counts once, as one error under the one limit
+  of 5. These count: an error after take-in (P31), a lost-worker restart
+  (P8), a resume that saves nothing new (P11) and a mid-turn post failure.
+  A lost worker restarts from its checkpoint as often as the limit allows.
+  At 5, `finishTurn(failed: error)`. There is no restart count, no restart
+  cap, and no `lost_worker`, `no_progress` or `post_failed` end.
+- **Delivery attempts:** a delivery attempt counts as progress, so post
+  retries do not use up the error limit. A mid-turn post failure counts
+  one error, and its retries count only as attempts on that delivery (5,
+  as in P33). Message delivery attempts (P22) stay a separate count.
+- **Precondition:** the #2298 root-cause fix (`tasks.md` 8.0) lands before
+  this rule ships. Until then the restart cap is the only limit on a
+  poison turn that stalls one instance after another: with plain errors,
+  such a turn stalls up to 5 instances, not 2.
+- **What stops a double count:** P31. An error saves `paused: continue`
   with `errors + 1`, so the next worker resumes a `paused` turn, and case 3
   of `work()` does not fire. A turn is lost only when it is still `running`
   under an expired lock (P8), so no error was saved for that failure.
@@ -348,8 +364,8 @@ numbers say where they went.
   it makes the next worker restart it, and one failure uses two errors
   (`errors_noPause oneChargePerAttempt`, 8 steps).
 - **Checks:** `errors_design safety` (`errorBudget`, `oneChargePerAttempt`)
-  holds; `errors_design ex_restartUsesLastError` reaches the
-  `failed: lost_worker` end at 4 errors.
+  holds. The model still has the restart cap and `failed: lost_worker`
+  (`ex_restartUsesLastError`), so it is stale for this rule (G.1f).
 - **Evidence:** `task-execution/paused-turn.ts` (`MAX_LOST_WORKER_RESUMES`);
   `task-execution/state.ts` (`CONVERSATION_WORK_MAX_RETRIES = 5`).
 
@@ -421,31 +437,29 @@ numbers say where they went.
 - **Detail:** `finishTurn` marks a record `answered` once its deliveries
   are `sent` or `failed` (P33). A later turn's output for an answered record
   goes as a follow-up. No follow-up for a `stopped` record. A turn started by
-  a result for record `r` replies to the reply target of `r.onBehalfOf`.
+  a result for record `r` replies to the reply targets of `r.onBehalfOf`.
 - **Why:** keeps "one input, one output" and removes `replaced`.
 - **Evidence:** `agent-invocations/store.ts` (`hasOpenChildWork`,
   `completeAgentInvocation`).
 
 ### P7. One repair job (gap 5) — Decided
 
-- **Decided:** the timer job runs one repair pass with three parts:
-  1. An `open` record with no `inputAppendedAtMs`, older than 60 s: call
-     `send()` again with the fixed inbound message id. On `accepted` or
-     `duplicate`, stamp `inputAppendedAtMs`. After 5 attempts or 24 h,
-     stamp `gaveUpAtMs`.
-  2. Notify a worker for: a conversation with a given-up record;
-     a conversation with no live lock whose `wakeAtMs` has passed; a
-     `running` turn whose lock expired, on the first pass after expiry.
-     A Redis sorted set (member: conversation id, score: `wakeAtMs`) is
-     the wake-time index. `send()`, `recordSignIn` and the pre-release set
-     write it. An index on `lock_expires_at` for conversations with an open
-     turn finds expired locks. With P32's delayed notify, the job is a
-     backstop for wakes: L3 holds without it. A `running` turn whose worker
-     died still waits for this job.
-  3. Nothing else. The worker, not the job, closes records through a
-     closing turn (P30), so `finishTurn` stays the only status writer.
-- **Why:** a record and its inbox entry are in two stores. Lost wakes leave
-  open turns idle (P32). One job covers both.
+- **Decided:** the timer job runs one repair pass. It writes nothing. It
+  notifies a worker for:
+  1. a conversation with no live lock whose `wakeAtMs` has passed. A SQL
+     index on the conversation row's `wakeAtMs` is the wake-time index;
+  2. a `running` turn whose lock expired, on the first pass after expiry.
+     An index on `lock_expires_at` for conversations with an open turn
+     finds them.
+- With P32's delayed notify, the job is a backstop for wakes: L3 holds
+  without it. A `running` turn whose worker died still waits for this job.
+  The worker, not the job, closes records through a closing turn (P30), so
+  `finishTurn` stays the only status writer.
+- **Reopened** (P23; source: David's answer on the reopen card, review
+  item 0d751ba0): the earlier part 1, which sent a record's message to the
+  Redis inbox again, goes. The record is the inbox entry, so there is no
+  second write to repeat.
+- **Why:** lost wakes leave open turns idle (P32).
 - **Deleted:** the Agent invocation result sweep, the dispatch outbox sweep
   with its 10,000-id list (bug 9), and the plugin-started 24 h failure rule.
 - **Evidence:** `agent-dispatch/heartbeat.ts`; `agent-dispatch/store.ts`.
@@ -455,37 +469,48 @@ numbers say where they went.
 - **Decided:** `work()` treats an open turn as lost only when it is
   `running` and the worker just took an expired lock. Every clean end of an
   attempt leaves the turn `paused` (P10) or finished, never `running`. A
-  lost turn with `restarts: 0` restarts from its checkpoint and counts one
-  error (P4); otherwise `finishTurn(failed: lost_worker)`. A worker saves
+  lost turn restarts from its checkpoint and counts one error (P4); at the
+  error limit, `finishTurn(failed: error)`. A worker saves
   its pause before it releases. If that save fails, it does not release:
   the lock expires, and the next worker treats the turn as lost.
 - **Why:** #2298 made a live turn whose lock expired wait for one restart.
   With fenced saves, the old worker cannot save or post after the takeover.
+- **Root cause, open on `main`:** #2298 lists two follow-ups that are not
+  done at `38c8693`. `webFetch` still converts HTML to markdown with
+  `NodeHtmlMarkdown` on the main thread (`chat/tools/web/fetch-content.ts`),
+  and nothing warns on event-loop delay: #2589 records only
+  `app.ai.event_loop.utilization` on AI Gateway spans
+  (`chat/pi/traced-stream.ts`). Task 8.0 does both (P4, Precondition).
 - **Evidence:** `task-execution/paused-turn.ts` (`pauseLostWorkerTurn`).
 
 ### P9. Inbound message fields — Decided
 
-- **Decided:** `source`, `join` (`now` or `wait`), `createdAtMs`,
-  `receivedAtMs`, `attemptCount`, `traceContext`, event kind and
-  `requestId`. "Delivery" means only sending responses.
+- **Decided:** `source`, `join` (`now` or `wait`), `createdAtMs` (when it
+  was sent), `receivedAtMs`, `attemptCount`, `traceContext` and event kind.
+  They are fields of the request record, which is the inbox entry (P23).
+  "Delivery" means only sending responses.
 - **Evidence:** `task-execution/state.ts` (`compareMessages`);
   `task-execution/mailbox-turn.ts` (event wait).
 
 ### P10. Pause reasons — Decided
 
-- **Decided:** five reasons. `soft_time_limit` (was `yield`),
-  `hard_time_limit` (was `timeout`), `post_retry` (a post failed and can be
-  tried again), `error_retry` (P31) and `sign_in` (was `auth`). A lost
-  worker is not a pause.
-- **Why:** `retry` means two things today, with one limit.
+- **Decided:** two reasons. Source: David's answer on the reopen card
+  (review item 0d751ba0).
+  - `continue`: the turn goes on in a later attempt. It replaces `yield`,
+    `timeout`, the earlier `post_retry` and `error_retry`, and the soft and
+    hard time limits. After an error or a failed post it has
+    `nextAttemptAtMs` for backoff.
+  - `sign_in` (was `auth`).
+  - A lost worker is not a pause.
+- **Why:** `retry` means two things today, with one limit. Plain errors
+  (P4) need no reason to tell the limits apart.
 - **Evidence:** `task-execution/turn-cursor.ts` (`TurnPauseReason`).
 
 ### P11. The no-progress rule — Decided
 
-- **Decided:** a `soft_time_limit` pause at the boundary the turn resumed
-  from ends the turn `failed: no_progress`. `hard_time_limit` may repeat;
-  the attempt limit stops it. `post_retry` is exempt until its own limit
-  (5 post attempts per delivery), then the turn fails.
+- **Decided:** a resume that saves nothing new counts as one error (P4).
+  A new checkpoint or a delivery attempt is progress. Source: David's
+  answer on the reopen card (review item 0d751ba0).
 - **Evidence:** `agent/resume.ts` ("Turn made no progress").
 
 ### P12. Per-turn limits — Decided
@@ -526,7 +551,7 @@ numbers say where they went.
   record it answers. A grandchild's record stores the child turn's actor,
   which came from the record that turn answered. In a result turn, messages
   from other actors reach the model marked as outside text, from before or
-  after the record's `createdAtMs`. They do not count as approval. The
+  after the record's `receivedAtMs`. They do not count as approval. The
   `guardian` evals cover it (P41).
 - **Why:** deletes "copy the latest request" (bug 12).
 - **Evidence:** `agent-invocations/store.ts`
@@ -558,11 +583,11 @@ numbers say where they went.
 
 ### P18. Automation results (Q17) — Decided
 
-- **Decided:** an Automation run is a conversation with no Slack reply
-  target (`replyTo: stored`). Its responses go only to the web and dashboard
-  view, like any conversation without a Slack Location. The run also makes
-  one result, and the Automation's outcomes deliver it. Source: the
-  planning thread.
+- **Decided:** an Automation run is a conversation with no `location`
+  reply target. Its responses go only to the web and dashboard view, like
+  any conversation without a Slack Location. The run also makes one result,
+  and each `destination` in its `replyTo` gets it. Source: the planning
+  thread.
 - **Today** (`main` at `742ce0a`): a run is a dispatch record with
   `declaresResult` and up to 5 stored outcomes (`agent-dispatch/store.ts`).
   Each outcome is `send_message` to a Slack Destination:
@@ -589,18 +614,30 @@ numbers say where they went.
     no response is `no_action`. A `finishAutomationRun` call, when made,
     sets the result instead, so the source can vary. The missing-result
     reminder goes.
-  - `send_message`: `finishTurn` delivers the message to each outcome, in
-    order, with its own delivery id (P33). The run ends `completed`.
+  - `send_message`: `finishTurn` delivers the message to each
+    `destination`, in order, with its own delivery id (P33). The run ends
+    `completed`.
   - `no_action`: nothing is posted. The reason is saved on the run, which
     ends `completed`.
   - `misconfigured`: nothing is posted. The run ends `blocked` with the
     reason, and the Automation is blocked (plugin-started-agents › A Blocked
     Run Blocks Its Automation). A turn that ends `blocked` for a missing
     credential maps to the same.
-  - A `failed` or `stopped` run posts nothing to the outcomes.
-  - The request record carries `outcomes`. The `each | result | declared`
-    field on the reply target goes: each reply target kind already fixes
-    what it gets (`interfaces/edges.md`).
+  - A `failed` or `stopped` run posts nothing to its destinations.
+- **One result shape** (reopened; source: David's answer on the reopen
+  card, review item 0d751ba0):
+  - Every turn makes one `result` body. `replyTo` is a list of reply
+    targets: `location`, `parent` or `destination`. An empty list means
+    stored: history is the delivery.
+  - A `location` gets each response. A `parent` or a `destination` gets
+    only the one result.
+  - Only Automation creation sets a `destination`: the run's record copies
+    one per outcome that the Automation saved, in order. No ingress, tool
+    or plugin can set one.
+  - There is no `outcomes` field, no outcome target or outcome adapter, no
+    `stored` adapter and no `child_result` case in `shouldPost`
+    (`interfaces/edges.md`).
+  - `finishAutomationRun` stays (#2052).
   - Automation run rows (`db/schema/automation-runs.ts`) keep the claim
     (`scheduledForMs`, `attempt`, `claimedAtMs`), `automationVersion`, and
     a stored status only while the run has no conversation: `pending`
@@ -662,12 +699,32 @@ numbers say where they went.
 
 ### P23. One kind of request record — Decided
 
-- **Decided:** core mints a stored request record for every input, before
-  the inbox write. There is no inline form.
-- **Why:** one shape for the match check (P26), one place for access, one
-  repair path. The cost is one SQL insert per input at ingress.
+- **Decided:** core mints a stored request record for every input. There
+  is no inline form.
+- **Inbox in SQL, one store** (reopened; source: David's answer on the
+  reopen card, review item 0d751ba0). David: "the inbox right now should
+  be in sql or redis right? we prob dont need both?"
+  - The request record is the inbox entry. The inbox is the `open` records
+    that no turn has taken (`turnId` is null).
+  - A unique constraint on `(conversationId, inboundMessageId)` is the
+    duplicate check. There is no second dedupe key and no seen-id list.
+  - The record has one receive stamp, `receivedAtMs`: the database `now()`
+    of its insert. A result or parent message takes the stamp of the
+    child's save that recorded its delivery intent, so a later `send()`
+    does not make it newer than a stop (P26, P35, P44).
+  - The message carries no request id and the record points at no message,
+    so there is no cross-link to check (P26).
+- **Why:** one shape and one store for the inbox, access and the duplicate
+  check, and no repair path between two stores (P7).
+- **Cost:** more SQL writes per input. The writes that went to Redis now
+  go to SQL: each `send()` also updates the conversation row (`wakeAtMs`)
+  under a row lock, each take-in updates its records, and each release
+  reads the open records under the same row lock. The P43 metric counts
+  them (`tasks.md` 3.5).
 - **Alternatives:** an inline request for person input (fewer writes, two
-  shapes, and the inline form would need its own provenance rule).
+  shapes, and the inline form would need its own provenance rule). A Redis
+  inbox beside the SQL record (the earlier design: cross-links, two dedupe
+  keys and a repair part to keep them in step).
 
 ### P24. Order after a supersede — Decided
 
@@ -686,20 +743,25 @@ credentials outside a turn. A title lookup runs as a system actor
 - **Decided:**
   - Core mints request ids in their own namespace (`req_…`). No caller
     chooses one.
-  - The record stores `conversationId` and `inboundMessageId`.
-    `selectTurnInput` drops a message whose record is missing or does not
-    match both, with a recorded reason. It never fills in an actor.
+  - The record is the inbox entry (P23), so no message can point at
+    another conversation's record. `selectTurnInput` never fills in an
+    actor.
   - Only core person ingress makes person-actor records. Only `finishTurn`,
     `askChild` and `messageParent` make `source: "agent"` messages.
   - A child result and a `messageParent` call each get their own record in
-    the parent conversation. The child's `finishTurn` (or the fenced save
-    of the `messageParent` call) mints it in the child's transaction, with
-    `answers` naming the asked records and `sentBy` naming the child's
-    turn. `send()` follows the commit; the repair job resends a lost one.
-  - The parent accepts it only when the record matches the message (rule
-    10), the `sentBy` turn row belongs to a child of the parent, and every
-    `answers` record has that child as `conversationId` and the parent as
-    `replyTo.parentConversationId`. Message fields are never trusted.
+    the parent conversation, with `answers` naming the asked records and
+    `sentBy` naming the child's turn. The child's `finishTurn` (or the
+    fenced save of the `messageParent` call) records it as a delivery
+    intent. `send()`
+    inserts it in the parent after that commit, with the delivery id as its
+    `inboundMessageId`, so a resend after a crash is a duplicate. The
+    child's next worker resends a lost one, as for any intended delivery
+    (P5). Its `receivedAtMs` is the database stamp of the child's save,
+    not of the insert (P44).
+  - The parent accepts it only when the `sentBy` turn row belongs to a
+    child of the parent, and every
+    `answers` record has that child as `conversationId` and a `parent`
+    reply target that names the parent. Message fields are never trusted.
 - **Evidence:** `task-execution/paused-turn.ts` (actor fallbacks, fixed five
   times).
 
@@ -717,8 +779,8 @@ turn".
 - **Decided:** input that will not run still gets a turn row. The worker
   calls `closeInput`: `startTurn` and `finishTurn` in one locked step,
   without the agent. Used for: input older than a stop (P34), input past
-  its delivery attempts (P22), records the repair job gave up on
-  (P7), and a late result after an explicit stop (P35).
+  its delivery attempts (P22), and a late result after an explicit stop
+  (P35).
 - **Why:** `finishTurn` stays the only writer of request status, and every
   input has a recorded end.
 - **Alternatives:** a second writer (`dropRequest`) for records no turn
@@ -726,28 +788,36 @@ turn".
 
 ### P31. Error retry pause — Decided
 
-- **Decided:** an error after take-in saves `paused: error_retry`,
-  `errors + 1`, and releases the lock. The next worker resumes from the
-  checkpoint. At the error limit, `finishTurn(failed: error)`.
+- **Decided:** an error after take-in saves `paused: continue` with
+  `nextAttemptAtMs`, `errors + 1`, and releases the lock. The next worker
+  resumes from the checkpoint. At the error limit,
+  `finishTurn(failed: error)`.
 - **Why:** today an error leaves the turn looking like a lost worker, so
   the restart rule fires instead of the error limit.
 
 ### P32. No lost wakes — Decided
 
 - **Decided:**
-  - `send()` appends, raises `inboxSeq`, sets `wakeAtMs = now`, writes the
-    wake-time index (P7), then notifies. `recordSignIn` does the same
-    before it notifies, without an append.
+  - `send()` is one transaction: it locks the conversation row
+    (`FOR UPDATE`), inserts the request record and sets `wakeAtMs = now`.
+    After the commit it notifies. `recordSignIn` does the same without an
+    insert.
   - `nextRunAtMs(state)` is the one runnable test. `work()` uses it to
     choose what runs, and the release uses it too.
-  - Before release, the worker reads the inbox and `inboxSeq`, computes
-    `nextRunAtMs` (for example the link expiry, a delivery's
-    `nextAttemptAtMs` or an event window end) and sets `wakeAtMs` to it
-    with a compare-and-set on `inboxSeq`. When `inboxSeq` changed, it reads
-    the inbox record again. The same set queues a delayed notify for
-    `wakeAtMs`, so a link expiry or backoff fires without the repair job.
-  - It releases the lock, then reads the inbox record again (inbox,
-    `inboxSeq`, `wakeAtMs`). When `wakeAtMs <= now`, it notifies a worker.
+  - The release is one transaction: it locks the conversation row
+    (`FOR UPDATE`, with the lock version match), reads the open turn and
+    the open records that no turn took, sets `wakeAtMs` to `nextRunAtMs`
+    (for example now, the link expiry, a `continue` pause's
+    `nextAttemptAtMs`, a delivery's `nextAttemptAtMs` or an event window
+    end) and sets the lock expiry to null. After the commit it queues a
+    delayed notify for `wakeAtMs`, or notifies at once when
+    `wakeAtMs <= now`.
+  - Both lock the same row, so they run one after the other. A `send()`
+    that commits first is in the release's read. A `send()` that waits for
+    the release sets `wakeAtMs = now` after it, and its notify finds the
+    lock free. So a notify that arrives while the lock is held is not
+    lost (reopened; source: David's answer on the reopen card, review item
+    0d751ba0). There is no `inboxSeq` and no compare-and-set.
   - Built in step 3, with the SQL lock.
   - Model check: without the `recordSignIn` change and the delayed notify,
     a sign-in during a held lock drops its notify, and L3 fails without
@@ -755,12 +825,14 @@ turn".
     `wakeLive_design l3_pausedResumedNoRepair` holds.
 - **Why:** a notification that arrives while the lock is held is dropped.
   That loses a wake when the holder dies or loses the lock between its
-  pause save and its release (P46).
-  The compare-and-set stops a later wake time from hiding a new message.
-  The release-then-read order means one side always sees the other: if the
-  new worker failed to take the lock, the release came after, so the read
-  after the release sees the append.
-- **Alternatives:** move the inbox to SQL (one transaction, more SQL load).
+  pause save and its release (P46). The row lock makes one side always
+  see the other.
+- **Model:** `WorkerLock.tla` still splits `send()` into the Redis steps
+  (append, `inboxSeq`, `wakeAtMs`, wake-time index, notify; G.1h), so it
+  is stale for this rule (G.1f).
+- **Alternatives:** the earlier Redis inbox with `inboxSeq`, a
+  compare-and-set before release and a read after it (two stores, and a
+  wake index in Redis).
 
 ### P33. Delivery failure while finishing — Decided
 
@@ -810,11 +882,11 @@ turn".
   child result is ordinary inbox input to the parent and wakes it like any
   other event. Source: the planning thread.
 - **Detail:** the child's outcome goes on its asked request record, and the
-  child mints no result record. A result already in the parent's inbox is
+  child sends no result record. A result already in the parent's inbox is
   older than the stop, so a closing turn records it (P30, P34). A child
   stopped alone, for example from the dashboard, is not a stop of the
   parent: its `stopped` result wakes the parent. The parent's stop time
-  and the record's `createdAtMs` are both database stamps (P44).
+  and the record's `receivedAtMs` are both database stamps (P44).
 
 ### P36. Sandbox pass lifecycle (gap from review) — Decided
 
@@ -825,15 +897,17 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 - **Decided:**
   - One pass per turn, issued at its first sandbox use. Its id is saved on
     the turn row before the policy is applied. Each attempt renews its
-    expiry (capped near the attempt limit). A soft-time-limit continuation
-    or a restart keeps the same pass.
+    expiry (capped near the attempt limit). A `continue` pause at the time
+    limit and a restart keep the same pass.
   - The proxy fails closed unless the pass id equals the open turn's
     `sandboxPassId` in SQL, that turn is `running`, and the conversation's
     `lockExpiresAtMs > now()`. Between attempts, and after a lost worker's
     lock expires, the proxy refuses it, so nothing runs with credentials
     while no worker watches the turn.
-  - On `finishTurn`, and on `sign_in`, `post_retry` and `error_retry`
-    pauses, the worker applies a no-credentials policy.
+  - On `finishTurn`, on a `sign_in` pause, and on a `continue` pause with
+    `nextAttemptAtMs` (after an error or a failed post), the worker applies
+    a no-credentials policy. The policy is unchanged: these are the pauses
+    that were `error_retry` and `post_retry` before plain errors (P4).
   - When a turn's actor or access differs from the last pass's turn, the
     worker kills user processes before it applies the new pass. Files stay
     (Decided: one sandbox per conversation, sharing explicit). The sandbox
@@ -854,25 +928,28 @@ not to one process (`sandbox/egress/session.ts`, module overview;
 ### P43. SQL lock or Redis lock with a SQL counter (from review) — Decided
 
 - **Decided:** the SQL lock (P5). Source: the planning thread.
-- **Cost:** an estimate that the check-in metric (step 3) checks: one indexed
-  `UPDATE` per running turn every 15 s (300 running turns is 20 writes per
-  second), and one indexed read per credentialed proxy call.
-- **Why:** the lock, the version and the stop time sit on one row. Each
-  save, the proxy and `startTurn` check them with one read in one store.
-- **Alternative:** a Redis lock for take and check-in, plus a SQL version
+- **Cost:** an estimate that the SQL load metric (step 3) checks: one
+  indexed `UPDATE` per running turn every 15 s (300 running turns is 20
+  writes per second), one indexed read per credentialed proxy call, and
+  the inbox writes that P23 moved from Redis (one conversation row update
+  per `send()`, one record update per take-in, one locked read per
+  release).
+- **Why:** the lock, the version, the stop time and the wake time sit on
+  one row. Each save, the proxy and `startTurn` check them with one read in
+  one store. The new core keeps no state in Redis (Owners).
+- **Not chosen:** a Redis lock for take and check-in, plus a SQL version
   that goes up at each take. Check-ins cost no SQL write, and fencing still
   holds at the SQL save. But the proxy and the save check read two stores,
-  and a take is two writes that a crash can split.
-- **Note, switch rule:** if the check-in metric shows the load is
-  a problem, a code change switches the lock. Only the lock module
-  changes.
+  and a take is two writes that a crash can split. It is a known fallback
+  only, not a planned path: if the metric shows the SQL load is a problem,
+  that is a new decision.
 
 ### P44. One clock for a stop and the input it judges — Decided
 
 - **Decided:** Junior's receive time everywhere. Core stamps every input at
-  inbox append (`receivedAtMs`) and every stop in the `stop()` transaction
-  with database `now()`. Core-minted input (child messages, results) and
-  its request record get the database stamp of their own transaction.
+  record insert (`receivedAtMs`) and every stop in the `stop()` transaction
+  with database `now()`. Core-made input (child messages, results) gets
+  the database stamp of the child's save that recorded it (P26).
   "Older than the stop" means Junior received it earlier. P34 and P35
   compare only these stamps. Source: the planning thread.
 - **Accepted behavior:** a Slack message that Junior receives late, after a
@@ -981,12 +1058,13 @@ the simplification pass.
   moved input one after it, so the moved stop judges the same inputs as
   today's stop (P34, P44).
 - **Inbox move, safe to repeat.** Today's waiting input (`pendingMessages`)
-  moves in the same locked step into inbox entries with core-minted
-  request records. The record is unique on
+  moves in the same locked step into core-minted request records, which
+  are the new inbox (P23). The record is unique on
   `(conversationId, inboundMessageId)`, so a repeat after a crash mints no
-  second request id. The move copies today's dedupe list
-  (`execution.inboundMessageIds`, `state.ts:159`) into the inbox's
-  duplicate check, so a Slack retry after the move is still a duplicate.
+  second request id. Until step 17, today's dedupe list
+  (`execution.inboundMessageIds`, `state.ts:159`) stays the duplicate check
+  for ids from today's core, through the shared ingress claim (below), so a
+  Slack retry after the move is still a duplicate.
   Admission (allowed domains, P19 trust) runs again on each moved input; a
   failure is dropped with a recorded reason.
 - **Shared ingress claim** (C5, C6). Today's ingress checks and appends the
@@ -1005,8 +1083,10 @@ the simplification pass.
   - Fix: from step 14 until step 17, every ingress path, today's and the
     new core's, first adds the id to `execution.inboundMessageIds` in one
     conversation mutation, before it reads `core`. Only the add that wins
-    goes on. The move makes an inbox entry for each claimed id that is in
-    `pendingMessages`, and copies every other claimed id as a duplicate.
+    goes on. The move makes a request record for each claimed id that is
+    in `pendingMessages`. It copies no other id: the claim's list already
+    makes a retry of it a duplicate (inference; the model still copies
+    them, G.1f).
   - Check: `shim_ingress` (`safety`, `noDuplicateTurn`, `acceptedOnce`,
     `retryAfterMoveIsDuplicate`, `noLostInput`) holds with the claim under
     the fence, in CI. Without the claim (`shim_ingressNoClaim`),
@@ -1423,9 +1503,9 @@ the simplification pass.
 
 ### P46. A notify lost while the lock is held (from the model) — Decided
 
-P32 drops a notify that arrives while the lock is held. The holder's
-release-then-read covers it, but not when the holder dies or loses its
-lock between its pause save and its release. With one such loss, a paused
+P32 drops a notify that arrives while the lock is held. The release, which
+locks the conversation row as `send()` does, covers it, but not when the
+holder dies or loses its lock between its pause save and its release. With one such loss, a paused
 turn waits for the repair job (`errors_design l3_pausedResumedNoRepair`,
 12 steps: a dropped `send()` notify, `Crash_AfterSavePause`, then the
 redelivered message dropped too before the lock expires). With the repair
@@ -1647,6 +1727,9 @@ was lost".
     trace check skips them.
   - `send()` gets one point per P32 step (append, `inboxSeq`, `wakeAtMs`,
     wake-time index, notify) when the model splits it (G.1h).
+  - The SQL inbox (P23, P32) makes the Redis points and the split `send()`
+    points stale: `send()` and the release are one transaction each, and a
+    take-in is part of the save. The model needs updating (G.1f).
 - **Other boundaries that stay:**
   - Queue redelivery: the queue provider adapter (`queue/provider.ts`)
     redelivers an unacked message.

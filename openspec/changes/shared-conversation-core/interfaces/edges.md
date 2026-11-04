@@ -11,12 +11,13 @@ data, and per-kind code runs only at two edges.
 | ---------------------------- | --------------------------- | --------------------------------- |
 | `ConversationPolicy`         | conversation row, at create | `canJoin`, `pauseForSignIn`       |
 | `actor`, `credentialSubject` | request record              | `startTurn`, `credentialsForTurn` |
-| `replyTo`, `outcomes`        | request record              | `deliver`, `finishTurn`           |
+| `replyTo` (a list)           | request record              | `deliver`, `finishTurn`           |
 
 ## Edge 1: Ingress
 
-Each source turns its own format into one record and one message. It
-decides admission before `createRequest`. It never runs work.
+Each source turns its own format into one request record, which is also
+the inbox entry. It decides admission before `createRequest`. It never
+runs work. No ingress sets a `destination` reply target (P18).
 
 ```ts
 /**
@@ -32,9 +33,8 @@ type IngressResult =
       kind: "create_request";
       record: Omit<
         RequestRecord,
-        "requestId" | "status" | "repair" | "createdAtMs"
+        "requestId" | "status" | "turnId" | "receivedAtMs"
       >;
-      message: Omit<InboundMessage, "requestId">;
     }
   | { kind: "stop"; conversationId: ConversationId; by: StopBy }
   | { kind: "drop"; reason: "not_admitted" | "untrusted_author" | "ignored" };
@@ -45,9 +45,10 @@ an `Ingress`; they call `startPluginAgent`, which fixes the system actor.
 
 ## Edge 2: Delivery
 
-One plain object per `replyTo.kind`. `deliver` looks it up by kind. The
+One plain object per reply target kind. `deliver` looks it up by kind. The
 kind fixes which bodies the target gets (P18); there is no separate
 `responses` field. `deliver` does not branch on the kind of conversation.
+An empty `replyTo` has no adapter: history is the delivery.
 
 ```ts
 /**
@@ -69,56 +70,41 @@ type ReplyTargetAdapter = {
 
 const replyTargets: Record<ReplyTarget["kind"], ReplyTargetAdapter>;
 
-/** Pure. Which bodies a reply target gets (P18). */
+/** Pure. Which bodies a reply target gets (P18): a location each
+ * response, a parent or destination only the one result. */
 function shouldPost(target: ReplyTarget, body: ResponseBody): boolean {
-  if (target.kind === "parent") return body.kind === "child_result";
-  return body.kind !== "child_result"; // location posts; stored saves
+  if (target.kind === "location") return body.kind !== "result";
+  return body.kind === "result";
 }
-
-/** One Automation outcome. It gets only the run's one result (P18). */
-type OutcomeTarget = { outcomeIndex: number; destination: Destination };
-
-/** finishTurn calls it once per outcome, in order, with the run's one
- * result. find() has the same use as for a reply target. */
-const outcomeTarget: {
-  post(
-    target: OutcomeTarget,
-    delivery: Delivery,
-  ): Promise<{ providerMessageId?: string }>;
-  find(
-    target: OutcomeTarget,
-    deliveryId: string,
-  ): Promise<{ providerMessageId: string } | undefined>;
-};
 ```
 
 - `location`: Slack post in the thread. `find` reads message metadata.
-- `stored`: no post. History is the delivery, shown in the web and
-  dashboard view. `find` reads history. An Automation run uses it.
-- `parent`: `send()` to the parent inbox. `find` is the inbox duplicate
-  check. A parent gets errors inside the child result, so it gets no
-  separate error post.
-- Outcomes: a record with `outcomes` gets its one result posted to each
-  outcome Destination once. A `failed` or `stopped` run, `no_action` and
-  `misconfigured` post nothing there; the run shows on the Automation.
+- `parent`: `send()` to the parent inbox, with the delivery id as the
+  record's `inboundMessageId`. `find` is the unique key. A parent gets
+  errors inside the result, so it gets no separate error post.
+- `destination`: an Automation Destination, in `replyTo` order. It posts
+  the result only for `send_message`. A `failed` or `stopped` run,
+  `no_action` and `misconfigured` post nothing there; the run shows on the
+  Automation. `find` reads message metadata.
 
-`ResponseBody` is `assistant`, `error`, `ending_note` or `child_result`.
-The adapter cannot tell a turn to retry, stop or join.
+`ResponseBody` is `assistant`, `error`, `ending_note` or `result`. Every
+turn makes one `result`. The adapter cannot tell a turn to retry, stop or
+join.
 
 ## The CLI
 
 `pnpm cli -- chat` uses core person ingress with the local CLI user and
-`replyTo: { kind: "stored" }`. It calls `createRequest`,
+`replyTo: []`. It calls `createRequest`,
 then runs `work()` in the same process with the local store, until the
 conversation has no runnable work. The terminal prints new history items.
 Same dedupe, batching and join rules as other kinds (Decided).
 
 ## Examples
 
-### E1. One Automation run, two outcomes, second post fails
+### E1. One Automation run, two Destinations, second post fails
 
-Before: run R. `replyTo: stored`. Outcomes: `current_conversation` then
-`task_creator`.
+Before: run R. `replyTo` has two `destination` targets, copied at
+Automation creation: `current_conversation` then `task_creator`.
 
 1. The agent writes a draft (assistant text). It is saved to history and
    shows in the web view. Nothing is posted to Slack.
@@ -131,7 +117,8 @@ Before: run R. `replyTo: stored`. Outcomes: `current_conversation` then
 5. The next attempt skips `d1` (`sent`), calls `find(d2)`: not found. It
    posts `d2`'s saved text.
 
-After: each outcome is posted once. The record is `answered`, `completed`.
+After: each Destination gets the result once. The record is `answered`,
+`completed`.
 
 ### E2. Event from an untrusted author
 
@@ -152,7 +139,7 @@ conversations:
 |             | Web                                        | Slack                              |
 | ----------- | ------------------------------------------ | ---------------------------------- |
 | policy      | `canAskUser`, `joinRule: now`              | `canAskUser`, `joinRule: now`      |
-| record      | person, `stored`                           | person, `location`                 |
+| record      | person, `replyTo: []`                      | person, `replyTo: [location]`      |
 | failed turn | error message saved; message marked failed | error message posted in the thread |
 
 Both run the same `work()` and `finishTurn`. Only `replyTargets[kind]`

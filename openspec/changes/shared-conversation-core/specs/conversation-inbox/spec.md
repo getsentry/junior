@@ -4,15 +4,18 @@
 
 ### Requirement: Save Before Ack
 
-Core ingress SHALL save the request record, then the inbox entry, before it
-tells the provider that the input arrived. `send()` SHALL only add to the
-inbox, set the wake time and notify a worker.
+Core ingress SHALL save the request record before it tells the provider
+that the input arrived. The record SHALL be the inbox entry: the inbox is
+the `open` records with no `turnId`. There SHALL be no other inbox store
+(Decided: P23). `send()` SHALL only insert the record, set the wake time
+and notify a worker.
 
-#### Scenario: Inbox save fails
+#### Scenario: Record save fails
 
-- **WHEN** the inbox save fails
+- **WHEN** the record save fails
 - **THEN** the provider gets an error and sends the input again
-- **AND** the retry finds the saved record by its idempotency key.
+- **AND** the retry saves the record once, unique on
+  `(conversationId, inboundMessageId)`.
 
 #### Scenario: Worker notification fails
 
@@ -25,23 +28,33 @@ inbox, set the wake time and notify a worker.
 Core SHALL mint a request record for every input, with an id in its own
 namespace (Decided: P23, P26). The record SHALL store the
 conversation id and the inbound message id. Only core person ingress
-(Slack, web, ACP, CLI) SHALL make a record with a person actor. A child
-result or parent message SHALL get its own record in the receiving
-conversation, minted in the child's transaction, with `answers` and
-`sentBy` (Decided: P26).
+(Slack, web, ACP, CLI) SHALL make a record with a person actor.
 
-#### Scenario: Message points at another record
+#### Scenario: Plugin input
 
-- **WHEN** a message's record belongs to another conversation or another
-  inbound message
-- **THEN** the worker drops the message with a recorded reason and starts no
-  turn.
+- **WHEN** a plugin starts a run
+- **THEN** core mints the record with the plugin's system actor, and the
+  plugin never chooses the request id.
 
-#### Scenario: Missing record
+### Requirement: Results Get Their Own Record
 
-- **WHEN** a message's record does not exist
-- **THEN** the message is dropped with a recorded reason
-- **AND** no actor is filled in from another source.
+A child result or parent message SHALL get its own record in the receiving
+conversation, with `answers` and `sentBy`. The child's save SHALL record it
+as a delivery intent, and `send()` SHALL insert it with the delivery id as
+its inbound message id. No message SHALL point at a record (Decided: P26).
+
+#### Scenario: Result from a turn that is not a child
+
+- **WHEN** a result record's `sentBy` turn row is not in a child of the
+  receiving conversation
+- **THEN** the worker drops it with reason `sender_mismatch`, starts no
+  turn, and fills in no actor from another source.
+
+#### Scenario: Result sent again after a crash
+
+- **WHEN** the child's next worker sends a result again after a crash
+- **THEN** the delivery id makes it a duplicate, and the parent has one
+  result record.
 
 #### Scenario: Result record
 
@@ -64,26 +77,28 @@ it from verified stored state.
 ### Requirement: Accept Each Message Once
 
 The core SHALL accept each inbound message id once per conversation. The id
-SHALL come from the source's own id.
+SHALL come from the source's own id. A unique constraint on
+`(conversationId, inboundMessageId)` SHALL be the one duplicate check
+(Decided: P23).
 
 #### Scenario: Provider retry
 
 - **WHEN** a provider sends the same message again
-- **THEN** there is no second record, no second inbound message and no
-  second turn start.
+- **THEN** the unique key makes it a duplicate: there is no second record
+  and no second turn start.
 
 #### Scenario: Copy while waiting
 
 - **WHEN** a copy arrives while the first is still waiting
 - **THEN** the core notifies a worker once more
 - **AND** a Slack copy with new attachments or a mention upgrades the
-  waiting entry (files added, `wait` changed to `now`) and keeps its
+  waiting record (files added, `wait` changed to `now`) and keeps its
   timestamps.
 
 ### Requirement: Inbound Message Fields
 
-An inbound message SHALL carry its source, `join` (`now` or `wait`), sent
-time, arrival time, delivery attempt count, event kind and request id
+A request record SHALL carry its source, `join` (`now` or `wait`), sent
+time, receive time (`receivedAtMs`), delivery attempt count and event kind
 (Decided: P9).
 
 #### Scenario: Ordering reads only these fields
@@ -206,23 +221,25 @@ A joined web message SHALL NOT start a second turn.
 
 ### Requirement: No Lost Wakes
 
-`send()` SHALL raise the inbox counter and set the wake time to now. Before
-release, a worker SHALL set the wake time to its next run time, with a
-compare-and-set on the inbox counter. It SHALL release the lock, then read
-again with the same runnable test as `work()`, and notify a worker when
-work is due (Decided: P32).
+`send()` SHALL lock the conversation row, insert the record and set the
+wake time to now in one transaction, then notify a worker. The release
+SHALL lock the same row, read the open turn and the inbox, set the wake
+time to `nextRunAtMs` with the same runnable test as `work()`, and clear
+the lock expiry in one transaction. After it commits, it SHALL notify a
+worker when work is due, or queue a delayed notify (Decided: P32).
 
 #### Scenario: Message while the lock is held
 
-- **WHEN** a message arrives while another worker holds the lock
-- **THEN** that worker sees it after release and notifies a worker.
+- **WHEN** a message commits while another worker holds the lock, and that
+  worker then releases
+- **THEN** the release reads the message, sets the wake time to now, and
+  notifies a worker.
 
-#### Scenario: Message during the wake-time set
+#### Scenario: Message during the release
 
-- **WHEN** a message arrives after the worker read the inbox and before it
-  set a later wake time
-- **THEN** the compare-and-set fails, the worker reads again, and the wake
-  time stays now.
+- **WHEN** a message's `send()` waits on the row lock that the release holds
+- **THEN** it sets the wake time to now after the release commits, and its
+  notify finds the lock free.
 
 ### Requirement: Limit On Automated Turns
 
@@ -254,8 +271,8 @@ Slack SHALL take it from the channel. A child SHALL read its root's.
 
 ACP ingress SHALL refuse a new prompt while the conversation has an open
 turn, including one that waits for sign-in, before it calls
-`createRequest`. A copy with the same idempotency key SHALL return the
-earlier message. `send()` SHALL NOT refuse input.
+`createRequest`. A copy with the same inbound message id SHALL be a
+duplicate of the earlier record. `send()` SHALL NOT refuse input.
 
 #### Scenario: Prompt while busy
 

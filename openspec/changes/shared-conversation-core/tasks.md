@@ -79,13 +79,50 @@
       after the move; I15 beyond the Agent invocation row; a Slack retry that
       finds a request record but no append; the P37 target bound (2
       conversations, 2 person actors and the system actor, 4 inputs).
+
       Stale after the simplification pass (the model needs updating; this
-      plan is the target): - The lock has no token; the version alone fences (`WorkerLock.tla`
-      `TokenOk`). - The fence uses a fixed `D` of 1,800 s: no running max and no lease
-      `deploymentId` (`shim_long`). - The margin `M` is 5 min, not a 60 s skew allowance; the drop wait is
-      `1 h + 2×D + M + 60 s` (`drop_design`). - The shim ships in step 14, not step 3: a first current-row upsert
-      sets `freshSinceAtMs`, and ingress from before step 14 can be in
-      flight during a release jump. - The sweep has no TTL refresh.
+      plan is the target):
+
+      - The lock has no token; the version alone fences (`WorkerLock.tla`
+        `TokenOk`).
+      - The fence uses a fixed `D` of 1,800 s: no running max and no lease
+        `deploymentId` (`shim_long`).
+      - The margin `M` is 5 min, not a 60 s skew allowance; the drop wait
+        is `1 h + 2×D + M + 60 s` (`drop_design`).
+      - The shim ships in step 14, not step 3: a first current-row upsert
+        sets `freshSinceAtMs`, and ingress from before step 14 can be in
+        flight during a release jump.
+      - The sweep has no TTL refresh.
+
+      Stale after the reopen card (review item 0d751ba0; the model needs
+      updating, this plan is the target):
+
+      - Plain errors (P4, P10, P11): `WorkerLock.tla` still has `restarts`,
+        `RESTART_LIMIT`, `CanRestart` and the `failed: lost_worker` end
+        (`ex_restartUsesLastError`), the `post_retry` pause that ends
+        `failed: no_progress` after a resume (`DELIVERY_LIMIT`), and the
+        `error_retry` pause name. The design has one error limit, the
+        `continue` pause with `nextAttemptAtMs`, and a delivery attempt
+        counts as progress. `errors_design` and `delivery_design` check
+        the old rules.
+      - Inbox in SQL (P23, P32, P7): `send()` is split into the Redis steps
+        (`AfterRecordInsert`, `AfterAppend`, `AfterWakeSet`,
+        `AfterWakeIndex`; G.1h, `SEND_STEPS`), the release uses the
+        `inboxSeq` compare-and-set and the read after release
+        (`WAKE_RULE = "seq"`, `AfterWakeCompareAndSet`, `AfterInboxRead`),
+        and `startTurn` has a separate inbox removal (`AfterInboxRemove`).
+        The design has `send()` and the release as one row-locked
+        transaction each, and the take-in sets the record's `turnId` in
+        the start or join save. `wake_design`, `wakeLive_design` and the
+        P42 point list check the old steps.
+      - No message points at a record (P26): G.1b and G.1c plan the
+        adversarial `send` and I9 as a record-match check. The design has
+        only the sender check (`sentBy` and `answers`), and a result's
+        `receivedAtMs` is the stamp of the child's save (P44).
+      - The P45 move copies no claimed id other than the ones it makes
+        records for. `CutoverShim.tla` still copies them (`shim_ingress`).
+      - One result shape (P18): not in the model, so nothing is stale.
+
 - [ ] G.1g Run `check.sh` in CI when `packages/junior/verification/**`
       changes, and once a week. A full run of the 76 checks takes about
       5 h 25 min on 4 cores (the sum of wall times in `results.txt`); the
@@ -139,16 +176,20 @@
 - [ ] 3.1 Add lock expiry and version to the conversation row. Take the
       lock with the compare-and-set. Check in and release with the version;
       release sets the expiry to null. All lock times use database `now()`.
-- [ ] 3.2 Add `nextRunAtMs`, the one runnable test. Before release, set
-      `wakeAtMs` with a compare-and-set on `inboxSeq` and queue a delayed
-      notify for it. Release, then read the inbox record again. Never
-      release while the turn is `running`.
-- [ ] 3.3 `recordSignIn` raises `inboxSeq` and sets `wakeAtMs` to now
-      before it notifies.
+- [ ] 3.2 Add `wakeAtMs` to the conversation row with a SQL index, and
+      `nextRunAtMs`, the one runnable test. The release is one transaction:
+      lock the conversation row, read the open turn and the inbox records,
+      set `wakeAtMs` to `nextRunAtMs`, set the lock expiry to null. After
+      the commit, notify or queue a delayed notify. Never release while the
+      turn is `running` (P32).
+- [ ] 3.3 `recordSignIn` locks the conversation row, saves the grant and
+      sets `wakeAtMs` to now in one transaction, then notifies.
 - [ ] 3.4 A notify that finds a live lock is dropped; the repair job is the
       backstop (P46).
-- [ ] 3.5 Emit the lock check-in rate as a metric (`TELEMETRY.md`), the
-      input to the P43 switch rule.
+- [ ] 3.5 Emit the SQL load as a metric (`TELEMETRY.md`): lock check-ins,
+      and the inbox writes that P23 moved from Redis (conversation row
+      updates per `send()`, record updates per take-in, locked reads per
+      release). It is the input to P43.
 - [ ] 3.6 Test: a slow worker after a takeover cannot check in (turn E3); a
       message while the lock is held (turn E7); a sign-in while the lock is
       held.
@@ -163,33 +204,38 @@
 - [ ] 4.1 Add the turn table (with `oldestInputReceivedAtMs`) and the
       one-open index. `startTurn` in one transaction, fenced
       `saveCheckpoint`, a finished guard.
-- [ ] 4.2 Every turn state: `finishing`, `error_retry`, the five pause
-      reasons and the stop time.
+- [ ] 4.2 Every turn state: `finishing`, the two pause reasons
+      (`continue` with `nextAttemptAtMs`, and `sign_in`) and the stop time
+      (P10).
 - [ ] 4.3 Test: a late save to a finished turn is refused; a redelivered
       prompt (turn E1).
 - Verify: I1, I2, I3 and I12; S6; turn-lifecycle › Second start, Late save,
-  Crash between commit and inbox removal; trace turn E1.
+  Crash after the start commit; trace turn E1.
 
 ### 5. Request records and `send()`
 
 - [ ] 5.1 `createRequest` mints the record, then binds the subject (P17).
-      The record is unique on `(conversationId, inboundMessageId)`.
-- [ ] 5.2 `send()` appends, raises `inboxSeq`, sets `wakeAtMs` and
-      notifies. Duplicates by message id.
+      The record is unique on `(conversationId, inboundMessageId)`: the one
+      duplicate check. The record is the inbox entry; there is no other
+      inbox store (P23).
+- [ ] 5.2 `send()` is one transaction: lock the conversation row, insert
+      the record, set `wakeAtMs` to now. Then notify (P32).
 - [ ] 5.3 Add `VerifiedPersonActor`, the agent-message type, the import
       boundary for `createRequest` and `send`, and their runtime asserts.
-- [ ] 5.4 Test: a mismatched record (inbox E5).
-- Verify: I9; S3 and S4; conversation-inbox › Message points at another
-  record, Missing record, Provider retry, Copy while waiting; traces inbox
-  E1 and E5.
+- [ ] 5.4 Test: a result whose sender is not a child (inbox E5).
+- Verify: I9; S3 and S4; conversation-inbox › Result from a turn that is
+  not a child, Result sent again after a crash, Provider retry, Copy while
+  waiting, Message during the release; traces inbox E1 and E5.
 
 ### 6. `work()`
 
 - [ ] 6.1 `work()` takes the lock and runs the first case that applies.
-      `selectTurnInput` runs the match check and groups input by actor,
+      `selectTurnInput` runs the sender check and groups input by actor,
       exact signed subject and source (P20). `canJoin` for joins.
 - [ ] 6.2 Closing turns through `closeInput`.
-- [ ] 6.3 The repair job works on records and the wake-time index.
+- [ ] 6.3 The repair job notifies for past `wakeAtMs` (SQL index) and for
+      `running` turns with an expired lock. It writes nothing and resends
+      no input (P7).
 - [ ] 6.4 Test: batch split by actor (inbox E2), events with different
       access (inbox E3), a plain reply from the turn's own person (inbox
       E4).
@@ -204,18 +250,30 @@
       checkpoint that commits the response to history and records the
       intent with its text. Check `find` before a repeat post. Send the
       saved text.
-- [ ] 7.2 The split `retry` pause and the renamed `yield` and `timeout`.
-- [ ] 7.3 Test: two outcomes, second fails (edges E1).
-- Verify: I7; turn-lifecycle › Two outcomes, second fails and Restart after
+- [ ] 7.2 The `continue` pause, which replaces `yield`, `timeout` and the
+      retry pauses (P10). A delivery attempt counts as progress (P11).
+- [ ] 7.3 Test: two posts, second fails (edges E1).
+- Verify: I7; turn-lifecycle › Two posts, second fails, Post retries are
+  progress and Restart after
   an intent; trace edges E1; crash point "provider accepted, reply lost".
 
 ### 8. `finishTurn()`
 
+- [ ] 8.0 Precondition, lands before 8.2 ships: fix the #2298 root cause.
+      Move the `webFetch` HTML-to-markdown conversion
+      (`NodeHtmlMarkdown` in `chat/tools/web/fetch-content.ts`) off the
+      main thread, and add an event-loop delay warning. Neither exists on
+      `main` at `38c8693` (P8). Until it lands, today's restart cap is the
+      only limit on a poison turn that stalls one instance after another
+      (P4).
 - [ ] 8.1 Add `finishTurn` (resumable through `finishing`, using step 7's
       delivery ids). The reply target is data, with no branch on kind.
-- [ ] 8.2 Errors pause `error_retry`. A turn is lost only when `running`
-      under an expired lock. Its one restart counts one error; one failure
-      counts once (P4). An error before `startTurn` commits counts a
+- [ ] 8.2 Plain errors (P4): an error pauses `continue` with
+      `nextAttemptAtMs` and `errors + 1` (P31). A turn is lost only when
+      `running` under an expired lock; each restart counts one error, with
+      no restart count or cap. A resume that saves nothing new and a
+      mid-turn post failure each count one error. One failure counts once.
+      At 5, `finishTurn(failed: error)`. An error before `startTurn` commits counts a
       delivery attempt, not a turn error (P22). The timer job only
       notifies a worker.
 - [ ] 8.3 Delivery attempts and backoff while finishing. A permanent
@@ -224,7 +282,8 @@
 - [ ] 8.5 Test: dead worker (turn E2), retries running out (turn E4) and
       stuck delivery (turn E6).
 - Verify: I2, I4 and S1; L2; turn-lifecycle › Crash during finish, Retries
-  run out, An error is not a lost worker, Lost twice, Failures before the
+  run out, An error is not a lost worker, Lost again, Same boundary twice,
+  Failures before the
   turn started, Error message cannot be posted; traces turn E2, E4, E6.
 
 ### 9. Stop
@@ -236,8 +295,9 @@
       than the stop time. `startTurn` and joins refuse older input. Every
       fenced save and intent save of a turn under the stop refuses.
       `finishTurn(stopped)` puts newer taken-in input back in the inbox.
-- [ ] 9.3 Stamp every input at inbox append, and core-minted input and
-      records in their own transaction, with database `now()` (P44).
+- [ ] 9.3 Stamp every record at insert with database `now()`, and a result
+      or parent message with the stamp of the child's save that recorded
+      it (P44).
 - [ ] 9.4 Test: top-level stop of a tree (agents E3); stop of a paused
       plugin-started agent.
 - Verify: I8, I10, I11 (with joins) and I14; L1 under stop; turn-stop ›
@@ -258,31 +318,34 @@
 ### 11. Child agents and results
 
 - [ ] 11.1 `askChild` only sends. Child turns run in `work()`. `finishTurn`
-      and `messageParent` mint result records in the parent, in the child's
-      transaction.
+      and `messageParent` record a delivery intent in the child's save;
+      `send()` inserts the result record in the parent, keyed by the
+      delivery id (P26).
 - [ ] 11.2 Add guardian eval cases for P15 outside text and P20 "never
       approval".
 - [ ] 11.3 Set the `maxAgentDepth` default to 1 (Decided).
 - [ ] 11.4 Test: busy child (agents E1), grandchild result (agents E2) and
       a forged result (agents E5).
 - Verify: I5 for records, I8 and I9; L1 for children; agent-tree › Same
-  actor, Grandchild spawns, Grandchild result after the child's turn ended, Forged result,
+  actor, Grandchild spawns, Grandchild result after the child's turn ended, Answers from another child,
   Result wakes an idle parent, Two siblings finish together;
   turn-access › Grandchild result after another person messaged the child;
   traces agents E1, E2, E5 and edges E2; the guardian cases.
 
 ### 12. Plugin-started agents
 
-- [ ] 12.1 Plugin-started runs use `work()`. An Automation run has
-      `replyTo: stored` and `outcomes` on its record; `finishTurn` delivers
-      its one result to each outcome (P18). Plugins read the computed view.
+- [ ] 12.1 Plugin-started runs use `work()`. An Automation run's record has
+      one `destination` reply target per outcome that Automation creation
+      saved, copied by core's Automation runner; `finishTurn` delivers its
+      one result to each (P18). A plugin cannot set a destination. Plugins read the computed view.
       Automation run rows compute their status after dispatch from the
       request record; only the claim, `automationVersion` and the statuses
       from before dispatch stay stored (P18).
 - [ ] 12.2 Test: an Automation run through `finishTurn` (edges E1).
 - Verify: L1 for plugin-started runs; plugin-started-agents › Draft stays
   in the web view, Result from the final response, Result from the tool
-  call, No action, Misconfigured, Empty outcomes, Result already sent;
+  call, No action, Misconfigured, No destinations, Plugin asks for a
+  destination, Result already sent;
   trace edges E1.
 
 ### 13. Credentials and the sandbox pass
@@ -375,9 +438,9 @@
       (P45): it pins today's lease (`MAX_SAFE_INTEGER`, fixed token) and
       refreshes the record's 7-day TTL, then in one locked step moves an
       open Redis turn cursor into a turn row keyed by its turn id, today's
-      waiting inbox input into inbox entries with request records (unique
-      on `(conversationId, inboundMessageId)`, `inboundMessageIds`
-      copied, admission run again), and Slack `activeTurnId` and
+      waiting inbox input into request records, which are the inbox (unique
+      on `(conversationId, inboundMessageId)`, no other id copied,
+      admission run again), and Slack `activeTurnId` and
       `pendingAuth` into the turn row. Active Agent invocation rows and
       dispatch records move only when the child passes the stale lease
       fence and is pinned, or is new-core (C7); a
