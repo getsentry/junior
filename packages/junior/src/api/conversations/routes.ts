@@ -6,10 +6,6 @@ import {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -19,7 +15,6 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingMessagesReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
@@ -33,6 +28,13 @@ import {
   archiveDoneConversationsResponseSchema,
   conversationAutoArchiveSchema,
 } from "../schema/conversation-archive";
+import {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingMessagesReportSchema,
+} from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -333,9 +335,9 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const { conversationId } = context.req.valid("param");
-      const { before, limit } = context.req.valid("query");
+      const { limit, ...boundary } = context.req.valid("query");
       const viewer = context.get("viewer");
-      const report = await readConversationEvents(conversationId, before, {
+      const report = await readConversationEvents(conversationId, boundary, {
         limit,
         ...(viewer ? { viewer } : undefined),
       });

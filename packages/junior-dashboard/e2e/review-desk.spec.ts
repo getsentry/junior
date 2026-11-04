@@ -277,7 +277,7 @@ test("review item changes show as rows, not as context for other items", async (
   const takeText = `Dashboard User took review item "${answered.title}".`;
   const answerText = `Dashboard User answered review item "${answered.title}".`;
   await page.route(
-    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    `**/api/conversations/${encodeURIComponent(conversationId)}*`,
     async (route) => {
       const response = await route.fetch({
         headers: {
@@ -457,7 +457,7 @@ test("a message asks before it drops unsent picks", async ({
     });
   });
   // Show the tool call that added the item, so its card is in the transcript.
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
       headers: {
         ...route.request().headers(),

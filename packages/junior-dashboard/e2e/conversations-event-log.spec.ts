@@ -347,7 +347,7 @@ test("inspects all reporting events and searches full event data", async ({
     },
   );
   await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}`,
+    `**/api/conversations/${encodeURIComponent(forkId)}*`,
     (route) =>
       route.fulfill({
         json: {
@@ -493,7 +493,7 @@ for (const width of [1440, 390]) {
       createdAt: report.lastSeenAt,
       data: { type: "message_handled", messageId: "message-39" },
     });
-    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.route(`**${api}*`, (route) => route.fulfill({ json: report }));
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
@@ -669,7 +669,7 @@ for (const view of [desktop, mobile]) {
     ];
     // Junior asked and ended its Turn, so it waits for the answer.
     report.status = "completed";
-    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.route(`**${api}*`, (route) => route.fulfill({ json: report }));
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );

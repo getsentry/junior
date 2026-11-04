@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
 
@@ -8,12 +8,13 @@ import type {
 } from "../types";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
+import { cn } from "../styles";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
-  useAutoLoadPreviousPage,
+  useAutoLoadHistoryPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -22,6 +23,7 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import type { TranscriptHistory } from "./transcriptUnreadHistory";
 import {
   TurnContextPanelProvider,
   type TurnContextPanel,
@@ -36,6 +38,11 @@ export function Transcript(props: {
   /** The read position when the Conversation opened. */
   lastReadSeq?: number;
   loadingPreviousPage?: boolean;
+  /**
+   * Newer pages between the read position and the latest. They load on
+   * scroll. Jump to latest skips them.
+   */
+  newerHistory?: TranscriptHistory["newer"];
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   /** Receive the last event sequence the reader saw in the transcript. */
@@ -68,6 +75,7 @@ export function Transcript(props: {
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
+    endsAtLatest: !props.newerHistory,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     pinRequestVersion: props.pinRequestVersion,
@@ -88,7 +96,8 @@ export function Transcript(props: {
     paused: view !== "rich" || search.trim().length > 0,
   });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
-  const previousPageRef = useAutoLoadPreviousPage({
+  const previousPageRef = useAutoLoadHistoryPage({
+    edge: "top",
     enabled: Boolean(
       props.onLoadPreviousPage &&
       props.hasPreviousPage &&
@@ -97,6 +106,13 @@ export function Transcript(props: {
     ),
     historyVersion: props.historyVersion ?? "empty",
     onLoad: loadPreviousPage,
+  });
+  const newer = props.newerHistory;
+  const newerPageRef = useAutoLoadHistoryPage({
+    edge: "bottom",
+    enabled: Boolean(newer && !newer.loading && !newer.error),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: () => newer?.load(),
   });
 
   if (!props.transcript) {
@@ -120,22 +136,17 @@ export function Transcript(props: {
           </div>
         ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-3 flex items-center gap-3" ref={previousPageRef}>
-            <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
-            <button
-              aria-label="Load earlier events"
-              className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={props.loadingPreviousPage}
-              onClick={loadPreviousPage}
-              title="Load earlier events"
-              type="button"
-            >
-              {props.loadingPreviousPage
-                ? `Loading earlier ${historyLabel}…`
-                : `Show earlier ${historyLabel}`}
-            </button>
-            <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
-          </div>
+          <HistoryPageControl
+            className="mb-3"
+            label="Load earlier events"
+            loading={props.loadingPreviousPage}
+            onClick={loadPreviousPage}
+            ref={previousPageRef}
+          >
+            {props.loadingPreviousPage
+              ? `Loading earlier ${historyLabel}…`
+              : `Show earlier ${historyLabel}`}
+          </HistoryPageControl>
         ) : null}
         {props.historyError ? (
           <div
@@ -164,6 +175,30 @@ export function Transcript(props: {
             />
           </TurnContextPanelProvider>
         )}
+        {newer ? (
+          <>
+            {newer.error ? (
+              <div
+                aria-live="polite"
+                className="mt-2 text-center font-sans text-xs text-amber-100/65"
+              >
+                Newer events could not be loaded.
+              </div>
+            ) : null}
+            {/* The bottom margin keeps the jump control off this row. */}
+            <HistoryPageControl
+              className="mb-12 mt-3"
+              label="Load newer events"
+              loading={newer.loading}
+              onClick={newer.load}
+              ref={newerPageRef}
+            >
+              {newer.loading
+                ? `Loading newer ${historyLabel}…`
+                : `Show newer ${historyLabel}`}
+            </HistoryPageControl>
+          </>
+        ) : null}
         <div
           aria-hidden="true"
           className="h-px"
@@ -171,11 +206,45 @@ export function Transcript(props: {
         />
         <JumpToLatestButton
           hasPendingUpdate={bottomPinning.hasPendingUpdate}
-          onClick={bottomPinning.jumpToBottom}
+          onClick={() => {
+            // The latest page is in the detail, so the jump needs no request.
+            newer?.showLatest();
+            bottomPinning.jumpToBottom();
+          }}
           visible={bottomPinning.showJumpToLatest}
         />
       </div>
     </TranscriptSearchProvider>
+  );
+}
+
+/** A divider with one control that loads another page of history. */
+function HistoryPageControl(props: {
+  children: ReactNode;
+  className: string;
+  label: string;
+  loading?: boolean;
+  onClick: () => void;
+  ref?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div
+      className={cn("flex items-center gap-3", props.className)}
+      ref={props.ref}
+    >
+      <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
+      <button
+        aria-label={props.label}
+        className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={props.loading}
+        onClick={props.onClick}
+        title={props.label}
+        type="button"
+      >
+        {props.children}
+      </button>
+      <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
+    </div>
   );
 }
 

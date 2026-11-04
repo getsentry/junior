@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   getTableColumns,
+  gt,
   inArray,
   lt,
   sql,
@@ -31,6 +32,7 @@ type ConversationEventRow = Awaited<
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
+    afterSeq?: number;
     beforeSeq?: number;
     conversationId: string;
     direction: "backward" | "forward";
@@ -62,6 +64,9 @@ async function readConversationEventRows(
         args.beforeSeq === undefined
           ? undefined
           : lt(juniorConversationEvents.seq, args.beforeSeq),
+        args.afterSeq === undefined
+          ? undefined
+          : gt(juniorConversationEvents.seq, args.afterSeq),
         inArray(
           juniorConversationEvents.type,
           args.types ?? [...conversationReportSourceEventTypes],
@@ -225,6 +230,103 @@ export async function readConversationEventPage(
     events,
     ...(projected.length > events.length && events[0]
       ? { previousSeq: events[0].seq }
+      : undefined),
+  };
+}
+
+/**
+ * Read reporting events on both sides of one event.
+ *
+ * Half of the page ends with the event at `seq`, and the rest follows it. A
+ * reader who opens at a read position gets the context before it and the
+ * unread events after it in one page.
+ */
+export async function readConversationEventPageAround(
+  executor: JuniorSqlDatabase,
+  args: {
+    canExposePayload: boolean;
+    conversationId: string;
+    limit: number;
+    seq: number;
+  },
+): Promise<{
+  events: ConversationReportEvent[];
+  nextSeq?: number;
+  previousSeq?: number;
+}> {
+  const { seq, ...pageArgs } = args;
+  const beforeLimit = Math.floor(args.limit / 2);
+  const [before, after] = await Promise.all([
+    beforeLimit > 0
+      ? readConversationEventPage(executor, {
+          ...pageArgs,
+          beforeSeq: seq + 1,
+          limit: beforeLimit,
+        })
+      : undefined,
+    readConversationEventPageAfter(executor, {
+      ...pageArgs,
+      afterSeq: seq,
+      limit: args.limit - beforeLimit,
+    }),
+  ]);
+  return {
+    events: [...(before?.events ?? []), ...after.events],
+    ...(after.nextSeq === undefined ? undefined : { nextSeq: after.nextSeq }),
+    ...(before?.previousSeq === undefined
+      ? undefined
+      : { previousSeq: before.previousSeq }),
+  };
+}
+
+/**
+ * Read the earliest reporting events after an exclusive boundary.
+ *
+ * This is the forward twin of `readConversationEventPage`. It returns
+ * `nextSeq` when newer events follow the page. Earlier pages start from the
+ * page around the read position, so this page reads nothing before it.
+ */
+export async function readConversationEventPageAfter(
+  executor: JuniorSqlDatabase,
+  args: {
+    afterSeq: number;
+    canExposePayload: boolean;
+    conversationId: string;
+    limit: number;
+  },
+): Promise<{
+  events: ConversationReportEvent[];
+  nextSeq?: number;
+}> {
+  const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
+  const rows: ConversationEventRow[] = [];
+  let afterSeq = args.afterSeq;
+  let projected: ConversationReportEvent[] = [];
+
+  while (projected.length <= args.limit) {
+    const batch = await readConversationEventRows(executor, {
+      afterSeq,
+      conversationId: args.conversationId,
+      direction: "forward",
+      limit: scanSize,
+    });
+    if (batch.length === 0) break;
+
+    rows.push(...batch);
+    projected = await projectConversationEventRows(executor, {
+      canExposePayload: args.canExposePayload,
+      conversationId: args.conversationId,
+      rows,
+    });
+    if (projected.length > args.limit || batch.length < scanSize) break;
+    afterSeq = batch.at(-1)!.seq;
+  }
+
+  const events = projected.slice(0, args.limit);
+  return {
+    events,
+    ...(projected.length > events.length
+      ? { nextSeq: events.at(-1)!.seq }
       : undefined),
   };
 }
