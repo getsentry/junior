@@ -143,8 +143,10 @@ Location SHALL switch it to system mode.
 ### Requirement: A Blocked Run Blocks Its Automation
 
 A blocked run SHALL set its Automation to `blocked` with a reason, and the
-creator SHALL get one DM after the block is saved. Run rows SHALL settle
-from the run's request record.
+creator SHALL get one DM after the block is saved. A run row SHALL store
+only its claim, `automationVersion`, and a status from before dispatch
+(`pending`, `skipped`, or a failure before dispatch). After dispatch, its
+status SHALL be computed from the run's request record (Decided: P18).
 
 #### Scenario: Paused Automation
 

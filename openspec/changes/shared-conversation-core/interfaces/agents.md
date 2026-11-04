@@ -67,19 +67,16 @@ type ChildResultMessage = InboundMessage & {
   join: "wait";
   /**
    * The result's own record in the parent, minted in the child's finishTurn
-   * transaction (P26). Its `answers` and `sentBy` decide acceptance; the
-   * fields below are display text only. The parent turn acts for the
-   * answered record's actor (P15) and replies to its onBehalfOf's reply
-   * target (P6).
+   * transaction (P26). Its `answers` and `sentBy` decide acceptance. The
+   * body has no copy of them: the parent reads `answers` from the record,
+   * and the task title from the answered records. A result is a follow-up
+   * when an `answers` record was already `answered` (P6). The parent turn
+   * acts for the answered record's actor (P15) and replies to its
+   * onBehalfOf's reply target (P6).
    */
   requestId: RequestId;
   result: {
     childConversationId: ConversationId;
-    title: string;
-    /** Display copy of the record's `answers`. Not trusted. */
-    answers: RequestId[];
-    /** True when the record was already answered by an earlier turn (P6). */
-    followUp: boolean;
     outcome: Outcome;
     /** The child's last assistant response, up to 12,000 characters.
      * Missing on "completed" means the child had nothing to say. */
@@ -170,7 +167,8 @@ Before: P's turn (for A, started by Slack record `req_s`) asked C (`req_1`,
 4. C starts T3 for `req_2.actor`, A (P15). B's 12:05 message is from
    another actor, so T3's model sees it marked as outside text, and it is
    not approval.
-5. T3 replies to `req_1.replyTo`, which is P, with `followUp: true` (P6).
+5. T3 replies to `req_1.replyTo`, which is P. `req_1` is already
+   `answered`, so P reads the result as a follow-up (P6).
 6. P starts a turn for A. It replies to `req_s.replyTo`: the Slack thread.
 
 ### E3. Top-level stop of a tree

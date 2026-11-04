@@ -7,11 +7,11 @@ layer and kept the copies. It was dropped before merge. Here the core takes
 no per-kind callbacks and has no branch on kind. Each kind differs in stored
 data, and per-kind code runs only at two edges.
 
-| Stored once                  | Where                       | Read by                             |
-| ---------------------------- | --------------------------- | ----------------------------------- |
-| `ConversationPolicy`         | conversation row, at create | `canJoin`, `send`, `pauseForSignIn` |
-| `actor`, `credentialSubject` | request record              | `startTurn`, `credentialsForTurn`   |
-| `replyTo`, `outcomes`        | request record              | `deliver`, `finishTurn`             |
+| Stored once                  | Where                       | Read by                           |
+| ---------------------------- | --------------------------- | --------------------------------- |
+| `ConversationPolicy`         | conversation row, at create | `canJoin`, `pauseForSignIn`       |
+| `actor`, `credentialSubject` | request record              | `startTurn`, `credentialsForTurn` |
+| `replyTo`, `outcomes`        | request record              | `deliver`, `finishTurn`           |
 
 ## Edge 1: Ingress
 
@@ -149,11 +149,11 @@ system actor and the Watch grant. Its text is labeled outside text.
 A web message and a Slack mention from the same person in two
 conversations:
 
-|             | Web                                        | Slack                                 |
-| ----------- | ------------------------------------------ | ------------------------------------- |
-| policy      | `canAskUser`, `joinRule: now`, `wait`      | `canAskUser`, `joinRule: now`, `wait` |
-| record      | person, `stored`                           | person, `location`                    |
-| failed turn | error message saved; message marked failed | error message posted in the thread    |
+|             | Web                                        | Slack                              |
+| ----------- | ------------------------------------------ | ---------------------------------- |
+| policy      | `canAskUser`, `joinRule: now`              | `canAskUser`, `joinRule: now`      |
+| record      | person, `stored`                           | person, `location`                 |
+| failed turn | error message saved; message marked failed | error message posted in the thread |
 
 Both run the same `work()` and `finishTurn`. Only `replyTargets[kind]`
 differs.

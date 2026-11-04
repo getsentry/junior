@@ -94,8 +94,10 @@ another actor SHALL wait and SHALL block later messages from joining.
 A child turn SHALL send one result message per parent reply target, at
 `finishTurn`, with a fixed id. It SHALL be `wait` input from the system
 identity, capped at 12,000 characters, with outcome `completed`, `failed`,
-`blocked` or `stopped`, and name the title, the child, every record
-answered and siblings still working. Only its outcome SHALL be trusted.
+`blocked` or `stopped`, and name the child and siblings still working.
+The answered records SHALL come only from the result's request record, and
+the parent SHALL tell a follow-up from their status, not from the message
+(Decided: P26, P6).
 
 #### Scenario: Retries run out in a child
 

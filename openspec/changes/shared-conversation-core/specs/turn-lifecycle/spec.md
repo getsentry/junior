@@ -28,7 +28,7 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 
 #### Scenario: Old worker refuses a new-core conversation
 
-- **WHEN** a today's worker from step 3 on takes work for a new-core
+- **WHEN** a today's worker from step 14 on takes work for a new-core
   conversation while a new-core deployment is current
 - **THEN** it refuses it, acks, runs nothing and sends nothing.
 
@@ -85,7 +85,7 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 #### Scenario: Agent invocation row without its creating record
 
 - **WHEN** the move finds an active Agent invocation row with no parent
-  turn id and request record id (a row from before step 3), or a row whose
+  turn id and request record id (a row from before step 14), or a row whose
   actor differs from that record
 - **THEN** it closes the row with a `failed` result to the parent, and it
   never looks up the parent's latest invocation for an actor (I15).
@@ -128,7 +128,7 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 - **WHEN** the release that drops the `core`, `execution_status` and
   `run_id` columns deploys while a deployment row without
   `old_core_deleted` has `lastSeenAtMs` within
-  `1 h + 2×maxDuration + 2 min + 60 s`
+  `1 h + 2×D + M + 60 s` (2 h 6 min)
 - **THEN** its migration fails before it drops anything, and CI/CD stops
   the deploy.
 
@@ -139,9 +139,9 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 - **THEN** the step 15 invocations in that window write their deployment
   row's `lastSeenAtMs`, and the column-drop guard waits from that time.
 
-#### Scenario: Instant Rollback below step 3
+#### Scenario: Instant Rollback below step 14
 
-- **WHEN** an Instant Rollback makes a release from before step 3 current
+- **WHEN** an Instant Rollback makes a release from before step 14 current
 - **THEN** within 3 minutes the current row's `updatedAtMs` is too old,
   every new-core worker takes no lock and acks, pinned conversations wait
   until a roll forward, and no guard migration runs. A new-core
@@ -149,13 +149,20 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
   `maxDuration` ends, so the accepted window is 3 minutes plus one
   invocation.
 
-#### Scenario: Short rollback below step 3
+#### Scenario: Short rollback below step 14
 
-- **WHEN** an Instant Rollback below step 3 is current for less than 3
+- **WHEN** an Instant Rollback below step 14 is current for less than 3
   minutes, so the current row misses one cron run, and then a roll
   forward makes a step 15 release current
 - **THEN** the first upsert after the roll forward sets `freshSinceAtMs`,
-  and for 1,860 s a move that finds no lease and no tombstone waits (C13).
+  and for 2,100 s a move that finds no lease and no tombstone waits (C13).
+
+#### Scenario: Release jump to the cutover
+
+- **WHEN** an app deploys the step 15 release straight from a release
+  before step 14
+- **THEN** the first current-row upsert sets `freshSinceAtMs`, and for
+  2,100 s a move that finds no lease and no tombstone waits.
 
 #### Scenario: Abandoned half-moved turn
 
@@ -170,46 +177,39 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 - **THEN** it sets `stopAtMs` so that the inputs in the stop's
   `inboundMessageIds` are under the stop and later inputs are not.
 
-#### Scenario: Quiet new-core conversation keeps its pin
-
-- **WHEN** a `core = new` conversation gets no lock take for 7 days
-- **THEN** the repair sweep has refreshed its record's TTL, so the pin is
-  still there.
-
 ### Requirement: Stale Lease Fence
 
-The move SHALL take an expired today's lease only after the later of
-`acquiredAtMs + D(lease)` and
-`staleLeaseAcquiredAtMs + staleLeaseMaxDurationSeconds`, plus 60 s (Decided:
-P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or a
+The move SHALL take an expired today's lease only after
+`max(acquiredAtMs, staleLeaseAcquiredAtMs) + D + M` (Decided: P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or a
 take over an expired lease SHALL first save the old `acquiredAtMs` as
 `staleLeaseAcquiredAtMs`.
 
 #### Scenario: Expired lease waits out the old worker
 
 - **WHEN** the move finds today's lease expired, and less than
-  `maxDuration` plus 60 s has passed since its `acquiredAtMs`
+  `D + M` has passed since its `acquiredAtMs`
 - **THEN** it does not take the lease, and it sets `wakeAtMs` to that
   time.
 
 #### Scenario: Cleared lease waits out the old worker
 
 - **WHEN** the heartbeat cleared an expired lease, or another worker took
-  over and released it, less than `maxDuration` plus 60 s after the first
-  holder's `acquiredAtMs`
-- **THEN** the move waits until `staleLeaseAcquiredAtMs` plus
-  `maxDuration` plus 60 s, though the conversation has no lease.
+  over and released it, less than `D + M` after the first holder's
+  `acquiredAtMs`
+- **THEN** the move waits until `staleLeaseAcquiredAtMs + D + M`, though
+  the conversation has no lease.
 
 ### Requirement: Fence Duration
 
-`D(lease)` SHALL be `maxDurationMaxSeconds`, the running max over every
-deployment since step 3, for a lease with a `deploymentId`, else the 1,800 s
-platform ceiling (Decided: P45).
+`D` SHALL be 1,800 s, the platform ceiling, and `M` SHALL be 5 min, for
+every lease (Decided: P45).
 
-#### Scenario: Lease from before step 3
+#### Scenario: Fence ignores the deployment's maxDuration
 
-- **WHEN** the move finds an expired lease with no `deploymentId`
-- **THEN** it waits until 1,800 s plus 60 s after its `acquiredAtMs`.
+- **WHEN** the move finds an expired lease that a deployment with a
+  300 s `maxDuration` took
+- **THEN** it still waits until 1,800 s plus 5 min after its
+  `acquiredAtMs`.
 
 ### Requirement: Fence Read Order
 
@@ -248,7 +248,7 @@ change. Only `finishTurn` SHALL write those statuses.
 
 A worker SHALL take the lock with one compare-and-set on the conversation
 row that raises the lock version (Decided: P5). Every turn
-save, history commit and delivery intent SHALL check the token and version
+save, history commit and delivery intent SHALL check the version
 in the same write. A worker whose check fails SHALL stop (Decided). The lock
 version SHALL never go down.
 
@@ -463,9 +463,9 @@ without the agent (Decided: P30).
 
 ### Requirement: One Repair Job
 
-One repair job SHALL resend lost input, stamp records on `accepted`,
-`duplicate` or `refused`, stop after 5 attempts or 24 h, and notify workers
-for flagged records, past wake times (from a wake-time index) and
+One repair job SHALL resend lost input, stamp records on `accepted` or
+`duplicate`, stop after 5 attempts or 24 h, and notify workers for records
+it gave up on, past wake times (from a wake-time index) and
 `running` turns whose lock expired. It SHALL write no status (Decided: P7).
 
 #### Scenario: Parent turn fails after saving the record

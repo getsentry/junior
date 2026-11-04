@@ -226,15 +226,17 @@ work is due (Decided: P32).
 
 ### Requirement: Limit On Automated Turns
 
-The core SHALL stop admitting events and top-level agent messages after 25
-automated turns in a row with no turn from a person, and post one notice. A
+`createRequest` SHALL refuse events and top-level agent messages after 25
+automated turns in a row with no turn from a person, before it saves
+anything, and post one notice. A
 turn from a person SHALL reset the count. A child result SHALL skip the
 check but count toward it (Decided).
 
 #### Scenario: Agent message at the limit
 
 - **WHEN** an agent message targets a conversation that is at the limit
-- **THEN** `send()` refuses it.
+- **THEN** `createRequest` throws before it saves anything, and
+  `messageAgent` gets the error at once.
 
 ### Requirement: Location And Visibility Are Set Once
 
@@ -242,21 +244,23 @@ A conversation's Location and visibility SHALL be set at create and SHALL
 NOT change. ACP and CLI SHALL be private. Web SHALL be public by default.
 Slack SHALL take it from the channel. A child SHALL read its root's.
 
-#### Scenario: Different Location
+#### Scenario: Child conversation
 
-- **WHEN** input names a different Location
-- **THEN** `send()` refuses it.
+- **WHEN** a child conversation is created
+- **THEN** it takes its root's Location and visibility, and nothing changes
+  them later.
 
 ### Requirement: ACP Takes One Prompt At A Time
 
-A conversation with `whenBusy: refuse` SHALL refuse new input while a turn
-is open, including one that waits for sign-in. A copy with the same
-idempotency key SHALL return the earlier message.
+ACP ingress SHALL refuse a new prompt while the conversation has an open
+turn, including one that waits for sign-in, before it calls
+`createRequest`. A copy with the same idempotency key SHALL return the
+earlier message. `send()` SHALL NOT refuse input.
 
 #### Scenario: Prompt while busy
 
 - **WHEN** an ACP prompt arrives while a turn is open
-- **THEN** it is refused as busy.
+- **THEN** ACP ingress refuses it as busy and saves no record.
 
 ### Requirement: Visible Receipt For Slack Input
 

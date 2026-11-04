@@ -38,7 +38,8 @@ signature SHALL cover kind, scope, user id, team id, DM channel id and the
 request id of the run. `createRequest` SHALL take the unbound subject, mint
 the id, then bind it (Decided: P17). A delegated subject
 SHALL be used only with a system actor. `credentialsForTurn` SHALL check it
-at every turn start and resume (Decided: P17).
+at the start of every attempt: a turn start, a resume, a restart and a
+continuation (Decided: P17).
 
 #### Scenario: Plugin passes a binding
 
@@ -162,7 +163,8 @@ that turn is running and its lock is live, plus today's checks (Decided: P36).
 Turns of different actors in one conversation SHALL share its sandbox and
 files (Decided). When a turn's actor or access differs from the last pass's
 turn, the worker SHALL kill user processes before it applies the new pass
-(Decided: P36). Child conversations SHALL have their own
+(Decided: P36). The sandbox ref SHALL store only the last pass's turn id; a
+missing turn row SHALL count as a difference. Child conversations SHALL have their own
 sandbox. The user docs SHALL say so.
 
 #### Scenario: Two people in one thread

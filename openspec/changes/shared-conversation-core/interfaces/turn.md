@@ -8,7 +8,6 @@ Sketches for review, not final code. Labels follow `../design.md`.
 /** What a worker holds. The SQL conversation row is the source (P5). */
 type WorkerLock = {
   conversationId: ConversationId;
-  token: string;
   lockVersion: number;
   expiresAtMs: number;
 };
@@ -22,7 +21,7 @@ function acquireWorkerLock(
   conversationId: ConversationId,
 ): Promise<WorkerLock | undefined>;
 
-/** Every 15 s. Matches token, version and a live expiry. False: lost. */
+/** Every 15 s. Matches the version and a live expiry. False: lost. */
 function checkIn(lock: WorkerLock): Promise<boolean>;
 
 /**
@@ -30,7 +29,7 @@ function checkIn(lock: WorkerLock): Promise<boolean>;
  * first, and if that save fails the lock is left to expire (P8). Set
  * wakeAtMs to nextRunAtMs with a compare-and-set on inboxSeq (read the
  * inbox record again if it changed), and queue a delayed notify for
- * wakeAtMs. Clear the token (same match as checkIn). Then read the inbox
+ * wakeAtMs. Set the expiry to null (same match as checkIn). Then read the inbox
  * record again; if wakeAtMs <= now, notify a worker (P32).
  */
 function releaseWorkerLock(lock: WorkerLock): Promise<void>;
@@ -45,7 +44,7 @@ function nextRunAtMs(
   nowMs: number,
 ): number | undefined;
 
-/** Thrown by any save that does not match the held token and version. */
+/** Thrown by any save that does not match the held version and a live expiry. */
 type LockLostError = Error & {
   code: "lock_lost";
   conversationId: ConversationId;
@@ -69,7 +68,8 @@ type TurnRecord = {
   actor: Actor;
   credentialSubject?: SignedCredentialSubject;
   source: InboundMessage["source"];
-  /** Model profile and reasoning, chosen at start, kept on resume. */
+  /** Model profile and reasoning, chosen at start, kept on resume. A child
+   * takes it from its ConversationPolicy. */
   route: TurnRoute;
   /** Database now() at startTurn (rule 13). Never compared with stopAtMs. */
   startedAtMs: number;
@@ -200,7 +200,7 @@ without adding it again (E1).
  *    counting one error (P4), or finishTurn(failed: lost_worker);
  * 4. open turn "paused": resume it, or handle sign-in (access.md);
  * 5. no open turn: run selectTurnInput. Close dropped or stop-cut input
- *    with closeInput, and records the repair job flagged. Then startTurn.
+ *    with closeInput, and records the repair job gave up on. Then startTurn.
  * Then releaseWorkerLock, which re-checks for work.
  */
 function work(conversationId: ConversationId): Promise<void>;
@@ -319,12 +319,12 @@ If W2 also dies: the next worker finds `restarts: 1` and calls
 
 ### E3. Slow worker refused by the lock version
 
-Before: W1 holds token `t1`, v7, and runs T1.
+Before: W1 holds v7 and runs T1.
 
 1. W1 stalls and misses its check-ins for 90 s.
-2. W2's compare-and-set matches (expired): token `t2`, v8.
+2. W2's compare-and-set matches (expired): v8.
 3. W1 wakes and calls `saveCheckpoint`. The transaction's row check needs
-   `t1` and v7; the row has `t2` and v8. `LockLostError`. Nothing is saved.
+   v7; the row has v8. `LockLostError`. Nothing is saved.
 4. Had W1 tried to post, its check-in and its intent save fail the same way.
 
 A Redis expiry cannot reset v8: the counter lives on the SQL row.

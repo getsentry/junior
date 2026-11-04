@@ -42,8 +42,9 @@ function bindSubject(
 
 ```ts
 /**
- * What a turn may use. Built once per attempt. Tools, MCP, the sandbox pass
- * and the credential proxy read only this. Real tokens stay on the host.
+ * What a turn may use. Built at the start of each attempt. Tools, MCP,
+ * the sandbox pass and the credential proxy read only this. Real tokens
+ * stay on the host.
  */
 type TurnCredentials = {
   turnId: TurnId;
@@ -55,9 +56,10 @@ type TurnCredentials = {
 
 /**
  * The only credential builder (rule 8). Reads the turn's own actor and
- * subject, never newer input. At every turn start and resume, checks the
- * signature, the run id and that the binding still holds (P17). Throws when
- * a person actor carries a subject.
+ * subject, never newer input. At the start of every attempt (start,
+ * resume, restart, continuation), checks the signature, the run id and
+ * that the binding still holds (P17). Throws when a person actor carries a
+ * subject.
  */
 function credentialsForTurn(
   turn: TurnRecord,
@@ -78,8 +80,9 @@ in the VM (P36).
 type SandboxRef = {
   conversationId: ConversationId;
   vmId: string;
-  /** Actor and exact subject of the turn that last held a pass. */
-  lastPassFor?: { actor: Actor; subject?: SignedCredentialSubject };
+  /** The turn that last held a pass. Its turn row has the actor and
+   * subject; a missing row counts as "differs" (P36). */
+  lastPassTurnId?: TurnId;
 };
 
 type SandboxPass = {
@@ -91,8 +94,9 @@ type SandboxPass = {
 
 /**
  * At an attempt's first sandbox use. If the turn has no pass, mint one and
- * save sandboxPassId on the turn (fenced) first. If lastPassFor differs from
- * this turn's actor or subject, kill user processes. Then apply the policy
+ * save sandboxPassId on the turn (fenced) first. Read the turn row of
+ * lastPassTurnId: if it is missing, or its actor or exact subject differs
+ * from this turn's, kill user processes, then set lastPassTurnId. Then apply the policy
  * with the pass, expiry capped near the attempt limit. Later attempts of
  * the same turn renew the same pass.
  */
@@ -126,13 +130,10 @@ type ProxyDecision =
   | {
       allow: false;
       status: 403;
-      reason:
-        | "vm_mismatch"
-        | "not_current_pass"
-        | "turn_not_running"
-        | "lock_expired"
-        | "expired"
-        | "bad_signature";
+      /** Telemetry only. bad_pass: VM, signature or expiry. not_current:
+       * not the open turn's pass, the turn is not running, or the lock
+       * expired. */
+      reason: "bad_pass" | "not_current";
     };
 ```
 
@@ -228,7 +229,7 @@ Before: T1 for A, attempt 1 on W1 (v7), pass `p1` applied.
    allowed `p1` only while W1's lock was live (`lockExpiresAtMs > now()`),
    so W1's processes kept A's access for at most 90 s after its last
    check-in. From the expiry until W2 took the lock, the proxy refused
-   `p1` (`lock_expired`).
+   `p1` (`not_current`).
 
 ### E5. Background process after the turn ends
 
@@ -237,8 +238,8 @@ applies the no-credentials policy. Later T2 for B starts.
 
 1. Before T2: the old process calls a declared domain. The policy has no
    pass, so no credentials are added.
-2. T2's first sandbox use: `lastPassFor` is A, T2 is B. The worker kills
-   user processes, then applies B's pass `p2`.
+2. T2's first sandbox use: `lastPassTurnId` is T1, whose actor is A; T2
+   is B. The worker kills user processes, then applies B's pass `p2`.
 3. The process is gone, so it can never send with B's pass. A's files
    stay (Decided: one sandbox per conversation). The user docs say so.
 

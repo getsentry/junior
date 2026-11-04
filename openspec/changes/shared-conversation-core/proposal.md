@@ -62,8 +62,8 @@ requirements. `tasks.md` has the migration steps.
 - Decided items come from David Cramer's answers on #2567 (decision comments
   1–4) and in the planning thread. `design.md` cites each one as
   **Decided**.
-- Every item is Decided; `design.md`, Decisions Needed, is empty.
-  `design.md`, Later, lists items this change does not need.
+- Every item is Decided. `design.md`, Later, lists items this change does
+  not need.
 - A change to a decided rule needs David's OK.
 
 ## Specs

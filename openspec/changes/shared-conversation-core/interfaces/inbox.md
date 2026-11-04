@@ -16,8 +16,8 @@ type Conversation = {
   location?: Location;
   visibility: "public" | "private";
   policy: ConversationPolicy;
-  /** Worker lock (P5). Only the compare-and-set writes these three. */
-  lockToken?: string;
+  /** Worker lock (P5). Only the compare-and-set writes these two. Release
+   * sets lockExpiresAtMs to null. */
   lockExpiresAtMs?: number;
   lockVersion: number;
   /** Database now() of the stop() transaction (P34, P44). A turn that
@@ -36,8 +36,10 @@ type ConversationPolicy = {
   canAskUser: boolean;
   /** Child agents also take `wait` input into a running turn. */
   joinRule: "now" | "now_or_wait";
-  /** ACP refuses new input while a turn is open. */
-  whenBusy: "wait" | "refuse";
+  /** Child agents only. Set at spawn (spawn-agent.ts:140 on main). */
+  agentType?: string;
+  /** Child agents only. Model profile and reasoning chosen at spawn. */
+  route?: TurnRoute;
 };
 
 /** The one result vocabulary for turns, request records and results. */
@@ -115,8 +117,9 @@ type RequestRecord = {
   /** Result and parent-message records only. Read from the child's own
    * save, never from a message. The parent checks this turn row. */
   sentBy?: { conversationId: ConversationId; turnId: TurnId };
-  /** Child agents: what the parent asked for. */
-  task?: { title: string; text: string; agentType: string; route: TurnRoute };
+  /** Child agents: what the parent asked for. The agent type and route are
+   * set once at spawn, so they live on the child's ConversationPolicy. */
+  task?: { title: string; text: string };
   /** Only finishTurn changes it, with `WHERE status = 'open'` (rule 7). */
   status: "open" | "answered" | "stopped";
   outcome?: Outcome;
@@ -124,7 +127,6 @@ type RequestRecord = {
   repair: {
     inputAppendedAtMs?: number;
     attempts: number;
-    refusedAtMs?: number;
     gaveUpAtMs?: number;
   };
   /** Database now() of the transaction that mints it (P44). */
@@ -153,17 +155,17 @@ type ReplyTarget =
  */
 function send(message: InboundMessage): Promise<SendResult>;
 
-type SendResult =
-  | { status: "accepted" }
-  | { status: "duplicate" } // a waiting copy may be upgraded (files, join now)
-  | { status: "refused"; reason: "busy" | "automated_turn_limit" | "stopped" };
+/** send() never refuses. Busy (ACP) and the automated-turn limit are
+ * checked before createRequest saves anything. */
+type SendResult = { status: "accepted" } | { status: "duplicate" }; // a waiting copy may be upgraded (files, join now)
 
 /**
  * Core only; plugins cannot import it (P39). Mint the request id, bind the
  * unbound subject to it (bindSubject, P17), save the record, then send its
  * message. Safe to retry with the same idempotency key. Stamps
- * inputAppendedAtMs on accepted or duplicate. On refused, stamps
- * refusedAtMs; the worker closes the record (P30).
+ * inputAppendedAtMs on accepted or duplicate. Throws, and saves nothing, for
+ * an event or a top-level agent message when the conversation is at the
+ * automated-turn limit, so messageAgent gets a sync error.
  */
 function createRequest(
   record: Omit<

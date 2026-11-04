@@ -7,12 +7,11 @@
      rolls back alone. #2556 is not a step: it is a reviewed PR for a live
      bug and lands on its own, ungated. Step 1 is retired.
   2. Build: steps 3 to 13 build the new core beside today's code. It is not
-     wired to production traffic: entry-point wiring and the check-in
-     metric come in step 15. The conformance tests and the gate run
+     wired to production traffic: entry-point wiring comes in step 15. The conformance tests and the gate run
      against it. A build step changes no production behavior, so its
      rollback is a revert.
   3. Cut over and delete: step 14 points today's readers at the new
-     core's rows, step 15 routes every kind through `work()`, step 16 deletes
+     core's rows and ships the shim, step 15 routes every kind through `work()`, step 16 deletes
      today's workers and records, and step 17 deletes this plan.
 - Rolling deploy: old and new workers run at the same time. P45 says how
   the cutover stays safe: the stale lease fence and the pin, with no
@@ -22,11 +21,11 @@
   operator flag, a count to watch or a command to run once. A release that
   needs earlier state to drain carries a guard migration that fails, so
   CI/CD stops it.
-- At the start of each step, check this plan against current `main`.
+- At the start of step 14, check P45 against current `main`: the two
+  paths that erase a lease and today's ingress append.
 - Each step adds or extends an integration test through the real worker
   (`policies/testing.md`). Fake only Slack and LLMs.
-- "Needs" lists the decisions (`design.md`, Decisions Needed) that must be
-  signed off first. A change to a decided rule needs David's OK.
+- A change to a decided rule needs David's OK.
 - Gate timing (Decided: P41): step G ships first. With the model complete
   (G.1a–G.1l), it must be green before the cutover release (step 15). A
   build step merges only when the checks its Verify line names are green
@@ -76,12 +75,17 @@
       expiry, and the column-drop guard with `lastSeenAtMs` from invocations,
       the throttle and a revert and a promote again. The P46 drop with the
       repair job is in `errors_design` (L1 to L3). Left: the sweep under the
-      fence (a full lock take, root before child, the TTL refresh;
-      `shim_rollbackNoRefresh` holds without the refresh, so no check shows
-      why it is needed); liveness for an append after the move; I15 beyond the
-      Agent invocation row; a Slack retry that finds a request record but no
-      append; the P37 target bound (2 conversations, 2 person actors and the
-      system actor, 4 inputs).
+      fence (a full lock take, root before child); liveness for an append
+      after the move; I15 beyond the Agent invocation row; a Slack retry that
+      finds a request record but no append; the P37 target bound (2
+      conversations, 2 person actors and the system actor, 4 inputs).
+      Stale after the simplification pass (the model needs updating; this
+      plan is the target): - The lock has no token; the version alone fences (`WorkerLock.tla`
+      `TokenOk`). - The fence uses a fixed `D` of 1,800 s: no running max and no lease
+      `deploymentId` (`shim_long`). - The margin `M` is 5 min, not a 60 s skew allowance; the drop wait is
+      `1 h + 2×D + M + 60 s` (`drop_design`). - The shim ships in step 14, not step 3: a first current-row upsert
+      sets `freshSinceAtMs`, and ingress from before step 14 can be in
+      flight during a release jump. - The sweep has no TTL refresh.
 - [ ] G.1g Run `check.sh` in CI when `packages/junior/verification/**`
       changes, and once a week. A full run of the 76 checks takes about
       5 h 25 min on 4 cores (the sum of wall times in `results.txt`); the
@@ -132,9 +136,9 @@
 
 ### 3. SQL worker lock, lock version and wake time
 
-- [ ] 3.1 Add lock token, expiry and version to the conversation row. Take
-      the lock with the compare-and-set. Check in and release with the
-      token and version. All lock times use database `now()`.
+- [ ] 3.1 Add lock expiry and version to the conversation row. Take the
+      lock with the compare-and-set. Check in and release with the version;
+      release sets the expiry to null. All lock times use database `now()`.
 - [ ] 3.2 Add `nextRunAtMs`, the one runnable test. Before release, set
       `wakeAtMs` with a compare-and-set on `inboxSeq` and queue a delayed
       notify for it. Release, then read the inbox record again. Never
@@ -143,45 +147,8 @@
       before it notifies.
 - [ ] 3.4 A notify that finds a live lock is dropped; the repair job is the
       backstop (P46).
-- [ ] 3.5 The cutover reader (P45), in `chat/cutover/` and today's worker
-      modules. It changes no user-visible behavior, because no conversation is
-      new core yet. Add the `core` field on the conversation row; a child
-      inherits its root's `core`. Today's workers read it and refuse
-      `core = new`: they ack and send nothing. The heartbeat clear of an expired
-      lease and a take over an expired lease first save the old `acquiredAtMs`
-      as `staleLeaseAcquiredAtMs` (the larger value) and `D(lease)` as
-      `staleLeaseMaxDurationSeconds` on the SQL row. Each lease take writes its
-      `deploymentId` on the lease, and logs database `now()` minus app `now()`
-      as `app.conversation.lease.clock_skew_ms` on
-      `conversation.work.lease.acquired` (`TELEMETRY.md`), with an alert above
-      30 s. Each invocation that runs work first upserts its deployment row
-      (`deploymentId`, `capabilities`, `maxDurationSeconds`, `lastSeenAtMs`; at
-      most once a minute) and raises `maxDurationMaxSeconds` on the current row.
-      Every ingress path first adds the id to `execution.inboundMessageIds`
-      in one conversation mutation, before it reads `core`; only the add
-      that wins goes on (C5, C6). Each new Agent invocation row stores the
-      id of the parent turn that
-      created it, and the request record id when the parent has one (I15). The
-      heartbeat cron upserts the current-deployment row (`deploymentId`,
-      `capabilities`, `maxDurationSeconds`, `maxDurationMaxSeconds`,
-      `currentSinceAtMs`, `freshSinceAtMs`, `updatedAtMs`). It sets
-      `freshSinceAtMs` after any missed cron run: when the old `updatedAtMs`
-      is more than one cron interval plus jitter old, with the jitter
-      allowance below one interval (C13). When the current deployment lacks
-      `new_core`, a `core = new` conversation with no open turn and no open
-      record moves back. First it deletes each Redis turn cursor that has a
-      turn row and each waiting input that has a request record (C10). An
-      open turn row whose cursor already has an end status ends through
-      `finishTurn` with that end status, and nothing runs it (C12). Then it
-      clears the pin and sets `core = old`. Test: a take over an expired lease and a
-      heartbeat clear each save `staleLeaseAcquiredAtMs`; a refusal sends no
-      message; a new invocation row has its parent turn id; a lease has its
-      `deploymentId`; an invocation writes its deployment row at most once a
-      minute; a move back after a crashed move leaves no Redis cursor or waiting
-      input that has a turn row or request record; a move back after a crashed
-      move and an `abandonTurnRecord` ends the open turn row `abandoned` and runs
-      nothing; a rollback shorter than 3 minutes (one missed cron run) sets
-      `freshSinceAtMs`.
+- [ ] 3.5 Emit the lock check-in rate as a metric (`TELEMETRY.md`), the
+      input to the P43 switch rule.
 - [ ] 3.6 Test: a slow worker after a takeover cannot check in (turn E3); a
       message while the lock is held (turn E7); a sign-in while the lock is
       held.
@@ -295,10 +262,11 @@
       transaction.
 - [ ] 11.2 Add guardian eval cases for P15 outside text and P20 "never
       approval".
-- [ ] 11.3 Test: busy child (agents E1), grandchild result (agents E2) and
+- [ ] 11.3 Set the `maxAgentDepth` default to 1 (Decided).
+- [ ] 11.4 Test: busy child (agents E1), grandchild result (agents E2) and
       a forged result (agents E5).
 - Verify: I5 for records, I8 and I9; L1 for children; agent-tree › Same
-  actor, Grandchild result after the child's turn ended, Forged result,
+  actor, Grandchild spawns, Grandchild result after the child's turn ended, Forged result,
   Result wakes an idle parent, Two siblings finish together;
   turn-access › Grandchild result after another person messaged the child;
   traces agents E1, E2, E5 and edges E2; the guardian cases.
@@ -308,6 +276,9 @@
 - [ ] 12.1 Plugin-started runs use `work()`. An Automation run has
       `replyTo: stored` and `outcomes` on its record; `finishTurn` delivers
       its one result to each outcome (P18). Plugins read the computed view.
+      Automation run rows compute their status after dispatch from the
+      request record; only the claim, `automationVersion` and the statuses
+      from before dispatch stay stored (P18).
 - [ ] 12.2 Test: an Automation run through `finishTurn` (edges E1).
 - Verify: L1 for plugin-started runs; plugin-started-agents › Draft stays
   in the web view, Result from the final response, Result from the tool
@@ -317,35 +288,71 @@
 ### 13. Credentials and the sandbox pass
 
 - [ ] 13.1 Add `credentialsForTurn` and `bindSubject` (signature covers the
-      run). Check at every start and resume.
+      run). Check at the start of every attempt (start, resume, restart,
+      continuation), and nowhere else (P17).
 - [ ] 13.2 One pass per turn on the turn row. The proxy checks it against
       the open turn, `running`, with a live lock. No-credentials policy at
       finish and at the listed pauses. Kill user processes when the actor
       or access changes.
-- [ ] 13.3 Test: background process after the turn (access E5).
+- [ ] 13.3 Document one sandbox per conversation in the user docs, on the
+      sandbox section of `packages/docs` (`concepts/security-and-authority.md`):
+      a file that one person's turn leaves in the sandbox can run in a
+      later person's turn with that person's access. Short and factual, no
+      exploit steps (P36).
+- [ ] 13.4 Test: background process after the turn (access E5).
 - Verify: I5 for credentials and I13; S2; turn-access › Background process
-  after the turn, Pass from an older turn; traces access E4, E5.
+  after the turn, Pass from an older turn, Docs state the shared-file
+  limit; traces access E4, E5.
 
 ## Cut Over And Delete
 
-### 14. Cutover readers
+### 14. Cutover readers and the shim
 
 - [ ] 14.1 Readers (`listAgents`, the dashboard, reporting, result handling
       and the plugin view) read turn rows and request records for a
       new-core conversation, else today's rows.
-- [ ] 14.2 The move back (P45) also runs the new core's `work()` until a
-      new-core conversation has no open turn and no open record. A take that
-      finds `core = new` and no pin first passes the stale lease fence and
-      pins, in the C11 read order (C14). Then it runs the C10 delete with the
-      end rule (3.5, C12), then `work()`, then clears the pin and sets
-      `core = old`. This release ships the fence and the pin code from
-      `chat/cutover/` for this take. Today's timer job notifies each new-core
-      conversation whose `wakeAtMs` has passed. No flag turns this on.
-- [ ] 14.3 Test: after a revert, a paused new-core turn finishes and moves
-      back with no new input; no move back while the current deployment
-      has `new_core`; after a revert, input in the new core's inbox does not
-      run while today's lease holder runs, and runs after the fence passes
-      and the take pins; the move back runs no turn whose cursor
+- [ ] 14.2 The shim reader (P45), in `chat/cutover/` and today's worker
+      modules. It changes no user-visible behavior, because no conversation
+      is new core yet. Add the `core` field on the conversation row; a child
+      inherits its root's `core`. Today's workers read it and refuse
+      `core = new`: they ack and send nothing. The heartbeat clear of an
+      expired lease and a take over an expired lease first save the old
+      `acquiredAtMs` as `staleLeaseAcquiredAtMs` (the larger value) on the
+      SQL row. Each invocation that runs work first upserts its deployment
+      row (`deploymentId`, `capabilities`, `lastSeenAtMs`; at most once a
+      minute). Every ingress path first adds the id to
+      `execution.inboundMessageIds` in one conversation mutation, before it
+      reads `core`; only the add that wins goes on (C5, C6). Each new Agent
+      invocation row stores the id of the parent turn that created it, and
+      the request record id when the parent has one (I15). The heartbeat
+      cron upserts the current-deployment row (`deploymentId`,
+      `capabilities`, `currentSinceAtMs`, `freshSinceAtMs`, `updatedAtMs`).
+      It sets `freshSinceAtMs` on the first upsert and after any missed cron
+      run: when the old `updatedAtMs` is more than one cron interval plus
+      jitter old, with the jitter allowance below one interval (C13).
+- [ ] 14.3 The move back (P45). When the current deployment lacks
+      `new_core`, a take that finds `core = new` and no pin first passes the
+      stale lease fence and pins, in the C11 read order (C14). Then it
+      deletes each Redis turn cursor that has a turn row and each waiting
+      input that has a request record (C10). An open turn row whose cursor
+      already has an end status ends through `finishTurn` with that end
+      status, and nothing runs it (C12). Then it runs the new core's
+      `work()` until the conversation has no open turn and no open record,
+      clears the pin and sets `core = old`. Today's timer job notifies each
+      new-core conversation whose `wakeAtMs` has passed. No flag turns this
+      on.
+- [ ] 14.4 Test: a take over an expired lease and a heartbeat clear each
+      save `staleLeaseAcquiredAtMs`; a refusal sends no message; a new
+      invocation row has its parent turn id; an invocation writes its
+      deployment row at most once a minute; the first current-row upsert
+      and a rollback shorter than 3 minutes (one missed cron run) each set
+      `freshSinceAtMs`; after a revert, a paused new-core turn finishes and
+      moves back with no new input; no move back while the current
+      deployment has `new_core`; after a revert, input in the new core's
+      inbox does not run while today's lease holder runs, and runs after
+      the fence passes and the take pins; a move back after a crashed move
+      leaves no Redis cursor or waiting input that has a turn row or
+      request record; the move back runs no turn whose cursor
       `abandonTurnRecord` ended.
 - Verify: every check from steps G to 13; `shim_design` (`safety`,
   `oneCore`, with C12 and C14); turn-lifecycle › Old worker
@@ -363,7 +370,7 @@
       stop, dashboard stop, ACP stop and thread opt-out call `stop()`.
       Until the current row has `new_core` (15.4), input takes today's
       path, as in the step 14 release. Core ingress makes the same shared
-      claim as today's ingress (3.5) before its SQL insert.
+      claim as today's ingress (14.2) before its SQL insert.
 - [ ] 15.2 Every new-core lock take that finds today's state moves it
       (P45): it pins today's lease (`MAX_SAFE_INTEGER`, fixed token) and
       refreshes the record's 7-day TTL, then in one locked step moves an
@@ -383,8 +390,8 @@
       `inboundMessageIds` get a `receivedAtMs` before it, others after.
 - [ ] 15.3 Moved authority (P45, I15): verify each old subject with today's
       `verify*` check, then `bindSubject` with the P45 mapping table, then
-      `credentialsForTurn` before the first resume. A moved Agent invocation row
-      is trusted only when it stores its parent turn id (3.5) and its actor and
+      `credentialsForTurn` at the first attempt after the move. A moved Agent invocation row
+      is trusted only when it stores its parent turn id (14.2) and its actor and
       subject match that turn or request record. Every other active row closes
       with a `failed` result to the parent. The move never looks up the parent's
       latest invocation. Add a kind and scope for a DM plugin dispatch to
@@ -394,14 +401,13 @@
       or is bound to the turn id.
 - [ ] 15.4 The stale lease fence (P45): the move takes an expired today's
       lease only after the larger of `acquiredAtMs` and
-      `staleLeaseAcquiredAtMs`, plus `maxDuration` and 60 s, else it sets
-      `wakeAtMs` to that time. With no lease and no recent
+      `staleLeaseAcquiredAtMs`, plus `D` (1,800 s) and `M` (5 min), else it
+      sets `wakeAtMs` to that time. With no lease and no recent
       `staleLeaseAcquiredAtMs`, it moves at once, except in the first
-      1,860 s after `freshSinceAtMs`. It reads the lease, then the
+      2,100 s after `freshSinceAtMs`. It reads the lease, then the
       tombstone, in the conversation mutation that writes the pin (C11).
-      `D(lease)` is `maxDurationMaxSeconds`, or 1,800 s for a lease with
-      no `deploymentId`. A current row with `updatedAtMs` more than 3
-      minutes old is current for no deployment. A
+      A missing current row, or one with `updatedAtMs` more than 3
+      minutes old, is current for no deployment. A
       new-core worker on a deployment that is not the current row takes
       no lock and acks; the repair job on the current deployment runs the
       conversation. This release adds `new_core` to its capabilities. No
@@ -412,31 +418,20 @@
       compare-and-set, the fence and its read order, the pin, the
       authority checks), and never a child before its root has
       `core = new`. It notifies the parent of each active Agent
-      invocation row on an old-core conversation, and refreshes the 7-day
-      TTL of every `core = new` conversation's record at least once a
-      day. When a sweep finds nothing (wake fields alone do not count) and
+      invocation row on an old-core conversation. When a sweep finds nothing (wake fields alone do not count) and
       no deployment row without `new_core` has `lastSeenAtMs` in the last
       7 days, it saves `oldStateDrainedAtMs`.
 - [ ] 15.6 Put the fence, move, pin, move back and sweep in one feature
       directory, `chat/cutover/`, so step 16 deletes it whole.
-- [ ] 15.7 Set the `maxAgentDepth` default to 1 (Decided).
-- [ ] 15.8 Emit the lock check-in rate as a metric (`TELEMETRY.md`), the
-      input to the P43 switch rule.
-- [ ] 15.9 Document one sandbox per conversation in the user docs, on the
-      sandbox section of `packages/docs` (`concepts/security-and-authority.md`):
-      a file that one person's turn leaves in the sandbox can run in a
-      later person's turn with that person's access. Short and factual, no
-      exploit steps (P36).
-- [ ] 15.10 Test: a conversation with an open Redis turn cursor and a running
+- [ ] 15.7 Test: a conversation with an open Redis turn cursor and a running
       child agent moves on its first lock take; a repeat after a crash in the
       move mints no second record; a Slack retry after the move is a duplicate;
       a moved turn whose subject fails its check is closed; an invocation row
       with no parent turn id is closed with a `failed` result; no move before
-      the fence passes for an expired or cleared lease, with 1,800 s for a lease
-      with no `deploymentId`; no new-core lock take while the current row is
-      stale; an abandoned half-moved turn ends without a run; a pending stop
-      stops the moved turn; a quiet `core = new` conversation keeps its pin past
-      7 days; a worker on a deployment that is not current takes no lock; the
+      the fence passes for an expired or cleared lease (`D + M` after the later
+      take); no new-core lock take while the current row is missing or stale;
+      an abandoned half-moved turn ends without a run; a pending stop stops the
+      moved turn; a worker on a deployment that is not current takes no lock; the
       sweep moves an idle conversation with no new input.
 - Verify: the gate is green, with I15; `shim_design` (`safety`,
   `oneCore`), `shim_abandon`, `shim_long`, `shim_stop` and `shim_inv`
@@ -448,15 +443,14 @@
   worker, Cleared lease waits out the old worker, New-core worker on a
   deployment that is not current, Pin outlives the move, Inbox move after
   a crash, Moved authority not verified, Agent invocation row without its
-  creating record, Tombstone read after the lease, Lease from before step
-  3, Abandoned half-moved turn, Pending stop moves with the conversation,
-  Quiet new-core conversation keeps its pin, Instant Rollback below step
-  3, Short rollback below step 3, Repair job moves leftover state;
-  agent-tree › Grandchild spawns; conversation-inbox › Duplicate CLI
-  input; turn-access › Docs state the shared-file limit.
+  creating record, Tombstone read after the lease, Fence ignores the
+  deployment's maxDuration, Release jump to the cutover, Abandoned
+  half-moved turn, Pending stop moves with the conversation, Instant Rollback below
+  step 14, Short rollback below step 14, Repair job moves leftover state;
+  conversation-inbox › Duplicate CLI input.
 - Rollback (P45): a revert deploy. Moves stop within about a minute, when
   the cron updates the current row. Each new-core conversation finishes
-  its open work and moves back by itself (14.2).
+  its open work and moves back by itself (14.3).
 
 ### 16. Delete release
 
@@ -478,8 +472,7 @@
 - [ ] 16.4 Delete the repair sweeps: the result sweep, the outbox sweep, the
       24 h failure rule and the lost-worker fallback in the timer job.
 - [ ] 16.5 Delete the shim: `chat/cutover/` (fence, move, pin, move back,
-      sweep, TTL refresh) and every `core` check, lease `deploymentId`,
-      tombstone write and `app.conversation.lease.clock_skew_ms` log. Keep
+      sweep) and every `core` check and tombstone write. Keep
       the current row and deployment row writers for step 17's guard, and
       the shared ingress claim (C5, C6) for ingress in flight on a step 15
       deployment. This release adds `old_core_deleted` to its capabilities.
@@ -487,7 +480,10 @@
       `execution_status` and `run_id` columns (P3), the second
       status-to-end mapping, the step 14 fallback reads, the
       post-then-commit guard, the opt-out-only tree walk and the stop
-      variants per entry point, the other credential builders, the pass
+      variants per entry point, the writers of the Automation run row
+      columns that are now computed (`status` after dispatch,
+      `startedAtMs`, `completedAtMs`, `errorMessage`, `resultMessageTs`),
+      the other credential builders, the pass
       that lasts for the sandbox timeout, the silent web supersede, the
       "newer sign-in replaces" path and "copy the latest request".
 - [ ] 16.7 Test: the guard migration fails with old state left and passes
@@ -503,15 +499,15 @@
 
 ### 17. Clean up
 
-- [ ] 17.1 Drop `execution_status`, `run_id`, the `core` column,
-      `staleLeaseAcquiredAtMs`, `staleLeaseMaxDurationSeconds`,
+- [ ] 17.1 Drop `execution_status`, `run_id`, the computed Automation run
+      row columns (16.6), the `core` column, `staleLeaseAcquiredAtMs`,
       `oldStateDrainedAtMs`, the current row, the deployment rows and the old
       tables (with the Agent invocation table and its parent turn id and request
       record id) in one migration. Delete their writers and the shared ingress
       claim. It first checks that the current row has `old_core_deleted` and
-      that every deployment row without it has `lastSeenAtMs` at least 1 h plus
-      two `maxDurationMaxSeconds` plus 3 min old (P45 column-drop guard), since
-      code from steps 3 to 15 still selects the columns, and fails otherwise, so
+      that every deployment row without it has `lastSeenAtMs` at least
+      `1 h + 2×D + M + 60 s` (2 h 6 min) old (P45 column-drop guard), since
+      code from steps 14 to 15 still selects the columns, and fails otherwise, so
       CI/CD stops the release. The schema checks
       (`pnpm migration-metadata:check`) run on it in CI.
 - [ ] 17.2 Move lasting rules into code, tests and policies. Delete this
