@@ -155,9 +155,9 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
-  // On a direct load this fetch starts before the page mounts, and the page
-  // joins it. It asks for the page's unread page, so one request serves both.
+  // The shell owns the open Conversation's data, and the page reads it. On a
+  // direct load, this fetch runs beside the dashboard core reads, before the
+  // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
   });
@@ -444,7 +444,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail={false} />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -486,7 +486,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}

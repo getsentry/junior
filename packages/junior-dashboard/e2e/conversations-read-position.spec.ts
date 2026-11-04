@@ -609,16 +609,21 @@ test("opens far behind at the read position and loads newer pages after it", asy
     },
   );
   const detailRequests: string[] = [];
-  let releaseDetail = () => {};
-  const detailGate = new Promise<void>((resolve) => {
-    releaseDetail = resolve;
+  let detailServed = () => {};
+  const firstDetail = new Promise<void>((resolve) => {
+    detailServed = resolve;
+  });
+  // The dashboard core reads end after the detail, so the page mounts after
+  // the shell's detail fetch is done.
+  await page.route("**/api/config", async (route) => {
+    await firstDetail;
+    await route.fallback();
   });
   await page.route(
     (url) => url.pathname === `/api/conversations/${conversationId}`,
     async (route) => {
       const { search } = new URL(route.request().url());
       detailRequests.push(search);
-      await detailGate;
       const unreadPage = search.includes("unreadPage");
       await route.fulfill({
         json: {
@@ -632,16 +637,14 @@ test("opens far behind at the read position and loads newer pages after it", asy
           ...(unreadPage ? { unreadPage: aroundPage(20) } : undefined),
         },
       });
+      detailServed();
     },
   );
 
-  // On a direct load, the shell starts the detail fetch before the page
-  // mounts. A long Conversation's detail ends after the page mounts, so the
-  // page joins that fetch. It asks for the unread page too.
+  // On a direct load, the shell fetches the detail before the page mounts.
+  // The page uses that fetch and does not fetch again.
   await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
-  await expect(transcript).toBeAttached();
-  releaseDetail();
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
   await expect(marker).toBeInViewport();

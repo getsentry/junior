@@ -496,6 +496,9 @@ export function useStopConversationTurn(conversationId: string) {
   });
 }
 
+/** The open Conversation's data, from `useConversationData`. */
+export type ConversationData = ReturnType<typeof useConversationData>;
+
 /** Fetch a bounded conversation snapshot and older pages on demand. */
 export function useConversationData(
   conversationId: string | undefined,
@@ -555,10 +558,15 @@ export function useConversationData(
         : undefined,
       unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
     }),
-    // A reopened Conversation shows the cached copy at once, but it can miss
-    // messages that arrived while the reader was away. Fetch it each visit.
-    refetchOnMount: "always",
   });
+  // A reopened Conversation shows the cached copy at once, but it can miss
+  // messages that arrived while the reader was away. Fetch it once at the
+  // start of each visit, even when the cached copy is still fresh. A fetch
+  // that is already running counts.
+  const refetchDetail = detail.refetch;
+  useEffect(() => {
+    if (conversationId) void refetchDetail({ cancelRefetch: false });
+  }, [conversationId, refetchDetail]);
   if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
     setVisit({ conversationId, fetched: true });
   }
@@ -715,7 +723,6 @@ export function useConversationData(
   const isLoadingPreviousPage =
     history.isFetchingNextPage || historyNeedsReconciliation;
 
-  const refetchDetail = detail.refetch;
   useEffect(() => {
     if (shouldRefreshDetail) void refetchDetail();
   }, [refetchDetail, shouldRefreshDetail]);

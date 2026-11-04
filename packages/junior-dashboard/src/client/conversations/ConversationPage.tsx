@@ -13,7 +13,7 @@ import type {
   ConversationFeed,
 } from "@sentry/junior/api/schema";
 
-import { useConversationData } from "./queries";
+import type { ConversationData } from "./queries";
 import {
   useArchiveConversation,
   type PendingArchiveConversationUpdate,
@@ -127,6 +127,11 @@ function subscribeToDetailsLayout(onChange: () => void) {
 export function ConversationPage(props: {
   conversationId: string;
   data?: { conversations: ConversationFeed };
+  /**
+   * This Conversation's data. The shell fetches it, so a direct load does
+   * not wait for the dashboard core reads, and each visit fetches it once.
+   */
+  detail: ConversationData;
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
@@ -208,9 +213,7 @@ export function ConversationPage(props: {
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
   );
-  const detail = useConversationData(conversationId, {
-    unreadPageAtOpen: startAtUnread,
-  });
+  const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
   // the rest of the visit. It can come before the unread page loads.
   const [showLatest, setShowLatest] = useState(false);

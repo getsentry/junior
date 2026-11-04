@@ -15,7 +15,7 @@ import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
-import { useCreateConversation } from "./queries";
+import { useCreateConversation, type ConversationData } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -37,7 +37,10 @@ import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
 const CONVERSATION_PAGE_SIZE = 20;
 
 /** Render the conversation home page or one selected conversation. */
-export function ConversationWorkspace() {
+export function ConversationWorkspace(props: {
+  /** The selected Conversation's data, from the shell. */
+  detail: ConversationData;
+}) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
@@ -186,6 +189,7 @@ export function ConversationWorkspace() {
         <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
           <ConversationPage
             conversationId={selectedId}
+            detail={props.detail}
             data={
               feed.data
                 ? {

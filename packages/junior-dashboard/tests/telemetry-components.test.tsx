@@ -13,7 +13,10 @@ import type {
   Plugin,
 } from "@sentry/junior/api/schema";
 
-import { conversationDetailQueryKey } from "../src/client/conversations/queries";
+import {
+  conversationDetailQueryKey,
+  useConversationData,
+} from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
   SubagentTranscriptDrawer,
@@ -1955,7 +1958,7 @@ describe("dashboard canonical-event components", () => {
             <Route
               path="/conversations/:conversationId"
               element={
-                <ConversationPage
+                <ConversationPageWithData
                   conversationId={summary.conversationId}
                   data={{
                     conversations: {
@@ -1984,11 +1987,19 @@ function conversationQueryClient(): QueryClient {
   });
 }
 
+/** Read the detail like the shell does, then render the page. */
+function ConversationPageWithData(
+  props: Omit<Parameters<typeof ConversationPage>[0], "detail">,
+) {
+  const detail = useConversationData(props.conversationId);
+  return <ConversationPage {...props} detail={detail} />;
+}
+
 function renderConversationPageWithClient(queryClient: QueryClient): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
-        <ConversationPage conversationId="conversation-1" />
+        <ConversationPageWithData conversationId="conversation-1" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
