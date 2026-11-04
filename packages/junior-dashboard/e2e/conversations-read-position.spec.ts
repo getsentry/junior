@@ -62,6 +62,8 @@ async function mockReadPositionConversation(
     turnStartSeq: -1,
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
+    /** The query of each detail request. */
+    detailRequests: [] as string[],
     reported: [] as number[],
   };
   let stored = input.lastReadSeq;
@@ -169,6 +171,7 @@ async function mockReadPositionConversation(
     },
   );
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
+    state.detailRequests.push(new URL(route.request().url()).search);
     await state.detailGate;
     const firstSeq = state.pagedDetail
       ? Math.max(0, state.eventCount - PAGE_SIZE)
@@ -266,6 +269,7 @@ test.describe("opens at new messages after a cached reopen", () => {
     const newerRequest = page.waitForRequest((request) =>
       request.url().includes("/events?around="),
     );
+    const detailRequestCount = mock.detailRequests.length;
     await page
       .getByRole("link", { name: /Read position/ })
       .first()
@@ -274,6 +278,9 @@ test.describe("opens at new messages after a cached reopen", () => {
     await expect(marker).toHaveCount(0);
     releaseDetail();
     await newerRequest;
+    // The fresh cached copy does not count as this visit's fetch, so the
+    // reopen fetch still asks for the page around the read position.
+    expect(mock.detailRequests[detailRequestCount]).toBe("?unreadPage=true");
     await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
     await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(
       0,
