@@ -26,9 +26,19 @@ export function canvasBodyToMarkdown(body: string, title?: string): string {
   const markdown = canvasHtmlConverter.translate(body).trim();
   // The export starts with the canvas title as an `h1`. Slack keeps that
   // heading across a body replace, so writing it back would show it twice.
-  const titleHeading = title ? `# ${title}` : undefined;
+  // Convert the title the same way so Markdown escapes match.
+  const titleHeading = title
+    ? canvasHtmlConverter.translate(`<h1>${escapeHtml(title)}</h1>`).trim()
+    : undefined;
   if (titleHeading && markdown.split("\n", 1)[0] === titleHeading) {
     return markdown.slice(titleHeading.length).trimStart();
   }
   return markdown;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }

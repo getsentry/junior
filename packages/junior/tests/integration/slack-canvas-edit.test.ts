@@ -21,11 +21,15 @@ function createState(): ToolState {
   };
 }
 
-function queueCanvasRead(canvasId: string, body: string): void {
+function queueCanvasRead(
+  canvasId: string,
+  body: string,
+  title = "Reference Canvas",
+): void {
   queueSlackApiResponse("files.info", {
     body: filesInfoOk({
       fileId: canvasId,
-      title: "Reference Canvas",
+      title,
       permalink: `https://sentry.slack.com/docs/T000/${canvasId}`,
       urlPrivate: `https://files.slack.com/files-pri/T000-${canvasId}/canvas.md`,
     }),
@@ -87,12 +91,13 @@ describe("Slack canvas file-like tools", () => {
   it("edits a canvas served as Quip HTML and writes Markdown back", async () => {
     queueCanvasRead(
       "F0PREVIOUS",
-      '<div class="quip-canvas-content"><h1 id="temp:C:T">Reference Canvas</h1>' +
+      '<div class="quip-canvas-content"><h1 id="temp:C:T">Q4 [draft] notes_v1 &amp; more</h1>' +
         '<h2 id="temp:C:A">Rows</h2>' +
         '<div data-section-style="5"><ul id="temp:C:B"><li id="temp:C:C">' +
         '<span><lnk href="https://linear.app/getsentry/issue/NET-625">NET-625</lnk>' +
         " — <code>Docs</code> fix</span><br/></li></ul></div>" +
         '<p id="temp:C:D" class="line">Old summary</p></div>',
+      "Q4 [draft] notes_v1 & more",
     );
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
