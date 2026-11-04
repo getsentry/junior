@@ -825,18 +825,6 @@ function validateConversationEvents(
   }
 }
 
-export const forkConversationBodySchema = z
-  .object({
-    /** Assistant reply that ends the copied history. */
-    messageId: z.string().min(1).max(500),
-    idempotencyKey: z.string().trim().min(1).max(200),
-  })
-  .strict();
-
-export const forkConversationResponseSchema = z
-  .object({ conversationId: z.string() })
-  .strict();
-
 /** One Conversation in the agent tree of a child Conversation. */
 export const conversationAgentTreeNodeSchema = z
   .object({
@@ -961,7 +949,6 @@ export type ArchiveConversationBody = z.infer<
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
 >;
-export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
 >;

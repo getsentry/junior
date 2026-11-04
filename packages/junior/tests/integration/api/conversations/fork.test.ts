@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   forkConversationResponseSchema,
   conversationDetailReportSchema,
+  quickQuestionResponseSchema,
 } from "@/api/schema";
 import {
   getConversationEventStore,
@@ -18,6 +19,10 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeConversationFixture } from "../../../fixtures/conversation";
+import {
+  mockTitleModel,
+  type TitleModelRequest,
+} from "../../../fixtures/title-model";
 import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -359,5 +364,98 @@ describe("conversation forks", () => {
       (await owner.request(url, forkRequest("unfinished", "bad-boundary")))
         .status,
     ).toBe(409);
+  });
+
+  it("answers a quick question from the history through a reply and saves only its cost", async () => {
+    // The shared fixture answers any direct model call with fixed text.
+    const requests: TitleModelRequest[] = [];
+    mockTitleModel("Side answer.", {
+      onRequest: (request) => requests.push(request),
+    });
+    const source = "local:web:quick-question-source";
+    const first = await storeAnsweredTurn(source, {
+      question: "Which option?",
+      answer: "Use the blue option.",
+      turn: "first",
+    });
+    await storeAnsweredTurn(source, {
+      question: "And later?",
+      answer: "Later knowledge.",
+      turn: "second",
+    });
+    const owner = await authenticatedApi(OWNER_EMAIL);
+    const stranger = await authenticatedApi("stranger@example.com");
+    const url = `/api/conversations/${encodeURIComponent(source)}/quick-questions`;
+    const ask = (body: unknown) => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const body = {
+      messageId: first,
+      quote: "blue option",
+      messages: [
+        { role: "user", text: "Why blue?" },
+        { role: "assistant", text: "It is cheaper." },
+        { role: "user", text: "By how much?" },
+      ],
+    };
+    const before = await getConversationEventStore().loadHistory(source);
+
+    expect((await stranger.request(url, ask(body))).status).toBe(403);
+    expect(
+      (await owner.request(url, ask({ ...body, messageId: "missing" }))).status,
+    ).toBe(409);
+    expect(
+      (
+        await owner.request(
+          url,
+          ask({ ...body, messages: body.messages.slice(0, 2) }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(requests).toHaveLength(0);
+
+    const response = await owner.request(url, ask(body));
+    expect(response.status).toBe(200);
+    expect(quickQuestionResponseSchema.parse(await response.json())).toEqual({
+      text: "Side answer.",
+    });
+    const prompt = JSON.stringify(requests[0]!.messages);
+    expect(prompt).toContain("Use the blue option.");
+    expect(prompt).not.toContain("Later knowledge.");
+    const thread = (requests[0]!.messages as Array<{ role: string }>).slice(-3);
+    expect(thread.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(JSON.stringify(thread[0])).toContain("blue option");
+    expect(JSON.stringify(thread[2])).toContain("By how much?");
+
+    // Only the cost event is new. The question and answer are not saved.
+    const after = await getConversationEventStore().loadHistory(source);
+    const added = after.slice(before.length);
+    expect(added.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "structured_event",
+        name: "quick_question_answered",
+        content: {
+          costUsd: expect.any(Number),
+          modelId: expect.any(String),
+        },
+      }),
+    ]);
+    expect(JSON.stringify(added)).not.toContain("By how much?");
+    const detail = conversationDetailReportSchema.parse(
+      await (
+        await owner.request(`/api/conversations/${encodeURIComponent(source)}`)
+      ).json(),
+    );
+    const cost = added[0]!.data;
+    expect(cost.type === "structured_event" && cost.content.costUsd).toBe(
+      detail.auxiliaryCosts?.costUsd,
+    );
+    expect(detail.auxiliaryCosts?.costUsd).toBeGreaterThan(0);
   });
 });

@@ -19,6 +19,8 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  quickQuestionBodySchema,
+  quickQuestionResponseSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -271,6 +273,17 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  // Nothing runs a model in mocks. Answer from the request.
+  app.post("/conversations/:conversationId/quick-questions", async (c) => {
+    const body = quickQuestionBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const question = body.data.messages.at(-1)!.text;
+    return jsonResponse(quickQuestionResponseSchema, {
+      text: `Mock answer to "${question}" about \`${body.data.quote}\`.`,
+    });
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

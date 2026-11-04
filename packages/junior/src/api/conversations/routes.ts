@@ -4,8 +4,6 @@ import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
@@ -24,6 +22,12 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import {
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
+  quickQuestionBodySchema,
+  quickQuestionResponseSchema,
+} from "../schema/conversation-fork";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
@@ -44,6 +48,7 @@ import {
 } from "./create";
 import { readConversationDetail } from "./detail";
 import { forkConversationForViewer } from "./fork";
+import { answerQuickQuestionForViewer } from "./quick-question";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { markConversationRead } from "./read-position";
@@ -179,6 +184,27 @@ export function createConversationRoutes(
       jsonResponse(
         forkConversationResponseSchema,
         await forkConversationForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
+    "/:conversationId/quick-questions",
+    requireViewer,
+    bodyLimit({ maxSize: 512_000 }),
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest("json", quickQuestionBodySchema, "Invalid request body."),
+    async (context) =>
+      jsonResponse(
+        quickQuestionResponseSchema,
+        await answerQuickQuestionForViewer(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),

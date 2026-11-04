@@ -75,6 +75,11 @@ import {
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
+import {
+  QuickQuestionPanel,
+  QuickQuestionSelectionButton,
+  useQuickQuestionThread,
+} from "./QuickQuestion";
 import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 import { Transcript } from "./TranscriptView";
 import {
@@ -156,7 +161,12 @@ export function ConversationPage(props: {
     );
   }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
-  const showDetails = detailsOpen && !eventOpen && !turnContext;
+  const quickQuestion = useQuickQuestionThread(props.conversationId);
+  // Event details and turn context also show over a Quick question.
+  const showQuickQuestion =
+    Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
+  const showDetails =
+    detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     eventOpen ? "raw" : "rich",
   );
@@ -363,7 +373,7 @@ export function ConversationPage(props: {
       ref={pageRef}
       className={cn(
         "grid h-full min-h-0 min-w-0",
-        (showDetails || showEvent || turnContext) &&
+        (showDetails || showEvent || turnContext || showQuickQuestion) &&
           "xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
     >
@@ -379,6 +389,7 @@ export function ConversationPage(props: {
             onDetailsClick={() => {
               if (eventOpen) setSelectedEventSeq(undefined);
               setTurnContext(undefined);
+              quickQuestion.close();
               if (showDetails) closeDetails();
               else setDetailsChoice(true);
             }}
@@ -586,6 +597,24 @@ export function ConversationPage(props: {
           />
         </TranscriptSearchProvider>
       ) : null}
+      {showQuickQuestion && quickQuestion.thread ? (
+        <QuickQuestionPanel
+          conversationId={conversationId}
+          error={quickQuestion.error}
+          onClose={quickQuestion.close}
+          onSubmit={quickQuestion.submit}
+          pending={quickQuestion.pending}
+          thread={quickQuestion.thread}
+        />
+      ) : null}
+      <QuickQuestionSelectionButton
+        onAsk={(selection) => {
+          if (eventOpen) setSelectedEventSeq(undefined);
+          setTurnContext(undefined);
+          quickQuestion.open(selection);
+        }}
+        rootRef={pageRef}
+      />
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}

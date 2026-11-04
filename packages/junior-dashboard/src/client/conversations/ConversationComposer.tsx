@@ -81,7 +81,10 @@ type ConversationComposerProps = {
    * crushed beside the mobile send button.
    */
   footerStart?: ReactNode;
+  /** Text only, for a narrow panel: no images, no key hint, icon-only send. */
+  compact?: boolean;
   label: string;
+  placeholder?: string;
   /**
    * Restore the submitted text after a failed accept when there is no mailbox
    * outbox (new conversation create). Existing conversations keep failures in
@@ -432,7 +435,8 @@ export const ConversationComposer = memo(function ConversationComposer(
           dragging && "ring-2 ring-dashboard-focus",
         )}
         onDragOver={(event) => {
-          if (!event.dataTransfer.types.includes("Files")) return;
+          if (props.compact || !event.dataTransfer.types.includes("Files"))
+            return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
           setDragging(true);
@@ -442,14 +446,15 @@ export const ConversationComposer = memo(function ConversationComposer(
             setDragging(false);
         }}
         onDrop={(event) => {
-          if (!event.dataTransfer.types.includes("Files")) return;
+          if (props.compact || !event.dataTransfer.types.includes("Files"))
+            return;
           event.preventDefault();
           setDragging(false);
           void addImages(Array.from(event.dataTransfer.files));
         }}
         onPaste={(event) => {
           const files = Array.from(event.clipboardData.files);
-          if (!files.length) return;
+          if (props.compact || !files.length) return;
           event.preventDefault();
           void addImages(files);
         }}
@@ -510,7 +515,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
-          placeholder="Message Junior…"
+          placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
           rows={1}
           spellCheck={autocorrect}
@@ -524,27 +529,29 @@ export const ConversationComposer = memo(function ConversationComposer(
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    focusableWhenDisabled
-                    aria-label="Attach images"
-                    disabled={sendLocked || readingImages}
-                    onClick={() => fileInputRef.current?.click()}
-                    size="icon"
-                    type="button"
-                  >
-                    <ImagePlus aria-hidden="true" size={16} />
-                  </Button>
-                }
-              />
-              <TooltipContent size="compact">
-                Attach images (up to 3 MB total)
-              </TooltipContent>
-            </Tooltip>
+            {props.compact ? null : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      focusableWhenDisabled
+                      aria-label="Attach images"
+                      disabled={sendLocked || readingImages}
+                      onClick={() => fileInputRef.current?.click()}
+                      size="icon"
+                      type="button"
+                    >
+                      <ImagePlus aria-hidden="true" size={16} />
+                    </Button>
+                  }
+                />
+                <TooltipContent size="compact">
+                  Attach images (up to 3 MB total)
+                </TooltipContent>
+              </Tooltip>
+            )}
             {props.footerStart}
-            {props.footerStart ? null : (
+            {props.footerStart || props.compact ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>
@@ -565,7 +572,10 @@ export const ConversationComposer = memo(function ConversationComposer(
             ) : null}
             <Button
               aria-label={sendLocked ? "Sending message" : props.submitLabel}
-              className="disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100"
+              className={cn(
+                "disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100",
+                props.compact && "w-9 px-0",
+              )}
               disabled={
                 (!canSend && !images.length) ||
                 !online ||
@@ -576,9 +586,11 @@ export const ConversationComposer = memo(function ConversationComposer(
               type="submit"
             >
               <Send aria-hidden="true" size={14} />
-              <span className="hidden md:inline">
-                {sendLocked ? "Sending…" : props.submitLabel}
-              </span>
+              {props.compact ? null : (
+                <span className="hidden md:inline">
+                  {sendLocked ? "Sending…" : props.submitLabel}
+                </span>
+              )}
             </Button>
           </div>
         </div>

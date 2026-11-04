@@ -6,7 +6,7 @@ import {
 } from "@/chat/conversations/fork";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
-import type { ForkConversationBody } from "../schema/conversation";
+import type { ForkConversationBody } from "../schema/conversation-fork";
 import { readConversationAccessFromSql } from "./access";
 import { throwApiError } from "../http";
 

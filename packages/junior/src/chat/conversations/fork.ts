@@ -107,43 +107,10 @@ export async function forkConversation(input: {
         );
       }
 
-      // Delivery saves this key with the reply's agent message. Do not guess
-      // from timestamps: a fallback reply can have no agent history.
-      const boundary = await events.loadByIdempotencyKey(
-        input.sourceConversationId,
-        `message:${input.messageId}:agent`,
-      );
-      const reply =
-        boundary?.data.type === "assistant_message"
-          ? piMessageFromHistoryItem(boundary.data)
-          : undefined;
-      if (
-        !boundary ||
-        reply?.role !== "assistant" ||
-        reply.stopReason !== "stop" ||
-        reply.content.some((part) => part.type === "toolCall")
-      ) {
-        throw new ConversationForkError(
-          "Choose a completed assistant reply with saved agent history.",
-        );
-      }
-
-      // Use the history version at the fork point, also after a later compaction.
-      const projection = await loadTurnProjection({
+      const boundary = await loadForkPointHistory({
         conversationId: input.sourceConversationId,
-        committedSeq: boundary.seq,
-        includeTail: false,
+        messageId: input.messageId,
       });
-      if (!projection?.messages.length) {
-        throw new ConversationForkError(
-          "The selected history is no longer available.",
-        );
-      }
-      if (hasUnfinishedToolCalls(projection.messages)) {
-        throw new ConversationForkError(
-          "This history has unfinished tool calls. Choose another reply.",
-        );
-      }
 
       const nowMs = Date.now();
       await recordWebConversationActivity({
@@ -182,6 +149,52 @@ export async function forkConversation(input: {
       return { conversationId };
     }),
   );
+}
+
+/**
+ * Load the agent history of a Conversation through one completed assistant
+ * reply, in the history version at that reply, also after a later compaction.
+ */
+export async function loadForkPointHistory(input: {
+  conversationId: string;
+  messageId: string;
+}): Promise<{ messages: PiMessage[]; seq: number }> {
+  // Delivery saves this key with the reply's agent message. Do not guess
+  // from timestamps: a fallback reply can have no agent history.
+  const boundary = await getConversationEventStore().loadByIdempotencyKey(
+    input.conversationId,
+    `message:${input.messageId}:agent`,
+  );
+  const reply =
+    boundary?.data.type === "assistant_message"
+      ? piMessageFromHistoryItem(boundary.data)
+      : undefined;
+  if (
+    !boundary ||
+    reply?.role !== "assistant" ||
+    reply.stopReason !== "stop" ||
+    reply.content.some((part) => part.type === "toolCall")
+  ) {
+    throw new ConversationForkError(
+      "Choose a completed assistant reply with saved agent history.",
+    );
+  }
+  const projection = await loadTurnProjection({
+    conversationId: input.conversationId,
+    committedSeq: boundary.seq,
+    includeTail: false,
+  });
+  if (!projection?.messages.length) {
+    throw new ConversationForkError(
+      "The selected history is no longer available.",
+    );
+  }
+  if (hasUnfinishedToolCalls(projection.messages)) {
+    throw new ConversationForkError(
+      "This history has unfinished tool calls. Choose another reply.",
+    );
+  }
+  return { messages: projection.messages, seq: boundary.seq };
 }
 
 /**

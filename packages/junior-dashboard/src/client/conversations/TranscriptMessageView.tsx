@@ -37,7 +37,15 @@ export const TranscriptMessageView = memo(
     const roleKind = transcriptRoleKind(props.message.role);
     const chatText = roleKind === "assistant" || roleKind === "user";
     const text = (
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <div
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2"
+        // `QuickQuestion` reads it: selections here can start a question.
+        data-quick-question-message-id={
+          canForkAfter(props.message, props.conversation)
+            ? props.message.messageId
+            : undefined
+        }
+      >
         {props.message.parts.map((part, index) =>
           part.type === "text" ? (
             <DisplayText
@@ -158,12 +166,7 @@ function messageAction(
       />
     );
   }
-  if (
-    conversation.canFork &&
-    message.role === "assistant" &&
-    message.messageId &&
-    !message.pending
-  ) {
+  if (canForkAfter(message, conversation)) {
     return (
       <ForkConversationButton
         conversationId={conversation.conversationId}
@@ -172,6 +175,19 @@ function messageAction(
     );
   }
   return undefined;
+}
+
+/** A delivered Junior reply ends the history of a fork or Quick question. */
+function canForkAfter(
+  message: TranscriptViewMessage,
+  conversation: ConversationTranscript,
+): message is TranscriptViewMessage & { messageId: string } {
+  return Boolean(
+    conversation.canFork &&
+    message.role === "assistant" &&
+    message.messageId &&
+    !message.pending,
+  );
 }
 
 function TranscriptMessageHeader(props: {
