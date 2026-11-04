@@ -17,7 +17,16 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { createEventTools } from "@/chat/tools/events";
-import { getConversationEventStore } from "@/chat/db";
+import type { User } from "@sentry/junior-plugin-api";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { actOnReviewItem } from "@/chat/review-items/actions";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -623,6 +632,80 @@ describe("agent invocation identity and concurrency", () => {
       ]);
     } finally {
       clock.mockRestore();
+      await harness.close();
+    }
+  });
+
+  it("gives a child the Review item tag for an answer to its item", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const harness = await createHarness(taskModel);
+    try {
+      const child = await harness.spawn({
+        agentName: "asker",
+        idempotencyKey: "ask-1",
+        input: "Ask who owns the login bug.",
+      });
+      await harness.drainQueuedWork();
+
+      // A private item goes only to people in its Conversation, and a child
+      // has none, so make the child public.
+      await getConversationStore().recordActivity({
+        conversationId: child.childConversationId,
+        destination,
+        nowMs: clock(),
+        source: "local",
+        visibility: "public",
+      });
+      const alice = (await resolveViewerUserFromSql(
+        getDb(),
+        "alice@example.com",
+      )) as User;
+      // The child opened the item, so it is the only linked Conversation.
+      const added = (await (
+        createAddReviewItemTool(
+          {
+            conversationId: child.childConversationId,
+            resolveActorIdentity: async () => undefined,
+            source: { kind: "scheduled_automation" },
+          },
+          createSlackReviewItemToolServices(() => harness.queue),
+        ) as any
+      ).execute(
+        {
+          kind: "action",
+          title: "Pick an owner",
+          body: "The bug has no owner.",
+          assignees: ["alice@example.com"],
+          request: {
+            question: "Who should own the login bug?",
+            fields: [{ id: "owner", kind: "text", label: "Owner" }],
+          },
+        },
+        {},
+      )) as { item: { id: string } };
+      const id = added.item.id;
+      await actOnReviewItem({
+        action: "submit",
+        answer: { requestId: id, values: { owner: ["Bob"] } },
+        delivery: { queue: harness.queue, show: async () => {} },
+        id,
+        user: alice,
+      });
+      // The Event batch waits for its burst window, as on a root.
+      clock.mockReturnValue(clock() + 120_000);
+      await harness.drainQueuedWork();
+
+      const requests = harness.requests();
+      expect(requests).toHaveLength(2);
+      expect(requests[1]!.instruction.text).toBe(
+        [
+          `<review-item-answer id="${id}">`,
+          "Question: Who should own the login bug?",
+          "Owner (owner): Bob",
+          "</review-item-answer>",
+        ].join("\n"),
+      );
+    } finally {
       await harness.close();
     }
   });

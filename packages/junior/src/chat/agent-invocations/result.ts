@@ -36,6 +36,7 @@ import {
   markAgentInvocationParentMailboxAppended,
 } from "./store";
 import { renderUntrustedTag } from "@/chat/input-tags";
+import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
 import type {
   AgentInvocation,
@@ -368,7 +369,10 @@ async function startAgentInvocationsForChildInput(
     const invocation = await createAgentInvocationFromLatest({
       // TODO(dcramer): Keep one content part per input after an agent
       // invocation stores its input as parts.
-      input: renderEventBatchInputs(messages).join("\n\n"),
+      input: renderEventBatchInputs(
+        messages,
+        await eventReviewItemInputs(messages),
+      ).join("\n\n"),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),
