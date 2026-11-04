@@ -207,7 +207,11 @@ test("shows recalled and captured memories in popovers", async ({
   await page.keyboard.press("Escape");
   await expect(capturedPopover).toBeHidden();
 
-  // A memory in details opens its Turn's popover in the transcript.
+  // A memory in details opens its Turn's popover in the transcript, even
+  // when a search hides that row.
+  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByPlaceholder("Search transcript…").fill("no such text");
+  await expect(captured).toBeHidden();
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,

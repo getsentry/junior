@@ -9,6 +9,7 @@ import {
 } from "../components/ui/popover";
 import { formatMessageTimestamp, memoryPath } from "../format";
 import { cn } from "../styles";
+import type { TranscriptViewMessage } from "../types";
 import {
   anchorMemories,
   memoryAnchorKey,
@@ -17,6 +18,7 @@ import {
   type ConversationMemoryState,
   type MemoryAnchor,
 } from "./conversationMemory";
+import { memoryRecallContent } from "./turnContext";
 
 function memoryCount(count: number): string {
   return `${count} ${count === 1 ? "memory" : "memories"}`;
@@ -86,30 +88,50 @@ function MemoryPopover(props: {
   );
 }
 
-/** Show the memories that one prompt recalled, under that prompt. */
-export function TranscriptRecalledMemories(props: { turnId: string }) {
+/**
+ * Show the memories that a prompt recalled, under that prompt. One prompt can
+ * start more than one Turn, and each Turn recalls, so each gets a chip.
+ */
+export function TranscriptRecalledMemories(props: {
+  className?: string;
+  message: TranscriptViewMessage;
+}) {
   const state = useConversationMemoryState();
-  const anchor = { source: "recalled", turnId: props.turnId } as const;
-  const memories = anchorMemories(state?.list, anchor);
-  if (!state || memories.length === 0) return null;
-  const label = `Recalled ${memoryCount(memories.length)}`;
+  const anchors = [
+    ...new Set(
+      props.message.contexts
+        ?.filter((context) => memoryRecallContent(context))
+        .map((context) => context.turnId),
+    ),
+  ].flatMap((turnId) => {
+    const anchor = { source: "recalled", turnId } as const;
+    const memories = anchorMemories(state?.list, anchor);
+    return memories.length > 0 ? [{ anchor, memories }] : [];
+  });
+  if (!state || anchors.length === 0) return null;
   return (
-    <div className="flex">
-      <MemoryPopover
-        anchor={anchor}
-        label={label}
-        memories={memories}
-        state={state}
-        trigger={
-          <button
-            className="inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-dashboard-border-subtle bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
-            type="button"
-          >
-            <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
-            {label}
-          </button>
-        }
-      />
+    <div className={cn("flex flex-wrap gap-2", props.className)}>
+      {anchors.map(({ anchor, memories }) => {
+        const label = `Recalled ${memoryCount(memories.length)}`;
+        return (
+          <MemoryPopover
+            anchor={anchor}
+            key={anchor.turnId}
+            label={label}
+            memories={memories}
+            state={state}
+            trigger={
+              <button
+                className="inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-dashboard-border-subtle bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
+                type="button"
+              >
+                <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
+                {label}
+              </button>
+            }
+          />
+        );
+      })}
     </div>
   );
 }

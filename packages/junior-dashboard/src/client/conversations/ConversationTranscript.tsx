@@ -28,7 +28,10 @@ import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
-import { TranscriptCapturedMemories } from "./TranscriptMemoryPopover";
+import {
+  TranscriptCapturedMemories,
+  TranscriptRecalledMemories,
+} from "./TranscriptMemoryPopover";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import { TranscriptFailureView } from "./TranscriptFailureView";
 import {
@@ -250,22 +253,33 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       renderMessage={(entry) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
-          <TranscriptAutomationTriggerView
-            message={entry.message}
-            sourceTask={props.conversation.sourceTask}
-          />
+          <div className="grid min-w-0 gap-2">
+            <TranscriptAutomationTriggerView
+              message={entry.message}
+              sourceTask={props.conversation.sourceTask}
+            />
+            <TranscriptRecalledMemories message={entry.message} />
+          </div>
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
             objectType={entry.message.eventObjectType}
           >
             <TranscriptEventView message={entry.message} />
+            <TranscriptRecalledMemories
+              className="mt-1"
+              message={entry.message}
+            />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">
             <TranscriptMessageContextView
               message={entry.message}
               conversation={props.conversation}
+            />
+            <TranscriptRecalledMemories
+              className="mt-2"
+              message={entry.message}
             />
           </TranscriptRailEvent>
         ) : (

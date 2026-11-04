@@ -317,14 +317,14 @@ export function ConversationPage(props: {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
     else if (linkedTurnNotFound) setSelectedEventSeq(undefined);
   }, [linkedTurnNotFound, linkedTurnSeq, setSelectedEventSeq]);
-  // Show a chosen memory at its transcript row. Load earlier pages until the
-  // row renders, or stop when history ends.
+  // Show a chosen memory at its transcript row. Wait for the first page, then
+  // load earlier pages until the row renders, or stop when history ends.
   const memoryPrompts = useMemo(
     () => turnPrompts(transcript?.events),
     [transcript?.events],
   );
   useEffect(() => {
-    if (!memoryJump) return;
+    if (!memoryJump || !transcript) return;
     const anchor = pageRef.current?.querySelector(
       `[data-memory-anchor="${CSS.escape(memoryAnchorKey(memoryJump))}"]`,
     );
@@ -346,7 +346,7 @@ export function ConversationPage(props: {
     detail.historyError,
     detail.isLoadingPreviousPage,
     memoryJump,
-    transcript?.events,
+    transcript,
     view,
   ]);
   // Keep the panel while the transcript or a linked event loads, and for the
@@ -607,8 +607,10 @@ export function ConversationPage(props: {
             onOpenSubagent={setSubagentTarget}
             memoryPrompts={memoryPrompts}
             onSelectMemory={(entry) => {
-              // Memory rows show only in the Conversation view.
+              // Memory rows show only in the Conversation view, and search
+              // can hide them.
               if (view !== "rich") onViewChange("rich");
+              setSearch("");
               setMemoryJump({
                 memoryId: entry.memory.id,
                 source: entry.source,
