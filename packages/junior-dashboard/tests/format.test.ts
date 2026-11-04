@@ -450,6 +450,12 @@ describe("transcript blocks", () => {
   it.each([
     ["javascript:(()=>{alert(1)})()", "tsx"],
     ["const total = items.length;", "tsx"],
+    ["export class Store {}", "tsx"],
+    ["export { handler };", "tsx"],
+    ["export * from './api';", "tsx"],
+    ["export async function load() {}", "tsx"],
+    ["export API_URL=https://example.com", "shellscript"],
+    ["export var=1", "shellscript"],
     ["def handler(event):\n    return event", "python"],
     ["pnpm install --frozen-lockfile", "shellscript"],
     ["$ git status", "shellscript"],

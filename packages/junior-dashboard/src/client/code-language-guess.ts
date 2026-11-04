@@ -1,7 +1,7 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 
 const SCRIPT_PATTERN =
-  /^javascript:|=>|\b(?:const|let|var)\s+[\w$]+\s*=|\bfunction\b\s*[\w$]*\s*\(|^\s*(?:import\s.+\sfrom\s|export\s+(?:default|const|function|type|interface)\b)/m;
+  /^javascript:|=>|\b(?:const|let|var)\s+[\w$]+\s*=|\bfunction\b\s*[\w$]*\s*\(|^\s*(?:import\s.+\sfrom\s|export\s+(?:(?:async|class|const|default|enum|function|interface|let|type|var)\s|[{*]))/m;
 const PYTHON_PATTERN =
   /^\s*(?:(?:async\s+)?def\s+\w+\s*\(.*\)\s*(?:->.*)?:|class\s+\w+.*:|from\s+[\w.]+\s+import\s|import\s+[\w.]+\s*$)/m;
 const SHELL_PATTERN =
