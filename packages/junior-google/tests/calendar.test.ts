@@ -97,7 +97,7 @@ describe("findFreeSlots", () => {
   it("puts a slot next to existing meetings ahead of an isolated one", () => {
     const slots = findFreeSlots({
       ...SLOT_RULES,
-      // 1:1s 11:00-12:00, and a meeting 14:00-14:50.
+      // Meetings 11:00-12:00 and 14:00-14:50.
       attendees: [
         {
           busy: busyAt(["11:00", "12:00"], ["14:00", "14:50"]),
