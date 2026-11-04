@@ -28,10 +28,39 @@ function calendarTools(...responses: Response[]) {
 
 const LA = "America/Los_Angeles";
 
+// Defaults of findMeetingTimes.
+const SLOT_RULES = {
+  lunchEnd: "14:00",
+  lunchMinutes: 60,
+  lunchStart: "11:30",
+  maxBackToBackMinutes: 180,
+  workdayEnd: "17:00",
+  workdayStart: "09:00",
+};
+const LONDON = "Europe/London";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Tuesday 2026-10-13 at `time` in London (UTC+1). */
+function london(time: string): number {
+  return Date.parse(`2026-10-13T${time}:00+01:00`);
+}
+
+function busyAt(...ranges: Array<[string, string]>) {
+  return ranges.map(([start, end]) => ({
+    endMs: london(end),
+    startMs: london(start),
+  }));
+}
+
+function starts(slots: Array<{ startMs: number }>): string[] {
+  return slots.map((slot) => new Date(slot.startMs).toISOString());
+}
+
 describe("findFreeSlots", () => {
   it("spreads non-overlapping weekday slots across days inside local working hours", () => {
     // Friday 2026-10-09 through Monday 2026-10-12, Los Angeles (UTC-7).
     const slots = findFreeSlots({
+      ...SLOT_RULES,
       attendees: [
         {
           // Busy Friday 09:00-12:00 local.
@@ -52,30 +81,218 @@ describe("findFreeSlots", () => {
       timeMinMs: Date.parse("2026-10-09T15:00:00Z"),
       timeZone: LA,
       workdayEnd: "14:00",
-      workdayStart: "09:00",
     });
 
-    expect(slots.map((slot) => new Date(slot.startMs).toISOString())).toEqual([
-      // Friday 12:00 and 13:00 local, then skip the weekend.
-      "2026-10-09T19:00:00.000Z",
+    expect(starts(slots)).toEqual([
+      // Friday has meetings, so its one slot comes first: 13:00 local. 12:00
+      // would make a 4-hour run of meetings, and 12:30 would leave no lunch
+      // break. Then skip the weekend.
       "2026-10-09T20:00:00.000Z",
-      // Monday 09:00, then the Monday slot farthest from it.
+      // Monday has no meetings, so it only fills the other places: 09:00,
+      // 11:00, and 13:00 local each keep two hours or more of focus time.
       "2026-10-12T16:00:00.000Z",
+      "2026-10-12T18:00:00.000Z",
       "2026-10-12T20:00:00.000Z",
     ]);
+  });
+
+  it("puts a slot next to existing meetings ahead of an isolated one or an empty day", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      // Meetings Tuesday 11:00-12:00 and 14:00-14:50. Monday is empty.
+      attendees: [
+        {
+          busy: busyAt(["11:00", "12:00"], ["14:00", "14:50"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      maxResults: 3,
+      timeMaxMs: london("23:00"),
+      timeMinMs: london("00:00") - DAY_MS,
+      timeZone: LONDON,
+    });
+
+    // Monday 09:00 keeps the most focus time, but Monday has no meetings.
+    // On Tuesday, every slot breaks one 2-hour block. 10:30, 12:00, and
+    // 13:30 join a meeting; 09:00 would add one more interruption.
+    expect(starts(slots)).toEqual([
+      "2026-10-13T09:30:00.000Z",
+      "2026-10-13T11:00:00.000Z",
+      "2026-10-13T12:30:00.000Z",
+    ]);
+  });
+
+  it("uses a day without meetings when no busy day has a slot", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      // Tuesday is full except 12:00-13:00, its only lunch break. Monday is
+      // empty.
+      attendees: [
+        {
+          busy: busyAt(["09:00", "12:00"], ["13:00", "17:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      maxResults: 3,
+      timeMaxMs: london("23:00"),
+      timeMinMs: london("00:00") - DAY_MS,
+      timeZone: LONDON,
+    });
+
+    expect(starts(slots)[0]).toBe("2026-10-12T08:00:00.000Z");
+    expect(starts(slots).every((start) => start.startsWith("2026-10-12"))).toBe(
+      true,
+    );
+  });
+
+  it("puts a slot that keeps a 2-hour block ahead of one that splits it", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      attendees: [
+        {
+          busy: busyAt(["10:00", "11:00"], ["13:00", "14:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      lunchMinutes: 0,
+      maxResults: 2,
+      timeMaxMs: london("23:00"),
+      timeMinMs: london("00:00"),
+      timeZone: LONDON,
+      workdayEnd: "14:00",
+    });
+
+    // 11:00 is next to a meeting too, but it splits the 11:00-13:00 block.
+    expect(starts(slots)).toEqual([
+      "2026-10-13T08:30:00.000Z",
+      "2026-10-13T08:00:00.000Z",
+    ]);
+  });
+
+  it("moves lunch inside the lunch window", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      attendees: [
+        {
+          busy: busyAt(["11:30", "12:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 60,
+      maxResults: 3,
+      timeMaxMs: london("13:30"),
+      timeMinMs: london("12:00"),
+      timeZone: LONDON,
+    });
+
+    // 12:00 leaves 13:00-14:00 for lunch. 12:30 leaves two 30-minute gaps.
+    expect(starts(slots)).toEqual(["2026-10-13T11:00:00.000Z"]);
+  });
+
+  it("skips slots that take the last lunch break, unless lunch is off", () => {
+    const rules = {
+      ...SLOT_RULES,
+      attendees: [
+        {
+          busy: busyAt(["11:30", "12:30"], ["13:30", "14:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      maxResults: 3,
+      timeMaxMs: london("13:30"),
+      timeMinMs: london("12:30"),
+      timeZone: LONDON,
+    };
+
+    expect(findFreeSlots(rules)).toEqual([]);
+    expect(starts(findFreeSlots({ ...rules, lunchMinutes: 0 }))).toEqual([
+      "2026-10-13T11:30:00.000Z",
+      "2026-10-13T12:00:00.000Z",
+    ]);
+  });
+
+  it("skips slots that make a run of back-to-back meetings too long", () => {
+    const rules = {
+      ...SLOT_RULES,
+      attendees: [
+        {
+          busy: busyAt(["09:00", "12:00"]),
+          email: REQUESTER,
+          required: true,
+          timeZone: LONDON,
+        },
+      ],
+      durationMinutes: 30,
+      lunchMinutes: 0,
+      maxResults: 3,
+      timeMaxMs: london("13:00"),
+      timeMinMs: london("12:00"),
+      timeZone: LONDON,
+    };
+
+    // 12:00 would make a 3.5-hour run. 12:30 leaves a break.
+    expect(starts(findFreeSlots(rules))).toEqual(["2026-10-13T11:30:00.000Z"]);
+    expect(
+      starts(findFreeSlots({ ...rules, maxBackToBackMinutes: 240 })),
+    ).toEqual(["2026-10-13T11:00:00.000Z", "2026-10-13T11:30:00.000Z"]);
+  });
+
+  it("keeps lunch in each attendee's own time zone", () => {
+    const slots = findFreeSlots({
+      ...SLOT_RULES,
+      attendees: [
+        { busy: [], email: REQUESTER, required: true, timeZone: LONDON },
+        {
+          // 12:30-14:00 in New York (UTC-4), so lunch fits only 11:30-12:30.
+          busy: [
+            {
+              startMs: Date.parse("2026-10-13T16:30:00Z"),
+              endMs: Date.parse("2026-10-13T18:00:00Z"),
+            },
+          ],
+          email: "bob@example.com",
+          required: true,
+          timeZone: "America/New_York",
+        },
+      ],
+      durationMinutes: 30,
+      maxResults: 3,
+      // 11:00-12:00 in New York, 16:00-17:00 in London.
+      timeMaxMs: Date.parse("2026-10-13T16:00:00Z"),
+      timeMinMs: Date.parse("2026-10-13T15:00:00Z"),
+      timeZone: LONDON,
+    });
+
+    // 11:30 in New York would take Bob's lunch break.
+    expect(starts(slots)).toEqual(["2026-10-13T15:00:00.000Z"]);
   });
 
   it("keeps slots inside each attendee's own working hours", () => {
     // Monday 2026-10-12. With 08:00-17:00 hours, Los Angeles (UTC-7) and
     // London (UTC+1) share only 08:00-09:00 in Los Angeles.
     const slots = findFreeSlots({
+      ...SLOT_RULES,
       attendees: [
         { busy: [], email: REQUESTER, required: true, timeZone: LA },
         {
           busy: [],
           email: "bob@example.com",
           required: true,
-          timeZone: "Europe/London",
+          timeZone: LONDON,
         },
         {
           busy: [],
@@ -89,7 +306,6 @@ describe("findFreeSlots", () => {
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
       timeMinMs: Date.parse("2026-10-12T00:00:00Z"),
       timeZone: LA,
-      workdayEnd: "17:00",
       workdayStart: "08:00",
     });
 
@@ -211,14 +427,16 @@ describe("Google Calendar tools", () => {
         { email: "bob@example.com", time_zone: "America/New_York" },
         { email: REQUESTER, time_zone: LA },
       ],
-      // Tuesday 10:00 in Los Angeles, after Bob's 09:00-13:00 in New York.
-      // The requester listed themselves as optional, so the hold does not
-      // block it. Monday is open earlier, but only Tuesdays were asked for.
+      // Tuesday 13:30 in Los Angeles, 16:30 for Bob in New York. 13:00 would
+      // stretch his 09:00-13:00 run and take his lunch break, and 16:30
+      // keeps the most of his afternoon free. The requester listed
+      // themselves as optional, so the hold does not block it. Monday is
+      // open earlier, but only Tuesdays were asked for.
       slots: [
         {
           optional_conflicts: [REQUESTER],
-          other_time_zone_labels: ["Tue, Oct 27, 13:00 – 13:30 EDT"],
-          start: "2026-10-27T17:00:00.000Z",
+          other_time_zone_labels: ["Tue, Oct 27, 16:30 – 17:00 EDT"],
+          start: "2026-10-27T20:30:00.000Z",
         },
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],
