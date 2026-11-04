@@ -3,7 +3,7 @@ import { and, inArray, isNull } from "drizzle-orm";
 import {
   acceptsWebMessages,
   appendAndEnqueueWebMessage,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
@@ -17,6 +17,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorConversations } from "@/db/schema";
+import type { ReviewItemChangeRecord } from "./change-record";
 import type { ReviewItem } from "./store";
 
 /** One change to a Review item that linked Conversations learn about. */
@@ -26,6 +27,19 @@ export type ReviewItemChange =
   | { kind: "taken"; user: User }
   | { kind: "replied"; who: string }
   | { kind: "closed"; reason: string };
+
+/**
+ * Return the record that a message about a person change carries. A reply or
+ * an agent close is not a person change, so it has no record.
+ */
+export function reviewItemChangeRecord(
+  item: ReviewItem,
+  change: ReviewItemChange,
+): ReviewItemChangeRecord | undefined {
+  return "user" in change
+    ? { kind: change.kind, reviewItemId: item.id }
+    : undefined;
+}
 
 function personName(user: User): string {
   return user.displayName ? `${user.displayName} (${user.email})` : user.email;
@@ -125,6 +139,7 @@ async function sendOne(args: {
   text: string;
 }): Promise<void> {
   const key = messageKey(args.item, args.change);
+  const record = reviewItemChangeRecord(args.item, args.change);
   if ("user" in args.change) {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
@@ -133,14 +148,11 @@ async function sendOne(args: {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {
-          actor: webActorFromEmail(args.change.user.email, {
-            ...(args.change.user.displayName
-              ? { fullName: args.change.user.displayName }
-              : undefined),
-          }),
+          actor: webActorFromUser(args.change.user),
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,
+          reviewItemChange: record,
         },
         { nowMs: args.nowMs, queue: args.queue },
       );
@@ -167,6 +179,7 @@ async function sendOne(args: {
         authorId: EVENT_AUTHOR_ID,
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
+        ...(record ? { reviewItemChange: record } : undefined),
         text: eventMessageText(args.text, args.change),
       },
       receivedAtMs: args.nowMs,

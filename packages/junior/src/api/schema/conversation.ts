@@ -5,6 +5,7 @@ import {
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { z } from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
@@ -145,100 +146,6 @@ export const actorIdentitySchema = z
   })
   .strict();
 
-/** Mailbox delivery mode for one accepted inbound message. */
-export const conversationPendingMessageDeliverySchema = z.enum([
-  "defer",
-  "interrupt",
-]);
-
-/** One accepted mailbox message that has not reached durable history yet. */
-export const conversationPendingMessageSchema = z
-  .object({
-    actorIdentity: actorIdentitySchema.optional(),
-    /** Identity id of the author. Detail `authors` maps it to the person. */
-    actorIdentityId: z.string().min(1).optional(),
-    createdAt: z.string().datetime(),
-    delivery: conversationPendingMessageDeliverySchema,
-    inboundMessageId: z.string().min(1),
-    messageId: z.string().min(1),
-    receivedAt: z.string().datetime(),
-    role: z.literal("user"),
-    source: z.enum(["slack", "web"]),
-    text: z.string().optional(),
-    /** People mentioned in the text, resolved at read time. */
-    mentions: z.array(actorIdentitySchema).optional(),
-    attachments: z.array(messageAttachmentSchema).optional(),
-    redacted: z.literal(true).optional(),
-  })
-  .strict()
-  .superRefine((data, context) => {
-    if ((data.text === undefined) === (data.redacted !== true)) {
-      context.addIssue({
-        code: "custom",
-        message: "pending message content must be text or explicitly redacted",
-      });
-    }
-    if (
-      data.redacted &&
-      (data.actorIdentity || data.attachments || data.mentions)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "redacted pending messages must not expose actor identity, attachments, or mentions",
-      });
-    }
-  });
-
-/** Participant-only authorization prompt for a parked web turn. */
-export const conversationPendingAuthorizationSchema = z
-  .object({
-    authorizationUrl: z.string().url(),
-    completionText: z.string().min(1),
-    label: z.string().min(1),
-  })
-  .strict();
-
-/** Bounded mailbox snapshot for one conversation transcript. */
-export const conversationPendingMessagesReportSchema = z
-  .object({
-    authorization: conversationPendingAuthorizationSchema.optional(),
-    conversationId: z.string().min(1),
-    generatedAt: z.string().datetime(),
-    messages: z.array(conversationPendingMessageSchema),
-  })
-  .strict();
-
-/** Optional filters for cancelling accepted mailbox rows. */
-export const cancelConversationPendingMessagesBodySchema = z
-  .object({
-    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
-    receivedBefore: z.string().datetime().optional(),
-  })
-  .strict();
-
-/** Result of cancelling accepted human-facing mailbox rows. */
-export const cancelConversationPendingMessagesResponseSchema = z
-  .object({
-    cancelledCount: z.number().int().nonnegative(),
-    cancelledInboundMessageIds: z.array(z.string().min(1)),
-    conversationId: z.string().min(1),
-  })
-  .strict();
-
-/** Queued web messages that the viewer wants Junior to read now. */
-export const steerConversationPendingMessagesBodySchema = z
-  .object({ inboundMessageIds: z.array(z.string().min(1)).min(1) })
-  .strict();
-
-/** Result of steering queued web messages into the conversation. */
-export const steerConversationPendingMessagesResponseSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    steeredInboundMessageIds: z.array(z.string().min(1)),
-  })
-  .strict();
-
 export const conversationAuxiliaryCostsSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
@@ -376,9 +283,15 @@ const conversationReportMessageEventDataSchema = z
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    /** Every Event when several arrived together in one message. */
+    /**
+     * The Watch Events when several arrived together. A message that also
+     * records Review item changes lists its own Event here even when it has
+     * one.
+     */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
+    /** Person changes to Review items that this message records. */
+    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -393,12 +306,16 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.cards || data.attachments || data.events)
+      (data.actorIdentity ||
+        data.cards ||
+        data.attachments ||
+        data.events ||
+        data.reviewItemChanges)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, or events",
+          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
       });
     }
   });
@@ -971,25 +888,4 @@ export type CreateConversationMessageBody = z.infer<
 >;
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
->;
-export type ConversationPendingMessageDelivery = z.infer<
-  typeof conversationPendingMessageDeliverySchema
->;
-export type ConversationPendingMessage = z.infer<
-  typeof conversationPendingMessageSchema
->;
-export type ConversationPendingMessagesReport = z.infer<
-  typeof conversationPendingMessagesReportSchema
->;
-export type CancelConversationPendingMessagesBody = z.infer<
-  typeof cancelConversationPendingMessagesBodySchema
->;
-export type CancelConversationPendingMessagesResponse = z.infer<
-  typeof cancelConversationPendingMessagesResponseSchema
->;
-export type SteerConversationPendingMessagesBody = z.infer<
-  typeof steerConversationPendingMessagesBodySchema
->;
-export type SteerConversationPendingMessagesResponse = z.infer<
-  typeof steerConversationPendingMessagesResponseSchema
 >;

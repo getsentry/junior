@@ -2,6 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -33,7 +34,11 @@ export interface ConversationMessageMeta {
   /** First Event of the batch. Marks the message as an Event message. */
   eventType?: string;
   eventObjectType?: ObjectType;
-  /** Every Event when several arrived together. Omitted for one Event. */
+  /**
+   * The Watch Events when several arrived together. A Message that also
+   * records Review item changes lists its own Event here even when it has
+   * one. Omitted otherwise.
+   */
   events?: ConversationMessageEvent[];
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
@@ -42,6 +47,8 @@ export interface ConversationMessageMeta {
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   replied?: boolean;
+  /** Person changes to Review items that this Message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;
   skippedReason?: string;
 }

@@ -14,7 +14,7 @@ const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    commitSha: commitShaSchema.describe(
+    commit_sha: commitShaSchema.describe(
       "Full 40-character Git commit SHA recorded by the deployment.",
     ),
     environment: z
@@ -29,32 +29,32 @@ const inputSchema = z
   .strict();
 const statusSchema = z
   .object({
-    createdAt: z.string(),
+    created_at: z.string(),
     creator: z.string().nullable(),
     description: z.string().nullable(),
-    environmentUrl: z.string().nullable(),
+    environment_url: z.string().nullable(),
     id: z.number(),
-    logUrl: z.string().nullable(),
+    log_url: z.string().nullable(),
     state: z.string(),
   })
   .strict();
 const deploymentSchema = z
   .object({
-    createdAt: z.string(),
+    created_at: z.string(),
     creator: z.string().nullable(),
     description: z.string().nullable(),
     environment: z.string(),
     id: z.number(),
-    latestStatus: statusSchema.nullable(),
+    latest_status: statusSchema.nullable(),
     ref: z.string(),
     sha: commitShaSchema,
-    updatedAt: z.string(),
+    updated_at: z.string(),
     url: z.string(),
   })
   .strict();
 const deploymentSourceSchema = z
   .object({
-    commitSha: commitShaSchema,
+    commit_sha: commitShaSchema,
     deployment: deploymentSchema.nullable(),
     environment: z.string().nullable(),
     repo: z.string(),
@@ -163,7 +163,7 @@ export function createGitHubGetDeploymentTool(ctx: {
     outputSchema,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
-      const commitSha = input.commitSha.toLowerCase();
+      const commitSha = input.commit_sha.toLowerCase();
       const deploymentsUrl = new URL(repositoryUrl(repo, "deployments"));
       deploymentsUrl.searchParams.set("sha", commitSha);
       if (input.environment) {
@@ -219,25 +219,25 @@ export function createGitHubGetDeploymentTool(ctx: {
           .array(providerStatusSchema)
           .parse(statusesBody)[0];
         deployment = {
-          createdAt: providerDeployment.created_at,
+          created_at: providerDeployment.created_at,
           creator: providerDeployment.creator?.login ?? null,
           description: providerDeployment.description,
           environment: providerDeployment.environment,
           id: providerDeployment.id,
-          latestStatus: providerStatus
+          latest_status: providerStatus
             ? {
-                createdAt: providerStatus.created_at,
+                created_at: providerStatus.created_at,
                 creator: providerStatus.creator?.login ?? null,
                 description: providerStatus.description ?? null,
-                environmentUrl: providerStatus.environment_url ?? null,
+                environment_url: providerStatus.environment_url ?? null,
                 id: providerStatus.id,
-                logUrl: providerStatus.log_url ?? null,
+                log_url: providerStatus.log_url ?? null,
                 state: providerStatus.state,
               }
             : null,
           ref: providerDeployment.ref,
           sha: providerDeployment.sha.toLowerCase(),
-          updatedAt: providerDeployment.updated_at,
+          updated_at: providerDeployment.updated_at,
           url: `https://github.com/${repo.ref}/deployments`,
         };
       }
@@ -249,7 +249,7 @@ export function createGitHubGetDeploymentTool(ctx: {
         repo: repo.ref,
       });
       const data: DeploymentSource = {
-        commitSha,
+        commit_sha: commitSha,
         deployment,
         environment: input.environment ?? null,
         repo: repo.ref,

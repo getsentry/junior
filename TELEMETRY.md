@@ -317,13 +317,16 @@ Attributes on the `agent.context_compaction` span:
 | `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
 | `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
-| `app.compaction.replacement.estimate` | int    | estimated history tokens after compaction     |
+| `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
 | `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
 | `app.compaction.input_limit`          | int    | most estimated input tokens that a model gets |
 | `app.compaction.input_messages`       | int    | history messages before compaction            |
 | `app.compaction.retained_messages`    | int    | history messages kept with the summary        |
 | `app.compaction.summary_chars`        | int    | summary length in characters                  |
 
+- `app.compaction.replacement.estimate` counts the system prompt, tool
+  definitions, and the characters of each message. It ignores provider usage
+  on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
   `handoff` runs for a model handoff.

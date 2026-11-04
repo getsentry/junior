@@ -64,6 +64,20 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     ]);
   }
 
+  /** Return the input message ids that started a Turn, when it started. */
+  async loadInputMessageIds(
+    conversationId: string,
+    turnId: string,
+  ): Promise<string[] | undefined> {
+    const event = await this.events.loadByIdempotencyKey(
+      conversationId,
+      `turn:${turnId}:started`,
+    );
+    return event?.data.type === "turn_started"
+      ? event.data.inputMessageIds
+      : undefined;
+  }
+
   /** Record a completion that is not a failure once. */
   async complete(input: CompleteConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [

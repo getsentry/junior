@@ -56,7 +56,7 @@ export async function writeSandboxGeneratedArtifacts(
         ref: {
           bytes: content.byteLength,
           filename: file.filename,
-          mimeType: file.mimeType,
+          mime_type: file.mimeType,
           path: artifactPath,
         },
       };

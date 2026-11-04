@@ -51,6 +51,11 @@ const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "failed",
   "stopped",
 ] as const satisfies readonly AgentInvocationStatus[];
+/** Statuses of an agent invocation that owns its child's Turn. */
+export const ACTIVE_AGENT_INVOCATION_STATUSES = [
+  "running",
+  "paused",
+] as const satisfies readonly AgentInvocationStatus[];
 /** Statuses of an agent invocation that has not finished. */
 export const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
   "pending",
@@ -228,9 +233,10 @@ export async function getAgentInvocation(
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
-/** List the running and paused agent invocations of one child Conversation. */
-export async function listActiveAgentInvocationsForConversation(
+/** List the agent invocations of one child Conversation in the given statuses. */
+export async function listAgentInvocationsForConversation(
   childConversationId: string,
+  statuses: readonly AgentInvocationStatus[],
 ): Promise<AgentInvocation[]> {
   const rows = await getSqlExecutor()
     .db()
@@ -239,7 +245,7 @@ export async function listActiveAgentInvocationsForConversation(
     .where(
       and(
         eq(juniorAgentInvocations.childConversationId, childConversationId),
-        inArray(juniorAgentInvocations.status, ["running", "paused"]),
+        inArray(juniorAgentInvocations.status, [...statuses]),
       ),
     )
     .orderBy(asc(juniorAgentInvocations.createdAt));
@@ -250,8 +256,10 @@ export async function listActiveAgentInvocationsForConversation(
 export async function getActiveAgentInvocationForConversation(
   childConversationId: string,
 ): Promise<AgentInvocation | undefined> {
-  const active =
-    await listActiveAgentInvocationsForConversation(childConversationId);
+  const active = await listAgentInvocationsForConversation(
+    childConversationId,
+    ACTIVE_AGENT_INVOCATION_STATUSES,
+  );
   if (active.length > 1) {
     throw new Error(
       `Child conversation ${childConversationId} has multiple active agent invocations`,

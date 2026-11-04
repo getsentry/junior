@@ -51,10 +51,6 @@ export {
   forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -64,10 +60,6 @@ export {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingAuthorizationSchema,
-  conversationPendingMessageDeliverySchema,
-  conversationPendingMessageSchema,
-  conversationPendingMessagesReportSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
@@ -77,6 +69,16 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingAuthorizationSchema,
+  conversationPendingMessageDeliverySchema,
+  conversationPendingMessageSchema,
+  conversationPendingMessagesReportSchema,
+} from "./schema/conversation-pending-messages";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -93,10 +95,6 @@ export type {
   AcceptedConversationMessage,
   ArchiveConversationBody,
   ArchiveConversationResponse,
-  CancelConversationPendingMessagesBody,
-  CancelConversationPendingMessagesResponse,
-  SteerConversationPendingMessagesBody,
-  SteerConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -106,9 +104,6 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
-  ConversationPendingMessage,
-  ConversationPendingMessageDelivery,
-  ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -124,6 +119,15 @@ export type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "./schema/conversation";
+export type {
+  CancelConversationPendingMessagesBody,
+  CancelConversationPendingMessagesResponse,
+  SteerConversationPendingMessagesBody,
+  SteerConversationPendingMessagesResponse,
+  ConversationPendingMessage,
+  ConversationPendingMessageDelivery,
+  ConversationPendingMessagesReport,
+} from "./schema/conversation-pending-messages";
 export {
   conversationChildAgentSchema,
   conversationChildAgentsReportSchema,
@@ -292,5 +296,6 @@ export {
 } from "./schema/review-item";
 export type {
   ReviewItemActionBody,
+  ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";

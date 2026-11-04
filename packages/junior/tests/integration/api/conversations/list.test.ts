@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { avatarPath } from "../../../fixtures/avatar";
 import { describe, expect, test } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -18,6 +17,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -28,10 +28,6 @@ import {
 } from "@/db/schema";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-
-function dashboardAuthorIdFromEmail(email: string): string {
-  return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
-}
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -911,7 +907,8 @@ describe("conversation list API", () => {
             meta: {
               author: {
                 isBot: false,
-                userId: dashboardAuthorIdFromEmail(
+                // Web authors stored this id before they used the User id.
+                userId: legacyWebActorUserId(
                   "dashboard-participant@example.com",
                 ),
               },

@@ -76,7 +76,9 @@ import {
   getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
-  listActiveAgentInvocationsForConversation,
+  ACTIVE_AGENT_INVOCATION_STATUSES,
+  listAgentInvocationsForConversation,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
@@ -497,6 +499,42 @@ async function endOtherActiveAgentInvocation(
   );
 }
 
+/**
+ * End every agent invocation of a child whose last attempt lost its worker and
+ * whose input reached the child's mailbox. The worker ran no failure path, and
+ * the stop drops the mailbox, so none of them can run. The heartbeat sends
+ * each result.
+ */
+export async function endAgentInvocationsOfStoppedWork(
+  conversationId: string,
+  inboundMessageIds: readonly string[],
+): Promise<void> {
+  for (const invocation of await listAgentInvocationsForConversation(
+    conversationId,
+    NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  )) {
+    // Its append runs after the stop and starts new work for the child.
+    if (
+      !inboundMessageIds.includes(
+        getAgentInvocationMessageId(invocation.invocationId),
+      )
+    ) {
+      continue;
+    }
+    const terminal =
+      (await projectTerminalTurn(invocation, { reportNow: true })) ??
+      (await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        errorMessage: "This task stopped because its worker failed repeatedly.",
+        reportNow: true,
+        status: "failed",
+      }));
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await persistTerminalLifecycle(terminal);
+    }
+  }
+}
+
 /** Classify authorization failures that terminally block background work. */
 function blockingInvocationError(
   error: unknown,
@@ -716,8 +754,9 @@ export function createAgentInvocationWorker(
       }
       // A child has at most one running or paused agent invocation. End any
       // other active one first. Each one reports its own result.
-      for (const active of await listActiveAgentInvocationsForConversation(
+      for (const active of await listAgentInvocationsForConversation(
         invocation.childConversationId,
+        ACTIVE_AGENT_INVOCATION_STATUSES,
       )) {
         if (active.invocationId !== invocation.invocationId) {
           await finish(await endOtherActiveAgentInvocation(active));

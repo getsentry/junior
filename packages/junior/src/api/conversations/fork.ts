@@ -28,8 +28,7 @@ export async function forkConversationForViewer(
     return await forkConversation({
       sourceConversationId,
       ...body,
-      actorEmail: viewer.email,
-      ...(viewer.displayName ? { actorName: viewer.displayName } : undefined),
+      viewer,
     });
   } catch (error) {
     if (error instanceof ConversationForkError) {

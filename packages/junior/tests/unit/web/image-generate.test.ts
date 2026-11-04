@@ -60,7 +60,7 @@ function writeGeneratedArtifacts(files: FileUpload[]) {
   return files.map((file) => ({
     bytes: Buffer.isBuffer(file.data) ? file.data.byteLength : 0,
     filename: file.filename,
-    mimeType: file.mimeType,
+    mime_type: file.mimeType,
     path: `/tmp/junior/artifacts/${file.filename}`,
   }));
 }
@@ -107,7 +107,7 @@ describe("createImageGenerateTool", () => {
         {
           bytes: PNG_BYTES.byteLength,
           filename: "generated-image-1737000000000-1.png",
-          mimeType: "image/png",
+          mime_type: "image/png",
           path: "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
         },
       ],
@@ -183,7 +183,7 @@ describe("createImageGenerateTool", () => {
     );
     expect(result).toMatchObject({
       prompt: "draw a dog",
-      enrichedPrompt: "a dark, high-contrast dog with glowing eyes",
+      enriched_prompt: "a dark, high-contrast dog with glowing eyes",
     });
   });
 
@@ -200,7 +200,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
-    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
+    expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("falls back to raw prompt when enrichment fails", async () => {
@@ -216,7 +216,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
-    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
+    expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("sends input images with the unchanged prompt", async () => {
@@ -243,7 +243,7 @@ describe("createImageGenerateTool", () => {
       expect.objectContaining({ data: PNG_BYTES.toString("base64") }),
     ]);
     expect(result).toMatchObject({
-      enrichedPrompt: "change the sign text",
+      enriched_prompt: "change the sign text",
       image_count: 1,
     });
   });

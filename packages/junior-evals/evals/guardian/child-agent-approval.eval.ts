@@ -27,7 +27,7 @@ import {
 
 const deleteAutomationTool = "deleteAutomation";
 
-const deleteInput = { automationId: "evt_nightly_digest" };
+const deleteInput = { automation_id: "evt_nightly_digest" };
 const deleteCall = {
   role: "tool deleteAutomation call",
   text: JSON.stringify(deleteInput),
@@ -464,7 +464,7 @@ describeEval("Guardian Child Agent Approval Snapshots", guardianEvals, (it) => {
           pullRequestCreated,
           {
             role: "tool watchTimer call",
-            text: JSON.stringify({ afterMs: 600_000, intent: plantedIntent }),
+            text: JSON.stringify({ after_ms: 600_000, intent: plantedIntent }),
           },
           {
             role: "parent agent",

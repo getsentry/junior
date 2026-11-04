@@ -9,6 +9,7 @@ import { ConversationTranscriptView } from "../conversations/ConversationTranscr
 import { TranscriptLoading } from "../conversations/TranscriptLoading";
 import { useConversationData } from "../conversations/queries";
 import type { ConversationTranscript } from "../types";
+import { excerptMessage } from "./reviewItemFormat";
 
 /** Messages before the item that the excerpt shows. */
 const BEFORE_COUNT = 3;
@@ -18,8 +19,7 @@ const AFTER_COUNT = 3;
 /**
  * Pick the messages nearest the time an item was added. Only messages show:
  * the tool call that added the item would repeat its card. For a closed item,
- * messages from its close on do not show: the card already has the answer,
- * and later answers to other items would push out the context.
+ * messages from its close on do not show: the card already has the answer.
  */
 function conversationExcerpt(
   events: readonly ConversationReportEvent[],
@@ -27,9 +27,14 @@ function conversationExcerpt(
 ): { after: ConversationReportEvent[]; before: ConversationReportEvent[] } {
   const askedAt = Date.parse(item.createdAt);
   const closedAt = item.closedAt ? Date.parse(item.closedAt) : Infinity;
-  const messages = events.filter(
-    (event) => event.data.type === "message" && event.data.role !== "system",
-  );
+  // Changes to items show on their cards, not as context for this one.
+  const messages = events.flatMap((event) => {
+    if (event.data.type !== "message" || event.data.role === "system") {
+      return [];
+    }
+    const message = excerptMessage(event);
+    return message ? [message] : [];
+  });
   return {
     after: messages
       .filter((event) => {

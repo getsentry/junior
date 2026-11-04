@@ -49,7 +49,7 @@ function normalizeFiles(
   return files.map((file) => ({
     path: file.path,
     ...(file.filename ? { filename: file.filename } : undefined),
-    ...(file.mimeType ? { mimeType: file.mimeType } : undefined),
+    ...(file.mime_type ? { mime_type: file.mime_type } : undefined),
   }));
 }
 

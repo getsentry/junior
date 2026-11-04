@@ -31,7 +31,7 @@ export function createDeleteAutomationTool(
       "Delete one scheduled or event automation. Anyone in the workspace can delete an automation in a public channel. Automations in private channels and DMs can be deleted from there or by their creator.",
     inputSchema: z
       .object({
-        automationId: z
+        automation_id: z
           .string()
           .min(1)
           .describe(
@@ -42,7 +42,7 @@ export function createDeleteAutomationTool(
     outputSchema: automationToolResultSchema
       .omit({ objectCards: true })
       .extend({ removedCards: z.array(removedCardSchema) }),
-    async execute({ automationId }) {
+    async execute({ automation_id: automationId }) {
       const current = await requireToolAutomation(
         await requireToolCaller(context),
         automationId,

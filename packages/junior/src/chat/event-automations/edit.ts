@@ -36,6 +36,7 @@ export async function editEventAutomation(
   input: z.output<typeof eventAutomationEditSchema>,
   isCreator: boolean,
   catalog: EventCatalog,
+  options?: { inputKeys: boolean },
 ): Promise<EventAutomation> {
   let trigger = current.trigger;
   if (input.trigger !== undefined) {
@@ -49,7 +50,7 @@ export async function editEventAutomation(
       current.trigger.resourceType !== inputTrigger.resourceType
     ) {
       try {
-        trigger = requireEventAutomationTrigger(catalog, inputTrigger);
+        trigger = requireEventAutomationTrigger(catalog, inputTrigger, options);
       } catch (error) {
         if (error instanceof ToolInputError)
           throw new AutomationEditError(error.message, "trigger");

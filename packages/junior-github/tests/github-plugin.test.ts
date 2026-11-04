@@ -654,7 +654,7 @@ describe("github plugin", () => {
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
-          "exact repo, commentId, and commentKind from Verified details",
+          "exact repo, comment_id, and comment_kind from Verified details",
         ),
       },
       "pull_request.review_comment.created": {
@@ -967,7 +967,7 @@ describe("github plugin", () => {
         namespace: "github",
         identifier: "getsentry/junior#660",
         type: "issue",
-        supportedEvents: [
+        supported_events: [
           "issue.comment.created",
           "issue.opened",
           "issue.closed",
@@ -1520,7 +1520,7 @@ Conversation: \`local:test:old-conversation\`
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
-        suggestedEvents: [
+        suggested_events: [
           "pull_request.checks.failed",
           "pull_request.comment.created",
           "pull_request.ready_for_review",
@@ -1531,7 +1531,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
@@ -1609,7 +1609,7 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject({
       subscribable: {
-        suggestedEvents: expect.not.arrayContaining([
+        suggested_events: expect.not.arrayContaining([
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
         ]),
@@ -1683,7 +1683,9 @@ Conversation: \`local:test:old-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
       subscribable: {
-        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
+        suggested_events: expect.arrayContaining([
+          "pull_request.checks.failed",
+        ]),
       },
     });
     expect(result).not.toHaveProperty("subscription");
@@ -1842,7 +1844,7 @@ Conversation: \`local:test:old-conversation\`
         ),
       ).resolves.toMatchObject({
         number: 701,
-        stack: { number: 9, pullRequests: stack },
+        stack: { number: 9, pull_requests: stack },
       });
       const stackWrite = ctx.egressRequests().at(-1)!;
       expect(stackWrite).toMatchObject({ operation: write.operation });

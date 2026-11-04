@@ -350,6 +350,7 @@ export function CostMetric(props: {
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
+  tooltipPlacement?: "above" | "below";
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -369,7 +370,7 @@ export function CostMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltipPlacement="above"
+      tooltipPlacement={props.tooltipPlacement ?? "above"}
       tooltip={
         !card && props.liveModelId
           ? [modelHeading(props.liveModelId, props.liveModelId)]

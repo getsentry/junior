@@ -384,6 +384,11 @@ describe("Slack webhook: Review item cards", () => {
     expect(work?.messages[0]?.input.text).toContain(
       "Decision (decision): Ship it",
     );
+    // The input records the answer, so its saved Message shows as one.
+    expect(work?.messages[0]?.input.reviewItemChange).toEqual({
+      kind: "submitted",
+      reviewItemId: item.id,
+    });
     // The other linked thread learns about it once, from the person.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,
@@ -391,6 +396,10 @@ describe("Slack webhook: Review item cards", () => {
     });
     expect(other?.messages).toHaveLength(1);
     expect(other?.messages[0]?.input.text).toContain("answered review item");
+    expect(other?.messages[0]?.input.reviewItemChange).toEqual({
+      kind: "submitted",
+      reviewItemId: item.id,
+    });
 
     // Both cards lose their controls and show the answer.
     const updates = slackApiOutbox
@@ -565,7 +574,7 @@ describe("Slack webhook: Review item cards", () => {
   });
 
   it("lets only an assignee act on a private item card", async () => {
-    const { click } = harness();
+    const { click, state } = harness();
     await slackThread(THREAD, "private");
     const ana = await slackUser("ana@example.com", "U123");
     await slackUser("ben@example.com", "U456");
@@ -609,6 +618,14 @@ describe("Slack webhook: Review item cards", () => {
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
       "ana@example.com dismissed this",
     );
+    // The thread input records the dismiss.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(
+      work?.messages.map((message) => message.input.reviewItemChange),
+    ).toEqual([{ kind: "dismissed", reviewItemId: item.id }]);
   });
 
   // Which open question a reply answers is a decision model choice, so the

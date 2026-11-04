@@ -8,10 +8,6 @@ import {
   forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -20,10 +16,16 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingMessagesReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingMessagesReportSchema,
+} from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";

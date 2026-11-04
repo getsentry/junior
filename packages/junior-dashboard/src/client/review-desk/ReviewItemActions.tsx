@@ -26,7 +26,7 @@ function actionError(error: unknown): string {
 }
 
 /** Show the submitted answer as one line for each answered field. */
-function AnswerSummary(props: {
+export function AnswerSummary(props: {
   answer: NonNullable<ReviewItemPayload["answer"]>;
   request: NonNullable<ReviewItemPayload["request"]>;
 }) {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createConversationId,
   recordWebConversationActivity,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { closeDb, getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
@@ -87,8 +87,10 @@ describe("oauth identity link", () => {
 
   it("links a web connection to the identity that the viewer and message events use", async () => {
     await createEvalOAuthAccountApp({ id: "eval-account-web" });
-    const actor = webActorFromEmail("Web.Person@Example.com", {
-      fullName: "Web Person",
+    const actor = webActorFromUser({
+      displayName: "Web Person",
+      email: "Web.Person@Example.com",
+      id: "web-person",
     });
     await getStateAdapter().set("oauth-state:eval-oauth-web-link", {
       actor,

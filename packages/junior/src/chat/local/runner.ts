@@ -328,7 +328,7 @@ async function runLocalAgentTurnInContext(
         instruction: {
           text,
           context: buildConversationContext(conversation, {
-            excludeMessageId: userMessageId,
+            excludeMessageIds: [userMessageId],
           }),
         },
         history: messages,

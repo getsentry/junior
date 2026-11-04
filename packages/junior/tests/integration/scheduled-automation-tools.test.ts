@@ -308,7 +308,7 @@ describe("Scheduled automation tools", () => {
     expect(
       (updateTool.inputSchema as { properties?: Record<string, unknown> })
         .properties,
-    ).toHaveProperty("credentialMode");
+    ).toHaveProperty("credential_mode");
   });
 
   it("accepts a structured relative one-off schedule", async () => {
@@ -428,11 +428,11 @@ describe("Scheduled automation tools", () => {
     });
     expect(created).toMatchObject({
       automation: {
-        conversationAccess: {
+        conversation_access: {
           audience: "channel",
           visibility: "public",
         },
-        credentialMode: "creator",
+        credential_mode: "creator",
         outcomes: [],
         status: "active",
         instruction:
@@ -442,7 +442,7 @@ describe("Scheduled automation tools", () => {
           interval: 1,
           weekdays: [1],
         },
-        nextRunAt: "2026-05-25T16:00:00.000Z",
+        next_run_at: "2026-05-25T16:00:00.000Z",
       },
     });
     await expect(
@@ -499,12 +499,12 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createUpdateAutomationTool(noIdentity, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Creator edit without an identity lookup.",
         outcomes: [],
       }),
     ).resolves.toMatchObject({
-      automation: { credentialMode: "creator", isCreator: true },
+      automation: { credential_mode: "creator", is_creator: true },
     });
   });
 
@@ -666,7 +666,7 @@ describe("Scheduled automation tools", () => {
             timing: { type: "after", value: 1, unit: "minute" },
           },
         },
-        credentialMode: null,
+        credential_mode: null,
       },
     );
 
@@ -762,7 +762,7 @@ describe("Scheduled automation tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        nextRunAt: "2026-05-27T00:25:23.000Z",
+        next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
@@ -893,7 +893,7 @@ describe("Scheduled automation tools", () => {
     const updated = await executeTool(
       createUpdateAutomationTool(context, NO_EVENTS),
       {
-        automationId: taskId,
+        automation_id: taskId,
         instruction:
           "Tuesday scheduler digest: Summarize open scheduler issues.",
         trigger: {
@@ -910,7 +910,7 @@ describe("Scheduled automation tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: taskId,
-        nextRunAt: "2026-05-26T17:00:00.000Z",
+        next_run_at: "2026-05-26T17:00:00.000Z",
         instruction:
           "Tuesday scheduler digest: Summarize open scheduler issues.",
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
@@ -930,7 +930,7 @@ describe("Scheduled automation tools", () => {
     const deleted = await executeTool(
       createDeleteAutomationTool(context, NO_EVENTS),
       {
-        automationId: taskId,
+        automation_id: taskId,
       },
     );
     expect(deleted).not.toHaveProperty("cards");
@@ -951,13 +951,13 @@ describe("Scheduled automation tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      automation: { id: string; nextRunAt: string; instruction: string };
+      automation: { id: string; next_run_at: string; instruction: string };
     };
 
     const updated = await executeTool(
       createUpdateAutomationTool(context, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         trigger: null,
         instruction: `${created.automation.instruction} (edited)`,
       },
@@ -966,7 +966,7 @@ describe("Scheduled automation tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        nextRunAt: created.automation.nextRunAt,
+        next_run_at: created.automation.next_run_at,
         status: "active",
         instruction: `${created.automation.instruction} (edited)`,
       },
@@ -982,7 +982,7 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(tool, {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         nextRunAt: "2026-06-01T16:00:00.000Z",
       } as Parameters<NonNullable<typeof tool.execute>>[0]),
     ).rejects.toThrow("Unrecognized key");
@@ -1002,7 +1002,7 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(updateTool, {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         trigger: {
           type: "schedule",
           schedule: {
@@ -1031,7 +1031,7 @@ describe("Scheduled automation tools", () => {
     const updated = await executeTool(
       createUpdateAutomationTool(context, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         trigger: {
           type: "schedule",
           schedule: {
@@ -1045,7 +1045,7 @@ describe("Scheduled automation tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        nextRunAt: "2026-06-01T16:00:00.000Z",
+        next_run_at: "2026-06-01T16:00:00.000Z",
         recurrence: null,
         schedule: "Once on 2026-06-01 at 09:00 (America/Los_Angeles)",
       },
@@ -1083,7 +1083,7 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createUpdateAutomationTool(creatorElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
         trigger: {
           type: "schedule",
           schedule: {
@@ -1102,10 +1102,10 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createRunAutomationNowTool(creatorElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
     ).resolves.toMatchObject({
-      automation: { id: automationId, runNowAt: expect.any(String) },
+      automation: { id: automationId, run_now_at: expect.any(String) },
     });
 
     // Anyone in the workspace can find and manage a public-channel task.
@@ -1114,12 +1114,12 @@ describe("Scheduled automation tools", () => {
         query: automationId,
       }),
     ).resolves.toMatchObject({
-      automations: [{ id: automationId, isCreator: false }],
+      automations: [{ id: automationId, is_creator: false }],
     });
     // Only the creator can start work with the creator's credentials.
     await expect(
       executeTool(createRunAutomationNowTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
     ).rejects.toThrow("Only the creator can resume it or run it now.");
     // A reader can move it to a public channel that they name. Junior joins
@@ -1129,7 +1129,7 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
         destination: "<#CPRIVATE>",
       }),
     ).rejects.toThrow("Only a public channel can be named as a destination.");
@@ -1138,14 +1138,14 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
         destination: "<#CPUBLIC|security-alerts>",
       }),
     ).resolves.toMatchObject({
       automation: {
-        credentialMode: "system",
+        credential_mode: "system",
         destination: { channel: "CPUBLIC" },
-        conversationAccess: { audience: "channel", visibility: "public" },
+        conversation_access: { audience: "channel", visibility: "public" },
       },
     });
     expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
@@ -1153,31 +1153,33 @@ describe("Scheduled automation tools", () => {
     ]);
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
         instruction: "Team digest: Summarize open scheduler issues.",
       }),
     ).resolves.toMatchObject({
       automation: {
-        credentialMode: "system",
+        credential_mode: "system",
         instruction: "Team digest: Summarize open scheduler issues.",
       },
     });
     for (const status of ["paused", "active"] as const) {
       await expect(
         executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
-          automationId,
+          automation_id: automationId,
           status,
         }),
       ).resolves.toMatchObject({ automation: { status } });
     }
     await expect(
       executeTool(createRunAutomationNowTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
-    ).resolves.toMatchObject({ automation: { runNowAt: expect.any(String) } });
+    ).resolves.toMatchObject({
+      automation: { run_now_at: expect.any(String) },
+    });
     await expect(
       executeTool(createDeleteAutomationTool(readerElsewhere, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
     ).resolves.toMatchObject({
       automation: { id: automationId, status: "deleted" },
@@ -1219,7 +1221,7 @@ describe("Scheduled automation tools", () => {
         createContext({ channelId: "DDM" }),
         NO_EVENTS,
       ),
-      { automationId: taskId },
+      { automation_id: taskId },
     );
     expect(deleted).toMatchObject({
       automation: { id: taskId, status: "deleted" },
@@ -1236,13 +1238,13 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createUpdateAutomationTool(bob, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Wrong channel edit.",
       }),
     ).rejects.toThrow(noAccess);
     await expect(
       executeTool(createDeleteAutomationTool(bob, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
       }),
     ).rejects.toThrow(noAccess);
     await expect(
@@ -1251,7 +1253,7 @@ describe("Scheduled automation tools", () => {
           createContext({ channelId: "DBOB" }),
           NO_EVENTS,
         ),
-        { automationId: created.automation.id },
+        { automation_id: created.automation.id },
       ),
     ).resolves.toMatchObject({ automation: { status: "deleted" } });
   });
@@ -1274,7 +1276,7 @@ describe("Scheduled automation tools", () => {
     // This channel is not public, so only the creator can move the task.
     await expect(
       executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         destination: "<#CPUBLIC>",
       }),
     ).rejects.toThrow(
@@ -1284,14 +1286,14 @@ describe("Scheduled automation tools", () => {
     // creator's credentials.
     await expect(
       executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
       }),
     ).resolves.toMatchObject({
       automation: {
-        credentialMode: "system",
+        credential_mode: "system",
         outcomes: [
           { action: "send_message", destination: { channel: "C123" } },
         ],
@@ -1301,14 +1303,14 @@ describe("Scheduled automation tools", () => {
     const updated = await executeTool(
       createUpdateAutomationTool(otherActor, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     );
     const deleted = await executeTool(
       createDeleteAutomationTool(otherActor, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
       },
     );
 
@@ -1342,7 +1344,7 @@ describe("Scheduled automation tools", () => {
     const created = await createTask(createContext());
 
     expect(created).toMatchObject({
-      automation: { credentialMode: "creator" },
+      automation: { credential_mode: "creator" },
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
@@ -1370,20 +1372,22 @@ describe("Scheduled automation tools", () => {
           timezone: "America/Los_Angeles",
         },
       },
-      credentialMode: "creator" as const,
+      credential_mode: "creator" as const,
     };
 
-    expect(tool.prepareArguments?.(input)).not.toHaveProperty("credentialMode");
+    expect(tool.prepareArguments?.(input)).not.toHaveProperty(
+      "credential_mode",
+    );
     expect(
-      tool.prepareArguments?.({ ...input, credentialMode: null }),
-    ).not.toHaveProperty("credentialMode");
+      tool.prepareArguments?.({ ...input, credential_mode: null }),
+    ).not.toHaveProperty("credential_mode");
     expect(
-      tool.prepareArguments?.({ ...input, credentialMode: "system" }),
-    ).toHaveProperty("credentialMode", "system");
+      tool.prepareArguments?.({ ...input, credential_mode: "system" }),
+    ).toHaveProperty("credential_mode", "system");
     const created = await executeTool(tool, input);
 
     expect(created).toMatchObject({
-      automation: { credentialMode: "creator" },
+      automation: { credential_mode: "creator" },
     });
   });
 
@@ -1396,7 +1400,7 @@ describe("Scheduled automation tools", () => {
     const otherActor = createContext({ actor: slackActor("U999") });
 
     await executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-      automationId,
+      automation_id: automationId,
       instruction:
         "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
     });
@@ -1405,7 +1409,7 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createRunAutomationNowTool(otherActor, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
     ).rejects.toThrow(
       "This scheduled automation uses its creator's credentials. Only the creator can resume it or run it now.",
@@ -1413,7 +1417,7 @@ describe("Scheduled automation tools", () => {
 
     // A new Schedule changes when the creator's accounts run.
     await executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-      automationId,
+      automation_id: automationId,
       trigger: {
         type: "schedule",
         schedule: {
@@ -1430,10 +1434,10 @@ describe("Scheduled automation tools", () => {
     });
     await expect(
       executeTool(createRunAutomationNowTool(otherActor, NO_EVENTS), {
-        automationId,
+        automation_id: automationId,
       }),
     ).resolves.toMatchObject({
-      automation: { credentialMode: "system", runNowAt: expect.any(String) },
+      automation: { credential_mode: "system", run_now_at: expect.any(String) },
     });
   });
 
@@ -1441,7 +1445,7 @@ describe("Scheduled automation tools", () => {
     const context = createContext();
     const created = await createTask(context);
     expect(created).toMatchObject({
-      automation: { credentialMode: "creator" },
+      automation: { credential_mode: "creator" },
     });
     const taskId = (created as { automation: { id: string } }).automation.id;
     const original = await readScheduledAutomation(taskId);
@@ -1458,11 +1462,11 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-        automationId: taskId,
-        credentialMode: "system",
+        automation_id: taskId,
+        credential_mode: "system",
       }),
     ).resolves.toMatchObject({
-      automation: { credentialMode: "system" },
+      automation: { credential_mode: "system" },
     });
     await expect(readScheduledAutomation(taskId)).resolves.toMatchObject({
       credentialMode: "system",
@@ -1475,8 +1479,8 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createUpdateAutomationTool(otherActor, NO_EVENTS), {
-        automationId: taskId,
-        credentialMode: "creator",
+        automation_id: taskId,
+        credential_mode: "creator",
       }),
     ).rejects.toThrow(
       "Only the scheduled automation creator can enable creator credential use.",
@@ -1484,11 +1488,11 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createUpdateAutomationTool(context, NO_EVENTS), {
-        automationId: taskId,
-        credentialMode: "creator",
+        automation_id: taskId,
+        credential_mode: "creator",
       }),
     ).resolves.toMatchObject({
-      automation: { credentialMode: "creator" },
+      automation: { credential_mode: "creator" },
     });
   });
 
@@ -1511,11 +1515,11 @@ describe("Scheduled automation tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        conversationAccess: {
+        conversation_access: {
           audience: "group",
           visibility: "private",
         },
-        credentialMode: "creator",
+        credential_mode: "creator",
       },
     });
     const tasks = await listScheduledAutomationsForTeam(TEST_TEAM_ID);
@@ -1570,7 +1574,7 @@ describe("Scheduled automation tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        conversationAccess: {
+        conversation_access: {
           audience: "direct",
           visibility: "private",
         },
@@ -1605,7 +1609,7 @@ describe("Scheduled automation tools", () => {
 
     expect(created).toMatchObject({
       automation: {
-        nextRunAt: "2026-05-26T13:00:00.000Z",
+        next_run_at: "2026-05-26T13:00:00.000Z",
         recurrence: null,
         timezone: "America/New_York",
       },
@@ -1634,7 +1638,7 @@ describe("Scheduled automation tools", () => {
 
     expect(created).toMatchObject({
       automation: {
-        nextRunAt: "2026-05-26T07:00:00.000Z",
+        next_run_at: "2026-05-26T07:00:00.000Z",
         timezone: "Europe/Vienna",
       },
     });
@@ -1662,7 +1666,7 @@ describe("Scheduled automation tools", () => {
 
     expect(created).toMatchObject({
       automation: {
-        nextRunAt: "2026-05-26T13:00:00.000Z",
+        next_run_at: "2026-05-26T13:00:00.000Z",
         recurrence: null,
         timezone: "America/New_York",
       },
@@ -1708,7 +1712,7 @@ describe("Scheduled automation tools", () => {
     const updated = await executeTool(
       createUpdateAutomationTool(context, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         instruction: "Renamed issue digest: Summarize open scheduler issues.",
       },
     );
@@ -1748,7 +1752,7 @@ describe("Scheduled automation tools", () => {
     const updated = await executeTool(
       createUpdateAutomationTool(context, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         status: "active",
       },
     );
@@ -1784,7 +1788,7 @@ describe("Scheduled automation tools", () => {
     const result = await executeTool(
       createRunAutomationNowTool(context, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
       },
     );
     const afterMs = Date.now();
@@ -1793,7 +1797,7 @@ describe("Scheduled automation tools", () => {
       automation: {
         id: created.automation.id,
         status: "active",
-        nextRunAt: "2026-06-01T16:00:00.000Z",
+        next_run_at: "2026-06-01T16:00:00.000Z",
       },
     });
     const due = await readScheduledAutomation(created.automation.id);
@@ -1837,7 +1841,7 @@ describe("Scheduled automation tools", () => {
 
     await expect(
       executeTool(createRunAutomationNowTool(context, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
       }),
     ).rejects.toThrow(
       "Scheduled automation must be active before it can be run now.",
@@ -1857,7 +1861,7 @@ describe("Scheduled automation tools", () => {
     };
 
     await executeTool(createDeleteAutomationTool(context, NO_EVENTS), {
-      automationId: created.automation.id,
+      automation_id: created.automation.id,
     });
 
     await expect(
@@ -2001,9 +2005,9 @@ describe("Scheduled automation tools", () => {
     })) as {
       automation: {
         id: string;
-        nextRunAt: string | null;
+        next_run_at: string | null;
         schedule: string;
-        credentialMode: string;
+        credential_mode: string;
       };
     };
     await expect(
@@ -2013,7 +2017,7 @@ describe("Scheduled automation tools", () => {
       outcomes: [],
     });
     await executeTool(createUpdateAutomationTool(source, NO_EVENTS), {
-      automationId: created.automation.id,
+      automation_id: created.automation.id,
       outcomes: [
         {
           action: "send_message",
@@ -2034,7 +2038,7 @@ describe("Scheduled automation tools", () => {
     const movedPublic = await executeTool(
       createUpdateAutomationTool(publicTarget, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         destination: "current_conversation",
       },
     );
@@ -2043,10 +2047,10 @@ describe("Scheduled automation tools", () => {
         id: created.automation.id,
         instruction: "Weekly planning reminder: post the agenda here.",
         schedule: created.automation.schedule,
-        nextRunAt: created.automation.nextRunAt,
-        credentialMode: "creator",
+        next_run_at: created.automation.next_run_at,
+        credential_mode: "creator",
         destination: { channel: "CTARGET" },
-        conversationAccess: {
+        conversation_access: {
           audience: "channel",
           visibility: "public",
         },
@@ -2076,7 +2080,7 @@ describe("Scheduled automation tools", () => {
     const movedPrivate = await executeTool(
       createUpdateAutomationTool(privateTarget, NO_EVENTS),
       {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         destination: "current_conversation",
       },
     );
@@ -2084,12 +2088,12 @@ describe("Scheduled automation tools", () => {
       automation: {
         id: created.automation.id,
         destination: { channel: "GPRIVATE" },
-        conversationAccess: {
+        conversation_access: {
           audience: "group",
           visibility: "private",
         },
-        credentialMode: "creator",
-        nextRunAt: created.automation.nextRunAt,
+        credential_mode: "creator",
+        next_run_at: created.automation.next_run_at,
       },
     });
     // The private target's context carries no thread; the move clears it.
@@ -2109,7 +2113,7 @@ describe("Scheduled automation tools", () => {
     // Replaying a destination update that already landed is a no-op success.
     await expect(
       executeTool(createUpdateAutomationTool(privateTarget, NO_EVENTS), {
-        automationId: created.automation.id,
+        automation_id: created.automation.id,
         destination: "current_conversation",
       }),
     ).resolves.toMatchObject({
@@ -2143,7 +2147,7 @@ describe("Scheduled automation tools", () => {
     ]) {
       await expect(
         executeTool(createUpdateAutomationTool(context, NO_EVENTS), {
-          automationId: created.automation.id,
+          automation_id: created.automation.id,
           destination: "current_conversation",
         }),
       ).rejects.toThrow("Automation was not found.");
@@ -2170,7 +2174,7 @@ describe("Scheduled automation tools", () => {
           NO_EVENTS,
         ),
         {
-          automationId: created.automation.id,
+          automation_id: created.automation.id,
           destination: "current_conversation",
         },
       ),
@@ -2265,7 +2269,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
             frequency: "weekly",
             time: "09:00",
             weekdays: ["monday"],
-            startDate: "2026-06-09",
+            start_date: "2026-06-09",
             timezone: "America/Los_Angeles",
           },
         },
@@ -2340,7 +2344,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       } as ToolRuntimeContext);
       expect(located.createAutomation?.disabledReason).toBeUndefined();
       const created = await executeRegisteredTool<{
-        automation: { id: string; isCreator: boolean };
+        automation: { id: string; is_creator: boolean };
       }>(located.createAutomation!, {
         instruction: "Post the weekly digest.",
         trigger: {
@@ -2354,7 +2358,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
           },
         },
       });
-      expect(created.automation.isCreator).toBe(true);
+      expect(created.automation.is_creator).toBe(true);
       await expect(
         readStoredTask(fixture.sql.db(), created.automation.id),
       ).resolves.toMatchObject({
@@ -2375,15 +2379,15 @@ describe("Scheduled automation tool wiring via createTools", () => {
           scope: "mine",
         }),
       ).resolves.toMatchObject({
-        automations: [{ id: created.automation.id, isCreator: true }],
+        automations: [{ id: created.automation.id, is_creator: true }],
       });
       await expect(
         executeRegisteredTool(unlocated.updateAutomation!, {
-          automationId: created.automation.id,
+          automation_id: created.automation.id,
           title: "Weekly digest",
         }),
       ).resolves.toMatchObject({
-        automation: { title: "Weekly digest", credentialMode: "creator" },
+        automation: { title: "Weekly digest", credential_mode: "creator" },
       });
       await expect(
         executeRegisteredTool(unlocated.createAutomation!, {
@@ -2465,7 +2469,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
         executeRegisteredTool(tools.deleteAutomation!, {
-          automationId: "sched_missing",
+          automation_id: "sched_missing",
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(

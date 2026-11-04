@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
+import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -82,8 +83,8 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     </span>
   );
 
-  return (
-    <div className="min-w-0 py-1">
+  const view = (
+    <>
       {text ? (
         <Collapsible
           className="min-w-0"
@@ -120,6 +121,28 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
           ) : null}
         </>
       )}
+    </>
+  );
+
+  // A relay of a person change shows as its change row, like the person's
+  // own message, not as an Event line. A message with changes lists its own
+  // Events in `events`, so with none it only records changes.
+  const changes = props.message.reviewItemChanges ?? [];
+  const onlyChanges = changes.length > 0 && events.length === 0;
+  return (
+    <div className="min-w-0 py-1">
+      {onlyChanges ? null : view}
+      {changes.length ? (
+        <div className={cn("grid min-w-0 gap-2", !onlyChanges && "mt-2")}>
+          {changes.map((record, index) => (
+            <ReviewItemChangeRow
+              fallback={onlyChanges && changes.length === 1 ? view : null}
+              key={index}
+              record={record}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

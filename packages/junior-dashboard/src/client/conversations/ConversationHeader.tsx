@@ -20,14 +20,17 @@ import { ShareConversationButton } from "./ShareConversationButton";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /**
- * Show the conversation title bar: where it runs, the title, and actions.
- * Run facts, linked work, and the Brief live in Conversation details.
+ * Show the conversation title bar: where it runs, the title, its cost, and
+ * actions. Other run facts, linked work, and the Brief live in Conversation
+ * details.
  */
 export function ConversationHeader(props: {
   /** Parent chain of a child Conversation. Root Conversations omit it. */
   agentTree?: ReactNode;
   /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
+  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
+  cost?: ReactNode;
   archive: ConversationArchiveAction;
   conversationId: string;
   detailsOpen: boolean;
@@ -179,6 +182,11 @@ export function ConversationHeader(props: {
             <span className="shrink-0">{props.privacy}</span>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
+            {props.cost ? (
+              <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
+                {props.cost}
+              </span>
+            ) : null}
             {props.view === "raw" ? (
               // Event log is a debug view reached from the menu. Say which
               // view this is, and give one click back.

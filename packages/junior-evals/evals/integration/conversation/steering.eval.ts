@@ -158,4 +158,35 @@ describe("Dashboard Turn Steering", () => {
       }),
     ]);
   });
+
+  test("when the author sends dashboard messages during a turn, one follow-up turn takes them and the transcript keeps each", async ({
+    run,
+  }) => {
+    // Only batching is asserted, so the inputs are short.
+    const conversation = await run(
+      webMessage("Reply with only the word ready."),
+      {
+        onProgress: sendDuringFirstModelRequest([
+          webMessage("Reply with only the word one."),
+          webMessage("Reply with only the word two."),
+        ]),
+      },
+    );
+
+    // Both queued messages wait for the same follow-up turn.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ]);
+    // That turn gets both messages, but each stays its own user message.
+    expect(
+      conversation.session.events.filter(
+        (event) => event.type === "message" && event.role === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({ content: "Reply with only the word ready." }),
+      expect.objectContaining({ content: "Reply with only the word one." }),
+      expect.objectContaining({ content: "Reply with only the word two." }),
+    ]);
+  });
 });

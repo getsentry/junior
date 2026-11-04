@@ -1,3 +1,4 @@
+import type { TextReplacement } from "@/chat/tools/sandbox/text-edits";
 import fs from "node:fs/promises";
 import {
   getTracePropagationHeaders,
@@ -625,7 +626,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         const response = await editFile({
           fs: fileSystem,
           path: filePath,
-          edits: rawInput.edits as Array<{ oldText: string; newText: string }>,
+          edits: rawInput.edits as TextReplacement[],
         });
         setSpanStatus("ok");
         return response;
