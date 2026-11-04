@@ -42,6 +42,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Unstack                 | `gh stack unstack STACK_NUMBER`                                                                 |
 | Submit review           | `github_submitPullRequestReview`                                                                |
 | Set feedback status     | `github_updatePullRequestFeedback`                                                              |
+| PR comment / reply      | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                |
 | Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
 | Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
 | View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
@@ -59,5 +60,5 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - Stacks: open each PR with `github_createPullRequest`, based on the branch below. When its base is the head of another open PR, the tool links it into a GitHub stack and returns `stack`; do not run `gh stack link` for it. No `stack` means GitHub could not stack it. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
-- PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
+- PR labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.

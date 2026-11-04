@@ -315,12 +315,14 @@ type GitHubBodyWrite = {
     | "createIssue"
     | "createPullRequest"
     | "addPullRequestReview"
+    | "addPullRequestReviewThreadReply"
     | "updateIssue"
     | "updatePullRequest";
   method: "PATCH" | "POST";
   operation:
     | "github.issue.create"
     | "github.issue.update"
+    | "github.pull.comment.create"
     | "github.pull.create"
     | "github.pull.review.create"
     | "github.pull.update";
@@ -351,6 +353,13 @@ const GITHUB_BODY_WRITES = [
     method: "POST",
     operation: "github.pull.review.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/,
+  },
+  {
+    denialMessage: `GitHub review thread replies must use the github_commentOnPullRequest tool with in_reply_to. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "addPullRequestReviewThreadReply",
+    method: "POST",
+    operation: "github.pull.comment.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/comments\/[^/]+\/replies$/,
   },
   {
     denialMessage: `GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -516,12 +525,7 @@ function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
-  field:
-    | "createIssue"
-    | "createPullRequest"
-    | "addPullRequestReview"
-    | "updateIssue"
-    | "updatePullRequest",
+  field: GitHubBodyWrite["graphqlField"],
 ): boolean {
   if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
   const parsed = parseGitHubGraphqlRequest(bodyText);
