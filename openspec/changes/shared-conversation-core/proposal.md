@@ -57,13 +57,12 @@ requirements. `tasks.md` has the migration steps.
   the cutover release. It lives in `packages/junior/verification/`, not in
   this plan (`design.md`, Verification).
 
-## Decided And Proposed
+## Decided
 
 - Decided items come from David Cramer's answers on #2567 (decision comments
   1–4) and in the planning thread. `design.md` cites each one as
   **Decided**.
-- Everything marked **Proposed, needs sign-off** is a suggestion from this
-  plan. It is not decided. `design.md`, Decisions Needed, lists them all.
+- Every item is Decided; `design.md`, Decisions Needed, is empty.
   `design.md`, Later, lists items this change does not need.
 - A change to a decided rule needs David's OK.
 
@@ -72,8 +71,8 @@ requirements. `tasks.md` has the migration steps.
 One spec per capability: `conversation-inbox`, `turn-lifecycle`,
 `turn-stop`, `turn-access`, `agent-tree`, `plugin-started-agents` and
 `verification`. They are built from the 3 behavior story comments on #2567.
-A requirement with no label keeps today's behavior. **(Decided)** and
-**(Proposed, needs sign-off: Pn)** point to `design.md`.
+A requirement with no label keeps today's behavior. **(Decided)** points to
+`design.md`.
 
 ## Non-Goals
 

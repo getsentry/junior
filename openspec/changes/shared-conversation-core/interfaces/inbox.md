@@ -1,7 +1,7 @@
 # Interfaces: Conversations, Inbox And Request Records
 
 Sketches for review, not final code. Plain types and functions. Labels follow
-`../design.md`: **Decided** or **Proposed, needs sign-off** (P-numbers).
+`../design.md`: every item is **Decided** (P-numbers).
 
 ## Conversation And Policy
 

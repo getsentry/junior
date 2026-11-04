@@ -55,6 +55,23 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
   `core = old`, and today's timer job wakes paused new-core turns so this
   needs no new input.
 
+#### Scenario: Move back after a crashed move
+
+- **WHEN** a move crashed after its insert and before its Redis delete,
+  and a revert deploy then moves the conversation back
+- **THEN** the move back first deletes each Redis turn cursor that has a
+  turn row (keyed by turn id) and each waiting input that has a request
+  record (keyed by `(conversationId, inboundMessageId)`), then sets
+  `core = old`, so today's core runs none of that state again.
+
+#### Scenario: Agent invocation row without its creating record
+
+- **WHEN** the move finds an active Agent invocation row with no parent
+  turn id and request record id (a row from before step 3), or a row whose
+  actor differs from that record
+- **THEN** it closes the row with a `failed` result to the parent, and it
+  never looks up the parent's latest invocation for an actor (I15).
+
 #### Scenario: Inbox move after a crash
 
 - **WHEN** a worker dies inside the move and the next new-core take runs
@@ -74,8 +91,11 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 
 - **WHEN** an idle old-core conversation still holds today's state and gets
   no new input
-- **THEN** the repair job runs the same move on it, and notifies the parent
-  of each active Agent invocation row left on an old-core conversation.
+- **THEN** the repair job moves it through a full new-core lock take (the
+  compare-and-set, the stale lease fence, the pin and the authority
+  checks), never moves a child before its root has `core = new`, and
+  notifies the parent of each active Agent invocation row left on an
+  old-core conversation.
 
 #### Scenario: Delete release blocked while old state remains
 
@@ -88,17 +108,52 @@ lease. A revert deploy SHALL move new-core conversations back by itself.
 #### Scenario: Column drop blocked while older code is live
 
 - **WHEN** the release that drops the `core`, `execution_status` and
-  `run_id` columns deploys before the step 16 release has been current for
-  `1 h + 2 × maxDuration + 2 min`
+  `run_id` columns deploys while a deployment row without
+  `old_core_deleted` has `lastSeenAtMs` within
+  `1 h + 2×maxDuration + 2 min + 60 s`
 - **THEN** its migration fails before it drops anything, and CI/CD stops
   the deploy.
 
+#### Scenario: Revert and promote within one cron interval
+
+- **WHEN** a release from step 15 is current for less than one cron
+  interval, then the step 16 release is promoted again
+- **THEN** the step 15 invocations in that window write their deployment
+  row's `lastSeenAtMs`, and the column-drop guard waits from that time.
+
+#### Scenario: Instant Rollback below step 3
+
+- **WHEN** an Instant Rollback makes a release from before step 3 current
+- **THEN** within 3 minutes the current row's `updatedAtMs` is too old,
+  every new-core worker takes no lock and acks, pinned conversations wait
+  until a roll forward, and no guard migration runs.
+
+#### Scenario: Abandoned half-moved turn
+
+- **WHEN** a move crashed after its insert, `abandonTurnRecord` then ended
+  the Redis cursor, and a new-core take repeats the move
+- **THEN** the repeat ends the open turn row through `finishTurn` with the
+  same end status, deletes the cursor, and does not run the turn.
+
+#### Scenario: Pending stop moves with the conversation
+
+- **WHEN** the move finds today's stop request for a conversation
+- **THEN** it sets `stopAtMs` so that the inputs in the stop's
+  `inboundMessageIds` are under the stop and later inputs are not.
+
+#### Scenario: Quiet new-core conversation keeps its pin
+
+- **WHEN** a `core = new` conversation gets no lock take for 7 days
+- **THEN** the repair sweep has refreshed its record's TTL, so the pin is
+  still there.
+
 ### Requirement: Stale Lease Fence
 
-The move SHALL take an expired today's lease only after
-`max(acquiredAtMs, staleLeaseAcquiredAtMs) + maxDuration + 60 s` (Decided:
-P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or
-a take over an expired lease SHALL first save the old `acquiredAtMs` as
+The move SHALL take an expired today's lease only after the later of
+`acquiredAtMs + D(lease)` and
+`staleLeaseAcquiredAtMs + staleLeaseMaxDurationSeconds`, plus 60 s (Decided:
+P45). Until then it SHALL set `wakeAtMs` to that time. A heartbeat clear or a
+take over an expired lease SHALL first save the old `acquiredAtMs` as
 `staleLeaseAcquiredAtMs`.
 
 #### Scenario: Expired lease waits out the old worker
@@ -115,6 +170,29 @@ a take over an expired lease SHALL first save the old `acquiredAtMs` as
   holder's `acquiredAtMs`
 - **THEN** the move waits until `staleLeaseAcquiredAtMs` plus
   `maxDuration` plus 60 s, though the conversation has no lease.
+
+### Requirement: Fence Duration
+
+`D(lease)` SHALL be `maxDurationMaxSeconds`, the running max over every
+deployment since step 3, for a lease with a `deploymentId`, else the 1,800 s
+platform ceiling (Decided: P45).
+
+#### Scenario: Lease from before step 3
+
+- **WHEN** the move finds an expired lease with no `deploymentId`
+- **THEN** it waits until 1,800 s plus 60 s after its `acquiredAtMs`.
+
+### Requirement: Fence Read Order
+
+The move SHALL read today's lease first and `staleLeaseAcquiredAtMs` after
+it, in the conversation mutation that writes the pin (Decided: P45, C11).
+
+#### Scenario: Tombstone read after the lease
+
+- **WHEN** a heartbeat clear saves `staleLeaseAcquiredAtMs` and erases the
+  lease while a move runs
+- **THEN** the move, which reads the tombstone after the lease, sees either
+  the lease or the new tombstone, and waits out the old worker.
 
 ### Requirement: The Turn Row Owns Turn Status
 
