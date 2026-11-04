@@ -54,6 +54,8 @@ describe("dashboard browser Sentry", () => {
       span({
         "browser.web_vital.inp.target":
           'div.h-[1px] > a.absolute[aria-label="Open Private plans"][title="Private plans"]',
+        "browser.web_vital.cls.source.1":
+          'li[title="Fix "a"] > b[c"] > p[title="secret"] > span.x',
         "code.file.path": "http://localhost/conversations/c1?search=secret#top",
         "url.full": "http://localhost/api/conversations?q=secret",
         "url.query": "q=secret",
@@ -62,6 +64,7 @@ describe("dashboard browser Sentry", () => {
 
     expect(scrubbed?.attributes).toEqual({
       "browser.web_vital.inp.target": "div.h-[1px] > a.absolute",
+      "browser.web_vital.cls.source.1": "li > span.x",
       "code.file.path": "http://localhost/conversations/c1",
       "url.full": "http://localhost/api/conversations",
     });

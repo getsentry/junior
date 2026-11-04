@@ -25,15 +25,25 @@ const QUERY_ATTRIBUTE_KEYS = [
   "url.query",
 ];
 // Element selectors in interaction and web vital attributes include these
-// attribute values, such as a conversation title in an `aria-label`. A value
-// ends where the next selector part or element starts.
-const ELEMENT_ATTRIBUTE =
-  /\[(?:aria-label|type|name|title|alt)=".*?"\](?=\[|\s>\s|$)/g;
+// attribute values, such as a conversation title in an `aria-label`. The SDK
+// does not escape quotes in values, so a value can contain `"]` and fake
+// selector parts. Cutting from the first marker to the last `"]` removes every
+// value, at the cost of the selector parts between them.
+const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt)="/;
+
+function scrubSelector(value: string): string {
+  const start = value.search(ELEMENT_ATTRIBUTE_START);
+  if (start === -1) return value;
+  const end = value.lastIndexOf('"]');
+  return end < start
+    ? value.slice(0, start)
+    : value.slice(0, start) + value.slice(end + 2);
+}
 
 function scrubAttribute(value: string): string {
   // Page and API URLs carry search text in the query string.
   if (/^https?:\/\//.test(value)) return value.split(/[?#]/, 1)[0] ?? value;
-  return value.replace(ELEMENT_ATTRIBUTE, "");
+  return scrubSelector(value);
 }
 
 // Browser span names are fixed labels such as "Click" or "GET localhost". The
