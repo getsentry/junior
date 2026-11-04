@@ -3,7 +3,10 @@ import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import {
+  conversationDetailTouch,
+  touchConversationDetail,
+} from "@/chat/conversations/sql/detail-version";
 import type { AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -122,12 +125,12 @@ async function rejectPurgedAttachmentWrite(args: {
   storage: AttachmentStorage;
   storageKey: string;
 }): Promise<never> {
-  await args.db
-    .db()
+  const db = args.db.db();
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
     .update(juniorAttachments)
     .set({ deleteRequestedAt: args.now })
     .where(eq(juniorAttachments.id, args.id));
-  await touchConversationDetail(args.db.db(), [args.conversationId]);
   await bestEffortDelete(args.storage, args.storageKey);
   throw purgedConversationError(args.conversationId);
 }
@@ -237,6 +240,7 @@ export async function storeAttachment(args: {
     const oldStorageKey = existing.storageKey;
     const revived = await args.db
       .db()
+      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
       .update(juniorAttachments)
       .set({
         deleteRequestedAt: null,
@@ -249,7 +253,6 @@ export async function storeAttachment(args: {
         ),
       )
       .returning({ id: juniorAttachments.id });
-    await touchConversationDetail(args.db.db(), [args.conversationId]);
     if (revived.length > 0) {
       if (await isConversationPurged(args.db, args.conversationId)) {
         await rejectPurgedAttachmentWrite({
@@ -290,6 +293,7 @@ export async function storeAttachment(args: {
   try {
     inserted = await args.db
       .db()
+      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
       .insert(juniorAttachments)
       .values({
         id,
@@ -312,7 +316,6 @@ export async function storeAttachment(args: {
     await bestEffortDelete(args.storage, storageKey);
     throw error;
   }
-  await touchConversationDetail(args.db.db(), [args.conversationId]);
   if (inserted.length > 0) {
     if (await isConversationPurged(args.db, args.conversationId)) {
       await rejectPurgedAttachmentWrite({
@@ -358,6 +361,7 @@ export async function storeAttachment(args: {
 
   const revived = await args.db
     .db()
+    .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
     .update(juniorAttachments)
     .set({
       deleteRequestedAt: null,
@@ -370,7 +374,6 @@ export async function storeAttachment(args: {
       ),
     )
     .returning({ id: juniorAttachments.id });
-  await touchConversationDetail(args.db.db(), [args.conversationId]);
   if (revived.length > 0) {
     if (await isConversationPurged(args.db, args.conversationId)) {
       await rejectPurgedAttachmentWrite({
@@ -483,6 +486,7 @@ export async function requestAttachmentDeletion(
   if (conversationIds.length === 0) return;
   await db
     .db()
+    .with(conversationDetailTouch(db.db(), conversationIds))
     .update(juniorAttachments)
     .set({ deleteRequestedAt: new Date(nowMs) })
     .where(
@@ -491,7 +495,6 @@ export async function requestAttachmentDeletion(
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-  await touchConversationDetail(db.db(), conversationIds);
 }
 
 /**

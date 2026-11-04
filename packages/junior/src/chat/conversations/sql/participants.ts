@@ -5,7 +5,6 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
-import { touchConversationDetail } from "./detail-version";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -54,6 +53,10 @@ export async function recordConversationParticipant(
     args.conversationId,
   );
   const at = new Date(args.atMs);
+  // Each caller bumps the Conversation in the same transaction: event appends
+  // carry the touch, and the root upsert sets `detailVersion`. The root needs
+  // no bump, because its detail version sums its subtree.
+  // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
   await executor
     .db()
     .insert(juniorConversationParticipants)
@@ -72,10 +75,6 @@ export async function recordConversationParticipant(
         ...(args.restoreArchive ? { archivedAt: null } : undefined),
       },
     });
-  await touchConversationDetail(executor.db(), [
-    args.conversationId,
-    rootConversationId,
-  ]);
 }
 
 /** Find which of the supplied root conversations include the linked user. */

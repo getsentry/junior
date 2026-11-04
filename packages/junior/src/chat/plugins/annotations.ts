@@ -9,7 +9,7 @@ import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
 function annotationFromRow(row: {
   annotation: unknown;
@@ -38,6 +38,7 @@ export function createPluginAnnotations(args: {
       const annotation = conversationAnnotationInputSchema.parse(input);
       const now = new Date();
       await args.db
+        .with(conversationDetailTouch(args.db, [args.conversationId]))
         .insert(juniorConversationAnnotations)
         .values({
           annotation,
@@ -57,10 +58,10 @@ export function createPluginAnnotations(args: {
           ],
           set: { annotation, updatedAt: now },
         });
-      await touchConversationDetail(args.db, [args.conversationId]);
     },
     async remove(kind, key) {
       await args.db
+        .with(conversationDetailTouch(args.db, [args.conversationId]))
         .delete(juniorConversationAnnotations)
         .where(
           and(
@@ -73,7 +74,6 @@ export function createPluginAnnotations(args: {
             eq(juniorConversationAnnotations.key, key),
           ),
         );
-      await touchConversationDetail(args.db, [args.conversationId]);
     },
     async list() {
       const rows = await args.db

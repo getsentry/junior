@@ -1,7 +1,7 @@
 import { and, desc, eq, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { conversationBriefSchema, type ConversationBrief } from "./schema";
 
@@ -93,6 +93,7 @@ export async function appendConversationBrief(
       .where(eq(juniorConversationBriefs.conversationId, input.conversationId));
     const version = (versions[0]?.version ?? 0) + 1;
     const inserted = await tx
+      .with(conversationDetailTouch(tx, [input.conversationId]))
       .insert(juniorConversationBriefs)
       .values({
         conversationId: input.conversationId,
@@ -115,7 +116,6 @@ export async function appendConversationBrief(
     if (!row) {
       throw new Error("Brief insert conflicted after the Turn check");
     }
-    await touchConversationDetail(tx, [input.conversationId]);
     return { inserted: true, value: briefVersionFromRow(row) };
   });
 }

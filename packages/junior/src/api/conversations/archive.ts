@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
   juniorConversationParticipants,
@@ -41,6 +41,7 @@ async function setViewerArchive(args: {
       const archivedAt = new Date();
       const lastMessageAt = new Date(args.lastSeenAt);
       await db
+        .with(conversationDetailTouch(db, [args.rootConversationId]))
         .insert(juniorConversationParticipants)
         .values({
           archivedAt,
@@ -58,7 +59,6 @@ async function setViewerArchive(args: {
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
-      await touchConversationDetail(db, [args.rootConversationId]);
       return {
         archivedAt: archivedAt.toISOString(),
         status: "updated" as const,
@@ -66,6 +66,7 @@ async function setViewerArchive(args: {
     }
 
     await db
+      .with(conversationDetailTouch(db, [args.rootConversationId]))
       .update(juniorConversationParticipants)
       .set({ archivedAt: null })
       .where(
@@ -78,7 +79,6 @@ async function setViewerArchive(args: {
           isNotNull(juniorConversationParticipants.archivedAt),
         ),
       );
-    await touchConversationDetail(db, [args.rootConversationId]);
     return { archivedAt: null, status: "updated" as const };
   });
 }

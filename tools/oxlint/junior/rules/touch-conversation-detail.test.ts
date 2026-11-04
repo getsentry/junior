@@ -11,6 +11,9 @@ const missingTouch = [{ messageId: "missingTouch" }];
 new RuleTester().run("touch-conversation-detail", touchConversationDetailRule, {
   valid: [
     `async function append(db) {
+      await db.with(conversationDetailTouch(db, [id])).insert(juniorConversationEvents).values(rows);
+    }`,
+    `async function append(db) {
       await db.insert(juniorConversationEvents).values(rows);
       await touchConversationDetail(db, [id]);
     }`,
@@ -32,6 +35,12 @@ new RuleTester().run("touch-conversation-detail", touchConversationDetailRule, {
     }`,
   ],
   invalid: [
+    {
+      code: `async function append(db) {
+        await db.with(otherCte).insert(juniorConversationEvents).values(rows);
+      }`,
+      errors: missingTouch,
+    },
     {
       code: `async function append(db) {
         await db.insert(juniorConversationEvents).values(rows);

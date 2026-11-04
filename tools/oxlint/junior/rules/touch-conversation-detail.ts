@@ -22,6 +22,7 @@ const detailTableNames = [
 ];
 const writeMethods = new Set(["delete", "insert", "update"]);
 const touchFunction = "touchConversationDetail";
+const touchCte = "conversationDetailTouch";
 const versionKey = "detailVersion";
 const rawWritePrefix = /\b(?:insert\s+into|update|delete\s+from)\s*"?$/i;
 const rawWriteNamed = new RegExp(
@@ -134,6 +135,22 @@ function builderCalls(
   return calls;
 }
 
+/** Report whether a write is built on `db.with(conversationDetailTouch(...))`. */
+function carriesTouchCte(call: ESTree.CallExpression): boolean {
+  const builder =
+    call.callee.type === "MemberExpression" ? call.callee.object : null;
+  return (
+    builder?.type === "CallExpression" &&
+    propertyName(builder.callee) === "with" &&
+    builder.arguments.some(
+      (argument) =>
+        argument.type === "CallExpression" &&
+        argument.callee.type === "Identifier" &&
+        argument.callee.name === touchCte,
+    )
+  );
+}
+
 /**
  * A `juniorConversations` write that advances `detailVersion` itself needs no
  * separate touch. A plain insert creates a row whose version starts at zero,
@@ -168,11 +185,11 @@ export const touchConversationDetailRule = defineRule({
     type: "problem",
     docs: {
       description:
-        "Require writes to tables that the Conversation detail report reads to call touchConversationDetail afterwards.",
+        "Require writes to tables that the Conversation detail report reads to advance the Conversation detail version.",
     },
     messages: {
       missingTouch:
-        "This write changes the Conversation detail report. Call `touchConversationDetail` after it in the same function, or set `detailVersion` on a `juniorConversations` write. Otherwise open detail pages keep serving the old report.",
+        "This write changes the Conversation detail report. Build it on `db.with(conversationDetailTouch(db, ids))`, call `touchConversationDetail` after it in the same function, or set `detailVersion` on a `juniorConversations` write. Otherwise open detail pages keep serving the old report.",
     },
   },
   create(context) {
@@ -200,6 +217,7 @@ export const touchConversationDetailRule = defineRule({
         )
           return;
         if (!detailTables.has(table.name)) return;
+        if (carriesTouchCte(node)) return;
         if (
           table.name === "juniorConversations" &&
           conversationWriteBumpsItself(context, method, node)
