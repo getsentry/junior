@@ -23,7 +23,7 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
-import type { TranscriptHistory } from "./transcriptUnreadHistory";
+import type { TranscriptHistory } from "./transcriptAroundHistory";
 import {
   TurnContextPanelProvider,
   type TurnContextPanel,

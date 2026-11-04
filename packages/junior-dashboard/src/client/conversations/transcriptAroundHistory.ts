@@ -1,11 +1,13 @@
 /**
- * Open a long Conversation at the reader's read position.
+ * Open a long Conversation away from its latest events: at the reader's read
+ * position, or at a linked event, Turn, or memory.
  *
  * The detail holds the latest page of events. When the read position is
  * older than that page, the transcript starts with the page around the read
  * position instead: the last read events and the unread events after them.
  * The first detail fetch of a visit brings that page, so it needs no second
- * request.
+ * request. A link to a row that the transcript does not hold starts it with
+ * the page around that row, which the server finds in one request.
  * Like earlier pages, newer pages load when the reader scrolls near them, so
  * the server reads only the pages that the reader reaches.
  *
@@ -54,23 +56,33 @@ export type TranscriptHistory = {
 };
 
 /**
- * Load the transcript from `unreadCursor`. Returns `undefined` when there is
- * no cursor, or when the first page fails, so the caller shows the latest
- * page instead.
+ * The row that the transcript opens at: the `unreadCursor` of the read
+ * position, or a linked event seq or Turn id.
  */
-export function useUnreadHistory(input: {
+export type HistoryStart =
+  | { around: string }
+  | { event: string }
+  | { turn: string };
+
+/**
+ * Load the transcript from the page around `start`. Returns `undefined` when
+ * there is no start, or when the first page fails, so the caller shows the
+ * latest page instead.
+ */
+export function useHistoryAround(input: {
   conversationId: string;
   /** The latest page, from the polled detail. */
   detail: ConversationDetailReport | undefined;
-  /** `unreadCursor` from the detail when the Conversation opened. */
-  unreadCursor: string | undefined;
-  /** Skip the newer pages. The caller then passes no `unreadCursor`. */
+  start?: HistoryStart;
+  /** Skip the newer pages. The caller then passes no `start`. */
   onShowLatest: () => void;
-  /** The page around `unreadCursor`, when the detail brought it. */
-  unreadPage?: ConversationEventPage;
+  /** The page around `start` failed. */
+  onStartFailed?: () => void;
+  /** The page around `start`, when the detail brought it. */
+  startPage?: ConversationEventPage;
 }): (TranscriptHistory & { isPending: boolean }) | undefined {
-  const { conversationId, detail, onShowLatest, unreadCursor, unreadPage } =
-    input;
+  const { conversationId, detail, onShowLatest, onStartFailed, start } = input;
+  const startKey = start ? Object.entries(start)[0]?.join(":") : undefined;
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -78,28 +90,24 @@ export function useUnreadHistory(input: {
     return kept;
   }, [detail?.events]);
   const latestFirstSeq = latestEvents[0]?.seq;
-  const joinedRef = useRef(false);
+  // The start whose newer pages joined the latest page.
+  const joinedRef = useRef<string>(undefined);
   const newer = useInfiniteQuery({
-    // Only the page around the read position loads by itself. The data never
-    // goes stale, so a refetch cannot reload every newer page at once.
-    enabled: Boolean(unreadCursor),
+    // Only the page around the start loads by itself. The data never goes
+    // stale, so a refetch cannot reload every newer page at once.
+    enabled: Boolean(start),
     staleTime: Infinity,
-    // Each visit starts again from the page around the read position. Pages
-    // from an earlier visit can end at an old latest event, which would
-    // leave a gap before the latest page.
+    // Each visit starts again from the page around the start. Pages from an
+    // earlier visit can end at an old latest event, which would leave a gap
+    // before the latest page.
     gcTime: 0,
-    queryKey: ["conversation", conversationId, "unread", unreadCursor, "newer"],
+    queryKey: ["conversation", conversationId, "around", startKey, "newer"],
     queryFn: ({ pageParam, signal }) =>
       readConversationEventsFrom(conversationId, pageParam, signal),
-    initialPageParam: { around: unreadCursor ?? "" } as NewerPageParam,
+    initialPageParam: (start ?? { around: "" }) as NewerPageParam,
     // The page that came with the detail. Without it, the query reads it.
-    ...(unreadPage
-      ? {
-          initialData: {
-            pageParams: [{ around: unreadCursor ?? "" }],
-            pages: [unreadPage],
-          },
-        }
+    ...(input.startPage && start
+      ? { initialData: { pageParams: [start], pages: [input.startPage] } }
       : undefined),
     getNextPageParam: (page): NewerPageParam | undefined =>
       reachesLatest(page, latestFirstSeq) || !page.nextCursor
@@ -110,13 +118,7 @@ export function useUnreadHistory(input: {
   const firstNewerPage = newer.data?.pages[0];
   const earlier = useInfiniteQuery({
     enabled: false,
-    queryKey: [
-      "conversation",
-      conversationId,
-      "unread",
-      unreadCursor,
-      "earlier",
-    ],
+    queryKey: ["conversation", conversationId, "around", startKey, "earlier"],
     queryFn: ({ pageParam, signal }) =>
       readConversationEvents(conversationId, pageParam, signal),
     initialPageParam: firstNewerPage?.previousCursor ?? "",
@@ -130,16 +132,20 @@ export function useUnreadHistory(input: {
   const reached = lastNewerPage
     ? reachesLatest(lastNewerPage, latestFirstSeq)
     : false;
-  if (reached) joinedRef.current = true;
+  if (reached) joinedRef.current = startKey;
   // No newer page can fill the gap before the latest page, or the latest
   // events already on screen would leave until one does.
   const skipped =
     lastNewerPage !== undefined &&
     !reached &&
-    (joinedRef.current || !lastNewerPage.nextCursor);
+    (joinedRef.current === startKey || !lastNewerPage.nextCursor);
   useEffect(() => {
     if (skipped) onShowLatest();
   }, [onShowLatest, skipped]);
+  const startFailed = Boolean(start && newer.error && !newerPages);
+  useEffect(() => {
+    if (startFailed) onStartFailed?.();
+  }, [onStartFailed, startFailed]);
   const pages = useMemo(
     () => [...(earlierPages ?? []), ...(newerPages ?? [])],
     [earlierPages, newerPages],
@@ -156,7 +162,7 @@ export function useUnreadHistory(input: {
     [detail, latestEvents, newerPages, pages, reached],
   );
 
-  if (!unreadCursor || skipped || (newer.error && !newerPages)) {
+  if (!start || skipped || startFailed) {
     return undefined;
   }
 
@@ -225,10 +231,10 @@ function reachesLatest(
   return lastSeq + 1 >= latestFirstSeq;
 }
 
-/** The first page is around the read position. The rest follow it. */
-type NewerPageParam = { around: string } | { after: string };
+/** The first page is around the start. The rest follow it. */
+type NewerPageParam = HistoryStart | { after: string };
 
-/** Read one bounded page of events around or after a history cursor. */
+/** Read one bounded page of events around a start or after a cursor. */
 function readConversationEventsFrom(
   conversationId: string,
   param: NewerPageParam,

@@ -2281,6 +2281,42 @@ export function readMockConversationEvents(
   };
 }
 
+/**
+ * Return the page around a linked event or Turn. Mock transcripts fit one
+ * page, so it holds every event of the Conversation.
+ */
+export function readMockConversationEventsAround(
+  conversationId: string,
+  link: { event: number } | { turn: string },
+): ConversationEventPage | "turn-not-found" | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (
+    "turn" in link &&
+    !conversation.events.some(
+      ({ data }) =>
+        data.type === "turn_lifecycle" &&
+        data.state === "started" &&
+        data.turnId === link.turn,
+    )
+  ) {
+    return "turn-not-found";
+  }
+  const events = conversation.events;
+  return {
+    events,
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+    ...(conversation.previousCursor
+      ? { previousCursor: conversation.previousCursor }
+      : events[0] && events[0].seq > 0
+        ? { previousCursor: mockBeforeCursor(conversationId, events[0].seq) }
+        : {}),
+  };
+}
+
 function mockBeforeCursor(conversationId: string, seq: number): string {
   return `mock:before:${encodeURIComponent(conversationId)}:${seq}`;
 }
