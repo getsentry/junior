@@ -72,6 +72,21 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
+const repositoryNameSchema = z.string().trim().min(1).max(200);
+
+/**
+ * Code overview query. Repeat `repository` to scope the report to several
+ * repositories by name, such as `?repository=a/b&repository=c/d`.
+ */
+export const codeOverviewQuerySchema = z
+  .object({
+    repository: z
+      .union([repositoryNameSchema, z.array(repositoryNameSchema).max(100)])
+      .transform((value) => (Array.isArray(value) ? value : [value]))
+      .optional(),
+  })
+  .strict();
+
 export const codeRepositoryParamsSchema = z
   .object({ repositoryId: z.string().uuid() })
   .strict();

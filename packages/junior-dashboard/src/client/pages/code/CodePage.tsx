@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { Link } from "react-router";
-import { useCodeOverviewData } from "../../api";
+import { Link, useSearchParams } from "react-router";
+import { CODE_REPOSITORY_PARAM, useCodeOverviewData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
 import {
@@ -28,11 +28,21 @@ import {
   formatMergeRate,
 } from "./CodeSummaryCards";
 import { codeRepositoryPath } from "./codeRepositoryRoutes";
+import { CodeRepositoryFilter } from "./CodeRepositoryFilter";
 
 /** Render code analytics and recent code changes. */
 export function CodePage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
-  const query = useCodeOverviewData();
+  const [searchParams] = useSearchParams();
+  const repositories = [
+    ...new Set(
+      searchParams
+        .getAll(CODE_REPOSITORY_PARAM)
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const query = useCodeOverviewData(repositories);
   if (!query.data && !query.error) {
     return (
       <PageRouteLoading
@@ -51,18 +61,28 @@ export function CodePage() {
         range={range}
         title="Code"
       />
+      {repositories.length > 0 ? (
+        <CodeRepositoryFilter repositories={repositories} />
+      ) : null}
       {query.error ? (
         <EmptyTelemetry>
           Code activity is unavailable. Try refreshing the dashboard.
         </EmptyTelemetry>
       ) : null}
-      {query.data ? <CodeOverview data={query.data} range={range} /> : null}
+      {query.data ? (
+        <CodeOverview
+          data={query.data}
+          filtered={repositories.length > 0}
+          range={range}
+        />
+      ) : null}
     </PageLayout>
   );
 }
 
 function CodeOverview(props: {
   data: CodeOverviewReport;
+  filtered: boolean;
   range: TimeRangeDays;
 }) {
   const data = props.data;
@@ -92,7 +112,9 @@ function CodeOverview(props: {
         {data.repositories.length === 0 ? (
           <div className="p-4">
             <EmptyTelemetry>
-              No code activity has been recorded yet.
+              {props.filtered
+                ? "No code activity for these repositories."
+                : "No code activity has been recorded yet."}
             </EmptyTelemetry>
           </div>
         ) : (
