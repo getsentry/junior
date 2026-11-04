@@ -30,6 +30,7 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
+  AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
   PluginEgress,
   PluginToolDefinition,
@@ -100,6 +101,11 @@ export interface PluginHooks {
     | UserPromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  /**
+   * Check a tool call after it runs, such as a judge for the files that it
+   * changed. Use `ctx.decision` to add guidance or reject the result.
+   */
+  afterToolExecute?(ctx: AfterToolExecuteHookContext): Promise<void> | void;
   /**
    * Run after a successful hosted MCP tool call.
    *

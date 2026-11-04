@@ -118,6 +118,11 @@ export async function createRunSandbox(
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
     actors: args.currentActors,
+    // Read at tool time, after `agentSandbox` below exists.
+    sandbox: () => ({
+      workspace: agentSandbox.workspace,
+      workspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
+    }),
   });
   const workspace = args.state.sandboxRef?.workspaceId
     ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)

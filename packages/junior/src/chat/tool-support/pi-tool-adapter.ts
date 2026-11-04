@@ -39,6 +39,8 @@ import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { ToolResultNudge } from "@/chat/plugins/after-tool-hooks";
+import { escapeXml } from "@/chat/xml";
 import {
   createExecuteToolTool,
   EXECUTE_TOOL_NAME,
@@ -106,6 +108,24 @@ async function untilPreempted<T>(
 }
 
 type NormalizedToolResult = ReturnType<typeof normalizeToolResult>;
+
+/** Add plugin guidance after the tool's own content. Details stay the same. */
+function withToolResultNudges(
+  result: NormalizedToolResult,
+  nudges: ToolResultNudge[],
+): NormalizedToolResult {
+  if (nudges.length === 0) return result;
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      ...nudges.map((nudge) => ({
+        type: "text" as const,
+        text: `<plugin-note plugin="${nudge.pluginName}">${escapeXml(nudge.message)}</plugin-note>`,
+      })),
+    ],
+  };
+}
 
 /** Services that every tool call uses, for direct, catalog, and script calls. */
 export interface ToolPipelineOptions {
@@ -344,13 +364,21 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       signal,
     );
 
-    const normalized = normalizeToolResult(result, {
+    const toolResult = normalizeToolResult(result, {
       requireStructuredResult: Boolean(toolDef.outputSchema),
       toolName,
     });
     if (isSandbox && pluginAuthOrchestration) {
-      await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
+      await pluginAuthOrchestration.maybeHandleAuthSignal(toolResult.details);
     }
+    const nudges = agentHooks
+      ? await agentHooks.afterToolExecute({
+          input: toolInput,
+          name: toolName,
+          ...(signal ? { signal } : undefined),
+        })
+      : [];
+    const normalized = withToolResultNudges(toolResult, nudges);
     const resultAttributeValue = reportedToolResult(
       result,
       isSandbox,

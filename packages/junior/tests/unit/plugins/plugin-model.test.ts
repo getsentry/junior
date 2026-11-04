@@ -4,6 +4,15 @@ const completeObject = vi.fn(async () => ({
   costUsd: 0.0042,
   object: { ok: true },
 }));
+const completeDecision = vi.fn(async () => ({
+  answers: {
+    answer: {
+      type: "choice",
+      choice: "overfit",
+      probabilities: { overfit: 0.9, fine: 0.1 },
+    },
+  },
+}));
 const embedTexts = vi.fn(async () => ({
   dimensions: 1,
   model: "test-embedding-model",
@@ -13,6 +22,7 @@ const embedTexts = vi.fn(async () => ({
 
 vi.mock("@/chat/config", () => ({
   botConfig: {
+    decisionModelId: "typesafe-ai/jev",
     defaultProfile: "standard",
     embeddingModelId: "test-embedding-model",
     fastModelId: "openai/gpt-5.4-mini",
@@ -23,6 +33,7 @@ vi.mock("@/chat/config", () => ({
 }));
 
 vi.mock("@/chat/pi/client", () => ({
+  completeDecision,
   completeObject,
   embedTexts,
   GEN_AI_PROVIDER_NAME: "test-provider",
@@ -80,5 +91,33 @@ describe("createPluginModel", () => {
         signal: controller.signal,
       }),
     );
+  });
+
+  it("asks the decision model one choice question", async () => {
+    const { createPluginDecider } = await import("@/chat/plugins/model");
+
+    const result = await createPluginDecider("test-plugin").decide({
+      criteria: { fine: "Checks behavior.", overfit: "Checks wording." },
+      instructions: "Judge the eval change.",
+      state: "+ expect(reply).toBe('done')",
+    });
+
+    expect(completeDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "typesafe-ai/jev",
+        questions: {
+          answer: {
+            type: "choice",
+            instructions: "Judge the eval change.",
+            criteria: { fine: "Checks behavior.", overfit: "Checks wording." },
+          },
+        },
+        state: "+ expect(reply).toBe('done')",
+      }),
+    );
+    expect(result).toEqual({
+      choice: "overfit",
+      probabilities: { overfit: 0.9, fine: 0.1 },
+    });
   });
 });
