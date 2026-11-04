@@ -7,6 +7,7 @@ import { juniorIdentities } from "@/db/schema";
 import { mswServer } from "../msw/server";
 
 const BASE_URL = "https://junior.example.com";
+const RETRY_URL = `${BASE_URL}/auth/login?next=%2Fconversations`;
 
 function createAuth(allowedDomains: string[]) {
   return createSignInAuth({
@@ -61,13 +62,21 @@ async function startSignIn(auth: ReturnType<typeof createAuth>) {
   const started = await auth.signInWithGoogle(
     new Request(`${BASE_URL}/auth/login`),
     `${BASE_URL}/`,
+    RETRY_URL,
   );
   return { google: new URL(started.headers.get("location")!), started };
 }
 
-/** Start a Google sign-in and come back with a code, like a browser. */
-async function signIn(auth: ReturnType<typeof createAuth>) {
-  const { google, started } = await startSignIn(auth);
+/**
+ * Start a Google sign-in and come back with a code, like a browser. Pass the
+ * cookies of another started sign-in to act like a second tab.
+ */
+async function signIn(
+  auth: ReturnType<typeof createAuth>,
+  otherTab?: Response,
+) {
+  const { google, started: thisTab } = await startSignIn(auth);
+  const started = otherTab ?? thisTab;
   const callback = new URL(`${BASE_URL}/api/auth/callback/google`);
   callback.searchParams.set("state", google.searchParams.get("state")!);
   callback.searchParams.set("code", "google-code");
@@ -106,7 +115,9 @@ describe("Google sign-in", () => {
     ]) {
       useGoogleAccount(claims);
       const rejected = await signIn(auth);
-      expect(rejected.location).toContain("error=unable_to_get_user_info");
+      expect(rejected.location).toBe(
+        `${RETRY_URL}&error=unable_to_get_user_info`,
+      );
       expect(await auth.getSession(rejected.session)).toBeNull();
     }
 
@@ -126,6 +137,13 @@ describe("Google sign-in", () => {
     expect(await auth.getSession(accepted.session)).toMatchObject({
       user: { email: "person@example.org", emailVerified: true },
     });
+
+    // A second tab replaces the state cookie, so the first tab's callback
+    // fails. Better Auth then uses the retry URL in the cookie, not `/`.
+    const { started: secondTab } = await startSignIn(auth);
+    const staleTab = await signIn(auth, secondTab);
+    expect(staleTab.location).toContain(`${RETRY_URL}&error=`);
+
     // Each sign-in saves the current Google photo on the Google identity.
     const savedPhoto = async () =>
       await getDb()

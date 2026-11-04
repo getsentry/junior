@@ -261,6 +261,25 @@ function callbackUrl(
   return url.toString();
 }
 
+/**
+ * Restart sign-in with the same return path when the Google callback fails,
+ * for example on a stale OAuth state cookie. Without it, Better Auth sends
+ * the person to `/` and the page is lost.
+ */
+function signInRetryUrl(
+  request: Request,
+  basePath: string,
+  options: DashboardReturnPathOptions = {},
+): string {
+  const url = new URL(request.url);
+  const returnPath = requestedReturnPath(url, basePath, options);
+  url.search = "";
+  if (returnPath) {
+    url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
+  }
+  return url.toString();
+}
+
 function unauthorized(
   request: Request,
   basePath: string,
@@ -403,7 +422,11 @@ export function createDashboardApp(
     if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
-    return auth.signInWithGoogle(c.req.raw, returnUrl);
+    return auth.signInWithGoogle(
+      c.req.raw,
+      returnUrl,
+      signInRetryUrl(c.req.raw, basePath, { authenticatedRoutes }),
+    );
   });
 
   if (auth) {
