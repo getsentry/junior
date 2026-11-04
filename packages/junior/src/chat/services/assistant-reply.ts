@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isNoReplyMarker } from "@/chat/no-reply";
+import { isNoReplyMarker, stripQuietMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -7,7 +7,7 @@ const THINKING_XML_BLOCK_PATTERN =
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
 type ReplyDecision =
-  | { kind: "deliver"; text: string }
+  | { kind: "deliver"; text: string; quiet?: true }
   | { kind: "empty" }
   | { kind: "suppress" };
 
@@ -39,7 +39,11 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
   if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
-  return { kind: "deliver", text };
+  // Strip the marker on every path so it never reaches a person. Only Event
+  // Turn Delivery acts on `quiet`; other callers deliver the text as usual.
+  const quietText = stripQuietMarker(text);
+  if (quietText === undefined) return { kind: "deliver", text };
+  return { kind: "deliver", text: quietText, quiet: true };
 }
 
 /** Return destination-visible reply text when the message is deliverable. */

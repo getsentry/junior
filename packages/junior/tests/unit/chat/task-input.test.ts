@@ -14,7 +14,8 @@ describe("renderTaskInput", () => {
 
       Instructions: Post a digest. Summarize the latest state.
 
-      When you reply, follow any reply format in the instructions."
+      When you reply, follow any reply format in the instructions.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed."
     `);
   });
 
@@ -54,7 +55,8 @@ describe("renderTaskInput", () => {
       Failed checks:
       - test
 
-      When you reply, follow any reply format in the instructions."
+      When you reply, follow any reply format in the instructions.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed."
     `);
   });
 
@@ -100,6 +102,7 @@ describe("renderTaskInput", () => {
         "abc",
         "",
         "When you reply, follow any reply format in the instructions.",
+        "When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.",
       ].join("\n"),
     );
   });
@@ -180,7 +183,8 @@ describe("renderTaskBatchInput", () => {
 
       Event 4: deployment.failed
 
-      When you reply, follow any reply format in the instructions."
+      When you reply, follow any reply format in the instructions.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed."
     `);
   });
 });

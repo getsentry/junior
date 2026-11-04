@@ -19,6 +19,20 @@ describe("Slack Message Delivery", () => {
     expect(conversation.replies).toEqual([]);
   });
 
+  test("when a reply to a person ends with the quiet marker, still post it without the marker", async ({
+    run,
+  }) => {
+    // Only Event Turns can be quiet. A person who asks always sees the reply.
+    const conversation = await run(
+      slackMention("Reply with exactly this text: CI is green. [[QUIET]]"),
+    );
+
+    expect(conversation.quietReplies).toEqual([]);
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.replies[0]?.text).toMatch(/CI is green/);
+    expect(conversation.replies[0]?.text).not.toContain("[[QUIET]]");
+  });
+
   test("when asked for a top-level channel post, explain the limitation instead", async ({
     run,
   }) => {

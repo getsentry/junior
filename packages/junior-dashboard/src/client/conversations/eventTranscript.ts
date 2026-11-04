@@ -243,6 +243,7 @@ export function transcriptMessagesFromEvents(
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
+        ...(data.quiet ? { quiet: data.quiet } : undefined),
         ...(data.reviewItemChanges
           ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
