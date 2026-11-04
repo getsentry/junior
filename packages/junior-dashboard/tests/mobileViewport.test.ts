@@ -10,6 +10,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: false,
+        layoutViewportHeight: 900,
         layoutHeight: 900,
         mobile: false,
         restingLayoutHeight: 900,
@@ -23,6 +24,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: false,
+        layoutViewportHeight: 844,
         layoutHeight: 844,
         mobile: true,
         restingLayoutHeight: 844,
@@ -40,6 +42,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: false,
+        layoutViewportHeight: 844,
         layoutHeight: 844,
         mobile: true,
         restingLayoutHeight: 844,
@@ -57,6 +60,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: true,
+        layoutViewportHeight: 844,
         layoutHeight: 844,
         mobile: true,
         restingLayoutHeight: 844,
@@ -76,6 +80,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: true,
+        layoutViewportHeight: 520,
         layoutHeight: 520,
         mobile: true,
         restingLayoutHeight: 844,
@@ -89,12 +94,13 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
-  it("zeros leftover visual offset when layout already matches the visible band", () => {
-    // Hybrid WebKit can still report offsetTop after layout shrank. Trusting
-    // that offset shoves the fixed shell under the keyboard.
+  it("zeros leftover visual offset when the layout viewport already matches the visible band", () => {
+    // resizes-content can still report offsetTop after the layout viewport
+    // shrank. Trusting that offset shoves the fixed shell under the keyboard.
     expect(
       mobileViewportMetrics({
         editableFocused: false,
+        layoutViewportHeight: 520,
         layoutHeight: 520,
         mobile: true,
         restingLayoutHeight: 844,
@@ -108,12 +114,34 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
+  it("follows the visual pan when iOS Safari shrinks innerHeight but keeps the layout viewport tall", () => {
+    // iOS Safari: innerHeight tracks the keyboard, documentElement.clientHeight
+    // does not, and the visual viewport pans inside the tall layout viewport.
+    // Zeroing the offset here slides the shell up off screen.
+    expect(
+      mobileViewportMetrics({
+        editableFocused: true,
+        layoutViewportHeight: 844,
+        layoutHeight: 520,
+        mobile: true,
+        restingLayoutHeight: 844,
+        visualHeight: 520,
+        visualOffsetTop: 300,
+      }),
+    ).toEqual({
+      heightPx: 520,
+      keyboardOpen: true,
+      offsetTopPx: 300,
+    });
+  });
+
   it("does not treat orientation shrink as a stuck keyboard open", () => {
     // Portrait resting height left behind after rotating closed to landscape.
     // Height alone must not lock keyboard-open forever without focus/offset.
     expect(
       mobileViewportMetrics({
         editableFocused: false,
+        layoutViewportHeight: 390,
         layoutHeight: 390,
         mobile: true,
         restingLayoutHeight: 844,
@@ -131,6 +159,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: true,
+        layoutViewportHeight: 844,
         layoutHeight: 844,
         mobile: true,
         restingLayoutHeight: 844,
@@ -148,6 +177,7 @@ describe("mobileViewportMetrics", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: true,
+        layoutViewportHeight: 700,
         layoutHeight: 700,
         mobile: true,
         restingLayoutHeight: 844,
@@ -200,6 +230,7 @@ describe("nextRestingLayoutHeight", () => {
     expect(
       mobileViewportMetrics({
         editableFocused: true,
+        layoutViewportHeight: 700,
         layoutHeight: 700,
         mobile: true,
         restingLayoutHeight: afterMobileClosed,
