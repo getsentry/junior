@@ -110,6 +110,7 @@ describe("remote MCP HTTP", () => {
       consentUrl,
       csrf: page.csrf ?? "",
       email: MCP_TEST_VIEWER,
+      referrerPolicy: page.referrerPolicy,
     });
     const callback = new URL(approved.headers.get("location") ?? "");
     const issued = await exchangeMcpCode(app, {
