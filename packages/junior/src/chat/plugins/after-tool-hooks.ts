@@ -74,7 +74,17 @@ export async function runAfterToolExecuteHooks(args: {
 
   const { signal } = args.tool;
   const sandbox = createSandboxCapability(args.sandbox.workspace, signal);
-  const workspace = await activeWorkspace(args.sandbox);
+  let workspace: AfterToolExecuteHookContext["workspace"];
+  try {
+    workspace = await activeWorkspace(args.sandbox);
+  } catch (error) {
+    // The tool already ran. Skip the checks rather than turn its result into
+    // a failure that the agent retries.
+    logException(error, "agent.plugin.after_tool_execute.failed", {
+      "gen_ai.tool.name": args.tool.name,
+    });
+    return [];
+  }
   const nudges: ToolResultNudge[] = [];
   for (const plugin of hooked) {
     // The tool already ran. After an abort, keep its result and skip the

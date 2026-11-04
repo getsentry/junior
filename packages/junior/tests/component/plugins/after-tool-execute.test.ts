@@ -42,7 +42,10 @@ function fakeSandbox(diff: string): SandboxWorkspace {
   };
 }
 
-function editTool(sandboxWorkspace: SandboxWorkspace, workspaceId?: string) {
+function editTool(
+  sandboxWorkspace: SandboxWorkspace,
+  workspaceId: () => string | undefined = () => undefined,
+) {
   const execute = vi.fn(async () => ({ ok: true }));
   const [tool] = createPiAgentTools(
     {
@@ -61,7 +64,7 @@ function editTool(sandboxWorkspace: SandboxWorkspace, workspaceId?: string) {
     createPluginHookRunner({
       sandbox: () => ({
         workspace: sandboxWorkspace,
-        workspaceId: () => workspaceId,
+        workspaceId,
       }),
     }),
   );
@@ -100,7 +103,7 @@ describe("afterToolExecute plugin hooks", () => {
     });
     const { execute, tool } = editTool(
       fakeSandbox('+ expect(reply).toContain("done")'),
-      WORKSPACE_ID,
+      () => WORKSPACE_ID,
     );
 
     const result = await tool.execute("call-1", { path: "evals/a.eval.ts" });
@@ -172,6 +175,17 @@ describe("afterToolExecute plugin hooks", () => {
     ).rejects.toThrow(
       /This action ran, but policy rejected its result\.[\s\S]*Reason: Eval edits need a person\./,
     );
+
+    // A failed Workspace lookup skips the checks and keeps the result.
+    const { tool: unknownWorkspaceTool } = editTool(fakeSandbox(""), () => {
+      throw new Error("sandbox state unavailable");
+    });
+    await expect(
+      unknownWorkspaceTool.execute("call-3b", { path: "evals/a.eval.ts" }),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: '{"ok":true}' }],
+      details: { ok: true },
+    });
   });
 
   it("keeps the finished result when the run aborts during a check", async () => {
