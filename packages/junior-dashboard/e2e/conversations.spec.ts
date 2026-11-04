@@ -417,12 +417,23 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("groups the signed-in profile and session actions in the nav rail", async ({
+test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 1050 });
   await page.goto(dashboard.baseURL);
 
+  const topBarTrigger = page.getByRole("button", {
+    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(topBarTrigger).toBeVisible();
+  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
   const rail = page.locator('[data-slot="sidebar"]').filter({
     has: page.getByRole("navigation", { name: "Primary" }),
   });
