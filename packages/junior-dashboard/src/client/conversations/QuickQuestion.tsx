@@ -159,6 +159,8 @@ function useAskQuickQuestion() {
   return useMutation({
     mutationFn: async (args: {
       forkId?: string;
+      /** The composer key of this ask, so a retry cannot add the question twice. */
+      idempotencyKey: string;
       messageId: string;
       quote: string;
       sourceConversationId: string;
@@ -181,7 +183,7 @@ function useAskQuickQuestion() {
       return post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(forkId)}/messages`,
-        { idempotencyKey: crypto.randomUUID(), message: args.text },
+        { idempotencyKey: args.idempotencyKey, message: args.text },
       );
     },
     onSuccess: (accepted) =>
@@ -248,10 +250,11 @@ export function useQuickQuestionThread(conversationId: string) {
   );
 
   const submit = useCallback(
-    async (text: string) => {
+    async (text: string, idempotencyKey: string) => {
       if (!thread) return;
       const accepted = await mutateAsync({
         forkId: thread.forkId,
+        idempotencyKey,
         messageId: thread.messageId,
         quote: thread.quote,
         sourceConversationId: conversationId,
@@ -306,7 +309,7 @@ export function QuickQuestionPanel(props: {
   conversationId: string;
   error: Error | null;
   onClose(): void;
-  onSubmit(text: string): Promise<void>;
+  onSubmit(text: string, idempotencyKey: string): Promise<void>;
   pending: boolean;
   thread: QuickQuestionThread;
 }) {
@@ -367,8 +370,12 @@ export function QuickQuestionPanel(props: {
                 <Button
                   className="h-8 rounded-full"
                   key={prompt}
-                  // The panel shows the error.
-                  onClick={() => void props.onSubmit(prompt).catch(() => {})}
+                  // Each click is a new ask. The panel shows the error.
+                  onClick={() =>
+                    void props
+                      .onSubmit(prompt, crypto.randomUUID())
+                      .catch(() => {})
+                  }
                 >
                   {prompt}
                 </Button>
@@ -423,7 +430,7 @@ export function QuickQuestionPanel(props: {
             }
             key={thread.id}
             label="Quick question"
-            onSubmit={(text) => props.onSubmit(text)}
+            onSubmit={props.onSubmit}
             placeholder={
               messages.length ? "Ask a follow-up…" : "Ask a quick question…"
             }
