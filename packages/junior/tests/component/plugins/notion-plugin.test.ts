@@ -88,7 +88,14 @@ describe("Notion plugin package", () => {
       "notion-move-pages",
     ]);
     expect(providers[0]?.manifest.accounts).toEqual({
-      serviceAccount: { tools: ["notion-search", "notion-fetch"] },
+      serviceAccount: {
+        tools: [
+          "notion-search",
+          "notion-fetch",
+          "notion-create-pages",
+          "notion-update-page",
+        ],
+      },
     });
 
     listToolsMock.mockResolvedValue([
