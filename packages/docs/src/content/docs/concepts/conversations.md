@@ -41,7 +41,7 @@ Child work, generated files, and plugin records inherit the conversation's visib
 
 ## Context
 
-Junior uses the current thread, selected skills and files, and results from the active work. It does not pull private context from unrelated conversations.
+Junior uses the current thread, selected skills and files, and results from the active work. It never reads other private conversations. See [Data & Privacy](/concepts/data-and-privacy/#visibility).
 
 An installed Memory plugin may add scoped recall. It does not provide unrestricted access to every conversation.
 
