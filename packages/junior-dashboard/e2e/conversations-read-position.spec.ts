@@ -15,6 +15,16 @@ async function scrollDownTo(transcript: Locator, row: Locator) {
   }).toPass();
 }
 
+/** Record the query of each events page request. */
+function recordPageRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/events")) requests.push(url.search);
+  });
+  return requests;
+}
+
 /**
  * Mock one completed Conversation whose server read position moves forward.
  * Its detail never brings `unreadPage`, so the page around the read position
@@ -327,6 +337,7 @@ test("opens at new messages after earlier pages were cached", async ({
     lastReadSeq: 79,
   });
   mock.pagedDetail = true;
+  const pageRequests = recordPageRequests(page);
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("Transcript message 79 ")).toBeInViewport();
@@ -370,6 +381,11 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect(
     transcript.getByRole("button", { name: "Load newer events" }),
   ).toHaveCount(0);
+  // Earlier pages fill the gap to the cached pages. Two loads that ask for
+  // the same page share one request.
+  await expect(transcript.getByText("Transcript message 159 ")).toBeAttached();
+  expect(pageRequests).toContain("?before=160");
+  expect(new Set(pageRequests).size).toBe(pageRequests.length);
   releaseNewer();
 });
 
@@ -389,11 +405,7 @@ test("jumps to the latest page without the newer pages", async ({
   mock.newerGate = new Promise((resolve) => {
     releaseNewer = resolve;
   });
-  const pageRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.endsWith("/events")) pageRequests.push(url.search);
-  });
+  const pageRequests = recordPageRequests(page);
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
   await expect(
@@ -442,6 +454,7 @@ test("opens linked events and Turns that newer pages have not loaded yet", async
   mock.newerGate = new Promise((resolve) => {
     releaseNewer = resolve;
   });
+  const pageRequests = recordPageRequests(page);
   const heldRequest = page.waitForRequest((request) =>
     request.url().includes("/events?after=30"),
   );
@@ -456,6 +469,11 @@ test("opens linked events and Turns that newer pages have not loaded yet", async
   await expect(linked).toBeVisible();
   releaseNewer();
   await expect(linked).toContainText("Transcript message 70 ");
+  // The search and the scroll both load the held page. They share one
+  // request.
+  expect(pageRequests.filter((search) => search === "?after=30")).toHaveLength(
+    1,
+  );
 
   // A failed newer page keeps a Turn link, so a retry can still open it.
   mock.turnStartSeq = 70;
@@ -591,11 +609,16 @@ test("opens far behind at the read position and loads newer pages after it", asy
     },
   );
   const detailRequests: string[] = [];
+  let releaseDetail = () => {};
+  const detailGate = new Promise<void>((resolve) => {
+    releaseDetail = resolve;
+  });
   await page.route(
     (url) => url.pathname === `/api/conversations/${conversationId}`,
     async (route) => {
       const { search } = new URL(route.request().url());
       detailRequests.push(search);
+      await detailGate;
       const unreadPage = search.includes("unreadPage");
       await route.fulfill({
         json: {
@@ -612,13 +635,13 @@ test("opens far behind at the read position and loads newer pages after it", asy
     },
   );
 
-  // Open from the list, so the page makes the first detail fetch.
-  await page.goto(`${dashboard.baseURL}/conversations`);
-  await page
-    .getByRole("link", { name: /Far behind/ })
-    .first()
-    .click();
+  // On a direct load, the shell starts the detail fetch before the page
+  // mounts. A long Conversation's detail ends after the page mounts, so the
+  // page joins that fetch. It asks for the unread page too.
+  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript).toBeAttached();
+  releaseDetail();
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
   await expect(marker).toBeInViewport();

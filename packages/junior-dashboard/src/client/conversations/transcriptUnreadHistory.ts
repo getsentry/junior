@@ -143,6 +143,8 @@ export function useUnreadHistory(input: {
   const hasPreviousPage = earlier.data
     ? earlier.hasNextPage
     : Boolean(firstNewerPage?.previousCursor);
+  // `cancelRefetch: false` lets a second call join the page read in flight.
+  // By default it cancels that read and starts the same read again.
   return {
     data,
     hasPreviousPage,
@@ -151,9 +153,7 @@ export function useUnreadHistory(input: {
     isLoadingPreviousPage: earlier.isFetchingNextPage,
     isPending: !newerPages,
     loadPreviousPage: () => {
-      if (hasPreviousPage && !earlier.isFetchingNextPage) {
-        void earlier.fetchNextPage();
-      }
+      if (hasPreviousPage) void earlier.fetchNextPage({ cancelRefetch: false });
     },
     ...(reached
       ? undefined
@@ -161,8 +161,8 @@ export function useUnreadHistory(input: {
           newer: {
             error: newer.error,
             load: () => {
-              if (newer.hasNextPage && !newer.isFetching) {
-                void newer.fetchNextPage();
+              if (newer.hasNextPage) {
+                void newer.fetchNextPage({ cancelRefetch: false });
               }
             },
             loading: newer.isFetchingNextPage,

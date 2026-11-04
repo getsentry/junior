@@ -507,7 +507,14 @@ export function useConversationData(
   },
 ) {
   const queryClient = useQueryClient();
-  const [fetchedAtOpen, setFetchedAtOpen] = useState(false);
+  // The shell keeps one hook across Conversations, so a new Conversation
+  // starts a new visit.
+  const [visit, setVisit] = useState({ conversationId, fetched: false });
+  if (visit.conversationId !== conversationId) {
+    setVisit({ conversationId, fetched: false });
+  }
+  const fetchedAtOpen =
+    visit.conversationId === conversationId && visit.fetched;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -552,7 +559,7 @@ export function useConversationData(
     refetchOnMount: "always",
   });
   if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
-    setFetchedAtOpen(true);
+    setVisit({ conversationId, fetched: true });
   }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
@@ -723,7 +730,9 @@ export function useConversationData(
 
   const fetchNextHistoryPage = history.fetchNextPage;
   useEffect(() => {
-    if (historyNeedsReconciliation) void fetchNextHistoryPage();
+    if (historyNeedsReconciliation) {
+      void fetchNextHistoryPage({ cancelRefetch: false });
+    }
   }, [fetchNextHistoryPage, historyNeedsReconciliation]);
 
   return {
@@ -767,8 +776,10 @@ export function useConversationData(
       const hasPreviousPage = history.data
         ? history.hasNextPage
         : Boolean(detailData?.previousCursor);
-      if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
-        void history.fetchNextPage();
+      if (conversationId && hasPreviousPage) {
+        // A second call joins the read in flight. By default it cancels
+        // that read and starts the same read again.
+        void history.fetchNextPage({ cancelRefetch: false });
       }
     },
   };
