@@ -131,7 +131,8 @@ function errorMessage(error: unknown): string {
 
 /**
  * The value a script gets for a call: the structured details, or the text of
- * a result that has only content.
+ * a result that has only content. `objectCards` is reply-card metadata, not
+ * result data, so `callMcpTool` details of only cards still yield the text.
  */
 function scriptValue(
   result: Extract<ScriptToolCallOutcome, { status: "ok" }>["result"],
@@ -141,7 +142,7 @@ function scriptValue(
     details !== null &&
     typeof details === "object" &&
     !Array.isArray(details) &&
-    Object.keys(details).length === 0;
+    Object.keys(details).every((key) => key === "objectCards");
   if (!contentOnly) {
     return details;
   }

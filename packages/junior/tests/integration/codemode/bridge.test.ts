@@ -12,6 +12,7 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { createTools } from "@/chat/tools";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
@@ -219,6 +220,38 @@ describe("Code Mode bridge", () => {
     });
 
     expect(result.calls.map((call) => call.status)).toEqual(["ok", "ok"]);
+  });
+
+  it("gives a script the text of an MCP result", async () => {
+    const callMcpTool = createCallMcpToolTool({
+      getResolvedActiveTools: () => [
+        {
+          name: "mcp__notion__search",
+          rawName: "search",
+          provider: "notion",
+          description: "Search Notion.",
+          parameters: {},
+          execute: async () => ({
+            content: [{ type: "text" as const, text: '{"results":[1]}' }],
+          }),
+        },
+      ],
+    }) as AnyToolDefinition;
+
+    const { result } = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `
+        return await tools.callMcpTool({
+          tool_name: "mcp__notion__search",
+          arguments: { query: "holidays" },
+        });
+      `,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: { callMcpTool },
+    });
+
+    expect(result.value).toBe('{"results":[1]}');
   });
 
   it("refuses model-only tools inside the script", async () => {
