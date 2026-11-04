@@ -14,9 +14,9 @@ import type {
 
 import {
   useArchiveConversation,
-  useConversationData,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
+import { useConversationData } from "./queries";
 import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
