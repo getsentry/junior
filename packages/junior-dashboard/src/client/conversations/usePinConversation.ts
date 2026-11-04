@@ -17,7 +17,7 @@ type DetailCache = ConversationDetailReport & { detailEtag?: string };
  */
 export function usePinConversation(
   conversationId: string,
-  options?: { onError?(pinned: boolean): void },
+  options?: { onError?(pinned: boolean): void; onSuccess?(): void },
 ) {
   const queryClient = useQueryClient();
   const feeds = { queryKey: ["dashboard", "conversations"] };
@@ -71,7 +71,10 @@ export function usePinConversation(
       queryClient.setQueryData(detailQueryKey, previous?.detail);
       options?.onError?.(pinned);
     },
-    onSuccess: (result) => setPinnedAt(result.pinnedAt),
+    onSuccess: (result) => {
+      setPinnedAt(result.pinnedAt);
+      options?.onSuccess?.();
+    },
     // A reader's first pin adds the conversation to their feed.
     onSettled: () =>
       Promise.all([

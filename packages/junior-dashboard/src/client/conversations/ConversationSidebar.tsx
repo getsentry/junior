@@ -109,12 +109,19 @@ export function ConversationSidebar(props: {
     },
     [],
   );
-  const handleArchived = useCallback((conversation: Conversation) => {
+  // A later success on the same row replaces its error notice.
+  const clearRowError = useCallback((conversation: Conversation) => {
     setRowError((current) =>
       current?.conversation.id === conversation.id ? undefined : current,
     );
-    setArchivedConversation(conversation);
   }, []);
+  const handleArchived = useCallback(
+    (conversation: Conversation) => {
+      clearRowError(conversation);
+      setArchivedConversation(conversation);
+    },
+    [clearRowError],
+  );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
   // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
@@ -235,6 +242,7 @@ export function ConversationSidebar(props: {
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
                   onPinError={handlePinError}
+                  onPinned={clearRowError}
                   selected={entry.conversation.id === props.selectedId}
                   unread={props.finishedConversationIds.has(
                     entry.conversation.id,
@@ -336,6 +344,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
+  onPinned(conversation: Conversation): void;
   selected: boolean;
   unread: boolean;
   waiting?: WaitingConversation;
@@ -355,6 +364,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   });
   const pin = usePinConversation(props.conversation.id, {
     onError: (pinned) => props.onPinError(props.conversation, pinned),
+    onSuccess: () => props.onPinned(props.conversation),
   });
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
