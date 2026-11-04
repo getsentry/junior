@@ -7,6 +7,9 @@ const GITHUB_STATUS_INCIDENTS_URL =
 // During an outage, many failures arrive at once. One shared read per minute
 // serves all of them, so Junior does not flood githubstatus.com.
 const GITHUB_STATUS_TTL_MS = 60 * 1000;
+// A failed check event waits for this read, so a slow status page must not
+// hold it.
+const GITHUB_STATUS_TIMEOUT_MS = 5000;
 
 const incidentsResponseSchema = z.object({
   incidents: z.array(
@@ -39,6 +42,7 @@ export type GitHubStatusIncident = {
 async function fetchGitHubStatusIncidents(): Promise<GitHubStatusIncident[]> {
   const response = await fetch(GITHUB_STATUS_INCIDENTS_URL, {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(GITHUB_STATUS_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`githubstatus.com returned HTTP ${response.status}`);
