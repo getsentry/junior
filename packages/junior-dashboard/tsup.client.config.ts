@@ -23,6 +23,7 @@ export default defineConfig({
   },
   noExternal: [
     "@base-ui/react",
+    "@sentry/browser",
     "@sentry/junior/api/schema",
     "@sentry/junior/version",
     "@sentry/junior-plugin-api",

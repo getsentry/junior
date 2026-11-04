@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@sentry/browser": "catalog:",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
     "@uidotdev/usehooks": "2.4.1",

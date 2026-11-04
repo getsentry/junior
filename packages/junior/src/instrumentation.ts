@@ -37,6 +37,46 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function getEnvironment(): string | undefined {
+  return (
+    process.env.SENTRY_ENVIRONMENT ??
+    process.env.VERCEL_ENV ??
+    process.env.NODE_ENV
+  );
+}
+
+function getTracesSampleRate(): number {
+  return getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1);
+}
+
+/** Browser SDK settings and the current request's trace, for an HTML page. */
+export interface BrowserSentryConfig {
+  baggage?: string;
+  dsn: string;
+  environment?: string;
+  release?: string;
+  sentryTrace?: string;
+  tracesSampleRate: number;
+}
+
+/**
+ * Read the settings a served page needs to send browser spans to the same
+ * project, continuing the trace of the request that rendered it.
+ */
+export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
+  const dsn = process.env.SENTRY_DSN?.trim();
+  if (!dsn) return undefined;
+  const trace = Sentry.getTraceData();
+  return {
+    baggage: trace.baggage,
+    dsn,
+    environment: getEnvironment(),
+    release: getDeploymentServiceVersion(),
+    sentryTrace: trace["sentry-trace"],
+    tracesSampleRate: getTracesSampleRate(),
+  };
+}
+
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -50,12 +90,9 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn,
-    environment:
-      process.env.SENTRY_ENVIRONMENT ??
-      process.env.VERCEL_ENV ??
-      process.env.NODE_ENV,
+    environment: getEnvironment(),
     release: serviceVersion,
-    tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
+    tracesSampleRate: getTracesSampleRate(),
     ignoreSpans: [
       // Vercel health checks
       { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
