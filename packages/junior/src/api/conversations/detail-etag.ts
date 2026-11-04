@@ -82,15 +82,5 @@ export async function readConversationDetailEtag(
     subtree,
     viewerMarks: viewerMarks ?? null,
   });
-  return `W/"${createHash("sha256").update(basis).digest("hex")}"`;
-}
-
-/** Report whether an `If-None-Match` header names the current ETag. */
-export function etagMatches(header: string | undefined, etag: string): boolean {
-  const opaque = etag.replace(/^W\//, "");
-  return Boolean(
-    header
-      ?.split(",")
-      .some((value) => value.trim().replace(/^W\//, "") === opaque),
-  );
+  return createHash("sha256").update(basis).digest("hex");
 }

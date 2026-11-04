@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
@@ -134,13 +135,12 @@ describe("conversation detail API", () => {
     const app = createJuniorApi();
     const poll = (etag?: string) =>
       app.request(`http://localhost/api/conversations/${conversationId}`, {
-        headers: etag ? { "if-none-match": etag } : {},
+        headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {},
       });
 
     const first = await poll();
-    const firstEtag = first.headers.get("etag")!;
+    const firstEtag = first.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
     expect(first.status).toBe(200);
-    expect(firstEtag).toMatch(/^W\/"/);
     const unchanged = await poll(firstEtag);
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
@@ -150,7 +150,9 @@ describe("conversation detail API", () => {
       parentConversationId: conversationId,
     });
     const withChild = await poll(firstEtag);
-    const childEtag = withChild.headers.get("etag")!;
+    const childEtag = withChild.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
     expect(withChild.status).toBe(200);
     expect(childEtag).not.toBe(firstEtag);
 
@@ -167,7 +169,9 @@ describe("conversation detail API", () => {
       },
     ]);
     const childChanged = await poll(childEtag);
-    const childChangedEtag = childChanged.headers.get("etag")!;
+    const childChangedEtag = childChanged.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
     expect(childChanged.status).toBe(200);
 
     await createPluginAnnotations({

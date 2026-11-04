@@ -16,6 +16,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   webMessageId,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
@@ -748,11 +749,17 @@ export async function readConversationData(
   const response = await readDashboardResponse(
     `/api/conversations/${encodeURIComponent(conversationId)}`,
     signal,
-    previous?.detailEtag,
+    previous?.detailEtag
+      ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
+      : undefined,
   );
   if (response.status === 304 && previous) return previous;
   const report = conversationDetailReportSchema.parse(await response.json());
-  return { ...report, detailEtag: response.headers.get("etag") ?? undefined };
+  return {
+    ...report,
+    detailEtag:
+      response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
+  };
 }
 
 /** Read accepted mailbox messages that have not reached durable history yet. */

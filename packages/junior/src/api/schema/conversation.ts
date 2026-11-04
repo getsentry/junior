@@ -847,6 +847,13 @@ export type ConversationAgentTreeNode = z.infer<
   typeof conversationAgentTreeNodeSchema
 >;
 
+/**
+ * Carries the detail version token in both directions. A custom header, not
+ * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
+ * validators itself, after the function had already built the full report.
+ */
+export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**

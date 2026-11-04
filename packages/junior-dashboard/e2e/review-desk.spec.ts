@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -279,7 +280,10 @@ test("review item changes show as rows, not as context for other items", async (
     `**/api/conversations/${encodeURIComponent(conversationId)}`,
     async (route) => {
       const response = await route.fetch({
-        headers: { ...route.request().headers(), "if-none-match": "" },
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
       });
       const detail = await response.json();
       const askedAt = Date.parse(rollout.createdAt);
@@ -455,7 +459,10 @@ test("a message asks before it drops unsent picks", async ({
   // Show the tool call that added the item, so its card is in the transcript.
   await page.route(path, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     const last = detail.events.at(-1);
