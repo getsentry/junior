@@ -3,8 +3,8 @@
  *
  * Dashboard connections made before web Actors used the User id are saved
  * under `dashboard:<hash>`. When a read for a User id finds no tokens, this
- * moves the legacy tokens, so the person keeps the connection. The move
- * deletes the legacy key, so a later disconnect cannot bring it back.
+ * moves the legacy tokens, so the person keeps the connection. A delete also
+ * deletes the legacy key, so a disconnect cannot bring it back later.
  *
  * TODO(dcramer): Delete after no `oauth-token:dashboard:*` keys remain.
  */
@@ -26,7 +26,11 @@ export function withLegacyWebTokens(store: UserTokenStore): UserTokenStore {
       return legacy;
     },
     set: (userId, provider, tokens) => store.set(userId, provider, tokens),
-    delete: (userId, provider) => store.delete(userId, provider),
+    async delete(userId, provider) {
+      await store.delete(userId, provider);
+      const legacyUserId = await findLegacyWebActorUserId(userId);
+      if (legacyUserId) await store.delete(legacyUserId, provider);
+    },
     withRefresh: (userId, provider, callback) =>
       store.withRefresh(userId, provider, callback),
   };

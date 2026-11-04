@@ -7,6 +7,10 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { closeDb, getSqlExecutor } from "@/chat/db";
+import {
+  getMcpStoredOAuthCredentials,
+  putMcpStoredOAuthCredentials,
+} from "@/chat/mcp/auth-store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -190,6 +194,16 @@ describe("connections API", () => {
       accessToken: "legacy-access",
     });
 
+    // An old instance in a rolling deploy can save legacy keys again.
+    await rawStore.set(legacyUserId, "eval-oauth", {
+      accessToken: "old-instance-access",
+      refreshToken: "old-instance-refresh",
+      scope: "read",
+    });
+    await putMcpStoredOAuthCredentials(legacyUserId, "eval-oauth", {
+      tokens: { access_token: "legacy-mcp-access", token_type: "Bearer" },
+    });
+
     const disconnectResponse = await app.request(
       "http://localhost/api/connections/eval-oauth",
       { method: "DELETE" },
@@ -198,6 +212,10 @@ describe("connections API", () => {
     expect(await listConnections(app)).toEqual([
       expect.objectContaining({ connected: false, provider: "eval-oauth" }),
     ]);
+    expect(await rawStore.get(legacyUserId, "eval-oauth")).toBeUndefined();
+    expect(
+      await getMcpStoredOAuthCredentials(viewer!.id, "eval-oauth"),
+    ).toBeUndefined();
   });
 
   it("rejects providers without user OAuth", async () => {

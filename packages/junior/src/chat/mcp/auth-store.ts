@@ -394,6 +394,12 @@ export async function deleteMcpStoredOAuthCredentials(
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
   await stateAdapter.delete(credentialsKey(userId, provider));
+  // TODO(dcramer): Delete with the legacy read above. A read moves legacy
+  // credentials only when the User id has none, so delete both keys.
+  const legacyUserId = await findLegacyWebActorUserId(userId);
+  if (legacyUserId) {
+    await stateAdapter.delete(credentialsKey(legacyUserId, provider));
+  }
 }
 
 export async function getMcpServerSessionId(
