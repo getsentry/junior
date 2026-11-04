@@ -7,6 +7,7 @@ dedupePeerDependents: false
 catalog:
   "@earendil-works/pi-agent-core": 0.84.1
   "@earendil-works/pi-ai": 0.85.1
+  "@sentry/browser": 11.10.0
   "@sentry/nitro": 11.10.0
   "@sentry/node": 11.10.0
   "@sentry/server-utils": 11.10.0

@@ -428,6 +428,15 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
 
+## Dashboard browser spans
+
+- When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
+  project. The `pageload` span continues the trace of the page request, and
+  dashboard API calls continue the browser trace.
+- The browser sends only spans. It sends no errors, breadcrumbs, or replays.
+- Browser spans keep no URL query strings or fragments, and no element
+  `aria-label`, `title`, `alt`, `name`, or `type` values.
+
 ## Configuration
 
 | Setting                     | Controls                 | Default                                    |

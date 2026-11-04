@@ -11,7 +11,10 @@ import {
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
-import { initSentry } from "@sentry/junior/instrumentation";
+import {
+  getBrowserSentryConfig,
+  initSentry,
+} from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
 import { revalidateConversation } from "./conversation-cache";
@@ -527,10 +530,12 @@ export function createDashboardApp(
     }
   }
 
+  const renderPage = () =>
+    renderDashboard(basePath, agentName, getBrowserSentryConfig());
   for (const { nested, path } of dashboardPagePaths(basePath)) {
-    app.get(path, () => renderDashboard(basePath, agentName));
+    app.get(path, renderPage);
     if (nested) {
-      app.get(`${path}/*`, () => renderDashboard(basePath, agentName));
+      app.get(`${path}/*`, renderPage);
     }
   }
   for (const route of options.pluginRoutes ?? []) {

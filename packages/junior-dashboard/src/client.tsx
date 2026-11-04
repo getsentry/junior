@@ -7,6 +7,7 @@ import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
+import { initDashboardSentry } from "./client/sentry";
 
 declare global {
   interface Window {
@@ -65,6 +66,8 @@ function DashboardErrorPanel(props: { error: Error }) {
     </main>
   );
 }
+
+initDashboardSentry();
 
 const root = document.getElementById("dashboard-root");
 if (!root) {
