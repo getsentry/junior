@@ -1,12 +1,13 @@
 import { LockKeyhole } from "lucide-react";
 
-import { ActiveIndicator } from "../components/ActiveIndicator";
+import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 import type { VisualStatus } from "../types";
 
 /**
  * Render a conversation status marker. "Waiting on you" replaces every other
- * marker, then new completions take priority.
+ * marker. A running conversation shows a spinner, so it never looks like an
+ * ended one.
  */
 export function ConversationListStatusIcon(props: {
   finishedSinceSeen: boolean;
@@ -22,6 +23,10 @@ export function ConversationListStatusIcon(props: {
         role="img"
       />
     );
+  }
+
+  if (props.status === "active") {
+    return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
 
   if (props.finishedSinceSeen) {
@@ -40,8 +45,6 @@ export function ConversationListStatusIcon(props: {
         aria-label="Private conversation"
         className={cn(
           "size-3 shrink-0",
-          props.status === "active" &&
-            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
           props.status === "failed" && "text-rose-300",
           props.status === "idle" && "text-dashboard-text-muted",
         )}
@@ -49,18 +52,20 @@ export function ConversationListStatusIcon(props: {
     );
   }
 
-  if (props.status === "active") {
-    return <ActiveIndicator className="size-1.5" />;
+  if (props.status === "failed") {
+    return (
+      <span
+        aria-label="Failed"
+        className="size-1.5 shrink-0 rounded-full bg-rose-300"
+        role="img"
+      />
+    );
   }
 
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-dashboard-text-faint",
-      )}
+      className="size-1.5 shrink-0 rounded-full bg-dashboard-text-faint"
     />
   );
 }
