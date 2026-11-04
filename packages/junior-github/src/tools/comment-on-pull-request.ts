@@ -45,6 +45,30 @@ interface Result extends PluginToolOutput {
 }
 
 /**
+ * Return the id of the first comment in the review thread of `commentId`.
+ * GitHub accepts replies only to that comment, but Events can name a reply.
+ */
+async function threadRootId(
+  egress: PluginEgress,
+  prefix: string,
+  commentId: number,
+): Promise<number> {
+  const response = await githubApi(egress, {
+    operation: "github.pull.comment.get",
+    path: `${prefix}/pulls/comments/${commentId}`,
+  });
+  if (!response.ok) {
+    const message = `GitHub review comment lookup failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+    if (response.status === 404) throw new PluginToolInputError(message);
+    throw new Error(message);
+  }
+  const comment = z
+    .object({ in_reply_to_id: z.number().optional() })
+    .parse(response.body);
+  return comment.in_reply_to_id ?? commentId;
+}
+
+/**
  * Post a pull request comment as the App bot, or reply in an inline review
  * thread. GitHub keeps conversation comments under the issues endpoint and
  * thread replies under the pulls endpoint.
@@ -65,13 +89,14 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const prefix = repoPath(repo);
+      const path =
+        input.in_reply_to === undefined
+          ? `${prefix}/issues/${input.number}/comments`
+          : `${prefix}/pulls/${input.number}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
       const response = await githubApi(egress, {
         operation: "github.pull.comment.create",
         method: "POST",
-        path:
-          input.in_reply_to === undefined
-            ? `${prefix}/issues/${input.number}/comments`
-            : `${prefix}/pulls/${input.number}/comments/${input.in_reply_to}/replies`,
+        path,
         body: { body: input.body },
       });
       if (!response.ok) {

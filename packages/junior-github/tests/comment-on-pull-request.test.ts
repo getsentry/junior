@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 
-function toolContext(response?: Response) {
-  const fetch = vi.fn(
-    async () =>
+function toolContext(
+  response?: Response,
+  replyTarget: { in_reply_to_id?: number } = {},
+) {
+  const fetch = vi.fn(async ({ request }: { request: Request }) => {
+    if (request.method === "GET") {
+      return new Response(JSON.stringify({ id: 42, ...replyTarget }), {
+        status: 200,
+      });
+    }
+    return (
       response ??
       new Response(
         JSON.stringify({
@@ -12,8 +20,9 @@ function toolContext(response?: Response) {
             "https://github.com/getsentry/junior/pull/691#discussion_r88",
         }),
         { status: 201 },
-      ),
-  );
+      )
+    );
+  });
   return { fetch, tool: createGitHubCommentOnPullRequestTool({ fetch }) };
 }
 
@@ -39,7 +48,7 @@ describe("commentOnPullRequest", () => {
       url: "https://github.com/getsentry/junior/pull/691#discussion_r88",
     });
 
-    const call = fetch.mock.calls[0]?.[0];
+    const call = fetch.mock.calls[1]?.[0];
     expect(call).toMatchObject({
       operation: "github.pull.comment.create",
       provider: "github",
@@ -51,6 +60,24 @@ describe("commentOnPullRequest", () => {
     await expect(call?.request.clone().json()).resolves.toEqual({
       body: "Yes, see the new test.",
     });
+  });
+
+  it("replies to the first comment when in_reply_to names a reply", async () => {
+    const { fetch, tool } = toolContext(undefined, { in_reply_to_id: 7 });
+
+    await tool.execute?.(
+      {
+        repo: "getsentry/junior",
+        number: 691,
+        body: "Answered.",
+        in_reply_to: 42,
+      },
+      { toolCallId: "nested" },
+    );
+
+    expect(fetch.mock.calls[1]?.[0]?.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/pulls/691/comments/7/replies",
+    );
   });
 
   it("posts a pull request comment without in_reply_to", async () => {
