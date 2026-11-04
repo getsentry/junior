@@ -657,14 +657,9 @@ describe("github plugin", () => {
           "exact repo, comment_id, and comment_kind from Verified details",
         ),
       },
-      "pull_request.review.changes_requested": {
-        guidance: expect.stringContaining(
-          "gh api repos/OWNER/REPO/issues/NUMBER/comments",
-        ),
-      },
       "pull_request.review_comment.created": {
-        guidance: expect.stringMatching(
-          /github_resolvePullRequestReviewThread.*pulls\/NUMBER\/comments\/COMMENT_ID\/replies/,
+        guidance: expect.stringContaining(
+          "github_resolvePullRequestReviewThread",
         ),
       },
       "deployment.failed": { reach: "all" },
