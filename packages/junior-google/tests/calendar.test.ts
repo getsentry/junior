@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { recurrenceRule } from "../src/tools/create-event";
 import { findFreeSlots } from "../src/tools/find-meeting-times";
+import { accountLink } from "../src/tools/shared";
 import { stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";
@@ -100,6 +101,25 @@ describe("findFreeSlots", () => {
         optionalConflicts: ["dana@example.com"],
       },
     ]);
+  });
+});
+
+describe("accountLink", () => {
+  const LINK = "https://www.google.com/calendar/event?eid=abc";
+
+  it("names the requester's account in the link", () => {
+    expect(accountLink(LINK, "person@example.com")).toBe(
+      `${LINK}&authuser=person%40example.com`,
+    );
+  });
+
+  it("keeps the link when the requester's email is unknown", () => {
+    expect(accountLink(LINK, undefined)).toBe(LINK);
+  });
+
+  it("keeps a link that already names an account", () => {
+    const named = `${LINK}&authuser=other%40example.com`;
+    expect(accountLink(named, "person@example.com")).toBe(named);
   });
 });
 
@@ -296,7 +316,8 @@ describe("Google Calendar tools", () => {
         label: "Oct 12",
         objectType: "calendar_event",
         title: "Sync",
-        url: "https://calendar.google.com/event?eid=1",
+        // The link opens in the requester's own Google account.
+        url: "https://calendar.google.com/event?eid=1&authuser=alice%40example.com",
         facts: {
           type: "calendar_event",
           when: "Mon, Oct 12, 10:00 – 10:30 PDT",

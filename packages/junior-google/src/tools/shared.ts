@@ -244,6 +244,27 @@ export function attendeeResults(
     }));
 }
 
+// Event links open the signed-in Google account that this param names, not
+// the browser's default account. The value is the account's email. On event
+// links, `authdomain`, `login_hint`, and a `/u/<email>/` path do not switch
+// the account.
+const ACCOUNT_LINK_PARAM = "authuser";
+
+/**
+ * Make a Google Calendar link open in the requester's own Google account.
+ *
+ * Returns the link unchanged when the email is unknown or the link already
+ * names an account.
+ */
+export function accountLink(url: string, email: string | undefined): string {
+  const link = URL.parse(url);
+  if (!email || !link || link.searchParams.has(ACCOUNT_LINK_PARAM)) {
+    return url;
+  }
+  link.searchParams.set(ACCOUNT_LINK_PARAM, email);
+  return link.toString();
+}
+
 /** Event fields that Junior reads back from its own calendar. */
 export const ownEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
@@ -270,7 +291,12 @@ export type OwnEvent = z.infer<typeof ownEventSchema>;
  * reply. The event id is the key, so a change replaces the saved card. The
  * label is the short date for the sidebar; the card shows the full time.
  */
-export function ownEventResult(event: OwnEvent, timeZone: string) {
+export function ownEventResult(
+  event: OwnEvent,
+  timeZone: string,
+  requester: string | undefined,
+) {
+  const url = event.htmlLink && accountLink(event.htmlLink, requester);
   const startMs = Date.parse(event.start.dateTime);
   const when = formatInterval(
     startMs,
@@ -289,7 +315,7 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
     // People can edit the event in Calendar. Shorten long values so a
     // completed change never fails on the annotation schema.
     title: (event.summary?.trim() || "Untitled event").slice(0, 512),
-    url: event.htmlLink ?? null,
+    url: url || null,
     description: event.description?.trim().slice(0, 4000) || undefined,
     sourceUpdatedAt: event.updated,
     facts: {
@@ -316,7 +342,7 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
     ...(event.recurringEventId
       ? { series_event_id: event.recurringEventId }
       : undefined),
-    ...(event.htmlLink ? { url: event.htmlLink } : undefined),
+    ...(url ? { url } : undefined),
     ...(event.hangoutLink ? { video_call_url: event.hangoutLink } : undefined),
   };
 }
@@ -381,7 +407,13 @@ const cancelledEventSchema = z.object({ status: z.literal("cancelled") });
 
 /** Result of reading an event that Junior organizes. */
 export type OwnEventRead =
-  | { event: OwnEvent; eventId: string; path: string; status: "active" }
+  | {
+      event: OwnEvent;
+      eventId: string;
+      path: string;
+      requester: string;
+      status: "active";
+    }
   | { eventId: string; path: string; status: "cancelled" };
 
 /**
@@ -441,5 +473,5 @@ export async function readOwnEventForRequester(
       `Only people invited to this event can ask you to ${action} it.`,
     );
   }
-  return { event, eventId, path, status: "active" };
+  return { event, eventId, path, requester, status: "active" };
 }

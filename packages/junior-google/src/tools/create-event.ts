@@ -13,6 +13,7 @@ import {
   ownEventOutputFields,
   ownEventResult,
   ownEventSchema,
+  requesterEmail,
   requireAllowedEmails,
   timeZoneSchema,
   withRequester,
@@ -219,7 +220,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(event.body),
+          timeZone,
+          await requesterEmail(ctx),
+        ),
       };
     },
   });

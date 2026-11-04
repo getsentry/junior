@@ -70,10 +70,10 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
           event_id: read.eventId,
         };
       }
-      const { event, path } = read;
+      const { event, path, requester } = read;
       const result = {
         target: "cancelCalendarEvent" as const,
-        ...ownEventResult(event, timeZone),
+        ...ownEventResult(event, timeZone, requester),
       };
 
       const response = await googleApiRequest(ctx, {

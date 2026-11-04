@@ -5,12 +5,14 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
+  accountLink,
   attendeeOutputSchema,
   attendeeResults,
   formatInterval,
   googleAttendeeSchema,
   googleApiError,
   googleApiRequest,
+  requesterEmail,
   requireAllowedEmails,
   timeZoneSchema,
   type GoogleToolContext,
@@ -188,6 +190,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       }
 
       const { items, nextPageToken } = listResponseSchema.parse(response.body);
+      const requester = await requesterEmail(ctx);
       return {
         ...result,
         events: items
@@ -210,7 +213,9 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
             ...(event.attendees
               ? { attendees: attendeeResults(event.attendees) }
               : undefined),
-            ...(event.htmlLink ? { url: event.htmlLink } : undefined),
+            ...(event.htmlLink
+              ? { url: accountLink(event.htmlLink, requester) }
+              : undefined),
             ...(event.hangoutLink
               ? { video_call_url: event.hangoutLink }
               : undefined),
