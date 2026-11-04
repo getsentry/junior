@@ -87,7 +87,7 @@ describe("event tools", () => {
         {
           identifier: "GetSentry/Junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: [
             "pull_request.checks.failed",
@@ -99,6 +99,7 @@ describe("event tools", () => {
       ),
     ).resolves.toMatchObject({
       subscription_status: "active",
+      expires_at: "2027-01-15T08:00:00.000Z",
       stop_watching: {
         execution_tool: "executeTool",
         execution_example: {
@@ -128,7 +129,7 @@ describe("event tools", () => {
       {
         identifier: "getsentry/junior#1",
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
         label: "GitHub PR #1",
         events: ["pull_request.checks.failed"],
         intent: "Report failed checks.",
@@ -183,18 +184,18 @@ describe("event tools", () => {
       tools.searchEventTypes!.execute!({ query: "review changes events" }, {}),
     ).resolves.toMatchObject({
       namespace: null,
-      totalMatches: 1,
-      resourceTypes: [
+      total_matches: 1,
+      resource_types: [
         {
           namespace: "github",
           type: "pull_request",
-          supportedEvents: [
+          supported_events: [
             "pull_request.checks.failed",
             "pull_request.review.changes_requested",
           ],
-          suggestedEvents: ["pull_request.checks.failed"],
+          suggested_events: ["pull_request.checks.failed"],
           // The agent needs `events` to pick events that the filter matches.
-          matchFields: { authors },
+          match_fields: { authors },
         },
       ],
       // The reach of each event is given once for its namespace.
@@ -202,7 +203,7 @@ describe("event tools", () => {
         {
           namespace: "github",
           reach: {
-            "pull_request.checks.failed": { anyOf: ["authors"] },
+            "pull_request.checks.failed": { any_of: ["authors"] },
             "pull_request.review.changes_requested": "resource",
           },
         },
@@ -229,7 +230,7 @@ describe("event tools", () => {
           },
         },
         namespace: { enum: ["github", "vercel"] },
-        resourceType: { enum: ["deployment", "pull_request"] },
+        resource_type: { enum: ["deployment", "pull_request"] },
       },
     });
   });
@@ -256,7 +257,7 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "issue",
+          resource_type: "issue",
           label: "GitHub issue #1",
           events: ["pull_request.merged"],
           intent: "Report closure.",
@@ -277,11 +278,11 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: ["pull_request.checks.failed"],
           intent: "Report failed checks.",
-          ttlMs: 31 * 24 * 60 * 60 * 1000,
+          ttl_ms: 31 * 24 * 60 * 60 * 1000,
         },
         {},
       ),

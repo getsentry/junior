@@ -17,7 +17,10 @@ import {
   deliverReviewItemChange,
   type ReviewItemDelivery,
 } from "@/chat/review-items/changes";
-import { renderReviewItemMessage } from "@/chat/review-items/messages";
+import {
+  renderReviewItemMessage,
+  reviewItemChangeRecord,
+} from "@/chat/review-items/messages";
 import type { ReviewItem } from "@/chat/review-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import {
@@ -45,14 +48,20 @@ import {
   buttonUserInputField,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
-import { buildSlackInteractionInput } from "./slack-interaction-input";
+import {
+  buildSlackInteractionInput,
+  type SlackInteractionInputFacts,
+} from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 /** What a Review item interaction handler needs from Slack ingress. */
 export interface SlackReviewItemServices {
   adapter: SlackAdapter;
   isAuthorAllowed: (userId: string) => Promise<boolean>;
-  persistMessage: (message: Message) => Promise<void>;
+  persistMessage: (
+    message: Message,
+    facts?: SlackInteractionInputFacts,
+  ) => Promise<void>;
   queue: ConversationWorkQueue;
   state: StateAdapter;
 }
@@ -192,6 +201,7 @@ async function act(args: {
         threadTs: target.threadTs,
         userId: actor.slackUserId,
       }),
+      { reviewItemChange: reviewItemChangeRecord(item, change) },
     );
   } catch (error) {
     // The item is already closed, so the thread must still learn about it.

@@ -6,7 +6,7 @@ import {
   conversationTurnIdForMessage,
   appendAndEnqueueWebMessage,
   recordWebConversationActivity,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import { stopConversationTurn } from "@/chat/conversations/stop";
@@ -76,13 +76,6 @@ interface ConversationOptions {
   eventStore: ConversationEventStore;
   queue: ConversationWorkQueue;
   state: StateAdapter;
-}
-
-function actorFromUser(user: User) {
-  return webActorFromEmail(
-    user.email,
-    user.displayName ? { fullName: user.displayName } : undefined,
-  );
 }
 
 async function hasConversationAccess(
@@ -165,7 +158,7 @@ export function createAcpConversations(
 
     async create({ conversationId, user }) {
       await recordWebConversationActivity({
-        actor: actorFromUser(user),
+        actor: webActorFromUser(user),
         conversationId,
         conversationStore: options.conversationStore,
         nowMs: Date.now(),
@@ -190,7 +183,7 @@ export function createAcpConversations(
       }
       const result = await appendAndEnqueueWebMessage(
         {
-          actor: actorFromUser(user),
+          actor: webActorFromUser(user),
           conversationId,
           idempotencyKey,
           message: text,

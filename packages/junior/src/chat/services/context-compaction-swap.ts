@@ -29,6 +29,7 @@ import {
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
+  estimateReplacementTokens,
   renderCompactionSummary,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
@@ -250,7 +251,10 @@ async function applyPreparedSummary(
     ...pendingMessages,
   ];
   const messages = replacement.map((entry) => entry.message);
-  const replacementTokens = estimateHistoryTokens(messages);
+  const replacementTokens = estimateReplacementTokens(
+    messages,
+    args.requestOverheadTokens,
+  );
   const targetTokens = calculateContextCompactionTargetTokens(
     budget.triggerTokens,
   );
@@ -259,7 +263,7 @@ async function applyPreparedSummary(
     "app.compaction.replacement.estimate": replacementTokens,
     "app.compaction.threshold": budget.triggerTokens,
     "app.compaction.carried_messages": kept.length,
-    "app.compaction.carried.estimate": estimateHistoryTokens(
+    "app.compaction.carried.estimate": estimateReplacementTokens(
       trimmedEntries.map((entry) => entry.message),
     ),
     "app.compaction.trimmed_results": trimming.trimmedResults,

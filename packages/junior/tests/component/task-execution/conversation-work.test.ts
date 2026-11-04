@@ -1648,7 +1648,7 @@ describe("conversation work execution", () => {
           await drain(context);
           // A queued message steered after the attempt started joins it.
           await steerWebPendingMessages({
-            authorId: "dashboard:reader",
+            authorIds: ["dashboard:reader"],
             conversationId: CONVERSATION_ID,
             inboundMessageIds: ["m3"],
           });
@@ -1694,7 +1694,7 @@ describe("conversation work execution", () => {
           message: webMessage("b1", "dashboard:b"),
         });
         await steerWebPendingMessages({
-          authorId: "dashboard:b",
+          authorIds: ["dashboard:b"],
           conversationId: CONVERSATION_ID,
           inboundMessageIds: ["b1"],
         });

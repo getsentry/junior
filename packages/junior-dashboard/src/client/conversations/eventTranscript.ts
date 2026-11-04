@@ -97,6 +97,9 @@ export function pendingTranscriptMessage(
       ? { actorIdentityId: message.actorIdentityId }
       : undefined),
     ...(message.mentions ? { mentions: message.mentions } : undefined),
+    ...(message.reviewItemChange
+      ? { reviewItemChanges: [message.reviewItemChange] }
+      : undefined),
   };
 }
 
@@ -240,6 +243,9 @@ export function transcriptMessagesFromEvents(
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
+        ...(data.reviewItemChanges
+          ? { reviewItemChanges: data.reviewItemChanges }
+          : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };
       messages.push(message);
@@ -327,6 +333,7 @@ export function transcriptMessagesFromEvents(
           kind: data.kind,
           loadedAt: event.createdAt,
           pluginName: data.pluginName,
+          turnId: data.turnId,
           version: data.version,
         });
       }
@@ -411,6 +418,7 @@ export function transcriptMessagesFromEvents(
             name: data.name,
             version: data.version,
             presentation: data.presentation,
+            ...(data.turnId ? { turnId: data.turnId } : undefined),
           },
         ]),
       );

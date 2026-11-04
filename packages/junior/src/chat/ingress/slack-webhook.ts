@@ -7,6 +7,8 @@ import {
   type SlackInboundEvent,
 } from "./slack-payload";
 import { handleSlackForm } from "./slack-form";
+import type { SlackInteractionInputFacts } from "./slack-interaction-input";
+import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
 import {
   joinCreatedSlackChannel,
   slackChannelCreatedEnvelopeSchema,
@@ -111,30 +113,6 @@ function slackEventLogContext(
   };
 }
 
-const IGNORED_MESSAGE_SUBTYPES = new Set([
-  // Conversation Messages are immutable once accepted. An edit must not
-  // rewrite input or start another Turn. Send a new Slack Message instead.
-  "message_changed",
-  "message_deleted",
-  "message_replied",
-  "channel_join",
-  "channel_leave",
-  "channel_topic",
-  "channel_purpose",
-  "channel_name",
-  "channel_archive",
-  "channel_unarchive",
-  "group_join",
-  "group_leave",
-  "group_topic",
-  "group_purpose",
-  "group_name",
-  "group_archive",
-  "group_unarchive",
-  "ekm_access_denied",
-  "tombstone",
-]);
-
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
   getSlackAdapter: () => SlackAdapter;
@@ -187,10 +165,6 @@ function installationFromEnvelope(
 
 function isDmEvent(event: SlackInboundEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
-}
-
-function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
-  return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
 function normalizeMessageThreadId(message: Message): {
@@ -279,6 +253,7 @@ async function resolveSlackConversationId(args: {
 
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
+  facts?: SlackInteractionInputFacts;
   installation: SlackInstallationContext;
   message: Message;
   conversationStore?: ConversationStore;
@@ -303,6 +278,7 @@ async function persistSlackMessage(args: {
   const inbound = buildSlackInboundMessage({
     conversationId,
     installation: args.installation,
+    reviewItemChange: args.facts?.reviewItemChange,
     message: args.message,
     receivedAtMs: args.receivedAtMs,
     route: args.route,
@@ -830,6 +806,7 @@ async function handleSlackEvent(args: {
  */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
+  facts?: SlackInteractionInputFacts;
   installation: SlackInstallationContext;
   message: Message;
   services: SlackWebhookServices;
@@ -844,6 +821,7 @@ async function persistSlackMentionWithLock(args: {
       () =>
         persistSlackMessage({
           adapter: args.adapter,
+          facts: args.facts,
           installation: args.installation,
           message,
           conversationStore: args.services.conversationStore,
@@ -894,9 +872,10 @@ export async function handleSlackWebhook(args: {
           teamId: installation.teamId,
           user: userId,
         }),
-      persistMessage: (message, installation) =>
+      persistMessage: (message, installation, facts) =>
         persistSlackMentionWithLock({
           adapter,
+          facts,
           installation,
           message,
           services: args.services,

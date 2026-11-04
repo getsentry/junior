@@ -10,7 +10,10 @@
  * fresh runtime context; the next replacement removes it again.
  */
 import type { Message } from "@earendil-works/pi-ai";
-import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import {
+  estimateContextTokens,
+  estimateTokens,
+} from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { completeText } from "@/chat/pi/client";
@@ -113,6 +116,11 @@ export interface ActiveContextCompactionArgs {
    * instruction.
    */
   mode: Exclude<CompactionMode, "handoff">;
+  /**
+   * Estimated tokens of the system prompt and tool definitions. Provider
+   * usage counts them, so a replacement estimate must count them too.
+   */
+  requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal;
   /** Index in the runtime context messages where the current Turn starts. */
@@ -579,6 +587,21 @@ export function estimateHistoryTokens(messages: PiMessage[]): number {
   return estimateContextTokens(messages).tokens;
 }
 
+/**
+ * Estimate a replacement request from each message's own size. A kept
+ * assistant message holds provider usage for the whole request before the
+ * replacement, so usage is ignored here.
+ */
+export function estimateReplacementTokens(
+  messages: PiMessage[],
+  requestOverheadTokens = 0,
+): number {
+  return messages.reduce(
+    (total, message) => total + estimateTokens(message),
+    requestOverheadTokens,
+  );
+}
+
 async function loadLastInstruction(conversationId: string) {
   const event =
     await getConversationEventStore().loadLatestInstruction(conversationId);
@@ -796,7 +819,10 @@ async function compactActiveAboveThreshold(
   const retainedMessageCount =
     retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);
-  const replacementInputTokens = estimateHistoryTokens(messages);
+  const replacementInputTokens = estimateReplacementTokens(
+    messages,
+    args.requestOverheadTokens,
+  );
   if (replacementInputTokens >= inputLimitTokens) {
     throw new ContextInputLimitExceededError(
       replacementInputTokens,

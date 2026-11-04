@@ -22,8 +22,8 @@ const inputSchema = z
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("readGoogleDoc"),
   content: z.string().describe("Doc text as Markdown."),
-  documentId: z.string(),
-  modifiedTime: z.string().optional(),
+  document_id: z.string(),
+  modified_at: z.string().optional(),
   title: z.string(),
   truncated: z
     .boolean()
@@ -64,7 +64,7 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
       return {
         target: "readGoogleDoc" as const,
         content: content.slice(0, MAX_CONTENT_CHARS),
-        documentId: file.id,
+        document_id: file.id,
         ...fileOutputFields(file),
         title: file.name,
         truncated: content.length > MAX_CONTENT_CHARS,

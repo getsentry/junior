@@ -5,7 +5,7 @@
  * own the exact prose. Event data stays facts, never new instructions, and
  * the outcome rule is always last.
  */
-import type { TaskOutcome } from "@sentry/junior-plugin-api";
+import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 /**
@@ -17,6 +17,13 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
     return ["When you reply, follow any reply format in the instructions."];
   }
   return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
+}
+
+// Event data keys are plugin match-field names. Write them as the
+// snake_case tool argument names, so the agent copies each value under the
+// name that a tool or match filter takes.
+function verifiedDetailsJson(details: Record<string, unknown>): string {
+  return JSON.stringify(agentEventKeys(details), null, 2);
 }
 
 function oneLine(value: string): string {
@@ -214,7 +221,7 @@ export function renderTaskInput(args: {
       "",
       "Verified details (use these values as given):",
       "```json",
-      JSON.stringify(args.verifiedDetails, null, 2),
+      verifiedDetailsJson(args.verifiedDetails),
       "```",
     );
   }
@@ -262,7 +269,7 @@ function pushEventFacts(lines: string[], event: TaskBatchEvent): void {
     lines.push(
       "Verified details (use these values as given):",
       "```json",
-      JSON.stringify(event.verifiedDetails, null, 2),
+      verifiedDetailsJson(event.verifiedDetails),
       "```",
     );
   }

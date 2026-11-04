@@ -107,7 +107,7 @@ describe("Watch Event people", () => {
         identifier: "job-1",
         label: "Demo job 1",
         namespace: "demo",
-        supportedEvents: ["job.failed", "job.succeeded"],
+        supported_events: ["job.failed", "job.succeeded"],
         type: "job",
       },
     });

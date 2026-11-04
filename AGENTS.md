@@ -73,6 +73,8 @@ Split long files at a feature boundary. Do not compress formatting to pass.
   edges.
 - `policies/observability.md`: telemetry for diagnosis.
 - `policies/system-prompt.md`: system prompt blocks.
+- `policies/prompt-markers.md`: tags, untrusted text, IDs, and escaping in
+  model-read text.
 - `policies/agent-steering.md`: steering agent behavior.
 - `policies/agentic-semantics.md`: choices that depend on meaning or intent.
 - `policies/tool-design.md`: model-facing tool contracts.

@@ -32,7 +32,7 @@ export const emailListSchema = (max: number) =>
 export const timeZoneSchema = z
   .string()
   .min(1)
-  .refine(isTimeZone, "timeZone must be an IANA time zone")
+  .refine(isTimeZone, "time_zone must be an IANA time zone")
   .optional()
   .describe(
     "IANA time zone used to read and show times, such as America/Los_Angeles. Omit to use the requester's time zone.",
@@ -307,17 +307,17 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
     objectAnnotations: [annotation],
     attendees: attendeeResults(event.attendees),
     end: event.end.dateTime,
-    eventId: event.id,
+    event_id: event.id,
     label: when,
     start: event.start.dateTime,
     ...(event.summary ? { title: event.summary } : undefined),
     ...(event.location ? { location: event.location } : undefined),
     ...(event.recurrence ? { repeats: true } : undefined),
     ...(event.recurringEventId
-      ? { seriesEventId: event.recurringEventId }
+      ? { series_event_id: event.recurringEventId }
       : undefined),
     ...(event.htmlLink ? { url: event.htmlLink } : undefined),
-    ...(event.hangoutLink ? { videoCallUrl: event.hangoutLink } : undefined),
+    ...(event.hangoutLink ? { video_call_url: event.hangoutLink } : undefined),
   };
 }
 
@@ -325,23 +325,23 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
 export const ownEventOutputFields = {
   attendees: z.array(attendeeOutputSchema),
   end: z.string(),
-  eventId: z.string(),
+  event_id: z.string(),
   label: z.string(),
   location: z.string().optional(),
   repeats: z
     .boolean()
     .optional()
     .describe("True when this event id is a whole repeating series."),
-  seriesEventId: z
+  series_event_id: z
     .string()
     .optional()
     .describe(
-      "Set when this is one occurrence of a repeating event. Use it as eventId to change or cancel the whole series.",
+      "Set when this is one occurrence of a repeating event. Use it as event_id to change or cancel the whole series.",
     ),
   start: z.string(),
   title: z.string().optional(),
   url: z.string().optional(),
-  videoCallUrl: z.string().optional(),
+  video_call_url: z.string().optional(),
 };
 
 /** Event id or link input for tools that act on an event Junior organizes. */
@@ -351,7 +351,7 @@ export const ownEventIdSchema = z
   .min(5)
   .max(2048)
   .describe(
-    "Event id from a Calendar tool, or a Google Calendar event link. An occurrence of a repeating event has its own id; its seriesEventId is the whole series.",
+    "Event id from a Calendar tool, or a Google Calendar event link. An occurrence of a repeating event has its own id; its series_event_id is the whole series.",
   );
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;

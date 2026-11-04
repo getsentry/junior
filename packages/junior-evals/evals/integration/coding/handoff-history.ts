@@ -31,25 +31,25 @@ export function workObjectId(object: WorkObject): string {
 
 const stableIdEdits = [
   {
-    oldText:
+    old_text:
       "constructor(private readonly object: WorkObject, private readonly threadId: string) {}",
-    newText: "constructor(private readonly object: WorkObject) {}",
+    new_text: "constructor(private readonly object: WorkObject) {}",
   },
   {
-    oldText:
+    old_text:
       "JSON.stringify([this.threadId, this.object.provider, this.object.key])",
-    newText: "JSON.stringify([this.object.provider, this.object.key])",
+    new_text: "JSON.stringify([this.object.provider, this.object.key])",
   },
   {
-    oldText:
+    old_text:
       "function createWorkObjectIdentityManager(object: WorkObject, threadId: string) {\n  return new WorkObjectIdentityManager(object, threadId);",
-    newText:
+    new_text:
       "function createWorkObjectIdentityManager(object: WorkObject) {\n  return new WorkObjectIdentityManager(object);",
   },
   {
-    oldText:
+    old_text:
       "export function workObjectId(object: WorkObject, threadId: string): string {\n  return createWorkObjectIdentityManager(object, threadId).getIdentity();",
-    newText:
+    new_text:
       "export function workObjectId(object: WorkObject): string {\n  return createWorkObjectIdentityManager(object).getIdentity();",
   },
 ];

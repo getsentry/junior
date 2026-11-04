@@ -42,6 +42,7 @@ import {
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
 import { DisplayText } from "../display-text/DisplayText";
+import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
 
 // Rows are one line each, so the stack can show five before it collapses.
@@ -349,7 +350,16 @@ function PendingRow(props: {
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
                 title={displayPlainText(text, mentions)}
               >
-                <DisplayText inline mentions={mentions} text={text} />
+                {props.message.reviewItemChange ? (
+                  <ReviewItemChangeLabel
+                    fallback={
+                      <DisplayText inline mentions={mentions} text={text} />
+                    }
+                    record={props.message.reviewItemChange}
+                  />
+                ) : (
+                  <DisplayText inline mentions={mentions} text={text} />
+                )}
               </p>
             ) : null}
           </>

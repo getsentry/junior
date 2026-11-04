@@ -186,19 +186,19 @@ Create the watch or event automation before the issue arrives. Junior does not r
 Identifiers are normalized to uppercase. Prefer team-scoped event automations for monitor workflows that create many new issues.
 
 An event automation selects a team or an issue with filters instead of an
-identifier. `issue.created` needs a `teamKey` or an
-`issueIdentifier` filter, because an issue carries its title and description
+identifier. `issue.created` needs a `team_key` or an
+`issue_identifier` filter, because an issue carries its title and description
 and a team can be private. Junior saves both in uppercase. The filter does not
 check that the creator can see the team. See
 [Automations](/concepts/automations/).
 
-Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. For “all new issues in SRE”, a watch uses the team identifier and an event automation uses `match.teamKey`.
+Optional `match` values come from the resource type. For Linear issue and team events, `team_key` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. For “all new issues in SRE”, a watch uses the team identifier and an event automation uses `match.team_key`.
 
 ## Verify
 
 **OAuth:** Ask Junior to create or update a real Linear issue, complete the private authorization flow, and confirm the issue key or URL returns in the same thread.
 
-**Webhooks:** Create an event automation for a team key, then create a test issue in that team. You can also create an issue-scoped event automation with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
+**Webhooks:** Create an event automation for a team key, then create a test issue in that team. You can also create an issue-scoped event automation with `match.team_key` set to the same team key and confirm non-matching teams do not fire.
 
 ## Security
 

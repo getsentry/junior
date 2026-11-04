@@ -15,6 +15,7 @@ import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -89,6 +90,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    /** Review item change that this input reports, on any Source. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -1946,12 +1949,13 @@ export async function cancelHumanFacingPendingMessages(args: {
 
 /**
  * Mark one author's queued web messages as interrupts without a worker lease.
+ * `authorIds` lists every id that names the author.
  *
  * The active Turn drains them at its next model boundary when it belongs to the
  * same author. Otherwise they start the next Turn ahead of deferred input.
  */
 export async function steerWebPendingMessages(args: {
-  authorId: string;
+  authorIds: readonly string[];
   conversationId: string;
   inboundMessageIds: readonly string[];
   nowMs?: number;
@@ -1970,7 +1974,8 @@ export async function steerWebPendingMessages(args: {
       if (
         message.source !== "web" ||
         message.delivery !== "defer" ||
-        message.input.authorId !== args.authorId ||
+        message.input.authorId === undefined ||
+        !args.authorIds.includes(message.input.authorId) ||
         !requestedIds.has(message.inboundMessageId)
       ) {
         return message;
@@ -2317,6 +2322,10 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
+  beforeWorkStops?: (
+    conversationId: string,
+    inboundMessageIds: readonly string[],
+  ) => Promise<void>;
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -2332,6 +2341,16 @@ export async function clearExpiredConversationLease(args: {
     }
     const retryCount = (current.execution.retryCount ?? 0) + 1;
     const stopped = retryCount >= CONVERSATION_WORK_MAX_RETRIES;
+    if (stopped) {
+      // A lost worker runs no failure path. This runs under the lock, so the
+      // worker cannot renew the lease and no message can reach the mailbox
+      // after it. When it throws, the lease stays expired and the next
+      // heartbeat runs it again.
+      await args.beforeWorkStops?.(
+        args.conversationId,
+        current.execution.inboundMessageIds,
+      );
+    }
     await writeConversation(
       state,
       lock,

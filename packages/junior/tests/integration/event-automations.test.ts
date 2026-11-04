@@ -132,8 +132,8 @@ describe("event automations", () => {
           getEventCatalog(),
         ),
         {
-          automationId: created.automation.id,
-          credentialMode: "system",
+          automation_id: created.automation.id,
+          credential_mode: "system",
           instruction:
             "Review fixes.\nCheck the parser and report unresolved errors.",
           trigger: {
@@ -425,8 +425,8 @@ describe("event automations", () => {
       \`\`\`json
       {
         "repo": "getsentry/junior",
-        "pullRequest": 1174,
-        "reviewUrl": "https://github.com/getsentry/junior/pull/1174#pullrequestreview-123"
+        "pull_request": 1174,
+        "review_url": "https://github.com/getsentry/junior/pull/1174#pullrequestreview-123"
       }
       \`\`\`
 
@@ -468,7 +468,7 @@ describe("event automations", () => {
             namespace: "github",
             label: "GitHub PR getsentry/junior#1174",
             events: ["pull_request.review.changes_requested"],
-            match: { repo: "getsentry/junior", pullRequest: 1174 },
+            match: { repo: "getsentry/junior", pull_request: 1174 },
           },
         },
         `dispatch-access-${channelId}`,
@@ -569,7 +569,7 @@ describe("event automations", () => {
     const createProperties = (
       createTool.inputSchema as { properties?: Record<string, unknown> }
     ).properties;
-    expect(jsonSchemaAllowsNull(createProperties?.credentialMode)).toBe(true);
+    expect(jsonSchemaAllowsNull(createProperties?.credential_mode)).toBe(true);
 
     const createInput = {
       instruction: "Address the requested changes.",
@@ -578,31 +578,31 @@ describe("event automations", () => {
         namespace: "github",
         label: "GitHub PR getsentry/junior#1174",
         events: ["pull_request.review.changes_requested"],
-        match: { repo: "getsentry/junior", pullRequest: 1174 },
+        match: { repo: "getsentry/junior", pull_request: 1174 },
       },
     };
     expect(
       createTool.prepareArguments?.({
         ...createInput,
-        credentialMode: null,
+        credential_mode: null,
       }),
-    ).not.toHaveProperty("credentialMode");
+    ).not.toHaveProperty("credential_mode");
     expect(() =>
       createTool.prepareArguments?.({
         ...createInput,
-        credentialMode: "invalid",
+        credential_mode: "invalid",
       }),
-    ).toThrow(/credentialMode/);
+    ).toThrow(/credential_mode/);
     expect(() =>
       createTool.prepareArguments?.({
         ...createInput,
         trigger: {
           ...createInput.trigger,
           identifier: "getsentry/junior#1174",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
         },
       }),
-    ).toThrow(/Unrecognized keys: "identifier", "resourceType"/);
+    ).toThrow(/Unrecognized keys: "identifier", "resource_type"/);
 
     const updateTool = createUpdateAutomationTool(
       automationToolContext(context()),
@@ -613,15 +613,15 @@ describe("event automations", () => {
     ).properties;
     expect(jsonSchemaAllowsNull(updateProperties?.instruction)).toBe(true);
     expect(jsonSchemaAllowsNull(updateProperties?.trigger)).toBe(true);
-    expect(jsonSchemaAllowsNull(updateProperties?.credentialMode)).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.credential_mode)).toBe(true);
     expect(
       updateTool.prepareArguments?.({
-        automationId: "evt_test",
+        automation_id: "evt_test",
         instruction: null,
         trigger: null,
-        credentialMode: null,
+        credential_mode: null,
       }),
-    ).toEqual({ automationId: "evt_test" });
+    ).toEqual({ automation_id: "evt_test" });
   });
 
   it("dispatches one task for every selected event type", async () => {
@@ -671,14 +671,14 @@ describe("event automations", () => {
           namespace: "github",
           label: "GitHub PR getsentry/junior#1174",
           events: ["pull_request.review.changes_requested"],
-          match: { repo: "GetSentry/Junior", pullRequest: 1174 },
+          match: { repo: "GetSentry/Junior", pull_request: 1174 },
         },
       },
       "mixed-case-filter",
     )) as { automation: { id: string; trigger: { match: unknown } } };
     expect(created.automation.trigger.match).toEqual({
       repo: "getsentry/junior",
-      pullRequest: 1174,
+      pull_request: 1174,
     });
 
     await expect(

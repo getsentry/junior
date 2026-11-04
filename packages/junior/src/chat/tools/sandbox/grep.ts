@@ -512,7 +512,7 @@ export function createGrepTool() {
         .min(1)
         .describe("Optional glob filter such as '*.ts' or '**/*.test.ts'.")
         .optional(),
-      ignoreCase: booleanInput(
+      ignore_case: booleanInput(
         "Whether matching should ignore case.",
       ).optional(),
       literal: booleanInput(

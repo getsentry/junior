@@ -5,13 +5,18 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
-import { createWebSource, type Destination } from "@sentry/junior-plugin-api";
+import {
+  createWebSource,
+  type Destination,
+  type User,
+} from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -48,6 +53,8 @@ export interface AppendWebMessageInput {
   message: string;
   images?: SandboxFileUpload[];
   idempotencyKey: string;
+  /** Review item change that this Message reports. */
+  reviewItemChange?: ReviewItemChangeRecord;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -123,17 +130,19 @@ export function acceptsWebMessages(
   );
 }
 
-/** Rebuild the web Actor from durable Conversation identity. */
-export function webActorFromEmail(
-  email: string,
-  profile?: { fullName?: string; userName?: string },
+/**
+ * Build the web Actor for one signed-in User. Junior is the web provider,
+ * so the provider-scoped Actor id is the User id.
+ */
+export function webActorFromUser(
+  user: Pick<User, "displayName" | "email" | "id">,
+  profile?: { userName?: string },
 ): WebActor {
-  const normalized = normalizeEmail(email);
   return {
     platform: "web",
-    userId: `dashboard:${stableHex(normalized)}`,
-    email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
+    userId: user.id,
+    email: normalizeEmail(user.email),
+    ...(user.displayName ? { fullName: user.displayName } : undefined),
     ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
 }
@@ -151,6 +160,7 @@ export function buildWebInboundMessage(args: {
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
+  reviewItemChange?: ReviewItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -180,6 +190,9 @@ export function buildWebInboundMessage(args: {
       text,
       ...(args.attachments?.length
         ? { attachments: args.attachments }
+        : undefined),
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
         : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
@@ -319,6 +332,9 @@ export async function appendAndEnqueueWebMessage(
       attachments,
       messageId,
       nowMs,
+      ...(input.reviewItemChange && {
+        reviewItemChange: input.reviewItemChange,
+      }),
     }),
     conversationStore: options.conversationStore,
     nowMs,

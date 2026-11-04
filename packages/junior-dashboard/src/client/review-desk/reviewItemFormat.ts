@@ -91,6 +91,22 @@ export function latestReviewItemId(
   return undefined;
 }
 
+/**
+ * Return a message for another item's excerpt, without the Review item
+ * changes that it records: those show on their own items. Returns undefined
+ * when nothing else remains.
+ */
+export function excerptMessage(
+  event: ConversationReportEvent,
+): ConversationReportEvent | undefined {
+  const { data } = event;
+  if (data.type !== "message" || !data.reviewItemChanges) return event;
+  // A message with changes lists its own Events. With none, it only
+  // records changes.
+  if (!data.events) return undefined;
+  return { ...event, data: { ...data, reviewItemChanges: undefined } };
+}
+
 /** True when an open item asks a question that the viewer can answer. */
 export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
   return (

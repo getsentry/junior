@@ -510,7 +510,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       const timer = (await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check the deploy again." },
+        { after_ms: 60_000, intent: "Check the deploy again." },
         "child-timer",
       )) as { id: string };
       clock.mockReturnValue(clock() + 120_000);
@@ -567,12 +567,12 @@ describe("agent invocation identity and concurrency", () => {
       // never fires.
       await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check once more." },
+        { after_ms: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
       await execute(
         childTools.watchTimer!,
-        { afterMs: 600_000, intent: "Check much later." },
+        { after_ms: 600_000, intent: "Check much later." },
         "child-timer-3",
       );
       clock.mockReturnValue(clock() + 120_000);
@@ -610,7 +610,7 @@ describe("agent invocation identity and concurrency", () => {
       });
       await execute(
         childTools.watchTimer!,
-        { afterMs: 60_000, intent: "Check after the restart." },
+        { after_ms: 60_000, intent: "Check after the restart." },
         "child-timer-4",
       );
       clock.mockReturnValue(clock() + 120_000);
@@ -695,7 +695,7 @@ describe("agent invocation identity and concurrency", () => {
         clock.mockReturnValue(clock() + 1_000);
         const timer = (await execute(
           tools.watchTimer!,
-          { afterMs: 600_000, intent },
+          { after_ms: 600_000, intent },
           intent,
         )) as { id: string };
         return timer.id;
@@ -703,9 +703,9 @@ describe("agent invocation identity and concurrency", () => {
       const owners = async (tools: ReturnType<typeof toolsFor>) =>
         (
           (await execute(tools.listWatches!, {})) as {
-            subscriptions: { childAgent?: unknown; id: string }[];
+            subscriptions: { child_agent?: unknown; id: string }[];
           }
-        ).subscriptions.map(({ childAgent, id }) => ({ childAgent, id }));
+        ).subscriptions.map(({ child_agent, id }) => ({ child_agent, id }));
       const parentWatch = await watchTimer(parentTools, "Check the parent.");
       const watcherWatch = await watchTimer(watcherTools, "Check the deploy.");
       const siblingWatch = await watchTimer(
@@ -717,31 +717,31 @@ describe("agent invocation identity and concurrency", () => {
         "Check the logs.",
       );
       const watcherAgent = {
-        conversationId: watcher.childConversationId,
+        conversation_id: watcher.childConversationId,
         name: "watcher",
       };
       const siblingAgent = {
-        conversationId: sibling.childConversationId,
+        conversation_id: sibling.childConversationId,
         name: "sibling",
       };
       const helperAgent = {
-        conversationId: helper.childConversationId,
+        conversation_id: helper.childConversationId,
         name: "helper",
       };
 
       // The parent sees its own watch and the watch of each child agent
       // below it, with the child agent that owns it.
       await expect(owners(parentTools)).resolves.toEqual([
-        { childAgent: undefined, id: parentWatch },
-        { childAgent: watcherAgent, id: watcherWatch },
-        { childAgent: siblingAgent, id: siblingWatch },
-        { childAgent: helperAgent, id: helperWatch },
+        { child_agent: undefined, id: parentWatch },
+        { child_agent: watcherAgent, id: watcherWatch },
+        { child_agent: siblingAgent, id: siblingWatch },
+        { child_agent: helperAgent, id: helperWatch },
       ]);
       // A child agent sees its own watches and those of its child agents,
       // never those of its parent or its sibling.
       await expect(owners(watcherTools)).resolves.toEqual([
-        { childAgent: undefined, id: watcherWatch },
-        { childAgent: helperAgent, id: helperWatch },
+        { child_agent: undefined, id: watcherWatch },
+        { child_agent: helperAgent, id: helperWatch },
       ]);
       for (const id of [parentWatch, siblingWatch]) {
         await expect(
@@ -756,11 +756,11 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
       ).resolves.toEqual({
-        stoppedIds: [watcherWatch],
+        stopped_ids: [watcherWatch],
         watching_status: "stopped",
       });
       await expect(owners(watcherTools)).resolves.toEqual([
-        { childAgent: helperAgent, id: helperWatch },
+        { child_agent: helperAgent, id: helperWatch },
       ]);
 
       // A stop of every watch includes the watches of the child agents below,
@@ -768,17 +768,17 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         execute(watcherTools.stopWatchingResources!, {}),
       ).resolves.toEqual({
-        stoppedIds: [helperWatch],
+        stopped_ids: [helperWatch],
         watching_status: "stopped",
       });
       await expect(owners(parentTools)).resolves.toEqual([
-        { childAgent: undefined, id: parentWatch },
-        { childAgent: siblingAgent, id: siblingWatch },
+        { child_agent: undefined, id: parentWatch },
+        { child_agent: siblingAgent, id: siblingWatch },
       ]);
       await expect(
         execute(parentTools.stopWatchingResources!, {}),
       ).resolves.toEqual({
-        stoppedIds: [parentWatch, siblingWatch],
+        stopped_ids: [parentWatch, siblingWatch],
         watching_status: "stopped",
       });
       await expect(owners(parentTools)).resolves.toEqual([]);

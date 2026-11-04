@@ -62,7 +62,7 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
       [MESSAGE_POSTED_EVENT]: {
         reach: { anyOf: ["channelId"] },
         guidance:
-          "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
+          "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in user_id. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
       },
     },
     limits: {
@@ -122,7 +122,7 @@ export function requireSlackChannelMessageScope(
         : identifier;
   if (named !== channelId) {
     throw new ToolInputError(
-      "A Slack channel-message automation can watch only the channel where it posts. Leave out the channelId filter, or create the automation in the channel to watch.",
+      "A Slack channel-message automation can watch only the channel where it posts. Leave out the channel_id filter, or create the automation in the channel to watch.",
     );
   }
   return {

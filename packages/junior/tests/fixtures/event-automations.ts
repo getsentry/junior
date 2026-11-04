@@ -110,7 +110,7 @@ export async function createTask(
         namespace: "github",
         label: "GitHub PR getsentry/junior#1174",
         events,
-        match: { repo: "getsentry/junior", pullRequest: 1174 },
+        match: { repo: "getsentry/junior", pull_request: 1174 },
       },
     },
     toolCallId ?? instruction,

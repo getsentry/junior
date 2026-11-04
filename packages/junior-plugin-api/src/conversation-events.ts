@@ -127,6 +127,8 @@ export interface PluginConversationEventCostDay {
 export interface PluginConversationEventRecord {
   content: Record<string, unknown>;
   createdAt: string;
+  /** Turn that emitted the event. Events from outside a Turn have none. */
+  turnId?: string;
   version: number;
 }
 

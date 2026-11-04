@@ -403,9 +403,9 @@ describe("event delivery", () => {
       expect(work?.messages[0]?.input.text).toContain(
         "please add regression coverage",
       );
-      expect(work?.messages[0]?.input.text).toContain('"commentId": 404');
+      expect(work?.messages[0]?.input.text).toContain('"comment_id": 404');
       expect(work?.messages[0]?.input.text).toContain(
-        '"commentKind": "conversation"',
+        '"comment_kind": "conversation"',
       );
       expect(work?.messages[0]?.input.text).toContain("Additional guidance:");
       expect(work?.messages[0]?.input.text).toContain(

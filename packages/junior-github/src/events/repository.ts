@@ -52,8 +52,8 @@ export function gitHubRepositorySubscribable(input: {
   return {
     ...gitHubRepositoryResource(input),
     match: { repo: gitHubRepoDataSchema.parse(input.repo) },
-    suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
-    supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+    suggested_events: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+    supported_events: [...GITHUB_REPOSITORY_EVENTS],
     type: "repository",
   };
 }

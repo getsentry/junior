@@ -697,6 +697,15 @@ test("keeps the message in view while earlier history and late content load", as
     });
   });
 
+  // A scroll event fires on the next frame, before its animation frame
+  // callbacks. The transcript records the reader's place there, so wait for it
+  // before the layout changes. Otherwise the place it records already
+  // includes the change.
+  const scrollEventHandled = () =>
+    page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+
   await page.goto(`${dashboard.baseURL}/conversations/long-history`);
   const transcript = page.getByLabel("Conversation transcript");
   const latest = transcript.getByText("Transcript message 79 ");
@@ -712,6 +721,7 @@ test("keeps the message in view while earlier history and late content load", as
   await transcript.evaluate((element) => {
     element.scrollTop = 160;
   });
+  await scrollEventHandled();
   const reading = transcript.getByText("Transcript message 43 ");
   await expect(reading).toBeInViewport({ ratio: 1 });
   releaseEarlierPage?.();
@@ -720,6 +730,28 @@ test("keeps the message in view while earlier history and late content load", as
   await expect(
     transcript.getByText("Transcript message 39 "),
   ).not.toBeInViewport();
+
+  // Rows keep their real size while the reader scrolls up through them, so
+  // the transcript never corrects the reader's own scroll. On phones, such
+  // corrections make the transcript jump.
+  await transcript.evaluate((element) => {
+    const scrollTo = element.scrollTo.bind(element);
+    element.dataset.scrollCorrections = "0";
+    element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
+      element.dataset.scrollCorrections = String(
+        Number(element.dataset.scrollCorrections) + 1,
+      );
+      scrollTo(...args);
+    };
+  });
+  await transcript.hover();
+  for (let step = 0; step < 8; step += 1) {
+    await page.mouse.wheel(0, -150);
+  }
+  await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();
+  await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+  await transcript.getByText("Transcript message 43 ").scrollIntoViewIfNeeded();
+  await scrollEventHandled();
 
   // Content that grows above the reader, such as an image that loads late,
   // must not push the message they are reading out of view.

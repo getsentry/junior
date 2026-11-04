@@ -1,6 +1,7 @@
 import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
+import { vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createFauxCore,
@@ -9,6 +10,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
@@ -22,6 +24,7 @@ import type {
 } from "@/chat/task-execution/queue";
 import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+  CONVERSATION_WORK_LEASE_TTL_MS,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -463,32 +466,77 @@ export async function createConversationWorkHarness(
   const queue = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const conversationStore = getConversationStore();
+  let killNextRun: (() => void) | undefined;
   const work = createConversationWork({
-    agentRunner,
+    agentRunner: {
+      run: async (run) => {
+        const kill = killNextRun;
+        if (!kill) return await agentRunner.run(run);
+        killNextRun = undefined;
+        kill();
+        // A dead process never returns.
+        return await new Promise<never>(() => {});
+      },
+    },
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
     ...(options.services ? { services: options.services } : undefined),
     state,
   });
+  const process = async (
+    message: ConversationQueueMessage,
+    processOptions: { softYieldAfterMs?: number } = {},
+  ) =>
+    await processConversationQueueMessage(message, {
+      conversationStore,
+      queue,
+      run: work.run,
+      state,
+      ...processOptions,
+    });
   return {
     adapter,
-    process: async (
-      message: ConversationQueueMessage,
-      processOptions: { softYieldAfterMs?: number } = {},
-    ) =>
-      await processConversationQueueMessage(message, {
-        conversationStore,
-        queue,
-        run: work.run,
-        state,
-        ...processOptions,
-      }),
+    process,
+    /**
+     * Injected fault: kill the worker process while the agent runs, as a
+     * function timeout, OOM, or deploy does. The worker keeps its lease, runs
+     * no failure path, and never checks in again. Fake `setInterval` first,
+     * so no timer of the dead worker fires.
+     */
+    killWorker: async (message: ConversationQueueMessage) => {
+      if (!vi.isFakeTimers()) {
+        throw new Error("killWorker needs fake setInterval");
+      }
+      const killed = new Promise<void>((resolve) => {
+        killNextRun = resolve;
+      });
+      const processed = process(message);
+      await Promise.race([
+        killed,
+        processed.then((result) => {
+          throw new Error(
+            `Worker ended before the agent ran: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+    },
     queue,
     run: work.run,
     runtime: work.runtime,
     state,
   };
+}
+
+/**
+ * Let every held lease expire, then run the production heartbeat. Use it after
+ * `killWorker` to recover the dead worker's work.
+ */
+export async function runHeartbeatAfterLeasesExpire(
+  queue: ConversationWorkQueue,
+): Promise<void> {
+  vi.setSystemTime(Date.now() + CONVERSATION_WORK_LEASE_TTL_MS + 1);
+  await runHeartbeat({ conversationWorkQueue: queue, nowMs: Date.now() });
 }
 
 /**

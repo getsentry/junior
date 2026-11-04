@@ -67,8 +67,8 @@ export function gitHubIssueSubscribable(input: {
       repo: gitHubRepoDataSchema.parse(input.repo),
       issue: input.number,
     },
-    suggestedEvents: GITHUB_ISSUE_SUGGESTED_EVENTS,
-    supportedEvents: GITHUB_ISSUE_EVENTS,
+    suggested_events: GITHUB_ISSUE_SUGGESTED_EVENTS,
+    supported_events: GITHUB_ISSUE_EVENTS,
     type: "issue",
   };
 }

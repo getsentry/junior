@@ -53,4 +53,21 @@ describe("sanitizeRecordedEvents", () => {
       text: "- user_name: Person 2\n",
     });
   });
+
+  it("replaces web Actor ids, which are User ids, in fields and text", () => {
+    const userId = "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f";
+    const [message] = sanitizeRecordedEvents([
+      row("message", {
+        meta: { author: { userId } },
+        provenance: { actor: { platform: "web", userId } },
+        text: `- user_id: ${userId}\n`,
+      }),
+    ]);
+
+    expect(message?.payload).toEqual({
+      meta: { author: { userId: "web-user1" } },
+      provenance: { actor: { platform: "web", userId: "web-user1" } },
+      text: "- user_id: web-user1\n",
+    });
+  });
 });

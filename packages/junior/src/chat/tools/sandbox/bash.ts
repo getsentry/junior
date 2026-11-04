@@ -23,7 +23,7 @@ export function createBashTool() {
         .min(1)
         .describe("Optional working directory for this command only.")
         .optional(),
-      timeoutMs: z.coerce
+      timeout_ms: z.coerce
         .number()
         .int()
         .min(1000)

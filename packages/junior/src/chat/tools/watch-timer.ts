@@ -17,7 +17,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
       "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
     inputSchema: z
       .object({
-        afterMs: z
+        after_ms: z
           .number()
           .int()
           .positive()
@@ -31,7 +31,9 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
           .describe("What to do when the timer fires."),
       })
       .strict(),
-    outputSchema: z.object({ id: z.string(), firesAtMs: z.number() }).strict(),
+    outputSchema: z
+      .object({ id: z.string(), fires_at: z.string().datetime() })
+      .strict(),
     async execute(input, options) {
       if (!options.toolCallId)
         throw new Error("Timer creation requires a tool-call identity");
@@ -41,12 +43,16 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
           ? context.actor.userId
           : undefined;
       const watch = await createTimerWatch({
-        ...input,
+        afterMs: input.after_ms,
+        intent: input.intent,
         conversationId: context.conversationId,
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
       });
-      return { id: watch.id, firesAtMs: watch.firesAtMs! };
+      return {
+        id: watch.id,
+        fires_at: new Date(watch.firesAtMs!).toISOString(),
+      };
     },
   });
 }

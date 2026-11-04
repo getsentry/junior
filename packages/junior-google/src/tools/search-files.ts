@@ -30,7 +30,7 @@ const inputSchema = z
       .describe(
         "File types to find: document (Docs), spreadsheet (Sheets), presentation (Slides). Omit to find all three.",
       ),
-    maxResults: z.number().int().min(1).max(50).default(10),
+    max_results: z.number().int().min(1).max(50).default(10),
   })
   .strict();
 
@@ -38,8 +38,8 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("searchGoogleFiles"),
   files: z.array(
     z.object({
-      fileId: z.string(),
-      modifiedTime: z.string().optional(),
+      file_id: z.string(),
+      modified_at: z.string().optional(),
       title: z.string(),
       type: z.enum(GOOGLE_FILE_TYPES),
       url: z.string().optional(),
@@ -98,7 +98,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
           fields:
             "files(id,mimeType,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
           includeItemsFromAllDrives: "true",
-          pageSize: String(input.maxResults),
+          pageSize: String(input.max_results),
           q: `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)}`,
           supportsAllDrives: "true",
         },
@@ -116,7 +116,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
           return type
             ? [
                 {
-                  fileId: file.id,
+                  file_id: file.id,
                   ...fileOutputFields(file),
                   title: file.name,
                   type,

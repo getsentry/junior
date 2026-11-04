@@ -6,7 +6,6 @@ import {
   CircleX,
   GitMerge,
   GitPullRequest,
-  Globe2,
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
@@ -72,35 +71,24 @@ export function PendingAuthorization(props: {
   );
 }
 
-/** Show whether the selected conversation is public or private. */
+/**
+ * Mark a private conversation with a lock icon. Public is the default, so it
+ * gets no marker, which keeps the title bar short.
+ */
 export function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
-  if (!props.visibility) return null;
-  const isPublic = props.visibility === "public";
-  const Icon = isPublic ? Globe2 : LockKeyhole;
-  const shortLabel = isPublic ? "Public" : "Private";
-  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
-  const detail = isPublic
-    ? "Anyone in this workspace can see this transcript."
-    : "Only members of this conversation can see this transcript.";
+  if (props.visibility !== "private") return null;
+  const label =
+    "Private conversation. Only members of this conversation can see this transcript.";
   return (
     <span
-      className={
-        isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-      }
+      className="inline-flex items-center text-dashboard-text-muted"
       role="note"
-      title={`${fullLabel}. ${detail}`}
+      title={label}
     >
-      <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span aria-hidden="true" className="truncate">
-        {shortLabel}
-      </span>
-      <span className="sr-only">
-        {fullLabel}. {detail}
-      </span>
+      <LockKeyhole aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="sr-only">{label}</span>
     </span>
   );
 }
@@ -568,6 +556,37 @@ export function conversationLocation(
   );
 }
 
+/**
+ * Show the estimated cost of a conversation with its breakdown tooltip.
+ * Returns null until there is a cost or a live run to show.
+ */
+export function conversationCost(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+  tooltipPlacement?: "above" | "below",
+): ReactNode {
+  if (!conversation) return null;
+  const costSummary = summarizeCost(
+    detail?.cumulativeUsage ?? conversation.cumulativeUsage,
+  );
+  const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
+  const live = (detail?.status ?? conversation.status) === "active";
+  if (!costSummary && !auxiliaryCosts && !live) return null;
+  return (
+    <CostMetric
+      auxiliaryCosts={auxiliaryCosts}
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      live={live}
+      liveModelId={liveModelId(detail)}
+      modelUsage={detail?.modelUsage}
+      summary={costSummary}
+      tooltipPlacement={tooltipPlacement}
+    />
+  );
+}
+
 function conversationStatItems(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -580,7 +599,6 @@ function conversationStatItems(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const costSummary = summarizeCost(usage);
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -589,8 +607,9 @@ function conversationStatItems(props: {
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
   const location = conversationLocation(props.conversation, props.detail);
+  const cost = conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
-    // The desktop title bar shows the location. Mobile hides that bar.
+    // The desktop title bar shows the location and cost. Mobile hides that bar.
     location
       ? {
           content: location,
@@ -660,26 +679,12 @@ function conversationStatItems(props: {
           label: "Tokens",
         }
       : undefined,
-    costSummary ||
-    props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts ||
-    live
+    cost
       ? {
-          content: (
-            <CostMetric
-              auxiliaryCosts={
-                props.detail?.auxiliaryCosts ??
-                props.conversation.auxiliaryCosts
-              }
-              childAgentTotals={childAgentTotals}
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={costSummary}
-            />
-          ),
+          content: cost,
           key: "cost",
           label: "Cost",
+          mobileOnly: true,
         }
       : undefined,
     childAgentTotals
