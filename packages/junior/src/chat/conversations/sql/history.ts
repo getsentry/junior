@@ -35,6 +35,7 @@ import {
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
+import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -242,6 +243,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           );
         }
         await this.executor.db().insert(juniorConversationEvents).values(rows);
+        await touchConversationDetail(this.executor.db(), [conversationId]);
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(
@@ -329,6 +331,7 @@ class SqlConversationEventStore implements ConversationEventStore {
               parsed,
             ),
           );
+        await touchConversationDetail(this.executor.db(), [conversationId]);
         return { status: "replaced" as const, historyVersion };
       },
     );

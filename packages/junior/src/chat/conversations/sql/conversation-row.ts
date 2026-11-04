@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
+import { nextDetailVersion } from "./detail-version";
 
 /**
  * Establish the conversation metadata row on first contact for content writes
@@ -41,6 +42,7 @@ export async function ensureConversationRow(
       lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
       updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
       transcriptPurgedAt: null,
+      detailVersion: nextDetailVersion,
     },
   });
 }

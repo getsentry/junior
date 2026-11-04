@@ -89,6 +89,10 @@ export const juniorConversations = pgTable(
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
+    // Bumped by every write that changes this Conversation's detail report.
+    // Detail reads compare it before they build the report. The
+    // `junior/touch-conversation-detail` lint rule enforces the bump.
+    detailVersion: integer("detail_version").notNull().default(0),
     // Keep the legacy column in the schema. Runtime code must not read or write it.
     legacyArchivedAt: timestamptz("archived_at"),
   },

@@ -1,6 +1,7 @@
 import { and, desc, eq, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { conversationBriefSchema, type ConversationBrief } from "./schema";
 
@@ -114,6 +115,7 @@ export async function appendConversationBrief(
     if (!row) {
       throw new Error("Brief insert conflicted after the Turn check");
     }
+    await touchConversationDetail(tx, [input.conversationId]);
     return { inserted: true, value: briefVersionFromRow(row) };
   });
 }

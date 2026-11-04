@@ -5,6 +5,7 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
+import { touchConversationDetail } from "./detail-version";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -71,6 +72,10 @@ export async function recordConversationParticipant(
         ...(args.restoreArchive ? { archivedAt: null } : undefined),
       },
     });
+  await touchConversationDetail(executor.db(), [
+    args.conversationId,
+    rootConversationId,
+  ]);
 }
 
 /** Find which of the supplied root conversations include the linked user. */

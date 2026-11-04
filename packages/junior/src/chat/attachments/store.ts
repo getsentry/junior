@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import type { AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -126,6 +127,7 @@ async function rejectPurgedAttachmentWrite(args: {
     .update(juniorAttachments)
     .set({ deleteRequestedAt: args.now })
     .where(eq(juniorAttachments.id, args.id));
+  await touchConversationDetail(args.db.db(), [args.conversationId]);
   await bestEffortDelete(args.storage, args.storageKey);
   throw purgedConversationError(args.conversationId);
 }
@@ -247,6 +249,7 @@ export async function storeAttachment(args: {
         ),
       )
       .returning({ id: juniorAttachments.id });
+    await touchConversationDetail(args.db.db(), [args.conversationId]);
     if (revived.length > 0) {
       if (await isConversationPurged(args.db, args.conversationId)) {
         await rejectPurgedAttachmentWrite({
@@ -309,6 +312,7 @@ export async function storeAttachment(args: {
     await bestEffortDelete(args.storage, storageKey);
     throw error;
   }
+  await touchConversationDetail(args.db.db(), [args.conversationId]);
   if (inserted.length > 0) {
     if (await isConversationPurged(args.db, args.conversationId)) {
       await rejectPurgedAttachmentWrite({
@@ -366,6 +370,7 @@ export async function storeAttachment(args: {
       ),
     )
     .returning({ id: juniorAttachments.id });
+  await touchConversationDetail(args.db.db(), [args.conversationId]);
   if (revived.length > 0) {
     if (await isConversationPurged(args.db, args.conversationId)) {
       await rejectPurgedAttachmentWrite({
@@ -486,6 +491,7 @@ export async function requestAttachmentDeletion(
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
+  await touchConversationDetail(db.db(), conversationIds);
 }
 
 /**
@@ -561,7 +567,11 @@ export async function collectAttachmentGarbage(args: {
       ),
     )
     .returning({
-      id: juniorAttachments.id,
+      conversationId: juniorAttachments.conversationId,
     });
+  await touchConversationDetail(
+    args.db.db(),
+    removed.map((row) => row.conversationId),
+  );
   return { deleted: removed.length };
 }

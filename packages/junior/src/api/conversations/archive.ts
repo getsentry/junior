@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
   juniorConversationParticipants,
@@ -57,7 +58,11 @@ async function setViewerArchive(args: {
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
-      return { archivedAt: archivedAt.toISOString(), status: "updated" as const };
+      await touchConversationDetail(db, [args.rootConversationId]);
+      return {
+        archivedAt: archivedAt.toISOString(),
+        status: "updated" as const,
+      };
     }
 
     await db
@@ -73,6 +78,7 @@ async function setViewerArchive(args: {
           isNotNull(juniorConversationParticipants.archivedAt),
         ),
       );
+    await touchConversationDetail(db, [args.rootConversationId]);
     return { archivedAt: null, status: "updated" as const };
   });
 }

@@ -3,6 +3,7 @@ import type { MessageAttachment } from "@/chat/attachments/input";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 
 /** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
@@ -22,6 +23,7 @@ export async function recordSlackAttachment(args: {
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
+  await touchConversationDetail(args.db.db(), [args.conversationId]);
 }
 
 /** Read a saved vision summary for one live attachment. */

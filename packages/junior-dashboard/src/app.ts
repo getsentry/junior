@@ -508,7 +508,11 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
-  app.use("/api/conversations/:conversationId", revalidateConversation);
+  // Core detail reads set a version ETag before they build the report. Mock
+  // reporting has no stored version, so it revalidates on content instead.
+  if (options.mockConversations) {
+    app.use("/api/conversations/:conversationId", revalidateConversation);
+  }
 
   for (const route of authenticatedRoutes) {
     const handler = (c: Context<{ Variables: Variables }>) => {
