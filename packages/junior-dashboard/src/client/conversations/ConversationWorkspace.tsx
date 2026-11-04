@@ -10,11 +10,11 @@ import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
+import { useCreateConversation } from "./queries";
 import {
-  useCreateConversation,
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,

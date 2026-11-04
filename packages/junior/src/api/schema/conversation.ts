@@ -58,6 +58,8 @@ export const conversationAttachmentParamsSchema = z
 export const conversationDetailQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(1_000).default(500),
+    /** Also return `unreadPage` when the detail has an `unreadCursor`. */
+    unreadPage: z.stringbool().optional(),
   })
   .strict();
 
@@ -766,6 +768,18 @@ export type ConversationAgentTreeNode = z.infer<
   typeof conversationAgentTreeNodeSchema
 >;
 
+export const conversationEventPageSchema = z
+  .object({
+    events: z.array(conversationReportEventSchema),
+    eventHistory: conversationEventHistorySchema,
+    previousCursor: z.string().min(1).optional(),
+    /** Present on `after` and `around` pages when newer events follow. */
+    nextCursor: z.string().min(1).optional(),
+    generatedAt: z.string(),
+  })
+  .strict()
+  .superRefine(validateConversationEvents);
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**
@@ -782,6 +796,11 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Present only when unread events start before `events`.
      */
     unreadCursor: z.string().min(1).optional(),
+    /**
+     * The `around` page of `unreadCursor`, when the request asks for it. A
+     * reader who opens at the read position needs no second request.
+     */
+    unreadPage: conversationEventPageSchema.optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
@@ -809,18 +828,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
     sourceTask: conversationSourceTaskSchema.optional(),
-  })
-  .strict()
-  .superRefine(validateConversationEvents);
-
-export const conversationEventPageSchema = z
-  .object({
-    events: z.array(conversationReportEventSchema),
-    eventHistory: conversationEventHistorySchema,
-    previousCursor: z.string().min(1).optional(),
-    /** Present on `after` and `around` pages when newer events follow. */
-    nextCursor: z.string().min(1).optional(),
-    generatedAt: z.string(),
   })
   .strict()
   .superRefine(validateConversationEvents);

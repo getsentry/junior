@@ -11,9 +11,11 @@ import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
 import { throwApiError } from "../http";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventPageSchema,
   type ConversationEventPage,
+  type ConversationReportEvent,
 } from "../schema/conversation";
 
 /** Read one bounded page of reporting events before, after, or around a signed cursor. */
@@ -69,21 +71,43 @@ export async function readConversationEvents(
               ...pageArgs,
               beforeSeq: cursor.seq,
             });
+  return conversationEventPageSchema.parse(
+    await conversationEventPageReport(getSqlExecutor(), {
+      conversationId,
+      eventHistory: conversationEventHistory({
+        canExposePayload,
+        ...(transcriptPurgedAtMs === undefined
+          ? undefined
+          : { transcriptPurgedAtMs }),
+      }),
+      page,
+    }),
+  );
+}
+
+/** Attach mentions and signed cursors to one bounded page of events. */
+export async function conversationEventPageReport(
+  executor: JuniorSqlDatabase,
+  args: {
+    conversationId: string;
+    eventHistory: ConversationEventPage["eventHistory"];
+    page: {
+      events: ConversationReportEvent[];
+      nextSeq?: number;
+      previousSeq?: number;
+    };
+  },
+): Promise<ConversationEventPage> {
+  const { conversationId, page } = args;
   const cursorAt = (seq: number) =>
     encodeConversationCursor({ conversationId, seq });
-
-  return conversationEventPageSchema.parse({
+  return {
     events: (
-      await attachConversationMentions(getSqlExecutor(), conversationId, {
+      await attachConversationMentions(executor, conversationId, {
         events: page.events,
       })
     ).events,
-    eventHistory: conversationEventHistory({
-      canExposePayload,
-      ...(transcriptPurgedAtMs === undefined
-        ? undefined
-        : { transcriptPurgedAtMs }),
-    }),
+    eventHistory: args.eventHistory,
     ...(page.previousSeq === undefined
       ? undefined
       : { previousCursor: cursorAt(page.previousSeq) }),
@@ -91,5 +115,5 @@ export async function readConversationEvents(
       ? undefined
       : { nextCursor: cursorAt(page.nextSeq) }),
     generatedAt: new Date().toISOString(),
-  });
+  };
 }

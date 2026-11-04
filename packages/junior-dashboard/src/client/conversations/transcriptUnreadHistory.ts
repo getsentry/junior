@@ -4,6 +4,8 @@
  * The detail holds the latest page of events. When the read position is
  * older than that page, the transcript starts with the page around the read
  * position instead: the last read events and the unread events after them.
+ * The first detail fetch of a visit brings that page, so it needs no second
+ * request.
  * Like earlier pages, newer pages load when the reader scrolls near them, so
  * the server reads only the pages that the reader reaches.
  *
@@ -55,8 +57,10 @@ export function useUnreadHistory(input: {
   detail: ConversationDetailReport | undefined;
   /** `unreadCursor` from the detail when the Conversation opened. */
   unreadCursor: string | undefined;
+  /** The page around `unreadCursor`, when the detail brought it. */
+  unreadPage?: ConversationEventPage;
 }): (TranscriptHistory & { isPending: boolean }) | undefined {
-  const { conversationId, detail, unreadCursor } = input;
+  const { conversationId, detail, unreadCursor, unreadPage } = input;
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -73,6 +77,15 @@ export function useUnreadHistory(input: {
     queryFn: ({ pageParam, signal }) =>
       readConversationEventsFrom(conversationId, pageParam, signal),
     initialPageParam: { around: unreadCursor ?? "" } as NewerPageParam,
+    // The page that came with the detail. Without it, the query reads it.
+    ...(unreadPage
+      ? {
+          initialData: {
+            pageParams: [{ around: unreadCursor ?? "" }],
+            pages: [unreadPage],
+          },
+        }
+      : undefined),
     getNextPageParam: (page): NewerPageParam | undefined =>
       reachesLatest(page, latestFirstSeq) || !page.nextCursor
         ? undefined

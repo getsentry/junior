@@ -173,7 +173,7 @@ test("starts and continues conversations from the dashboard", async ({
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(
-    `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
+    `**/api/conversations/${encodeURIComponent(slackConversationId)}*`,
     async (route) => {
       if (holdDetailRefresh) await detailRefreshHeld;
       // Request the full body because this test changes it.
@@ -326,7 +326,7 @@ test("hands web and external messages from queue to history without gaps", async
       json: { conversationId, generatedAt: createdAt, messages: queued },
     });
   });
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     detailReads += 1;
     await historyHeld;
     // Request the full body because this test changes it.
@@ -676,7 +676,7 @@ test("stops the active Turn and returns queued text to the composer", async ({
       },
     });
   });
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
       headers: { ...route.request().headers(), "if-none-match": "" },
     });
@@ -793,7 +793,7 @@ test("edits a queued message back into the composer", async ({
       },
     });
   });
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
       headers: { ...route.request().headers(), "if-none-match": "" },
     });

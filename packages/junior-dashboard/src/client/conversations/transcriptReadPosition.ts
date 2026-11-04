@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   conversationReadPositionSchema,
   type ConversationDetailReport,
+  type ConversationEventPage,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
 import { put } from "../http";
@@ -44,6 +45,8 @@ export type ReadPositionAtOpen = {
   unread?: TranscriptUnreadRange;
   /** Set when unread events start before the latest page. */
   unreadCursor?: string;
+  /** The page around `unreadCursor`, when the fetch brought it. */
+  unreadPage?: ConversationEventPage;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -77,8 +80,8 @@ export function readConversationStartPosition(): ConversationStartPosition {
  * The last unread row comes from the first detail fetched in this visit, so a
  * stale cache cannot hide messages that arrived while the reader was away,
  * and later polls cannot add rows that arrived after open. `unreadCursor`
- * comes from that fetch too: a cache from a visit that read to the end has
- * no cursor, even when more than a page arrived after that visit.
+ * and its page come from that fetch too: a cache from a visit that read to
+ * the end has no cursor, even when more than a page arrived after that visit.
  */
 export function useReadPositionAtOpen(
   detail: DetailAtOpen | undefined,
@@ -90,6 +93,7 @@ export function useReadPositionAtOpen(
   const [fetchedEnd, setFetchedEnd] = useState<{
     throughSeq?: number;
     unreadCursor?: string;
+    unreadPage?: ConversationEventPage;
   }>();
   const read =
     opened ??
@@ -101,6 +105,7 @@ export function useReadPositionAtOpen(
       ? {
           throughSeq: fetched.events.at(-1)?.seq,
           unreadCursor: fetched.unreadCursor,
+          unreadPage: fetched.unreadPage,
         }
       : undefined);
   if (!fetchedEnd && end) setFetchedEnd(end);
@@ -109,7 +114,9 @@ export function useReadPositionAtOpen(
       read?.lastReadSeq,
       end ? end.throughSeq : detail?.events.at(-1)?.seq,
     ),
-    ...(end?.unreadCursor ? { unreadCursor: end.unreadCursor } : undefined),
+    ...(end?.unreadCursor
+      ? { unreadCursor: end.unreadCursor, unreadPage: end.unreadPage }
+      : undefined),
   };
 }
 
@@ -117,6 +124,7 @@ type DetailAtOpen = {
   events: readonly { seq: number }[];
   readPosition?: ConversationReadPosition;
   unreadCursor?: string;
+  unreadPage?: ConversationEventPage;
 };
 
 /** Find the rows after the read position, through the last row at open. */

@@ -7,7 +7,11 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
 import { readFirstHumanMessageTexts } from "./first-message";
-import { readConversationEventPage } from "./event-page";
+import {
+  readConversationEventPage,
+  readConversationEventPageAround,
+} from "./event-page";
+import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import {
@@ -54,8 +58,11 @@ function projectConversationDetail(args: {
   participants: NonNullable<ConversationDetailReport["participants"]>;
   authors: NonNullable<ConversationDetailReport["authors"]>;
   previousSeq?: number;
+  readPosition?: ConversationDetailReport["readPosition"];
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
+  unreadAfterSeq?: number;
+  unreadPage?: ConversationDetailReport["unreadPage"];
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
   const { conversation } = args;
@@ -107,6 +114,16 @@ function projectConversationDetail(args: {
         ? undefined
         : { transcriptPurgedAtMs }),
     }),
+    ...(args.readPosition ? { readPosition: args.readPosition } : undefined),
+    ...(args.unreadAfterSeq !== undefined
+      ? {
+          unreadCursor: encodeConversationCursor({
+            conversationId,
+            seq: args.unreadAfterSeq,
+          }),
+        }
+      : undefined),
+    ...(args.unreadPage ? { unreadPage: args.unreadPage } : undefined),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
     ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
@@ -117,6 +134,7 @@ async function readConversationDetailFromSql(
   conversationId: string,
   options: {
     limit: number;
+    unreadPage?: boolean;
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
@@ -137,6 +155,7 @@ async function readConversationDetailFromSql(
     modelUsage,
     metricsByConversation,
     people,
+    readPosition,
     sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
@@ -151,6 +170,9 @@ async function readConversationDetailFromSql(
       : Promise.resolve([]),
     readConversationTreeMetricsFromSql(getDb(), [conversationId]),
     readConversationAuthors(getDb(), conversationId),
+    options.viewer
+      ? readConversationReadPosition(options.viewer, conversationId)
+      : undefined,
     readConversationSourceTask({
       conversationId,
       ...(options.viewer ? { viewer: options.viewer } : undefined),
@@ -170,23 +192,50 @@ async function readConversationDetailFromSql(
         )
       )[conversationId]
     : undefined;
+  const canExposePayload = access?.canViewPrivateContent ?? false;
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
       ? await readConversationEventPage(executor, {
-          canExposePayload: access?.canViewPrivateContent ?? false,
+          canExposePayload,
           conversationId,
           limit: options.limit,
         })
       : { events: [] };
+  // Events hold the latest page. A reader who is further behind starts from
+  // their read position instead, so they need a cursor there.
+  const firstSeq = page.events[0]?.seq;
+  const unreadAfterSeq =
+    readPosition !== undefined &&
+    page.previousSeq !== undefined &&
+    firstSeq !== undefined &&
+    readPosition.lastReadSeq + 1 < firstSeq
+      ? readPosition.lastReadSeq
+      : undefined;
   // The Brief is shown only to viewers who can see private content.
   const brief = access?.canViewPrivateContent
     ? briefVersion?.content
     : undefined;
-  const { briefMentions, events } = await attachConversationMentions(
-    executor,
-    conversationId,
-    { ...(brief ? { brief } : undefined), events: page.events },
-  );
+  const [{ briefMentions, events }, unreadPage] = await Promise.all([
+    attachConversationMentions(executor, conversationId, {
+      ...(brief ? { brief } : undefined),
+      events: page.events,
+    }),
+    // Only the first read of a visit asks for this page, not each poll.
+    options.unreadPage && unreadAfterSeq !== undefined
+      ? readConversationEventPageAround(executor, {
+          canExposePayload,
+          conversationId,
+          limit: options.limit,
+          seq: unreadAfterSeq,
+        }).then((around) =>
+          conversationEventPageReport(executor, {
+            conversationId,
+            eventHistory: conversationEventHistory({ canExposePayload }),
+            page: around,
+          }),
+        )
+      : undefined,
+  ]);
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
@@ -223,6 +272,9 @@ async function readConversationDetailFromSql(
     ...(page.previousSeq === undefined
       ? undefined
       : { previousSeq: page.previousSeq }),
+    ...(readPosition ? { readPosition } : undefined),
+    ...(unreadAfterSeq === undefined ? undefined : { unreadAfterSeq }),
+    ...(unreadPage ? { unreadPage } : undefined),
     usage: metrics?.usage ?? record.usage ?? undefined,
   });
 }
@@ -232,6 +284,8 @@ export async function readConversationDetail(
   conversationId: string,
   options: {
     limit?: number;
+    /** Also read the page around the read position. */
+    unreadPage?: boolean;
     viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {
@@ -240,33 +294,13 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const [forks, agentTree, readPosition] = await Promise.all([
+  const [forks, agentTree] = await Promise.all([
     readConversationForks(conversationId, options.viewer),
     readConversationAgentTree(conversationId, options.viewer),
-    options.viewer
-      ? readConversationReadPosition(options.viewer, conversationId)
-      : undefined,
   ]);
-  // Events hold the latest page. A reader who is further behind starts from
-  // their read position instead, so they need a cursor there.
-  const firstSeq = report.events[0]?.seq;
-  const unreadStartsEarlier =
-    readPosition !== undefined &&
-    report.previousCursor !== undefined &&
-    firstSeq !== undefined &&
-    readPosition.lastReadSeq + 1 < firstSeq;
   return conversationDetailReportSchema.parse({
     ...report,
     ...forks,
     ...(agentTree ? { agentTree } : undefined),
-    ...(readPosition ? { readPosition } : undefined),
-    ...(unreadStartsEarlier
-      ? {
-          unreadCursor: encodeConversationCursor({
-            conversationId,
-            seq: readPosition.lastReadSeq,
-          }),
-        }
-      : undefined),
   });
 }

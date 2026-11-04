@@ -12,11 +12,11 @@ import type {
   ConversationFeed,
 } from "@sentry/junior/api/schema";
 
+import { useConversationData } from "./queries";
 import {
   useArchiveConversation,
-  useConversationData,
   type PendingArchiveConversationUpdate,
-} from "./queries";
+} from "./conversationArchive";
 import { conversationIsResponding } from "./transcript";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
@@ -191,7 +191,13 @@ export function ConversationPage(props: {
   const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const detail = useConversationData(conversationId);
+  // The page keeps the start preference from when the Conversation opened.
+  const [startAtUnread] = useState(
+    () => readConversationStartPosition() === "unread",
+  );
+  const detail = useConversationData(conversationId, {
+    unreadPageAtOpen: startAtUnread,
+  });
   const memoryList = useConversationMemories(conversationId).data;
   const memoryState = useMemo<ConversationMemoryState>(
     () => ({
@@ -204,22 +210,24 @@ export function ConversationPage(props: {
   const archive = useArchiveConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
-  const startAtUnread = readConversationStartPosition() === "unread";
   const unreadHistory = useUnreadHistory({
     conversationId,
     // Cached earlier pages from a past visit would look like newer events.
     detail: detail.latest,
     unreadCursor: startAtUnread ? readAtOpen.unreadCursor : undefined,
+    unreadPage: readAtOpen.unreadPage,
   });
   // The page is keyed by Conversation, so this is the cached copy at open.
   const [cachedAtOpen] = useState(() => detail.data);
   // A reader far behind sees the events from their read position. Others
   // see the latest page and the pages before it. A cached transcript stays
-  // on screen until the unread events load, and it loads no earlier pages:
-  // they would come from before the latest page, not before the cached rows.
-  // Then the transcript opens at the "New" marker, if the reader has not moved.
+  // on screen until this visit's fetch tells where to open and the unread
+  // events load. It loads no earlier pages and shows no marker: both would
+  // come from the cached read position. Then the transcript opens at the
+  // "New" marker, if the reader has not moved.
   const holdCachedTranscript = Boolean(
-    cachedAtOpen && unreadHistory?.isPending,
+    cachedAtOpen &&
+    (unreadHistory?.isPending || (startAtUnread && !detail.fetchedAtOpen)),
   );
   const history: TranscriptHistory = holdCachedTranscript
     ? {
@@ -583,7 +591,9 @@ export function ConversationPage(props: {
                       startAtUnread={startAtUnread}
                       transcript={transcript}
                       turnContextPanel={turnContextPanel}
-                      unread={readAtOpen.unread}
+                      unread={
+                        holdCachedTranscript ? undefined : readAtOpen.unread
+                      }
                       view={view}
                     />
                   </ConversationMemoryContext>

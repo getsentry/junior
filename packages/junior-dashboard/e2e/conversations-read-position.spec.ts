@@ -15,7 +15,11 @@ async function scrollDownTo(transcript: Locator, row: Locator) {
   }).toPass();
 }
 
-/** Mock one completed Conversation whose server read position moves forward. */
+/**
+ * Mock one completed Conversation whose server read position moves forward.
+ * Its detail never brings `unreadPage`, so the page around the read position
+ * comes from the events API, like when the first fetch did not ask for it.
+ */
 async function mockReadPositionConversation(
   page: Page,
   input: { eventCount: number; lastReadSeq: number },
@@ -154,7 +158,7 @@ async function mockReadPositionConversation(
       });
     },
   );
-  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+  await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     await state.detailGate;
     const firstSeq = state.pagedDetail
       ? Math.max(0, state.eventCount - PAGE_SIZE)
@@ -412,6 +416,13 @@ test("opens far behind at the read position and loads newer pages after it", asy
         seq,
       };
     });
+  const aroundPage = (seq: number) => ({
+    eventHistory: { status: "available" },
+    events: events(seq - 19, seq + 20),
+    generatedAt,
+    previousCursor: String(seq - 19),
+    nextCursor: String(seq + 20),
+  });
   const cursors: string[] = [];
   let releaseNewerPage = () => {};
   const newerPageGate = new Promise<void>((resolve) => {
@@ -454,16 +465,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
             : `before-${before}`,
       );
       if (around) {
-        const to = Number(around) + 20;
-        await route.fulfill({
-          json: {
-            eventHistory: { status: "available" },
-            events: events(Number(around) - 19, to),
-            generatedAt,
-            previousCursor: String(Number(around) - 19),
-            nextCursor: String(to),
-          },
-        });
+        await route.fulfill({ json: aroundPage(Number(around)) });
         return;
       }
       if (after) {
@@ -493,28 +495,42 @@ test("opens far behind at the read position and loads newer pages after it", asy
       });
     },
   );
-  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
-    await route.fulfill({
-      json: {
-        ...conversation,
-        eventHistory: { status: "available" },
-        events: events(latestSeq - 39, latestSeq),
-        generatedAt,
-        previousCursor: String(latestSeq - 39),
-        readPosition: { lastReadSeq: 20 },
-        unreadCursor: "20",
-      },
-    });
-  });
+  const detailRequests: string[] = [];
+  await page.route(
+    (url) => url.pathname === `/api/conversations/${conversationId}`,
+    async (route) => {
+      const { search } = new URL(route.request().url());
+      detailRequests.push(search);
+      const unreadPage = search.includes("unreadPage");
+      await route.fulfill({
+        json: {
+          ...conversation,
+          eventHistory: { status: "available" },
+          events: events(latestSeq - 39, latestSeq),
+          generatedAt,
+          previousCursor: String(latestSeq - 39),
+          readPosition: { lastReadSeq: 20 },
+          unreadCursor: "20",
+          ...(unreadPage ? { unreadPage: aroundPage(20) } : undefined),
+        },
+      });
+    },
+  );
 
-  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
+  // Open from the list, so the page makes the first detail fetch.
+  await page.goto(`${dashboard.baseURL}/conversations`);
+  await page
+    .getByRole("link", { name: /Far behind/ })
+    .first()
+    .click();
   const transcript = page.getByLabel("Conversation transcript");
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
-  // One page brings the last read events and the unread events after them.
-  expect(cursors[0]).toBe("around-20");
+  // The first detail fetch brings the page around the read position: the
+  // last read events and the unread events after them. Polls do not ask.
+  expect(detailRequests[0]).toBe("?unreadPage=true");
 
   // The latest page waits below until the newer pages reach it, so the
   // transcript has no gap. Newer pages load only when the reader scrolls to
@@ -523,7 +539,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
   await expect(
     transcript.getByText(`Transcript message ${latestSeq} `),
   ).toHaveCount(0);
-  expect(cursors).toEqual(["around-20"]);
+  expect(cursors).toEqual([]);
 
   // The read events before the marker come in the same page, so no earlier
   // page loads above the reader.
@@ -553,4 +569,6 @@ test("opens far behind at the read position and loads newer pages after it", asy
   await expect(transcript.getByText("Transcript message 101 ")).toBeAttached();
   await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
   expect(cursors).not.toContain("after-100");
+  expect(detailRequests.length).toBeGreaterThan(1);
+  expect(detailRequests.slice(1)).not.toContain("?unreadPage=true");
 });

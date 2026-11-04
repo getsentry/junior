@@ -1,9 +1,8 @@
-import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
   useMutation,
-  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -12,13 +11,11 @@ import type {
   ConversationEventPage,
   ConversationFeed,
   ConversationPendingMessagesReport,
-  ConversationSummaryReport,
   InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
   webMessageId,
-  archiveConversationResponseSchema,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -32,7 +29,6 @@ import {
   DashboardApiError,
   del,
   fetchDashboardJson,
-  patch,
   post,
   readDashboardResponse,
 } from "../http";
@@ -66,78 +62,13 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "detail"] as const;
 }
 
-function archivedConversationQueryKey(conversationId: string) {
-  return ["dashboard", "archived-conversation", conversationId] as const;
-}
-
-/** Read active/archived status from a dashboard conversations query key. */
-function conversationFeedStatus(
-  queryKey: readonly unknown[],
-): "active" | "archived" | undefined {
-  const status = queryKey[queryKey.length - 1];
-  return status === "active" || status === "archived" ? status : undefined;
-}
-
-type ArchivedConversationSnapshot = {
-  conversation: ConversationSummaryReport;
-  feedQueryHashes: string[];
-};
-
-const archiveConversationMutationKey = [
-  "dashboard",
-  "archive-conversation",
-] as const;
-
-type ArchiveConversationVariables = {
-  archived: boolean;
-  lastSeenAt: string;
-};
-
-type ArchiveConversationMutationContext = {
-  archivedQueryKey: ReturnType<typeof archivedConversationQueryKey>;
-  archivedSnapshot?: ArchivedConversationSnapshot;
-  detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
-  previousArchivedSnapshot?: ArchivedConversationSnapshot;
-  previousDetail?: ConversationDetailReport;
-  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
-};
-
-export type PendingArchiveConversationUpdate = {
-  archived: boolean;
-  conversation?: ConversationSummaryReport;
-  conversationId: string;
-};
-
-/** Read pending archive state so refetches cannot visually replace optimistic UI. */
-export function usePendingArchiveConversationUpdates() {
-  return useMutationState({
-    filters: {
-      mutationKey: archiveConversationMutationKey,
-      status: "pending",
-    },
-    select: (mutation) => {
-      const variables = mutation.state
-        .variables as ArchiveConversationVariables;
-      const context = mutation.state.context as
-        | ArchiveConversationMutationContext
-        | undefined;
-      const conversationId = mutation.options.mutationKey?.[2];
-      return {
-        archived: variables.archived,
-        conversation: context?.archivedSnapshot?.conversation,
-        conversationId:
-          typeof conversationId === "string" ? conversationId : "",
-      } satisfies PendingArchiveConversationUpdate;
-    },
-  });
-}
-
 // Right after a send, Junior usually reads the message within a few seconds.
 // Poll fast for that window only, then fall back to the normal live interval.
 const FAST_POLL_INTERVAL_MS = 500;
 const FAST_POLL_WINDOW_MS = 6_000;
 
-type ConversationSnapshot = ConversationDetailReport & {
+/** The cached detail with its mailbox and HTTP validator. */
+export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
 };
@@ -147,9 +78,15 @@ async function readConversationSnapshot(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
+  unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
   const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal, previous);
+  const detail = await readConversationData(
+    conversationId,
+    signal,
+    previous,
+    unreadPage,
+  );
   return { ...detail, mailbox };
 }
 
@@ -160,8 +97,13 @@ export function conversationDetailQueryOptions(
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
     fastPollUntilMs?: number;
+    /** Also read the page around the read position. */
+    unreadPage?: boolean;
   },
 ) {
+  // `unreadPage` adds a page to one fetch. The detail in the cache is the
+  // same, so it stays out of the key.
+  // oxlint-disable-next-line @tanstack/query/exhaustive-deps
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
@@ -172,6 +114,7 @@ export function conversationDetailQueryOptions(
         client.getQueryData<ConversationSnapshot>(
           conversationDetailQueryKey(conversationId),
         ),
+        options?.unreadPage,
       ),
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
@@ -512,170 +455,19 @@ export function useStopConversationTurn(conversationId: string) {
   });
 }
 
-/** Archive or restore one conversation with an immediate reversible cache update. */
-export function useArchiveConversation(
-  conversationId: string,
+/** Fetch a bounded conversation snapshot and older pages on demand. */
+export function useConversationData(
+  conversationId: string | undefined,
   options?: {
-    onError?(): void;
-    onSuccess?(archivedAt: string | null): void;
+    /**
+     * Ask the first fetch of this visit for the page around the read
+     * position. Polls do not ask, so the server reads that page once.
+     */
+    unreadPageAtOpen?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: [...archiveConversationMutationKey, conversationId],
-    mutationFn: (args: ArchiveConversationVariables) =>
-      patch(
-        archiveConversationResponseSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
-        args,
-      ),
-    onMutate: async (args) => {
-      const conversationQueries = { queryKey: ["dashboard", "conversations"] };
-      const detailQueryKey = conversationDetailQueryKey(conversationId);
-      const archivedQueryKey = archivedConversationQueryKey(conversationId);
-      await Promise.all([
-        queryClient.cancelQueries(conversationQueries),
-        queryClient.cancelQueries({ queryKey: detailQueryKey }),
-      ]);
-      const previousFeeds =
-        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
-      const previousDetail =
-        queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
-      const previousArchivedSnapshot =
-        queryClient.getQueryData<ArchivedConversationSnapshot>(
-          archivedQueryKey,
-        );
-      const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Snapshot from any loaded feed, including archived-only fixtures that
-      // were never archived through this client session.
-      const archivedSnapshot =
-        buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
-        previousArchivedSnapshot;
-
-      previousFeeds.forEach(([queryKey, feed]) => {
-        if (!feed) return;
-        const conversationExists = feed.conversations.some(
-          (conversation) => conversation.conversationId === conversationId,
-        );
-        const feedStatus = conversationFeedStatus(queryKey);
-        const shouldRestore =
-          !args.archived &&
-          !conversationExists &&
-          Boolean(archivedSnapshot) &&
-          feedStatus !== "archived";
-        const conversations = shouldRestore
-          ? [
-              ...feed.conversations,
-              { ...archivedSnapshot!.conversation, archivedAt: null },
-            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, archivedAt }
-                : conversation,
-            );
-        queryClient.setQueryData<ConversationFeed>(queryKey, {
-          ...feed,
-          conversations,
-        });
-      });
-      queryClient.setQueryData<ConversationSnapshot>(
-        detailQueryKey,
-        (detail) =>
-          detail ? { ...detail, archivedAt, detailEtag: undefined } : detail,
-      );
-      if (archivedSnapshot) {
-        queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
-      }
-      return {
-        archivedQueryKey,
-        archivedSnapshot,
-        detailQueryKey,
-        previousArchivedSnapshot,
-        previousDetail,
-        previousFeeds,
-      } satisfies ArchiveConversationMutationContext;
-    },
-    onError: (_error, _args, context) => {
-      context?.previousFeeds.forEach(([queryKey, feed]) => {
-        queryClient.setQueryData(queryKey, feed);
-      });
-      if (context) {
-        queryClient.setQueryData(
-          context.detailQueryKey,
-          context.previousDetail,
-        );
-        if (context.previousArchivedSnapshot) {
-          queryClient.setQueryData(
-            context.archivedQueryKey,
-            context.previousArchivedSnapshot,
-          );
-        } else {
-          queryClient.removeQueries({
-            exact: true,
-            queryKey: context.archivedQueryKey,
-          });
-        }
-      }
-      options?.onError?.();
-    },
-    onSuccess: (result, args) => {
-      queryClient.setQueryData<ConversationSnapshot>(
-        conversationDetailQueryKey(conversationId),
-        (detail) =>
-          detail
-            ? {
-                ...detail,
-                archivedAt: result.archivedAt,
-                detailEtag: undefined,
-              }
-            : detail,
-      );
-      if (!args.archived) {
-        queryClient.removeQueries({
-          exact: true,
-          queryKey: archivedConversationQueryKey(conversationId),
-        });
-      }
-      options?.onSuccess?.(result.archivedAt);
-    },
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
-    },
-  });
-}
-
-function buildArchivedConversationSnapshot(
-  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
-  conversationId: string,
-): ArchivedConversationSnapshot | undefined {
-  let conversation: ConversationSummaryReport | undefined;
-  const feedQueryHashes: string[] = [];
-  for (const [queryKey, feed] of feeds) {
-    const feedConversation = feed?.conversations.find(
-      (item) => item.conversationId === conversationId,
-    );
-    if (!feedConversation) continue;
-    conversation ??= feedConversation;
-    feedQueryHashes.push(JSON.stringify(queryKey));
-  }
-  return conversation ? { conversation, feedQueryHashes } : undefined;
-}
-
-/** Fetch a bounded conversation snapshot and older pages on demand. */
-export function useConversationData(conversationId: string | undefined) {
-  const queryClient = useQueryClient();
+  const [fetchedAtOpen, setFetchedAtOpen] = useState(false);
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -713,11 +505,15 @@ export function useConversationData(conversationId: string | undefined) {
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
+      unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
     }),
     // A reopened Conversation shows the cached copy at once, but it can miss
     // messages that arrived while the reader was away. Fetch it each visit.
     refetchOnMount: "always",
   });
+  if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
+    setFetchedAtOpen(true);
+  }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -904,6 +700,8 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The first fetch of this visit has ended. */
+    fetchedAtOpen,
     /** The latest detail after a fetch in this visit, before it is deferred. */
     fetchedDetail:
       detail.isFetchedAfterMount && !detail.isFetching
@@ -941,9 +739,10 @@ export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
+  unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
   const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}${unreadPage ? "?unreadPage=true" : ""}`,
     signal,
     previous?.detailEtag,
   );

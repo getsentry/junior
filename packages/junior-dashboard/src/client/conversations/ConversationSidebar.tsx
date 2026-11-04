@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "./queries";
+import { useArchiveConversation } from "./conversationArchive";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,

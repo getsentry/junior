@@ -139,13 +139,23 @@ describe("conversation read position API", () => {
     const { app, viewer } = await authenticatedApi("reader@example.com");
     await putReadPosition(app, conversationId, 5);
 
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}?limit=10&unreadPage=true`,
+    );
+    expect(detailResponse.status).toBe(200);
     const detail = conversationDetailReportSchema.parse(
-      await readConversationDetail(conversationId, { limit: 10, viewer }),
+      await detailResponse.json(),
     );
     expect(detail.events.map((event) => event.seq)).toEqual(
       Array.from({ length: 10 }, (_, index) => 20 + index),
     );
     expect(detail.unreadCursor).toBeDefined();
+    // Polls do not ask for the page around the read position.
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { limit: 10, viewer }),
+      ).unreadPage,
+    ).toBeUndefined();
 
     const readPage = async (query: string) => {
       const response = await app.request(
@@ -162,6 +172,11 @@ describe("conversation read position API", () => {
     expect(unread.events.map((event) => event.seq)).toEqual(
       Array.from({ length: 10 }, (_, index) => 1 + index),
     );
+    // Detail brings the same page, so the reader needs no second request.
+    expect({ ...detail.unreadPage, generatedAt: "" }).toEqual({
+      ...unread,
+      generatedAt: "",
+    });
     const newer: number[] = [];
     let page = unread;
     while (true) {

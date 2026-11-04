@@ -317,7 +317,7 @@ test("scrolls long conversation and transcript panes independently", async ({
       });
     },
   );
-  await page.route("**/api/conversations/long-0", async (route) => {
+  await page.route("**/api/conversations/long-0*", async (route) => {
     await route.fulfill({
       json: {
         ...conversations[0],

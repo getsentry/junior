@@ -683,7 +683,7 @@ test("keeps the message in view while earlier history and late content load", as
       });
     },
   );
-  await page.route("**/api/conversations/long-history", async (route) => {
+  await page.route("**/api/conversations/long-history*", async (route) => {
     await route.fulfill({
       json: {
         ...conversation,

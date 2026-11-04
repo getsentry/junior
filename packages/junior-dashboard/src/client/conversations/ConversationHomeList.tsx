@@ -20,7 +20,7 @@ import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
-import { useArchiveConversation } from "./queries";
+import { useArchiveConversation } from "./conversationArchive";
 import { DisplayText } from "../display-text/DisplayText";
 import {
   attentionConversationIds,
