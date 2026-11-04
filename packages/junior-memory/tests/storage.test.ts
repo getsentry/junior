@@ -2438,8 +2438,8 @@ describe("memory plugin storage", () => {
         }),
         { now: () => nowMs },
       );
+      // A public Conversation never reads private memory, also the person's own.
       await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
       await expect(
@@ -2448,12 +2448,16 @@ describe("memory plugin storage", () => {
       await expect(
         otherUserStore.archiveMemory({ id: publicMemory.memory.id }),
       ).resolves.toMatchObject({ id: publicMemory.memory.id });
-      await expect(publicStore.listMemories({})).resolves.toEqual([
+      await expect(publicStore.listMemories({})).resolves.toEqual([]);
+      await expect(
+        publicStore.archiveMemory({ id: privateMemory.memory.id }),
+      ).rejects.toThrow("Memory was not found in the current context.");
+      await expect(privateStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
       ]);
 
       nowMs += 1;
-      const archived = await publicStore.archiveMemory({
+      const archived = await privateStore.archiveMemory({
         id: privateMemory.memory.id.slice(0, 12),
       });
       expect(archived).toMatchObject({
@@ -3239,7 +3243,8 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       // other.
       const dimensions = 1024;
       const query = "nearest neighbor probe";
-      const context = slackContext();
+      // A private Source, so recall reads both public and owned private memory.
+      const context = slackContext({ channelId: "D123" });
       const ownerScopeKey = context.userId;
       const otherScopeKey = "user:T123:U999";
       const seeds: Array<{

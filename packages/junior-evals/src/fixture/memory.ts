@@ -34,7 +34,7 @@ export async function readMemories(
   const userId = (await readActorIdentity(actor))?.user?.id;
   const store = createMemoryStore(getDb() as unknown as MemoryDb, {
     actor,
-    // The store lists by User. It does not use the Source of the reader.
+    // A private Source, so the list holds public and private memories.
     source: createSlackSource({
       channelId: `D${actor.userId}`,
       teamId: SLACK_TEAM_ID,
