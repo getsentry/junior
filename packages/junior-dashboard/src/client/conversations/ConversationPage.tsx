@@ -93,6 +93,9 @@ import {
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
+import { ConversationOutline } from "./ConversationOutline";
+import { conversationOutlineItems } from "./conversationOutlineItems";
+import { transcriptMessagesFromEvents } from "./eventTranscript";
 import {
   QuickQuestionPanel,
   QuickQuestionSelectionButton,
@@ -152,6 +155,7 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
@@ -196,8 +200,8 @@ export function ConversationPage(props: {
   // A memory chosen in details waits here until its transcript row renders.
   const [memoryJump, setMemoryJump] = useState<MemoryJump>();
   // The transcript mounts only rows near the viewport. The rows of the last
-  // memory jump stay mounted, so the jump finds its row and the popover
-  // keeps it.
+  // memory or outline jump stay mounted, so the jump finds its row and the
+  // popover keeps it.
   const [revealSeq, setRevealSeq] = useState<number>();
   // The page stays mounted across Conversations. Memory state belongs to one.
   const [memoryConversationId, setMemoryConversationId] = useState(
@@ -378,6 +382,25 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
+  const outlineEvents =
+    transcript?.eventHistory.status === "available"
+      ? transcript.events
+      : undefined;
+  // Outline items show text only, so they need no cards or annotations.
+  const outlineItems = useMemo(
+    () =>
+      outlineEvents
+        ? conversationOutlineItems(
+            transcriptMessagesFromEvents(outlineEvents, undefined),
+          )
+        : [],
+    [outlineEvents],
+  );
+  const selectOutlineItem = useCallback((seq: number) => {
+    // Search can hide the row.
+    setSearch("");
+    setRevealSeq(seq);
+  }, []);
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -637,8 +660,18 @@ export function ConversationPage(props: {
             view={view}
           />
         }
+        overlay={
+          view === "rich" && !transcriptPending && outlineItems.length > 1 ? (
+            <ConversationOutline
+              items={outlineItems}
+              onSelect={selectOutlineItem}
+              scrollRef={scrollRef}
+            />
+          ) : undefined
+        }
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
+        scrollRef={scrollRef}
         scrollClassName={cn(
           "thin-scrollbar",
           view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
