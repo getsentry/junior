@@ -141,6 +141,7 @@ function blocksOf(call: { params: Record<string, unknown> } | undefined) {
       text?: unknown;
       value?: string;
     }>;
+    text?: string;
     type: string;
   }>;
 }
@@ -585,10 +586,18 @@ describe("Slack webhook: Review item cards", () => {
       body: "The deploy key expires on Friday.",
       assignees: ["ana@example.com"],
       dedupe_key: "deploy-key",
+      subject: {
+        id: "acme/infra#12",
+        url: "https://github.com/acme/infra/pull/12",
+      },
     });
 
     const posts = slackApiOutbox.messages();
     expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    // The title links to the subject.
+    expect(blocksOf(posts[0])[0]?.text).toContain(
+      "**[Rotate the deploy key](https://github.com/acme/infra/pull/12)**",
+    );
     // A notice has nothing to answer, so its only control is Dismiss.
     expect(
       blocksOf(posts[0])
