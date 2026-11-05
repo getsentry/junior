@@ -21,7 +21,8 @@ export type McpScope = (typeof MCP_SCOPES)[number];
 export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   "conversations:read":
     "List and read the conversations that you started or take part in",
-  "conversations:manage": "Archive your conversations and stop a running Turn",
+  "conversations:manage":
+    "Archive, pin, and mark your conversations read, stop a running Turn, and cancel queued messages",
   "review_items:read": "List and read your review items",
   "automations:read": "List and read the automations that you can see",
 };

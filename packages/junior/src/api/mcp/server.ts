@@ -12,13 +12,18 @@ import { JUNIOR_VERSION } from "@/version";
 import type { McpScope } from "./oauth/scopes";
 import type { McpToolContext } from "./tool-context";
 import { registerArchiveConversationTool } from "./tools/archive-conversation";
+import { registerArchiveDoneConversationsTool } from "./tools/archive-done-conversations";
+import { registerCancelQueuedMessagesTool } from "./tools/cancel-queued-messages";
 import { registerGetAutomationTool } from "./tools/get-automation";
 import { registerGetConversationTool } from "./tools/get-conversation";
 import { registerGetReviewItemTool } from "./tools/get-review-item";
 import { registerSearchAutomationsTool } from "./tools/search-automations";
 import { registerListConversationMessagesTool } from "./tools/list-conversation-messages";
+import { registerMarkConversationReadTool } from "./tools/mark-conversation-read";
+import { registerPinConversationTool } from "./tools/pin-conversation";
 import { registerSearchConversationsTool } from "./tools/search-conversations";
 import { registerSearchReviewItemsTool } from "./tools/search-review-items";
+import { registerSetConversationAutoArchiveTool } from "./tools/set-conversation-auto-archive";
 import { registerStopConversationTool } from "./tools/stop-conversation";
 
 type RegisterTool = (server: McpServer, context: McpToolContext) => void;
@@ -32,7 +37,12 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
   ],
   "conversations:manage": [
     registerArchiveConversationTool,
+    registerArchiveDoneConversationsTool,
+    registerPinConversationTool,
+    registerSetConversationAutoArchiveTool,
+    registerMarkConversationReadTool,
     registerStopConversationTool,
+    registerCancelQueuedMessagesTool,
   ],
   "review_items:read": [
     registerSearchReviewItemsTool,
@@ -45,7 +55,7 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
 };
 
 const INSTRUCTIONS =
-  "Junior is a Slack agent. These tools read your Junior conversations, review items, and automations. They cannot send a message or start agent work. To ask Junior for work or to answer a review item, use the Slack or dashboard link in a result.";
+  "Junior is a Slack agent. These tools read and manage your Junior conversations, and read your review items and automations. They cannot send a message or start agent work. To ask Junior for work or to answer a review item, use the Slack or dashboard link in a result.";
 
 /** Build the MCP server for one authenticated user and granted scopes. */
 function createMcpServer(

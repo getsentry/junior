@@ -340,13 +340,18 @@ describe("remote MCP HTTP", () => {
     expect(everyTokens.scope).toBe(ALL_SCOPES);
     expect(await toolNames(everyTokens.access_token)).toEqual([
       "archiveConversation",
+      "archiveDoneConversations",
+      "cancelQueuedMessages",
       "getAutomation",
       "getConversation",
       "getReviewItem",
       "listConversationMessages",
+      "markConversationRead",
+      "pinConversation",
       "searchAutomations",
       "searchConversations",
       "searchReviewItems",
+      "setConversationAutoArchive",
       "stopConversation",
     ]);
     expect(await toolNames(readOnly)).toEqual([

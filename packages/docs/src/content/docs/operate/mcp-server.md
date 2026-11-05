@@ -70,16 +70,18 @@ The first request returns `401` with a `WWW-Authenticate` header. The second req
 
 A client gets only the tools of the scopes that you allow. A client that does not ask for a scope asks for all of them.
 
-| Scope                  | Tools                                                                | Effect                                                     |
-| ---------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `conversations:read`   | `searchConversations`, `getConversation`, `listConversationMessages` | Read the Conversations that you started or take part in.   |
-| `conversations:manage` | `archiveConversation`, `stopConversation`                            | Archive a Conversation for you, or stop its running Turn.  |
-| `review_items:read`    | `searchReviewItems`, `getReviewItem`                                 | Read the Review items that you can see on the Review desk. |
-| `automations:read`     | `searchAutomations`, `getAutomation`                                 | Read the Automations that you can see, and their runs.     |
+| Scope                  | Tools                                                                                                                                                                  | Effect                                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `conversations:read`   | `searchConversations`, `getConversation`, `listConversationMessages`                                                                                                   | Read the Conversations that you started or take part in.                                                                     |
+| `conversations:manage` | `archiveConversation`, `archiveDoneConversations`, `pinConversation`, `setConversationAutoArchive`, `markConversationRead`, `stopConversation`, `cancelQueuedMessages` | Archive, pin, or mark a Conversation read for you, set its auto-archive, stop its running Turn, or drop its queued messages. |
+| `review_items:read`    | `searchReviewItems`, `getReviewItem`                                                                                                                                   | Read the Review items that you can see on the Review desk.                                                                   |
+| `automations:read`     | `searchAutomations`, `getAutomation`                                                                                                                                   | Read the Automations that you can see, and their runs.                                                                       |
 
 `getConversation` returns metadata, the Brief, and the last assistant reply. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
 
-`stopConversation` drops the messages that wait for the running Turn. It does not start a new Turn. Review item and Automation results include a dashboard link. Answer a Review item or change an Automation there.
+Archive, pin, auto-archive, and read position apply only to you. `archiveDoneConversations` archives your done Conversations once, the same as **Archive done now** in Settings. `markConversationRead` marks every message read when you omit `lastReadSeq`.
+
+`stopConversation` stops the running Turn and drops the messages that wait for it. `cancelQueuedMessages` drops the waiting messages and lets the running Turn continue. Neither tool starts a new Turn. Review item and Automation results include a dashboard link. Answer a Review item or change an Automation there.
 
 ## Access and tokens
 
