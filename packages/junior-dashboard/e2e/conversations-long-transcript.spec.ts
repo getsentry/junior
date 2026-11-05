@@ -245,6 +245,34 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await expect(transcript.getByText("Transcript message 1234 ")).toBeVisible();
 });
 
+test("jumps to a far message from the outline", async ({ page, dashboard }) => {
+  // The outline shows only beside a transcript with room to its left.
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+  await expect(row(transcript, 1_234)).toHaveCount(0);
+
+  const item = outline.getByRole("button", {
+    name: "Transcript message 1234 with",
+  });
+  await item.click();
+  // The message starts at the top of the viewport.
+  await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });
+  await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
+  await expect(item).toHaveAttribute("aria-current", "location");
+  expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
 test("holds the top row while earlier pages load above it", async ({
   page,
   dashboard,
