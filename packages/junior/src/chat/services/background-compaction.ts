@@ -1,10 +1,10 @@
 /**
  * Background compaction: prepare a summary before the history is full.
  *
- * When a Turn completes and its last model request was at or above the mark,
- * the Turn appends `compaction_requested` and sends a job. The job asks the
- * agent model for a summary of the history up to the marked event and
- * appends `compaction_prepared`. Turns keep the full history until a later
+ * After each model request at or above the mark, also in the middle of a
+ * Turn, the Turn appends `compaction_requested` and sends a job. The job
+ * asks the agent model for a summary of the history up to the marked event
+ * and appends `compaction_prepared`. Turns keep the full history until a later
  * change swaps the summary in. Blocking compaction stays the fallback.
  *
  * The summary request repeats the system prompt and tools of the last agent
@@ -151,14 +151,57 @@ function mayRequest(
 }
 
 /**
- * Request a background summary when the last model request of a completed
- * Turn was at or above the mark.
+ * Find the newest background compaction fact of the current History version.
+ * Facts of earlier versions belong to history that a replacement already
+ * removed.
+ */
+export async function loadLatestBackgroundCompaction(conversationId: string) {
+  const store = getConversationEventStore();
+  const [historyVersion, page] = await Promise.all([
+    store.loadCurrentHistoryVersion(conversationId),
+    store.query(conversationId, {
+      limit: 1,
+      types: ["compaction_requested", "compaction_prepared"],
+    }),
+  ]);
+  const event = page.events.at(-1);
+  return event && event.historyVersion === historyVersion
+    ? { event, historyVersion }
+    : undefined;
+}
+
+/**
+ * Return whether the newest fact is a pending request or a summary that
+ * became ready in this execution slice. Then `mayRequest` is false too, so a
+ * Turn can skip the full history load. Only one request is pending at a time,
+ * so the newest fact decides it.
+ */
+function waitsForUse(
+  event: ConversationEvent,
+  nowMs: number,
+  turnStartedAtMs: number,
+): boolean {
+  if (event.data.type === "compaction_requested") {
+    return nowMs - event.createdAtMs < REQUEST_TIMEOUT_MS;
+  }
+  return (
+    event.data.type === "compaction_prepared" &&
+    event.data.outcome === "ready" &&
+    event.createdAtMs >= turnStartedAtMs
+  );
+}
+
+/**
+ * Request a background summary when the model request that just ended was at
+ * or above the mark.
  *
- * `turnStartedAtMs` is when this execution slice started, before its first
- * model request. Without a queue or below the mark, it does nothing. A failure here leaves
- * blocking compaction as the fallback, so it is logged and does not fail the
- * Turn. When the send fails after the request is written, the request times
- * out and counts as a failed attempt.
+ * The agent runs it after each model request, so a long Turn gets a summary
+ * before the compaction threshold. `turnStartedAtMs` is when this execution
+ * slice started, before its first model request. Without a queue or below the
+ * mark, it does nothing. A failure here leaves blocking compaction as the
+ * fallback, so it is logged and does not fail the Turn. When the send fails
+ * after the request is written, the request times out and counts as a
+ * failed attempt.
  */
 export async function requestBackgroundCompaction(args: {
   agent: Agent;
@@ -197,6 +240,12 @@ async function requestAboveMark(args: {
   turnStartedAtMs: number;
 }): Promise<void> {
   const nowMs = Date.now();
+  // Each later model request of a large Turn checks again. Read only the
+  // newest fact while a request waits.
+  const latest = await loadLatestBackgroundCompaction(args.conversationId);
+  if (latest && waitsForUse(latest.event, nowMs, args.turnStartedAtMs)) {
+    return;
+  }
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentHistory(args.conversationId);
   const historyVersion = events[0]?.historyVersion;
