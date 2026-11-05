@@ -85,6 +85,9 @@ export default defineConfig({
   minify: true,
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
+    // @sentry/core and @sentry/browser-utils ship one build that keeps its
+    // debug logging unless this flag is false.
+    __SENTRY_DEBUG__: "false",
   },
   noExternal: [
     "@base-ui/react",
