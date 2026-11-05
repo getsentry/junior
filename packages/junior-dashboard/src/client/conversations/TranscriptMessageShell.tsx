@@ -2,6 +2,7 @@ import type { ClipboardEventHandler, ReactNode } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
+import juniorAvatarUrl from "../../assets/junior-avatar.webp";
 
 /** Align message text and attachments beside their avatars. */
 export function TranscriptMessageShell(props: {
@@ -36,7 +37,7 @@ export function TranscriptMessageShell(props: {
               alt=""
               className="size-8 object-contain"
               draggable={false}
-              src="/_junior/dashboard/avatar.png"
+              src={juniorAvatarUrl}
             />
           ) : (
             <Avatar className="size-8 border-0 bg-violet-300 shadow-none">

@@ -5,6 +5,7 @@ import {
   DASHBOARD_CLIENT_MANIFEST_FILE,
   DASHBOARD_PUBLIC_ASSET_NAME,
   dashboardClientManifestSchema,
+  isBinaryPublicAsset,
 } from "./src/public-assets";
 
 interface EsbuildOnLoadArgs {
@@ -44,19 +45,23 @@ const dashboardFaviconPath = path.join(
 );
 
 /** Read client build output that must be embedded in dashboard routes. */
-function readBuiltAsset(fileName: string): string {
+function readBuiltAsset(
+  fileName: string,
+  encoding: "base64" | "utf8" = "utf8",
+): string {
   const assetPath = path.join(packageRoot, "dist", fileName);
   if (!existsSync(assetPath)) {
     throw new Error(
       `Junior dashboard asset ${fileName} was not built before server bundling`,
     );
   }
-  return readFileSync(assetPath, "utf8");
+  return readFileSync(assetPath, encoding);
 }
 
 /**
  * Read every browser file in dist/public, keyed by its path under the
- * assets prefix. Fail the build when a name has no content hash.
+ * assets prefix, with binary files as base64. Fail the build when a name has
+ * no content hash.
  */
 function readPublicAssets(): Record<string, string> {
   const publicDir = path.join(packageRoot, "dist", "public");
@@ -76,7 +81,13 @@ function readPublicAssets(): Record<string, string> {
     }
   }
   return Object.fromEntries(
-    files.map((file) => [file, readBuiltAsset(`public/${file}`)]),
+    files.map((file) => [
+      file,
+      readBuiltAsset(
+        `public/${file}`,
+        isBinaryPublicAsset(file) ? "base64" : "utf8",
+      ),
+    ]),
   );
 }
 
@@ -97,7 +108,12 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
         const clientManifest = dashboardClientManifestSchema.parse(
           JSON.parse(readBuiltAsset(DASHBOARD_CLIENT_MANIFEST_FILE)),
         );
-        for (const file of [clientManifest.entry, ...clientManifest.imports]) {
+        for (const file of [
+          clientManifest.entry,
+          clientManifest.stylesheet,
+          ...clientManifest.fonts,
+          ...clientManifest.imports,
+        ]) {
           if (!Object.hasOwn(publicAssets, file)) {
             throw new Error(
               `Dashboard client manifest names ${file}, which is not in dist/public`,
@@ -111,7 +127,6 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           contents: [
             `export const dashboardClientManifest = ${JSON.stringify(clientManifest)};`,
             `export const dashboardPublicAssets = ${JSON.stringify(publicAssets)};`,
-            `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,
             `export const dashboardInstallIconAsset = ${JSON.stringify(colorIconBase64)};`,
             `export const dashboardFaviconAsset = ${JSON.stringify(readFileSync(dashboardFaviconPath).toString("base64"))};`,

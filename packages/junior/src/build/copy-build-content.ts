@@ -6,7 +6,6 @@ import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
 const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 const JUNIOR_PACKAGE_NAME = "@sentry/junior";
-const DASHBOARD_ASSET_NAMES = ["tailwind.css"] as const;
 
 /** Copy app, built-in skill, and declared plugin content into server output. */
 export function copyRuntimeContent(
@@ -62,30 +61,6 @@ export function copyRuntimeContent(
         path.join(pkg.dir, "migrations"),
       );
     }
-  }
-}
-
-/** Copy dashboard browser assets when core dashboard routes are enabled. */
-export function copyDashboardAssets(cwd: string, serverRoot: string): void {
-  const packageDir = resolvePackageDir(cwd, DASHBOARD_PACKAGE_NAME);
-  if (!packageDir) {
-    throw new Error(
-      `createApp({ dashboard }) requires installing "${DASHBOARD_PACKAGE_NAME}"`,
-    );
-  }
-
-  for (const fileName of DASHBOARD_ASSET_NAMES) {
-    const source = dashboardAssetPath(packageDir, fileName);
-    copyIfExists(
-      source,
-      path.join(
-        serverRoot,
-        "node_modules",
-        DASHBOARD_PACKAGE_NAME,
-        "dist",
-        fileName,
-      ),
-    );
   }
 }
 
