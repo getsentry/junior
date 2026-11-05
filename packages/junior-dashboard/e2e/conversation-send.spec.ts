@@ -9,6 +9,7 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
+import { withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
@@ -695,11 +696,15 @@ test("stops the active Turn and returns queued text to the composer", async ({
     const detail = await response.json();
     await route.fulfill({
       response,
-      json: {
-        ...detail,
-        isParticipant: true,
-        status: active ? "active" : "completed",
-      },
+      json: withRequestedMailbox(
+        route,
+        {
+          ...detail,
+          isParticipant: true,
+          status: active ? "active" : "completed",
+        },
+        { conversationId, generatedAt: createdAt, messages: queued },
+      ),
     });
   });
 
@@ -815,7 +820,11 @@ test("edits a queued message back into the composer", async ({
     const detail = await response.json();
     await route.fulfill({
       response,
-      json: { ...detail, isParticipant: true, status: "active" },
+      json: withRequestedMailbox(
+        route,
+        { ...detail, isParticipant: true, status: "active" },
+        { conversationId, generatedAt: createdAt, messages: queued },
+      ),
     });
   });
 

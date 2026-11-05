@@ -256,6 +256,15 @@ describe("conversation pending messages API", () => {
         source: "web",
       },
     ]);
+
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(accepted.conversationId)}?mailbox=true`,
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = conversationDetailWithMailboxReportSchema.parse(
+      await detailResponse.json(),
+    );
+    expect(detail.mailbox.messages).toEqual(report.messages);
   });
 
   it("returns 404 for unknown conversations", async () => {
