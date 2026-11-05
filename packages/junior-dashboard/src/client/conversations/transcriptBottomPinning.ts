@@ -53,6 +53,8 @@ type BottomPinResult = {
   contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
+  /** The `data-scroll-anchor` key of the row that holds the reader's place. */
+  scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
 };
 
@@ -771,6 +773,8 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom("auto");
   }, [input.pinRequestVersion, scrollToBottom, setFollowingIntent]);
 
+  const scrollAnchorKey = useCallback(() => scrollAnchorRef.current?.key, []);
+
   return useMemo(
     () => ({
       anchorRef,
@@ -778,6 +782,7 @@ export function usePinnedTranscriptBottom(input: {
       contentRef,
       hasPendingUpdate,
       jumpToBottom,
+      scrollAnchorKey,
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
@@ -795,6 +800,7 @@ export function usePinnedTranscriptBottom(input: {
       input.endsAtLatest,
       jumpToBottom,
       openedAtUnread,
+      scrollAnchorKey,
     ],
   );
 }
