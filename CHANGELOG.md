@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.278.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Let readers resize the conversation sidebar by @betegon with @sentry-junior in [#2686](https://github.com/getsentry/junior/pull/2686)
+- Open long transcripts at the read position by @BYK with @sentry-junior in [#2635](https://github.com/getsentry/junior/pull/2635)
+- Let readers collapse the conversation sidebar by @betegon in [#2675](https://github.com/getsentry/junior/pull/2675)
+
+#### Other
+
+- (access) Isolate private Conversations by @sentry-junior in [#2691](https://github.com/getsentry/junior/pull/2691)
+- (agents) Replace listAgents with searchAgents and one conversation access rule by @dcramer with @sentry-junior in [#2672](https://github.com/getsentry/junior/pull/2672)
+- (events) Keep routine Watch replies out of Slack by @BYK with @sentry-junior in [#2659](https://github.com/getsentry/junior/pull/2659)
+- (github) Add a tool to comment on pull requests by @BYK with @sentry-junior in [#2690](https://github.com/getsentry/junior/pull/2690)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Shorten auto archive toggle and move help to a popover by @BYK with @sentry-junior in [#2685](https://github.com/getsentry/junior/pull/2685)
+- Send the detail version in a custom header by @BYK with @sentry-junior in [#2687](https://github.com/getsentry/junior/pull/2687)
+
+#### Google
+
+- Rank meeting slots by meeting days and focus time, with flexible lunch and breaks by @BYK with @sentry-junior in [#2666](https://github.com/getsentry/junior/pull/2666)
+- Open calendar event links in the viewer's Workspace account by @BYK with @sentry-junior in [#2682](https://github.com/getsentry/junior/pull/2682)
+
+#### Other
+
+- (memory) Make all memory public by @dcramer with @sentry-junior in [#2684](https://github.com/getsentry/junior/pull/2684)
+- (task) Answer Event questions where they were asked by @BYK with @sentry-junior in [#2689](https://github.com/getsentry/junior/pull/2689)
+
+### Internal Changes 🔧
+
+- (agent) Remove model handoff, Turn router, and model profiles by @dcramer with @sentry-junior in [#2681](https://github.com/getsentry/junior/pull/2681)
+- (dashboard) Cache model usage sums with a seq watermark by @BYK with @sentry-junior in [#2688](https://github.com/getsentry/junior/pull/2688)
+
 ## 0.277.0
 
 ### New Features ✨
