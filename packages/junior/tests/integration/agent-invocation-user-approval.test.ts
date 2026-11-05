@@ -458,6 +458,13 @@ describe("user approval for child agents", () => {
         { author: "user", text: "Find the missing MCP metadata." },
         { author: "user", text: "Fix each gap and open a PR for each change." },
       ]);
+      // Only the user's messages are read from before the newest page, so a
+      // note marks the gap after them.
+      expect(read.messages[2]).toEqual({
+        author: "system",
+        text: expect.stringMatching(/^\[Messages may be missing here\./),
+      });
+      expect(read.truncated).toBe(true);
     } finally {
       await fixture.close();
     }
@@ -517,8 +524,8 @@ describe("user approval for child agents", () => {
         messages: [{ author: "event", text: instruction }],
       });
 
-      // A long run keeps its instruction, pinned first, after many later
-      // events.
+      // A long run keeps its instruction, pinned first, after more than a
+      // page of later events.
       for (let step = 1; step <= 70; step += 1) {
         await recordRootMessage(dispatchConversationId, {
           role: "assistant",
@@ -533,11 +540,11 @@ describe("user approval for child agents", () => {
         author: "automation",
         text: instruction,
       });
-      // Steps 1 to 54 are not shown, and a note counts them.
+      // Steps 1 to 54 are not shown. The steps in the read page get a note.
       expect(long.messages.slice(1)).toEqual([
         {
           author: "system",
-          text: expect.stringMatching(/^\[54 messages are not shown here\./),
+          text: expect.stringMatching(/^\[48 messages are not shown here\./),
         },
         ...Array.from({ length: 16 }, (_, index) => ({
           author: "assistant",

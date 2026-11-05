@@ -39,10 +39,13 @@ const MAX_ROOT_MESSAGES = 16;
 const MAX_ROOT_MESSAGE_CHARS = 4_000;
 /** Most characters of all root messages together, with their labels. */
 const MAX_ROOT_CONVERSATION_CHARS = 24_000;
-/** Message events read in one query. */
-const ROOT_MESSAGE_EVENT_PAGE = 128;
-/** Most message events read from the log. Edits and skipped messages use some. */
-const MAX_ROOT_MESSAGE_EVENTS = 1_024;
+/** Message events read from the log. Edits and skipped messages use some. */
+const MAX_ROOT_MESSAGE_EVENTS = 64;
+/**
+ * The user's own message events read from before that page. Their messages
+ * fill the character budget long before this number.
+ */
+const MAX_OLDER_USER_MESSAGE_EVENTS = 64;
 /** A parent chain longer than this is broken, so it gives no authority. */
 const MAX_PARENT_DEPTH = 32;
 
@@ -183,44 +186,45 @@ function truncate(text: string, maxChars: number): string {
 
 /**
  * Read the newest message events of a root, in event order. In a long thread,
- * child results and edits add many events, so a request that started or
- * widened the work can be far back. The read goes back page by page until the
- * messages that can authorize fill the character budget, the log starts, or
- * the read reaches its cap.
+ * child results and edits fill that page, so a request that started or
+ * widened the work can be older. Each older message from the person behind
+ * the Run is read too, by its author Identity, so the read does not grow with
+ * the other messages.
  */
 async function readMessageEvents(
   conversationId: string,
-  authorizes: (data: MessageData) => boolean,
-): Promise<{ events: ConversationEvent[]; hasOlder: boolean }> {
+  personIdentityIds: ReadonlySet<string>,
+): Promise<{
+  events: ConversationEvent[];
+  firstPageSeq: number | undefined;
+  hasOlder: boolean;
+  olderUserMessageIds: Set<string>;
+}> {
   const store = getConversationEventStore();
-  const events: ConversationEvent[] = [];
-  let hasOlder = true;
-  let authorizingChars = 0;
-  while (
-    hasOlder &&
-    events.length < MAX_ROOT_MESSAGE_EVENTS &&
-    authorizingChars <= MAX_ROOT_CONVERSATION_CHARS
-  ) {
-    const page = await store.query(conversationId, {
-      ...(events[0] ? { beforeSeq: events[0].seq } : undefined),
-      limit: Math.min(
-        ROOT_MESSAGE_EVENT_PAGE,
-        MAX_ROOT_MESSAGE_EVENTS - events.length,
-      ),
-      types: ["message", "message_updated"],
-    });
-    events.unshift(...page.events);
-    hasOlder = page.hasOlder;
-    for (const event of page.events) {
-      const data = event.data as MessageData;
-      // An older message that can authorize is cut when the newer ones fill
-      // the budget, so the read can stop there.
-      if (data.type === "message" && authorizes(data)) {
-        authorizingChars += data.text.length;
-      }
-    }
-  }
-  return { events, hasOlder };
+  const page = await store.query(conversationId, {
+    limit: MAX_ROOT_MESSAGE_EVENTS,
+    types: ["message", "message_updated"],
+  });
+  const firstPageSeq = page.events[0]?.seq;
+  const older =
+    page.hasOlder && firstPageSeq !== undefined && personIdentityIds.size > 0
+      ? (
+          await store.query(conversationId, {
+            authorIdentityIds: [...personIdentityIds],
+            beforeSeq: firstPageSeq,
+            limit: MAX_OLDER_USER_MESSAGE_EVENTS,
+            types: ["message", "message_updated"],
+          })
+        ).events
+      : [];
+  return {
+    events: [...older, ...page.events],
+    firstPageSeq,
+    hasOlder: page.hasOlder,
+    olderUserMessageIds: new Set(
+      older.map((event) => (event.data as MessageData).messageId),
+    ),
+  };
 }
 
 /**
@@ -274,9 +278,7 @@ export async function readRootConversation(args: {
   const personIdentityIds = await actorIdentityIds(actor);
   const label = (data: MessageData) =>
     messageLabel(root, data, actor, personIdentityIds);
-  const page = await readMessageEvents(root.conversationId, (data) =>
-    canAuthorize({ author: label(data), text: data.text }),
-  );
+  const page = await readMessageEvents(root.conversationId, personIdentityIds);
   // Each message keeps the position of its original event. An edit changes
   // only the text, never the author. An edit of a message older than the page
   // has no position, so it is left out like the original.
@@ -370,14 +372,23 @@ export async function readRootConversation(args: {
   // the answer to a message that is not shown.
   const messages: RootConversationMessage[] = [];
   let omitted = 0;
+  // Only the user's own messages are read from before the page, so after one
+  // of them, an unknown number of other messages can be missing.
+  let unknownGap = false;
   const addGapNote = () => {
-    if (omitted > 0) {
+    if (unknownGap) {
+      messages.push({
+        author: "system",
+        text: "[Messages may be missing here. A reply after this note may answer one of them.]",
+      });
+    } else if (omitted > 0) {
       messages.push({
         author: "system",
         text: `[${omitted} ${omitted === 1 ? "message is" : "messages are"} not shown here. A reply after this note may answer one of them.]`,
       });
-      omitted = 0;
     }
+    omitted = 0;
+    unknownGap = false;
   };
   for (const [index, message] of all.entries()) {
     if (!kept.has(index)) {
@@ -386,11 +397,12 @@ export async function readRootConversation(args: {
     }
     addGapNote();
     messages.push({ author: message.author, text: message.text });
+    unknownGap = page.olderUserMessageIds.has(message.messageId);
   }
   addGapNote();
   // When the opening message is older than the page, only messages between
   // it and the page are missing.
-  const firstSeq = page.events[0]?.seq;
+  const firstSeq = page.firstPageSeq;
   const hasOlder =
     pinnedRead?.seq === undefined || firstSeq === undefined
       ? page.hasOlder
