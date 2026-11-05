@@ -29,6 +29,7 @@ const files = [
   "packages/junior-maintenance/package.json",
   "packages/junior-sentry/package.json",
   "packages/junior-vercel/package.json",
+  "packages/junior-x/package.json",
 ];
 
 for (const relativePath of files) {

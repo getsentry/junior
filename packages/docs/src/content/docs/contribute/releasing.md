@@ -31,6 +31,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-pagerduty`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-x`
 
 ## Package release
 

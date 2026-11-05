@@ -87,6 +87,7 @@ jobs:
               - packages/junior-pagerduty/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
+              - packages/junior-x/**
             repo:
               - package.json
               - pnpm-lock.yaml
@@ -524,6 +525,7 @@ jobs:
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-x pack --pack-destination artifacts
           node scripts/release-artifacts.mjs create artifacts
           ls -la artifacts
 

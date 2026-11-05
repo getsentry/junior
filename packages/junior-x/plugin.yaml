@@ -1,0 +1,17 @@
+name: x
+display-name: X
+description: Read-only X (Twitter) post search, post lookup, user lookup, and user timelines through the X API v2
+
+# Junior injects a deployment-level X app-only Bearer Token on sandbox requests
+# to the X API host. The sandbox never sees the real token. App-only auth has no
+# user context, so X rejects posting, liking, following, DMs, and other writes.
+# The X API is pay-per-use: every returned post or user is billed against the
+# app's prepaid credits. Set a monthly spending limit in console.x.com.
+env-vars:
+  X_BEARER_TOKEN:
+
+domains:
+  - api.x.com
+
+api-headers:
+  Authorization: Bearer ${X_BEARER_TOKEN}
