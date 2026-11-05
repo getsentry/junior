@@ -36,10 +36,12 @@ function loadedUnreadMessageCount(
   unread: TranscriptUnreadRange,
   pages: { hasNewerPage: boolean; hasPreviousPage: boolean },
 ): number | undefined {
+  // The server counts only when the range starts before the first row, so a
+  // range that starts at the first row is counted here.
   const first = events[0];
   if (
     pages.hasNewerPage ||
-    (pages.hasPreviousPage && first && first.seq > unread.afterSeq)
+    (pages.hasPreviousPage && first && first.seq > unread.afterSeq + 1)
   ) {
     return undefined;
   }
