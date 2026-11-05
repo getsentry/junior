@@ -36,7 +36,7 @@ export default defineConfig({
     "/plugins/sentry": "/extend/sentry-plugin",
     "/plugins/vercel": "/extend/vercel-plugin",
     "/extend/vercel": "/extend/vercel-plugin",
-    "/extend/x": "/extend/x-plugin",
+    "/extend/xdotcom": "/extend/xdotcom-plugin",
     "/operate/telemetry-runbooks": "/operate/reliability-runbooks",
     "/operate/security": "/operate/security-hardening",
     "/operate/reliability": "/operate/reliability-runbooks",
@@ -146,7 +146,7 @@ export default defineConfig({
             },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
-            { label: "X Plugin", link: "/extend/x-plugin/" },
+            { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },
         {

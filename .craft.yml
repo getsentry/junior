@@ -71,5 +71,5 @@ targets:
     id: "@sentry/junior-vercel"
     includeNames: /^sentry-junior-vercel-\d.*\.tgz$/
   - name: npm
-    id: "@sentry/junior-x"
-    includeNames: /^sentry-junior-x-\d.*\.tgz$/
+    id: "@sentry/junior-xdotcom"
+    includeNames: /^sentry-junior-xdotcom-\d.*\.tgz$/

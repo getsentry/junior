@@ -18,7 +18,7 @@ The plugin is read-only. It uses one deployment-level app-only Bearer Token. X d
 Install the plugin package alongside `@sentry/junior`:
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-x
+pnpm add @sentry/junior @sentry/junior-xdotcom
 ```
 
 ## Runtime setup
@@ -28,7 +28,7 @@ Add the package name to the plugin set exported from `plugins.ts`:
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-x"]);
+export const plugins = defineJuniorPlugins(["@sentry/junior-xdotcom"]);
 ```
 
 ## Config

@@ -1,5 +1,5 @@
 {
-  "name": "@sentry/junior-x",
+  "name": "@sentry/junior-xdotcom",
   "version": "0.277.0",
   "private": false,
   "publishConfig": {
@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getsentry/junior.git",
-    "directory": "packages/junior-x"
+    "directory": "packages/junior-xdotcom"
   },
   "files": [
     "plugin.yaml",

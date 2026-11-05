@@ -1,4 +1,4 @@
-name: x
+name: xdotcom
 display-name: X
 description: Read-only X (Twitter) post search, post lookup, user lookup, and user timelines through the X API v2
 

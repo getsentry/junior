@@ -1,5 +1,5 @@
 ---
-name: x
+name: xdotcom
 description: Read public X (Twitter) data through the read-only X API v2. Use when users share an x.com or twitter.com link, or ask what someone posted on X, what people are saying about a topic, product, or launch on X, how much chatter something got, or for a post's text, metrics, replies, or an account's recent posts. Do not use it to post, reply, like, repost, follow, or send DMs, or to read private or protected data.
 allowed-tools: bash
 ---

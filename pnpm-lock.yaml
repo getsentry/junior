@@ -838,7 +838,7 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12(@types/node@25.9.1)(tsx@4.22.3)
 
-  packages/junior-x: {}
+  packages/junior-xdotcom: {}
 
 packages:
 

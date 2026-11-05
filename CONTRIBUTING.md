@@ -121,7 +121,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-pagerduty`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
-- `@sentry/junior-x`
+- `@sentry/junior-xdotcom`
 
 Run `pnpm release:check` after you change this list. It keeps `.craft.yml`,
 CI, the bump script, and the release docs aligned.

@@ -42,4 +42,4 @@ Start here:
 | `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |
 | `@sentry/junior-sentry`        | Sentry investigations and issue events                                       |
 | `@sentry/junior-vercel`        | Vercel plugin package for deployment monitoring and log investigations       |
-| `@sentry/junior-x`             | Read-only X post search, post lookup, and user timelines                     |
+| `@sentry/junior-xdotcom`       | Read-only X post search, post lookup, and user timelines                     |
