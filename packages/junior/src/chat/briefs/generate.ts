@@ -14,6 +14,9 @@ const MAX_INPUT_CHARS = 60_000;
 const MAX_MESSAGE_TEXT_CHARS = 4_000;
 const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
+// Reasoning tokens count against this budget. At 2,500, long Briefs stopped
+// mid-JSON.
+const MAX_OUTPUT_TOKENS = 8_000;
 
 const SIZE_CAPS = {
   small: { decisions: 3, facts: 5, keywords: 5 },
@@ -540,7 +543,7 @@ export async function generateBrief(
   const sizeClass = briefSizeClass(record);
   const caps = SIZE_CAPS[sizeClass];
   const result = await args.completeObject({
-    maxTokens: 2_500,
+    maxTokens: MAX_OUTPUT_TOKENS,
     prompt: promptInput({
       caps,
       entries,
