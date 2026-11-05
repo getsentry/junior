@@ -135,9 +135,12 @@ export async function listConversationAnnotationsById(
         juniorConversationAnnotations.conversationId,
       ),
     )
+    // Keep both conditions on junior_conversations. The join makes the two
+    // conversation ids equal, and an OR on one table lets Postgres combine its
+    // primary key and root index. An OR across both tables scans each table.
     .where(
       or(
-        inArray(juniorConversationAnnotations.conversationId, [...requested]),
+        inArray(juniorConversations.conversationId, [...requested]),
         inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )
