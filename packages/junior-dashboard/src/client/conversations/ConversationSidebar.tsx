@@ -88,10 +88,9 @@ export function ConversationSidebar(props: {
    * `landing` = flow nav under create compose (parent owns scroll).
    */
   variant?: "panel" | "landing";
-  onMarkRead(conversationId: string, lastReadAt: string): void;
-  onMarkUnread(conversation: Conversation): void;
   onNewConversation(): void;
   onQueryChange(value: string): void;
+  onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
   const variant = props.variant ?? "panel";
   const isLanding = variant === "landing";
@@ -248,8 +247,7 @@ export function ConversationSidebar(props: {
                   conversation={entry.conversation}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
-                  onMarkRead={props.onMarkRead}
-                  onMarkUnread={props.onMarkUnread}
+                  onUnreadChange={props.onUnreadChange}
                   onPinError={handlePinError}
                   onPinned={clearRowError}
                   selected={entry.conversation.id === props.selectedId}
@@ -352,10 +350,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
-  onMarkRead(conversationId: string, lastReadAt: string): void;
-  onMarkUnread(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
+  onUnreadChange(conversation: Conversation, unread: boolean): void;
   selected: boolean;
   unread: boolean;
   waiting?: WaitingConversation;
@@ -383,9 +380,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const emphasized = props.unread || Boolean(props.waiting);
-  // Unread tracks idle conversations only, and the open one is always read.
-  const canMarkUnread =
-    !props.selected && props.conversation.status === "completed";
+  // Unread tracks idle conversations only.
+  const canMarkUnread = props.conversation.status === "completed";
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -515,12 +511,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       <ContextMenuContent>
         {props.unread ? (
           <ContextMenuItem
-            onClick={() =>
-              props.onMarkRead(
-                props.conversation.id,
-                props.conversation.lastSeenAt,
-              )
-            }
+            onClick={() => props.onUnreadChange(props.conversation, false)}
           >
             <MailOpen aria-hidden="true" />
             Mark as read
@@ -528,7 +519,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         ) : (
           <ContextMenuItem
             disabled={!canMarkUnread}
-            onClick={() => props.onMarkUnread(props.conversation)}
+            onClick={() => props.onUnreadChange(props.conversation, true)}
           >
             <Mail aria-hidden="true" />
             Mark as unread

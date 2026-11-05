@@ -19,7 +19,8 @@ type ConversationFinishedIndicators = {
    */
   heldConversationId?: string;
   markRead(conversationId: string, lastReadAt: string): void;
-  markUnread(conversation: Conversation): void;
+  /** Mark a conversation read or unread on request. */
+  setUnread(conversation: Conversation, unread: boolean): void;
 };
 
 /** Track visible idle conversations that have activity after the user read them. */
@@ -33,6 +34,9 @@ export function useConversationFinishedIndicators(
   const [held, setHeld] = useState<{ heldId?: string; selectedId?: string }>(
     {},
   );
+  // The open conversation that the user marked unread. It stays unread
+  // while open and after the user leaves it.
+  const [keptUnreadId, setKeptUnreadId] = useState<string>();
   // Read the unread state when the selection changes, before the effect
   // below or the opened page marks it read. Hold only a row that the list
   // already showed. A deep link has no row under the pointer, and the
@@ -46,7 +50,9 @@ export function useConversationFinishedIndicators(
           : undefined,
       selectedId,
     });
+    setKeptUnreadId(undefined);
   }
+  const readingId = keptUnreadId === selectedId ? undefined : selectedId;
 
   useEffect(() => {
     if (!ready) return;
@@ -55,51 +61,75 @@ export function useConversationFinishedIndicators(
       const next = reconcileStoredStates(
         current,
         conversations,
-        selectedId,
+        readingId,
         pruneMissing,
       );
       writeStoredStates(next);
       return next;
     });
-  }, [conversations, pruneMissing, ready, selectedId]);
+  }, [conversations, pruneMissing, ready, readingId]);
 
-  const markRead = useCallback((conversationId: string, lastReadAt: string) => {
-    setStoredStates((current) => {
-      const previous = current[conversationId];
-      if (previous && !isAfter(lastReadAt, previous.lastReadAt)) return current;
+  const advanceRead = useCallback(
+    (conversationId: string, lastReadAt: string) => {
+      setStoredStates((current) => {
+        const previous = current[conversationId];
+        if (previous && !isAfter(lastReadAt, previous.lastReadAt)) {
+          return current;
+        }
 
-      const next = { ...current, [conversationId]: { lastReadAt } };
-      writeStoredStates(next);
-      return next;
-    });
-  }, []);
+        const next = { ...current, [conversationId]: { lastReadAt } };
+        writeStoredStates(next);
+        return next;
+      });
+    },
+    [],
+  );
 
-  // Move the read time just before the last activity, so the row reads as
-  // finished since read until the user opens it again.
-  const markUnread = useCallback((conversation: Conversation) => {
-    const lastSeenMs = Date.parse(conversation.lastSeenAt);
-    if (!Number.isFinite(lastSeenMs)) return;
+  const markRead = useCallback(
+    (conversationId: string, lastReadAt: string) => {
+      if (conversationId !== keptUnreadId)
+        advanceRead(conversationId, lastReadAt);
+    },
+    [advanceRead, keptUnreadId],
+  );
 
-    setStoredStates((current) => {
-      const next = {
-        ...current,
-        [conversation.id]: {
-          lastReadAt: new Date(lastSeenMs - 1).toISOString(),
-        },
-      };
-      writeStoredStates(next);
-      return next;
-    });
-  }, []);
+  const setUnread = useCallback(
+    (conversation: Conversation, unread: boolean) => {
+      if (!unread) {
+        setKeptUnreadId((current) =>
+          current === conversation.id ? undefined : current,
+        );
+        advanceRead(conversation.id, conversation.lastSeenAt);
+        return;
+      }
+
+      const lastSeenMs = Date.parse(conversation.lastSeenAt);
+      if (!Number.isFinite(lastSeenMs)) return;
+      if (conversation.id === selectedId) setKeptUnreadId(conversation.id);
+      // Move the read time just before the last activity, so the existing
+      // finished-since-read rule shows the row as unread.
+      setStoredStates((current) => {
+        const next = {
+          ...current,
+          [conversation.id]: {
+            lastReadAt: new Date(lastSeenMs - 1).toISOString(),
+          },
+        };
+        writeStoredStates(next);
+        return next;
+      });
+    },
+    [advanceRead, selectedId],
+  );
 
   return {
     finishedConversationIds: useMemo(
-      () => finishedConversationIds(storedStates, conversations, selectedId),
-      [conversations, selectedId, storedStates],
+      () => finishedConversationIds(storedStates, conversations, readingId),
+      [conversations, readingId, storedStates],
     ),
     heldConversationId: held.heldId,
     markRead,
-    markUnread,
+    setUnread,
   };
 }
 

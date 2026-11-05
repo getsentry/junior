@@ -234,12 +234,22 @@ test.describe("conversation sections", () => {
       /Closed issue summary/,
     );
 
-    // Right-click marks the read row unread again, then read.
+    // Mark the open conversation unread. It stays unread after leaving it.
+    await finishedRow.click();
+    await expect(finishedRow).toHaveAttribute("aria-current", "page");
     await finishedRow.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Mark as unread" }).click();
     await expect(
       finishedRow.getByRole("img", { name: "Unread" }),
     ).toBeVisible();
+    await sidebar
+      .getByRole("link", { name: /Checkout latency triage/ })
+      .click();
+    await expect(finishedRow).not.toHaveAttribute("aria-current", "page");
+    await expect(
+      finishedRow.getByRole("img", { name: "Unread" }),
+    ).toBeVisible();
+
     await finishedRow.click({ button: "right" });
     await screenshot(page, "conversation-sidebar-context-menu", {
       lightTheme: true,
