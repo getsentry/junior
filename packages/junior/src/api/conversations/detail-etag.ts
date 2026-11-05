@@ -8,7 +8,10 @@ import {
 } from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
-import { readConversationAccessFromSql } from "./access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "./access";
 import { readConversationAgentTree } from "./agent-tree";
 import { readConversationAutoArchive } from "./auto-archive";
 import { readConversationForks } from "./fork";
@@ -40,47 +43,71 @@ async function readSubtreeDetailVersion(
 }
 
 /**
+ * Viewer state (access, marks, read position, auto-archive choice) and data
+ * that other Conversations own (forks, agent tree labels).
+ */
+export type ConversationDetailState = {
+  access?: ConversationAccess;
+  agentTree?: Awaited<ReturnType<typeof readConversationAgentTree>>;
+  autoArchive?: Awaited<ReturnType<typeof readConversationAutoArchive>>;
+  forks: Awaited<ReturnType<typeof readConversationForks>>;
+  readPosition?: Awaited<ReturnType<typeof readConversationReadPosition>>;
+  viewerMarks?: Awaited<ReturnType<typeof readConversationViewerMarks>>;
+};
+
+/** Read the detail state that the ETag hashes and the report shows. */
+export async function readConversationDetailState(
+  conversationId: string,
+  viewer?: User,
+): Promise<ConversationDetailState> {
+  const [access, viewerMarks, forks, agentTree, readPosition, autoArchive] =
+    await Promise.all([
+      readConversationAccessFromSql(getDb(), [conversationId], viewer),
+      viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
+      readConversationForks(conversationId, viewer),
+      readConversationAgentTree(conversationId, viewer),
+      viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
+      viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
+    ]);
+  return {
+    access: access.get(conversationId),
+    agentTree,
+    autoArchive,
+    forks,
+    readPosition,
+    viewerMarks,
+  };
+}
+
+/**
  * Return the detail ETag without building the report, or undefined for a
- * missing Conversation.
+ * missing Conversation. The state comes back too, so the report reuses it
+ * and matches the ETag.
  *
- * Shared content is covered by `detail_version`. Viewer state (marks, read
- * position, auto-archive choice) and data that other Conversations own (forks,
- * agent tree labels) are cheap, so they are read on each request. Names, avatars, Automation titles, and plugin sidebar
- * labels are not covered: they refresh with the next detail change or a reload.
+ * Shared content is covered by `detail_version`. The detail state is cheap,
+ * so it is read on each request. Names, avatars, Automation titles, and
+ * plugin sidebar labels are not covered: they refresh with the next detail
+ * change or a reload.
  */
 export async function readConversationDetailEtag(
   conversationId: string,
   options: { limit: number; viewer?: User },
-): Promise<string | undefined> {
-  const { viewer } = options;
-  const [
-    subtree,
-    access,
-    viewerMarks,
-    forks,
-    agentTree,
-    readPosition,
-    autoArchive,
-  ] = await Promise.all([
+): Promise<{ etag: string; state: ConversationDetailState } | undefined> {
+  const [subtree, state] = await Promise.all([
     readSubtreeDetailVersion(conversationId),
-    readConversationAccessFromSql(getDb(), [conversationId], viewer),
-    viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
-    readConversationForks(conversationId, viewer),
-    readConversationAgentTree(conversationId, viewer),
-    viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
-    viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
+    readConversationDetailState(conversationId, options.viewer),
   ]);
   if (subtree.conversations === 0) return undefined;
   const basis = JSON.stringify({
-    access: access.get(conversationId) ?? null,
-    agentTree: agentTree ?? null,
-    autoArchive: autoArchive ?? null,
-    forks,
+    access: state.access ?? null,
+    agentTree: state.agentTree ?? null,
+    autoArchive: state.autoArchive ?? null,
+    forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit,
-    readPosition: readPosition ?? null,
+    readPosition: state.readPosition ?? null,
     subtree,
-    viewerMarks: viewerMarks ?? null,
+    viewerMarks: state.viewerMarks ?? null,
   });
-  return createHash("sha256").update(basis).digest("hex");
+  return { etag: createHash("sha256").update(basis).digest("hex"), state };
 }

@@ -25,10 +25,6 @@ import {
 const conversationEventColumns = getTableColumns(juniorConversationEvents);
 const MIN_SCAN_SIZE = 64;
 
-type ConversationEventRow = Awaited<
-  ReturnType<typeof readConversationEventRows>
->[number];
-
 /** Read bounded canonical rows while excluding model-only replacement history. */
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
@@ -94,42 +90,32 @@ async function readConversationEventRows(
     .limit(args.limit);
 }
 
-/** Project stored rows and resolve entity starts that precede the page. */
-async function projectConversationEventRows(
+/** Read the first Turn start, which marks history inherited from a fork. */
+async function readFirstTurnStart(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<ConversationEvent | undefined> {
+  const [row] = await readConversationEventRows(executor, {
+    conversationId,
+    direction: "forward",
+    limit: 1,
+    types: ["turn_started"],
+  });
+  return row ? eventFromRow(row) : undefined;
+}
+
+/** Resolve entity starts that precede the page, then project it once. */
+async function projectConversationEvents(
   executor: JuniorSqlDatabase,
   args: {
     canExposePayload: boolean;
     conversationId: string;
-    rows: ConversationEventRow[];
+    events: ConversationEvent[];
+    firstTurnStart?: ConversationEvent;
   },
 ): Promise<ConversationReportEvent[]> {
-  const events = args.rows
-    .map(eventFromRow)
-    .sort((left, right) => left.seq - right.seq);
-  // Resolve context before the scanned page, not from today's model config.
-  // Keep the last Turn boundary and actual call so pages have the same model.
-  const modelContextRows = events[0]
-    ? (
-        await Promise.all([
-          readConversationEventRows(executor, {
-            conversationId: args.conversationId,
-            beforeSeq: events[0].seq,
-            direction: "backward",
-            limit: 1,
-            types: ["turn_started", "turn_completed", "turn_failed"],
-          }),
-          readConversationEventRows(executor, {
-            conversationId: args.conversationId,
-            beforeSeq: events[0].seq,
-            direction: "backward",
-            limit: 1,
-            types: ["assistant_message"],
-          }),
-        ])
-      )
-        .flat()
-        .sort((left, right) => left.seq - right.seq)
-    : [];
+  const events = args.events.sort((left, right) => left.seq - right.seq);
+  const firstSeq = events[0]?.seq;
   const endedInvocationIds = [
     ...new Set(
       events.flatMap((event) =>
@@ -139,56 +125,134 @@ async function projectConversationEventRows(
       ),
     ),
   ];
-  const subagentStartRows =
-    endedInvocationIds.length === 0
-      ? []
-      : await readConversationEventRows(executor, {
-          conversationId: args.conversationId,
-          direction: "forward",
-          limit: endedInvocationIds.length,
-          subagentInvocationIds: endedInvocationIds,
-          types: ["subagent_started"],
-        });
-  const [firstTurnStartRow] = await readConversationEventRows(executor, {
-    conversationId: args.conversationId,
-    direction: "forward",
-    limit: 1,
-    types: ["turn_started"],
-  });
   const toolResultIds = conversationReportToolResultIds(events);
-  const toolStartRows =
-    toolResultIds.length === 0
-      ? []
-      : await readConversationEventRows(executor, {
-          conversationId: args.conversationId,
-          direction: "forward",
-          limit: toolResultIds.length,
-          toolCallIds: toolResultIds,
-          types: ["tool_execution_started"],
-        });
-
-  if (args.canExposePayload) {
-    await hydrateMessageAttachments(executor, args.conversationId, events);
-  }
+  // These reads depend only on the page, so they run together.
+  const [turnBoundaryRows, modelCallRows, subagentStartRows, toolStartRows] =
+    await Promise.all([
+      // Resolve context before the page, not from today's model config.
+      // Keep the last Turn boundary and actual call so pages have the same
+      // model.
+      firstSeq === undefined
+        ? []
+        : readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            beforeSeq: firstSeq,
+            direction: "backward",
+            limit: 1,
+            types: ["turn_started", "turn_completed", "turn_failed"],
+          }),
+      firstSeq === undefined
+        ? []
+        : readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            beforeSeq: firstSeq,
+            direction: "backward",
+            limit: 1,
+            types: ["assistant_message"],
+          }),
+      endedInvocationIds.length === 0
+        ? []
+        : readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            direction: "forward",
+            limit: endedInvocationIds.length,
+            subagentInvocationIds: endedInvocationIds,
+            types: ["subagent_started"],
+          }),
+      toolResultIds.length === 0
+        ? []
+        : readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            direction: "forward",
+            limit: toolResultIds.length,
+            toolCallIds: toolResultIds,
+            types: ["tool_execution_started"],
+          }),
+      args.canExposePayload
+        ? hydrateMessageAttachments(executor, args.conversationId, events)
+        : undefined,
+    ]);
 
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
     events,
-    ...(firstTurnStartRow
-      ? { firstTurnStart: eventFromRow(firstTurnStartRow) }
+    ...(args.firstTurnStart
+      ? { firstTurnStart: args.firstTurnStart }
       : undefined),
     subagentStartEvents: subagentStartRows.map(eventFromRow),
     toolStartEvents: toolStartRows.map(eventFromRow),
-    modelContextEvents: modelContextRows.map(eventFromRow),
+    modelContextEvents: [...turnBoundaryRows, ...modelCallRows]
+      .sort((left, right) => left.seq - right.seq)
+      .map(eventFromRow),
+  });
+}
+
+/**
+ * Scan source rows in bounded chunks until more than `limit` reporting
+ * events are known, then project the scanned rows once.
+ *
+ * Each chunk is decoded once. A chunk is counted without the entity starts
+ * that precede it, which can only undercount, so the scan never stops early.
+ */
+async function scanConversationEventPage(
+  executor: JuniorSqlDatabase,
+  args: {
+    afterSeq?: number;
+    beforeSeq?: number;
+    canExposePayload: boolean;
+    conversationId: string;
+    direction: "backward" | "forward";
+    limit: number;
+  },
+): Promise<ConversationReportEvent[]> {
+  const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
+  const firstTurnStartRead = readFirstTurnStart(executor, args.conversationId);
+  const events: ConversationEvent[] = [];
+  let { afterSeq, beforeSeq } = args;
+  let firstTurnStart: ConversationEvent | undefined;
+  let counted = 0;
+
+  while (counted <= args.limit) {
+    const [batch, turnStart] = await Promise.all([
+      readConversationEventRows(executor, {
+        afterSeq,
+        beforeSeq,
+        conversationId: args.conversationId,
+        direction: args.direction,
+        limit: scanSize,
+      }),
+      firstTurnStartRead,
+    ]);
+    firstTurnStart = turnStart;
+    if (batch.length === 0) break;
+
+    const decoded = batch
+      .map(eventFromRow)
+      .sort((left, right) => left.seq - right.seq);
+    events.push(...decoded);
+    counted += projectConversationReportEventPage({
+      canExposePayload: args.canExposePayload,
+      events: decoded,
+      ...(firstTurnStart ? { firstTurnStart } : undefined),
+    }).length;
+    if (batch.length < scanSize) break;
+    if (args.direction === "backward") beforeSeq = batch.at(-1)!.seq;
+    else afterSeq = batch.at(-1)!.seq;
+  }
+
+  return projectConversationEvents(executor, {
+    canExposePayload: args.canExposePayload,
+    conversationId: args.conversationId,
+    events,
+    ...(firstTurnStart ? { firstTurnStart } : undefined),
   });
 }
 
 /**
  * Read the latest reporting events before an exclusive boundary.
  *
- * Source rows are scanned in bounded chunks until the requested projected page
- * and one older event are known. This keeps ordinary pages bounded without
- * assuming every agent history event produces a reporting event.
+ * Not every agent history event produces a reporting event, so source rows
+ * are scanned until the requested page and one older event are known.
  */
 export async function readConversationEventPage(
   executor: JuniorSqlDatabase,
@@ -202,30 +266,10 @@ export async function readConversationEventPage(
   events: ConversationReportEvent[];
   previousSeq?: number;
 }> {
-  const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
-  const rows: ConversationEventRow[] = [];
-  let beforeSeq = args.beforeSeq;
-  let projected: ConversationReportEvent[] = [];
-
-  while (projected.length <= args.limit) {
-    const batch = await readConversationEventRows(executor, {
-      beforeSeq,
-      conversationId: args.conversationId,
-      direction: "backward",
-      limit: scanSize,
-    });
-    if (batch.length === 0) break;
-
-    rows.push(...batch);
-    projected = await projectConversationEventRows(executor, {
-      canExposePayload: args.canExposePayload,
-      conversationId: args.conversationId,
-      rows,
-    });
-    if (projected.length > args.limit || batch.length < scanSize) break;
-    beforeSeq = batch.at(-1)!.seq;
-  }
-
+  const projected = await scanConversationEventPage(executor, {
+    ...args,
+    direction: "backward",
+  });
   const events = projected.slice(-args.limit);
   return {
     events,
@@ -299,30 +343,10 @@ export async function readConversationEventPageAfter(
   events: ConversationReportEvent[];
   nextSeq?: number;
 }> {
-  const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
-  const rows: ConversationEventRow[] = [];
-  let afterSeq = args.afterSeq;
-  let projected: ConversationReportEvent[] = [];
-
-  while (projected.length <= args.limit) {
-    const batch = await readConversationEventRows(executor, {
-      afterSeq,
-      conversationId: args.conversationId,
-      direction: "forward",
-      limit: scanSize,
-    });
-    if (batch.length === 0) break;
-
-    rows.push(...batch);
-    projected = await projectConversationEventRows(executor, {
-      canExposePayload: args.canExposePayload,
-      conversationId: args.conversationId,
-      rows,
-    });
-    if (projected.length > args.limit || batch.length < scanSize) break;
-    afterSeq = batch.at(-1)!.seq;
-  }
-
+  const projected = await scanConversationEventPage(executor, {
+    ...args,
+    direction: "forward",
+  });
   const events = projected.slice(0, args.limit);
   return {
     events,

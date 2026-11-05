@@ -499,33 +499,37 @@ export function createConversationRoutes(
       const { mailbox: withMailbox, ...query } = context.req.valid("query");
       const viewer = context.get("viewer");
       // Read the mailbox before history, as two separate reads would, so
-      // input that moves from the mailbox to history is in at least one.
-      const mailbox = withMailbox
-        ? await requireConversationPendingMessages(conversationId, {
-            ...(viewer ? { viewer } : undefined),
-          })
-        : undefined;
-      // Polls send the last version token. Compare it before the report is
-      // built, because building the report is the expensive part of this route.
-      const etag = await readConversationDetailEtag(conversationId, {
-        limit: query.limit,
-        ...(viewer ? { viewer } : undefined),
-      });
-      const headers = etag
+      // input that moves from the mailbox to history is in at least one. The
+      // version token and the state it hashes are not history, so they are
+      // read beside it. Polls send the last token: compare it before the
+      // report is built, because building the report is the expensive part.
+      const [mailbox, version] = await Promise.all([
+        withMailbox
+          ? requireConversationPendingMessages(conversationId, {
+              ...(viewer ? { viewer } : undefined),
+            })
+          : undefined,
+        readConversationDetailEtag(conversationId, {
+          limit: query.limit,
+          ...(viewer ? { viewer } : undefined),
+        }),
+      ]);
+      const headers = version
         ? {
             "cache-control": "private, no-store",
-            [CONVERSATION_DETAIL_VERSION_HEADER]: etag,
+            [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
           }
         : undefined;
       if (
-        headers &&
+        version &&
         !mailbox &&
-        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === etag
+        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === version.etag
       ) {
         return new Response(null, { status: 304, headers });
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
+        ...(version ? { state: version.state } : undefined),
         ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");

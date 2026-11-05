@@ -361,6 +361,64 @@ describe("conversation event list API", () => {
     ]);
   });
 
+  it("finds a subagent start that is more than one scan chunk older", async () => {
+    const conversationId = "local:test:paged-subagent-far";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "subagent_started",
+          subagentInvocationId: "invocation-far",
+          subagentKind: "advisor",
+          childConversationId: "child-far",
+        },
+        createdAtMs: 1,
+      },
+      // Rows that project to no reporting event, so the scan reads past
+      // its first chunk before it finds the start.
+      ...Array.from({ length: 70 }, (_, index) => ({
+        data: {
+          type: "structured_event" as const,
+          namespace: "unregistered-plugin",
+          name: "progress",
+          version: 1,
+          content: { index },
+        },
+        createdAtMs: 2 + index,
+      })),
+      {
+        data: {
+          type: "subagent_ended",
+          subagentInvocationId: "invocation-far",
+          outcome: "success",
+        },
+        createdAtMs: 100,
+      },
+    ]);
+
+    const app = createJuniorApi();
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}?limit=1`,
+    );
+    const detail = conversationDetailReportSchema.parse(
+      await detailResponse.json(),
+    );
+    expect(detail.events).toEqual([
+      expect.objectContaining({
+        seq: 71,
+        data: {
+          type: "subagent",
+          startedSeq: 0,
+          startedAt: "1970-01-01T00:00:00.001Z",
+          childConversationId: "child-far",
+          subagentKind: "advisor",
+          status: "completed",
+        },
+      }),
+    ]);
+    expect(detail.previousCursor).toBeDefined();
+  });
+
   it("keeps a terminal tool observation self-contained when its start is older", async () => {
     const conversationId = "local:test:paged-tool";
     await recordConversation(conversationId);

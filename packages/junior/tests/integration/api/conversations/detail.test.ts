@@ -125,6 +125,39 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("returns the latest 50 events and a cursor to earlier ones", async () => {
+    const conversationId = "local:test:latest-detail-page";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Long conversation",
+      visibility: "public",
+    });
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 60 }, (_, index) => ({
+        createdAtMs: 2 + index,
+        data: {
+          messageId: `message-${index}`,
+          role: "assistant" as const,
+          text: `message ${index}`,
+          type: "message" as const,
+        },
+      })),
+    );
+
+    const response = await createJuniorApi().request(
+      `http://localhost/api/conversations/${conversationId}`,
+    );
+    const detail = conversationDetailReportSchema.parse(await response.json());
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 50 }, (_, index) => 10 + index),
+    );
+    expect(detail.previousCursor).toBeDefined();
+  });
+
   it("answers unchanged polls with 304 until the subtree or annotations change", async () => {
     const conversationId = "local:test:revalidated-detail";
     const childConversationId = "local:test:revalidated-detail:child";
