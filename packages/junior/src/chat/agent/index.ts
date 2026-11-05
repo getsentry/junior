@@ -585,8 +585,8 @@ async function executeAgentRunInPrivacyContext(
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
     // ── Pre-agent setup ──────────────────────────────────────────────
-    // Routing, sandbox setup, and prompt Turn context such as memory recall
-    // do not read one another's results, so they run at the same time.
+    // Sandbox setup and prompt Turn context such as memory recall do not
+    // read one another's results, so they run at the same time.
     const runSandbox = await createRunSandbox({
       availableSkills,
       configurationValues,

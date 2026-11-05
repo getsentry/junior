@@ -1,0 +1,32 @@
+# Craft's default changelog categories, except that breaking changes bump the
+# minor version. Junior is still 0.x, so `auto` must not release 1.0.0.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Breaking Changes 🛠
+      commit_patterns:
+        - "^(?<type>\\w+(?:\\((?<scope>[^)]+)\\))?!:\\s*)"
+      semver: minor
+    - title: Security 🔒
+      commit_patterns:
+        - "^(?<type>security(?:\\((?<scope>[^)]+)\\))?!?:\\s*)"
+      semver: patch
+    - title: New Features ✨
+      commit_patterns:
+        - "^(?<type>feat(?:\\((?<scope>[^)]+)\\))?!?:\\s*)"
+      semver: minor
+    - title: Bug Fixes 🐛
+      commit_patterns:
+        - "^(?<type>fix(?:\\((?<scope>[^)]+)\\))?!?:\\s*)"
+        - '^Revert "'
+      semver: patch
+    - title: Documentation 📚
+      commit_patterns:
+        - "^(?<type>docs?(?:\\((?<scope>[^)]+)\\))?!?:\\s*)"
+      semver: patch
+    - title: Internal Changes 🔧
+      commit_patterns:
+        - "^(?<type>(?:build|refactor|meta|chore|ci|ref|perf|tests?|style)(?:\\((?<scope>[^)]+)\\))?!?:\\s*)"
+      semver: patch

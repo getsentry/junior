@@ -134,6 +134,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
@@ -169,31 +170,39 @@ export const ConversationComposer = memo(function ConversationComposer(
   }, [storageKey]);
 
   // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
-  // longer drafts scroll inside it. Width changes rewrap the text, so measure
-  // again when the textarea gets narrower or wider.
+  // longer drafts scroll inside it. Measure again when the text rewraps or
+  // the reply layout switches density.
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     syncComposerHeight(textarea);
     let width = textarea.clientWidth;
     let frame: number | undefined;
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === width) return;
-      width = textarea.clientWidth;
+    const scheduleHeight = () => {
       // A height change inside this callback starts a ResizeObserver loop
       // error. Measure in the next frame instead.
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      if (frame !== undefined) return;
       frame = window.requestAnimationFrame(() => {
         frame = undefined;
         syncComposerHeight(textarea);
       });
+    };
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      scheduleHeight();
     });
     observer.observe(textarea);
+    const tallViewport = replyLayout
+      ? window.matchMedia("(min-height: 62.5rem)")
+      : undefined;
+    tallViewport?.addEventListener("change", scheduleHeight);
     return () => {
       observer.disconnect();
+      tallViewport?.removeEventListener("change", scheduleHeight);
       if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [replyLayout]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -506,7 +515,12 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize={autocorrect ? "sentences" : "off"}
           autoComplete="off"
           autoCorrect={autocorrect ? "on" : "off"}
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
+          className={cn(
+            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
+            replyLayout
+              ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
+              : "md:min-h-14",
+          )}
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
           id={id}
@@ -526,7 +540,8 @@ export const ConversationComposer = memo(function ConversationComposer(
         />
         <div
           className={cn(
-            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
+            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3",
+            replyLayout ? "md:tall:py-2" : "md:py-2",
             props.footerStart
               ? "justify-between"
               : "justify-end md:justify-between",

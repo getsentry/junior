@@ -3,6 +3,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
 import juniorAvatarUrl from "../../assets/junior-avatar.webp";
+import {
+  transcriptAvatarClass,
+  transcriptColumnsClass,
+} from "./TranscriptRows";
 
 /** Align message text and attachments beside their avatars. */
 export function TranscriptMessageShell(props: {
@@ -18,29 +22,34 @@ export function TranscriptMessageShell(props: {
   return (
     <article
       className={cn(
-        "group/message grid min-w-0 gap-3",
-        hasAvatar && "grid-cols-[2rem_minmax(0,1fr)] text-dashboard-text",
+        "group/message grid min-w-0",
+        hasAvatar && cn(transcriptColumnsClass, "text-dashboard-text"),
         kind === "system" &&
-          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text",
-        kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-        kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
+          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
+        kind === "tool" &&
+          "rounded-none px-0 text-dashboard-text-muted max-md:ml-8",
+        kind === "other" &&
+          "bg-dashboard-surface-hover text-dashboard-text max-md:ml-8",
       )}
       onCopy={props.onCopy}
     >
       {hasAvatar ? (
         <div
           aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center"
+          className={cn(
+            "flex items-center justify-center",
+            transcriptAvatarClass,
+          )}
         >
           {kind === "assistant" ? (
             <img
               alt=""
-              className="size-8 object-contain"
+              className="size-full object-contain"
               draggable={false}
               src={juniorAvatarUrl}
             />
           ) : (
-            <Avatar className="size-8 border-0 bg-violet-300 shadow-none">
+            <Avatar className="size-full border-0 bg-violet-300 shadow-none">
               <AvatarImage
                 alt=""
                 loading="lazy"

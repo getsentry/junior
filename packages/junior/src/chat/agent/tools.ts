@@ -106,12 +106,7 @@ export interface RunSandbox {
   pluginHooks: PluginHookRunner;
 }
 
-/**
- * Create the run's sandbox handle without acquiring a sandbox.
- *
- * It does not depend on the Turn route, so the caller can start sandbox
- * setup while the router runs.
- */
+/** Create the run's sandbox handle without acquiring a sandbox. */
 export async function createRunSandbox(
   args: RunSandboxArgs,
 ): Promise<RunSandbox> {

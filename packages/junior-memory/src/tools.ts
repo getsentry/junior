@@ -45,7 +45,6 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "Private memory requires a User.",
   "User memory requires a User.",
 ]);
 
@@ -556,7 +555,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere. Private memories belong to the current User.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
