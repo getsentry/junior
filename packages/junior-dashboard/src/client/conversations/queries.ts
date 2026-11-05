@@ -75,7 +75,32 @@ const FAST_POLL_WINDOW_MS = 6_000;
 export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
+  /** Set by a list hover prefetch, so the next visit can use it as its open fetch. */
+  prefetchedAtMs?: number;
 };
+
+// A hover prefetch this recent is the open fetch of the next visit. The
+// reader has not opened the Conversation since, so its read position and
+// unread page are still the ones that the open would get.
+const PREFETCH_OPEN_WINDOW_MS = 30_000;
+
+function dropPrefetchMark(client: QueryClient, conversationId: string) {
+  const key = conversationDetailQueryKey(conversationId);
+  const state = client.getQueryState<ConversationSnapshot>(key);
+  if (!state?.data?.prefetchedAtMs) return;
+  const { prefetchedAtMs: _prefetchedAtMs, ...rest } = state.data;
+  // Keep the fetch time, so the copy goes stale as it would have.
+  client.setQueryData<ConversationSnapshot>(key, rest, {
+    updatedAt: state.dataUpdatedAt,
+  });
+}
+
+function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
+  return Boolean(
+    snapshot?.prefetchedAtMs &&
+    Date.now() - snapshot.prefetchedAtMs < PREFETCH_OPEN_WINDOW_MS,
+  );
+}
 
 /** Read the mailbox before history so acknowledged input is already committed. */
 async function readConversationSnapshot(
@@ -519,13 +544,23 @@ export function useConversationData(
 ) {
   const queryClient = useQueryClient();
   // The shell keeps one hook across Conversations, so a new Conversation
-  // starts a new visit.
-  const [visit, setVisit] = useState({ conversationId, fetched: false });
+  // starts a new visit. A recent hover prefetch is the open fetch of the visit.
+  const startVisit = () => {
+    const prefetched = isOpenPrefetch(
+      queryClient.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      ),
+    );
+    return { conversationId, fetched: prefetched, prefetched };
+  };
+  const [visit, setVisit] = useState(startVisit);
   if (visit.conversationId !== conversationId) {
-    setVisit({ conversationId, fetched: false });
+    setVisit(startVisit());
   }
   const fetchedAtOpen =
     visit.conversationId === conversationId && visit.fetched;
+  const openedFromPrefetch =
+    visit.conversationId === conversationId && visit.prefetched;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -569,13 +604,17 @@ export function useConversationData(
   // A reopened Conversation shows the cached copy at once, but it can miss
   // messages that arrived while the reader was away. Fetch it once at the
   // start of each visit, even when the cached copy is still fresh. A fetch
-  // that is already running counts.
+  // that is already running counts, such as a hover prefetch. After a done
+  // prefetch, this fetch only checks for newer events.
   const refetchDetail = detail.refetch;
   useEffect(() => {
-    if (conversationId) void refetchDetail({ cancelRefetch: false });
-  }, [conversationId, refetchDetail]);
+    if (!conversationId) return;
+    void refetchDetail({ cancelRefetch: false });
+    // After a visit, the read position can move past the prefetched one.
+    return () => dropPrefetchMark(queryClient, conversationId);
+  }, [conversationId, queryClient, refetchDetail]);
   if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
-    setVisit({ conversationId, fetched: true });
+    setVisit({ conversationId, fetched: true, prefetched: openedFromPrefetch });
   }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
@@ -768,7 +807,7 @@ export function useConversationData(
     fetchedAtOpen,
     /** The latest detail after a fetch in this visit, before it is deferred. */
     fetchedDetail:
-      detail.isFetchedAfterMount && !detail.isFetching
+      openedFromPrefetch || (detail.isFetchedAfterMount && !detail.isFetching)
         ? detail.data
         : undefined,
     isLoadingPreviousPage,
