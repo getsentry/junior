@@ -117,7 +117,7 @@ export function ConversationDetails(props: {
                 ·
               </span>
               <time
-                className="truncate font-normal text-dashboard-text-muted"
+                className="truncate text-xs font-normal text-dashboard-text-muted"
                 dateTime={props.brief.updatedAt}
                 title={formatTime(props.brief.updatedAt, {
                   dateStyle: "medium",
@@ -156,7 +156,7 @@ export function ConversationDetails(props: {
               <ConversationLinkedWork links={props.links} />
             ) : null}
             {props.links.length > 0 && watches.length > 0 ? (
-              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-medium text-dashboard-text-faint">
+              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
                 Also waiting on
               </h4>
             ) : null}

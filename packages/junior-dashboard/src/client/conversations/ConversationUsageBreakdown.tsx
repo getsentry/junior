@@ -308,7 +308,7 @@ export function ConversationUsageBreakdown(props: {
   );
 
   const breakdown = (
-    <div className="grid min-w-0 gap-5 px-1 pb-2.5">
+    <div className="grid min-w-0 gap-4 px-1 pb-1">
       {childAgentTotals ? (
         <BreakdownTable
           countLabel="Tokens"
@@ -434,14 +434,17 @@ export function ConversationUsageBreakdown(props: {
   return (
     <Collapsible className="min-w-0 border-t border-dashboard-border-subtle">
       <h3 className="m-0">
-        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-semibold text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           <ChevronRight
             aria-hidden="true"
-            className={dashboardDisclosureChevronClass}
+            className={cn(
+              dashboardDisclosureChevronClass,
+              "text-dashboard-text-muted",
+            )}
           />
           Usage
           {summary ? (
-            <span className="ml-auto font-normal tabular-nums">
+            <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
               <ShimmerText active={live}>{summary}</ShimmerText>
             </span>
           ) : null}

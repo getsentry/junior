@@ -40,7 +40,7 @@ function ContextTag(props: {
   title?: string;
 }) {
   const className =
-    "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 rounded-md border border-dashboard-border-subtle px-1.5 font-sans text-xs font-medium text-dashboard-text-muted";
+    "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 rounded-md border border-dashboard-border-subtle px-1.5 font-sans text-2xs font-medium text-dashboard-text-muted";
   const content = (
     <>
       {props.icon}

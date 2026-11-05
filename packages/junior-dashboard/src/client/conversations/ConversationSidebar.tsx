@@ -158,14 +158,9 @@ export function ConversationSidebar(props: {
           : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel",
       )}
     >
-      <div className="px-5 py-3">
+      <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2
-            className={cn(
-              "m-0 font-display font-medium leading-tight text-dashboard-text",
-              isLanding ? "text-base" : "text-lg",
-            )}
-          >
+          <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
             {isLanding ? "Your conversations" : "Conversations"}
           </h2>
           <div className="flex items-center gap-0.5">
@@ -401,11 +396,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         <span
           className={cn(
             "min-w-0 truncate font-sans text-sm leading-snug",
-            emphasized
-              ? "font-semibold text-dashboard-text"
-              : status === "active"
-                ? "text-dashboard-text"
-                : "text-dashboard-text-muted",
+            emphasized ? "font-semibold" : props.selected && "font-medium",
+            emphasized || props.selected || status === "active"
+              ? "text-dashboard-text"
+              : "text-dashboard-text-muted",
           )}
         >
           {title}

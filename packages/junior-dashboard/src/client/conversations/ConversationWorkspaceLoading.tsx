@@ -2,6 +2,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { TranscriptLoading } from "./TranscriptLoading";
 import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
@@ -29,8 +30,8 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
 function ConversationSidebarLoading() {
   return (
     <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-fill-faint md:grid">
-      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
-        <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
           Conversations
         </h2>
         <div className="flex gap-1">
@@ -38,7 +39,7 @@ function ConversationSidebarLoading() {
           <Skeleton className="size-7 rounded-md" />
         </div>
       </div>
-      <div className="px-2 pb-2">
+      <div className="px-4 pb-2">
         <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
       </div>
       <div className="grid content-start gap-1 px-1.5 pb-2">
@@ -93,45 +94,19 @@ function ConversationDetailLoading() {
     >
       <ChatLayout
         scrollAriaLabel="Conversation transcript"
-        scrollClassName="thin-scrollbar px-3 pb-1.5 md:px-7 md:pb-2"
+        scrollClassName="thin-scrollbar px-4 pb-4 md:px-7 md:pb-6"
         scroll={
           <section className="min-w-0">
             <div className="mb-4 grid gap-3 border-b border-dashboard-border-subtle py-4">
               <Skeleton className="h-6 w-2/3 max-w-lg" />
               <Skeleton className="h-3 w-1/3 max-w-56 opacity-70" />
             </div>
-            <div className="grid gap-6 py-2">
-              <MessageLoading align="start" />
-              <ActivityLoading />
-              <MessageLoading align="end" />
-              <MessageLoading align="start" />
+            <div aria-hidden="true" className="mx-auto w-full max-w-[52.5rem]">
+              <TranscriptLoading />
             </div>
           </section>
         }
       />
     </section>
-  );
-}
-
-function MessageLoading(props: { align: "end" | "start" }) {
-  return (
-    <div
-      className={cn("grid gap-2", props.align === "end" && "justify-items-end")}
-    >
-      <Skeleton className="h-3 w-24 opacity-70" />
-      <Skeleton
-        className={cn("h-4", props.align === "end" ? "w-56" : "w-3/4 max-w-xl")}
-      />
-      <Skeleton className="h-4 w-2/3 max-w-lg" />
-    </div>
-  );
-}
-
-function ActivityLoading() {
-  return (
-    <div className="grid gap-2 border-l border-dashboard-border-subtle py-1 pl-4">
-      <Skeleton className="h-3 w-36 opacity-70" />
-      <Skeleton className="h-3 w-1/2 max-w-sm" />
-    </div>
   );
 }

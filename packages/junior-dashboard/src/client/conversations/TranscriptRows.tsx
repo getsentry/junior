@@ -2,6 +2,13 @@ import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { cn } from "../styles";
 
+/** Align message text, activity, and loading rows at the same inset. */
+export const transcriptColumnsClass =
+  "grid-cols-[1.5rem_minmax(0,1fr)] gap-2 md:grid-cols-[2rem_minmax(0,1fr)] md:gap-3";
+
+/** Align an avatar with the author row at either breakpoint. */
+export const transcriptAvatarClass = "mt-1 size-6 md:mt-0 md:size-8";
+
 /** Keep row padding and the gap between transcript entries in one place. */
 export function TranscriptRows({
   className,
@@ -53,12 +60,15 @@ export function TranscriptRow(props: {
 }) {
   return (
     <div
-      className="py-1.5"
+      className={cn(
+        "py-1.5",
+        props.indent && cn("grid", transcriptColumnsClass),
+      )}
       data-scroll-anchor={props.anchorKey}
       data-transcript-seq={props.seq}
     >
       {props.indent ? (
-        <div className="pl-11">{props.children}</div>
+        <div className="col-start-2 min-w-0">{props.children}</div>
       ) : (
         props.children
       )}

@@ -50,11 +50,11 @@ export function ConversationBrief(props: {
     return (
       <div className="grid min-w-0 gap-4">
         <BriefSummary>
-          <DisplayText mentions={mentions} text={content.summary} />
+          <DisplayText compact mentions={mentions} text={content.summary} />
         </BriefSummary>
         {content.openDecisions.length > 0 ? (
-          <div className="grid gap-2">
-            <h4 className="m-0 text-sm font-medium text-dashboard-text">
+          <div className="grid gap-1.5">
+            <h4 className="m-0 text-xs font-semibold text-dashboard-text">
               Open decisions
             </h4>
             <BriefOpenDecisions
@@ -225,7 +225,7 @@ function BriefSummary(props: { children: ReactNode }) {
   return (
     <div className="relative min-w-0">
       <div
-        className={cn("leading-6 md:leading-7", collapsed && "overflow-clip")}
+        className={cn("leading-6", collapsed && "overflow-clip")}
         id={id}
         onFocusCapture={(event) => {
           if (!collapsed) return;
