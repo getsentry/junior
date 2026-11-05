@@ -41,6 +41,7 @@ syncInjectedDepsAfterScripts:
   - build
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
+  - "@sentry/roach@0.2.0"
   - "@sentry/starlight-theme"
   - "@vitest-evals/core@0.16.1"
   - "@vitest-evals/report-ui@0.16.1"

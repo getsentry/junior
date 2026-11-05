@@ -1,3 +1,5 @@
+// The `web` recording rule of evals (`packages/junior-evals/roach.json`)
+// matches this value. Change both together.
 export const USER_AGENT = "junior-bot/0.1";
 // Sites that serve Markdown send it instead of HTML. It is much smaller than
 // the HTML page and needs no conversion. Other sites send HTML as before.
