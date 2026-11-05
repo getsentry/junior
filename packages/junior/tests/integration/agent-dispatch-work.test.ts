@@ -18,7 +18,11 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
+import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import { createModelStream } from "../fixtures/model-stream";
 import {
   createModelAgentRunner,
@@ -271,13 +275,22 @@ describe("agent dispatch conversation work", () => {
         },
         {
           action: "send_message",
-          destination: { ...destination, channelId: "C456" },
+          destination,
         },
       ],
     );
     const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ channel: "D123", ts: "1700000000.000401" }),
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: destination.channelId,
+        ts: "1700000000.000402",
+      }),
+    });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     await processConversationQueueMessage(queue.takeMessage(), {
@@ -288,7 +301,20 @@ describe("agent dispatch conversation work", () => {
 
     expect(
       slackApiOutbox.messages().map((message) => message.params.channel),
-    ).toEqual(["D123", "C456"]);
+    ).toEqual(["D123", destination.channelId]);
+    // Only the post in the dispatch destination continues the dispatch
+    // Conversation. A reply in the D123 thread starts its own Conversation.
+    const binding = (channelId: string, ts: string) =>
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerDestinationId: channelId,
+        providerTenantId: destination.teamId,
+        providerConversationId: ts,
+      });
+    await expect(binding("D123", "1700000000.000401")).resolves.toBe(undefined);
+    await expect(
+      binding(destination.channelId, "1700000000.000402"),
+    ).resolves.toBe(getDispatchConversationId(dispatch));
   });
 
   it("posts nothing for work with no outcomes, also when the run fails", async () => {
