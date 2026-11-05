@@ -75,7 +75,8 @@
     "anti-slop/no-unknown-parameters": "off",
     "anti-slop/no-unknown-returns": "off",
     "anti-slop/no-unsafe-dictionary-type": "off",
-    "anti-slop/require-safety-comment-for-type-assertion": "off"
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "junior/zod-namespace-import": "error"
   },
   "overrides": [
     {
