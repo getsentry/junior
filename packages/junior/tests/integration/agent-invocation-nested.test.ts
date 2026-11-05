@@ -11,7 +11,7 @@ import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
@@ -19,8 +19,8 @@ import {
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 
-async function listAgents(conversationId: string) {
-  return (await createListAgentsTool({ conversationId }).execute!({}, {}))
+async function searchAgents(conversationId: string) {
+  return (await createSearchAgentsTool({ conversationId }).execute!({}, {}))
     .agents;
 }
 
@@ -102,7 +102,7 @@ describe("nested agent invocations", () => {
       expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
-      // listAgents shows the state of open work. A `replaced` child still
+      // searchAgents shows the state of open work. A `replaced` child still
       // has work.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
@@ -111,10 +111,10 @@ describe("nested agent invocations", () => {
         task: slackInvocationInput.input,
         updated_at: expect.any(String),
       });
-      await expect(listAgents(slackParentConversationId)).resolves.toEqual([
+      await expect(searchAgents(slackParentConversationId)).resolves.toEqual([
         listedChild(child.childConversationId),
       ]);
-      await expect(listAgents(child.childConversationId)).resolves.toEqual([
+      await expect(searchAgents(child.childConversationId)).resolves.toEqual([
         listedChild(helper.childConversationId),
       ]);
 
@@ -140,7 +140,7 @@ describe("nested agent invocations", () => {
         }),
       ]);
       // An agent invocation that receives a result is not a new task.
-      await expect(listAgents(child.childConversationId)).resolves.toEqual([
+      await expect(searchAgents(child.childConversationId)).resolves.toEqual([
         { ...listedChild(helper.childConversationId), status: "running" },
       ]);
 
