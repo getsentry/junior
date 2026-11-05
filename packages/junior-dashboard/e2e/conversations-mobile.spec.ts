@@ -253,7 +253,9 @@ test("opens and closes a conversation on mobile", async ({
   await expect(
     page.getByRole("button", { name: "Search transcript" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open event log", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
@@ -577,7 +579,9 @@ test("opens and closes a conversation on mobile", async ({
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Event log" }).click();
+  await page
+    .getByRole("button", { name: "Open event log", exact: true })
+    .click();
   await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 

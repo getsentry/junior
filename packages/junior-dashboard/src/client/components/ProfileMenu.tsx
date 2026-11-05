@@ -170,7 +170,11 @@ export function ProfileMenu({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <div
+        aria-label="Personal model spend"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
+        role="group"
+      >
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
@@ -320,6 +324,7 @@ export function ProfileMenu({
   }
 
   const topBar = variant === "top-bar";
+  const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
   return (
     <Popover
       onOpenChange={(nextOpen, details) => {
@@ -335,7 +340,11 @@ export function ProfileMenu({
       open={open}
     >
       <PopoverTrigger
-        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
+        aria-label={
+          topBar
+            ? `${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`
+            : menuLabel
+        }
         className={cn(
           "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           topBar
