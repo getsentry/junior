@@ -23,7 +23,40 @@ export type ConversationCatchUpState = {
   error: boolean;
   pending: boolean;
   request(): void;
+  /** Unread Messages in the loaded rows. */
+  unreadMessages: UnreadMessageCount;
 };
+
+/**
+ * `more` is set when the unread range goes past the loaded rows, so the
+ * reader has at least `count` unread Messages.
+ */
+type UnreadMessageCount = { count: number; more: boolean };
+
+/**
+ * Count the unread Messages in the loaded rows. It costs no request, so a
+ * reader far behind sees a lower bound instead of the exact count.
+ */
+function countLoadedUnreadMessages(
+  events: ConversationDetailReport["events"],
+  unread: TranscriptUnreadRange,
+  pages: { hasNewerPage: boolean; hasPreviousPage: boolean },
+): UnreadMessageCount {
+  const first = events[0];
+  return {
+    count: events.filter(
+      (event) =>
+        event.seq > unread.afterSeq &&
+        event.seq <= unread.throughSeq &&
+        event.data.type === "message",
+    ).length,
+    more:
+      pages.hasNewerPage ||
+      Boolean(
+        pages.hasPreviousPage && first && first.seq > unread.afterSeq + 1,
+      ),
+  };
+}
 
 /**
  * Count the Turns that finished in the unread range. When the range goes past
@@ -82,6 +115,11 @@ export function useConversationCatchUp(input: {
     error: mutation.isError,
     pending: mutation.isPending,
     request: () => mutation.mutate(unread),
+    unreadMessages: countLoadedUnreadMessages(
+      input.events ?? [],
+      unread,
+      input,
+    ),
   };
 }
 
