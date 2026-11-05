@@ -58,7 +58,8 @@ describe("HTTP route names on request spans", () => {
     memory.get("/memories", (c) => c.json({ ok: true }));
     const app = await createApp({
       allowedDomains: ["sentry.io"],
-      dashboard: { authRequired: false },
+      // Mock reports keep the conversation route off the database.
+      dashboard: { authRequired: false, mockConversations: true },
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
