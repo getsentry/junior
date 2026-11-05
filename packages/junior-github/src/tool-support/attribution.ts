@@ -1,10 +1,13 @@
+import * as z from "zod";
 import type {
   Actor,
   Identity,
+  PluginEgress,
   PluginLogger,
   Source,
   User,
 } from "@sentry/junior-plugin-api";
+import { githubApi, githubErrorMessage } from "./github-api.js";
 
 export const GITHUB_REQUEST_ATTRIBUTION_START =
   "<!-- junior-request-attribution:start -->";
@@ -141,32 +144,69 @@ function formatAttributionBlock(labels: string[]): string {
   return `${GITHUB_REQUEST_ATTRIBUTION_START}\nvia ${labels.join(", ")}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
 }
 
-function applyAttribution(body: string, label: string | undefined): string {
+const ATTRIBUTION_BLOCK = new RegExp(
+  `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
+);
+
+function blockLabels(body: string | undefined): string[] {
+  const contents = body?.match(ATTRIBUTION_BLOCK)?.[1];
+  return contents === undefined ? [] : parseExistingLabels(contents);
+}
+
+/** The Automation ID of an automation label, linked or not. */
+function automationId(label: string): string | undefined {
+  return label.match(/^\[?automation `([^`]+)`/)?.[1];
+}
+
+/**
+ * Merge requesters from the body on GitHub, the new body, and the current
+ * Actor, in that order and without duplicates. An Automation keeps one
+ * label, so its newest run replaces the earlier run ID.
+ */
+function applyAttribution(
+  body: string,
+  label: string | undefined,
+  currentBody: string | undefined,
+): string {
   const normalizedBody = body.trimEnd();
-  const existing = new RegExp(
-    `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
-  );
-  const existingMatch = normalizedBody.match(existing);
-  const existingLabels =
-    existingMatch?.[1] !== undefined
-      ? parseExistingLabels(existingMatch[1])
-      : [];
-  const labels =
-    label && !existingLabels.includes(label)
-      ? [...existingLabels, label]
-      : existingLabels;
+  const automation = label ? automationId(label) : undefined;
+  const earlierLabels = [
+    ...blockLabels(currentBody),
+    ...blockLabels(normalizedBody),
+  ].filter((entry) => !automation || automationId(entry) !== automation);
+  const labels = [...new Set([...earlierLabels, ...(label ? [label] : [])])];
   const attribution = labels.length
     ? formatAttributionBlock(labels)
     : undefined;
-  if (existingMatch) {
+  if (ATTRIBUTION_BLOCK.test(normalizedBody)) {
     return attribution
-      ? normalizedBody.replace(existing, attribution)
-      : normalizedBody.replace(existing, "").trimEnd();
+      ? normalizedBody.replace(ATTRIBUTION_BLOCK, attribution)
+      : normalizedBody.replace(ATTRIBUTION_BLOCK, "").trimEnd();
   }
   if (!attribution) {
     return normalizedBody;
   }
   return normalizedBody ? `${normalizedBody}\n\n${attribution}` : attribution;
+}
+
+/**
+ * Read the body that is on GitHub now, so an update keeps its requesters.
+ * The model sees descriptions with the attribution block removed.
+ */
+export async function readGitHubBody(
+  egress: PluginEgress,
+  input: { operation: string; path: string },
+): Promise<string | undefined> {
+  const response = await githubApi(egress, input);
+  if (!response.ok) {
+    throw new Error(
+      `GitHub read before update failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`,
+    );
+  }
+  return (
+    z.object({ body: z.string().nullable().optional() }).parse(response.body)
+      .body ?? undefined
+  );
 }
 
 /** The stored Junior identity and user of the Actor that makes a GitHub write. */
@@ -203,6 +243,7 @@ export async function resolveGitHubRequester(ctx: {
 
 /**
  * Append or replace runtime-owned requester attribution in a GitHub body.
+ * Pass `currentBody` on updates so requesters already on GitHub are kept.
  * With no stored requester, the label falls back to the already-hydrated
  * actor profile.
  */
@@ -214,6 +255,7 @@ export function appendGitHubRequesterAttribution(
     source?: Source;
   },
   requester: GitHubRequester | undefined,
+  currentBody?: string,
 ): string {
   return applyAttribution(
     body,
@@ -224,5 +266,6 @@ export function appendGitHubRequesterAttribution(
       source: ctx.source,
       user: requester?.user,
     }),
+    currentBody,
   );
 }

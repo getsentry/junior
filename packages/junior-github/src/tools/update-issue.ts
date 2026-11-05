@@ -18,6 +18,7 @@ import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
+  readGitHubBody,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
@@ -114,6 +115,13 @@ export function createGitHubUpdateIssueTool(ctx: {
       }
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
+      const currentBody =
+        update.body !== undefined
+          ? await readGitHubBody(ctx.egress, {
+              operation: "github.issue.get",
+              path: `${repoPath(repo)}/issues/${update.number}`,
+            })
+          : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
@@ -123,6 +131,7 @@ export function createGitHubUpdateIssueTool(ctx: {
                   update.body,
                   ctx,
                   await resolveGitHubRequester(ctx),
+                  currentBody,
                 ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
