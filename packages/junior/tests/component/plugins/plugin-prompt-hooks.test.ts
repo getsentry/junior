@@ -121,6 +121,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
+import { loadProjection } from "@/chat/conversations/projection";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 
 const LOCAL_DESTINATION = {
@@ -307,8 +308,21 @@ describe("plugin prompt hook composition", () => {
       }),
     ).rejects.toBeInstanceOf(TurnInputCommitLostError);
 
-    await executeAgentRun(request);
+    // The retry finds its prompt already saved and must still confirm it.
+    let acknowledgements = 0;
+    await executeAgentRun({
+      ...request,
+      history: await loadProjection({
+        conversationId: LOCAL_DESTINATION.conversationId,
+      }),
+      durability: {
+        onInputCommitted() {
+          acknowledgements += 1;
+        },
+      },
+    });
 
+    expect(acknowledgements).toBe(1);
     expect(recallCount).toBe(1);
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "Use pnpm snapshot 1.",

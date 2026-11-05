@@ -9,6 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
+  sameProvenance,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type {
@@ -197,15 +198,17 @@ function resolveCommitProvenance(args: {
         "trailing commit provenance cannot exceed committed messages",
       );
     }
-    const newMessageCount = args.nextMessages.length - matchingPrefix;
-    if (args.trailingMessageProvenance.length > newMessageCount) {
-      throw new Error(
-        "trailing commit provenance must align to newly committed messages",
-      );
-    }
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
-      provenance[start + offset] = entry;
+      const index = start + offset;
+      if (index >= matchingPrefix) {
+        provenance[index] = entry;
+        return;
+      }
+      // A retry can resend a saved message. Its provenance cannot change.
+      if (!sameProvenance(provenance[index]!, entry)) {
+        throw new Error("retried message provenance must match saved message");
+      }
     });
   }
   return provenance;
@@ -304,13 +307,15 @@ function messageTimestamp(message: PiMessage): number {
  * history or a true content branch is rejected — only compaction may
  * intentionally replace active model history. In-place Pi mutations of already
  * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * A resent committed message must keep its committed provenance. A different
+ * provenance is a hard error, not a history branch.
  */
 export async function commitMessages(args: {
   conversationId: string;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
-  /** Explicit provenance for the trailing newly committed messages. */
+  /** Explicit provenance for the last messages, including resent ones. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   /** Default applied to the last new user message when no explicit array. */
   newMessageProvenance?: ConversationMessageProvenance;

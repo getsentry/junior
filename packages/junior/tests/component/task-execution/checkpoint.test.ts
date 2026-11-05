@@ -1089,7 +1089,10 @@ describe("turn checkpoint", () => {
   it("derives run actors from steered message provenance while preserving the run actor", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const { loadConversationProjection } =
+      await import("@/chat/conversations/projection");
 
     const alice = {
       platform: "slack" as const,
@@ -1133,6 +1136,35 @@ describe("turn checkpoint", () => {
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
+    // A retry can resend saved messages, but it cannot change their actor.
+    const retry = {
+      conversationId: "conversation-multi-actor",
+      turnId: "turn-multi-actor",
+      sliceId: 2,
+      state: "running" as const,
+      piMessages: [aliceMessage, bobMessage],
+      actor: alice,
+    };
+    await expect(
+      upsertTurnRecord({
+        ...retry,
+        trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      upsertTurnRecord({
+        ...retry,
+        trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
+      }),
+    ).rejects.toThrow("retried message provenance must match saved message");
+    const projection = await loadConversationProjection({
+      conversationId: "conversation-multi-actor",
+    });
+    expect(projection.messages).toEqual([aliceMessage, bobMessage]);
+    expect(projection.provenance).toEqual([
+      { authority: "instruction", actor: alice },
+      { authority: "instruction", actor: bob },
+    ]);
 
     // getTurnRecord re-materializes from the stored record and the
     // committed provenance, so this is also the continuation/materialization
