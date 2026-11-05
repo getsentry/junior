@@ -1,4 +1,5 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
+import type { ReactNode } from "react";
 import type {
   ConversationDetailReport,
   ConversationWatch,
@@ -86,7 +87,8 @@ export function conversationLinks(
 /**
  * Show the outside work that a Conversation links to, one row each. A row
  * that Junior also watches shows the Watch details under a chevron, so the
- * same resource does not show twice.
+ * same resource does not show twice. When one row has a chevron, the other
+ * rows keep the same space, so their statuses stay aligned.
  */
 export function ConversationLinkedWork(props: {
   links: ConversationLink[];
@@ -100,7 +102,13 @@ export function ConversationLinkedWork(props: {
       renderItem={(link) => {
         const row = <LinkRow link={link} />;
         const watches = props.watchesByUrl.get(link.url);
-        if (!watches) return row;
+        if (!watches) {
+          return props.watchesByUrl.size > 0 ? (
+            <ChevronSpace>{row}</ChevronSpace>
+          ) : (
+            row
+          );
+        }
         return (
           <Collapsible className="min-w-0">
             <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
@@ -109,6 +117,16 @@ export function ConversationLinkedWork(props: {
         );
       }}
     />
+  );
+}
+
+/** Keep the width of the `WatchDetailsRow` chevron beside a row with none. */
+function ChevronSpace(props: { children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-start gap-0.5">
+      <div className="min-w-0 flex-1">{props.children}</div>
+      <span aria-hidden="true" className="size-8 shrink-0" />
+    </div>
   );
 }
 
