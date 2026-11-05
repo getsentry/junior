@@ -54,14 +54,18 @@ async function mockReadPositionConversation(
     eventCount: input.eventCount,
     /** Holds detail responses until it resolves. */
     detailGate: Promise.resolve(),
-    /** Holds `around` and `after` page responses until it resolves. */
+    /** Holds `around`, `after`, and link page responses until it resolves. */
     newerGate: Promise.resolve(),
-    /** The first `around` or `after` cursor that `newerGate` holds. */
+    /** The first `around` or `after` cursor or link seq that it holds. */
     newerGateAfter: 0,
     /** Fail the pages that `newerGate` holds. */
     failNewer: false,
     /** The event that starts Turn `turn-<seq>`. */
     turnStartSeq: -1,
+    /** The event that captured the memories of the shared memory mock. */
+    memoryCaptureSeq: -1,
+    /** Events that finish a Turn. */
+    turnEndSeqs: [] as number[],
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     /** Return the page around the read position when a detail asks for it. */
@@ -126,12 +130,27 @@ async function mockReadPositionConversation(
                 state: "started",
                 turnId: `turn-${seq}`,
               }
-            : {
-                type: "message",
-                messageId: `message-${seq}`,
-                role: seq % 2 === 0 ? "user" : "assistant",
-                text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-              },
+            : seq === state.memoryCaptureSeq
+              ? {
+                  type: "structured_event",
+                  namespace: "memory",
+                  name: "memories_captured",
+                  version: 1,
+                  turnId: "qa-turn",
+                  presentation: { icon: "brain", title: "2 memories captured" },
+                }
+              : state.turnEndSeqs.includes(seq)
+                ? {
+                    type: "turn_lifecycle",
+                    state: "succeeded",
+                    turnId: `turn-${seq}`,
+                  }
+                : {
+                    type: "message",
+                    messageId: `message-${seq}`,
+                    role: seq % 2 === 0 ? "user" : "assistant",
+                    text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+                  },
         seq,
       };
     });
@@ -140,7 +159,19 @@ async function mockReadPositionConversation(
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
-      const around = query.get("around");
+      const turn = query.get("turn");
+      if (turn && turn !== `turn-${state.turnStartSeq}`) {
+        await route.fulfill({
+          status: 404,
+          json: { error: "Turn not found." },
+        });
+        return;
+      }
+      // Like the server, a link asks for the page around its event.
+      const around =
+        query.get("around") ??
+        query.get("event") ??
+        (turn ? String(state.turnStartSeq) : null);
       const newer = after ?? around;
       if (newer && Number(newer) >= state.newerGateAfter) {
         await state.newerGate;
@@ -221,6 +252,10 @@ test("opens where the reader left off and reports what they read", async ({
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
   await expect(latest).not.toBeInViewport();
+  // Messages without finished Turns are quick to read, so no catch-up.
+  await expect(
+    transcript.getByRole("button", { name: "Catch me up" }),
+  ).toHaveCount(0);
   await screenshot(page, "conversation-unread-marker", { view: "mobile" });
 
   // Reading the first screen moves the shared position past the marker.
@@ -236,6 +271,51 @@ test("opens where the reader left off and reports what they read", async ({
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   await expect(latest).toBeInViewport();
   await expect(marker).not.toBeInViewport();
+});
+
+test("catches the reader up on several unread Turns", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 60,
+    lastReadSeq: 20,
+  });
+  mock.turnEndSeqs = [40, 50];
+  const requested: unknown[] = [];
+  await page.route(
+    `**/api/conversations/${mock.conversationId}/catch-up`,
+    async (route) => {
+      requested.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          needsYou: "Review the Safari fix on PR #12.",
+          summary: "CI failed on Safari after you left. Junior pushed a fix.",
+        },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await transcript.getByRole("button", { name: "Catch me up" }).click();
+  await expect(
+    transcript.getByText("CI failed on Safari after you left."),
+  ).toBeInViewport();
+  await expect(
+    transcript.getByText("Review the Safari fix on PR #12."),
+  ).toBeVisible();
+  // The range is the one from when the Conversation opened.
+  expect(requested).toEqual([{ afterSeq: 20, throughSeq: 59 }]);
+  await screenshot(page, "conversation-catch-up", { view: "mobile" });
+
+  // The summary replaces the unread rows, so it leads straight to the latest.
+  await transcript
+    .getByRole("group", { name: "Catch-up" })
+    .getByRole("button", { name: "Jump to latest" })
+    .click();
+  await expect(transcript.getByText("Transcript message 59 ")).toBeInViewport();
 });
 
 test.describe("opens at new messages after a cached reopen", () => {
@@ -503,7 +583,7 @@ test("jumps to the latest page without the newer pages", async ({
   releaseNewer();
 });
 
-test("opens linked events and Turns that newer pages have not loaded yet", async ({
+test("opens links outside the loaded rows from the page around them", async ({
   page,
   dashboard,
 }) => {
@@ -513,49 +593,124 @@ test("opens linked events and Turns that newer pages have not loaded yet", async
     lastReadSeq: 10,
   });
   mock.pagedDetail = true;
-  // The page around the read position loads. The next one waits.
-  mock.newerGateAfter = 11;
-  let releaseNewer = () => {};
-  mock.newerGate = new Promise((resolve) => {
-    releaseNewer = resolve;
-  });
+  mock.turnStartSeq = 30;
   const pageRequests = recordPageRequests(page);
-  const heldRequest = page.waitForRequest((request) =>
-    request.url().includes("/events?after=30"),
-  );
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${mock.conversationId}?event=70`,
-  );
   const linked = page.getByRole("complementary", {
     name: "Event details",
     exact: true,
   });
-  await heldRequest;
-  await expect(linked).toBeVisible();
-  releaseNewer();
-  await expect(linked).toContainText("Transcript message 70 ");
-  // The search and the scroll both load the held page. They share one
-  // request.
-  expect(pageRequests.filter((search) => search === "?after=30")).toHaveLength(
-    1,
-  );
-
-  // A failed newer page keeps a Turn link, so a retry can still open it.
-  mock.turnStartSeq = 70;
-  mock.failNewer = true;
+  // One request reads the page around the linked event. Nothing pages
+  // toward it, and the page around the read position is not read. Pages
+  // next to it then load as the reader nears them.
   await page.goto(
-    `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-70`,
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?event=70`,
   );
-  const transcript = page.getByLabel("Conversation transcript");
+  await expect(linked).toContainText("Transcript message 70 ");
+  const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
-    transcript.getByText("Newer events could not be loaded."),
+    log.getByRole("button", { name: "Event 70: message", exact: true }),
+  ).toBeInViewport();
+  await screenshot(page, "conversation-link-opens-around-event");
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?event=70"]);
+
+  // A Turn link opens at the event that started the Turn.
+  pageRequests.length = 0;
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-30`,
+  );
+  await expect(page).toHaveURL(/[?&]event=30(&|$)/);
+  await expect(
+    log.getByRole("button", { name: "Event 30: turn_lifecycle", exact: true }),
+  ).toBeInViewport();
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?turn=turn-30"]);
+
+  // A link that the server cannot find is dropped.
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-missing`,
+  );
+  await expect(page).not.toHaveURL(/[?&](turn|event)=/);
+  await expect(linked).toBeHidden();
+});
+
+test("opens a link that the cached latest page holds at its row", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 10,
+  });
+  mock.pagedDetail = true;
+  const pageRequests = recordPageRequests(page);
+  // A hover caches the latest page, which holds event 100.
+  await page.goto(dashboard.baseURL);
+  const prefetched = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${mock.conversationId}`,
+  );
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .hover();
+  await prefetched;
+  await page.evaluate((url) => {
+    history.pushState(null, "", url);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, `/conversations/${mock.conversationId}?event=100`);
+  await expect(
+    page.getByRole("complementary", { name: "Event details", exact: true }),
+  ).toContainText("Transcript message 100 ");
+  await expect(
+    page
+      .getByRole("region", { name: "Conversation event log" })
+      .getByRole("button", { name: "Event 100: message", exact: true }),
+  ).toBeInViewport();
+  // The link wins over the read position, so no page around it loads.
+  expect(pageRequests.filter((query) => query.startsWith("?around="))).toEqual(
+    [],
+  );
+});
+
+test("opens a memory outside the loaded rows from the page around it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 119,
+  });
+  mock.pagedDetail = true;
+  // The shared memory mock says that event 13 captured two memories.
+  mock.memoryCaptureSeq = 13;
+  const pageRequests = recordPageRequests(page);
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("Transcript message 119 ")).toBeVisible();
+
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await details
+    .getByRole("button", { name: "1 recalled · 2 captured" })
+    .click();
+  await details
+    .getByRole("listitem")
+    .filter({ hasText: "Dashboard transcript events should remain" })
+    .getByRole("button", { name: "Go to message" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Captured 2 memories" }),
   ).toBeVisible();
-  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
-  await expect(page).toHaveURL(/[?&]turn=turn-70(&|$)/);
-  mock.failNewer = false;
-  await transcript.getByRole("button", { name: "Load newer events" }).click();
-  await expect(page).toHaveURL(/[?&]event=70(&|$)/);
-  await expect(linked).toBeVisible();
+  expect(pageRequests).toEqual(["?event=13"]);
+  await screenshot(page, "conversation-memory-opens-around-event");
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({

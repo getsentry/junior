@@ -42,6 +42,8 @@ import {
   automationParamsSchema,
   automationSummarySchema,
   automationRunListSchema,
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import {
@@ -56,6 +58,7 @@ import {
   readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationEvents,
+  readMockConversationEventsAround,
   readMockConversationFeed,
   readMockConversationPendingMessages,
   readMockConversationStats,
@@ -198,13 +201,29 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    // Mock details fit one page and have no unread cursor, so mock history
-    // only pages backward.
-    if (!query.success || !("before" in query.data)) {
+    if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
+    }
+    if ("event" in query.data || "turn" in query.data) {
+      const around = readMockConversationEventsAround(
+        params.data.conversationId,
+        "event" in query.data
+          ? { event: query.data.event }
+          : { turn: query.data.turn },
+      );
+      return around === "turn-not-found"
+        ? errorResponse("Turn not found.", 404)
+        : around
+          ? jsonResponse(conversationEventPageSchema, around)
+          : errorResponse("Conversation not found.", 404);
+    }
+    // Mock details fit one page and have no unread cursor, so mock history
+    // pages only backward from cursors.
+    if (!("before" in query.data)) {
+      return errorResponse("Invalid query parameters.", 400);
     }
     const report = readMockConversationEvents(
       params.data.conversationId,
@@ -286,6 +305,24 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.post("/conversations/:conversationId/catch-up", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationCatchUpBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    return jsonResponse(conversationCatchUpSchema, {
+      needsYou: "Review the Safari fix on PR #12.",
+      summary:
+        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+    });
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

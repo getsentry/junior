@@ -22,6 +22,12 @@ import {
   appendGitHubRequesterAttribution,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -183,43 +189,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string): { name: string; owner: string } {
-  const repo = nonEmptyString(value, "repo");
-  const parts = repo.split("/");
-  if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return {
-    owner: parts[0].trim(),
-    name: parts[1].trim(),
-  };
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string") {
-      return message;
-    }
-  }
-  if (typeof payload === "string" && payload.trim()) {
-    return payload.trim();
-  }
-  return "GitHub request failed";
-}
-
 function createIssueState(value: unknown): CreateIssueState | undefined {
   if (value === undefined) {
     return undefined;
@@ -254,7 +223,7 @@ async function createGitHubIssueRequest(
   input: CreateGitHubIssueInput,
   ctx: ToolRegistrationHookContext,
   dashboardUrl?: string,
-): Promise<Request> {
+): Promise<{ body: unknown; path: string }> {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
     nonEmptyString(label, "labels entry"),
@@ -272,35 +241,22 @@ async function createGitHubIssueRequest(
     ),
     ...(labels?.length ? { labels } : undefined),
   };
-  return new Request(
-    `https://api.github.com/repos/${encodeURIComponent(
-      repo.owner,
-    )}/${encodeURIComponent(repo.name)}/issues`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return { path: `${repoPath(repo)}/issues`, body: payload };
 }
 
 async function createGitHubIssue(
   ctx: ToolRegistrationHookContext,
-  request: Request,
+  request: { body: unknown; path: string },
 ): Promise<GitHubIssueResult> {
-  const response = await ctx.egress.fetch({
-    provider: "github",
+  const response = await githubApi(ctx.egress, {
     operation: "github.issue.create",
-    request,
+    method: "POST",
+    ...request,
   });
-  const parsed = await readJsonResponse(response);
+  const parsed = response.body;
   if (!response.ok) {
     throw new GitHubIssueCreateRejectedError(
-      `GitHub issue creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
+      `GitHub issue creation failed with HTTP ${response.status}: ${githubErrorMessage(
         parsed,
       )}`,
       response.status,

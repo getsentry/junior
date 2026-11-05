@@ -65,6 +65,8 @@ export const conversationMemorySchema = z
 const conversationMemoryEventSchema = z
   .object({
     memoryIds: z.array(z.string().min(1)).min(1),
+    /** The event's seq, so the dashboard can open the transcript there. */
+    seq: z.number().int().min(0),
     source: z.enum(["captured", "recalled"]),
     turnId: z.string().min(1).optional(),
   })
@@ -216,15 +218,15 @@ async function conversationMemories(args: {
       });
     }
     return {
-      createdAt: event.createdAt,
       memoryIds: eventMemories.map((memory) => memory.id),
+      seq: event.seq,
       source: "captured" as const,
       turnId: event.turnId,
     };
   });
   const recalledEvents = recalled.map((event) => ({
-    createdAt: event.createdAt,
     memoryIds: parseRecalledMemoryIds(event.version, event.content),
+    seq: event.seq,
     source: "recalled" as const,
     turnId: event.turnId,
   }));
@@ -244,17 +246,16 @@ async function conversationMemories(args: {
     });
   }
 
-  // ISO timestamps sort as text. Recall runs before its Turn replies and
-  // capture runs after, so a stable sort keeps one Turn in that order.
   const events = [...recalledEvents, ...capturedEvents]
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .flatMap(({ memoryIds, source, turnId }) => {
+    .sort((left, right) => left.seq - right.seq)
+    .flatMap(({ memoryIds, seq, source, turnId }) => {
       const shown = source === "captured" ? capturedIds : recalledIds;
       const visibleIds = memoryIds.filter((id) => shown.has(id));
       if (visibleIds.length === 0) return [];
       return [
         {
           memoryIds: visibleIds,
+          seq,
           source,
           ...(turnId ? { turnId } : undefined),
         },

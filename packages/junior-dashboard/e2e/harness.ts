@@ -174,11 +174,13 @@ export async function mockDashboardApis(
           events: [
             {
               memoryIds: ["memory-checkout-runbook"],
+              seq: 2,
               source: "recalled",
               turnId: "active-turn",
             },
             {
               memoryIds: ["captured-memory-1", "captured-memory-2"],
+              seq: 13,
               source: "captured",
               turnId: "qa-turn",
             },
