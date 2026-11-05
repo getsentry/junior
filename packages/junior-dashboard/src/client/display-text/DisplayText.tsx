@@ -21,6 +21,8 @@ const NO_MENTIONS: readonly ActorIdentity[] = [];
 export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
+  /** Keep body line height compact in narrow panels. */
+  compact?: boolean;
   inline?: boolean;
   /**
    * Link people to their page. Set false inside a button, which cannot hold
@@ -39,19 +41,32 @@ export const DisplayText = memo(function DisplayText(props: {
       {props.inline ? (
         <MarkdownText inline text={props.text} />
       ) : (
-        <DisplayTextBlocks chat={props.chat} text={props.text} />
+        <DisplayTextBlocks
+          chat={props.chat}
+          compact={props.compact}
+          text={props.text}
+        />
       )}
     </MentionPeopleProvider>
   );
 });
 
-function DisplayTextBlocks(props: { chat?: boolean; text: string }) {
+function DisplayTextBlocks(props: {
+  chat?: boolean;
+  compact?: boolean;
+  text: string;
+}) {
   return (
     <div className="grid min-w-0 gap-2">
       {parseMarkdownBlocks(props.text).map((block, index) => {
         if (block.language === "markdown" && !block.fenced) {
           return (
-            <MarkdownText chat={props.chat} key={index} text={block.code} />
+            <MarkdownText
+              chat={props.chat}
+              compact={props.compact}
+              key={index}
+              text={block.code}
+            />
           );
         }
 

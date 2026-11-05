@@ -20,17 +20,24 @@ export function DetailsCard(props: {
     <section
       aria-label={props.label}
       className={cn(
-        "grid min-w-0 gap-2.5 border-dashboard-border-subtle",
+        "grid min-w-0 border-dashboard-border-subtle",
         props.flat
-          ? "border-t px-1 py-2.5"
-          : "rounded-lg border bg-dashboard-surface-panel p-3",
+          ? "gap-1.5 border-t px-1 pt-3 pb-1"
+          : "gap-2.5 rounded-lg border bg-dashboard-surface-panel p-3",
       )}
     >
       {props.title ? (
-        <h3 className="m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs font-medium text-dashboard-text-muted">
+        <h3
+          className={cn(
+            "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
+            props.flat
+              ? "font-semibold text-dashboard-text"
+              : "font-medium text-dashboard-text-muted",
+          )}
+        >
           {props.title}
           {props.count ? (
-            <span className="tabular-nums text-dashboard-text-faint">
+            <span className="font-normal tabular-nums text-dashboard-text-faint">
               {props.count.toLocaleString("en-US")}
             </span>
           ) : null}
