@@ -7,6 +7,7 @@ import {
   mcpAcceptedMessageSchema,
   mcpIdempotencyKeySchema,
   mcpMessageTextSchema,
+  readMcpPendingWorkAfterSend,
 } from "../conversation";
 import {
   apiToolError,
@@ -27,7 +28,7 @@ export function registerCreateConversationTool(
     {
       title: "Create conversation",
       description:
-        "Start a new conversation as you, with a first message. The agent works on it in the background. Use getConversation to follow its status and last reply.",
+        "Start a new conversation as you, with a first message. The agent works on it in the background. Returns the messages that no turn has read yet. Use getConversation to follow its status and last reply.",
       inputSchema: {
         message: mcpMessageTextSchema,
         visibility: z
@@ -47,8 +48,9 @@ export function registerCreateConversationTool(
       },
     },
     async ({ idempotencyKey, message, visibility }) => {
+      let accepted;
       try {
-        const accepted = await createConversationForViewer(
+        accepted = await createConversationForViewer(
           user,
           {
             idempotencyKey: idempotencyKey ?? randomUUID(),
@@ -57,13 +59,14 @@ export function registerCreateConversationTool(
           },
           { attachmentStorage, queue },
         );
-        return mcpToolResult({
-          ...accepted,
-          url: getDashboardConversationLink(accepted.conversationId),
-        });
       } catch (error) {
         return apiToolError(error);
       }
+      return mcpToolResult({
+        ...accepted,
+        ...(await readMcpPendingWorkAfterSend(user, accepted.conversationId)),
+        url: getDashboardConversationLink(accepted.conversationId),
+      });
     },
   );
 }

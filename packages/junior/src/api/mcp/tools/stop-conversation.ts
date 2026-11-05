@@ -25,8 +25,13 @@ export function registerStopConversationTool(
       outputSchema: {
         status: z
           .enum(["no_work", "requested"])
-          .describe("`no_work` when nothing was running."),
-        droppedMessages: z.number().int(),
+          .describe(
+            "`requested` when the running turn was asked to stop. `no_work` when nothing was running.",
+          ),
+        droppedMessages: z
+          .number()
+          .int()
+          .describe("Messages that waited for the turn and were dropped."),
       },
       annotations: {
         destructiveHint: true,

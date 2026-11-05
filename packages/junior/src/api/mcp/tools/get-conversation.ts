@@ -9,8 +9,11 @@ import {
   mcpConversation,
   mcpConversationIdSchema,
   mcpConversationSchema,
+  mcpAuthorizationSchema,
   mcpMessages,
   mcpMessageSchema,
+  mcpPendingMessagesSchema,
+  readMcpPendingWork,
 } from "../conversation";
 import {
   isConversationParticipant,
@@ -58,12 +61,16 @@ export function registerGetConversationTool(
     {
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), and the last assistant reply. Use listConversationMessages for the full transcript.",
+        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the last assistant reply, and the messages that no turn has read yet. Use listConversationMessages for the full transcript.",
       inputSchema: { conversationId: mcpConversationIdSchema },
       outputSchema: {
         conversation: mcpConversationSchema,
         brief: mcpBriefSchema.optional(),
-        lastReply: mcpMessageSchema.optional(),
+        lastReply: mcpMessageSchema
+          .optional()
+          .describe("Newest assistant message in the recent events."),
+        pendingMessages: mcpPendingMessagesSchema,
+        authorization: mcpAuthorizationSchema.optional(),
       },
       annotations: {
         destructiveHint: false,
@@ -91,6 +98,7 @@ export function registerGetConversationTool(
             }
           : undefined),
         ...(lastReply ? { lastReply } : undefined),
+        ...(await readMcpPendingWork(user, conversationId)),
       });
     },
   );

@@ -26,7 +26,12 @@ export function registerPinConversationTool(
           .default(true)
           .describe("False unpins the conversation."),
       },
-      outputSchema: { pinnedAt: z.string().nullable() },
+      outputSchema: {
+        pinnedAt: z
+          .string()
+          .nullable()
+          .describe("Null when the conversation is not pinned."),
+      },
       annotations: {
         destructiveHint: false,
         idempotentHint: true,

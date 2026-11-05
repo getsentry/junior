@@ -32,7 +32,12 @@ export function registerArchiveConversationTool(
             "`lastSeenAt` from searchConversations or getConversation. The archive fails when the conversation has newer activity.",
           ),
       },
-      outputSchema: { archivedAt: z.string().nullable() },
+      outputSchema: {
+        archivedAt: z
+          .string()
+          .nullable()
+          .describe("Null when the conversation is not archived."),
+      },
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
