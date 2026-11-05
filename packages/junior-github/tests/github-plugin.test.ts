@@ -4077,6 +4077,39 @@ Conversation: \`local:test:old-conversation\`
     },
   );
 
+  it.each([
+    ["gh issue view 2768 --repo getsentry/junior --json title,body", true],
+    [
+      "cd repo && gh issue view https://github.com/getsentry/junior/issues/2768",
+      true,
+    ],
+    ["gh api repos/getsentry/junior/issues/2768", true],
+    ["gh api /repos/getsentry/junior/issues/2768 --method GET", true],
+    ["gh api repos/getsentry/junior/issues/2768/comments", false],
+    ["gh api repos/getsentry/junior/issues/2768 -X PATCH", false],
+    ["gh issue list --repo getsentry/junior", false],
+    ["gh pr view 2769", false],
+  ])(
+    "reminds the agent to claim an issue it reads in bash: %s",
+    async (command, nudged) => {
+      const nudges: string[] = [];
+      await githubPlugin().hooks?.afterToolExecute?.({
+        decision: {
+          deny() {},
+          nudge(message: string) {
+            nudges.push(message);
+          },
+        },
+        tool: { input: { command }, name: "bash" },
+      } as never);
+
+      expect(nudges).toHaveLength(nudged ? 1 : 0);
+      expect(nudges[0]?.includes("assign_requester: true") ?? false).toBe(
+        nudged,
+      );
+    },
+  );
+
   it("prefers linked GitHub noreply emails for the current actor", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
