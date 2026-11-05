@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.281.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Adapt queued messages to the available space by @betegon in [#2678](https://github.com/getsentry/junior/pull/2678)
+- Show the event log as a title bar breadcrumb by @thomasjiangcy with @sentry-junior in [#2729](https://github.com/getsentry/junior/pull/2729)
+- Compact the Brief and conversation details by @betegon in [#2677](https://github.com/getsentry/junior/pull/2677)
+
+#### Other
+
+- (compaction) Request a background summary after each model call by @thomasjiangcy with @sentry-junior in [#2743](https://github.com/getsentry/junior/pull/2743)
+
+### Bug Fixes 🐛
+
+- (github) Keep requester attribution when Junior updates a body by @lcian with @sentry-junior in [#2742](https://github.com/getsentry/junior/pull/2742)
+
+### Internal Changes 🔧
+
+#### Api
+
+- Return only newer events to detail polls by @thomasjiangcy with @sentry-junior in [#2749](https://github.com/getsentry/junior/pull/2749)
+- Trace request-thread work and sign-in redirects by @thomasjiangcy with @sentry-junior in [#2746](https://github.com/getsentry/junior/pull/2746)
+
+#### Dashboard
+
+- Mount only visible transcript rows by @BYK with @sentry-junior in [#2741](https://github.com/getsentry/junior/pull/2741)
+- Read the mailbox and detail in one poll request by @thomasjiangcy with @sentry-junior in [#2748](https://github.com/getsentry/junior/pull/2748)
+- Show linked work status in an icon tooltip by @thomasjiangcy with @sentry-junior in [#2747](https://github.com/getsentry/junior/pull/2747)
+- Time the API response body read in browser spans by @thomasjiangcy with @sentry-junior in [#2735](https://github.com/getsentry/junior/pull/2735)
+- Bundle only browser tracing from the Sentry SDK by @sentry-junior in [#2740](https://github.com/getsentry/junior/pull/2740)
+
+#### Other
+
+- (briefs) Remove open decisions from the Brief by @thomasjiangcy with @sentry-junior in [#2744](https://github.com/getsentry/junior/pull/2744)
+
 ## 0.280.0
 
 ### New Features ✨

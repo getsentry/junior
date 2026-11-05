@@ -7,6 +7,11 @@ import type {
 
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Collapsible } from "../components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
 import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
@@ -88,7 +93,7 @@ export function conversationLinks(
  * Show the outside work that a Conversation links to, one row each. A row
  * that Junior also watches shows the Watch details under a chevron, so the
  * same resource does not show twice. When one row has a chevron, the other
- * rows keep the same space, so their statuses stay aligned.
+ * rows keep the same space, so all rows keep the same width.
  */
 export function ConversationLinkedWork(props: {
   links: ConversationLink[];
@@ -133,20 +138,35 @@ function ChevronSpace(props: { children: ReactNode }) {
 function LinkRow(props: { link: ConversationLink }) {
   const { link } = props;
   const status = linkStatusLabel(link.status);
+  const icon = (
+    <ObjectIcon
+      decorative
+      facts={link.facts}
+      objectType={link.objectType}
+      size={14}
+      status={link.status}
+    />
+  );
   return (
     <DetailsRow
       href={link.url}
       icon={
-        // The row text names the status, so the icon stays silent.
-        <ObjectIcon
-          decorative
-          facts={link.facts}
-          objectType={link.objectType}
-          size={14}
-          status={link.status}
-        />
+        // The icon shows the status, so the row does not repeat it in text.
+        status ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span aria-label={status} className="inline-flex" role="img">
+                  {icon}
+                </span>
+              }
+            />
+            <TooltipContent size="compact">{status}</TooltipContent>
+          </Tooltip>
+        ) : (
+          icon
+        )
       }
-      meta={status}
       title={link.label}
       tooltip={[link.label, link.plugin, status, link.description]
         .filter(Boolean)

@@ -1,17 +1,4 @@
-import {
-  defaultRangeExtractor,
-  useVirtualizer,
-  type Range,
-} from "@tanstack/react-virtual";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Skeleton } from "../components/ui/skeleton";
@@ -25,11 +12,10 @@ import {
   eventLogRows,
   eventLogTone,
   filterEventLogRows,
-  type EventLogRow,
 } from "./eventLog";
 import { ConversationEventDetails } from "./ConversationEventDetails";
-import { scrollRootFor } from "./transcriptBottomPinning";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { useVirtualRows } from "./virtualRows";
 
 const rowClass =
   "grid grid-cols-[12ch_minmax(0,1fr)] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)]";
@@ -70,14 +56,25 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   // An arrow key can select a row that mounts only on the next render.
   const focusSeqRef = useRef<number>(undefined);
   const focusedSeqRef = useRef<number>(undefined);
-  const virtualizer = useEventLogVirtualizer({
-    listRef,
-    rows: visibleRows,
-    keptSeqs: () => [
-      selectedSeq,
-      focusedSeqRef.current,
-      anchorSeq(props.scrollAnchorKey?.()),
+  const indexBySeq = useMemo(
+    () => new Map(visibleRows.map((row, index) => [row.event.seq, index])),
+    [visibleRows],
+  );
+  const indexOf = (seq: number | undefined) =>
+    seq === undefined ? undefined : indexBySeq.get(seq);
+  // The open entry, the focused row, and the row that holds the reader's
+  // place stay mounted.
+  const virtualizer = useVirtualRows({
+    count: visibleRows.length,
+    defaultSize: (sizeClass) => (sizeClass === "metadata" ? 56 : 40),
+    getItemKey: (index) => visibleRows[index]?.event.seq ?? index,
+    keptIndexes: [
+      indexOf(selectedSeq),
+      indexOf(focusedSeqRef.current),
+      indexOf(anchorSeq(props.scrollAnchorKey?.())),
     ],
+    listRef,
+    sizeClass: (index) => (visibleRows[index]?.metadata ? "metadata" : "plain"),
   });
   const virtualRows = virtualizer.getVirtualItems();
   useEffect(() => {
@@ -268,83 +265,9 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   );
 });
 
-/** Rows mounted beyond the viewport on each side. */
-const OVERSCAN_ROWS = 10;
-
 /** Read the event seq from a `data-scroll-anchor` key. */
 function anchorSeq(key: string | undefined): number | undefined {
   return key?.startsWith("event:") ? Number(key.slice(6)) : undefined;
-}
-
-/**
- * Pick and measure the rows near the viewport. The scroll owner holds the
- * reader's place, so this never moves the scroll position. `keptSeqs` rows
- * stay mounted outside the viewport: the open entry, the focused row, and
- * the row that holds the reader's place. Code that finds them in the DOM
- * then keeps working.
- */
-function useEventLogVirtualizer(input: {
-  keptSeqs: () => (number | undefined)[];
-  listRef: React.RefObject<HTMLOListElement | null>;
-  rows: EventLogRow[];
-}) {
-  const { keptSeqs, listRef, rows } = input;
-  const [scrollMargin, setScrollMargin] = useState(0);
-  const indexBySeq = useMemo(
-    () => new Map(rows.map((row, index) => [row.event.seq, index])),
-    [rows],
-  );
-  const kept = keptSeqs();
-  const keptKey = kept.join(",");
-  const rangeExtractor = useCallback(
-    (range: Range) => {
-      const indexes = new Set(defaultRangeExtractor(range));
-      for (const seq of keptKey.split(",")) {
-        const index = seq ? indexBySeq.get(Number(seq)) : undefined;
-        if (index !== undefined) indexes.add(index);
-      }
-      // Rows stay in document order, so the scroll owner can search them.
-      return [...indexes].sort((left, right) => left - right);
-    },
-    [indexBySeq, keptKey],
-  );
-  // The toolbar and earlier-page control sit above the rows, and the
-  // virtualizer counts offsets from the top of the scroll content. The
-  // margin only picks which rows mount, so a reading from the last scroll
-  // or resize is close enough: the overscan rows cover a small error.
-  const measureScrollMargin = useCallback(() => {
-    const list = listRef.current;
-    const root = scrollRootFor(list);
-    if (!list || !(root instanceof Element)) return;
-    const margin =
-      list.getBoundingClientRect().top -
-      root.getBoundingClientRect().top +
-      root.scrollTop;
-    setScrollMargin((current) =>
-      Math.abs(margin - current) >= 1 ? margin : current,
-    );
-  }, [listRef]);
-  useLayoutEffect(measureScrollMargin, [measureScrollMargin]);
-  // The dashboard build does not use React Compiler, so nothing memoizes
-  // the values that this hook returns.
-  // oxlint-disable-next-line react/incompatible-library
-  const virtualizer = useVirtualizer<Element, HTMLLIElement>({
-    count: rows.length,
-    estimateSize: (index) => (rows[index]?.metadata ? 56 : 40),
-    getItemKey: (index) => rows[index]?.event.seq ?? index,
-    getScrollElement: () => {
-      const root = scrollRootFor(listRef.current);
-      return root instanceof Element ? root : null;
-    },
-    onChange: measureScrollMargin,
-    overscan: OVERSCAN_ROWS,
-    rangeExtractor,
-    scrollMargin,
-    // The scroll owner moves the scroll position. This only reads it.
-    scrollToFn: () => {},
-  });
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
-  return virtualizer;
 }
 
 const loadingRowWidths = ["w-3/5", "w-2/5", "w-4/5", "w-1/2", "w-2/3", "w-1/3"];

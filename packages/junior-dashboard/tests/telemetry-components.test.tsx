@@ -395,7 +395,8 @@ describe("dashboard canonical-event components", () => {
         />
       </MemoryRouter>,
     );
-    expect(html).toContain('aria-label="Close event log"');
+    expect(html).toContain('title="Back to conversation"');
+    expect(html).toMatch(/aria-current="page"[^>]*>Event log</);
     expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
     expect(html).toContain('aria-label="Conversation menu"');

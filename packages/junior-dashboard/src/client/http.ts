@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import { recordDashboardServerVersion } from "./dashboard-version";
+import { readResponseJson } from "./sentry";
 
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
@@ -91,7 +92,7 @@ export async function patch<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Send one authenticated POST request and validate its response. */
@@ -108,7 +109,7 @@ export async function post<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Send one authenticated PUT request and validate its response. */
@@ -125,7 +126,7 @@ export async function put<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Delete one authenticated dashboard resource. */
@@ -152,7 +153,7 @@ export async function del<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 async function fetchDashboard(
@@ -171,7 +172,7 @@ export async function fetchDashboardJson<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const response = await readDashboardResponse(path, signal);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Read an authenticated response, allowing 304 only for explicit validator headers. */

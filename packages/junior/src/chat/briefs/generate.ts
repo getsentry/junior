@@ -16,9 +16,9 @@ const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 
 const SIZE_CAPS = {
-  small: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
-  medium: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
-  large: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+  small: { decisions: 3, facts: 5, keywords: 5 },
+  medium: { decisions: 8, facts: 10, keywords: 8 },
+  large: { decisions: 20, facts: 15, keywords: 12 },
 } as const;
 
 type BriefSizeClass = keyof typeof SIZE_CAPS;
@@ -40,14 +40,6 @@ const modelBriefSchema = z
           text: z.string().trim().min(1),
           by: z.string().trim().min(1).nullable(),
           kind: z.enum(["stated", "confirmed", "assumed"]),
-        })
-        .strict(),
-    ),
-    openDecisions: z.array(
-      z
-        .object({
-          text: z.string().trim().min(1),
-          owner: z.string().trim().min(1).nullable(),
         })
         .strict(),
     ),
@@ -197,19 +189,6 @@ function normalizeModelBrief(args: {
       },
     ];
   });
-  const openDecisions = args.model.openDecisions.flatMap((decision) => {
-    if (hasRuntimeMarker(decision.text)) {
-      droppedRuntimeMarkerCount += 1;
-      return [];
-    }
-    const owner = attribution(decision.owner);
-    return [
-      {
-        text: truncate(decision.text, 400),
-        ...(owner ? { owner } : undefined),
-      },
-    ];
-  });
   const facts = args.model.facts.filter((fact) => {
     const keep = !hasRuntimeMarker(fact);
     if (!keep) droppedRuntimeMarkerCount += 1;
@@ -227,7 +206,6 @@ function normalizeModelBrief(args: {
         text: truncateSentence(args.model.outcome.text, 600),
       },
       decisions: decisions.slice(0, args.caps.decisions),
-      openDecisions: openDecisions.slice(0, args.caps.openDecisions),
       facts: uniqueStrings(facts, args.caps.facts),
       links: args.links,
       keywords: uniqueStrings(
@@ -537,7 +515,6 @@ function buildBriefSearchText(
     brief.intent,
     brief.outcome.text,
     ...brief.decisions.map((decision) => decision.text),
-    ...brief.openDecisions.map((decision) => decision.text),
     ...brief.facts,
     ...brief.keywords,
     ...brief.links.map((link) => link.label),

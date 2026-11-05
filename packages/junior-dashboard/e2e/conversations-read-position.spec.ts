@@ -16,6 +16,19 @@ async function scrollDownTo(transcript: Locator, row: Locator) {
   }).toPass();
 }
 
+/**
+ * Scroll up one viewport at a time until `row` mounts. Rows mount only near
+ * the viewport, and a step of one viewport does not skip past them.
+ */
+async function scrollUpTo(transcript: Locator, row: Locator) {
+  await expect(async () => {
+    await transcript.evaluate((element) => {
+      element.scrollTop -= element.clientHeight;
+    });
+    await expect(row).toBeAttached({ timeout: 250 });
+  }).toPass({ intervals: [100] });
+}
+
 /** Record the query of each events page request. */
 function recordPageRequests(page: Page) {
   const requests: string[] = [];
@@ -89,14 +102,6 @@ async function mockReadPositionConversation(
       },
     });
   });
-  await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt, messages: [] },
-      });
-    },
-  );
   await page.route(
     `**/api/conversations/${conversationId}/messages`,
     async (route) => {
@@ -369,7 +374,9 @@ test.describe("opens at new messages after a cached reopen", () => {
     await newerRequest;
     // The fresh cached copy does not count as this visit's fetch, so the
     // reopen fetch still asks for the page around the read position.
-    expect(mock.detailRequests[detailRequestCount]).toBe("?unreadPage=true");
+    expect(mock.detailRequests[detailRequestCount]).toBe(
+      "?unreadPage=true&mailbox=true",
+    );
     await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
     await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(
       0,
@@ -465,7 +472,7 @@ test.describe("opens from a hover prefetch", () => {
       transcript.getByText("Transcript message 21 "),
     ).toBeInViewport();
     await expect.poll(() => mock.detailRequests.length).toBe(2);
-    expect(mock.detailRequests[1]).toBe("");
+    expect(mock.detailRequests[1]).toBe("?mailbox=true");
     expect(pageRequests.filter((query) => query.includes("around"))).toEqual(
       [],
     );
@@ -486,10 +493,9 @@ test("opens at new messages after earlier pages were cached", async ({
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("Transcript message 79 ")).toBeInViewport();
-  await transcript.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+  // The earlier page loads above the reader and holds their place, so
+  // scroll up to its first row.
+  await scrollUpTo(transcript, transcript.getByText("Transcript message 0 "));
 
   // The earlier page stays cached. It is not the latest page, so the
   // transcript still needs the newer pages after the read position.
@@ -528,8 +534,7 @@ test("opens at new messages after earlier pages were cached", async ({
   ).toHaveCount(0);
   // Earlier pages fill the gap to the cached pages. Two loads that ask for
   // the same page share one request.
-  await expect(transcript.getByText("Transcript message 159 ")).toBeAttached();
-  expect(pageRequests).toContain("?before=160");
+  await expect.poll(() => pageRequests).toContain("?before=160");
   expect(new Set(pageRequests).size).toBe(pageRequests.length);
   releaseNewer();
 });
@@ -811,14 +816,6 @@ test("opens far behind at the read position and loads newer pages after it", asy
     });
   });
   await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
     `**/api/conversations/${conversationId}/events?*`,
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
@@ -919,7 +916,11 @@ test("opens far behind at the read position and loads newer pages after it", asy
   expect(cursors).toEqual([]);
 
   // The read events before the marker come in the same page, so no earlier
-  // page loads above the reader.
+  // page loads above the reader. Rows mount near the viewport, so scroll up
+  // to them, but not near enough to the top to load an earlier page.
+  await transcript.evaluate((element) => {
+    element.scrollTop = 1_000;
+  });
   await expect(
     transcript.getByText("Transcript message 1 with", { exact: false }),
   ).toBeAttached();
@@ -948,11 +949,17 @@ test("opens far behind at the read position and loads newer pages after it", asy
   // the latest events do not leave, and no newer page loads again.
   latestSeq = 141;
   await expect(transcript.getByText("Transcript message 141 ")).toBeAttached();
-  await expect(transcript.getByText("Transcript message 101 ")).toBeAttached();
+  await scrollUpTo(transcript, transcript.getByText("Transcript message 101 "));
+  await scrollDownTo(
+    transcript,
+    transcript.getByText("Transcript message 141 "),
+  );
   await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
   expect(cursors).not.toContain("after-100");
   expect(detailRequests.length).toBeGreaterThan(1);
-  expect(detailRequests.slice(1)).not.toContain("?unreadPage=true");
+  expect(detailRequests.slice(1)).not.toContain(
+    "?unreadPage=true&mailbox=true",
+  );
 
   // A poll that skips more than one page cannot join the newer pages, so
   // the reader at the bottom goes to the latest page without a gap.

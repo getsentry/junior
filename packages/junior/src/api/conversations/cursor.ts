@@ -7,6 +7,8 @@ const conversationCursorPayloadSchema = z
   .object({
     conversationId: z.string().min(1),
     seq: z.number().int().min(-1),
+    /** Transcript version of the detail that issued an `appendCursor`. */
+    transcript: z.string().min(1).optional(),
     version: z.literal(1),
   })
   .strict();
@@ -45,7 +47,7 @@ export function encodeConversationCursor(
 export function decodeConversationCursor(args: {
   conversationId: string;
   cursor: string;
-}): { seq: number } | undefined {
+}): { seq: number; transcript?: string } | undefined {
   const [encoded, actualSignature, extra] = args.cursor.split(".");
   if (!encoded || !actualSignature || extra !== undefined) return undefined;
   const expected = Buffer.from(signature(encoded));
@@ -61,7 +63,10 @@ export function decodeConversationCursor(args: {
     if (parsed.conversationId !== args.conversationId) {
       return undefined;
     }
-    return { seq: parsed.seq };
+    return {
+      seq: parsed.seq,
+      ...(parsed.transcript ? { transcript: parsed.transcript } : undefined),
+    };
   } catch {
     return undefined;
   }

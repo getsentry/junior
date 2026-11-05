@@ -81,6 +81,17 @@ export const conversationDetailWithMailboxReportSchema =
     mailbox: conversationPendingMessagesReportSchema,
   });
 
+/**
+ * Answer to a `mailbox=true` poll whose detail version still matches. The
+ * client keeps its cached detail and takes the new mailbox.
+ */
+export const conversationUnchangedDetailWithMailboxSchema = z
+  .object({
+    mailbox: conversationPendingMessagesReportSchema,
+    unchanged: z.literal(true),
+  })
+  .strict();
+
 /** Optional filters for cancelling accepted mailbox rows. */
 export const cancelConversationPendingMessagesBodySchema = z
   .object({

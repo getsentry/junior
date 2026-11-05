@@ -276,7 +276,8 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(log.getByText("No events match your search.")).toBeVisible();
   await search.fill("");
   await expect(entries).toHaveCount(report.events.length);
-  await chooseTranscriptView(page, "Conversation");
+  // The title in the Event log breadcrumb leads back to the Conversation.
+  await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
   await expect(
     page.getByText(
@@ -360,17 +361,6 @@ test("inspects all reporting events and searches full event data", async ({
           status: "completed",
           forks: [],
         }),
-      }),
-  );
-  const pendingResponse = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-  );
-  const pending = await pendingResponse.json();
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
-    (route) =>
-      route.fulfill({
-        json: { ...pending, conversationId: forkId, messages: [] },
       }),
   );
   await forkDialog
@@ -615,6 +605,11 @@ for (const width of [1440, 390]) {
       ).toBeHidden();
     }
     // A later poll can wake an idle conversation while the reader is above the tail.
+    // Rows far below the reader do not mount, so the taller transcript shows
+    // that a poll brought the event.
+    const scrollHeight = () =>
+      scroll.evaluate((element) => element.scrollHeight);
+    const heightBeforeIdle = await scrollHeight();
     report.status = "completed";
     report.events.push({
       seq: 41,
@@ -626,9 +621,9 @@ for (const width of [1440, 390]) {
         text: "Idle update",
       },
     });
-    await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
-      timeout: 15_000,
-    });
+    await expect
+      .poll(scrollHeight, { timeout: 15_000 })
+      .toBeGreaterThan(heightBeforeIdle);
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
@@ -644,15 +639,14 @@ for (const width of [1440, 390]) {
       },
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
-    await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
-    // New activity must not move a reader who scrolled into history, on either
-    // mobile or desktop. Following resumes only when the reader requests it.
-    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     const jump = page.getByRole("button", {
       name: "Jump to latest update",
       exact: true,
     });
-    await expect(jump).toBeVisible();
+    await expect(jump).toBeVisible({ timeout: 15_000 });
+    // New activity must not move a reader who scrolled into history, on either
+    // mobile or desktop. Following resumes only when the reader requests it.
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     await jump.click();
     await expect(liveUpdate).toBeInViewport();
     await expect(jump).toBeHidden();

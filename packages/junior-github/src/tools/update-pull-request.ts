@@ -18,6 +18,7 @@ import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
+  readGitHubBody,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
@@ -186,12 +187,24 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
+      const currentBody =
+        update.body !== undefined
+          ? await readGitHubBody(ctx.egress, {
+              operation: "github.pull.get",
+              path: `${repoPath(repo)}/pulls/${update.number}`,
+            })
+          : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                appendGitHubRequesterAttribution(update.body, ctx, requester),
+                appendGitHubRequesterAttribution(
+                  update.body,
+                  ctx,
+                  requester,
+                  currentBody,
+                ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),

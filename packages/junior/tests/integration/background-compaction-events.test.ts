@@ -267,6 +267,8 @@ describe("background compaction job", () => {
         markSeq: first!.seq,
       },
     ]);
+    // A later model request waits for the pending request.
+    await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
 
     const model = replies(["<summary>The person picked blue.</summary>"]);
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });

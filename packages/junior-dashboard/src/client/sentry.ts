@@ -122,6 +122,47 @@ export function recordTranscriptShown(): void {
 }
 
 /**
+ * Read, parse, and validate a dashboard API response body. While a pageload
+ * or navigation is open, a span times it from the response headers to the
+ * validated value. The `http.client` span ends at the headers, so it holds
+ * none of this work.
+ */
+export async function readResponseJson<T>(
+  response: Response,
+  schema: { parse: (value: unknown) => T },
+): Promise<T> {
+  const routeSpan = activeRouteSpan();
+  if (!routeSpan) return schema.parse(await response.json());
+  const span = startInactiveSpan({
+    attributes: {
+      "url.path": response.url ? new URL(response.url).pathname : undefined,
+    },
+    name: "Read API response",
+    op: "deserialize",
+    parentSpan: routeSpan,
+  });
+  try {
+    const text = await response.text();
+    const downloadedAt = performance.now();
+    const json: unknown = JSON.parse(text);
+    const parsedAt = performance.now();
+    const value = schema.parse(json);
+    span.setAttributes({
+      "app.dashboard.response.chars": text.length,
+      "app.dashboard.response.json_parse_ms": Math.round(
+        parsedAt - downloadedAt,
+      ),
+      "app.dashboard.response.schema_parse_ms": Math.round(
+        performance.now() - parsedAt,
+      ),
+    });
+    return value;
+  } finally {
+    span.end();
+  }
+}
+
+/**
  * Send dashboard performance spans to the server's Sentry project when the
  * server provides a DSN. Only tracing is enabled: error events and
  * breadcrumbs could carry conversation content shown on the page.

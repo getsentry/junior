@@ -69,10 +69,16 @@ export const conversationDetailQuerySchema = z
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
     /**
-     * Also return `mailbox`, read before history, and never answer 304. A
-     * first load gets both in one request.
+     * Also return `mailbox`, read before history. A sent version that still
+     * matches gets `{ unchanged: true, mailbox }` instead of 304, so a poll
+     * needs one request.
      */
     mailbox: z.stringbool().optional(),
+    /**
+     * An `appendCursor` from an earlier detail. Events then hold only newer
+     * events, with `appended: true`, while the cursor still applies.
+     */
+    after: z.string().min(1).optional(),
   })
   .strict();
 
@@ -825,6 +831,17 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      */
     authors: z.record(z.string(), actorIdentitySchema).optional(),
     events: z.array(conversationReportEventSchema),
+    /**
+     * Events hold only the events after the request's `after` cursor. The
+     * report omits `previousCursor` and `unreadCursor`: the reader keeps its
+     * own.
+     */
+    appended: z.literal(true).optional(),
+    /**
+     * Pass as `after` on the next detail read to get only newer events.
+     * Absent after a purge.
+     */
+    appendCursor: z.string().min(1).optional(),
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),

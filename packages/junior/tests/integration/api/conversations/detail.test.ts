@@ -4,11 +4,14 @@ import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { storeAttachment } from "@/chat/attachments/store";
 import {
   closeDb,
   getDb,
   getConversationEventStore,
   getConversationStore,
+  getSqlExecutor,
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
@@ -125,6 +128,83 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("returns only newer events to a poll until stored events project differently", async () => {
+    const conversationId = "local:test:appended-detail";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Appended conversation",
+      visibility: "public",
+    });
+    const appendMessage = (messageId: string, createdAtMs: number) =>
+      getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs,
+          data: {
+            messageId,
+            role: "assistant",
+            text: messageId,
+            type: "message",
+          },
+        },
+      ]);
+    const app = createJuniorApi();
+    const read = async (query = "") =>
+      conversationDetailReportSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}${query}`,
+          )
+        ).json(),
+      );
+    const after = (cursor: string | undefined) =>
+      `after=${encodeURIComponent(cursor!)}`;
+    const seqs = (report: { events: { seq: number }[] }) =>
+      report.events.map((event) => event.seq);
+
+    await appendMessage("first", 2);
+    const first = await read();
+    expect(seqs(first)).toEqual([0]);
+    expect(first.appended).toBeUndefined();
+
+    await appendMessage("second", 3);
+    const poll = await read(`?${after(first.appendCursor)}`);
+    expect(poll.appended).toBe(true);
+    expect(seqs(poll)).toEqual([1]);
+    const idle = await read(`?${after(poll.appendCursor)}`);
+    expect(idle).toMatchObject({ appended: true, events: [] });
+    expect(idle.appendCursor).toBe(poll.appendCursor);
+
+    // A stored Slack file can attach to a message that the reader already
+    // has, so the poll gets the latest page again.
+    await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 5,
+        data: Buffer.from("notes"),
+        filename: "notes.txt",
+        mimeType: "text/plain",
+        path: "/tmp/notes.txt",
+      },
+      storage: createMemoryAttachmentStorage(),
+      source: { provider: "slack", id: "FNOTES" },
+    });
+    const changed = await read(`?${after(poll.appendCursor)}`);
+    expect(changed.appended).toBeUndefined();
+    expect(seqs(changed)).toEqual([0, 1]);
+
+    // A reader more than a page behind gets the latest page.
+    await appendMessage("third", 4);
+    await appendMessage("fourth", 5);
+    const behind = await read(`?limit=1&${after(changed.appendCursor)}`);
+    expect(behind.appended).toBeUndefined();
+    expect(seqs(behind)).toEqual([3]);
+    expect(behind.previousCursor).toBeDefined();
+  });
+
   it("answers unchanged polls with 304 until the subtree or annotations change", async () => {
     const conversationId = "local:test:revalidated-detail";
     const childConversationId = "local:test:revalidated-detail:child";
@@ -148,16 +228,19 @@ describe("conversation detail API", () => {
     const unchanged = await poll(firstEtag);
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
-    // The mailbox changes apart from the version token, so a read that asks
-    // for it always gets the full report.
+    // The mailbox changes apart from the version token, so a poll that asks
+    // for it gets the mailbox without the report.
     const withMailbox = await app.request(
       `http://localhost/api/conversations/${conversationId}?mailbox=true`,
       { headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: firstEtag } },
     );
     expect(withMailbox.status).toBe(200);
-    expect(await withMailbox.json()).toMatchObject({
-      conversationId,
-      mailbox: { conversationId, messages: [] },
+    expect(withMailbox.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)).toBe(
+      firstEtag,
+    );
+    expect(await withMailbox.json()).toEqual({
+      mailbox: expect.objectContaining({ conversationId, messages: [] }),
+      unchanged: true,
     });
 
     await createChild({

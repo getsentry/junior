@@ -340,8 +340,10 @@ export function usePinnedTranscriptBottom(input: {
   // open that fails becomes a normal start, so the transcript opens again.
   const startedRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
-  // The scroll position that the last restore set. Its scroll event is not
-  // a reader scroll, so it must not change follow intent.
+  // The scroll position that the last restore or open at the marker set.
+  // Its scroll event is not a reader scroll, so it must not change follow
+  // intent or the recorded place. Rows can change size before that event,
+  // and the restore after them needs the place from before.
   const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
@@ -422,7 +424,6 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
-      if (source === "scroll") rememberPlace();
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
@@ -434,6 +435,7 @@ export function usePinnedTranscriptBottom(input: {
         if (restored !== null && Math.abs(snapshot.scrollTop - restored) < 1) {
           return;
         }
+        rememberPlace();
       }
 
       const intent = transcriptFollowIntent({
@@ -543,6 +545,7 @@ export function usePinnedTranscriptBottom(input: {
     );
     const snapshot = scrollSnapshot(root);
     previousScrollTopRef.current = snapshot.scrollTop;
+    restoredScrollTopRef.current = snapshot.scrollTop;
     // Unread rows that fit above the bottom leave the reader at the latest.
     const atBottom = endsAtLatestRef.current && isNearScrollBottom(snapshot);
     setFollowingIntent(atBottom);
@@ -693,7 +696,12 @@ export function usePinnedTranscriptBottom(input: {
     measurePosition("measure");
     rememberPlace();
     // Listen on the scroll root, so gestures outside transcript rows count.
-    target.addEventListener("scroll", onScroll, { passive: true });
+    // Capture runs first at the root, so the place is recorded before a
+    // virtual list mounts the rows for the new position.
+    target.addEventListener("scroll", onScroll, {
+      capture: true,
+      passive: true,
+    });
     target.addEventListener("wheel", onWheel, { passive: true });
     target.addEventListener("touchstart", onTouchStart, {
       passive: true,
@@ -703,7 +711,7 @@ export function usePinnedTranscriptBottom(input: {
     });
     window.addEventListener("resize", syncAfterLayoutChange);
     return () => {
-      target.removeEventListener("scroll", onScroll);
+      target.removeEventListener("scroll", onScroll, { capture: true });
       target.removeEventListener("wheel", onWheel);
       target.removeEventListener("touchstart", onTouchStart);
       target.removeEventListener("touchmove", onTouchMove);

@@ -48,22 +48,9 @@ export function ConversationBrief(props: {
   const mentions = props.brief.mentions;
   if (props.variant === "summary") {
     return (
-      <div className="grid min-w-0 gap-4">
-        <BriefSummary>
-          <DisplayText compact mentions={mentions} text={content.summary} />
-        </BriefSummary>
-        {content.openDecisions.length > 0 ? (
-          <div className="grid gap-1.5">
-            <h4 className="m-0 text-xs font-semibold text-dashboard-text">
-              Open decisions
-            </h4>
-            <BriefOpenDecisions
-              decisions={content.openDecisions}
-              mentions={mentions}
-            />
-          </div>
-        ) : null}
-      </div>
+      <BriefSummary>
+        <DisplayText compact mentions={mentions} text={content.summary} />
+      </BriefSummary>
     );
   }
   return (
@@ -91,26 +78,9 @@ export function ConversationBrief(props: {
           </Detail>
         </DetailList>
       </BriefSection>
-      {content.decisions.length || content.openDecisions.length ? (
+      {content.decisions.length ? (
         <BriefSection title="Decisions">
-          <DetailList>
-            {content.decisions.length ? (
-              <Detail label="Decisions">
-                <BriefDecisions
-                  decisions={content.decisions}
-                  mentions={mentions}
-                />
-              </Detail>
-            ) : null}
-            {content.openDecisions.length ? (
-              <Detail label="Open decisions">
-                <BriefOpenDecisions
-                  decisions={content.openDecisions}
-                  mentions={mentions}
-                />
-              </Detail>
-            ) : null}
-          </DetailList>
+          <BriefDecisions decisions={content.decisions} mentions={mentions} />
         </BriefSection>
       ) : null}
       {content.facts.length ||
@@ -337,37 +307,6 @@ function BriefDecisions(props: {
                 inline
                 mentions={props.mentions}
                 text={decision.by}
-              />
-            </div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function BriefOpenDecisions(props: {
-  decisions: BriefContent["openDecisions"];
-  mentions?: readonly ActorIdentity[];
-}) {
-  return (
-    <ul className="m-0 grid list-none gap-2 p-0">
-      {props.decisions.map((decision, index) => (
-        <li key={`${decision.text}:${index}`}>
-          <div>
-            <DisplayText
-              inline
-              mentions={props.mentions}
-              text={decision.text}
-            />
-          </div>
-          {decision.owner ? (
-            <div className="mt-1 text-xs text-dashboard-text-muted">
-              Owner:{" "}
-              <DisplayText
-                inline
-                mentions={props.mentions}
-                text={decision.owner}
               />
             </div>
           ) : null}

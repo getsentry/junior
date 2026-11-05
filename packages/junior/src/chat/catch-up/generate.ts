@@ -26,7 +26,7 @@ export type CatchUp = { needsYou?: string; summary: string };
 /** The parts of a Brief that say what the reader already knew. */
 export type CatchUpBrief = Pick<
   ConversationBrief,
-  "decisions" | "intent" | "openDecisions" | "outcome" | "summary"
+  "decisions" | "intent" | "outcome" | "summary"
 >;
 
 type CatchUpEntry = {
@@ -52,7 +52,6 @@ function promptInput(args: {
           intent: args.brief.intent,
           outcome: args.brief.outcome,
           decisions: args.brief.decisions,
-          open_decisions: args.brief.openDecisions,
         }
       : undefined,
   };

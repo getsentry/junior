@@ -10,7 +10,7 @@ related:
   - /concepts/conversations/
 ---
 
-Use `junior briefs` to inspect and tune Brief generation without changing production data. A Brief records the intent, outcome, decisions, open decisions, durable facts, and evidence links for one Conversation.
+Use `junior briefs` to inspect and tune Brief generation without changing production data. A Brief records the intent, outcome, decisions, durable facts, and evidence links for one Conversation.
 
 ## Pull snapshots
 

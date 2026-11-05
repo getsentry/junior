@@ -129,6 +129,51 @@ describe("dashboard client API", () => {
     );
   });
 
+  it("appends a poll's newer events to the cached detail", async () => {
+    const conversationId = "slack:C1:123";
+    const detail = {
+      conversationId,
+      cumulativeDurationMs: 1,
+      displayTitle: "Active conversation",
+      eventHistory: { status: "available" as const },
+      events: [event(4), event(5)],
+      generatedAt,
+      isParticipant: true,
+      lastProgressAt: generatedAt,
+      lastSeenAt: generatedAt,
+      mailbox: { conversationId, generatedAt, messages: [] },
+      startedAt: generatedAt,
+      status: "active" as const,
+      surface: "slack" as const,
+    };
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        ...detail,
+        appendCursor: "after-6",
+        appended: true,
+        events: [event(6)],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const next = await readConversationData(
+      conversationId,
+      undefined,
+      { ...detail, appendCursor: "after-5", previousCursor: "before-4" },
+      { mailbox: true },
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/slack%3AC1%3A123?mailbox=true&after=after-5",
+      expect.anything(),
+    );
+    expect(next.events.map((item) => item.seq)).toEqual([4, 5, 6]);
+    expect(next).toMatchObject({
+      appendCursor: "after-6",
+      previousCursor: "before-4",
+    });
+    expect(next).not.toHaveProperty("appended");
+  });
+
   it("rejects a history page whose cursor does not advance", async () => {
     vi.stubGlobal(
       "fetch",
@@ -184,21 +229,21 @@ describe("dashboard client API", () => {
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([false, false]);
-      // The first read brings the mailbox with the detail. Polls read the
-      // mailbox apart so the detail can answer 304.
+      // Each read brings the mailbox with the detail. An unchanged poll gets
+      // only the mailbox and keeps the cached detail.
       expect(reads).toEqual([
         [`${detailPath}?mailbox=true`, 200],
-        [`${detailPath}/pending-messages`, 200],
-        [detailPath, 304],
+        [`${detailPath}?mailbox=true`, 200],
       ]);
       expect(first.mailbox?.conversationId).toBe(ARCHIVED_CONVERSATION_ID);
+      expect(second.mailbox).not.toBe(first.mailbox);
 
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
       const changed = await client.fetchQuery(options);
       expect(first.archivedAt).toBeTruthy();
       expect(changed.archivedAt).toBeUndefined();
       expect(changed.detailEtag).not.toBe(first.detailEtag);
-      expect(reads.at(-1)).toEqual([detailPath, 200]);
+      expect(reads.at(-1)).toEqual([`${detailPath}?mailbox=true`, 200]);
       expect(sideReadsInvalidated()).toEqual([true, true]);
 
       // The detail endpoint must also reject a valid old validator after logout.

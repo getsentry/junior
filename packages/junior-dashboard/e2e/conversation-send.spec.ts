@@ -306,7 +306,6 @@ test("hands web and external messages from queue to history without gaps", async
   let committed: ConversationPendingMessage[] = [];
   let active = false;
   let started = false;
-  let pendingReads = 0;
   let detailReads = 0;
   let releaseAccept!: () => void;
   const accept = new Promise<void>((resolve) => {
@@ -315,33 +314,33 @@ test("hands web and external messages from queue to history without gaps", async
   let releaseHistory!: () => void;
   let historyHeld: Promise<void> | undefined;
   let failCancel = true;
+  // Polls read the mailbox with the detail below. This route only cancels.
   await page.route(`${path}/pending-messages`, async (route) => {
-    if (route.request().method() === "DELETE") {
-      if (failCancel) {
-        await route.fulfill({
-          status: 500,
-          json: { error: "temporary failure" },
-        });
-      } else {
-        const cancelled = queued.map((message) => message.inboundMessageId);
-        queued = [];
-        await route.fulfill({
-          json: {
-            conversationId,
-            cancelledCount: cancelled.length,
-            cancelledInboundMessageIds: cancelled,
-          },
-        });
-      }
+    if (failCancel) {
+      await route.fulfill({
+        status: 500,
+        json: { error: "temporary failure" },
+      });
       return;
     }
-    pendingReads += 1;
+    const cancelled = queued.map((message) => message.inboundMessageId);
+    queued = [];
     await route.fulfill({
-      json: { conversationId, generatedAt: createdAt, messages: queued },
+      json: {
+        conversationId,
+        cancelledCount: cancelled.length,
+        cancelledInboundMessageIds: cancelled,
+      },
     });
   });
   await page.route(`${path}*`, async (route) => {
     detailReads += 1;
+    // Like the server, read the mailbox before history.
+    const mailbox = {
+      conversationId,
+      generatedAt: createdAt,
+      messages: queued,
+    };
     await historyHeld;
     // Request the full body because this test changes it.
     const response = await route.fetch({
@@ -355,6 +354,7 @@ test("hands web and external messages from queue to history without gaps", async
       response,
       json: {
         ...detail,
+        mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
         status: active ? "active" : "completed",
@@ -524,22 +524,22 @@ test("hands web and external messages from queue to history without gaps", async
   historyHeld = undefined;
   // The mailbox copy does not pull the message back into the queue.
   queued = [web];
-  const readsBeforeQueued = pendingReads;
-  await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeQueued + 1);
+  const readsBeforeQueued = detailReads;
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeQueued + 1);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
 
   // The mailbox can empty before the slower history read returns. Publish both
   // together, and do not hide the web message in the meantime.
-  const readsBeforeCommit = pendingReads;
+  const readsBeforeCommit = detailReads;
   queued = [];
   committed = [waiting, web];
   started = true;
   historyHeld = new Promise<void>((resolve) => {
     releaseHistory = resolve;
   });
-  await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeCommit);
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeCommit);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(thinking).toBeHidden();
   releaseHistory();
@@ -656,11 +656,6 @@ test("stops the active Turn and returns queued text to the composer", async ({
   let active = true;
   let queued: ConversationPendingMessage[] = [queuedMessage];
   let stopRequests = 0;
-  await page.route(`${path}/pending-messages`, async (route) => {
-    await route.fulfill({
-      json: { conversationId, generatedAt: createdAt, messages: queued },
-    });
-  });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
     sentMessage.messageId = await webMessageId({
@@ -806,12 +801,6 @@ test("edits a queued message back into the composer", async ({
     });
   });
   await page.route(`${path}/pending-messages`, async (route) => {
-    if (route.request().method() !== "DELETE") {
-      await route.fulfill({
-        json: { conversationId, generatedAt: createdAt, messages: queued },
-      });
-      return;
-    }
     const [id] = route.request().postDataJSON().inboundMessageIds as string[];
     const cancelled = id === queuedMessage.inboundMessageId ? [id] : [];
     queued = queued.filter((message) => message.inboundMessageId !== id);

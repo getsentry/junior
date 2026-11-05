@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import * as z from "zod";
 import {
   type QueryClient,
   queryOptions,
@@ -22,13 +23,14 @@ import {
   conversationDetailReportSchema,
   conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
-  conversationPendingMessagesReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
   forkConversationResponseSchema,
   steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
+import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
   del,
@@ -102,29 +104,6 @@ function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
   );
 }
 
-/** Read the mailbox before history so acknowledged input is already committed. */
-async function readConversationSnapshot(
-  conversationId: string,
-  signal?: AbortSignal,
-  previous?: ConversationSnapshot,
-  unreadPage?: boolean,
-): Promise<ConversationSnapshot> {
-  // With no cached copy, the transcript waits for this read. The server reads
-  // both in the same order in one request, which saves a round trip. Polls
-  // read the mailbox apart, so the detail can still answer 304.
-  if (!previous) {
-    return readConversationData(conversationId, signal, undefined, {
-      mailbox: true,
-      unreadPage,
-    });
-  }
-  const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal, previous, {
-    unreadPage,
-  });
-  return { ...detail, mailbox };
-}
-
 const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
 
 /**
@@ -185,11 +164,13 @@ export function conversationDetailQueryOptions(
       const previous = client.getQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
       );
-      const next = await readConversationSnapshot(
+      // The server reads the mailbox before history, so acknowledged input
+      // is in at least one of them.
+      const next = await readConversationData(
         conversationId!,
         signal,
         previous,
-        options?.unreadPage,
+        { mailbox: true, unreadPage: options?.unreadPage },
       );
       refreshSideReadsOnChange(client, conversationId!, previous, next);
       return next;
@@ -866,6 +847,10 @@ export async function readConversationData(
   const query = new URLSearchParams();
   if (options?.unreadPage) query.set("unreadPage", "true");
   if (options?.mailbox) query.set("mailbox", "true");
+  // A poll asks only for the events after the cached ones. The unread page
+  // needs the latest page, so a read that asks for it reads that page.
+  const after = options?.unreadPage ? undefined : previous?.appendCursor;
+  if (after) query.set("after", after);
   const search = query.size ? `?${query}` : "";
   const response = await readDashboardResponse(
     `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
@@ -875,28 +860,74 @@ export async function readConversationData(
       : undefined,
   );
   if (response.status === 304 && previous) return previous;
-  const report = (
-    options?.mailbox
-      ? conversationDetailWithMailboxReportSchema
-      : conversationDetailReportSchema
-  ).parse(await response.json());
+  if (!options?.mailbox) {
+    return withDetailEtag(
+      withCachedEvents(
+        await readResponseJson(response, conversationDetailReportSchema),
+        previous,
+      ),
+      response,
+    );
+  }
+  const report = await readResponseJson(
+    response,
+    z.union([
+      conversationUnchangedDetailWithMailboxSchema,
+      conversationDetailWithMailboxReportSchema,
+    ]),
+  );
+  if (!("unchanged" in report)) {
+    return withDetailEtag(withCachedEvents(report, previous), response);
+  }
+  // Only a request that sent a version can get this answer.
+  if (!previous) throw new Error("Unchanged detail without a cached copy");
+  return { ...previous, mailbox: report.mailbox };
+}
+
+/**
+ * Put the cached events before the newer events of an `appended` report.
+ * The cached detail keeps its cursors: they still point before its events.
+ */
+function withCachedEvents(
+  report: ConversationSnapshot,
+  previous: ConversationSnapshot | undefined,
+): ConversationSnapshot {
+  if (!report.appended) return report;
+  // Only a request that sent an `appendCursor` can get this answer.
+  if (!previous) throw new Error("Appended detail without a cached copy");
+  const { appended: _appended, ...rest } = report;
+  const lastSeq = previous.events.at(-1)?.seq ?? -1;
+  const firstSeq = previous.events[0]?.seq;
+  // Like the server, keep the unread cursor while the reader is behind the
+  // first event.
+  const behind =
+    rest.readPosition !== undefined &&
+    firstSeq !== undefined &&
+    rest.readPosition.lastReadSeq + 1 < firstSeq;
+  return {
+    ...rest,
+    events: [
+      ...previous.events,
+      ...report.events.filter((event) => event.seq > lastSeq),
+    ],
+    ...(previous.previousCursor
+      ? { previousCursor: previous.previousCursor }
+      : undefined),
+    ...(behind && previous.unreadCursor
+      ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
+      : undefined),
+  };
+}
+
+function withDetailEtag<T extends ConversationDetailReport>(
+  report: T,
+  response: Response,
+): T & { detailEtag?: string } {
   return {
     ...report,
     detailEtag:
       response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
   };
-}
-
-/** Read accepted mailbox messages that have not reached durable history yet. */
-export function readConversationPendingMessages(
-  conversationId: string,
-  signal?: AbortSignal,
-): Promise<ConversationPendingMessagesReport> {
-  return fetchDashboardJson(
-    conversationPendingMessagesReportSchema,
-    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-    signal,
-  );
 }
 
 /** Read one bounded page of events before the supplied history cursor. */

@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import { readSlackAttachmentsVersion } from "@/chat/slack/attachments";
 import { juniorConversations } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
 import {
@@ -52,6 +53,11 @@ export type ConversationDetailState = {
   autoArchive?: Awaited<ReturnType<typeof readConversationAutoArchive>>;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: Awaited<ReturnType<typeof readConversationReadPosition>>;
+  /**
+   * Changes when events that a reader already has may project differently,
+   * so an `appendCursor` from before it cannot extend them.
+   */
+  transcriptVersion: string;
   viewerMarks?: Awaited<ReturnType<typeof readConversationViewerMarks>>;
 };
 
@@ -60,21 +66,43 @@ export async function readConversationDetailState(
   conversationId: string,
   viewer?: User,
 ): Promise<ConversationDetailState> {
-  const [access, viewerMarks, forks, agentTree, readPosition, autoArchive] =
-    await Promise.all([
-      readConversationAccessFromSql(getDb(), [conversationId], viewer),
-      viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
-      readConversationForks(conversationId, viewer),
-      readConversationAgentTree(conversationId, viewer),
-      viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
-      viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
-    ]);
+  const [
+    accessById,
+    viewerMarks,
+    forks,
+    agentTree,
+    readPosition,
+    autoArchive,
+    attachmentsVersion,
+  ] = await Promise.all([
+    readConversationAccessFromSql(getDb(), [conversationId], viewer),
+    viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
+    readConversationForks(conversationId, viewer),
+    readConversationAgentTree(conversationId, viewer),
+    viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
+    viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
+    readSlackAttachmentsVersion(getSqlExecutor(), conversationId),
+  ]);
+  const access = accessById.get(conversationId);
+  // Stored events only grow. Their projection changes with the viewer's
+  // access, the projection code, and the Slack files matched to messages.
+  // Mentions and names are not covered: they refresh with a reload.
+  const transcriptVersion = createHash("sha256")
+    .update(
+      JSON.stringify({
+        attachments: attachmentsVersion,
+        canViewPrivateContent: access?.canViewPrivateContent ?? false,
+        junior: JUNIOR_VERSION,
+      }),
+    )
+    .digest("base64url");
   return {
-    access: access.get(conversationId),
+    access,
     agentTree,
     autoArchive,
     forks,
     readPosition,
+    transcriptVersion,
     viewerMarks,
   };
 }

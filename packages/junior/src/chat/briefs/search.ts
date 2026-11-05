@@ -20,7 +20,7 @@ import {
   juniorDestinations,
 } from "@/db/schema";
 import {
-  conversationBriefSchema,
+  parseStoredBrief,
   type BriefLink,
   type BriefOutcomeStatus,
 } from "./schema";
@@ -168,7 +168,7 @@ export async function searchConversationBriefs(
     .limit(args.limit);
 
   return rows.map((row) => {
-    const content = conversationBriefSchema.parse(row.content);
+    const content = parseStoredBrief(row.content);
     return {
       conversationId: row.conversationId,
       excerpt: row.excerpt,

@@ -2,8 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 function toolContext(response?: Response) {
-  const fetch = vi.fn(
-    async () =>
+  const fetch = vi.fn(async (input: { operation: string }) => {
+    // Updates read the body that is on GitHub before they write.
+    if (input.operation === "github.issue.get") {
+      return new Response(
+        JSON.stringify({
+          body: "Old body\n\n<!-- junior-request-attribution:start -->\nvia @lcian.\n<!-- junior-request-attribution:end -->",
+        }),
+        { status: 200 },
+      );
+    }
+    return (
       response ??
       new Response(
         JSON.stringify({
@@ -14,8 +23,9 @@ function toolContext(response?: Response) {
           title: "Updated title",
         }),
         { status: 200 },
-      ),
-  );
+      )
+    );
+  });
   const ctx = {
     actor: {
       platform: "slack",
@@ -64,7 +74,10 @@ describe("updateIssue", () => {
       url: "https://github.com/getsentry/junior/issues/691",
     });
 
-    const call = fetch.mock.calls[0]?.[0];
+    expect(fetch.mock.calls[0]?.[0]).toMatchObject({
+      operation: "github.issue.get",
+    });
+    const call = fetch.mock.calls[1]?.[0];
     expect(call).toMatchObject({
       operation: "github.issue.update",
       provider: "github",
@@ -74,7 +87,8 @@ describe("updateIssue", () => {
       "https://api.github.com/repos/getsentry/junior/issues/691",
     );
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("via **David Cramer**.");
+    // A new requester joins the requesters already on GitHub.
+    expect(body.body).toContain("via @lcian, **David Cramer**.");
     expect(body.body).toContain("[View Session](https://example.com/session)");
   });
 

@@ -93,16 +93,6 @@ export const conversationBriefSchema = z
           .strict(),
       )
       .max(20),
-    openDecisions: z
-      .array(
-        z
-          .object({
-            text: lineSchema,
-            owner: lineSchema.optional(),
-          })
-          .strict(),
-      )
-      .max(20),
     facts: z.array(lineSchema).max(30),
     links: z.array(briefLinkSchema).max(40),
     keywords: z.array(z.string().trim().toLowerCase().min(1).max(400)).max(12),
@@ -113,6 +103,17 @@ export type BriefOutcomeStatus = z.output<typeof briefOutcomeStatusSchema>;
 export type BriefCodeChange = z.output<typeof briefCodeChangeSchema>;
 export type BriefLink = z.output<typeof briefLinkSchema>;
 export type ConversationBrief = z.output<typeof conversationBriefSchema>;
+
+/** Parse a stored Brief row, dropping fields that older versions wrote. */
+export function parseStoredBrief(content: unknown): ConversationBrief {
+  // Briefs stored before open decisions were removed still have them.
+  // Review items track open asks now.
+  if (content && typeof content === "object" && "openDecisions" in content) {
+    const { openDecisions: _openDecisions, ...rest } = content;
+    return conversationBriefSchema.parse(rest);
+  }
+  return conversationBriefSchema.parse(content);
+}
 
 const briefEntrySchema = z
   .object({

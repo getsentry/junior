@@ -1,5 +1,4 @@
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
@@ -9,6 +8,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
+import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 function EventTypeChip(props: { eventType: string }) {
@@ -28,9 +28,13 @@ function batchSummary(events: readonly { label?: string }[]): string {
 }
 
 /** Render an Event Message whose heading expands its full text. */
-export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
+export function TranscriptEventView(props: {
+  message: TranscriptViewMessage;
+  /** Keeps the text open while the row unmounts outside the viewport. */
+  openKey?: string;
+}) {
   const { active: searchActive } = useTranscriptSearch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const text = messageRawText(props.message);
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,

@@ -15,6 +15,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { eventFromRow } from "@/chat/conversations/sql/history";
+import { startSpan } from "@/chat/sentry";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationReportEvent } from "../schema/conversation";
@@ -146,6 +147,21 @@ async function readFirstTurnStart(
   return row ? eventFromRow(row) : undefined;
 }
 
+// Decoding and projection run on the request thread between queries.
+// Without spans, their time is a gap in the request trace.
+function projectEventPage(
+  args: Parameters<typeof projectConversationReportEventPage>[0],
+): ConversationReportEvent[] {
+  return startSpan(
+    {
+      attributes: { "app.conversation.event.count": args.events.length },
+      name: "Project conversation events",
+      op: "function",
+    },
+    () => projectConversationReportEventPage(args),
+  );
+}
+
 /** Resolve entity starts that precede the page, then project it once. */
 async function projectConversationEvents(
   executor: JuniorSqlDatabase,
@@ -215,7 +231,7 @@ async function projectConversationEvents(
         : undefined,
     ]);
 
-  return projectConversationReportEventPage({
+  return projectEventPage({
     canExposePayload: args.canExposePayload,
     events,
     ...(args.firstTurnStart
@@ -268,11 +284,16 @@ async function scanConversationEventPage(
     firstTurnStart = turnStart;
     if (batch.length === 0) break;
 
-    const decoded = batch
-      .map(eventFromRow)
-      .sort((left, right) => left.seq - right.seq);
+    const decoded = startSpan(
+      {
+        attributes: { "app.conversation.event.count": batch.length },
+        name: "Decode conversation events",
+        op: "function",
+      },
+      () => batch.map(eventFromRow).sort((left, right) => left.seq - right.seq),
+    );
     events.push(...decoded);
-    counted += projectConversationReportEventPage({
+    counted += projectEventPage({
       canExposePayload: args.canExposePayload,
       events: decoded,
       ...(firstTurnStart ? { firstTurnStart } : undefined),

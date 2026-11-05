@@ -668,14 +668,6 @@ test("keeps the message in view while earlier history and late content load", as
     });
   });
   await page.route(
-    "**/api/conversations/long-history/pending-messages",
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId: "long-history", generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
     "**/api/conversations/long-history/events?*",
     async (route) => {
       await earlierPageGate;
@@ -728,7 +720,10 @@ test("keeps the message in view while earlier history and late content load", as
   const reading = transcript.getByText("Transcript message 43 ");
   await expect(reading).toBeInViewport({ ratio: 1 });
   releaseEarlierPage?.();
-  await expect(transcript.getByText("Transcript message 0 ")).toBeAttached();
+  // Rows far above the reader do not mount, so wait for the load to end.
+  await expect(transcript.getByText("Loading earlier messages…")).toHaveCount(
+    0,
+  );
   await expect(reading).toBeInViewport({ ratio: 1 });
   await expect(
     transcript.getByText("Transcript message 39 "),
@@ -757,8 +752,9 @@ test("keeps the message in view while earlier history and late content load", as
   await scrollEventHandled();
 
   // Content that grows above the reader, such as an image that loads late,
-  // must not push the message they are reading out of view.
-  await transcript.getByText("Transcript message 20 ").evaluate((element) => {
+  // must not push the message they are reading out of view. The row must be
+  // one that mounts near the reader.
+  await transcript.getByText("Transcript message 35 ").evaluate((element) => {
     const spacer = document.createElement("div");
     spacer.style.height = "1200px";
     element.append(spacer);

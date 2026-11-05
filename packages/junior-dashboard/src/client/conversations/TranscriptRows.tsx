@@ -1,4 +1,10 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 
 import { cn } from "../styles";
 import {
@@ -56,12 +62,38 @@ export function TranscriptUnreadMarker() {
 }
 
 /**
+ * Open rows by key, for the rows of one transcript list. Rows far from the
+ * viewport unmount, so a row that opens again reads its state here.
+ */
+export const TranscriptOpenRows = createContext<Map<string, boolean> | null>(
+  null,
+);
+
+/**
+ * Hold whether a transcript row part is open. With a key, the state stays
+ * while the row unmounts outside the viewport.
+ */
+export function useTranscriptRowOpen(
+  key: string | undefined,
+): [boolean, (open: boolean) => void] {
+  const openRows = useContext(TranscriptOpenRows);
+  const [open, setOpenState] = useState(
+    () => (key !== undefined && openRows?.get(key)) || false,
+  );
+  const setOpen = (value: boolean) => {
+    setOpenState(value);
+    if (key !== undefined) openRows?.set(key, value);
+  };
+  return [open, setOpen];
+}
+
+/**
  * Lay out one transcript row at its real size.
  *
- * Rows do not use `content-visibility: auto`. A skipped row has an estimated
- * size, and it changes size when the reader scrolls near it. Above the
- * reader, each change needs a scroll correction while they scroll, and on
- * phones those corrections make the transcript jump.
+ * Rows do not use `content-visibility: auto`. The list mounts only the rows
+ * near the viewport, and a row that mounts above the reader can measure a
+ * different size than its estimate. The scroll owner corrects the scroll
+ * position for that, so keep estimates close and overscan large.
  */
 export function TranscriptRow(props: {
   /** Stable row id that holds the reader's place while layout changes. */

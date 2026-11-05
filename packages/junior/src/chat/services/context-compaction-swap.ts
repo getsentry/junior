@@ -18,6 +18,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import { setSpanAttributes } from "@/chat/logging";
+import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
@@ -93,26 +94,6 @@ function discard(reason: DiscardReason): CompactContextResult {
     "app.compaction.discard_reason": reason,
   });
   return { compacted: false };
-}
-
-/**
- * Find the newest background compaction fact of the current History version.
- * Facts of earlier versions belong to history that a replacement already
- * removed.
- */
-async function loadLatestBackgroundCompaction(conversationId: string) {
-  const store = getConversationEventStore();
-  const [historyVersion, page] = await Promise.all([
-    store.loadCurrentHistoryVersion(conversationId),
-    store.query(conversationId, {
-      limit: 1,
-      types: ["compaction_requested", "compaction_prepared"],
-    }),
-  ]);
-  const event = page.events.at(-1);
-  return event && event.historyVersion === historyVersion
-    ? { event, historyVersion }
-    : undefined;
 }
 
 /**

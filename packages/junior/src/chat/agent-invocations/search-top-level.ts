@@ -20,7 +20,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { parseStoredBrief } from "@/chat/briefs/schema";
 import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
@@ -167,7 +167,7 @@ export async function searchTopLevelAgents(args: {
 
   return rows.map((row) => {
     const brief = row.briefContent
-      ? conversationBriefSchema.parse(row.briefContent)
+      ? parseStoredBrief(row.briefContent)
       : undefined;
     return {
       archived: row.archivedAt !== null,
