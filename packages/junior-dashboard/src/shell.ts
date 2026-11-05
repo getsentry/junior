@@ -11,7 +11,7 @@ import {
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
 import {
   DASHBOARD_ASSETS_PATH,
-  dashboardClientFileName,
+  readDashboardClientManifest,
 } from "./public-assets";
 import { DASHBOARD_THEME_COLORS, DASHBOARD_THEME_SCRIPT } from "./theme";
 
@@ -217,6 +217,15 @@ export function renderDashboard(
   const bootstrapScript = bootstrap
     ? `window.__JUNIOR_DASHBOARD_BOOTSTRAP__ = ${scriptJson(bootstrap)};`
     : "";
+  const client = readDashboardClientManifest();
+  // Without these hints, the browser finds the chunks only after the entry
+  // has downloaded and parsed, one round trip later.
+  const clientPreloads = client.imports
+    .map(
+      (file) =>
+        `<link rel="modulepreload" href="${DASHBOARD_ASSETS_PATH}/${file}" />`,
+    )
+    .join("\n  ");
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
@@ -231,6 +240,7 @@ export function renderDashboard(
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
+  ${clientPreloads}
   <title>${escapeHtml(agentName)}</title>
   ${renderSentryHead(sentry)}
   <style>
@@ -297,7 +307,7 @@ export function renderDashboard(
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${encodeURIComponent(dashboardClientFileName())}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${client.entry}"></script>
 </body>
 </html>`,
     {

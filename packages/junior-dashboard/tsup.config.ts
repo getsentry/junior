@@ -2,8 +2,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "tsup";
 import {
-  DASHBOARD_CLIENT_ENTRY_NAME,
+  DASHBOARD_CLIENT_MANIFEST_FILE,
   DASHBOARD_PUBLIC_ASSET_NAME,
+  dashboardClientManifestSchema,
 } from "./src/public-assets";
 
 interface EsbuildOnLoadArgs {
@@ -93,20 +94,22 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
         }
 
         const publicAssets = readPublicAssets();
-        const clientFiles = Object.keys(publicAssets).filter((file) =>
-          DASHBOARD_CLIENT_ENTRY_NAME.test(file),
+        const clientManifest = dashboardClientManifestSchema.parse(
+          JSON.parse(readBuiltAsset(DASHBOARD_CLIENT_MANIFEST_FILE)),
         );
-        if (clientFiles.length !== 1) {
-          throw new Error(
-            `Expected one dashboard client entry in dist/public, found ${clientFiles.length}`,
-          );
+        for (const file of [clientManifest.entry, ...clientManifest.imports]) {
+          if (!Object.hasOwn(publicAssets, file)) {
+            throw new Error(
+              `Dashboard client manifest names ${file}, which is not in dist/public`,
+            );
+          }
         }
         const colorIconBase64 = readFileSync(dashboardColorIconPath).toString(
           "base64",
         );
         return {
           contents: [
-            `export const dashboardClientFile = ${JSON.stringify(clientFiles[0])};`,
+            `export const dashboardClientManifest = ${JSON.stringify(clientManifest)};`,
             `export const dashboardPublicAssets = ${JSON.stringify(publicAssets)};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,

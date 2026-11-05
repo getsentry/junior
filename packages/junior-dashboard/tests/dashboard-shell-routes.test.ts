@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApp } from "../src/app";
 import type { DashboardSession } from "../src/auth";
-import { dashboardClientFileName } from "../src/public-assets";
+import { readDashboardClientManifest } from "../src/public-assets";
 import {
   auth,
   embeddedBootstrap,
@@ -65,9 +65,13 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<title>Junior</title>");
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
-    expect(html).toContain(
-      `src="/_junior/dashboard/assets/${dashboardClientFileName()}"`,
-    );
+    const client = readDashboardClientManifest();
+    expect(html).toContain(`src="/_junior/dashboard/assets/${client.entry}"`);
+    for (const file of client.imports) {
+      expect(html).toContain(
+        `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
+      );
+    }
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
@@ -223,7 +227,7 @@ describe("dashboard shell routes", () => {
         new Request(`http://localhost/_junior/dashboard/assets/${file}`),
       );
 
-    const client = await assetResponse(dashboardClientFileName());
+    const client = await assetResponse(readDashboardClientManifest().entry);
     expect(client.status).toBe(200);
     expect(client.headers.get("cache-control")).toBe(
       "public, max-age=31536000, immutable",

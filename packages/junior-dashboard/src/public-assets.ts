@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { dashboardClientFile, dashboardPublicAssets } from "./assets";
+import * as z from "zod";
+import { dashboardClientManifest, dashboardPublicAssets } from "./assets";
 
 /**
  * URL prefix for the content-hashed dashboard browser files. `juniorNitro()`
@@ -33,28 +34,35 @@ function publicDir(): string | undefined {
   ].find((dir) => existsSync(dir));
 }
 
+/** File under `dist` where the client build names its entry and imports. */
+export const DASHBOARD_CLIENT_MANIFEST_FILE = "client-manifest.json";
+
+/** The client entry and every file it imports statically. */
+export const dashboardClientManifestSchema = z.object({
+  entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
+  imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
+});
+
+/** The dashboard client entry and every file it imports statically. */
+export type DashboardClientManifest = z.infer<
+  typeof dashboardClientManifestSchema
+>;
+
 /**
- * Name the dashboard client entry. Without embedded assets, read the build
- * output on each call, so a client rebuild never leaves the page on a deleted
- * file.
+ * Read the client manifest. Without embedded assets, read the build output on
+ * each call, so a client rebuild never leaves the page on a deleted file.
  */
-export function dashboardClientFileName(): string {
-  if (dashboardClientFile) return dashboardClientFile;
+export function readDashboardClientManifest(): DashboardClientManifest {
+  if (dashboardClientManifest) return dashboardClientManifest;
   const dir = publicDir();
-  // A watch rebuild can leave older entries next to the new one.
-  const newest = dir
-    ? readdirSync(dir)
-        .filter((file) => DASHBOARD_CLIENT_ENTRY_NAME.test(file))
-        .map((file) => ({
-          file,
-          mtimeMs: statSync(path.join(dir, file)).mtimeMs,
-        }))
-        .sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
-    : undefined;
-  if (!newest) {
+  const manifestPath =
+    dir && path.join(dir, "..", DASHBOARD_CLIENT_MANIFEST_FILE);
+  if (!manifestPath || !existsSync(manifestPath)) {
     throw new Error("Junior dashboard client bundle was not found");
   }
-  return newest.file;
+  return dashboardClientManifestSchema.parse(
+    JSON.parse(readFileSync(manifestPath, "utf8")),
+  );
 }
 
 function readPublicAsset(file: string): string | undefined {
@@ -63,7 +71,7 @@ function readPublicAsset(file: string): string | undefined {
     return dashboardPublicAssets[file];
   }
   // An embedded build has every file it can serve.
-  if (dashboardClientFile) return undefined;
+  if (dashboardClientManifest) return undefined;
   const dir = publicDir();
   const assetPath = dir ? path.join(dir, file) : undefined;
   return assetPath && existsSync(assetPath)
