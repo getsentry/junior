@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig, type Rolldown } from "tsdown";
 import {
   DASHBOARD_ASSETS_PATH,
@@ -85,7 +85,7 @@ function clientManifestPlugin(): Rolldown.Plugin {
   };
 }
 
-// Run with `--config-loader tsx`: Node's own loader cannot resolve the
+// Run with `--config-loader unrun`: Node's own loader cannot resolve the
 // extensionless imports in ./src/public-assets.
 //
 // Rolldown, not esbuild: esbuild puts shared code in one chunk per set of
@@ -113,8 +113,9 @@ export default defineConfig({
   alias: {
     // pnpm injects a separate copy of the plugin API into @sentry/junior.
     // Resolve every import to one copy, so the browser loads it once.
-    "@sentry/junior-plugin-api": fileURLToPath(
-      import.meta.resolve("@sentry/junior-plugin-api"),
+    // unrun rewrites import.meta.resolve as a relative URL, so use require.
+    "@sentry/junior-plugin-api": createRequire(import.meta.url).resolve(
+      "@sentry/junior-plugin-api",
     ),
   },
   define: {
