@@ -7,6 +7,7 @@ import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
+import { ReplyRatingActions } from "./ReplyRatingActions";
 import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
@@ -120,6 +121,12 @@ export const TranscriptMessageView = memo(
           // The negative margin lines the first icon up with the text edge.
           <MessageActions className="-ml-2.5">
             <CopyButton getText={() => rawText} label="Copy message" />
+            {props.message.messageId ? (
+              <ReplyRatingActions
+                conversationId={props.conversation.conversationId}
+                messageId={props.message.messageId}
+              />
+            ) : null}
             {canForkAfter(props.message, props.conversation) ? (
               <ForkConversationButton
                 conversationId={props.conversation.conversationId}

@@ -443,7 +443,12 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
   project. The `pageload` span continues the trace of the page request, and
   dashboard API calls continue the browser trace.
-- The browser sends only spans. It sends no errors, breadcrumbs, or replays.
+- The browser sends only spans and Reply ratings. It sends no errors,
+  breadcrumbs, or replays.
+- A Reply rating is Sentry user feedback with `source`
+  `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
+  and no person. The dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their
