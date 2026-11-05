@@ -10,7 +10,10 @@ import {
   getDeploymentTelemetryAttributes,
 } from "@/deployment";
 
-export { routeNameMiddleware } from "@/chat/sentry-route-name";
+export {
+  nameRequestRoute,
+  routeNameMiddleware,
+} from "@/chat/sentry-route-name";
 
 // Junior records its own gen_ai spans with usage and cost. These SDK spans
 // would duplicate them, and Pi reads provider streams itself, so they have no

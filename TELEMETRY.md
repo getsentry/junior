@@ -454,13 +454,13 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   span ends only when all requests on the page stop, side panels included.
 - `app.dashboard.navigation.pre_fetch_ms` on a `pageload` span is the time
   before the browser fetched the page. Sign-in redirects add to it.
-- Browser requests after a `pageload` or `navigation` span ends, such as
-  polls, send no spans. The server still records them.
+- A browser request after the `pageload` or `navigation` span ends, such as
+  a poll, is its own `http.client` segment. Add `!span.op:http.client` to
+  segment queries to leave them out.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
-  plugin app. `app.http.route` holds the pattern until the span is sent.
-  Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress is
-  `/api/internal/sandbox-egress/:token/*`.
+  plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
+  is `/api/internal/sandbox-egress/<token>`.
 
 Conversation open time, by the transcript render.
 

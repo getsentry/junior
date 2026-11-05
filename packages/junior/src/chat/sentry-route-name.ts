@@ -7,10 +7,11 @@ type SentrySpan = Parameters<
 >[0];
 
 // The core app calls the dashboard app, and the dashboard app calls plugin
-// apps, through `fetch()`. The Hono integration names the request span only
-// from the outermost app, so a dashboard request is `GET /api/conversations/*`
-// and sandbox egress is `GET /*`. This attribute keeps the inner route until
-// `promoteHttpRouteName` restores it on the sent segment.
+// apps, through `fetch()`. The Hono integration renames the request span as
+// each app returns, so the outermost app wins: a dashboard request is
+// `GET /api/conversations/*` and sandbox egress is `GET /*`. This attribute
+// keeps the inner route until `promoteHttpRouteName` restores it on the sent
+// segment and removes it.
 const HTTP_ROUTE_ATTRIBUTE = "app.http.route";
 // Hono marks the handler that `app.route()` wraps with the original handler.
 const COMPOSED_HANDLER = "__COMPOSED_HANDLER";
@@ -57,12 +58,14 @@ export function routeNameMiddleware(): MiddlewareHandler {
  * Hono app renames the span to its own pattern after the inner app returns.
  */
 export function promoteHttpRouteName(span: SentrySpan): void {
-  const route = span.attributes[HTTP_ROUTE_ATTRIBUTE];
-  const method = span.attributes["http.request.method"];
-  if (!span.is_segment || typeof route !== "string") return;
-  if (typeof method !== "string") return;
+  const { attributes } = span;
+  const route = attributes[HTTP_ROUTE_ATTRIBUTE];
+  const method = attributes["http.request.method"];
+  if (!span.is_segment || attributes["sentry.op"] !== "http.server") return;
+  if (typeof route !== "string" || typeof method !== "string") return;
   const name = `${method} ${route}`;
   span.name = name;
-  span.attributes["http.route"] = route;
-  span.attributes["sentry.segment.name"] = name;
+  attributes["http.route"] = route;
+  attributes["sentry.segment.name"] = name;
+  delete attributes[HTTP_ROUTE_ATTRIBUTE];
 }

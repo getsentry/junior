@@ -142,9 +142,6 @@ export function initDashboardSentry(): void {
                 },
               }
             : options,
-        // After a pageload or navigation ends, the SDK would send each poll
-        // as its own segment in the old trace.
-        shouldCreateSpanForRequest: () => Boolean(getActiveSpan()),
       }),
     ],
   });
