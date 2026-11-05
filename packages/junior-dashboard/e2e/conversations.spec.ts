@@ -87,6 +87,24 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     exact: true,
   });
   await expect(details).toBeVisible();
+  const resizeDetails = page.getByRole("separator", {
+    name: "Resize details panel",
+  });
+  // The separator reports the transcript share, which grows as details shrink.
+  const transcriptSize = async () =>
+    Number(await resizeDetails.getAttribute("aria-valuenow"));
+  const startTranscriptSize = await transcriptSize();
+  await resizeDetails.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(transcriptSize).toBeGreaterThan(startTranscriptSize);
+  const resizedTranscriptSize = await transcriptSize();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await expect(details).toBeVisible();
+  // The saved width rounds to whole pixels.
+  await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
   const usage = details.getByRole("button", { name: /^Usage/ });
   const modelBreakdown = details.getByRole("table", { name: "Model" });
   await expect(usage).toHaveAttribute("aria-expanded", "false");

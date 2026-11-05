@@ -17,6 +17,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
+import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import {
   useArchiveConversation,
   type ArchivedFromConversationState,
@@ -543,230 +544,8 @@ export function ConversationPage(props: {
     trigger?.focus({ preventScroll: true });
   };
 
-  return (
-    <div
-      ref={pageRef}
-      className={cn(
-        "grid h-full min-h-0 min-w-0",
-        (showDetails || showEvent || turnContext || showQuickQuestion) &&
-          "xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_25rem]",
-      )}
-    >
-      <ChatLayout
-        header={
-          <ConversationHeader
-            agentTree={
-              agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
-            }
-            contextTags={conversationContextTags(conversation)}
-            conversationId={conversationId}
-            cost={conversationCost(conversation, conversationDetail, "below")}
-            detailsOpen={showDetails}
-            onDetailsClick={() => {
-              if (eventOpen) setSelectedEventSeq(undefined);
-              setTurnContext(undefined);
-              quickQuestion.close();
-              if (showDetails) {
-                closeDetails();
-              } else {
-                focusDetailsOnOpen.current = true;
-                setDetailsChoice(true);
-              }
-            }}
-            forks={
-              detail.data?.forkedFromConversationId ||
-              detail.data?.forks?.length ? (
-                <ConversationForkLinks
-                  forkedFromConversationId={
-                    detail.data.forkedFromConversationId
-                  }
-                  forkedFromTitle={detail.data.forkedFromTitle}
-                  forks={detail.data.forks}
-                />
-              ) : null
-            }
-            copyAction={
-              <CopyButton
-                label="Copy as Markdown"
-                copyingLabel="Preparing Markdown"
-                key={conversationDetail?.conversationId ?? "loading"}
-                layout="menu"
-                getText={
-                  conversationDetail
-                    ? async () =>
-                        buildConversationMarkdown(
-                          await detail.loadCompleteTranscript(),
-                          conversation,
-                        )
-                    : undefined
-                }
-              />
-            }
-            linkedWork={
-              links.length ? <ConversationAnnotations links={links} /> : null
-            }
-            pin={{
-              // The API lets only participants pin, the same as archive.
-              disabled:
-                !conversation || !detail.data?.isParticipant || pin.isPending,
-              error: Boolean(pin.error),
-              onClick: () => pin.mutate(!conversation?.pinnedAt),
-              pinned: Boolean(conversation?.pinnedAt),
-            }}
-            archive={{
-              archived: Boolean(conversation?.archivedAt),
-              disabled: !conversation || archive.isPending,
-              error: Boolean(archive.error),
-              onClick: () => {
-                const archived = !conversation!.archivedAt;
-                archive.mutate({
-                  archived,
-                  lastSeenAt: conversation!.lastSeenAt,
-                });
-                // Archiving hides this conversation, so go home at once.
-                // The mutation keeps running after this page unmounts.
-                if (archived) {
-                  navigate("/", {
-                    state: {
-                      archivedConversation: conversation!,
-                    } satisfies ArchivedFromConversationState,
-                  });
-                }
-              },
-              pending: archive.isPending,
-            }}
-            live={live}
-            onSearchChange={setSearch}
-            onViewChange={onViewChange}
-            privacy={
-              <ConversationPrivacyChip visibility={conversation?.visibility} />
-            }
-            search={search}
-            sentryConversationUrl={detail.data?.sentryConversationUrl}
-            sidebarToggle={props.sidebarToggle}
-            title={title}
-            view={view}
-          />
-        }
-        overlay={
-          view === "rich" && !transcriptPending && outlineEvents ? (
-            <ConversationOutline
-              events={outlineEvents}
-              onSelect={selectOutlineItem}
-              scrollRef={scrollRef}
-            />
-          ) : undefined
-        }
-        scrollMinTall
-        scrollAriaLabel="Conversation transcript"
-        scrollRef={scrollRef}
-        scrollClassName={cn(
-          "thin-scrollbar",
-          view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
-        )}
-        scroll={
-          <section className="min-w-0">
-            <div
-              className={
-                view === "raw"
-                  ? "w-full"
-                  : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
-              }
-            >
-              {transcriptPending ? (
-                view === "raw" ? (
-                  <ConversationEventLogLoading />
-                ) : (
-                  <TranscriptLoading />
-                )
-              ) : detail.error && !detail.data ? (
-                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                  {detail.error.message}
-                </Card>
-              ) : (
-                <>
-                  {detail.error ? (
-                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                      Transcript refresh failed. Showing the latest available
-                      data.
-                    </div>
-                  ) : null}
-                  <ConversationMemoryContext value={memoryState}>
-                    <ConversationCatchUpContext value={catchUp}>
-                      <Transcript
-                        hasPreviousPage={history.hasPreviousPage}
-                        historyError={history.historyError}
-                        historyVersion={history.historyVersion}
-                        lastReadSeq={readAtOpen.lastReadSeq}
-                        live={live}
-                        loadingPreviousPage={history.isLoadingPreviousPage}
-                        newerHistory={history.newer}
-                        onLoadPreviousPage={history.loadPreviousPage}
-                        onRead={holdShown ? undefined : markRead}
-                        onSelectedEventSeqChange={setSelectedEventSeq}
-                        // Sends and the thinking row belong after the latest event.
-                        pendingMessages={
-                          history.newer ? undefined : detail.inlineMessages
-                        }
-                        pinRequestVersion={pinRequestVersion}
-                        revealSeq={revealSeq}
-                        responding={
-                          !detail.error &&
-                          !history.newer &&
-                          conversationIsResponding(detail.data)
-                        }
-                        onOpenSubagentTranscript={onOpenSubagentTranscript}
-                        search={search}
-                        onSearchChange={setSearch}
-                        selectedEventSeq={selectedEventSeq}
-                        startAtLink={startAtLink}
-                        startAtUnread={startAtUnread}
-                        transcript={transcript}
-                        turnContextPanel={turnContextPanel}
-                        unread={holdShown ? undefined : readAtOpen.unread}
-                        view={view}
-                      />
-                    </ConversationCatchUpContext>
-                  </ConversationMemoryContext>
-                </>
-              )}
-            </div>
-          </section>
-        }
-        dock={
-          // A child Conversation takes input only from its parent agent, and it
-          // runs without interactive auth, so it has no approval to show.
-          view === "rich" && detail.data?.isParticipant && !agentTree ? (
-            <ConversationReplyFooter
-              authors={detail.data.authors}
-              conversationId={conversationId}
-              // Only pass committed ids for mailbox de-dupe. The full transcript is
-              // too large to re-enter the footer on every live poll while typing.
-              committedMessageIds={mailboxCommittedIds}
-              onPinRequest={requestPin}
-              pendingAuthorization={detail.pendingAuthorization}
-              // Keep the cancel watermark off props. Live polls refresh generatedAt
-              // every 2s; a prop would bust footer memo while the reader types.
-              pendingGeneratedAtRef={pendingGeneratedAtRef}
-              pendingMessages={detail.pendingMessages}
-              reviewItemId={reviewItemId}
-              // Without live history, an inline send would never leave the
-              // transcript tail. A started Turn reads a new send only later.
-              // Keep those sends in the queue. An earlier inline send that
-              // history does not have yet can start that Turn first. While
-              // newer pages are not loaded, the transcript tail is not the
-              // latest event, so a send waits in the queue too.
-              sendsInline={
-                detail.data.eventHistory.status === "available" &&
-                !history.newer &&
-                !conversationIsResponding(detail.data) &&
-                detail.inlineMessages.length === 0
-              }
-              stoppable={live}
-            />
-          ) : undefined
-        }
-      />
+  const sidePanel = (
+    <>
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
@@ -852,6 +631,236 @@ export function ConversationPage(props: {
           thread={quickQuestion.thread}
         />
       ) : null}
+    </>
+  );
+
+  return (
+    <div ref={pageRef} className="grid h-full min-h-0 min-w-0">
+      <ConversationSidePanelLayout
+        side={
+          showDetails || showEvent || turnContext || showQuickQuestion
+            ? sidePanel
+            : undefined
+        }
+      >
+        <ChatLayout
+          header={
+            <ConversationHeader
+              agentTree={
+                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+              }
+              contextTags={conversationContextTags(conversation)}
+              conversationId={conversationId}
+              cost={conversationCost(conversation, conversationDetail, "below")}
+              detailsOpen={showDetails}
+              onDetailsClick={() => {
+                if (eventOpen) setSelectedEventSeq(undefined);
+                setTurnContext(undefined);
+                quickQuestion.close();
+                if (showDetails) {
+                  closeDetails();
+                } else {
+                  focusDetailsOnOpen.current = true;
+                  setDetailsChoice(true);
+                }
+              }}
+              forks={
+                detail.data?.forkedFromConversationId ||
+                detail.data?.forks?.length ? (
+                  <ConversationForkLinks
+                    forkedFromConversationId={
+                      detail.data.forkedFromConversationId
+                    }
+                    forkedFromTitle={detail.data.forkedFromTitle}
+                    forks={detail.data.forks}
+                  />
+                ) : null
+              }
+              copyAction={
+                <CopyButton
+                  label="Copy as Markdown"
+                  copyingLabel="Preparing Markdown"
+                  key={conversationDetail?.conversationId ?? "loading"}
+                  layout="menu"
+                  getText={
+                    conversationDetail
+                      ? async () =>
+                          buildConversationMarkdown(
+                            await detail.loadCompleteTranscript(),
+                            conversation,
+                          )
+                      : undefined
+                  }
+                />
+              }
+              linkedWork={
+                links.length ? <ConversationAnnotations links={links} /> : null
+              }
+              pin={{
+                // The API lets only participants pin, the same as archive.
+                disabled:
+                  !conversation || !detail.data?.isParticipant || pin.isPending,
+                error: Boolean(pin.error),
+                onClick: () => pin.mutate(!conversation?.pinnedAt),
+                pinned: Boolean(conversation?.pinnedAt),
+              }}
+              archive={{
+                archived: Boolean(conversation?.archivedAt),
+                disabled: !conversation || archive.isPending,
+                error: Boolean(archive.error),
+                onClick: () => {
+                  const archived = !conversation!.archivedAt;
+                  archive.mutate({
+                    archived,
+                    lastSeenAt: conversation!.lastSeenAt,
+                  });
+                  // Archiving hides this conversation, so go home at once.
+                  // The mutation keeps running after this page unmounts.
+                  if (archived) {
+                    navigate("/", {
+                      state: {
+                        archivedConversation: conversation!,
+                      } satisfies ArchivedFromConversationState,
+                    });
+                  }
+                },
+                pending: archive.isPending,
+              }}
+              live={live}
+              onSearchChange={setSearch}
+              onViewChange={onViewChange}
+              privacy={
+                <ConversationPrivacyChip
+                  visibility={conversation?.visibility}
+                />
+              }
+              search={search}
+              sentryConversationUrl={detail.data?.sentryConversationUrl}
+              sidebarToggle={props.sidebarToggle}
+              title={title}
+              view={view}
+            />
+          }
+          overlay={
+            view === "rich" && !transcriptPending && outlineEvents ? (
+              <ConversationOutline
+                events={outlineEvents}
+                onSelect={selectOutlineItem}
+                scrollRef={scrollRef}
+              />
+            ) : undefined
+          }
+          scrollMinTall
+          scrollAriaLabel="Conversation transcript"
+          scrollRef={scrollRef}
+          scrollClassName={cn(
+            "thin-scrollbar",
+            view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
+          )}
+          scroll={
+            <section className="min-w-0">
+              <div
+                className={
+                  view === "raw"
+                    ? "w-full"
+                    : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
+                }
+              >
+                {transcriptPending ? (
+                  view === "raw" ? (
+                    <ConversationEventLogLoading />
+                  ) : (
+                    <TranscriptLoading />
+                  )
+                ) : detail.error && !detail.data ? (
+                  <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                    {detail.error.message}
+                  </Card>
+                ) : (
+                  <>
+                    {detail.error ? (
+                      <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                        Transcript refresh failed. Showing the latest available
+                        data.
+                      </div>
+                    ) : null}
+                    <ConversationMemoryContext value={memoryState}>
+                      <ConversationCatchUpContext value={catchUp}>
+                        <Transcript
+                          hasPreviousPage={history.hasPreviousPage}
+                          historyError={history.historyError}
+                          historyVersion={history.historyVersion}
+                          lastReadSeq={readAtOpen.lastReadSeq}
+                          live={live}
+                          loadingPreviousPage={history.isLoadingPreviousPage}
+                          newerHistory={history.newer}
+                          onLoadPreviousPage={history.loadPreviousPage}
+                          onRead={holdShown ? undefined : markRead}
+                          onSelectedEventSeqChange={setSelectedEventSeq}
+                          // Sends and the thinking row belong after the latest event.
+                          pendingMessages={
+                            history.newer ? undefined : detail.inlineMessages
+                          }
+                          pinRequestVersion={pinRequestVersion}
+                          revealSeq={revealSeq}
+                          responding={
+                            !detail.error &&
+                            !history.newer &&
+                            conversationIsResponding(detail.data)
+                          }
+                          onOpenSubagentTranscript={onOpenSubagentTranscript}
+                          search={search}
+                          onSearchChange={setSearch}
+                          selectedEventSeq={selectedEventSeq}
+                          startAtLink={startAtLink}
+                          startAtUnread={startAtUnread}
+                          transcript={transcript}
+                          turnContextPanel={turnContextPanel}
+                          unread={holdShown ? undefined : readAtOpen.unread}
+                          view={view}
+                        />
+                      </ConversationCatchUpContext>
+                    </ConversationMemoryContext>
+                  </>
+                )}
+              </div>
+            </section>
+          }
+          dock={
+            // A child Conversation takes input only from its parent agent, and it
+            // runs without interactive auth, so it has no approval to show.
+            view === "rich" && detail.data?.isParticipant && !agentTree ? (
+              <ConversationReplyFooter
+                authors={detail.data.authors}
+                conversationId={conversationId}
+                // Only pass committed ids for mailbox de-dupe. The full transcript is
+                // too large to re-enter the footer on every live poll while typing.
+                committedMessageIds={mailboxCommittedIds}
+                onPinRequest={requestPin}
+                pendingAuthorization={detail.pendingAuthorization}
+                // Keep the cancel watermark off props. Live polls refresh generatedAt
+                // every 2s; a prop would bust footer memo while the reader types.
+                pendingGeneratedAtRef={pendingGeneratedAtRef}
+                pendingMessages={detail.pendingMessages}
+                reviewItemId={reviewItemId}
+                // Without live history, an inline send would never leave the
+                // transcript tail. A started Turn reads a new send only later.
+                // Keep those sends in the queue. An earlier inline send that
+                // history does not have yet can start that Turn first. While
+                // newer pages are not loaded, the transcript tail is not the
+                // latest event, so a send waits in the queue too.
+                sendsInline={
+                  detail.data.eventHistory.status === "available" &&
+                  !history.newer &&
+                  !conversationIsResponding(detail.data) &&
+                  detail.inlineMessages.length === 0
+                }
+                stoppable={live}
+              />
+            ) : undefined
+          }
+        />
+      </ConversationSidePanelLayout>
       <QuickQuestionSelectionButton
         onAsk={(selection) => {
           if (eventOpen) setSelectedEventSeq(undefined);
