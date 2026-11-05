@@ -28,10 +28,7 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import {
-  CONVERSATION_DETAIL_EVENT_LIMIT,
-  conversationDetailReportSchema,
-} from "../schema/conversation";
+import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
@@ -303,7 +300,7 @@ export async function readConversationDetail(
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, {
     ...options,
-    limit: options.limit ?? CONVERSATION_DETAIL_EVENT_LIMIT,
+    limit: options.limit ?? 500,
   });
   return report ? conversationDetailReportSchema.parse(report) : undefined;
 }

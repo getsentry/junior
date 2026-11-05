@@ -55,20 +55,9 @@ export const conversationAttachmentParamsSchema = z
   })
   .strict();
 
-/**
- * Events in a detail page. A short page keeps the first open fast; the
- * dashboard reads earlier pages as the reader scrolls up.
- */
-export const CONVERSATION_DETAIL_EVENT_LIMIT = 50;
-
 export const conversationDetailQuerySchema = z
   .object({
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(1_000)
-      .default(CONVERSATION_DETAIL_EVENT_LIMIT),
+    limit: z.coerce.number().int().min(1).max(1_000).default(500),
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
     /**
