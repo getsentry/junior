@@ -5,7 +5,7 @@ description: Create, update, comment on, label, and inspect GitHub issues with c
 
 # GitHub Issue Operations
 
-Create issues with `github_createIssue`. Update issue title, body, or state with `github_updateIssue`. Use `gh` for comments, labels, and inspection.
+Create issues with `github_createIssue`. Read one issue with `github_getIssue`. Update issue title, body, or state with `github_updateIssue`. Use `gh` for comments, labels, and issue lists.
 Use only for GitHub issues. For pull requests, branches, pushes, or PR creation order questions, load `github-code` instead.
 
 ## Reference loading
@@ -94,7 +94,7 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 - Use `github_createIssue` for new issues so the runtime owns idempotency and session-link footers.
 - Use `github_updateIssue` for issue title, body, or state changes so the runtime preserves requester attribution and the session footer.
-- Use `gh` commands from [references/api-surface.md](references/api-surface.md) for comments, labels, assignees, and read-only operations.
+- Use `gh` commands from [references/api-surface.md](references/api-surface.md) for comments, labels, assignees, and issue lists.
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
 - Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.
 

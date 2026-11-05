@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses `github_createIssue`. Issue title, body, and state updates use `github_updateIssue` so the runtime keeps requester attribution and the conversation footer. Comments, labels, assignees, and reads use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
+Issue creation uses `github_createIssue`, one-issue reads use `github_getIssue`, and title, body, and state updates use `github_updateIssue`. Comments, labels, assignees, and issue lists use `gh`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 
@@ -12,7 +12,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 | Permission capability | Operations                                                                                             |
 | --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                                          |
+| `github.issues.read`  | `github_getIssue`, `gh api /repos/.../comments`                                                        |
 | `github.issues.write` | Typed issue create/update tools and allowlisted comment, label, or assignee endpoints through `gh api` |
 
 ## Command matrix
@@ -29,7 +29,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Remove assignees    | `gh api repos/owner/repo/issues/NUMBER/assignees --method DELETE --input assignees.json`                              |
 | Add comment         | `gh api repos/owner/repo/issues/NUMBER/comments --method POST --input comment.json`                                   |
 | List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                            |
-| Read issue          | `gh issue view NUMBER --repo owner/repo --json number,title,state,labels,assignees,author,url,body`                   |
+| Read issue          | `github_getIssue({ repo: "owner/repo", number: NUMBER })`                                                             |
 | Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"`         |
 
 ## Config helpers

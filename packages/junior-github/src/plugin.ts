@@ -75,7 +75,7 @@ import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
-import { githubIssueReadNudge } from "./issue-read-command.js";
+import { githubIssueReadRedirect } from "./issue-read-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
@@ -392,12 +392,14 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const cloneRedirect =
-          typeof ctx.tool.input.command === "string"
-            ? githubCloneCommandRedirect(ctx.tool.input.command)
+        const command = ctx.tool.input.command;
+        const redirect =
+          typeof command === "string"
+            ? (githubCloneCommandRedirect(command) ??
+              githubIssueReadRedirect(command))
             : undefined;
-        if (cloneRedirect) {
-          ctx.decision.redirect(cloneRedirect);
+        if (redirect) {
+          ctx.decision.redirect(redirect);
           return;
         }
         const botName = requireEnv(botNameEnv);
@@ -426,18 +428,6 @@ export function githubPlugin(
           "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
           actorTrailers.join("\n"),
         );
-      },
-      afterToolExecute(ctx) {
-        if (
-          ctx.tool.name !== "bash" ||
-          typeof ctx.tool.input.command !== "string"
-        ) {
-          return;
-        }
-        const nudge = githubIssueReadNudge(ctx.tool.input.command);
-        if (nudge) {
-          ctx.decision.nudge(nudge);
-        }
       },
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx);

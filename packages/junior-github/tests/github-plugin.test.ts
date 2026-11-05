@@ -781,6 +781,7 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "GET",
+        operation: "github.issue.get",
         url: "https://api.github.com/repos/getsentry/junior/issues/449",
       }),
     ).toMatchObject({
@@ -2659,6 +2660,48 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_updatePullRequest tool");
   });
 
+  it("routes raw issue reads to github_getIssue", async () => {
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            "query IssueByNumber($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issueOrPullRequest(number: $number) { ... on Issue { title } } } }",
+        }),
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "GET",
+        operation: "github.issue.get",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768/comments",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            'query { repository(owner: "getsentry", name: "junior") { issues(first: 1) { nodes { number } } } }',
+        }),
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+  });
+
   it("keeps unsupported repository writes outside the allowlist", async () => {
     await expect(
       grantForEgress({
@@ -4090,22 +4133,23 @@ Conversation: \`local:test:old-conversation\`
     ["gh issue list --repo getsentry/junior", false],
     ["gh pr view 2769", false],
   ])(
-    "reminds the agent to claim an issue it reads in bash: %s",
-    async (command, nudged) => {
-      const nudges: string[] = [];
-      await githubPlugin().hooks?.afterToolExecute?.({
-        decision: {
-          deny() {},
-          nudge(message: string) {
-            nudges.push(message);
-          },
-        },
-        tool: { input: { command }, name: "bash" },
-      } as never);
+    "redirects GitHub issue reads in bash on a best-effort basis: %s",
+    async (command, redirected) => {
+      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
-      expect(nudges).toHaveLength(nudged ? 1 : 0);
-      expect(nudges[0]?.includes("assign_requester: true") ?? false).toBe(
-        nudged,
+      const before = beforeToolContext({
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      });
+      before.ctx.tool.input.command = command;
+
+      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+      expect(before.blocked?.kind).toBe(redirected ? "redirect" : undefined);
+      expect(before.blocked?.message.includes("github_getIssue") ?? false).toBe(
+        redirected,
       );
     },
   );
