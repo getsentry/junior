@@ -2,7 +2,7 @@
 title: MCP Server
 description: Connect Claude Code and other MCP clients to Junior at /api/mcp.
 type: tutorial
-summary: Connect an MCP client to the remote Junior MCP server, sign in with Google, and read your Conversations, Review items, and Automations.
+summary: Connect an MCP client to the remote Junior MCP server, sign in with Google, and read and work with your Conversations, Review items, and Automations.
 prerequisites:
   - /operate/dashboard/
 related:
@@ -13,7 +13,7 @@ related:
 
 Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code, can use it to read your Junior Conversations, Review items, and Automations. The client signs in through your Junior dashboard with Google. It can see only the Conversations that you started or take part in.
 
-The server does not start agent work. No tool sends a message, answers a Review item, or runs an Automation. To ask Junior for work, use Slack or the dashboard.
+Only the `conversations:write` scope starts agent work. With it, a client can start a Conversation and send messages as you. No tool answers a Review item or runs an Automation.
 
 ## Before you start
 
@@ -74,12 +74,15 @@ A client gets only the tools of the scopes that you allow. A client that does no
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `conversations:read`   | `searchConversations`, `getConversation`, `listConversationMessages`                                                                                                   | Read the Conversations that you started or take part in.                                                                     |
 | `conversations:manage` | `archiveConversation`, `archiveDoneConversations`, `pinConversation`, `setConversationAutoArchive`, `markConversationRead`, `stopConversation`, `cancelQueuedMessages` | Archive, pin, or mark a Conversation read for you, set its auto-archive, stop its running Turn, or drop its queued messages. |
+| `conversations:write`  | `createConversation`, `sendMessage`                                                                                                                                    | Start a Conversation or send a message as you. Junior starts a Turn for it.                                                  |
 | `review_items:read`    | `searchReviewItems`, `getReviewItem`                                                                                                                                   | Read the Review items that you can see on the Review desk.                                                                   |
 | `automations:read`     | `searchAutomations`, `getAutomation`                                                                                                                                   | Read the Automations that you can see, and their runs.                                                                       |
 
 `getConversation` returns metadata, the Brief, and the last assistant reply. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
 
 Archive, pin, auto-archive, and read position apply only to you. `archiveDoneConversations` archives your done Conversations once, the same as **Archive done now** in Settings. `markConversationRead` marks every message read when you omit `lastReadSeq`.
+
+`createConversation` starts a private Conversation by default. `createConversation` and `sendMessage` return when Junior accepts the message, not when Junior answers. A message sent while a Turn runs waits for that Turn. Call `getConversation` to follow the status and the last reply. To retry a send without sending the message twice, pass the same `idempotencyKey`.
 
 `stopConversation` stops the running Turn and drops the messages that wait for it. `cancelQueuedMessages` drops the waiting messages and lets the running Turn continue. Neither tool starts a new Turn. Review item and Automation results include a dashboard link. Answer a Review item or change an Automation there.
 

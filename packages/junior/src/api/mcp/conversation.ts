@@ -105,3 +105,35 @@ export function mcpMessages(
     ];
   });
 }
+
+/** Message text param shared by the tools that send a message. */
+export const mcpMessageTextSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(32_000)
+  .describe("Message text.");
+
+/**
+ * Idempotency key param shared by the tools that send a message. A retry
+ * with the same key sends nothing new.
+ */
+export const mcpIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .optional()
+  .describe(
+    "Reuse the same key to retry without sending the message twice. Omit it to send a new message.",
+  );
+
+/** Result of a tool that sends a message. */
+export const mcpAcceptedMessageSchema = {
+  conversationId: z.string(),
+  messageId: z.string(),
+  status: z
+    .enum(["accepted", "duplicate"])
+    .describe("`duplicate` when the idempotency key was already used."),
+  url: z.string().optional(),
+};
