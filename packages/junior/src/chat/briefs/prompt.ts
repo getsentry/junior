@@ -7,10 +7,10 @@ Rules:
 - Keep earlier decisions unless later entries reverse them. State a reversal as a new decision.
 - A decision is a choice made by a listed participant in this Conversation. It is not a research finding, tool result, action, observation, or suggestion. Put findings in facts or the summary.
 - Set each decision kind to stated when a human participant stated the choice themselves, confirmed when Junior proposed it and a human participant explicitly accepted it, or assumed when Junior chose while working and no participant confirmed or objected.
+- Set a decision's by to the participant who made it, or Junior. Use only names in the supplied record. Set by to null when no supported attribution exists.
 - Facts are durable one-line facts that help after the transcript expires. Prefer ids, versions, owners, constraints, and numbers. Do not list fields, recap the transcript, or include transient progress.
 - Ignore Junior runtime mechanics, context tags, and markers such as [[NO_REPLY]].
 - Never say that a code change was merged, closed, deployed, or released unless a supplied code change or resource has that status. Say opened for an open code change.
-- Attribute by only to a participant in the supplied record. Junior is also valid. Set by to null when no supported attribution exists.
 - Choose the outcome status that best describes where the Conversation ended.
 - Follow the supplied size class caps. Keep the first items that matter most.
 - Cite a URL only when its exact full string occurs in an entry, evidence, or the previous Brief. Return cited URLs in urls. Core adds code changes and resources separately.
