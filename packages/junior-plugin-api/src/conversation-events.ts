@@ -141,7 +141,32 @@ export interface PluginConversationEventReader {
   }): Promise<PluginConversationEventRecord[] | undefined>;
 }
 
-/** Read aggregate costs for events owned by the current plugin namespace. */
+/**
+ * Events that Junior writes in a plugin's namespace for the cost of each
+ * priced `model`, `decider`, `embedder`, or `reranker` call in a
+ * Conversation, by the context that made the call. Junior counts them in
+ * Conversation cost, so plugin events must not repeat that cost. A plugin
+ * cannot register these names. It can read their costs through
+ * `PluginConversationEventStats`.
+ */
+export const pluginModelCostEventNames = {
+  afterToolExecute: "after_tool_execute_model_called",
+  task: "task_model_called",
+  tool: "tool_model_called",
+  userPrompt: "user_prompt_model_called",
+} as const;
+
+/** Whether an event name is one of `pluginModelCostEventNames`. */
+export function isPluginModelCostEventName(eventName: string): boolean {
+  return (Object.values(pluginModelCostEventNames) as string[]).includes(
+    eventName,
+  );
+}
+
+/**
+ * Read aggregate costs for events owned by the current plugin namespace:
+ * registered events and `pluginModelCostEventNames`.
+ */
 export interface PluginConversationEventStats {
   costsByDay(input: {
     days: 7 | 30 | 90;

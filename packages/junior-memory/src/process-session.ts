@@ -43,10 +43,13 @@ const extractedMemorySchema = z
 const extractedMemoryCacheSchema = z.union([
   z
     .object({
+      // Only cache entries written before Junior recorded plugin model cost
+      // have it. Junior records that cost now.
       costUsd: z.number().finite().nonnegative().optional(),
       memories: z.array(extractedMemorySchema).max(5),
     })
-    .strict(),
+    .strict()
+    .transform(({ memories }) => ({ memories })),
   z
     .array(extractedMemorySchema)
     .max(5)
@@ -301,12 +304,5 @@ export async function processMemorySession(
     const result = await store.createMemory(input);
     recordCapturedMemory(captured, result);
   }
-  await context.events.emit(
-    memoriesCapturedEvent({
-      memories: captured,
-      ...(extraction.costUsd !== undefined
-        ? { costUsd: extraction.costUsd }
-        : undefined),
-    }),
-  );
+  await context.events.emit(memoriesCapturedEvent({ memories: captured }));
 }

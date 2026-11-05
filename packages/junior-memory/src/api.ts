@@ -25,6 +25,12 @@ import {
   type MemoryView,
 } from "./viewer";
 import { parseCapturedMemories, parseRecalledMemoryIds } from "./events";
+import {
+  extractionCostFlow,
+  memoryCostsByDay,
+  memoryCostsByHour,
+  recallCostFlow,
+} from "./model-cost";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -301,22 +307,10 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             getMemoryStats(options.db),
             getMemoryTimeline(options.db, 90),
             getMemoryTimelineHours(options.db, 7 * 24),
-            options.eventStats.costsByDay({
-              days: 90,
-              eventName: "memories_captured",
-            }),
-            options.eventStats.costsByHour({
-              eventName: "memories_captured",
-              hours: 7 * 24,
-            }),
-            options.eventStats.costsByDay({
-              days: 90,
-              eventName: "memories_recalled",
-            }),
-            options.eventStats.costsByHour({
-              eventName: "memories_recalled",
-              hours: 7 * 24,
-            }),
+            memoryCostsByDay(options.eventStats, extractionCostFlow, 90),
+            memoryCostsByHour(options.eventStats, extractionCostFlow, 7 * 24),
+            memoryCostsByDay(options.eventStats, recallCostFlow, 90),
+            memoryCostsByHour(options.eventStats, recallCostFlow, 7 * 24),
           ]);
           const body = memoryDashboardResponseSchema.parse({
             days,

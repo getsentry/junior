@@ -1,5 +1,8 @@
 import type { PluginCliDefinition } from "./cli";
-import type { PluginConversationEventDefinition } from "./conversation-events";
+import {
+  isPluginModelCostEventName,
+  type PluginConversationEventDefinition,
+} from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
@@ -107,6 +110,11 @@ export function defineJuniorPlugin(
     ) {
       throw new Error(
         `Junior plugin "${name}" conversation event definitions must be created with defineConversationEvent().`,
+      );
+    }
+    if (isPluginModelCostEventName(event.eventName)) {
+      throw new Error(
+        `Junior plugin "${name}" cannot register host-owned conversation event "${event.eventName}".`,
       );
     }
     const id = `${event.eventName}@${event.version}`;

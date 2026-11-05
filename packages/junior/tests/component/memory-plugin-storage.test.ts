@@ -10,7 +10,8 @@ import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { closeDb } from "@/chat/db";
+import { readConversationAuxiliaryCostsFromSql } from "@/api/conversations/auxiliary-costs";
+import { closeDb, getDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
@@ -70,6 +71,7 @@ vi.mock("@/chat/pi/client", () => ({
     },
   })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
+    costUsd: 0.0001,
     dimensions: 1,
     model: "test-embedding-model",
     provider: "test-provider",
@@ -600,6 +602,29 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           }),
         ],
       });
+      // Junior records the query embedding cost. Memory does not report it.
+      await expect(
+        readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
+      ).resolves.toEqual(
+        new Map([
+          [
+            conversationId,
+            {
+              total: {
+                costUsd: 0.0001,
+                operations: [
+                  {
+                    costUsd: 0.0001,
+                    events: 1,
+                    name: "tool_model_called",
+                    namespace: "memory",
+                  },
+                ],
+              },
+            },
+          ],
+        ]),
+      );
       await expect(
         tools.memory_createMemory!.execute!(
           {
