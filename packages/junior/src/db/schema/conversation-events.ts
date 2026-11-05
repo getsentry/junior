@@ -8,10 +8,19 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
+
+/**
+ * Match a user_message payload that a person sent as an instruction from a
+ * chat surface. `junior_conversation_events_user_message_time_idx` has this
+ * predicate, so a query with it can use the index and skip other events.
+ */
+export function isUserInstruction(payload: SQLWrapper): SQL {
+  return sql`(${payload}->'provenance'->>'authority') = 'instruction' and (${payload}->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')`;
+}
 
 /**
  * Append-only canonical conversation history. `history_version` partitions
@@ -84,6 +93,26 @@ export const juniorConversationEvents = pgTable(
     index("junior_conversation_events_author_idx")
       .on(table.conversationId, table.actorIdentityId, table.seq)
       .where(sql`${table.actorIdentityId} is not null`),
+    // The newest Message with one role, for each listed Conversation. With
+    // the role in the index, a newest-first read stops at the first match.
+    // The index also gives Postgres statistics on the role.
+    index("junior_conversation_events_message_role_idx")
+      .on(
+        table.conversationId,
+        sql`(${table.payload}->>'role')`,
+        table.createdAt,
+        table.seq,
+      )
+      .where(sql`${table.type} = 'message'`),
+    // The newest user instruction, for each listed Conversation. With the
+    // provenance check in the predicate, a newest-first read stops at the
+    // first entry. A filter on the scan instead made Postgres misestimate
+    // the match rate and sort every user_message of the Conversation.
+    index("junior_conversation_events_user_message_time_idx")
+      .on(table.conversationId, table.createdAt, table.seq)
+      .where(
+        sql`${table.type} = 'user_message' and ${isUserInstruction(table.payload)}`,
+      ),
     index("junior_conversation_events_message_search_idx")
       .using("gin", sql`to_tsvector('english', ${table.payload}->>'text')`)
       .where(sql`${table.type} = 'message'`),
