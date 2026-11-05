@@ -16,10 +16,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import {
-  ISSUE_PATH,
-  ISSUE_READ_REDIRECT_MESSAGE,
-} from "./issue-read-command.js";
-import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
@@ -333,7 +329,8 @@ type GitHubBodyWrite = {
   restPath: RegExp;
 };
 
-const ISSUE_READ_DENIAL = `${ISSUE_READ_REDIRECT_MESSAGE} ${CREATE_TOOL_ROUTING_GUIDANCE}`;
+const ISSUE_PATH = /^\/repos\/[^/]+\/[^/]+\/issues\/\d+$/;
+const ISSUE_READ_DENIAL = `Use github_getIssue to read a GitHub issue, not gh issue view or gh api. Read comments with gh api repos/OWNER/REPO/issues/NUMBER/comments. ${CREATE_TOOL_ROUTING_GUIDANCE}`;
 
 /** Match one-issue reads: the REST issue path or a GraphQL issue field. */
 function isGitHubIssueRead(input: {

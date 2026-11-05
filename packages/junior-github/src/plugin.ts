@@ -75,7 +75,6 @@ import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
-import { githubIssueReadRedirect } from "./issue-read-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
@@ -392,14 +391,12 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const command = ctx.tool.input.command;
-        const redirect =
-          typeof command === "string"
-            ? (githubCloneCommandRedirect(command) ??
-              githubIssueReadRedirect(command))
+        const cloneRedirect =
+          typeof ctx.tool.input.command === "string"
+            ? githubCloneCommandRedirect(ctx.tool.input.command)
             : undefined;
-        if (redirect) {
-          ctx.decision.redirect(redirect);
+        if (cloneRedirect) {
+          ctx.decision.redirect(cloneRedirect);
           return;
         }
         const botName = requireEnv(botNameEnv);
