@@ -297,7 +297,7 @@ export function renderDashboard(
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${dashboardClientFileName()}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${escapeHtml(dashboardClientFileName())}"></script>
 </body>
 </html>`,
     {
