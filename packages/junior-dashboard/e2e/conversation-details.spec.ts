@@ -36,7 +36,9 @@ test("opens conversation details beside the chat", async ({
   await expect(
     publicConversation.getByRole("status", { name: "Running" }),
   ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
+  await publicConversation
+    .getByRole("link", { name: "Open Checkout latency triage" })
+    .click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );

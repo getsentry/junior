@@ -146,7 +146,8 @@ function yearMonth(
   return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
 }
 
-function calendarDay(time: number, timeZone: string): number {
+/** Return the UTC midnight of the calendar day that holds `time` in `timeZone`. */
+export function calendarDay(time: number, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "numeric",
