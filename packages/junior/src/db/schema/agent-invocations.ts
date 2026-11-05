@@ -94,9 +94,6 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     agentType: text("agent_type").$type<AgentType>(),
-    // Unused since model profiles were removed (#2681). Kept so old pods can
-    // write it during rollout; a follow-up drops it after #2681 deploys.
-    modelProfile: text("model_profile"),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.
