@@ -368,12 +368,13 @@ result.
 
 ### Background Compaction
 
-A Turn whose last model request had a provider-reported input at or above
-the mark writes `compaction_requested` and logs
-`context_compaction.background.requested`. The mark is 70% of the compaction
-threshold. A queue job then writes `compaction_prepared`. The job has its own
-`agent.context_compaction` span with `app.compaction.mode:background`. It runs
-in a new trace and adds no `app.turn.compaction_wait_ms`.
+After each model request with a provider-reported input at or above the
+mark, also in the middle of a Turn, the Turn writes `compaction_requested`
+and logs `context_compaction.background.requested`. The mark is 70% of the
+compaction threshold. A queue job then writes `compaction_prepared`. The job
+has its own `agent.context_compaction` span with
+`app.compaction.mode:background`. It runs in a new trace and adds no
+`app.turn.compaction_wait_ms`.
 
 | Attribute                        | Type   | Meaning                                          |
 | -------------------------------- | ------ | ------------------------------------------------ |

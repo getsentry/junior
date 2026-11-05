@@ -855,6 +855,20 @@ async function executeAgentRunInPrivacyContext(
         },
       };
     };
+    /**
+     * Request a background summary when the model call that just ended was at
+     * or above the mark. It runs after each model call, so a long Turn gets a
+     * summary before it reaches the compaction threshold.
+     */
+    const requestBackgroundCompactionAfterModelCall = async (): Promise<void> =>
+      await requestBackgroundCompaction({
+        agent: agent!,
+        conversationId,
+        conversationPrivacy,
+        modelId: activeModelId,
+        queue: run.environment?.backgroundCompactionQueue,
+        turnStartedAtMs: replyStartedAtMs,
+      });
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
@@ -1062,11 +1076,13 @@ async function executeAgentRunInPrivacyContext(
               const pendingMessages = await drainSteeringMessages();
               // Pi also runs this hook after the final reply. Another model
               // call follows only after tool results or steering. Compaction
-              // here would drop the delivered reply and start a retry.
+              // here would drop the delivered reply and start a retry. A
+              // background request does not change history, so it still runs.
               if (
                 nextTurn.toolResults.length === 0 &&
                 pendingMessages.length === 0
               ) {
+                await requestBackgroundCompactionAfterModelCall();
                 return contextUpdate;
               }
               const capacityUpdate = await applyActiveContextCompaction(
@@ -1077,6 +1093,11 @@ async function executeAgentRunInPrivacyContext(
                 pendingMessages,
                 true,
               );
+              // After a replacement, the usage of the last model call counts
+              // the old history. The next model call reports the new size.
+              if (!capacityUpdate) {
+                await requestBackgroundCompactionAfterModelCall();
+              }
               return capacityUpdate
                 ? { ...contextUpdate, ...capacityUpdate }
                 : contextUpdate;
@@ -1489,14 +1510,6 @@ async function executeAgentRunInPrivacyContext(
     }
 
     await recordActiveMcpProviders();
-    await requestBackgroundCompaction({
-      agent,
-      conversationId,
-      conversationPrivacy,
-      modelId: activeModelId,
-      queue: run.environment?.backgroundCompactionQueue,
-      turnStartedAtMs: replyStartedAtMs,
-    });
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
     // completed session record after assistant output handling settles, so a
