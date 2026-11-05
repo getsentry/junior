@@ -1,6 +1,10 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { cn } from "../styles";
+import {
+  ConversationCatchUpButton,
+  ConversationCatchUpCard,
+} from "./ConversationCatchUp";
 
 /** Keep row padding and the gap between transcript entries in one place. */
 export function TranscriptRows({
@@ -20,17 +24,26 @@ export function TranscriptRows({
  */
 export function TranscriptUnreadMarker() {
   return (
-    <div
-      className="flex items-center gap-3 py-1"
-      data-transcript-unread-marker=""
-      role="separator"
-      aria-label="New messages"
-    >
-      <span className="h-px flex-1 bg-dashboard-accent/50" />
-      <span className="shrink-0 font-sans text-xs font-semibold text-dashboard-accent-text">
-        New
-      </span>
-      <span className="h-px flex-1 bg-dashboard-accent/50" />
+    <div className="grid gap-2 py-1" data-transcript-unread-marker="">
+      {/* Equal side columns keep "New" centered when the catch-up offer shows. */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <span
+          aria-label="New messages"
+          className="h-px bg-dashboard-accent/50"
+          role="separator"
+        />
+        <span
+          aria-hidden="true"
+          className="font-sans text-xs font-semibold text-dashboard-accent-text"
+        >
+          New
+        </span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="h-px flex-1 bg-dashboard-accent/50" />
+          <ConversationCatchUpButton />
+        </div>
+      </div>
+      <ConversationCatchUpCard />
     </div>
   );
 }
