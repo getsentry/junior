@@ -70,7 +70,6 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
             kind: "stated",
           },
         ],
-        openDecisions: [],
         facts: ["The task stores one version per Turn."],
         keywords: ["briefs", "storage"],
         urls: [
@@ -325,7 +324,6 @@ describe("Conversation Brief task", () => {
         modelId: TEST.calls[0]?.modelId,
         costUsd: 0.0042,
         decisions: 1,
-        openDecisions: 0,
         links: 3,
       },
     });

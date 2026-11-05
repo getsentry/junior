@@ -3,7 +3,11 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
-import { conversationBriefSchema, type ConversationBrief } from "./schema";
+import {
+  conversationBriefSchema,
+  parseStoredBrief,
+  type ConversationBrief,
+} from "./schema";
 
 export type ConversationBriefVersion = {
   conversationId: string;
@@ -27,7 +31,7 @@ function briefVersionFromRow(
     version: row.version,
     turnId: row.turnId,
     throughSeq: row.throughSeq,
-    content: conversationBriefSchema.parse(row.content),
+    content: parseStoredBrief(row.content),
     searchText: row.searchText,
     modelId: row.modelId,
     ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
