@@ -227,7 +227,10 @@ export function ConversationPage(props: {
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
   // the rest of the visit. It can come before the unread page loads.
   const [showLatest, setShowLatest] = useState(false);
-  const opensAtUnread = startAtUnread && !showLatest;
+  // A link at open wins over the read position. When the loaded rows hold
+  // the link, the transcript keeps them and does not page to the read
+  // position.
+  const opensAtUnread = startAtUnread && !showLatest && !startAtLink;
   // A linked row that the transcript does not hold. The transcript opens at
   // the page around it until the reader jumps to the latest. A link at open
   // starts there, so the first render reads no other page.

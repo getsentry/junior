@@ -579,6 +579,47 @@ test("opens links outside the loaded rows from the page around them", async ({
   await expect(linked).toBeHidden();
 });
 
+test("opens a link that the cached latest page holds at its row", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 10,
+  });
+  mock.pagedDetail = true;
+  const pageRequests = recordPageRequests(page);
+  // A hover caches the latest page, which holds event 100.
+  await page.goto(dashboard.baseURL);
+  const prefetched = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${mock.conversationId}`,
+  );
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .hover();
+  await prefetched;
+  await page.evaluate((url) => {
+    history.pushState(null, "", url);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, `/conversations/${mock.conversationId}?event=100`);
+  await expect(
+    page.getByRole("complementary", { name: "Event details", exact: true }),
+  ).toContainText("Transcript message 100 ");
+  await expect(
+    page
+      .getByRole("region", { name: "Conversation event log" })
+      .getByRole("button", { name: "Event 100: message", exact: true }),
+  ).toBeInViewport();
+  // The link wins over the read position, so no page around it loads.
+  expect(pageRequests.filter((query) => query.startsWith("?around="))).toEqual(
+    [],
+  );
+});
+
 test("opens a memory outside the loaded rows from the page around it", async ({
   page,
   dashboard,
