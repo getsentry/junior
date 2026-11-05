@@ -677,6 +677,41 @@ test("opens a link that the cached latest page holds at its row", async ({
   );
 });
 
+test("opens at the latest event when a link at open fails", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 119,
+  });
+  mock.pagedDetail = true;
+  // A hover caches the latest page, so it shows while the link loads.
+  await page.goto(dashboard.baseURL);
+  const prefetched = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${mock.conversationId}`,
+  );
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .hover();
+  await prefetched;
+  await page.evaluate((url) => {
+    history.pushState(null, "", url);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, `/conversations/${mock.conversationId}?turn=turn-missing`);
+  await expect(page).not.toHaveURL(/[?&](turn|event)=/);
+  await expect(
+    page
+      .getByRole("region", { name: "Conversation event log" })
+      .getByRole("button", { name: "Event 119: message", exact: true }),
+  ).toBeInViewport();
+  await screenshot(page, "conversation-failed-link-opens-at-latest");
+});
+
 test("opens a memory outside the loaded rows from the page around it", async ({
   page,
   dashboard,
