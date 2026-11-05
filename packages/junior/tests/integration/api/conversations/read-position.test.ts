@@ -4,6 +4,7 @@ import { createJuniorApi } from "@/api";
 import { readConversationDetail } from "@/api/conversations/detail";
 import type { JuniorApiEnv } from "@/api/route";
 import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationReadPositionSchema,
@@ -90,6 +91,11 @@ describe("conversation read position API", () => {
     const { viewer: otherViewer } = await authenticatedApi(
       "other-reader@example.com",
     );
+    const opened = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    expect(opened.status).toBe(200);
+    const etag = opened.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
 
     const first = await putReadPosition(app, conversationId, 2);
     expect(first.status).toBe(200);
@@ -114,6 +120,13 @@ describe("conversation read position API", () => {
         await readConversationDetail(conversationId, { viewer }),
       ).readPosition,
     ).toEqual({ lastReadSeq: 4 });
+    // The reader's client already has the stored position, so a poll after
+    // a read does not rebuild the detail.
+    const poll = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      { headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } },
+    );
+    expect(poll.status).toBe(304);
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer: otherViewer }),

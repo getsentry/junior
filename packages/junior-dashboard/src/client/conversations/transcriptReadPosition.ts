@@ -4,7 +4,8 @@
  * Rows from stored events carry `data-transcript-seq`. While the page is
  * visible, the reporter sends the sequence of the last row that has reached
  * the viewport. The server keeps the highest value, so every client of the
- * same user shares one position. Detail polls bring it back to other clients.
+ * same user shares one position. A write does not change the detail version,
+ * so other clients get it with the next detail change or a reload.
  *
  * The page reads the position once when a Conversation opens. That value
  * places the "New" marker and, by the reader's preference, where the
@@ -140,6 +141,27 @@ function readPositionAtOpen(
 }
 
 /**
+ * Put a stored read position in the cached detail. Polls answer 304 after a
+ * read, so the cache must also drop the unread cursor once the reader reaches
+ * the latest page, as the server would. Otherwise the next visit in this
+ * session opens at rows the reader has already read.
+ */
+function withReadPosition(
+  detail: ConversationDetailReport,
+  readPosition: ConversationReadPosition,
+): ConversationDetailReport {
+  const firstSeq = detail.events[0]?.seq;
+  if (
+    !detail.unreadCursor ||
+    (firstSeq !== undefined && readPosition.lastReadSeq + 1 < firstSeq)
+  ) {
+    return { ...detail, readPosition };
+  }
+  const { unreadCursor: _cursor, unreadPage: _page, ...rest } = detail;
+  return { ...rest, readPosition };
+}
+
+/**
  * Send read positions for one Conversation. A position at or before the one
  * in the cached detail is not sent, because the server already has it. The
  * cached detail keeps the stored value, so the next visit in this session
@@ -157,7 +179,7 @@ export function useMarkConversationRead(conversationId: string) {
     onSuccess: (readPosition) => {
       queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
-        (detail) => (detail ? { ...detail, readPosition } : detail),
+        (detail) => detail && withReadPosition(detail, readPosition),
       );
     },
   });

@@ -13,7 +13,6 @@ import { readConversationAgentTree } from "./agent-tree";
 import { readConversationAutoArchive } from "./auto-archive";
 import { readConversationForks } from "./fork";
 import { readConversationViewerMarks } from "./membership";
-import { readConversationReadPosition } from "./read-position";
 
 /**
  * Sum the detail versions of a Conversation and its child agents. Child
@@ -43,33 +42,31 @@ async function readSubtreeDetailVersion(
  * Return the detail ETag without building the report, or undefined for a
  * missing Conversation.
  *
- * Shared content is covered by `detail_version`. Viewer state (marks, read
- * position, auto-archive choice) and data that other Conversations own (forks,
- * agent tree labels) are cheap, so they are read on each request. Names, avatars, Automation titles, and plugin sidebar
- * labels are not covered: they refresh with the next detail change or a reload.
+ * Shared content is covered by `detail_version`. Viewer state (marks,
+ * auto-archive choice) and data that other Conversations own (forks, agent
+ * tree labels) are cheap, so they are read on each request. Names, avatars,
+ * Automation titles, and plugin sidebar labels are not covered: they refresh
+ * with the next detail change or a reload.
+ *
+ * The read position is left out. The dashboard writes it as the reader
+ * scrolls and puts the stored value in its cached detail, so a poll after a
+ * read can answer 304. Other tabs and devices get it with the next detail
+ * change or a reload.
  */
 export async function readConversationDetailEtag(
   conversationId: string,
   options: { limit: number; viewer?: User },
 ): Promise<string | undefined> {
   const { viewer } = options;
-  const [
-    subtree,
-    access,
-    viewerMarks,
-    forks,
-    agentTree,
-    readPosition,
-    autoArchive,
-  ] = await Promise.all([
-    readSubtreeDetailVersion(conversationId),
-    readConversationAccessFromSql(getDb(), [conversationId], viewer),
-    viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
-    readConversationForks(conversationId, viewer),
-    readConversationAgentTree(conversationId, viewer),
-    viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
-    viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
-  ]);
+  const [subtree, access, viewerMarks, forks, agentTree, autoArchive] =
+    await Promise.all([
+      readSubtreeDetailVersion(conversationId),
+      readConversationAccessFromSql(getDb(), [conversationId], viewer),
+      viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
+      readConversationForks(conversationId, viewer),
+      readConversationAgentTree(conversationId, viewer),
+      viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
+    ]);
   if (subtree.conversations === 0) return undefined;
   const basis = JSON.stringify({
     access: access.get(conversationId) ?? null,
@@ -78,7 +75,6 @@ export async function readConversationDetailEtag(
     forks,
     junior: JUNIOR_VERSION,
     limit: options.limit,
-    readPosition: readPosition ?? null,
     subtree,
     viewerMarks: viewerMarks ?? null,
   });
