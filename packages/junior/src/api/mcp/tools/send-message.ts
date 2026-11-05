@@ -7,7 +7,7 @@ import {
   mcpConversationIdSchema,
   mcpIdempotencyKeySchema,
   mcpMessageTextSchema,
-  readMcpPendingWork,
+  readMcpPendingWorkAfterSend,
 } from "../conversation";
 import {
   apiToolError,
@@ -61,7 +61,7 @@ export function registerSendMessageTool(
       }
       return mcpToolResult({
         ...accepted,
-        ...(await readMcpPendingWork(user, accepted.conversationId)),
+        ...(await readMcpPendingWorkAfterSend(user, accepted.conversationId)),
         url: getDashboardConversationLink(accepted.conversationId),
       });
     },

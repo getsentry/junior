@@ -9,6 +9,7 @@ import {
 } from "@/api/schema/conversation";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { logException } from "@/chat/logging";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
 import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
@@ -247,6 +248,25 @@ export async function readMcpPendingWork(
   };
 }
 
+/**
+ * Read pending work for a send result. The message already landed, so a
+ * failed read drops these optional fields instead of turning the accepted
+ * send into a tool error that a client may retry.
+ */
+export async function readMcpPendingWorkAfterSend(
+  user: User,
+  conversationId: string,
+): Promise<Partial<McpPendingWork>> {
+  try {
+    return await readMcpPendingWork(user, conversationId);
+  } catch (error) {
+    logException(error, "mcp.pending_work.read.failed", {
+      "gen_ai.conversation.id": conversationId,
+    });
+    return {};
+  }
+}
+
 /** Result of a tool that sends a message. */
 export const mcpAcceptedMessageSchema = {
   conversationId: z.string(),
@@ -258,7 +278,11 @@ export const mcpAcceptedMessageSchema = {
   status: z
     .enum(["accepted", "duplicate"])
     .describe("`duplicate` when the idempotency key was already used."),
-  pendingMessages: mcpPendingMessagesSchema,
+  pendingMessages: mcpPendingMessagesSchema
+    .optional()
+    .describe(
+      "Accepted messages that no turn has read yet, oldest first. Missing when the read failed after your message was accepted; use getConversation.",
+    ),
   authorization: mcpAuthorizationSchema.optional(),
   url: z.string().optional().describe("Dashboard link."),
 };
