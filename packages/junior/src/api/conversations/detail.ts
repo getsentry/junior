@@ -28,7 +28,10 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import { conversationDetailReportSchema } from "../schema/conversation";
+import {
+  CONVERSATION_EVENT_PAGE_LIMIT,
+  conversationDetailReportSchema,
+} from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
@@ -288,8 +291,6 @@ async function readConversationDetailFromSql(
   };
 }
 
-/** Events in a detail page, and the cap of the default page. */
-const DETAIL_EVENT_LIMIT = 500;
 /** Turns in the default page: enough to read the latest exchange in context. */
 const DETAIL_LATEST_TURNS = 3;
 
@@ -311,7 +312,10 @@ export async function readConversationDetail(
   const report = await readConversationDetailFromSql(conversationId, {
     ...options,
     ...(options.limit === undefined
-      ? { latestTurns: DETAIL_LATEST_TURNS, limit: DETAIL_EVENT_LIMIT }
+      ? {
+          latestTurns: DETAIL_LATEST_TURNS,
+          limit: CONVERSATION_EVENT_PAGE_LIMIT,
+        }
       : { limit: options.limit }),
   });
   return report ? conversationDetailReportSchema.parse(report) : undefined;

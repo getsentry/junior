@@ -232,7 +232,7 @@ describe("conversation event list API", () => {
     expect(detail.previousCursor).toBeUndefined();
   });
 
-  it("caps the default detail at 500 events when the latest Turns are longer", async () => {
+  it("caps default pages at 150 events when the latest Turns are longer", async () => {
     const conversationId = "local:test:latest-turns-long";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
@@ -242,13 +242,31 @@ describe("conversation event list API", () => {
       ...turn(3, 30, 300),
     ]);
 
-    // The latest three Turns hold 610 events, so the latest 500 are shown.
+    // The latest three Turns hold 610 events, so the latest 150 are shown.
     const { detail, history } =
       await readDefaultDetailAndHistory(conversationId);
-    expect(detail.events.map((event) => event.seq)).toEqual(
-      Array.from({ length: 500 }, (_, index) => 114 + index),
+    const seqs = (start: number, length: number) =>
+      Array.from({ length }, (_, index) => start + index);
+    expect(detail.events.map((event) => event.seq)).toEqual(seqs(464, 150));
+    expect(history).toEqual(seqs(0, 614));
+
+    // Event pages without a `limit` hold the same number of events.
+    const app = createJuniorApi();
+    const readPage = async (query: string) =>
+      conversationEventPageSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}/events?${query}`,
+          )
+        ).json(),
+      );
+    const earlier = await readPage(
+      `before=${encodeURIComponent(detail.previousCursor!)}`,
     );
-    expect(history).toEqual(Array.from({ length: 614 }, (_, index) => index));
+    expect(earlier.events.map((event) => event.seq)).toEqual(seqs(314, 150));
+    // Half of the page ends with the linked event, and the rest follows it.
+    const around = await readPage("event=300");
+    expect(around.events.map((event) => event.seq)).toEqual(seqs(226, 150));
   });
 
   it("opens the page around a linked event or Turn", async () => {
