@@ -3,6 +3,10 @@ import { PluginToolInputError } from "@sentry/junior-plugin-api";
 export const GITHUB_SESSION_FOOTER_START =
   "<!-- junior-session-footer:start -->";
 export const GITHUB_SESSION_FOOTER_END = "<!-- junior-session-footer:end -->";
+
+export const PULL_REQUEST_BODY_GUIDANCE =
+  "Say what changed and why, in one or two short paragraphs with no headings. Name open questions or follow-ups. Don't explain how the code works; reviewers read the diff. Don't describe tests, checks, or caveats; put those in the thread reply.";
+
 const GITHUB_CONVERSATION_ID_MARKER = "junior-conversation-id:";
 
 function nonEmptyString(value: string | undefined, name: string): string {

@@ -44,8 +44,8 @@ Open this when making repository edits, not for read-only inspection.
 4. Resolve the actual default branch.
 5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
-7. PR body: short, plain English, what changed and why. Only context the diff cannot show. No empty sections, file lists, commit logs, or Checks/Verification/Test plan blocks.
-8. After material follow-up commits, refresh title and body against the current diff.
+7. PR body: what changed and why, in one or two short paragraphs with no headings. Name open questions or follow-ups. Don't explain how the code works; reviewers read the diff. Don't describe tests, checks, or caveats; put those in the thread reply.
+8. After material follow-up commits, rewrite the title and body for the current diff. Don't add sections.
 9. Never put customer data, PII, secrets, or sensitive thread context in public PR text.
 10. If PR create/update is blocked, report the exact failure and leave the committed branch intact.
 
