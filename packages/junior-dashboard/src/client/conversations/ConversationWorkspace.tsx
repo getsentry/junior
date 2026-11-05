@@ -290,7 +290,7 @@ function NewConversationView(props: {
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-3"
+      className="mx-auto grid w-full max-w-3xl gap-5 sm:gap-6"
     >
       <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
         What do you need?

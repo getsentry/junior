@@ -20,10 +20,9 @@ import {
 } from "../components/ParticipantAvatarStack";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { formatActivityDay } from "./conversationAge";
-import { conversationContextTags } from "./ConversationContextTags";
+import { conversationCardTags } from "./ConversationContextTags";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -196,7 +195,7 @@ function ConversationCardLoading(props: { index: number }) {
   return (
     <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 sm:px-4">
       <Skeleton className="mt-0.5 size-8 rounded-md" />
-      <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-6 min-w-0 flex-1 items-center">
             <Skeleton
@@ -209,15 +208,15 @@ function ConversationCardLoading(props: { index: number }) {
           <Skeleton className="h-3 w-14 opacity-70" />
           <Skeleton className="size-4" />
         </div>
-        <div className="flex h-6 min-w-0 items-center gap-2">
-          <Skeleton className="h-6 w-28 shrink-0 rounded-md opacity-70" />
+        <div className="flex h-5 min-w-0 items-center">
           <Skeleton
             className={cn(
-              "hidden h-3 opacity-70 sm:block",
+              "h-3 opacity-70",
               props.index % 2 === 0 ? "w-full max-w-xl" : "w-1/2 max-w-md",
             )}
           />
         </div>
+        <Skeleton className="mt-1 h-6 w-28 rounded-md opacity-70" />
       </div>
     </div>
   );
@@ -283,8 +282,7 @@ function ConversationCard(props: {
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
-  const contextTags = conversationContextTags(conversation);
-  const hasAnnotations = Boolean(conversation.sidebarAnnotations?.length);
+  const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   // Idle conversations get no badge, so the badges that show stand out.
@@ -323,7 +321,7 @@ function ConversationCard(props: {
           </span>
         ) : null}
       </span>
-      <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0">
         <div className="flex min-w-0 items-center gap-3">
           <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
             {title}
@@ -362,46 +360,30 @@ function ConversationCard(props: {
             )}
           </button>
         </div>
-        {contextTags ||
-        hasAnnotations ||
-        conversation.activityPreview ||
-        status === "active" ? (
-          // Tags first, so the source of each card lines up at the left edge.
-          // On narrow screens the activity wraps below the tags.
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            {contextTags ? (
-              // Only the tag links take clicks. The gaps open the card.
-              <span className="pointer-events-none relative z-[1] min-w-0 max-w-full [&_a]:pointer-events-auto">
-                {contextTags}
-              </span>
-            ) : null}
-            {hasAnnotations ? (
-              <span className="pointer-events-none relative z-[1] inline-flex min-w-0">
-                <ConversationSidebarAnnotations
-                  annotations={conversation.sidebarAnnotations}
-                />
-              </span>
-            ) : null}
-            {conversation.activityPreview || status === "active" ? (
-              <p
-                className={cn(
-                  "pointer-events-none relative z-[1] m-0 min-w-0 basis-full truncate font-sans text-sm leading-6 sm:flex-1 sm:basis-0",
-                  conversation.activityPreview
-                    ? "text-dashboard-text-subtle"
-                    : "text-dashboard-text-muted",
-                )}
-              >
-                {conversation.activityPreview ? (
-                  <DisplayText
-                    inline
-                    mentions={conversation.activityPreview.mentions}
-                    text={conversation.activityPreview.text}
-                  />
-                ) : (
-                  "Working…"
-                )}
-              </p>
-            ) : null}
+        {conversation.activityPreview || status === "active" ? (
+          <p
+            className={cn(
+              "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",
+              conversation.activityPreview
+                ? "text-dashboard-text-subtle"
+                : "text-dashboard-text-muted",
+            )}
+          >
+            {conversation.activityPreview ? (
+              <DisplayText
+                inline
+                mentions={conversation.activityPreview.mentions}
+                text={conversation.activityPreview.text}
+              />
+            ) : (
+              "Working…"
+            )}
+          </p>
+        ) : null}
+        {tags ? (
+          // Only the tag links take clicks. The gaps open the card.
+          <div className="pointer-events-none relative z-[1] mt-1 min-w-0 overflow-hidden [&_a]:pointer-events-auto">
+            {tags}
           </div>
         ) : null}
       </div>

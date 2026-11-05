@@ -277,8 +277,9 @@ test("shows the repo name for one annotation scope on mobile", async ({
     has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
+  // Each linked work tag names the repository. Mobile shows the first tag.
   await expect(
-    conversation.getByText("payments", { exact: true }),
+    conversation.getByText("payments", { exact: true }).first(),
   ).toBeVisible();
 });
 
