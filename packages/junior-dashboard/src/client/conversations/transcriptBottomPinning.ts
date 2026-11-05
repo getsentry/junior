@@ -334,7 +334,9 @@ export function usePinnedTranscriptBottom(input: {
   endsAtLatestRef.current = input.endsAtLatest ?? true;
   const followingRef = useRef(false);
   const initializedRef = useRef(false);
-  const initializedConversationRef = useRef<string | null>(null);
+  // The Conversation and start that the transcript opened with. A link at
+  // open that fails becomes a normal start, so the transcript opens again.
+  const startedRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
   // The scroll position that the last restore set. Its scroll event is not
   // a reader scroll, so it must not change follow intent.
@@ -549,12 +551,13 @@ export function usePinnedTranscriptBottom(input: {
 
   useBrowserLayoutEffect(() => {
     if (!contentElement || !input.conversationId) return;
-    if (initializedConversationRef.current === input.conversationId) return;
+    const start = `${input.conversationId}:${input.startAtLink ? "link" : "start"}`;
+    if (startedRef.current === start) return;
 
     const root = scrollRootFor(contentElement);
     if (!root) return;
 
-    initializedConversationRef.current = input.conversationId;
+    startedRef.current = start;
     setHasPendingUpdate(false);
     // The link scrolls to its row, maybe before this runs. Do not move away.
     if (input.startAtLink) {
