@@ -2,6 +2,7 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
 import { createGrepTool } from "@/chat/tools/sandbox/grep";
@@ -159,6 +160,11 @@ export function createTools(
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
         : undefined,
+    );
+  }
+  if (context.workspace.createPreview) {
+    tools.createPreview = createCreatePreviewTool(
+      context.workspace.createPreview,
     );
   }
   if (context.supportsImageInput) {

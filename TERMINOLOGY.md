@@ -9,6 +9,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Code change**: a proposed repo change (pull request, merge request).
 - **Commit**: one repository revision. The host owns its id.
 - **Sandbox**: an isolated environment for a Run or snapshot build.
+- **Preview**: a public URL for a server that runs in a Sandbox. It stops
+  working when the Sandbox stops.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
