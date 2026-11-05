@@ -8,6 +8,7 @@ import {
   gt,
   inArray,
   lt,
+  max,
   sql,
 } from "drizzle-orm";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -329,4 +330,17 @@ export async function readConversationEventPageAfter(
       ? { nextSeq: events.at(-1)!.seq }
       : undefined),
   };
+}
+
+/** Read the newest event position, or -1 before the first event. */
+export async function readConversationLastEventSeq(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<number> {
+  const [row] = await executor
+    .db()
+    .select({ seq: max(juniorConversationEvents.seq) })
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId));
+  return row?.seq ?? -1;
 }

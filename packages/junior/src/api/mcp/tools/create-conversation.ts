@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { encodeConversationCursor } from "@/api/conversations/cursor";
 import { z } from "zod";
 import { createConversationForViewer } from "@/api/conversations/create";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
@@ -28,7 +29,7 @@ export function registerCreateConversationTool(
     {
       title: "Create conversation",
       description:
-        "Start a new conversation as you, with a first message. The agent works on it in the background. Returns the messages that no turn has read yet. Use getConversation to follow its status and last reply.",
+        "Start a new conversation as you, with a first message. The agent works on it in the background. Returns the messages that no turn has read yet and a `cursor`. Pass the `cursor` as `after` to getConversation to read the reply.",
       inputSchema: {
         message: mcpMessageTextSchema,
         visibility: z
@@ -65,6 +66,11 @@ export function registerCreateConversationTool(
       return mcpToolResult({
         ...accepted,
         ...(await readMcpPendingWorkAfterSend(user, accepted.conversationId)),
+        // A new Conversation has no events yet.
+        cursor: encodeConversationCursor({
+          conversationId: accepted.conversationId,
+          seq: -1,
+        }),
         url: getDashboardConversationLink(accepted.conversationId),
       });
     },

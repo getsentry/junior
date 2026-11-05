@@ -64,7 +64,7 @@ const READ_INSTRUCTIONS =
   "Junior is a Slack agent. These tools read and manage your Junior conversations, and read your review items and automations. They cannot send a message or start agent work. To ask Junior for work or to answer a review item, use the Slack or dashboard link in a result.";
 
 const WRITE_INSTRUCTIONS =
-  "Junior is a Slack agent. These tools read and manage your Junior conversations, and read your review items and automations. createConversation and sendMessage send a message as you, and Junior works on it in the background. Call getConversation to follow the status, the messages that wait for a turn, and the last reply. To answer a review item, use the dashboard link in a result.";
+  "Junior is a Slack agent. These tools read and manage your Junior conversations, and read your review items and automations. createConversation and sendMessage send a message as you, and Junior works on it in the background. They return a `cursor`. Call getConversation with `after` set to the newest `cursor` to read the new messages. Repeat until `status` is not `active`. `authorization` means a turn waits for you to connect an account. To answer a review item, use the dashboard link in a result.";
 
 /** Build the MCP server for one authenticated user and granted scopes. */
 function createMcpServer(
