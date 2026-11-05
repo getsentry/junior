@@ -138,11 +138,24 @@ export function conversationSideReadQueryKey(
   return ["conversation", conversationId, read] as const;
 }
 
-/** Refresh the side reads and Review items. Only mounted reads refetch. */
-function refreshConversationSideReads(
+/**
+ * Refresh the side reads and Review items when a fetch brings a new ETag.
+ * Side reads do not poll. A new ETag means the Conversation changed, so the
+ * details panel may be stale too. Only mounted reads refetch.
+ */
+export function refreshSideReadsOnChange(
   client: QueryClient,
   conversationId: string,
+  previous: ConversationSnapshot | undefined,
+  next: ConversationSnapshot,
 ) {
+  if (
+    !previous?.detailEtag ||
+    !next.detailEtag ||
+    previous.detailEtag === next.detailEtag
+  ) {
+    return;
+  }
   for (const read of CONVERSATION_SIDE_READS) {
     void client.invalidateQueries({
       queryKey: conversationSideReadQueryKey(conversationId, read),
@@ -178,15 +191,7 @@ export function conversationDetailQueryOptions(
         previous,
         options?.unreadPage,
       );
-      // Side reads do not poll. A new ETag means the Conversation changed,
-      // so the details panel may be stale too.
-      if (
-        previous?.detailEtag &&
-        next.detailEtag &&
-        previous.detailEtag !== next.detailEtag
-      ) {
-        refreshConversationSideReads(client, conversationId!);
-      }
+      refreshSideReadsOnChange(client, conversationId!, previous, next);
       return next;
     },
     structuralSharing: (previous, next) => {

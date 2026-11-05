@@ -5,6 +5,7 @@ import {
   conversationDetailQueryKey,
   conversationDetailQueryOptions,
   readConversationData,
+  refreshSideReadsOnChange,
   type ConversationSnapshot,
 } from "./queries";
 import { readConversationStartPosition } from "./transcriptReadPosition";
@@ -29,13 +30,25 @@ function prefetchConversationDetail(
   if (query?.getObserversCount()) return;
   void client.prefetchQuery({
     ...conversationDetailQueryOptions(conversationId),
-    queryFn: async ({ signal }): Promise<ConversationSnapshot> => ({
-      ...(await readConversationData(conversationId, signal, undefined, {
-        mailbox: true,
-        unreadPage: readConversationStartPosition() === "unread",
-      })),
-      prefetchedAtMs: Date.now(),
-    }),
+    queryFn: async ({ signal }): Promise<ConversationSnapshot> => {
+      const next = await readConversationData(
+        conversationId,
+        signal,
+        undefined,
+        {
+          mailbox: true,
+          unreadPage: readConversationStartPosition() === "unread",
+        },
+      );
+      // The open fetch compares with this ETag, so it cannot see the change.
+      refreshSideReadsOnChange(
+        client,
+        conversationId,
+        client.getQueryData(conversationDetailQueryKey(conversationId)),
+        next,
+      );
+      return { ...next, prefetchedAtMs: Date.now() };
+    },
   });
 }
 
