@@ -142,13 +142,18 @@ describe("Sentry private payload filtering", () => {
     });
   });
 
-  it("hides sandbox egress tokens and every query string", () => {
+  it("hides sandbox egress tokens, query strings, and credential headers", () => {
     const proxyPath =
       "/api/internal/sandbox-egress/v1.context.signature/graphql";
     const span = {
       attributes: {
         "http.request.body.data": '{"query":"secret","variables":{"q":"x"}}',
+        "http.request.header.forwarded": ["for=1.2.3.4;sig=secret"],
+        "http.request.header.user-agent": ["git/2.47"],
+        "http.request.header.vercel-forwarded-path": ["/graphql?q=secret"],
+        "http.request.header.x-hub-signature-256": ["sha256=secret"],
         "http.target": `${proxyPath}?query=trace:abc`,
+        "sentry.segment.name": `POST /junior${proxyPath}?q=secret`,
         "url.full": `https://junior.example${proxyPath}?query=trace:abc#frag`,
         "url.path": proxyPath,
       },
@@ -170,6 +175,12 @@ describe("Sentry private payload filtering", () => {
       transaction: `GET ${proxyPath}`,
       request: {
         data: "body",
+        headers: {
+          Forwarded: "for=1.2.3.4;sig=secret",
+          "User-Agent": "git/2.47",
+          "Vercel-Forwarded-Path": "/graphql?q=secret",
+          "X-Slack-Signature": "v0=secret",
+        },
         query_string: "q=search",
         url: "https://junior.example/api/conversations?q=search",
       },
@@ -182,7 +193,9 @@ describe("Sentry private payload filtering", () => {
     const redactedPath = "/api/internal/sandbox-egress/<token>";
     expect(span.name).toBe(`POST https://junior.example${redactedPath}`);
     expect(span.attributes).toEqual({
+      "http.request.header.user-agent": ["git/2.47"],
       "http.target": redactedPath,
+      "sentry.segment.name": `POST /junior${redactedPath}`,
       "url.full": `https://junior.example${redactedPath}`,
       "url.path": redactedPath,
     });
@@ -192,6 +205,7 @@ describe("Sentry private payload filtering", () => {
     );
     expect(event.transaction).toBe(`GET ${redactedPath}`);
     expect(event.request).toEqual({
+      headers: { "User-Agent": "git/2.47" },
       url: "https://junior.example/api/conversations",
     });
   });

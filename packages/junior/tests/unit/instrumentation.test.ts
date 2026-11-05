@@ -1,3 +1,4 @@
+import { httpHeadersToSpanAttributes } from "@sentry/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JUNIOR_VERSION } from "@/version";
 import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
@@ -71,9 +72,31 @@ describe("initSentry", () => {
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
     expect(options?.release).toBe(`${JUNIOR_VERSION}+git-sha`);
-    expect(options?.dataCollection).toEqual({
+    const dataCollection = options?.dataCollection;
+    expect(dataCollection).toMatchObject({
       httpBodies: [],
       databaseQueryData: false,
+      urlQueryParams: false,
+    });
+    const headerAttributes = httpHeadersToSpanAttributes(
+      {
+        forwarded: "for=1.2.3.4;sig=secret",
+        "user-agent": "git/2.47",
+        "vercel-forwarded-path": "/api/search?query=secret",
+        "x-github-event": "push",
+        "x-hub-signature-256": "sha256=secret",
+        "x-slack-signature": "v0=secret",
+      },
+      // The SDK applies resolved options; header filtering reads only these.
+      {
+        cookies: true,
+        httpHeaders: { response: true, ...(dataCollection?.httpHeaders as {}) },
+      } as never,
+    );
+    expect(JSON.stringify(headerAttributes)).not.toContain("secret");
+    expect(headerAttributes).toMatchObject({
+      "http.request.header.user-agent": ["git/2.47"],
+      "http.request.header.x-github-event": ["push"],
     });
     expect(options?.beforeSend).toEqual(expect.any(Function));
     expect(options?.beforeSendLog).toEqual(expect.any(Function));

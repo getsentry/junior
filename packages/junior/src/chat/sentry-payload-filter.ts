@@ -42,10 +42,21 @@ const URL_ATTRIBUTE_KEYS = new Set([
   "url.path",
 ]);
 const SLACK_FILE_HOST = "files.slack.com";
+// `initSentry` collects only allowlisted request headers. This also covers a
+// changed SDK default. `forwarded` carries a Vercel bearer in `sig=`, and
+// `vercel-forwarded-path` and `referer` repeat paths with their query strings.
 const SECRET_HEADER_NAMES = new Set([
+  "authorization",
+  "forwarded",
+  "referer",
+  "vercel-forwarded-path",
+  "x-hub-signature",
+  "x-hub-signature-256",
   "x-junior-local-credential-signature",
   "x-junior-sandbox-egress-token",
+  "x-slack-signature",
 ]);
+const SDK_REQUEST_HEADER_PREFIX = "http.request.header.";
 
 // Span names such as `GET https://slack.com/api/users.info?user=U1` repeat the
 // request URL. Query spans use `?` placeholders, so only method-and-URL names
@@ -63,6 +74,12 @@ function scrubSpanName(name: string): string {
 }
 
 function isSecretHeaderAttribute(key: string): boolean {
+  if (
+    key.startsWith(SDK_REQUEST_HEADER_PREFIX) &&
+    SECRET_HEADER_NAMES.has(key.slice(SDK_REQUEST_HEADER_PREFIX.length))
+  ) {
+    return true;
+  }
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
   return (
     normalized.endsWith("xjuniorlocalcredentialsignature") ||
@@ -217,6 +234,11 @@ export function scrubPrivateSentryEvent(
 export function scrubPrivateSentrySpan(span: SentrySpan): SentrySpan {
   scrubContainer(span);
   span.name = scrubSpanName(span.name);
+  // The SDK copies the raw segment name onto every span before this callback.
+  const segmentName = span.attributes?.["sentry.segment.name"];
+  if (span.attributes && typeof segmentName === "string") {
+    span.attributes["sentry.segment.name"] = scrubSpanName(segmentName);
+  }
   return span;
 }
 

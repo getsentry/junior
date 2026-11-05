@@ -432,6 +432,8 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   actions that need no review. Its `gen_ai.chat` children are the reviews.
 - `db.query.text` keeps placeholders. It never has parameter values or SQL
   comments.
+- Server spans and errors keep no URL query strings, fragments, request
+  bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
 
