@@ -48,7 +48,7 @@ export type ReadPositionAtOpen = {
   unreadCursor?: string;
   /** The page around `unreadCursor`, when the fetch brought it. */
   unreadPage?: ConversationEventPage;
-  /** Messages in `unread`, from the server. */
+  /** Messages in `unread`, when the server counted them with `unreadPage`. */
   unreadMessageCount?: number;
 };
 

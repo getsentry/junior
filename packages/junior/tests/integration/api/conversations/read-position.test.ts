@@ -163,12 +163,14 @@ describe("conversation read position API", () => {
       Array.from({ length: 10 }, (_, index) => 20 + index),
     );
     expect(detail.unreadCursor).toBeDefined();
-    // Polls do not ask for the page around the read position.
-    expect(
-      conversationDetailReportSchema.parse(
-        await readConversationDetail(conversationId, { limit: 10, viewer }),
-      ).unreadPage,
-    ).toBeUndefined();
+    // Messages 6 to 29 are unread, past the rows that the reader gets.
+    expect(detail.unreadMessageCount).toBe(24);
+    // Polls do not ask for the page around the read position, nor count.
+    const poll = conversationDetailReportSchema.parse(
+      await readConversationDetail(conversationId, { limit: 10, viewer }),
+    );
+    expect(poll.unreadPage).toBeUndefined();
+    expect(poll.unreadMessageCount).toBeUndefined();
 
     const readPage = async (query: string) => {
       const response = await app.request(
@@ -264,11 +266,11 @@ describe("conversation read position API", () => {
     expect(conversationReadPositionSchema.parse(await reported.json())).toEqual(
       { lastReadSeq: 3 },
     );
-    const detail = conversationDetailReportSchema.parse(
-      await readConversationDetail(conversationId, { viewer }),
-    );
-    expect(detail.readPosition).toEqual({ lastReadSeq: 3 });
-    expect(detail.unreadMessageCount).toBe(3);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer }),
+      ).readPosition,
+    ).toEqual({ lastReadSeq: 3 });
     // A reader who has not opened the Conversation keeps no position.
     expect(
       conversationDetailReportSchema.parse(

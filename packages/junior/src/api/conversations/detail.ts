@@ -212,7 +212,6 @@ async function readConversationDetailFromSql(
     people,
     sourceTask,
     teamDomainByTeamId,
-    unreadMessageCount,
     page,
   ] = await Promise.all([
     listConversationAnnotations(getDb(), conversationId),
@@ -234,10 +233,6 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
-    // A 304 poll builds no report, so it does not count.
-    readPosition && !isPurged
-      ? countUnreadMessages(conversationId, readPosition.lastReadSeq)
-      : undefined,
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
@@ -252,7 +247,7 @@ async function readConversationDetailFromSql(
       : undefined;
   // The Brief is shown only to viewers who can see private content.
   const brief = canExposePayload ? briefVersion?.content : undefined;
-  const [{ briefMentions, events }, unreadPage, sidebarAnnotations] =
+  const [{ briefMentions, events }, unread, sidebarAnnotations] =
     await Promise.all([
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
@@ -263,21 +258,27 @@ async function readConversationDetailFromSql(
       // Only the first read of a visit asks for this page, not each poll. The
       // page is optional: without it, the dashboard reads it with an `around`
       // request, which reports the same failure on its own route. So a failed
-      // page must not fail the detail.
+      // page must not fail the detail. The unread range goes past this page,
+      // so the dashboard cannot count its Messages from rows. Count them here,
+      // once per visit. A reader inside the latest page has every unread row,
+      // so the dashboard counts those itself.
       options.unreadPage && unreadAfterSeq !== undefined
-        ? readConversationEventPageAround(executor, {
-            canExposePayload,
-            conversationId,
-            limit: options.limit,
-            seq: unreadAfterSeq,
-          })
-            .then((around) =>
+        ? Promise.all([
+            readConversationEventPageAround(executor, {
+              canExposePayload,
+              conversationId,
+              limit: options.limit,
+              seq: unreadAfterSeq,
+            }).then((around) =>
               conversationEventPageReport(executor, {
                 conversationId,
                 eventHistory: conversationEventHistory({ canExposePayload }),
                 page: around,
               }),
-            )
+            ),
+            countUnreadMessages(conversationId, unreadAfterSeq),
+          ])
+            .then(([page, messageCount]) => ({ messageCount, page }))
             .catch(() => undefined)
         : undefined,
       canExposePayload
@@ -337,8 +338,9 @@ async function readConversationDetailFromSql(
       : { previousSeq: page.previousSeq }),
     ...(readPosition ? { readPosition } : undefined),
     ...(unreadAfterSeq === undefined ? undefined : { unreadAfterSeq }),
-    ...(unreadPage ? { unreadPage } : undefined),
-    unreadMessageCount,
+    ...(unread
+      ? { unreadMessageCount: unread.messageCount, unreadPage: unread.page }
+      : undefined),
     usage: metrics?.usage ?? record.usage ?? undefined,
   };
   const report = startSpan(

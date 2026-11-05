@@ -218,9 +218,6 @@ async function mockReadPositionConversation(
       ? Math.max(0, state.eventCount - PAGE_SIZE)
       : 0;
     const behind = stored + 1 < firstSeq;
-    const unreadMessageCount = events(stored + 1, state.eventCount - 1).filter(
-      (event) => event.data.type === "message",
-    ).length;
     await route.fulfill({
       json: withRequestedMailbox(route, {
         ...conversation,
@@ -228,13 +225,18 @@ async function mockReadPositionConversation(
         events: events(firstSeq, state.eventCount - 1),
         generatedAt,
         readPosition: { lastReadSeq: stored },
-        ...(unreadMessageCount > 0 ? { unreadMessageCount } : undefined),
         ...(firstSeq > 0 ? { previousCursor: String(firstSeq) } : undefined),
         ...(behind ? { unreadCursor: String(stored) } : undefined),
         ...(behind &&
         state.servesUnreadPage &&
         searchParams.get("unreadPage") === "true"
-          ? { unreadPage: eventPage(...aroundRange(stored)) }
+          ? {
+              unreadMessageCount: events(
+                stored + 1,
+                state.eventCount - 1,
+              ).filter((event) => event.data.type === "message").length,
+              unreadPage: eventPage(...aroundRange(stored)),
+            }
           : undefined),
       }),
     });
@@ -478,6 +480,10 @@ test.describe("opens from a hover prefetch", () => {
     await expect(
       transcript.getByText("Transcript message 21 "),
     ).toBeInViewport();
+    // Seqs 21 to 119 are unread, past the loaded page, so the server counts.
+    await expect(
+      transcript.getByRole("button", { name: "Catch me up" }),
+    ).toHaveAccessibleName("Catch me up, 99 new messages");
     await expect.poll(() => mock.detailRequests.length).toBe(2);
     expect(mock.detailRequests[1]).toBe("?mailbox=true");
     expect(pageRequests.filter((query) => query.includes("around"))).toEqual(
