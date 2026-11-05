@@ -1,9 +1,16 @@
 import {
+  conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
   type ConversationAnnotation,
+  type ConversationAnnotationInput,
+  type PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import { githubSidebarAnnotations } from "../src/annotations";
+import {
+  githubObjectAnnotation,
+  githubSidebarAnnotations,
+  updateGitHubAnnotation,
+} from "../src/annotations";
 
 function annotation(
   repo: string,
@@ -109,5 +116,106 @@ describe("GitHub conversation sidebar", () => {
         label: "junior",
       },
     ]);
+  });
+});
+
+function annotationStore(initial: ConversationAnnotation[]): {
+  store: PluginAnnotations;
+  saved: ConversationAnnotationInput[];
+} {
+  const saved: ConversationAnnotationInput[] = [];
+  return {
+    saved,
+    store: {
+      async list() {
+        return initial;
+      },
+      async remove() {},
+      async upsert(input) {
+        // Match the core store, which validates every upsert.
+        saved.push(conversationAnnotationInputSchema.parse(input));
+      },
+    },
+  };
+}
+
+function storedObject(
+  objectType: "task" | "code_change",
+): ConversationAnnotation {
+  return {
+    ...githubObjectAnnotation({
+      repo: "getsentry/junior",
+      number: 42,
+      title: "Fix annotations",
+      url: `https://github.com/getsentry/junior/${objectType === "code_change" ? "pull" : "issues"}/42`,
+      objectType,
+      status: "open",
+      facts:
+        objectType === "code_change"
+          ? { type: "code_change", author: "octocat" }
+          : { type: "task", labels: ["bug"] },
+    }),
+    plugin: "github",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:01.000Z",
+  };
+}
+
+describe("updateGitHubAnnotation", () => {
+  it("drops task facts when a pull request saved as a task merges", async () => {
+    const { store, saved } = annotationStore([storedObject("task")]);
+
+    await updateGitHubAnnotation(store, {
+      repo: "getsentry/junior",
+      number: 42,
+      objectType: "code_change",
+      status: "merged",
+    });
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      kind: "object",
+      key: "getsentry/junior#42",
+      objectType: "code_change",
+      status: "merged",
+      displayType: "Pull request",
+    });
+    expect(saved[0]).not.toHaveProperty("facts.type");
+  });
+
+  it("drops code change facts when the object closes as a task", async () => {
+    const { store, saved } = annotationStore([storedObject("code_change")]);
+
+    await updateGitHubAnnotation(store, {
+      repo: "getsentry/junior",
+      number: 42,
+      objectType: "task",
+      status: "closed",
+    });
+
+    expect(saved[0]).toMatchObject({
+      objectType: "task",
+      status: "closed",
+      displayType: "Issue",
+    });
+    expect(saved[0]).not.toHaveProperty("facts.type");
+  });
+
+  it("keeps facts when the object type is unchanged", async () => {
+    const { store, saved } = annotationStore([storedObject("code_change")]);
+
+    await updateGitHubAnnotation(store, {
+      repo: "getsentry/junior",
+      number: 42,
+      objectType: "code_change",
+      status: "merged",
+    });
+
+    expect(saved[0]).toMatchObject({
+      objectType: "code_change",
+      status: "merged",
+      displayType: "Pull request",
+      facts: { type: "code_change", author: "octocat" },
+    });
   });
 });
