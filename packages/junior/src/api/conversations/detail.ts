@@ -40,7 +40,6 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
-import { countUnreadMessages } from "./read-position";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -69,7 +68,6 @@ function projectConversationDetail(args: {
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
-  unreadMessageCount?: number;
   unreadPage?: ConversationDetailReport["unreadPage"];
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
@@ -133,9 +131,6 @@ function projectConversationDetail(args: {
         }
       : undefined),
     ...(args.unreadPage ? { unreadPage: args.unreadPage } : undefined),
-    ...(args.unreadMessageCount
-      ? { unreadMessageCount: args.unreadMessageCount }
-      : undefined),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
     ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
@@ -247,7 +242,7 @@ async function readConversationDetailFromSql(
       : undefined;
   // The Brief is shown only to viewers who can see private content.
   const brief = canExposePayload ? briefVersion?.content : undefined;
-  const [{ briefMentions, events }, unread, sidebarAnnotations] =
+  const [{ briefMentions, events }, unreadPage, sidebarAnnotations] =
     await Promise.all([
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
@@ -258,27 +253,21 @@ async function readConversationDetailFromSql(
       // Only the first read of a visit asks for this page, not each poll. The
       // page is optional: without it, the dashboard reads it with an `around`
       // request, which reports the same failure on its own route. So a failed
-      // page must not fail the detail. The unread range goes past this page,
-      // so the dashboard cannot count its Messages from rows. Count them here,
-      // once per visit. A reader inside the latest page has every unread row,
-      // so the dashboard counts those itself.
+      // page must not fail the detail.
       options.unreadPage && unreadAfterSeq !== undefined
-        ? Promise.all([
-            readConversationEventPageAround(executor, {
-              canExposePayload,
-              conversationId,
-              limit: options.limit,
-              seq: unreadAfterSeq,
-            }).then((around) =>
+        ? readConversationEventPageAround(executor, {
+            canExposePayload,
+            conversationId,
+            limit: options.limit,
+            seq: unreadAfterSeq,
+          })
+            .then((around) =>
               conversationEventPageReport(executor, {
                 conversationId,
                 eventHistory: conversationEventHistory({ canExposePayload }),
                 page: around,
               }),
-            ),
-            countUnreadMessages(conversationId, unreadAfterSeq),
-          ])
-            .then(([page, messageCount]) => ({ messageCount, page }))
+            )
             .catch(() => undefined)
         : undefined,
       canExposePayload
@@ -338,9 +327,7 @@ async function readConversationDetailFromSql(
       : { previousSeq: page.previousSeq }),
     ...(readPosition ? { readPosition } : undefined),
     ...(unreadAfterSeq === undefined ? undefined : { unreadAfterSeq }),
-    ...(unread
-      ? { unreadMessageCount: unread.messageCount, unreadPage: unread.page }
-      : undefined),
+    ...(unreadPage ? { unreadPage } : undefined),
     usage: metrics?.usage ?? record.usage ?? undefined,
   };
   const report = startSpan(

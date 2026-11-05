@@ -67,7 +67,6 @@ export {
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
-  UNREAD_MESSAGE_COUNT_LIMIT,
 } from "./schema/conversation";
 export {
   cancelConversationPendingMessagesBodySchema,

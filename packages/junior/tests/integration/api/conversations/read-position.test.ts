@@ -7,7 +7,6 @@ import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
-  UNREAD_MESSAGE_COUNT_LIMIT,
   conversationReadPositionSchema,
 } from "@/api/schema";
 import {
@@ -164,14 +163,12 @@ describe("conversation read position API", () => {
       Array.from({ length: 10 }, (_, index) => 20 + index),
     );
     expect(detail.unreadCursor).toBeDefined();
-    // Messages 6 to 29 are unread, past the rows that the reader gets.
-    expect(detail.unreadMessageCount).toBe(24);
-    // Polls do not ask for the page around the read position, nor count.
-    const poll = conversationDetailReportSchema.parse(
-      await readConversationDetail(conversationId, { limit: 10, viewer }),
-    );
-    expect(poll.unreadPage).toBeUndefined();
-    expect(poll.unreadMessageCount).toBeUndefined();
+    // Polls do not ask for the page around the read position.
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { limit: 10, viewer }),
+      ).unreadPage,
+    ).toBeUndefined();
 
     const readPage = async (query: string) => {
       const response = await app.request(
@@ -215,29 +212,6 @@ describe("conversation read position API", () => {
         await readConversationDetail(conversationId, { limit: 10, viewer }),
       ).unreadCursor,
     ).toBeUndefined();
-
-    // The count stops at its limit, however far behind the reader is.
-    await getConversationEventStore().append(
-      conversationId,
-      Array.from({ length: 120 }, (_, index) => ({
-        createdAtMs: 2_000 + index,
-        data: {
-          type: "message" as const,
-          messageId: `message-later-${index}`,
-          role: "assistant" as const,
-          text: `Later message ${index}`,
-        },
-      })),
-    );
-    expect(
-      conversationDetailReportSchema.parse(
-        await readConversationDetail(conversationId, {
-          limit: 10,
-          unreadPage: true,
-          viewer,
-        }),
-      ).unreadMessageCount,
-    ).toBe(UNREAD_MESSAGE_COUNT_LIMIT);
   });
 
   it("counts the viewer's own Messages as read", async () => {

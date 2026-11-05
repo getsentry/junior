@@ -230,13 +230,7 @@ async function mockReadPositionConversation(
         ...(behind &&
         state.servesUnreadPage &&
         searchParams.get("unreadPage") === "true"
-          ? {
-              unreadMessageCount: events(
-                stored + 1,
-                state.eventCount - 1,
-              ).filter((event) => event.data.type === "message").length,
-              unreadPage: eventPage(...aroundRange(stored)),
-            }
+          ? { unreadPage: eventPage(...aroundRange(stored)) }
           : undefined),
       }),
     });
@@ -480,10 +474,11 @@ test.describe("opens from a hover prefetch", () => {
     await expect(
       transcript.getByText("Transcript message 21 "),
     ).toBeInViewport();
-    // Seqs 21 to 119 are unread, past the loaded page, so the server counts.
+    // Seqs 21 to 119 are unread, and the page around the read position holds
+    // 21 to 40. So the count is a lower bound, from the loaded rows only.
     await expect(
       transcript.getByRole("button", { name: "Catch me up" }),
-    ).toHaveAccessibleName("Catch me up, 99 new messages");
+    ).toHaveAccessibleName("Catch me up, 20+ new messages");
     await expect.poll(() => mock.detailRequests.length).toBe(2);
     expect(mock.detailRequests[1]).toBe("?mailbox=true");
     expect(pageRequests.filter((query) => query.includes("around"))).toEqual(

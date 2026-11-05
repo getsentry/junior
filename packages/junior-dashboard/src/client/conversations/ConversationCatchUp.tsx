@@ -1,6 +1,5 @@
 import { useContext, useEffect, useRef } from "react";
 import { ArrowDown, Sparkles } from "lucide-react";
-import { UNREAD_MESSAGE_COUNT_LIMIT } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -16,17 +15,14 @@ const cardClass =
 export function ConversationCatchUpButton() {
   const state = useConversationCatchUpState();
   if (!state || state.data || state.pending) return null;
-  const count = state.unreadMessageCount;
-  // The server stops counting at the limit, so the limit reads as "99+".
-  const shown =
-    count && count >= UNREAD_MESSAGE_COUNT_LIMIT
-      ? `${UNREAD_MESSAGE_COUNT_LIMIT - 1}+`
-      : count;
+  const { count, more } = state.unreadMessages;
+  // A large count reads as "99+", like an unread badge.
+  const shown = count > 99 ? "99+" : `${count}${more ? "+" : ""}`;
   return (
     <button
       aria-label={
-        shown
-          ? `Catch me up, ${shown} new ${count === 1 ? "message" : "messages"}`
+        count
+          ? `Catch me up, ${shown} new ${count === 1 && !more ? "message" : "messages"}`
           : undefined
       }
       className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-dashboard-accent/30 bg-transparent px-2.5 font-sans text-xs font-medium text-dashboard-accent-text transition-colors hover:border-dashboard-accent/60 hover:bg-dashboard-accent/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus/55"
@@ -35,7 +31,7 @@ export function ConversationCatchUpButton() {
     >
       <Sparkles aria-hidden="true" size={12} strokeWidth={2} />
       Catch me up
-      {shown ? (
+      {count ? (
         <span className="-mr-1 ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-dashboard-accent/15 px-1 text-2xs font-semibold leading-none tabular-nums">
           {shown}
         </span>
