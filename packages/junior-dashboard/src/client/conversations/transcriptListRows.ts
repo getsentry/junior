@@ -105,9 +105,9 @@ export function transcriptListRows(input: {
 }
 
 /**
- * Find the first row whose last seq is at or after `seq`. Rows without a
- * seq come last, so a binary search works. Returns `rows.length` when no
- * row reaches it.
+ * Find the first row whose last seq is at or after `seq`. The New marker
+ * sorts with the row before it, and other rows without a seq come last, so a
+ * binary search works. Returns `rows.length` when no row reaches it.
  */
 export function rowIndexForSeq(
   rows: readonly TranscriptListRow[],
@@ -118,11 +118,24 @@ export function rowIndexForSeq(
   while (low < high) {
     const middle = (low + high) >> 1;
     const row = rows[middle]!;
-    const rowSeq = row.kind === "unread_marker" ? undefined : row.seq;
+    const rowSeq =
+      row.kind === "unread_marker"
+        ? (rowSeqBefore(rows, middle) ?? Number.NEGATIVE_INFINITY)
+        : row.seq;
     if (rowSeq !== undefined && rowSeq < seq) low = middle + 1;
     else high = middle;
   }
   return low;
+}
+
+function rowSeqBefore(
+  rows: readonly TranscriptListRow[],
+  index: number,
+): number | undefined {
+  const row = rows[index - 1];
+  return row === undefined || row.kind === "unread_marker"
+    ? undefined
+    : row.seq;
 }
 
 /**
