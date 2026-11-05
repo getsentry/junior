@@ -37,9 +37,7 @@ import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
 /**
- * Show conversation details in the order a reader asks about them: what the
- * work is (the Brief), what needs them, what it changed or waits on, who did
- * it, and what it cost. Each fact shows here only, not in the title bar.
+ * Surface work that needs the reader, then the Brief and its linked work.
  */
 export function ConversationDetails(props: {
   /** Viewer's auto-archive control. Null for non-participants. */
@@ -153,21 +151,22 @@ export function ConversationDetails(props: {
       }
       onClose={props.onClose}
     >
-      <div className="grid min-w-0 content-start gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+      <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <ConversationReviewItems
+          conversationId={props.conversationId}
+          highlight={props.highlightReview}
+        />
         {props.brief ? (
           <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        <ConversationReviewItems
-          conversationId={props.conversationId}
-          highlight={props.highlightReview}
-        />
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
           // work and what Junior waits on read as one list.
           <DetailsCard
             count={props.links.length || watches.length}
+            flat
             title={props.links.length > 0 ? "Linked work" : "Waiting on"}
           >
             {props.links.length > 0 ? (
@@ -191,7 +190,7 @@ export function ConversationDetails(props: {
           <DetailsCard>{props.autoArchive}</DetailsCard>
         ) : null}
         {agents?.length ? (
-          <DetailsCard count={agents.length} title="Subagents">
+          <DetailsCard count={agents.length} flat title="Subagents">
             <ConversationChildAgents
               conversationId={props.conversationId}
               onOpenAgent={(target) => {
@@ -203,13 +202,13 @@ export function ConversationDetails(props: {
           </DetailsCard>
         ) : null}
         {props.overview != null ? (
-          <DetailsCard>{props.overview}</DetailsCard>
+          <DetailsCard flat>{props.overview}</DetailsCard>
         ) : null}
-        {props.usage != null ? (
-          <DetailsCard title="Usage">{props.usage}</DetailsCard>
-        ) : null}
+        {props.usage}
         {props.identity != null ? (
-          <DetailsCard title="Participants">{props.identity}</DetailsCard>
+          <DetailsCard flat title="Participants">
+            {props.identity}
+          </DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard

@@ -1,11 +1,9 @@
-import type { BrowserOptions } from "@sentry/browser";
+import {
+  getClient,
+  getCurrentScope,
+  type BrowserOptions,
+} from "@sentry/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { init } = vi.hoisted(() => ({ init: vi.fn() }));
-vi.mock("@sentry/browser", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sentry/browser")>()),
-  init,
-}));
 
 import { initDashboardSentry } from "@dashboard/sentry";
 
@@ -26,7 +24,7 @@ function span(attributes: Span["attributes"]): Span {
 describe("dashboard browser Sentry", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    init.mockClear();
+    getCurrentScope().setClient(undefined);
   });
 
   it("does not start without a server DSN", () => {
@@ -34,7 +32,7 @@ describe("dashboard browser Sentry", () => {
 
     initDashboardSentry();
 
-    expect(init).not.toHaveBeenCalled();
+    expect(getClient()).toBeUndefined();
   });
 
   it("removes search text and element labels from spans", () => {
@@ -47,10 +45,12 @@ describe("dashboard browser Sentry", () => {
 
     initDashboardSentry();
 
-    const options = init.mock.calls[0]?.[0] as BrowserOptions;
-    expect(options.dsn).toBe("https://public@example.com/1");
-    expect(options.defaultIntegrations).toBe(false);
-    const scrubbed = options.beforeSendSpan?.(
+    const options = getClient()?.getOptions();
+    expect(options?.dsn).toBe("https://public@example.com/1");
+    expect(options?.integrations.map(({ name }) => name)).toEqual([
+      "BrowserTracing",
+    ]);
+    const scrubbed = options?.beforeSendSpan?.(
       span({
         "browser.web_vital.inp.target":
           'div.h-[1px] > a.absolute[aria-label="Open Private plans"][title="Private plans"]',

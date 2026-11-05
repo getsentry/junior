@@ -15,6 +15,7 @@ import { throwApiError } from "../http";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import {
+  CONVERSATION_EVENT_PAGE_LIMIT,
   conversationEventPageSchema,
   type ConversationEventPage,
   type ConversationReportEvent,
@@ -56,7 +57,7 @@ export async function readConversationEvents(
   const pageArgs = {
     canExposePayload,
     conversationId,
-    limit: options.limit ?? 500,
+    limit: options.limit ?? CONVERSATION_EVENT_PAGE_LIMIT,
   };
   const page: Awaited<ReturnType<typeof readConversationEventPageAround>> =
     transcriptPurgedAtMs !== undefined

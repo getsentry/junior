@@ -1,8 +1,11 @@
 import {
+  BrowserClient,
   browserTracingIntegration,
+  defaultStackParser,
   getActiveSpan,
   getRootSpan,
-  init,
+  makeFetchTransport,
+  setCurrentClient,
   spanToJSON,
   startInactiveSpan,
   updateSpanName,
@@ -126,10 +129,14 @@ export function recordTranscriptShown(): void {
 export function initDashboardSentry(): void {
   const config = window.__JUNIOR_DASHBOARD_SENTRY__;
   if (!config) return;
-  init({
+  // `init()` bundles every default integration (about 24 KB of error,
+  // breadcrumb, and session code), even with `defaultIntegrations: false`.
+  // A client built directly bundles only browser tracing.
+  const client = new BrowserClient({
     ...config,
     beforeSendSpan: scrubSpan,
-    defaultIntegrations: false,
+    stackParser: defaultStackParser,
+    transport: makeFetchTransport,
     integrations: [
       browserTracingIntegration({
         beforeStartSpan: (options) =>
@@ -145,4 +152,6 @@ export function initDashboardSentry(): void {
       }),
     ],
   });
+  setCurrentClient(client);
+  client.init();
 }

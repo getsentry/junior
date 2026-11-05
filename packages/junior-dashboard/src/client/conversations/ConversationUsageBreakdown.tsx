@@ -1,18 +1,24 @@
-import type {
-  ConversationDetailReport,
-  ConversationModelUsage,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 import {
   formatCompactNumber,
+  formatCostSummary,
   summarizeCost,
   summarizeModelCost,
   summarizeModelUsage,
   summarizeUsage,
   totalConversationCost,
+  type CostUsageSummary,
+  type TokenUsageSummary,
 } from "../format";
 import { ShimmerText } from "../components/ShimmerText";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
 import {
   Table,
   TableBody,
@@ -22,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { cn } from "../styles";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
 import { liveModelId } from "./ConversationMeta";
 import {
@@ -31,7 +37,6 @@ import {
   modelLabel,
   subagentShare,
   subagentUsage,
-  tokenTypeRows,
 } from "./TelemetryMetrics";
 
 /** One token type of a model, shown as an indented row under the model. */
@@ -52,31 +57,33 @@ type BreakdownRow = {
 const NOT_RECORDED = "—";
 
 /**
- * List each recorded token type of one model with its own count and, when
- * the provider reports it, its own cost. Reasoning tokens are part of the
- * output tokens, so they have no cost of their own.
+ * Show token types with a recorded count or cost. Reasoning tokens are part
+ * of output tokens and have no cost of their own.
  */
 function tokenTypeParts(
-  usage: ConversationModelUsage["usage"],
+  tokens: TokenUsageSummary | undefined,
+  costs: CostUsageSummary | undefined,
   formatCost: (value: number) => string,
 ): BreakdownPart[] | undefined {
-  const summary = summarizeUsage(usage);
-  if (!summary) return undefined;
-  const cost = summarizeCost(usage);
-  const costs: Readonly<Record<string, number | undefined>> = {
-    cached: cost?.cacheRead,
-    "cache write": cost?.cacheWrite,
-    input: cost?.input,
-    output: cost?.output,
-  };
-  const parts = tokenTypeRows(summary).map((row) => {
-    const value = costs[row.label];
-    return {
-      cost: value === undefined ? undefined : formatCost(value),
-      count: row.value,
-      label: row.label === "reasoning" ? "reasoning (in output)" : row.label,
-    };
-  });
+  const types = [
+    ["input", tokens?.inputTokens, costs?.input],
+    ["output", tokens?.outputTokens, costs?.output],
+    ["cached", tokens?.cachedInputTokens, costs?.cacheRead],
+    ["cache write", tokens?.cacheCreationTokens, costs?.cacheWrite],
+    ["reasoning (in output)", tokens?.reasoningTokens, undefined],
+  ] as const;
+  const parts = types.flatMap(([label, count, cost]) =>
+    count || cost !== undefined
+      ? [
+          {
+            cost: cost === undefined ? undefined : formatCost(cost),
+            count:
+              count === undefined ? NOT_RECORDED : formatCompactNumber(count),
+            label,
+          },
+        ]
+      : [],
+  );
   return parts.length ? parts : undefined;
 }
 
@@ -224,10 +231,8 @@ export function hasConversationUsageBreakdown(props: {
 }
 
 /**
- * Break a Conversation's usage down by agent, model, and auxiliary
- * operation. The header tooltips show only the largest items; this lists
- * every one with its token types. Render nothing without model or auxiliary
- * usage.
+ * Summarize usage and let the reader inspect the breakdown by agent, model,
+ * and auxiliary operation.
  */
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
@@ -243,11 +248,16 @@ export function ConversationUsageBreakdown(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
-  const tokens =
-    summarizeModelUsage(modelUsage)?.totalTokens ??
-    summarizeUsage(usage)?.totalTokens;
-  const modelCost = summarizeModelCost(modelUsage) ?? summarizeCost(usage);
-  const cost = totalConversationCost(modelCost, auxiliaryCosts)?.total;
+  const modelTokens = summarizeModelUsage(modelUsage);
+  const savedTokens = summarizeUsage(usage);
+  const tokens = (modelTokens ?? savedTokens)?.totalTokens;
+  const modelCost = summarizeModelCost(modelUsage);
+  const savedCost = summarizeCost(usage);
+  const totalCost = totalConversationCost(
+    modelCost ?? savedCost,
+    auxiliaryCosts,
+  );
+  const cost = totalCost?.total;
   const operations = [...(auxiliaryCosts?.operations ?? [])].sort(
     (a, b) => b.costUsd - a.costUsd,
   );
@@ -257,17 +267,38 @@ export function ConversationUsageBreakdown(props: {
   const formatMaybeCost = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCost(value);
   const activeModelId = liveModelId(props.detail);
+  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const aggregateTokenTypes = tokenTypeParts(
+    modelTokens ? undefined : savedTokens,
+    modelCost ? undefined : savedCost,
+    formatCost,
+  );
+  const compactions = props.detail?.previousCursor
+    ? undefined
+    : props.detail?.events.filter((event) => event.data.type === "compaction")
+        .length;
 
   const models = modelUsage
     .map((item) => ({
-      cost: summarizeCost(item.usage)?.total,
-      item,
-      tokens: summarizeUsage(item.usage)?.totalTokens,
+      cost: summarizeCost(item.usage),
+      modelId: item.modelId,
+      tokens: summarizeUsage(item.usage),
     }))
     .sort(
       (a, b) =>
-        (b.cost ?? 0) - (a.cost ?? 0) || (b.tokens ?? 0) - (a.tokens ?? 0),
+        (b.cost?.total ?? 0) - (a.cost?.total ?? 0) ||
+        (b.tokens?.totalTokens ?? 0) - (a.tokens?.totalTokens ?? 0),
     );
+  if (
+    activeModelId &&
+    !models.some((model) => model.modelId === activeModelId)
+  ) {
+    models.unshift({
+      cost: undefined,
+      modelId: activeModelId,
+      tokens: undefined,
+    });
+  }
 
   const subagents = subagentUsage(childAgentTotals);
   const subagentCost = subagentShare(subagents.cost, cost ?? subagents.cost);
@@ -276,8 +307,8 @@ export function ConversationUsageBreakdown(props: {
     tokens ?? subagents.tokens,
   );
 
-  return (
-    <div className="grid min-w-0 gap-5">
+  const breakdown = (
+    <div className="grid min-w-0 gap-5 px-1 pb-2.5">
       {childAgentTotals ? (
         <BreakdownTable
           countLabel="Tokens"
@@ -311,36 +342,49 @@ export function ConversationUsageBreakdown(props: {
         <BreakdownTable
           countLabel="Tokens"
           label="Model"
-          rows={models.map(({ cost: itemCost, item, tokens: itemTokens }) => ({
-            cost: formatMaybeCost(itemCost),
-            count: formatTokens(itemTokens),
-            key: item.modelId,
-            label: (
-              <span className="flex min-w-0 items-baseline gap-2">
-                <span
-                  className="min-w-0 truncate font-mono"
-                  title={item.modelId}
-                >
-                  {modelLabel(item.modelId)}
-                </span>
-                {item.modelId === activeModelId ? (
-                  <span className="shrink-0 text-dashboard-text-muted">
-                    <ShimmerText active>in progress</ShimmerText>
+          rows={models.map(({ cost, modelId, tokens }) => {
+            const active = modelId === activeModelId;
+            return {
+              cost: active && !cost ? "…" : formatMaybeCost(cost?.total),
+              count:
+                active && !tokens ? "…" : formatTokens(tokens?.totalTokens),
+              key: modelId,
+              label: (
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="min-w-0 truncate font-mono" title={modelId}>
+                    {modelLabel(modelId)}
                   </span>
-                ) : null}
-              </span>
-            ),
-            parts: tokenTypeParts(item.usage, formatCost),
-          }))}
+                  {active ? (
+                    <span className="shrink-0 text-dashboard-text-muted">
+                      <ShimmerText active>in progress</ShimmerText>
+                    </span>
+                  ) : null}
+                </span>
+              ),
+              parts: tokenTypeParts(tokens, cost, formatCost),
+            };
+          })}
           total={
-            models.length > 1
+            modelUsage.length > 1
               ? {
                   cost: formatMaybeCost(modelCost?.total),
-                  count: formatTokens(tokens),
+                  count: formatTokens(modelTokens?.totalTokens),
                   label: "All models",
                 }
               : undefined
           }
+        />
+      ) : null}
+      {aggregateTokenTypes ? (
+        <BreakdownTable
+          countLabel="Tokens"
+          label="Token type"
+          rows={aggregateTokenTypes.map((part) => ({
+            cost: part.cost ?? NOT_RECORDED,
+            count: part.count,
+            key: part.label,
+            label: part.label,
+          }))}
         />
       ) : null}
       {auxiliaryCosts && operations.length ? (
@@ -369,7 +413,41 @@ export function ConversationUsageBreakdown(props: {
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
         Estimated costs.
         {childAgentTotals ? " Totals include subagents at any depth." : null}
+        {compactions
+          ? ` ${formatCompactNumber(compactions)} compaction${compactions === 1 ? "" : "s"}.`
+          : null}
       </p>
     </div>
+  );
+
+  const summary = [
+    tokens === undefined ? undefined : `${formatTokens(tokens)} tokens`,
+    totalCost
+      ? `${formatCostSummary(totalCost)}${live ? "+" : ""}`
+      : live
+        ? "$…"
+        : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Collapsible className="min-w-0 border-t border-dashboard-border-subtle">
+      <h3 className="m-0">
+        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
+          Usage
+          {summary ? (
+            <span className="ml-auto font-normal tabular-nums">
+              <ShimmerText active={live}>{summary}</ShimmerText>
+            </span>
+          ) : null}
+        </CollapsibleTrigger>
+      </h3>
+      <CollapsibleContent hiddenUntilFound>{breakdown}</CollapsibleContent>
+    </Collapsible>
   );
 }

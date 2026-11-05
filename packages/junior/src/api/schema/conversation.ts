@@ -55,9 +55,16 @@ export const conversationAttachmentParamsSchema = z
   })
   .strict();
 
+/**
+ * Events in a default dashboard page. A read costs a fixed ~15 ms plus about
+ * 0.1 ms and 600 bytes per event, so this cap keeps a page within about twice
+ * the fixed cost. Smaller pages save little and need more requests.
+ */
+export const CONVERSATION_EVENT_PAGE_LIMIT = 150;
+
 export const conversationDetailQuerySchema = z
   .object({
-    /** Omit to get the latest three Turns, up to 500 events. */
+    /** Omit to get the latest three Turns, up to the default page limit. */
     limit: z.coerce.number().int().min(1).max(1_000).optional(),
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
@@ -74,7 +81,7 @@ const conversationEventsLimitSchema = z.coerce
   .int()
   .min(1)
   .max(1_000)
-  .default(500);
+  .default(CONVERSATION_EVENT_PAGE_LIMIT);
 
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
