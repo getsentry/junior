@@ -11,7 +11,8 @@ import { parseShellCommands } from "@sentry/junior-plugin-api";
 export const ISSUE_READ_REDIRECT_MESSAGE =
   "Use github_getIssue to read a GitHub issue, not gh issue view or gh api. Read comments with gh api repos/OWNER/REPO/issues/NUMBER/comments.";
 
-const ISSUE_PATH_RE = /^\/?repos\/[^/]+\/[^/]+\/issues\/\d+$/;
+/** One issue's REST path, with or without the leading slash. */
+export const ISSUE_PATH = /^\/?repos\/[^/]+\/[^/]+\/issues\/\d+$/;
 
 /**
  * Return a redirect message when a bash command reads one GitHub issue
@@ -41,6 +42,6 @@ function isIssueRead([program, ...args]: string[]): boolean {
   }, undefined);
   return (
     (method === undefined || method.toUpperCase() === "GET") &&
-    args.some((arg) => ISSUE_PATH_RE.test(arg.split("?")[0]!))
+    args.some((arg) => ISSUE_PATH.test(arg.split("?")[0]!))
   );
 }
