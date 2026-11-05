@@ -463,6 +463,28 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   `app.dashboard.response.chars` is the body length. `url.path` is the API
   path. The span is sent only while a `pageload` or `navigation` is open, so
   polls after it add no spans.
+- Sign-in redirects are their own traces. On `GET /auth/login`,
+  `app.sign_in.session_cookie` is `present` when the browser sent a session
+  cookie that the server did not accept, and `missing` when it sent none. On
+  the Google callback, `app.sign_in.previous_age_s` is the time since this
+  identity last signed in. A value below the session lifetime (8 hours by
+  default) means the browser lost its session before it expired.
+- A browser `http.client` span minus its child `http.server` span is the time
+  outside the function: network round trip and Vercel routing. Compare it by
+  `user.geo.country_code` on the `pageload` span.
+- In dashboard `http.server` spans, `function` spans time work on the
+  request thread between queries. The detail route has these:
+  - `Decode conversation events`
+  - `Project conversation events`
+  - `Attach conversation mentions`
+  - `Project conversation detail`
+  - `Validate conversation detail`
+- A `serialize` span named `Write API response` validates and serializes
+  each JSON response. `app.api.response.schema_parse_ms`,
+  `app.api.response.json_stringify_ms`, and `app.api.response.chars` split
+  it.
+- Request time that no span covers is other request-thread work, or the
+  event loop running other requests on the same `service.instance.id`.
 - A browser request after the `pageload` or `navigation` span ends, such as
   a poll, is its own `http.client` segment. Add `!span.op:http.client` to
   segment queries to leave them out.
@@ -492,6 +514,21 @@ Dashboard page load and navigation time by route.
 dataset=spans query='span.op:[pageload,navigation] is_transaction:true'
 fields=span.op,span.name,count(),p50(span.duration),p95(span.duration)
 sort=-count()
+```
+
+Server response serialization by route.
+
+```text
+dataset=spans query='span.op:serialize span.name:"Write API response"'
+fields=transaction,count(),p50(span.duration),p95(span.duration),p95(app.api.response.chars)
+sort=-count()
+```
+
+Why people sign in again.
+
+```text
+dataset=spans query='span.op:http.server transaction:"GET /auth/login" has:app.sign_in.session_cookie'
+fields=app.sign_in.session_cookie,count()
 ```
 
 Dashboard API latency by route.

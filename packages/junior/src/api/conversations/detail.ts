@@ -2,6 +2,7 @@ import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-
 import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { startSpan } from "@/chat/sentry";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
@@ -209,10 +210,12 @@ async function readConversationDetailFromSql(
   const brief = canExposePayload ? briefVersion?.content : undefined;
   const [{ briefMentions, events }, unreadPage, sidebarAnnotations] =
     await Promise.all([
-      attachConversationMentions(executor, conversationId, {
-        ...(brief ? { brief } : undefined),
-        events: page.events,
-      }),
+      startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
+        attachConversationMentions(executor, conversationId, {
+          ...(brief ? { brief } : undefined),
+          events: page.events,
+        }),
+      ),
       // Only the first read of a visit asks for this page, not each poll. The
       // page is optional: without it, the dashboard reads it with an `around`
       // request, which reports the same failure on its own route. So a failed
@@ -243,7 +246,7 @@ async function readConversationDetailFromSql(
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
-  const report = projectConversationDetail({
+  const detail: Parameters<typeof projectConversationDetail>[0] = {
     ...record,
     access,
     ...state.viewerMarks,
@@ -280,7 +283,11 @@ async function readConversationDetailFromSql(
     ...(unreadAfterSeq === undefined ? undefined : { unreadAfterSeq }),
     ...(unreadPage ? { unreadPage } : undefined),
     usage: metrics?.usage ?? record.usage ?? undefined,
-  });
+  };
+  const report = startSpan(
+    { name: "Project conversation detail", op: "function" },
+    () => projectConversationDetail(detail),
+  );
   return {
     ...report,
     ...state.forks,
@@ -318,5 +325,9 @@ export async function readConversationDetail(
         }
       : { limit: options.limit }),
   });
-  return report ? conversationDetailReportSchema.parse(report) : undefined;
+  if (!report) return undefined;
+  return startSpan(
+    { name: "Validate conversation detail", op: "function" },
+    () => conversationDetailReportSchema.parse(report),
+  );
 }
