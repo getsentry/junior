@@ -216,6 +216,22 @@ test("each review item gets a fresh answer form", async ({
     },
     id: license.id,
   });
+
+  // Other… lets the reader answer a button question in their own words.
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  await detail.getByRole("button", { name: "Other…" }).click();
+  await expect(detail.getByLabel("Anything else?")).toBeFocused();
+  await page.keyboard.type("Wait for the EU canary first.");
+  await screenshot(page, "review-desk-other", { view: "desktop" });
+  await detail.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => actions.length).toBe(3);
+  expect(actions[2]).toMatchObject({
+    body: {
+      action: "submit",
+      answer: { other: "Wait for the EU canary first.", values: {} },
+    },
+    id: rollout.id,
+  });
 });
 
 test("the inbox shows an item in its conversation", async ({
