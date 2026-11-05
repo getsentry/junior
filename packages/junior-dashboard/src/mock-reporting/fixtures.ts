@@ -316,14 +316,6 @@ function mockBrief(
               kind: "confirmed",
             },
           ],
-      openDecisions: live
-        ? [
-            {
-              text: "Roll back payments-v42 or patch the serializer path.",
-              owner: "Morgan Lee",
-            },
-          ]
-        : [],
       facts: live
         ? [
             "Checkout p95 increased from 210ms to 890ms.",

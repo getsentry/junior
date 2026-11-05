@@ -252,9 +252,6 @@ describe("Brief snapshot", () => {
               kind: "assumed",
             },
           ],
-          openDecisions: [
-            { text: "Choose the release owner.", owner: "unknown participant" },
-          ],
           facts: ["The version is 1.2.3."],
           keywords: ["release"],
           urls: [],
@@ -288,10 +285,7 @@ describe("Brief snapshot", () => {
     expect(generation.brief.decisions).toEqual([
       { text: "Use the private release owner.", kind: "assumed" },
     ]);
-    expect(generation.brief.openDecisions).toEqual([
-      { text: "Choose the release owner." },
-    ]);
-    expect(generation.evidence.droppedAttributionCount).toBe(2);
+    expect(generation.evidence.droppedAttributionCount).toBe(1);
 
     // Replay through the turn start sees the pull request as still open.
     expect(briefInputFromSnapshot(snapshot, 5).codeChanges).toEqual([

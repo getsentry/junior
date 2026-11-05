@@ -127,16 +127,6 @@ export function renderBriefMarkdown(args: {
       "None.",
     ),
     "",
-    "## Open decisions",
-    "",
-    list(
-      brief.openDecisions.map(
-        (decision) =>
-          `${decision.text}${decision.owner ? ` — ${decision.owner}` : ""}`,
-      ),
-      "None.",
-    ),
-    "",
     "## Facts",
     "",
     list(brief.facts, "None."),

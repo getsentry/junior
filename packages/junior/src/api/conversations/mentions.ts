@@ -43,10 +43,6 @@ function briefMentionTexts(brief: ConversationBrief): MentionSource["texts"] {
     brief.intent,
     brief.outcome.text,
     ...brief.decisions.flatMap((decision) => [decision.text, decision.by]),
-    ...brief.openDecisions.flatMap((decision) => [
-      decision.text,
-      decision.owner,
-    ]),
     ...brief.facts,
   ];
 }

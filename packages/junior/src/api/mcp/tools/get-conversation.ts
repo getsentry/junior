@@ -44,7 +44,6 @@ function mcpBrief(
     intent: brief.intent,
     outcome: brief.outcome,
     decisions: brief.decisions,
-    openDecisions: brief.openDecisions,
     facts: brief.facts,
     links: brief.links,
     updatedAt,

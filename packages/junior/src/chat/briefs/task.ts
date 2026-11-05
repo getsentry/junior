@@ -11,7 +11,7 @@ import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
 import { completeObject } from "@/chat/pi/client";
-import { briefUpdatedEvent } from "./events";
+import { briefUpdatedEvent, briefUpdatedEventV1 } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
 import { buildBriefsOperationalReport } from "./operational-report";
@@ -80,7 +80,6 @@ async function emitBriefUpdated(
         ? { costUsd: stored.costUsd }
         : undefined),
       decisions: stored.content.decisions.length,
-      openDecisions: stored.content.openDecisions.length,
       links: stored.content.links.length,
     }),
   );
@@ -196,7 +195,7 @@ export const briefsTaskRegistration: PluginRegistration = {
     displayName: "Briefs",
     description: "Durable Conversation Brief generation",
   },
-  conversationEvents: [briefUpdatedEvent],
+  conversationEvents: [briefUpdatedEventV1, briefUpdatedEvent],
   hooks: {
     async operationalReport(context) {
       const briefDays = await context.eventStats.costsByDay({

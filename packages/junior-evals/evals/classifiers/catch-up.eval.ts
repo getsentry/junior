@@ -8,7 +8,6 @@ const OPENED_BRIEF = {
   intent: "Fix the Safari login bug.",
   outcome: { status: "in_progress" as const, text: "PR #12 is open." },
   decisions: [],
-  openDecisions: [],
 };
 
 describeEval("Conversation Catch-Up", catchUpEvals, (it) => {
