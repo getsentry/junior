@@ -83,7 +83,9 @@ export function ConversationHeaderActions(props: {
         </MenuActionButton>
       ) : null}
       <ShareConversationButton
-        key={props.conversationId}
+        // `copyAction` arrives keyed by the conversation ID. A sibling with the
+        // same key makes React leave the old Share button on each re-render.
+        key={`share:${props.conversationId}`}
         conversationId={props.conversationId}
       />
       {props.copyAction}
