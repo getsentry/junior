@@ -743,7 +743,7 @@ test("keeps the message in view while earlier history and late content load", as
     };
   });
   await transcript.hover();
-  for (let step = 0; step < 8; step += 1) {
+  for (let step = 0; step < 10; step += 1) {
     await page.mouse.wheel(0, -150);
   }
   await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();

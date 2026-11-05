@@ -5,7 +5,7 @@ import {
 } from "@sentry/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { initDashboardSentry } from "@dashboard/sentry";
+import { initDashboardSentry, sendReplyRating } from "@dashboard/sentry";
 
 type Span = Parameters<NonNullable<BrowserOptions["beforeSendSpan"]>>[0];
 
@@ -68,5 +68,55 @@ describe("dashboard browser Sentry", () => {
       "code.file.path": "http://localhost/conversations/c1",
       "url.full": "http://localhost/api/conversations",
     });
+  });
+
+  it("sends a Reply rating with IDs only", async () => {
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+      location: {
+        origin: "http://localhost",
+        pathname: "/conversations/c1",
+      },
+    });
+    initDashboardSentry();
+    const items: unknown[] = [];
+    getClient()?.on("beforeEnvelope", (envelope) => {
+      items.push(...envelope[1].map(([, payload]) => payload));
+    });
+
+    sendReplyRating({ conversationId: "c1", messageId: "m1", rating: "bad" });
+
+    await vi.waitFor(() => expect(items).toHaveLength(1));
+    const event = items[0] as Record<string, unknown>;
+    expect(event).toMatchObject({
+      contexts: {
+        feedback: {
+          message: "Bad reply",
+          source: "dashboard_reply_rating",
+          url: "http://localhost/conversations/c1",
+        },
+      },
+      tags: {
+        "app.reply.rating": "bad",
+        "gen_ai.conversation.id": "c1",
+        "messaging.message.id": "m1",
+      },
+      type: "feedback",
+    });
+    // The sent payload has no person, breadcrumbs, request, or page content.
+    expect(Object.keys(JSON.parse(JSON.stringify(event))).sort()).toEqual([
+      "contexts",
+      "environment",
+      "event_id",
+      "level",
+      "platform",
+      "sdk",
+      "tags",
+      "timestamp",
+      "type",
+    ]);
   });
 });
