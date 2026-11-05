@@ -201,9 +201,12 @@ export function createGitHubUpdateIssueTool(ctx: {
         });
         parsed = response.body;
         if (!response.ok) {
-          throw new Error(
-            `GitHub issue assignment failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
-          );
+          const message = `GitHub issue assignment failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+          // A missing issue or an invalid assignee is a wrong target.
+          if (response.status === 404 || response.status === 422) {
+            throw new PluginToolInputError(message);
+          }
+          throw new Error(message);
         }
       }
       const providerResult = providerIssueSchema.parse(parsed);
@@ -215,8 +218,8 @@ export function createGitHubUpdateIssueTool(ctx: {
           (login) => login.toLowerCase() === assignee.toLowerCase(),
         )
       ) {
-        throw new Error(
-          `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
+        throw new PluginToolInputError(
+          `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}. Report that the claim failed. Do not retry it.`,
         );
       }
       const subscribable = gitHubIssueSubscribable({
