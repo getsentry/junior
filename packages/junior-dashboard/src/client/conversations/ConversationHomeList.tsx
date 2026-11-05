@@ -28,6 +28,7 @@ import {
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 
 /** Render grouped conversation cards on the dashboard home page. */
@@ -237,8 +238,10 @@ function ConversationCard(props: {
   const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
+  const prefetch = usePrefetchConversation(conversation.id);
   return (
     <article
+      {...prefetch}
       className="group relative grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5"
       role="listitem"
     >

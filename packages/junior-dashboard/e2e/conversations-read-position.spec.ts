@@ -28,8 +28,9 @@ function recordPageRequests(page: Page) {
 
 /**
  * Mock one completed Conversation whose server read position moves forward.
- * Its detail never brings `unreadPage`, so the page around the read position
- * comes from the events API, like when the first fetch did not ask for it.
+ * Its detail brings `unreadPage` only when `servesUnreadPage` is set. Else the
+ * page around the read position comes from the events API, like when the
+ * first fetch did not ask for it.
  */
 async function mockReadPositionConversation(
   page: Page,
@@ -63,6 +64,8 @@ async function mockReadPositionConversation(
     turnStartSeq: -1,
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
+    /** Return the page around the read position when a detail asks for it. */
+    servesUnreadPage: false,
     /** The query of each detail request. */
     detailRequests: [] as string[],
     reported: [] as number[],
@@ -147,36 +150,38 @@ async function mockReadPositionConversation(
         }
       }
       const latestSeq = state.eventCount - 1;
-      // Like the server, an `around` page ends half of its events with the
-      // cursor event.
       const [from, to] = after
         ? [Number(after) + 1, Math.min(Number(after) + PAGE_SIZE, latestSeq)]
         : around
-          ? [
-              Math.max(0, Number(around) - PAGE_SIZE / 2 + 1),
-              Math.min(Number(around) + PAGE_SIZE / 2, latestSeq),
-            ]
+          ? aroundRange(Number(around))
           : [
               Math.max(0, Number(query.get("before")) - PAGE_SIZE),
               Number(query.get("before")) - 1,
             ];
-      await route.fulfill({
-        json: {
-          eventHistory: { status: "available" },
-          events: events(from, to),
-          generatedAt,
-          ...(from > 0 ? { previousCursor: String(from) } : undefined),
-          ...(to < latestSeq ? { nextCursor: String(to) } : undefined),
-        },
-      });
+      await route.fulfill({ json: eventPage(from, to) });
     },
   );
+  // Like the server, an `around` page ends half of its events with the
+  // cursor event.
+  const aroundRange = (around: number): [number, number] => [
+    Math.max(0, around - PAGE_SIZE / 2 + 1),
+    Math.min(around + PAGE_SIZE / 2, state.eventCount - 1),
+  ];
+  const eventPage = (from: number, to: number) => ({
+    eventHistory: { status: "available" },
+    events: events(from, to),
+    generatedAt,
+    ...(from > 0 ? { previousCursor: String(from) } : undefined),
+    ...(to < state.eventCount - 1 ? { nextCursor: String(to) } : undefined),
+  });
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
-    state.detailRequests.push(new URL(route.request().url()).search);
+    const { search, searchParams } = new URL(route.request().url());
+    state.detailRequests.push(search);
     await state.detailGate;
     const firstSeq = state.pagedDetail
       ? Math.max(0, state.eventCount - PAGE_SIZE)
       : 0;
+    const behind = stored + 1 < firstSeq;
     await route.fulfill({
       json: withRequestedMailbox(route, {
         ...conversation,
@@ -185,8 +190,11 @@ async function mockReadPositionConversation(
         generatedAt,
         readPosition: { lastReadSeq: stored },
         ...(firstSeq > 0 ? { previousCursor: String(firstSeq) } : undefined),
-        ...(stored + 1 < firstSeq
-          ? { unreadCursor: String(stored) }
+        ...(behind ? { unreadCursor: String(stored) } : undefined),
+        ...(behind &&
+        state.servesUnreadPage &&
+        searchParams.get("unreadPage") === "true"
+          ? { unreadPage: eventPage(...aroundRange(stored)) }
           : undefined),
       }),
     });
@@ -332,6 +340,55 @@ test.describe("opens at new messages after a cached reopen", () => {
     await expect(
       transcript.getByRole("button", { name: "Load newer events" }),
     ).toHaveCount(0);
+  });
+});
+
+test.describe("opens from a hover prefetch", () => {
+  // Fast-forward past the hover delay.
+  test.use({ controlTimers: true });
+  test("opens at new messages from a hover prefetch", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(desktop);
+    const mock = await mockReadPositionConversation(page, {
+      eventCount: 120,
+      lastReadSeq: 20,
+    });
+    mock.pagedDetail = true;
+    mock.servesUnreadPage = true;
+    const pageRequests = recordPageRequests(page);
+    await page.goto(`${dashboard.baseURL}/conversations`);
+    const row = page.getByRole("link", { name: /Read position/ }).first();
+
+    // A pointer that moves across the row fetches nothing.
+    await row.hover();
+    await page.mouse.move(0, 0);
+    await page.clock.fastForward(1_000);
+    expect(mock.detailRequests).toEqual([]);
+
+    // A pointer that rests on the row fetches what the open would.
+    await row.hover();
+    await page.clock.fastForward(200);
+    await expect
+      .poll(() => mock.detailRequests)
+      .toEqual(["?unreadPage=true&mailbox=true"]);
+
+    // The open uses the prefetch as its first fetch. It opens at the marker
+    // with no read of the page around the read position. It only checks for
+    // newer events.
+    await row.click();
+    const transcript = page.getByLabel("Conversation transcript");
+    const marker = transcript.getByRole("separator", { name: "New messages" });
+    await expect(marker).toBeInViewport();
+    await expect(
+      transcript.getByText("Transcript message 21 "),
+    ).toBeInViewport();
+    await expect.poll(() => mock.detailRequests.length).toBe(2);
+    expect(mock.detailRequests[1]).toBe("");
+    expect(pageRequests.filter((query) => query.includes("around"))).toEqual(
+      [],
+    );
   });
 });
 
