@@ -82,7 +82,7 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          action={turnContextAction(props.message, props.conversation)}
+          action={messageAction(props.message, props.conversation)}
           message={props.message}
           conversation={props.conversation}
         />
@@ -123,12 +123,6 @@ export const TranscriptMessageView = memo(
             <CopyButton getText={() => rawText} label="Copy message" />
             {props.message.messageId ? (
               <ReplyRatingActions
-                conversationId={props.conversation.conversationId}
-                messageId={props.message.messageId}
-              />
-            ) : null}
-            {canForkAfter(props.message, props.conversation) ? (
-              <ForkConversationButton
                 conversationId={props.conversation.conversationId}
                 messageId={props.message.messageId}
               />
@@ -175,19 +169,29 @@ export function RedactedMessageView(props: {
   );
 }
 
-function turnContextAction(
+function messageAction(
   message: TranscriptViewMessage,
   conversation: ConversationTranscript,
 ): ReactNode {
-  if (message.role !== "user" || !message.contexts?.length) return undefined;
-  return (
-    <TranscriptTurnContextView
-      actor={transcriptMessageActor(conversation, message)}
-      contexts={message.contexts}
-      messageId={message.messageId}
-      timestamp={message.timestamp}
-    />
-  );
+  if (message.role === "user" && message.contexts?.length) {
+    return (
+      <TranscriptTurnContextView
+        actor={transcriptMessageActor(conversation, message)}
+        contexts={message.contexts}
+        messageId={message.messageId}
+        timestamp={message.timestamp}
+      />
+    );
+  }
+  if (canForkAfter(message, conversation)) {
+    return (
+      <ForkConversationButton
+        conversationId={conversation.conversationId}
+        messageId={message.messageId}
+      />
+    );
+  }
+  return undefined;
 }
 
 /** A delivered Junior reply ends the history of a fork or Quick question. */
