@@ -119,6 +119,16 @@ export function ConversationWorkspace(props: {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  // Aborts when the reader leaves home, so a late create does not pull them
+  // back from the page they went to.
+  const homeVisit = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    if (!home) return;
+    const visit = new AbortController();
+    homeVisit.current = visit.signal;
+    return () => visit.abort();
+  }, [home]);
+
   const createView = (
     <NewConversationView
       error={
@@ -127,6 +137,7 @@ export function ConversationWorkspace(props: {
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
+        const visit = homeVisit.current;
         const accepted = await createConversation.mutateAsync({
           idempotencyKey,
           message,
@@ -137,6 +148,7 @@ export function ConversationWorkspace(props: {
         // skeleton. The draft stays on this page until the route changes, so
         // the message moves from the composer to the transcript at once.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
+        if (visit?.aborted) return;
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
         });
