@@ -54,7 +54,7 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        "Set true to assign the issue to the requester's linked GitHub account, so the issue shows who works on it. Other assignees stay.",
+        "Set true to add the requester's linked GitHub account as an assignee. Other assignees stay.",
       ),
   })
   .strict()
@@ -219,7 +219,7 @@ export function createGitHubUpdateIssueTool(ctx: {
         )
       ) {
         throw new PluginToolInputError(
-          `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}. Report that the claim failed. Do not retry it.`,
+          `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
         );
       }
       const subscribable = gitHubIssueSubscribable({

@@ -8,7 +8,7 @@
 import { parseShellCommands } from "@sentry/junior-plugin-api";
 
 const CLAIM_NUDGE_MESSAGE =
-  "If you are starting work on this GitHub issue for the requester, claim it first: call github_updateIssue with assign_requester: true, unless you already did in this Run. Skip this when you only read or investigate the issue.";
+  "If you start work on this issue, claim it first with github_updateIssue and assign_requester: true. Skip this if you only read it or already claimed it.";
 
 const ISSUE_PATH_RE = /^\/?repos\/[^/]+\/[^/]+\/issues\/\d+$/;
 
