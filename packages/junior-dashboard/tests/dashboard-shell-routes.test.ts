@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApp } from "../src/app";
 import type { DashboardSession } from "../src/auth";
+import { dashboardClientFileName } from "../src/public-assets";
 import {
   auth,
   embeddedBootstrap,
@@ -64,7 +65,9 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<title>Junior</title>");
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
-    expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
+    expect(html).toContain(
+      `src="/_junior/dashboard/assets/${dashboardClientFileName()}"`,
+    );
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
@@ -213,24 +216,41 @@ describe("dashboard shell routes", () => {
     }
   });
 
-  it("serves the dashboard client bundle without browser caching", async () => {
-    const app = dashboard({
-      user: {
-        email: "person@sentry.io",
-        emailVerified: true,
-      },
-    });
+  it("serves content-hashed browser files without auth and caches them for a year", async () => {
+    const app = dashboard(null);
+    const assetResponse = (file: string) =>
+      app.fetch(
+        new Request(`http://localhost/_junior/dashboard/assets/${file}`),
+      );
 
-    const response = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
+    const client = await assetResponse(dashboardClientFileName());
+    expect(client.status).toBe(200);
+    expect(client.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
     );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("content-type")).toContain(
+    expect(client.headers.get("content-type")).toContain(
       "application/javascript",
     );
-    expect(await response.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const clientScript = await client.text();
+    expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const chunk = clientScript.match(/["']\.\/(chunks\/[^"']+\.js)["']/)?.[1];
+    expect(chunk).toBeDefined();
+    const chunkResponse = await assetResponse(chunk!);
+    expect(chunkResponse.status).toBe(200);
+    expect(chunkResponse.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+
+    // A cached 404 would break an older deployment's files after a rollback.
+    for (const file of [
+      "client-AAAAAAAA.js",
+      "chunks/missing-AAAAAAAA.js",
+      "client.js",
+    ]) {
+      const missing = await assetResponse(file);
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("cache-control")).toBe("no-store");
+    }
   });
 
   it("serves the official dashboard avatar with revalidation", async () => {
