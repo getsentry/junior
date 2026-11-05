@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type (ignored when version is set). auto picks it from the commits.
+        description: Version bump type (ignored when version is set). auto picks it from the commits; pre cuts a prerelease of that version.
         required: true
         type: choice
         default: auto
         options:
           - auto
+          - pre
           - patch
           - minor
           - major
