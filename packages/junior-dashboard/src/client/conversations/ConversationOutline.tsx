@@ -69,7 +69,7 @@ export function ConversationOutline(props: {
     list.scrollTop = (overflow * activeIndex) / Math.max(1, items.length - 1);
   }, [activeIndex, items.length, previewIndex]);
 
-  // Bars outside the grow radius keep the width from render.
+  // Bars outside the grow radius keep their width.
   const movePointer = (pointer: number | undefined) => {
     const previous = pointerRef.current;
     pointerRef.current = pointer;
@@ -156,9 +156,15 @@ export function ConversationOutline(props: {
                   ref={(bar) => {
                     barRefs.current[index] = bar;
                   }}
+                  // A render can move the active bar while the pointer is
+                  // over the outline, so it sizes bars for the pointer too.
                   style={{
                     transform: barTransform(
-                      barWidth(index, undefined, index === activeIndex),
+                      barWidth(
+                        index,
+                        pointerRef.current,
+                        index === activeIndex,
+                      ),
                     ),
                     width: BAR_PX.max,
                   }}
