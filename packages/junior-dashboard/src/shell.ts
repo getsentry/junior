@@ -1,13 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
 import type { DashboardBootstrap } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
   dashboardInstallIconAsset,
-  dashboardTailwindAsset,
 } from "./assets";
+import { conversationOpenScript } from "./conversation-open";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
 import {
   DASHBOARD_ASSETS_PATH,
@@ -31,35 +30,9 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-function readAssetUrl(url: URL): string {
-  if (!existsSync(url)) {
-    return "";
-  }
-  return readFileSync(url, "utf8");
-}
-
-function readWorkspaceAsset(fileName: string): string {
-  const assetPath = path.join(
-    process.cwd(),
-    "node_modules",
-    "@sentry",
-    "junior-dashboard",
-    "dist",
-    fileName,
-  );
-  if (!existsSync(assetPath)) {
-    return "";
-  }
-  return readFileSync(assetPath, "utf8");
-}
-
-function readDashboardTailwind(): string {
-  return (
-    dashboardTailwindAsset ||
-    readAssetUrl(new URL("./tailwind.css", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/tailwind.css", import.meta.url)) ||
-    readWorkspaceAsset("tailwind.css")
-  );
+function stylesheetLink(): string {
+  const { stylesheet } = readDashboardClientManifest();
+  return `<link rel="stylesheet" href="${DASHBOARD_ASSETS_PATH}/${stylesheet}" />`;
 }
 
 function readDashboardColorIcon(): ArrayBuffer {
@@ -219,13 +192,17 @@ export function renderDashboard(
     : "";
   const client = readDashboardClientManifest();
   // Without these hints, the browser finds the chunks only after the entry
-  // has downloaded and parsed, one round trip later.
-  const clientPreloads = client.imports
-    .map(
+  // has downloaded and parsed, and the fonts only after the stylesheet has.
+  const clientPreloads = [
+    ...client.imports.map(
       (file) =>
         `<link rel="modulepreload" href="${DASHBOARD_ASSETS_PATH}/${file}" />`,
-    )
-    .join("\n  ");
+    ),
+    ...client.fonts.map(
+      (file) =>
+        `<link rel="preload" href="${DASHBOARD_ASSETS_PATH}/${file}" as="font" type="font/woff2" crossorigin />`,
+    ),
+  ].join("\n  ");
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
@@ -240,12 +217,11 @@ export function renderDashboard(
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
+  ${renderSentryHead(sentry)}
+  <script>${conversationOpenScript(basePath)}</script>
+  ${stylesheetLink()}
   ${clientPreloads}
   <title>${escapeHtml(agentName)}</title>
-  ${renderSentryHead(sentry)}
-  <style>
-    ${readDashboardTailwind()}
-  </style>
 </head>
 <body class="m-0 bg-dashboard-ink text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <div id="dashboard-root">
@@ -351,9 +327,7 @@ export function renderForbiddenPage(agentName: string): Response {
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>${escapeHtml(agentName)} access denied</title>
   <script>${DASHBOARD_THEME_SCRIPT}</script>
-  <style>
-    ${readDashboardTailwind()}
-  </style>
+  ${stylesheetLink()}
 </head>
 <body class="m-0 bg-dashboard-ink font-sans text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <main class="grid min-h-screen place-items-center p-8">

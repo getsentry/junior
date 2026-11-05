@@ -21,6 +21,7 @@ import {
   type ConversationEventPage,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
+import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
 import { conversationDetailQueryKey } from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
@@ -28,7 +29,6 @@ import { scrollRootFor } from "./transcriptBottomPinning";
 const READ_REPORT_DELAY_MS = 750;
 const SEQ_ATTRIBUTE = "data-transcript-seq";
 const ROW_SELECTOR = `[${SEQ_ATTRIBUTE}]`;
-const START_POSITION_STORAGE_KEY = "junior:conversation:start-position";
 
 /** Where a Conversation opens: at the first unread row or at the latest. */
 export type ConversationStartPosition = "unread" | "latest";

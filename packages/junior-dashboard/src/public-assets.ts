@@ -13,10 +13,25 @@ export const DASHBOARD_ASSETS_PATH = "/_junior/dashboard/assets";
 
 /** Path under the assets prefix of a content-hashed browser file. */
 export const DASHBOARD_PUBLIC_ASSET_NAME =
-  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Z0-9]{8}\.js$/;
+  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|webp|woff2)$/;
+
+/** File name of the content-hashed dashboard stylesheet. */
+export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
 
 /** File name of the content-hashed dashboard browser entry. */
-export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Z0-9]{8}\.js$/;
+export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
+
+const CONTENT_TYPES: Readonly<Record<string, string>> = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".webp": "image/webp",
+  ".woff2": "font/woff2",
+};
+
+/** Return true when a public asset is binary, so builds embed it as base64. */
+export function isBinaryPublicAsset(file: string): boolean {
+  return file.endsWith(".webp") || file.endsWith(".woff2");
+}
 
 // Builds embed these files. Without them (tests and local development from
 // source), read the client build output from disk.
@@ -37,13 +52,18 @@ function publicDir(): string | undefined {
 /** File under `dist` where the client build names its entry and imports. */
 export const DASHBOARD_CLIENT_MANIFEST_FILE = "client-manifest.json";
 
-/** The client entry and every file it imports statically. */
+/**
+ * The client entry, every file it imports statically, the stylesheet, and
+ * the fonts the first paint uses.
+ */
 export const dashboardClientManifestSchema = z.object({
   entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
+  fonts: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
   imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
+  stylesheet: z.string().regex(DASHBOARD_STYLESHEET_NAME),
 });
 
-/** The dashboard client entry and every file it imports statically. */
+/** The browser files that the dashboard page shell names. */
 export type DashboardClientManifest = z.infer<
   typeof dashboardClientManifestSchema
 >;
@@ -65,17 +85,20 @@ export function readDashboardClientManifest(): DashboardClientManifest {
   );
 }
 
-function readPublicAsset(file: string): string | undefined {
+function readPublicAsset(
+  file: string,
+): Uint8Array<ArrayBuffer> | string | undefined {
   if (!DASHBOARD_PUBLIC_ASSET_NAME.test(file)) return undefined;
   if (Object.hasOwn(dashboardPublicAssets, file)) {
-    return dashboardPublicAssets[file];
+    const body = dashboardPublicAssets[file]!;
+    return isBinaryPublicAsset(file) ? Buffer.from(body, "base64") : body;
   }
   // An embedded build has every file it can serve.
   if (dashboardClientManifest) return undefined;
   const dir = publicDir();
   const assetPath = dir ? path.join(dir, file) : undefined;
   return assetPath && existsSync(assetPath)
-    ? readFileSync(assetPath, "utf8")
+    ? readFileSync(assetPath)
     : undefined;
 }
 
@@ -95,7 +118,7 @@ export function dashboardPublicAssetResponse(file: string): Response {
   return new Response(body, {
     headers: {
       "cache-control": "public, max-age=31536000, immutable",
-      "content-type": "application/javascript; charset=utf-8",
+      "content-type": CONTENT_TYPES[path.extname(file)]!,
       "x-content-type-options": "nosniff",
     },
   });

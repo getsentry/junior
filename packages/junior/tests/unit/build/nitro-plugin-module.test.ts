@@ -444,22 +444,11 @@ describe("juniorNitro plugin modules", () => {
       "utf8",
     );
     await fs.mkdir(path.join(dashboardDist, "public"));
-    await fs.writeFile(
-      path.join(dashboardDist, "tailwind.css"),
-      "tailwind",
-      "utf8",
-    );
 
-    const rollupBeforeHooks: TestRollupBeforeHook[] = [];
-    const buildPlugins: TestBuildPlugin[] = [];
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
-        hook(name: string, callback: TestRollupBeforeHook) {
-          if (name === "rollup:before") {
-            rollupBeforeHooks.push(callback);
-          }
-        },
+        hook() {},
       },
       options: {
         output: {
@@ -484,28 +473,6 @@ describe("juniorNitro plugin modules", () => {
         maxAge: 31_536_000,
       },
     ]);
-
-    expect(rollupBeforeHooks).toHaveLength(1);
-    await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
-    await buildPlugins
-      .find((plugin) => plugin.name === "junior:copy-build-content")
-      ?.writeBundle?.();
-
-    await expect(
-      fs.readFile(
-        path.join(
-          tempRoot,
-          ".output",
-          "server",
-          "node_modules",
-          "@sentry",
-          "junior-dashboard",
-          "dist",
-          "tailwind.css",
-        ),
-        "utf8",
-      ),
-    ).resolves.toBe("tailwind");
   });
 
   it("rejects direct plugin sets with runtime code because they need a runtime import", () => {

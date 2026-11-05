@@ -72,6 +72,17 @@ describe("dashboard shell routes", () => {
         `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
       );
     }
+    expect(html).toContain(
+      `<link rel="stylesheet" href="/_junior/dashboard/assets/${client.stylesheet}" />`,
+    );
+    expect(client.fonts.length).toBeGreaterThan(0);
+    for (const file of client.fonts) {
+      expect(html).toContain(
+        `<link rel="preload" href="/_junior/dashboard/assets/${file}" as="font" type="font/woff2" crossorigin />`,
+      );
+    }
+    expect(html).not.toContain("<style>");
+    expect(html).not.toContain("fonts.googleapis.com");
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
@@ -244,6 +255,15 @@ describe("dashboard shell routes", () => {
     expect(chunkResponse.headers.get("cache-control")).toBe(
       "public, max-age=31536000, immutable",
     );
+    const { fonts, stylesheet } = readDashboardClientManifest();
+    const styles = await assetResponse(stylesheet);
+    expect(styles.status).toBe(200);
+    expect(styles.headers.get("content-type")).toContain("text/css");
+    const font = await assetResponse(fonts[0]!);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(await styles.text()).toContain(
+      `url("/_junior/dashboard/assets/${fonts[0]}")`,
+    );
 
     // A cached 404 would break an older deployment's files after a rollback.
     for (const file of [
@@ -384,7 +404,9 @@ describe("dashboard shell routes", () => {
     expect(response.status).toBe(403);
     expect(response.headers.get("content-type")).toContain("text/html");
     const html = await response.text();
-    expect(html).toContain("<style>");
+    expect(html).toContain(
+      `<link rel="stylesheet" href="/_junior/dashboard/assets/${readDashboardClientManifest().stylesheet}" />`,
+    );
     expect(html).toContain("Access denied");
   });
 });

@@ -4,7 +4,6 @@ import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
-  copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
   resolveDashboardPublicAssetsDir,
@@ -383,9 +382,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
-          if (dashboardEnabled(options.dashboard)) {
-            copyDashboardAssets(cwd, nitro.options.output.serverDir);
-          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,

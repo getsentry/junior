@@ -135,9 +135,11 @@ export async function listConversationAnnotationsById(
         juniorConversationAnnotations.conversationId,
       ),
     )
+    // Filter both ids on the joined Conversation row. An OR across the two
+    // tables cannot use an index and scans both tables.
     .where(
       or(
-        inArray(juniorConversationAnnotations.conversationId, [...requested]),
+        inArray(juniorConversations.conversationId, [...requested]),
         inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )
