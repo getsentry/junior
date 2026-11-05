@@ -84,6 +84,20 @@ export const juniorConversationEvents = pgTable(
     index("junior_conversation_events_author_idx")
       .on(table.conversationId, table.actorIdentityId, table.seq)
       .where(sql`${table.actorIdentityId} is not null`),
+    // The newest Message with one role, for each listed Conversation. With
+    // the role in the index, a newest-first read stops at the first match.
+    // The index also gives Postgres statistics on the role.
+    index("junior_conversation_events_message_role_idx")
+      .on(
+        table.conversationId,
+        sql`(${table.payload}->>'role')`,
+        table.createdAt,
+        table.seq,
+      )
+      .where(sql`${table.type} = 'message'`),
+    index("junior_conversation_events_user_message_time_idx")
+      .on(table.conversationId, table.createdAt, table.seq)
+      .where(sql`${table.type} = 'user_message'`),
     index("junior_conversation_events_message_search_idx")
       .using("gin", sql`to_tsvector('english', ${table.payload}->>'text')`)
       .where(sql`${table.type} = 'message'`),

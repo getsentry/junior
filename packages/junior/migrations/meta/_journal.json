@@ -561,6 +561,13 @@
       "when": 1793855917036,
       "tag": "0079_conversation_event_author_index",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793903334195,
+      "tag": "0080_conversation_event_latest_message_indexes",
+      "breakpoints": true
     }
   ]
 }
