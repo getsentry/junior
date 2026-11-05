@@ -322,7 +322,8 @@ export async function deleteProviderIdentityForUser(
 
 /**
  * Save one Google sign-in. Link the Google identity to the user of its
- * verified email, and set its sign-in time.
+ * verified email, and set its sign-in time. Return the previous sign-in
+ * time, if any.
  */
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
@@ -333,7 +334,7 @@ export async function recordGoogleSignIn(
     subject: string;
   },
   nowMs: number = Date.now(),
-): Promise<StoredIdentity> {
+): Promise<number | undefined> {
   const stored = await upsertIdentity(
     executor,
     {
@@ -348,10 +349,16 @@ export async function recordGoogleSignIn(
     },
     nowMs,
   );
+  const [previous] = await executor
+    .db()
+    .select({ signedInAt: juniorIdentities.signedInAt })
+    .from(juniorIdentities)
+    .where(eq(juniorIdentities.id, stored.id))
+    .limit(1);
   await executor
     .db()
     .update(juniorIdentities)
     .set({ signedInAt: dateFromMs(nowMs) })
     .where(eq(juniorIdentities.id, stored.id));
-  return stored;
+  return previous?.signedInAt?.getTime();
 }

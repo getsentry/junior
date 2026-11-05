@@ -7,6 +7,7 @@
  * identity.
  */
 import { createAuthMiddleware } from "better-auth/api";
+import { getSessionCookie } from "better-auth/cookies";
 import { betterAuth } from "better-auth/minimal";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
@@ -19,10 +20,17 @@ import {
 } from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { isAllowedDomain, readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+
+/** Set one attribute on the request span that runs this sign-in step. */
+function setRequestSpanAttribute(key: string, value: number | string): void {
+  const span = getActiveSpan();
+  if (span) getRootSpan(span).setAttribute(key, value);
+}
 
 // Claims Junior reads from the Google ID token. Google sets `hd` only for
 // Google Workspace accounts, so it proves the account belongs to the domain.
@@ -232,15 +240,28 @@ function createBetterAuth(config: SignInAuthConfig) {
         if (!google) {
           throw new Error("Google sign-in has no Google account");
         }
-        await recordGoogleSignIn(getSqlExecutor(), {
-          email,
-          subject: google.accountId,
-          displayName: created.user.name || undefined,
-          avatarUrl: parseAvatarUrl(
-            created.user.image,
-            GOOGLE_IDENTITY_PROVIDER,
-          ),
-        });
+        const nowMs = Date.now();
+        const previousSignedInAtMs = await recordGoogleSignIn(
+          getSqlExecutor(),
+          {
+            email,
+            subject: google.accountId,
+            displayName: created.user.name || undefined,
+            avatarUrl: parseAvatarUrl(
+              created.user.image,
+              GOOGLE_IDENTITY_PROVIDER,
+            ),
+          },
+          nowMs,
+        );
+        // A sign-in well inside the session lifetime means the browser lost
+        // its session, not that the session expired.
+        if (previousSignedInAtMs !== undefined) {
+          setRequestSpanAttribute(
+            "app.sign_in.previous_age_s",
+            Math.round((nowMs - previousSignedInAtMs) / 1000),
+          );
+        }
       }),
     },
   });
@@ -266,6 +287,12 @@ export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
       return { user: { email, emailVerified, name } };
     },
     async signInWithGoogle(request, callbackURL, errorCallbackURL) {
+      // A cookie that reaches here was rejected. Without one, the session
+      // expired or this browser never signed in.
+      setRequestSpanAttribute(
+        "app.sign_in.session_cookie",
+        getSessionCookie(request) ? "present" : "missing",
+      );
       const result = await getAuth().api.signInSocial({
         body: { provider: "google", callbackURL, errorCallbackURL },
         headers: request.headers,
