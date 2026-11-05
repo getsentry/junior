@@ -51,6 +51,28 @@ describe("GitHub Skill Workflows", () => {
     );
   });
 
+  test("when asked to work on a GitHub issue, claim it for the requester first", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Say I ask you to work on a GitHub issue. What do you do on the issue itself before you start the code work? Keep it short.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer says Junior first claims the issue by assigning it to the requester, such as with `github_updateIssue` and `assign_requester: true`.",
+        ],
+        fail: [
+          "Do not say Junior asks the user whether to claim or assign the issue first.",
+          "Do not say Junior assigns the issue to itself or the bot.",
+        ],
+      }),
+    );
+  });
+
   test("when CI stalls with no cause in the logs, check GitHub status before blaming an outage", async ({
     run,
   }) => {
