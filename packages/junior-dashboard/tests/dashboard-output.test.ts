@@ -177,9 +177,7 @@ describe.sequential("dashboard Nitro production output", () => {
       );
       expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
       const chunkPaths = [
-        ...clientScript.matchAll(
-          /["']\/_junior\/dashboard\/assets\/(chunks\/[^"']+\.js)["']/g,
-        ),
+        ...clientScript.matchAll(/["']\.\/(chunks\/[^"']+\.js)["']/g),
       ].map((match) => match[1]!);
       expect(chunkPaths.length).toBeGreaterThan(0);
       for (const chunkPath of new Set(chunkPaths)) {

@@ -489,6 +489,9 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
