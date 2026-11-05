@@ -4235,7 +4235,12 @@ Conversation: \`local:test:old-conversation\`
     // A person pushes their own commit, outside Junior's hooks.
     const pushAsPerson = (...args: string[]) =>
       ok(
-        { GIT_AUTHOR_NAME: "Pat Pusher", GIT_AUTHOR_EMAIL: "pat@example.com" },
+        {
+          GIT_AUTHOR_NAME: "Pat Pusher",
+          GIT_AUTHOR_EMAIL: "pat@example.com",
+          GIT_COMMITTER_NAME: "Pat Pusher",
+          GIT_COMMITTER_EMAIL: "pat@example.com",
+        },
         "-c",
         "core.hooksPath=/dev/null",
         ...args,
