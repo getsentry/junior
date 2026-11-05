@@ -1,17 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApp } from "../src/app";
 import type { DashboardSession } from "../src/auth";
-import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import {
+  auth,
+  embeddedBootstrap,
+  resetDashboardEnv,
+} from "./dashboard-test-helpers";
 
-const { resolveViewerUser } = vi.hoisted(() => ({
-  resolveViewerUser: vi.fn(async (email: string) => ({
-    email,
-    id: `user:${email}`,
-    identities: [] as [],
-  })),
-}));
+const { readUserAutoArchiveSettings, readViewerAvatarUrl, resolveViewerUser } =
+  vi.hoisted(() => ({
+    readUserAutoArchiveSettings: vi.fn(async (_userId: string) => ({
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 6,
+    })),
+    readViewerAvatarUrl: vi.fn(
+      async (): Promise<string | undefined> => undefined,
+    ),
+    resolveViewerUser: vi.fn(async (email: string) => ({
+      email,
+      id: `user:${email}`,
+      identities: [] as [],
+    })),
+  }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  readUserAutoArchiveSettings,
+  readViewerAvatarUrl,
   resolveViewerUser,
 }));
 
@@ -58,6 +72,64 @@ describe("dashboard shell routes", () => {
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
     expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
+  });
+
+  it("embeds the same core data that /api/me and /api/config return", async () => {
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Person",
+      },
+    });
+
+    const page = await app.fetch(new Request("http://localhost/conversations"));
+    const me = await app.fetch(new Request("http://localhost/api/me"));
+    const config = await app.fetch(new Request("http://localhost/api/config"));
+
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(embeddedBootstrap(await page.text())).toEqual({
+      config: await config.json(),
+      me: await me.json(),
+    });
+  });
+
+  it("escapes viewer text in the embedded core data", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "</script><script>alert(1)</script>",
+      },
+    });
+
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+
+    expect(html).not.toContain("</script><script>alert(1)");
+    expect(embeddedBootstrap(html)).toMatchObject({
+      me: { user: { name: "</script><script>alert(1)</script>" } },
+    });
+  });
+
+  it("renders the shell without core data when the viewer read fails", async () => {
+    resolveViewerUser.mockRejectedValueOnce(new Error("database unavailable"));
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+      },
+    });
+
+    const response = await app.fetch(new Request("http://localhost/"));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Loading Junior");
+    expect(html).not.toContain("__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {
