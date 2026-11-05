@@ -7,6 +7,7 @@ import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
+  UNREAD_MESSAGE_COUNT_LIMIT,
   conversationReadPositionSchema,
 } from "@/api/schema";
 import {
@@ -214,6 +215,29 @@ describe("conversation read position API", () => {
         await readConversationDetail(conversationId, { limit: 10, viewer }),
       ).unreadCursor,
     ).toBeUndefined();
+
+    // The count stops at its limit, however far behind the reader is.
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 120 }, (_, index) => ({
+        createdAtMs: 2_000 + index,
+        data: {
+          type: "message" as const,
+          messageId: `message-later-${index}`,
+          role: "assistant" as const,
+          text: `Later message ${index}`,
+        },
+      })),
+    );
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, {
+          limit: 10,
+          unreadPage: true,
+          viewer,
+        }),
+      ).unreadMessageCount,
+    ).toBe(UNREAD_MESSAGE_COUNT_LIMIT);
   });
 
   it("counts the viewer's own Messages as read", async () => {

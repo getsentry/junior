@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
+import { UNREAD_MESSAGE_COUNT_LIMIT } from "../schema/conversation";
 
 /**
  * Read how far the viewer has read one Conversation, if they have read it.
@@ -36,15 +37,16 @@ export async function readConversationReadPosition(
 }
 
 /**
- * Count the Messages after a read position. The Conversation, type, and seq
- * index covers the read, so a reader far behind costs one index range scan.
+ * Count the Messages after a read position, up to the count limit. The
+ * Conversation, type, and seq index covers the read, and the limit stops the
+ * scan, so a reader far behind costs no more than one who is a little behind.
  */
 export async function countUnreadMessages(
   conversationId: string,
   lastReadSeq: number,
 ): Promise<number> {
-  const [row] = await getDb()
-    .select({ count: count() })
+  const unread = getDb()
+    .select({ seq: juniorConversationEvents.seq })
     .from(juniorConversationEvents)
     .where(
       and(
@@ -52,7 +54,10 @@ export async function countUnreadMessages(
         eq(juniorConversationEvents.type, "message"),
         gt(juniorConversationEvents.seq, lastReadSeq),
       ),
-    );
+    )
+    .limit(UNREAD_MESSAGE_COUNT_LIMIT)
+    .as("unread");
+  const [row] = await getDb().select({ count: count() }).from(unread);
   return row?.count ?? 0;
 }
 

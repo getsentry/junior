@@ -62,6 +62,12 @@ export const conversationAttachmentParamsSchema = z
  */
 export const CONVERSATION_EVENT_PAGE_LIMIT = 150;
 
+/**
+ * The unread Message count stops here. The dashboard shows it as "99+", so a
+ * larger count would change nothing on screen, and the read stays bounded.
+ */
+export const UNREAD_MESSAGE_COUNT_LIMIT = 100;
+
 export const conversationDetailQuerySchema = z
   .object({
     /** Omit to get the latest three Turns, up to the default page limit. */
@@ -810,10 +816,16 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      */
     unreadPage: conversationEventPageSchema.optional(),
     /**
-     * Messages after `readPosition`, which go past the latest page. It comes
-     * only with `unreadPage`, when there are any.
+     * Messages after `readPosition`, which go past the latest page, up to
+     * `UNREAD_MESSAGE_COUNT_LIMIT`. It comes only with `unreadPage`, when
+     * there are any.
      */
-    unreadMessageCount: z.number().int().positive().optional(),
+    unreadMessageCount: z
+      .number()
+      .int()
+      .positive()
+      .max(UNREAD_MESSAGE_COUNT_LIMIT)
+      .optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
