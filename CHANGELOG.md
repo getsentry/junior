@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.280.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add Other… to button review item questions by @sentry-junior in [#2737](https://github.com/getsentry/junior/pull/2737)
+- Open linked rows from the page around them by @BYK with @sentry-junior in [#2727](https://github.com/getsentry/junior/pull/2727)
+- Catch readers up on unread Conversation activity by @BYK with @sentry-junior in [#2657](https://github.com/getsentry/junior/pull/2657)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Open the transcript again when a link at open fails by @BYK with @sentry-junior in [#2732](https://github.com/getsentry/junior/pull/2732)
+- Count the reader's own Messages as read by @BYK with @sentry-junior in [#2730](https://github.com/getsentry/junior/pull/2730)
+- Return home at once when archiving from a conversation by @BYK with @sentry-junior in [#2728](https://github.com/getsentry/junior/pull/2728)
+
+#### Other
+
+- (github) Reply to the thread root when in_reply_to names a reply by @sentry-junior in [#2693](https://github.com/getsentry/junior/pull/2693)
+
+### Internal Changes 🔧
+
+#### Api
+
+- Hold 150 events in default dashboard pages by @BYK with @sentry-junior in [#2739](https://github.com/getsentry/junior/pull/2739)
+- Open conversation detail at the last 3 Turns in one pass by @thomasjiangcy with @sentry-junior in [#2722](https://github.com/getsentry/junior/pull/2722)
+
+#### Dashboard
+
+- Simplify the conversation header and menus by @betegon in [#2676](https://github.com/getsentry/junior/pull/2676)
+- Preload first-load chunks and load the drawer on demand by @sentry-junior in [#2738](https://github.com/getsentry/junior/pull/2738)
+- Load pages outside the conversation workspace on demand by @sentry-junior in [#2734](https://github.com/getsentry/junior/pull/2734)
+- Keep the detail version when the reader marks a Conversation read by @thomasjiangcy with @sentry-junior in [#2720](https://github.com/getsentry/junior/pull/2720)
+- Mount only visible event log rows by @BYK with @sentry-junior in [#2733](https://github.com/getsentry/junior/pull/2733)
+- Drop zod locales and Drizzle from the browser bundle by @sentry-junior in [#2731](https://github.com/getsentry/junior/pull/2731)
+
+#### Other
+
+- (github) Share one GitHub API helper across tools by @BYK with @sentry-junior in [#2692](https://github.com/getsentry/junior/pull/2692)
+
 ## 0.279.0
 
 ### New Features ✨
