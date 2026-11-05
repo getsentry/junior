@@ -1,7 +1,12 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationWatch,
+} from "@sentry/junior/api/schema";
 
 import { ObjectIcon } from "../components/ObjectIcon";
+import { Collapsible } from "../components/ui/collapsible";
+import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
 import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
 type ConversationAnnotation = NonNullable<
@@ -78,41 +83,62 @@ export function conversationLinks(
   );
 }
 
-/** Show the outside work that a Conversation links to, one row each. */
-export function ConversationLinkedWork(props: { links: ConversationLink[] }) {
+/**
+ * Show the outside work that a Conversation links to, one row each. A row
+ * that Junior also watches shows the Watch details under a chevron, so the
+ * same resource does not show twice.
+ */
+export function ConversationLinkedWork(props: {
+  links: ConversationLink[];
+  /** Watches by the URL of the resource that they watch. */
+  watchesByUrl: ReadonlyMap<string, ConversationWatch[]>;
+}) {
   return (
     <DetailsList
       itemKey={(link) => link.key}
       items={props.links}
       renderItem={(link) => {
-        const status = linkStatusLabel(link.status);
+        const row = <LinkRow link={link} />;
+        const watches = props.watchesByUrl.get(link.url);
+        if (!watches) return row;
         return (
-          <DetailsRow
-            href={link.url}
-            icon={
-              // The row text names the status, so the icon stays silent.
-              <ObjectIcon
-                decorative
-                facts={link.facts}
-                objectType={link.objectType}
-                size={14}
-                status={link.status}
-              />
-            }
-            meta={status}
-            title={link.label}
-            tooltip={[link.label, link.plugin, status, link.description]
-              .filter(Boolean)
-              .join(" · ")}
-          >
-            {link.description ? (
-              <DetailsRowLine className="line-clamp-2 break-words">
-                {link.description}
-              </DetailsRowLine>
-            ) : null}
-          </DetailsRow>
+          <Collapsible className="min-w-0">
+            <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
+            <WatchDetails watches={watches} />
+          </Collapsible>
         );
       }}
     />
+  );
+}
+
+function LinkRow(props: { link: ConversationLink }) {
+  const { link } = props;
+  const status = linkStatusLabel(link.status);
+  return (
+    <DetailsRow
+      href={link.url}
+      icon={
+        // The row text names the status, so the icon stays silent.
+        <ObjectIcon
+          decorative
+          facts={link.facts}
+          objectType={link.objectType}
+          size={14}
+          status={link.status}
+        />
+      }
+      meta={status}
+      title={link.label}
+      tooltip={[link.label, link.plugin, status, link.description]
+        .filter(Boolean)
+        .join(" · ")}
+    >
+      {link.description ? (
+        <DetailsRowLine className="line-clamp-2 break-words">
+          {link.description}
+        </DetailsRowLine>
+      ) : null}
+    </DetailsRow>
   );
 }
