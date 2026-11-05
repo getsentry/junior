@@ -102,7 +102,7 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
   }
   if (snapshots.length === 0) throw new Error(CLI_USAGE);
   return {
-    model: model ?? (await configuredDefaultModelId()),
+    model: model ?? (await configuredBriefModelId()),
     out,
     promptFile,
     snapshots,
@@ -111,12 +111,13 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
 }
 
 /**
- * Read the app default model only when a run needs it. `chat/config` reads
- * `DATABASE_URL` at import, and `briefs pull` must work with only a token.
+ * Read the production Brief model only when a run needs it. `chat/config`
+ * reads `DATABASE_URL` at import, and `briefs pull` must work with only a
+ * token.
  */
-async function configuredDefaultModelId(): Promise<string> {
+async function configuredBriefModelId(): Promise<string> {
   const { botConfig } = await import("@/chat/config");
-  return botConfig.modelId;
+  return botConfig.fastModelId;
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {

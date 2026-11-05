@@ -154,7 +154,7 @@ const app = await createApp({
 });
 ```
 
-This option costs one default-model call per completed Turn. The example app and
+This option costs one fast-model call per completed Turn. The example app and
 `junior chat` enable it.
 
 ## Experimental features
