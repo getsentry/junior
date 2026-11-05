@@ -12,6 +12,7 @@ import { useNavigate } from "react-router";
 
 import { getDashboardAgentName } from "../agentName";
 import { useDashboardCoreData } from "../api";
+import { ClampedPreview } from "../components/ClampedPreview";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { ShimmerText } from "../components/ShimmerText";
 import { Button } from "../components/ui/button";
@@ -33,6 +34,7 @@ import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 const HIGHLIGHT_NAME = "quick-question";
 const STARTER_PROMPTS = ["Explain this", "Is this right?", "What's the risk?"];
+const QUOTE_PREVIEW_LINES = 5;
 
 type QuickQuestionMessage = { role: "user" | "assistant"; text: string };
 
@@ -361,14 +363,23 @@ export function QuickQuestionPanel(props: {
           className="grid content-start gap-5 overflow-y-auto px-5 py-4"
           ref={scrollerRef}
         >
-          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-3 text-sm whitespace-pre-wrap text-dashboard-text">
-            {thread.quote}
+          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-3 text-sm text-dashboard-text-muted">
+            {/* Long selections fold, so the questions stay in view. */}
+            <ClampedPreview
+              className="leading-relaxed break-words whitespace-pre-wrap"
+              key={thread.id}
+              label="quote"
+              lines={QUOTE_PREVIEW_LINES}
+            >
+              {/* Blank lines between paragraphs spend preview lines. */}
+              {thread.quote.replace(/\n\s*\n/g, "\n")}
+            </ClampedPreview>
           </blockquote>
           {messages.length === 0 && !props.pending ? (
             <div className="flex flex-wrap gap-2">
               {STARTER_PROMPTS.map((prompt) => (
                 <Button
-                  className="h-8 rounded-full"
+                  className="h-7 rounded-full px-2.5 text-xs"
                   key={prompt}
                   // Each click is a new ask. The panel shows the error.
                   onClick={() =>
@@ -413,10 +424,7 @@ export function QuickQuestionPanel(props: {
             </TranscriptMessageShell>
           ) : null}
         </div>
-        <div
-          className="grid gap-1 border-t border-dashboard-border px-3 pt-3 pb-2"
-          ref={footerRef}
-        >
+        <div className="grid gap-1.5 px-3 pt-2 pb-2" ref={footerRef}>
           <ConversationComposer
             compact
             disabled={thinking}
@@ -437,8 +445,10 @@ export function QuickQuestionPanel(props: {
             restoreDraftOnError
             submitLabel="Ask"
           />
-          <div className="flex items-center justify-between gap-2 px-1 text-xs text-dashboard-text-muted">
-            <span>Closing discards this question.</span>
+          <div className="flex min-w-0 items-center justify-between gap-2 pl-1 text-xs text-dashboard-text-muted">
+            <span className="min-w-0 truncate">
+              Closing discards this question.
+            </span>
             <KeepAsForkButton
               disabled={thinking}
               forkId={thread.forkId}
@@ -459,7 +469,7 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
   const forkId = props.forkId;
   return (
     <Button
-      className="h-7 px-2 text-xs"
+      className="h-7 shrink-0 px-2 text-xs whitespace-nowrap"
       disabled={!forkId || props.disabled || keep.isPending}
       onClick={() =>
         forkId &&
