@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type (ignored when version is set)
+        description: Version bump type (ignored when version is set). auto picks it from the commits.
         required: true
         type: choice
-        default: minor
+        default: auto
         options:
+          - auto
           - patch
           - minor
           - major
@@ -59,37 +60,11 @@ jobs:
         with:
           node-version: "24.22.1"
 
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
-        name: Install pnpm
-        with:
-          run_install: false
-
-      - name: Calculate version
-        id: version
-        env:
-          BUMP: ${{ inputs.bump }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          CURRENT=$(node -p "require('./packages/junior/package.json').version")
-          if [ -n "$VERSION" ]; then
-            NEW=$(npx semver "$VERSION")
-            if [ "$NEW" != "$VERSION" ]; then
-              echo "Version override must be an exact semantic version" >&2
-              exit 1
-            fi
-          else
-            NEW=$(npx semver -i "$BUMP" "$CURRENT")
-          fi
-          echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          echo "new=$NEW" >> $GITHUB_OUTPUT
-
       - name: Prepare release
-        uses: getsentry/craft@2e29b0819113d334c15da3d8cac2138cb9dc111a # 3.9.0
+        uses: getsentry/craft@v3
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          version: ${{ steps.version.outputs.new }}
+          version: ${{ inputs.version || inputs.bump }}
           force: ${{ inputs.force }}
-          git_user_name: getsentry-bot
-          git_user_email: bot@sentry.io
           llm_api_key: ${{ github.token }}
