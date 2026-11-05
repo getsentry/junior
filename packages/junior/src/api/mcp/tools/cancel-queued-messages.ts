@@ -26,7 +26,7 @@ export function registerCancelQueuedMessagesTool(
         "Drop every message that waits for the running turn of one of your conversations. The running turn continues.",
       inputSchema: { conversationId: mcpConversationIdSchema },
       outputSchema: {
-        cancelledMessages: z.number().int(),
+        cancelledMessages: z.number().int().describe("Messages dropped."),
       },
       annotations: {
         destructiveHint: true,

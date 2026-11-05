@@ -7,6 +7,7 @@ import {
   mcpConversationIdSchema,
   mcpIdempotencyKeySchema,
   mcpMessageTextSchema,
+  readMcpPendingWork,
 } from "../conversation";
 import {
   apiToolError,
@@ -29,7 +30,7 @@ export function registerSendMessageTool(
     {
       title: "Send message",
       description:
-        "Send a message as you to one of your conversations. The agent answers in the background. When a turn is running, the message waits for it. Use getConversation to follow the status and last reply.",
+        "Send a message as you to one of your conversations. The agent answers in the background. When a turn is running, the message waits for it. Returns the messages that no turn has read yet. Use getConversation to follow the status and last reply.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         message: mcpMessageTextSchema,
@@ -47,20 +48,22 @@ export function registerSendMessageTool(
       if (!(await isConversationParticipant(user, conversationId))) {
         return mcpToolError("Conversation not found.");
       }
+      let accepted;
       try {
-        const accepted = await appendConversationMessageForViewer(
+        accepted = await appendConversationMessageForViewer(
           user,
           conversationId,
           { idempotencyKey: idempotencyKey ?? randomUUID(), message },
           { attachmentStorage, queue },
         );
-        return mcpToolResult({
-          ...accepted,
-          url: getDashboardConversationLink(accepted.conversationId),
-        });
       } catch (error) {
         return apiToolError(error);
       }
+      return mcpToolResult({
+        ...accepted,
+        ...(await readMcpPendingWork(user, accepted.conversationId)),
+        url: getDashboardConversationLink(accepted.conversationId),
+      });
     },
   );
 }

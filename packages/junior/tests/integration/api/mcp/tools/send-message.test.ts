@@ -24,15 +24,32 @@ describe("sendMessage MCP tool", () => {
       conversationId,
       message: "Did the relay deploy finish?",
     });
+    const { messageId } = sent.structuredContent as { messageId: string };
     // No Turn ran, so both messages still wait in the mailbox.
+    const read = await call("getConversation", { conversationId });
     const cancelled = await call("cancelQueuedMessages", { conversationId });
 
+    const pendingMessages = [
+      expect.objectContaining({
+        delivery: "defer",
+        text: "Is ingestion healthy?",
+      }),
+      {
+        author: MCP_TEST_VIEWER,
+        createdAt: expect.any(String),
+        delivery: "defer",
+        messageId,
+        text: "Did the relay deploy finish?",
+      },
+    ];
     expect(sent.structuredContent).toEqual({
       conversationId,
       messageId: expect.any(String),
+      pendingMessages,
       status: "accepted",
       url: expect.stringContaining("/conversations/"),
     });
+    expect(read.structuredContent).toMatchObject({ pendingMessages });
     expect(cancelled.structuredContent).toEqual({ cancelledMessages: 2 });
   });
 

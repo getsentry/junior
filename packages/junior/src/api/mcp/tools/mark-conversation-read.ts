@@ -29,10 +29,15 @@ export function registerMarkConversationReadTool(
           .nonnegative()
           .optional()
           .describe(
-            "`seq` of the last message read, from listConversationMessages. Omit it to mark every message read.",
+            "`seq` of the last message read, from listConversationMessages or getConversation. Omit it to mark every message read.",
           ),
       },
-      outputSchema: { lastReadSeq: z.number().int() },
+      outputSchema: {
+        lastReadSeq: z
+          .number()
+          .int()
+          .describe("`seq` of the last message that you read."),
+      },
       annotations: {
         destructiveHint: false,
         idempotentHint: true,

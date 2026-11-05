@@ -31,6 +31,9 @@ describe("createConversation MCP tool", () => {
     expect(created.structuredContent).toEqual({
       conversationId: expect.any(String),
       messageId: expect.any(String),
+      pendingMessages: [
+        expect.objectContaining({ text: "Is ingestion healthy?" }),
+      ],
       status: "accepted",
       url: expect.stringContaining("/conversations/"),
     });

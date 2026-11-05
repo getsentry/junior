@@ -54,9 +54,11 @@ describe("getConversation MCP tool", () => {
         updatedAt: expect.any(String),
       }),
       lastReply: expect.objectContaining({
+        messageId: "message-3",
         role: "assistant",
         text: "The rollback is done.",
       }),
+      pendingMessages: [],
     });
     expect(result.structuredContent).not.toHaveProperty("brief.record");
   });

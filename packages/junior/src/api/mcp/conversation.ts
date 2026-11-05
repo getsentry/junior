@@ -3,25 +3,38 @@ import { z } from "zod";
 import {
   conversationReportStatusSchema,
   conversationSurfaceSchema,
+  type ActorIdentity,
   type ConversationReportEvent,
   type ConversationSummaryReport,
 } from "@/api/schema/conversation";
+import type { MessageAttachment } from "@/chat/attachments/input";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import type { User } from "@sentry/junior-plugin-api";
+import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
+import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
 
 /** MCP view of one Conversation. It omits dashboard-only fields. */
 export const mcpConversationSchema = z
   .object({
     conversationId: z.string(),
     title: z.string(),
-    status: conversationReportStatusSchema,
-    surface: conversationSurfaceSchema,
-    channelName: z.string().optional(),
-    locationUrl: z.string().optional(),
+    status: conversationReportStatusSchema.describe(
+      "`active` while work runs, waits to start, or waits on you. `completed` when no work is left. `failed` when the last turn failed.",
+    ),
+    surface: conversationSurfaceSchema.describe(
+      "Where it started: `slack`, `api` (the dashboard or MCP), `scheduler` (an automation), or `internal`.",
+    ),
+    channelName: z.string().optional().describe("Slack channel name."),
+    locationUrl: z.string().optional().describe("Slack thread link."),
     startedAt: z.string(),
-    lastSeenAt: z.string(),
-    archivedAt: z.string().optional(),
-    pinnedAt: z.string().optional(),
-    url: z.string().optional(),
+    lastSeenAt: z
+      .string()
+      .describe(
+        "Time of the newest activity. archiveConversation takes this value.",
+      ),
+    archivedAt: z.string().optional().describe("Set when you archived it."),
+    pinnedAt: z.string().optional().describe("Set when you pinned it."),
+    url: z.string().optional().describe("Dashboard link."),
   })
   .strict();
 
@@ -50,27 +63,55 @@ export function mcpConversation(
 export const mcpConversationIdSchema = z
   .string()
   .min(1)
-  .describe("Conversation id from searchConversations.");
+  .describe("Conversation id from searchConversations or createConversation.");
+
+const mcpAttachmentsSchema = z
+  .array(
+    z
+      .object({
+        filename: z.string(),
+        contentType: z.string(),
+        bytes: z.number().int(),
+      })
+      .strict(),
+  )
+  .optional();
+
+function mcpAttachments(
+  attachments: readonly MessageAttachment[] | undefined,
+): z.output<typeof mcpAttachmentsSchema> {
+  return attachments?.length
+    ? attachments.map(({ bytes, contentType, filename }) => ({
+        bytes,
+        contentType,
+        filename,
+      }))
+    : undefined;
+}
+
+function mcpAuthor(identity: ActorIdentity | undefined): string | undefined {
+  return identity?.fullName ?? identity?.slackUserName ?? identity?.email;
+}
 
 /** MCP view of one user or assistant Message. */
 export const mcpMessageSchema = z
   .object({
-    seq: z.number().int(),
+    seq: z
+      .number()
+      .int()
+      .describe(
+        "Position in the transcript. markConversationRead takes this value.",
+      ),
+    messageId: z
+      .string()
+      .describe(
+        "For a message that you sent, the `messageId` that sendMessage or createConversation returned.",
+      ),
     createdAt: z.string(),
     role: z.enum(["assistant", "user"]),
     author: z.string().optional(),
     text: z.string(),
-    attachments: z
-      .array(
-        z
-          .object({
-            filename: z.string(),
-            contentType: z.string(),
-            bytes: z.number().int(),
-          })
-          .strict(),
-      )
-      .optional(),
+    attachments: mcpAttachmentsSchema,
   })
   .strict();
 
@@ -87,20 +128,18 @@ export function mcpMessages(
     const data = event.data;
     if (data.type !== "message" || data.role === "system") return [];
     const text = data.text ?? "";
-    const attachments = data.attachments?.map(
-      ({ bytes, contentType, filename }) => ({ bytes, contentType, filename }),
-    );
-    if (!text && !attachments?.length) return [];
-    const author =
-      data.actorIdentity?.fullName ?? data.actorIdentity?.slackUserName;
+    const attachments = mcpAttachments(data.attachments);
+    if (!text && !attachments) return [];
+    const author = mcpAuthor(data.actorIdentity);
     return [
       {
         seq: event.seq,
+        messageId: data.messageId,
         createdAt: event.createdAt,
         role: data.role,
         ...(author ? { author } : undefined),
         text,
-        ...(attachments?.length ? { attachments } : undefined),
+        ...(attachments ? { attachments } : undefined),
       },
     ];
   });
@@ -128,12 +167,98 @@ export const mcpIdempotencyKeySchema = z
     "Reuse the same key to retry without sending the message twice. Omit it to send a new message.",
   );
 
+/**
+ * MCP view of one accepted user Message that no Turn has read yet. It is not
+ * in the transcript, so it has no `seq`.
+ */
+const mcpPendingMessageSchema = z
+  .object({
+    messageId: z.string(),
+    createdAt: z.string(),
+    author: z.string().optional(),
+    text: z.string(),
+    attachments: mcpAttachmentsSchema,
+    delivery: conversationPendingMessageDeliverySchema.describe(
+      "`defer` waits for the running turn to end. `interrupt` joins the running turn at its next safe step.",
+    ),
+  })
+  .strict();
+
+/** Pending Messages field shared by `getConversation` and the send tools. */
+export const mcpPendingMessagesSchema = z
+  .array(mcpPendingMessageSchema)
+  .describe(
+    "Accepted messages that no turn has read yet, oldest first. A message leaves this list when a turn reads it.",
+  );
+
+/** Authorization that a parked Turn waits for. */
+export const mcpAuthorizationSchema = z
+  .object({
+    label: z.string(),
+    url: z.string(),
+  })
+  .strict()
+  .describe(
+    "Set when a turn waits for you to connect an account. Open `url` in a browser to continue.",
+  );
+
+type McpPendingWork = {
+  pendingMessages: z.output<typeof mcpPendingMessagesSchema>;
+  authorization?: z.output<typeof mcpAuthorizationSchema>;
+};
+
+/**
+ * Read the Messages that wait for a Turn and the authorization that a parked
+ * Turn waits for. The caller must check that `user` is a participant.
+ */
+export async function readMcpPendingWork(
+  user: User,
+  conversationId: string,
+): Promise<McpPendingWork> {
+  const report = await readConversationPendingMessages(conversationId, {
+    viewer: user,
+  });
+  const pendingMessages = (report?.messages ?? []).flatMap((message) => {
+    if (message.text === undefined) return [];
+    const author = mcpAuthor(message.actorIdentity);
+    const attachments = mcpAttachments(message.attachments);
+    return [
+      {
+        messageId: message.messageId,
+        createdAt: message.createdAt,
+        ...(author ? { author } : undefined),
+        text: message.text,
+        ...(attachments ? { attachments } : undefined),
+        delivery: message.delivery,
+      },
+    ];
+  });
+  const authorization = report?.authorization;
+  return {
+    pendingMessages,
+    ...(authorization
+      ? {
+          authorization: {
+            label: authorization.label,
+            url: authorization.authorizationUrl,
+          },
+        }
+      : undefined),
+  };
+}
+
 /** Result of a tool that sends a message. */
 export const mcpAcceptedMessageSchema = {
   conversationId: z.string(),
-  messageId: z.string(),
+  messageId: z
+    .string()
+    .describe(
+      "Id of your message in `pendingMessages`, and later in the transcript.",
+    ),
   status: z
     .enum(["accepted", "duplicate"])
     .describe("`duplicate` when the idempotency key was already used."),
-  url: z.string().optional(),
+  pendingMessages: mcpPendingMessagesSchema,
+  authorization: mcpAuthorizationSchema.optional(),
+  url: z.string().optional().describe("Dashboard link."),
 };
