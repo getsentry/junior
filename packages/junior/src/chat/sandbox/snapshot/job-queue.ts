@@ -1,6 +1,6 @@
 /** Send Workspace snapshot build messages. */
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,

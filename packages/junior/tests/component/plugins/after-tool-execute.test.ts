@@ -12,6 +12,8 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
+const CONVERSATION_ID = "slack:C1:1700000000.000100";
+const TURN_ID = "turn-1";
 
 async function insertWorkspace() {
   const now = new Date("2026-11-04T00:00:00.000Z");
@@ -62,10 +64,14 @@ function editTool(
     undefined,
     undefined,
     createPluginHookRunner({
-      sandbox: () => ({
-        workspace: sandboxWorkspace,
-        workspaceId,
-      }),
+      toolRun: {
+        conversationId: CONVERSATION_ID,
+        turnId: TURN_ID,
+        sandbox: () => ({
+          workspace: sandboxWorkspace,
+          workspaceId,
+        }),
+      },
     }),
   );
   return { execute, tool: tool! };
@@ -249,10 +255,14 @@ describe("afterToolExecute plugin hooks", () => {
       undefined,
       undefined,
       createPluginHookRunner({
-        sandbox: () => ({
-          workspace: fakeSandbox(""),
-          workspaceId: () => undefined,
-        }),
+        toolRun: {
+          conversationId: CONVERSATION_ID,
+          turnId: TURN_ID,
+          sandbox: () => ({
+            workspace: fakeSandbox(""),
+            workspaceId: () => undefined,
+          }),
+        },
       }),
       undefined,
       undefined,

@@ -4,7 +4,7 @@ import {
   parseRequiredSlackUserIdParam,
   slackUserIdParam,
 } from "@/chat/slack/id-param";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";

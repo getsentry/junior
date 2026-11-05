@@ -96,8 +96,7 @@ describe("searchConversationEvents", () => {
     await events.replaceHistory(CURRENT_CONVERSATION_ID, {
       createdAtMs: 3,
       data: {
-        type: "handoff",
-        modelProfile: "handoff",
+        type: "compaction",
         modelId: "test/model",
         replacementHistory: [
           {
@@ -128,7 +127,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },
@@ -150,7 +149,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },
@@ -169,7 +168,7 @@ describe("searchConversationEvents", () => {
         {
           seq: 2,
           data: {
-            type: "handoff",
+            type: "compaction",
             replacement_history_count: 1,
           },
         },
@@ -350,6 +349,13 @@ describe("searchConversationEvents", () => {
       executeTool({ conversation_id: privateConversationId }),
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateConversationId}`,
+    );
+    // A missing Conversation gets the same error as a private one.
+    const missingConversationId = "slack:C404:1700000000.400000";
+    await expect(
+      executeTool({ conversation_id: missingConversationId }),
+    ).rejects.toThrow(
+      `Conversation events are not accessible: ${missingConversationId}`,
     );
   });
 });

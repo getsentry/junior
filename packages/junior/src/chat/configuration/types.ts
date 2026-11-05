@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** JSON value accepted by Location configuration. */
 export const configValueSchema = z.json();

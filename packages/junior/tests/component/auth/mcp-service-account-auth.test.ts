@@ -165,9 +165,8 @@ describe("MCP service account auth", () => {
         content: [{ type: "text", text: "access-1" }],
       });
       expect(
-        records.find(
-          (record) => record.eventName === "mcp.tool_call.completed",
-        )?.attributes,
+        records.find((record) => record.eventName === "mcp.tool_call.completed")
+          ?.attributes,
       ).toMatchObject({
         "app.credential.account": "service_account",
         "app.log.audit": true,

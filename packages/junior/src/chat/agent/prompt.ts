@@ -53,18 +53,14 @@ import type {
 } from "@/chat/agent/types";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
-const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 
 export type UserContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
 
-type UserTurnAttachment = NonNullable<AgentInstruction["attachments"]>[number];
-
-/** User-turn content parts plus the plain-text blocks used for routing decisions. */
+/** User-turn content parts plus the thread context sent beside them. */
 export interface PromptInput {
   contextContentParts: UserContentPart[];
-  routerBlocks: string[];
   userContentParts: UserContentPart[];
 }
 
@@ -202,64 +198,11 @@ function buildOmittedImageAttachmentNotice(count: number): string {
   ].join("\n");
 }
 
-function trimRouterAttachmentText(text: string): string {
-  const normalized = text.replaceAll("\0", " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length <= MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS
-    ? normalized
-    : `${normalized.slice(0, MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS)}...`;
-}
-
-function supportsRouterTextPreview(mediaType: string): boolean {
-  const baseMediaType = mediaType.split(";", 1)[0]?.trim().toLowerCase();
-  if (!baseMediaType) {
-    return false;
-  }
-  return (
-    baseMediaType.startsWith("text/") ||
-    baseMediaType === "application/json" ||
-    baseMediaType === "application/xml" ||
-    baseMediaType === "application/x-www-form-urlencoded" ||
-    baseMediaType.endsWith("+json") ||
-    baseMediaType.endsWith("+xml")
-  );
-}
-
-function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
-  if (attachment.promptText) {
-    return trimRouterAttachmentText(attachment.promptText);
-  }
-
-  const header = [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-  ];
-
-  if (attachment.data && supportsRouterTextPreview(attachment.mediaType)) {
-    const preview = trimRouterAttachmentText(attachment.data.toString("utf8"));
-    if (preview) {
-      return [
-        ...header,
-        "<text-preview>",
-        preview,
-        "</text-preview>",
-        "</attachment>",
-      ].join("\n");
-    }
-  }
-
-  return [...header, "</attachment>"].join("\n");
-}
-
 function buildUserTurnInput(args: {
   omittedImageAttachmentCount: number;
   userAttachments?: AgentAttachment[];
   userTurnText: string;
 }): PromptInput {
-  const routerBlocks: string[] = [];
   const userContentParts: UserContentPart[] = [
     { type: "text", text: args.userTurnText },
   ];
@@ -269,12 +212,9 @@ function buildUserTurnInput(args: {
       args.omittedImageAttachmentCount,
     );
     userContentParts.push({ type: "text", text: omittedImagesNotice });
-    routerBlocks.push(omittedImagesNotice);
   }
 
   for (const attachment of args.userAttachments ?? []) {
-    routerBlocks.push(buildRouterAttachmentBlock(attachment));
-
     if (attachment.promptText) {
       userContentParts.push({
         type: "text",
@@ -316,10 +256,10 @@ function buildUserTurnInput(args: {
     });
   }
 
-  return { contextContentParts: [], routerBlocks, userContentParts };
+  return { contextContentParts: [], userContentParts };
 }
 
-/** Build the prompt-facing user input, keeping router text aligned with Pi content. */
+/** Build the prompt-facing user input. */
 export function buildPromptInput(args: {
   instruction: AgentInstruction;
   history?: readonly import("@/chat/pi/messages").PiMessage[];
@@ -566,8 +506,8 @@ function planPromptReplay(args: PromptReplayArgs) {
  * Load the Turn context for a new prompt: plugin prompt hooks, such as
  * memory recall, Conversation notes, and the user customization.
  *
- * It needs no tool wiring or Turn route, so the caller can run it while the
- * router and sandbox setup run.
+ * It needs no tool wiring, so the caller can run it while sandbox setup
+ * runs.
  */
 export async function loadPromptTurnContext(
   args: PromptReplayArgs & {

@@ -1,5 +1,129 @@
 # Changelog
 
+## 0.279.0
+
+### New Features ✨
+
+#### Mcp
+
+- Let sendMessage join the running Turn by @dcramer with @sentry-junior in [#2709](https://github.com/getsentry/junior/pull/2709)
+- Follow a Conversation with a cursor by @dcramer with @sentry-junior in [#2707](https://github.com/getsentry/junior/pull/2707)
+- Return pending messages and describe MCP tool results by @dcramer with @sentry-junior in [#2706](https://github.com/getsentry/junior/pull/2706)
+- Add a conversations:write scope to start and continue Conversations by @dcramer with @sentry-junior in [#2704](https://github.com/getsentry/junior/pull/2704)
+- Expose the remaining conversation controls by @dcramer with @sentry-junior in [#2702](https://github.com/getsentry/junior/pull/2702)
+
+#### Other
+
+- (plugins) Record plugin model cost in every Conversation context by @dcramer with @sentry-junior in [#2701](https://github.com/getsentry/junior/pull/2701)
+- (slack) Add channel topic and description to session context by @sentry-junior in [#2696](https://github.com/getsentry/junior/pull/2696)
+- (telemetry) Name dashboard and server spans after route patterns by @sentry-junior in [#2717](https://github.com/getsentry/junior/pull/2717)
+- (xdotcom) Add read-only X plugin by @dcramer with @sentry-junior in [#2698](https://github.com/getsentry/junior/pull/2698)
+
+### Bug Fixes 🐛
+
+- (codemode) Give scripts the result of MCP tool calls by @lcian with @sentry-junior in [#2669](https://github.com/getsentry/junior/pull/2669)
+- (dashboard) Show a Watch on linked work in its linked work row by @thomasjiangcy with @sentry-junior in [#2726](https://github.com/getsentry/junior/pull/2726)
+- (github) Keep co-authors when Junior rewrites commits by @thomasjiangcy with @sentry-junior in [#2699](https://github.com/getsentry/junior/pull/2699)
+- (release) Align xdotcom version with the 0.278.0 release by @thomasjiangcy with @sentry-junior in [#2711](https://github.com/getsentry/junior/pull/2711)
+- (sentry) Hide sandbox egress tokens and request bodies from telemetry by @thomasjiangcy with @sentry-junior in [#2715](https://github.com/getsentry/junior/pull/2715)
+- (slack) Link Review item card titles to the subject by @dcramer with @sentry-junior in [#2710](https://github.com/getsentry/junior/pull/2710)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Serve dashboard browser files as static assets by @thomasjiangcy with @sentry-junior in [#2725](https://github.com/getsentry/junior/pull/2725)
+- Embed core data in the dashboard page by @thomasjiangcy with @sentry-junior in [#2724](https://github.com/getsentry/junior/pull/2724)
+- Prefetch a Conversation when its list row is hovered by @thomasjiangcy with @sentry-junior in [#2723](https://github.com/getsentry/junior/pull/2723)
+- Read the mailbox with the first conversation detail by @thomasjiangcy with @sentry-junior in [#2716](https://github.com/getsentry/junior/pull/2716)
+- Read Conversation list authors from an index by @thomasjiangcy with @sentry-junior in [#2714](https://github.com/getsentry/junior/pull/2714)
+
+#### Db
+
+- Raise the Neon pool to 10 connections by @thomasjiangcy with @sentry-junior in [#2712](https://github.com/getsentry/junior/pull/2712)
+- Index plugin event reads for one Conversation by @thomasjiangcy with @sentry-junior in [#2713](https://github.com/getsentry/junior/pull/2713)
+- Drop unused agent invocation model_profile column by @sentry-junior in [#2700](https://github.com/getsentry/junior/pull/2700)
+
+#### Other
+
+- (briefs) Generate Briefs with the fast model by @thomasjiangcy with @sentry-junior in [#2719](https://github.com/getsentry/junior/pull/2719)
+- (evals) Use the @sentry/roach package for eval recordings by @dcramer with @sentry-junior in [#2703](https://github.com/getsentry/junior/pull/2703)
+
+## 0.278.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Let readers resize the conversation sidebar by @betegon with @sentry-junior in [#2686](https://github.com/getsentry/junior/pull/2686)
+- Open long transcripts at the read position by @BYK with @sentry-junior in [#2635](https://github.com/getsentry/junior/pull/2635)
+- Let readers collapse the conversation sidebar by @betegon in [#2675](https://github.com/getsentry/junior/pull/2675)
+
+#### Other
+
+- (access) Isolate private Conversations by @sentry-junior in [#2691](https://github.com/getsentry/junior/pull/2691)
+- (agents) Replace listAgents with searchAgents and one conversation access rule by @dcramer with @sentry-junior in [#2672](https://github.com/getsentry/junior/pull/2672)
+- (events) Keep routine Watch replies out of Slack by @BYK with @sentry-junior in [#2659](https://github.com/getsentry/junior/pull/2659)
+- (github) Add a tool to comment on pull requests by @BYK with @sentry-junior in [#2690](https://github.com/getsentry/junior/pull/2690)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Shorten auto archive toggle and move help to a popover by @BYK with @sentry-junior in [#2685](https://github.com/getsentry/junior/pull/2685)
+- Send the detail version in a custom header by @BYK with @sentry-junior in [#2687](https://github.com/getsentry/junior/pull/2687)
+
+#### Google
+
+- Rank meeting slots by meeting days and focus time, with flexible lunch and breaks by @BYK with @sentry-junior in [#2666](https://github.com/getsentry/junior/pull/2666)
+- Open calendar event links in the viewer's Workspace account by @BYK with @sentry-junior in [#2682](https://github.com/getsentry/junior/pull/2682)
+
+#### Other
+
+- (memory) Make all memory public by @dcramer with @sentry-junior in [#2684](https://github.com/getsentry/junior/pull/2684)
+- (task) Answer Event questions where they were asked by @BYK with @sentry-junior in [#2689](https://github.com/getsentry/junior/pull/2689)
+
+### Internal Changes 🔧
+
+- (agent) Remove model handoff, Turn router, and model profiles by @dcramer with @sentry-junior in [#2681](https://github.com/getsentry/junior/pull/2681)
+- (dashboard) Cache model usage sums with a seq watermark by @BYK with @sentry-junior in [#2688](https://github.com/getsentry/junior/pull/2688)
+
+## 0.277.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Pin conversations in the sidebar by @thomasjiangcy with @sentry-junior in [#2663](https://github.com/getsentry/junior/pull/2663)
+- Add a copy button and highlight untagged code blocks by @MathurAditya724 with @sentry-junior in [#2664](https://github.com/getsentry/junior/pull/2664)
+
+#### Other
+
+- (conversations) Auto-archive conversations when their work is done by @sentry-junior in [#2541](https://github.com/getsentry/junior/pull/2541)
+- (github) Check GitHub status for unexplained GitHub and CI failures by @BYK with @sentry-junior in [#2662](https://github.com/getsentry/junior/pull/2662)
+- (mcp) Record audit events for chosen MCP tools by @dcramer with @sentry-junior in [#2671](https://github.com/getsentry/junior/pull/2671)
+- (notion) Let the service account create and update pages by @dcramer with @sentry-junior in [#2670](https://github.com/getsentry/junior/pull/2670)
+- (plugins) Add an afterToolExecute hook for checks on finished tool calls by @sentry-junior in [#2646](https://github.com/getsentry/junior/pull/2646)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep the return page when Google sign-in fails by @dcramer with @sentry-junior in [#2674](https://github.com/getsentry/junior/pull/2674)
+- Refresh the details panel when conversation detail changes by @thomasjiangcy with @sentry-junior in [#2667](https://github.com/getsentry/junior/pull/2667)
+- Separate memories in popovers and the memory list by @thomasjiangcy with @sentry-junior in [#2660](https://github.com/getsentry/junior/pull/2660)
+
+#### Other
+
+- (slack) Convert canvas HTML to Markdown on read by @sentry-junior in [#2647](https://github.com/getsentry/junior/pull/2647)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Skip rebuilding unchanged conversation detail on polls by @BYK with @sentry-junior in [#2655](https://github.com/getsentry/junior/pull/2655)
+- Use shadcn primitives for hand-rolled notices and toggles by @MathurAditya724 with @sentry-junior in [#2661](https://github.com/getsentry/junior/pull/2661)
+
 ## 0.276.0
 
 ### New Features ✨

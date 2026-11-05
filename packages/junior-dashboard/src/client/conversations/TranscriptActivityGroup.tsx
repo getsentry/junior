@@ -42,6 +42,33 @@ export function isCollapsibleActivityEntry(
   return true;
 }
 
+/**
+ * Keys of message rows that fold into activity: each quiet reply and the
+ * Event messages that started its Turn. Event messages wait for the next
+ * reply; a message from a person clears them.
+ */
+export function quietTurnEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const keys = new Set<string>();
+  let eventKeys: string[] = [];
+  for (const entry of entries) {
+    if (entry.kind !== "message") continue;
+    const { message } = entry;
+    if (message.role === "user") {
+      eventKeys = message.eventType ? [...eventKeys, entry.key] : [];
+      continue;
+    }
+    if (message.role !== "assistant") continue;
+    if (message.quiet) {
+      keys.add(entry.key);
+      for (const key of eventKeys) keys.add(key);
+    }
+    eventKeys = [];
+  }
+  return keys;
+}
+
 function entryStartMs(entry: RenderedTranscriptEntry): number | undefined {
   if (entry.kind === "tool") {
     return entry.part.startedTimestamp ?? entry.timestamp;
@@ -104,25 +131,18 @@ export function activityGroupSummary(
     (entry) =>
       entry.kind === "context" && entry.part.event.type === "compaction",
   ).length;
-  const handoffs = entries.flatMap((entry) =>
-    entry.kind === "context" && entry.part.event.type === "handoff"
-      ? [entry.part.event]
-      : [],
-  );
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
   const attachmentsCount = entries.filter(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
-  const eventCount = entries.filter((entry) => entry.kind === "message").length;
-  const [onlyHandoff] = handoffs;
-  const handoffSummary =
-    handoffs.length === 1 && onlyHandoff
-      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
-      : handoffs.length > 1
-        ? countLabel(handoffs.length, "model handoff", "model handoffs")
-        : undefined;
+  const eventCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.message.role !== "assistant",
+  ).length;
+  const quietReplyCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.message.role === "assistant",
+  ).length;
 
   const parts = [
     toolCount > 0
@@ -134,7 +154,6 @@ export function activityGroupSummary(
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
       : undefined,
-    handoffSummary,
     structuredCount > 0
       ? countLabel(structuredCount, "1 structured event", "structured events")
       : undefined,
@@ -142,6 +161,9 @@ export function activityGroupSummary(
       ? countLabel(attachmentsCount, "1 file delivery", "file deliveries")
       : undefined,
     eventCount > 0 ? countLabel(eventCount, "1 event", "events") : undefined,
+    quietReplyCount > 0
+      ? countLabel(quietReplyCount, "1 quiet reply", "quiet replies")
+      : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);

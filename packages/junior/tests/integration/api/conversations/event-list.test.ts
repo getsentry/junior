@@ -69,6 +69,54 @@ function assistantMessage(createdAtMs: number, inputTokens = 0) {
   };
 }
 
+/** One Turn: its input message, start, `replies` messages, and end. */
+function turn(index: number, createdAtMs: number, replies = 1) {
+  return [
+    message(`input-${index}`, createdAtMs),
+    {
+      data: {
+        type: "turn_started" as const,
+        turnId: `turn-${index}`,
+        inputMessageIds: [`input-${index}`],
+        surface: "internal" as const,
+      },
+      createdAtMs: createdAtMs + 1,
+    },
+    ...Array.from({ length: replies }, (_, reply) =>
+      message(`reply-${index}-${reply}`, createdAtMs + 2),
+    ),
+    {
+      data: {
+        type: "turn_completed" as const,
+        turnId: `turn-${index}`,
+        outcome: "success" as const,
+      },
+      createdAtMs: createdAtMs + 3,
+    },
+  ];
+}
+
+/** Read the default detail, then every earlier page through its cursors. */
+async function readDefaultDetailAndHistory(conversationId: string) {
+  const app = createJuniorApi();
+  const response = await app.request(
+    `http://localhost/api/conversations/${conversationId}`,
+  );
+  expect(response.status).toBe(200);
+  const detail = conversationDetailReportSchema.parse(await response.json());
+  const pages: ConversationReportEvent[][] = [detail.events];
+  let before = detail.previousCursor;
+  while (before) {
+    const pageResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(before)}&limit=7`,
+    );
+    const page = conversationEventPageSchema.parse(await pageResponse.json());
+    pages.unshift(page.events);
+    before = page.previousCursor;
+  }
+  return { detail, history: pages.flat().map((event) => event.seq) };
+}
+
 describe("conversation event list API", () => {
   afterEach(async () => {
     await closeDb();
@@ -146,21 +194,135 @@ describe("conversation event list API", () => {
     ]);
   });
 
-  it("keeps recorded model settings and call usage across handoffs and page boundaries", async () => {
+  it("opens the default detail at the third-latest Turn", async () => {
+    const conversationId = "local:test:latest-turns";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 5 }, (_, index) => turn(index, index * 10)).flat(),
+    );
+
+    const { detail, history } =
+      await readDefaultDetailAndHistory(conversationId);
+    // Each Turn has 4 events. The page starts with the input message of the
+    // third-latest Turn, which comes before its start.
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 12 }, (_, index) => 8 + index),
+    );
+    expect(detail.events[0]?.data).toMatchObject({
+      type: "message",
+      messageId: "input-2",
+    });
+    expect(history).toEqual(Array.from({ length: 20 }, (_, index) => index));
+  });
+
+  it("opens the default detail at the start with fewer than three Turns", async () => {
+    const conversationId = "local:test:latest-turns-short";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      message("before-turns", 0),
+      ...turn(0, 10),
+      ...turn(1, 20),
+    ]);
+
+    const { detail } = await readDefaultDetailAndHistory(conversationId);
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 9 }, (_, index) => index),
+    );
+    expect(detail.previousCursor).toBeUndefined();
+  });
+
+  it("caps default pages at 150 events when the latest Turns are longer", async () => {
+    const conversationId = "local:test:latest-turns-long";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      ...turn(0, 0),
+      ...turn(1, 10),
+      ...turn(2, 20, 300),
+      ...turn(3, 30, 300),
+    ]);
+
+    // The latest three Turns hold 610 events, so the latest 150 are shown.
+    const { detail, history } =
+      await readDefaultDetailAndHistory(conversationId);
+    const seqs = (start: number, length: number) =>
+      Array.from({ length }, (_, index) => start + index);
+    expect(detail.events.map((event) => event.seq)).toEqual(seqs(464, 150));
+    expect(history).toEqual(seqs(0, 614));
+
+    // Event pages without a `limit` hold the same number of events.
+    const app = createJuniorApi();
+    const readPage = async (query: string) =>
+      conversationEventPageSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}/events?${query}`,
+          )
+        ).json(),
+      );
+    const earlier = await readPage(
+      `before=${encodeURIComponent(detail.previousCursor!)}`,
+    );
+    expect(earlier.events.map((event) => event.seq)).toEqual(seqs(314, 150));
+    // Half of the page ends with the linked event, and the rest follows it.
+    const around = await readPage("event=300");
+    expect(around.events.map((event) => event.seq)).toEqual(seqs(226, 150));
+  });
+
+  it("opens the page around a linked event or Turn", async () => {
+    const conversationId = "local:test:linked-events";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      ...Array.from({ length: 10 }, (_, index) =>
+        message(`message-${index}`, index + 1),
+      ),
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-linked",
+          inputMessageIds: ["message-9"],
+          surface: "internal",
+        },
+        createdAtMs: 11,
+      },
+      ...Array.from({ length: 10 }, (_, index) =>
+        message(`later-${index}`, index + 12),
+      ),
+    ]);
+
+    const app = createJuniorApi();
+    const readPage = async (query: string) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${conversationId}/events?${query}&limit=4`,
+      );
+      expect(response.status).toBe(200);
+      return conversationEventPageSchema.parse(await response.json());
+    };
+    // Half of the page ends with the linked event, and the rest follows it.
+    const eventPage = await readPage("event=4");
+    expect(eventPage.events.map((event) => event.seq)).toEqual([3, 4, 5, 6]);
+    expect(eventPage.previousCursor).toBeDefined();
+    expect(eventPage.nextCursor).toBeDefined();
+    // A Turn link opens at the event that started the Turn.
+    const turnPage = await readPage("turn=turn-linked");
+    expect(turnPage.events.map((event) => event.seq)).toEqual([9, 10, 11, 12]);
+
+    const missingTurn = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?turn=turn-missing`,
+    );
+    expect(missingTurn.status).toBe(404);
+    expect(apiErrorSchema.parse(await missingTurn.json())).toEqual({
+      error: "Turn not found.",
+    });
+  });
+
+  it("keeps recorded models and call usage across page boundaries", async () => {
     const conversationId = "local:test:event-model";
     await recordConversation(conversationId);
     const store = getConversationEventStore();
-    const initialModel = {
-      modelId: "openai/gpt-5",
-      modelProfile: "standard",
-      reasoningLevel: "low",
-    };
-    const targetModel = {
-      modelId: "openai/gpt-5.6-sol",
-      modelProfile: "handoff",
-      reasoningLevel: "high",
-    };
-    const call = assistantMessage(3, 120);
+    const initialModel = { modelId: "openai/gpt-5" };
+    const nextModel = { modelId: "openai/gpt-5.6-sol" };
+    const call = assistantMessage(2, 120);
     call.data.usage.output = 40;
     call.data.usage.cacheRead = 500;
     call.data.usage.cacheWrite = 60;
@@ -176,17 +338,6 @@ describe("conversation event list API", () => {
         },
       },
       {
-        createdAtMs: 2,
-        data: {
-          type: "turn_routed",
-          turnId: "turn-1",
-          ...initialModel,
-          reasoningLevel: "low",
-          source: "router",
-          costUsd: 0.001,
-        },
-      },
-      {
         ...call,
         data: {
           ...call.data,
@@ -194,23 +345,17 @@ describe("conversation event list API", () => {
           providerMetadata: { secret: "must-not-leak" },
         },
       },
-    ]);
-    await store.replaceHistory(conversationId, {
-      createdAtMs: 4,
-      data: { type: "handoff", ...targetModel, replacementHistory: [] },
-    });
-    await store.append(conversationId, [
       {
-        ...assistantMessage(5),
+        ...assistantMessage(3),
         data: {
-          ...assistantMessage(5).data,
+          ...assistantMessage(3).data,
           provider: "vercel-ai-gateway",
-          model: targetModel.modelId,
+          model: nextModel.modelId,
         },
       },
       // More than one scan batch: the latest page must resolve context from SQL.
       ...Array.from({ length: 70 }, (_, index) => ({
-        createdAtMs: 6 + index,
+        createdAtMs: 4 + index,
         data: {
           type: "tool_execution_started" as const,
           toolCallId: `call-${index}`,
@@ -228,10 +373,10 @@ describe("conversation event list API", () => {
         ).json(),
       );
     const latest = await read(1);
-    expect(latest.events[0]?.model).toEqual(targetModel);
+    expect(latest.events[0]?.model).toEqual(nextModel);
     expect(latest.events[0]?.modelCall).toBeUndefined();
     const full = await read(100);
-    expect(full.events[2]).toMatchObject({
+    expect(full.events[1]).toMatchObject({
       model: initialModel,
       modelCall: {
         provider: "openai",
@@ -248,8 +393,8 @@ describe("conversation event list API", () => {
         },
       },
     });
-    expect(full.events[3]?.model).toEqual(targetModel);
-    expect(full.events[4]?.model).toEqual(targetModel);
+    expect(full.events[2]?.model).toEqual(nextModel);
+    expect(full.events[3]?.model).toEqual(nextModel);
     expect(full.events.at(-1)).toEqual(latest.events[0]);
     expect(JSON.stringify(full.events)).not.toContain("must-not-leak");
     if (!latest.previousCursor) throw new Error("Expected a previous cursor");
@@ -278,16 +423,16 @@ describe("conversation event list API", () => {
         },
       },
       ...Array.from({ length: 70 }, (_, index) =>
-        message(`pending-route-${index}`, 83 + index),
+        message(`pending-model-${index}`, 83 + index),
       ),
     ]);
     expect((await read(1)).events[0]?.model).toBeUndefined();
     const finished = await read(100);
-    expect(finished.events.find((event) => event.seq === 75)?.model).toEqual(
-      targetModel,
+    expect(finished.events.find((event) => event.seq === 73)?.model).toEqual(
+      nextModel,
     );
     expect(
-      finished.events.find((event) => event.seq === 76)?.model,
+      finished.events.find((event) => event.seq === 74)?.model,
     ).toBeUndefined();
   });
 
@@ -384,6 +529,64 @@ describe("conversation event list API", () => {
         },
       }),
     ]);
+  });
+
+  it("finds a subagent start that is more than one scan chunk older", async () => {
+    const conversationId = "local:test:paged-subagent-far";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "subagent_started",
+          subagentInvocationId: "invocation-far",
+          subagentKind: "advisor",
+          childConversationId: "child-far",
+        },
+        createdAtMs: 1,
+      },
+      // Rows that project to no reporting event, so the scan reads past
+      // its first chunk before it finds the start.
+      ...Array.from({ length: 70 }, (_, index) => ({
+        data: {
+          type: "structured_event" as const,
+          namespace: "unregistered-plugin",
+          name: "progress",
+          version: 1,
+          content: { index },
+        },
+        createdAtMs: 2 + index,
+      })),
+      {
+        data: {
+          type: "subagent_ended",
+          subagentInvocationId: "invocation-far",
+          outcome: "success",
+        },
+        createdAtMs: 100,
+      },
+    ]);
+
+    const app = createJuniorApi();
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}?limit=1`,
+    );
+    const detail = conversationDetailReportSchema.parse(
+      await detailResponse.json(),
+    );
+    expect(detail.events).toEqual([
+      expect.objectContaining({
+        seq: 71,
+        data: {
+          type: "subagent",
+          startedSeq: 0,
+          startedAt: "1970-01-01T00:00:00.001Z",
+          childConversationId: "child-far",
+          subagentKind: "advisor",
+          status: "completed",
+        },
+      }),
+    ]);
+    expect(detail.previousCursor).toBeDefined();
   });
 
   it("keeps a terminal tool observation self-contained when its start is older", async () => {

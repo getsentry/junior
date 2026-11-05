@@ -214,82 +214,6 @@ describe("canonical event transcript reduction", () => {
     expect(entry && entryMatchesSearch(entry, "redacted")).toBe(true);
   });
 
-  it("adapts turn routes onto messages while keeping handoffs structural", () => {
-    const messages = conversationTranscriptMessages(
-      conversation([
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "message",
-          messageId: "question-1",
-          role: "user",
-          text: "Review this change.",
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "turn_lifecycle",
-          turnId: "turn-1",
-          state: "started",
-        }),
-        event(3, "2026-01-01T00:00:03.000Z", {
-          type: "turn_routed",
-          turnId: "turn-1",
-          modelProfile: "handoff",
-          modelId: "openai/gpt-5.6-sol",
-          reasoningLevel: "high",
-          confidence: 0.93,
-          source: "router",
-        }),
-        event(4, "2026-01-01T00:00:04.000Z", {
-          type: "tool_calls",
-          calls: [
-            {
-              toolCallId: "handoff-1",
-              name: "handoff",
-              status: "running",
-            },
-          ],
-        }),
-        event(5, "2026-01-01T00:00:05.000Z", {
-          type: "handoff",
-          modelProfile: "review",
-          modelId: "openai/gpt-5.6-review",
-          triggeringToolCallId: "handoff-1",
-          summary: "Continue with the regression review.",
-        }),
-      ]),
-    );
-    const entries = groupTranscriptMessages(messages);
-
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toMatchObject({
-      kind: "message",
-      message: {
-        role: "user",
-        route: {
-          modelProfile: "handoff",
-          modelId: "openai/gpt-5.6-sol",
-          reasoningLevel: "high",
-          confidence: 0.93,
-          source: "router",
-        },
-      },
-    });
-    expect(entries[1]).toMatchObject({
-      kind: "context",
-      part: {
-        type: "context_event",
-        event: {
-          type: "handoff",
-          modelProfile: "review",
-          modelId: "openai/gpt-5.6-review",
-          summary: "Continue with the regression review.",
-        },
-      },
-    });
-    expect(entryMatchesSearch(entries[1]!, "regression review")).toBe(true);
-    expect(messageRawText(messages[1]!)).toContain(
-      "Continue with the regression review.",
-    );
-  });
-
   it("keeps Event fields for transcript display", () => {
     const [message] = conversationTranscriptMessages(
       conversation([
@@ -565,12 +489,6 @@ describe("canonical event transcript reduction", () => {
               },
             ],
           }),
-          event(5, "2026-01-01T00:00:05.000Z", {
-            type: "handoff",
-            modelProfile: "fast",
-            modelId: "openai/gpt-5-mini",
-            triggeringToolCallId: "handoff-correlated",
-          }),
           event(6, "2026-01-01T00:00:06.000Z", {
             type: "subagent",
             startedSeq: 6,
@@ -578,11 +496,6 @@ describe("canonical event transcript reduction", () => {
             childConversationId: "child-legacy",
             subagentKind: "advisor",
             status: "running",
-          }),
-          event(7, "2026-01-01T00:00:07.000Z", {
-            type: "handoff",
-            modelProfile: "fast",
-            modelId: "openai/gpt-5-mini",
           }),
           event(8, "2026-01-01T00:00:08.000Z", {
             type: "tool_calls",
@@ -592,12 +505,6 @@ describe("canonical event transcript reduction", () => {
                 name: "advisor",
                 status: "running",
                 input: { task: "review" },
-              },
-              {
-                toolCallId: "handoff-correlated",
-                name: "handoff",
-                status: "running",
-                input: { profile: "fast" },
               },
             ],
           }),
@@ -609,17 +516,6 @@ describe("canonical event transcript reduction", () => {
                 name: "advisor",
                 status: "completed",
                 output: { skill_name: "junior-qa" },
-              },
-            ],
-          }),
-          event(10, "2026-01-01T00:00:10.000Z", {
-            type: "tool_calls",
-            calls: [
-              {
-                toolCallId: "handoff-correlated",
-                name: "handoff",
-                status: "completed",
-                output: { matches: 3 },
               },
             ],
           }),
@@ -636,9 +532,7 @@ describe("canonical event transcript reduction", () => {
     ).toEqual([
       { kind: "subagent", name: undefined, status: "completed" },
       { kind: "tool", name: "advisor", status: undefined },
-      { kind: "context", name: undefined, status: undefined },
       { kind: "subagent", name: undefined, status: "running" },
-      { kind: "context", name: undefined, status: undefined },
     ]);
   });
 
@@ -648,11 +542,6 @@ describe("canonical event transcript reduction", () => {
         event(0, "2026-01-01T00:00:00.000Z", {
           type: "compaction",
           summary: "Preserve the release checklist.",
-        }),
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "handoff",
-          modelProfile: "fast",
-          modelId: "openai/gpt-5-mini",
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "subagent",
@@ -682,11 +571,10 @@ describe("canonical event transcript reduction", () => {
 
     expect(entries.map((entry) => entry.kind)).toEqual([
       "context",
-      "context",
       "subagent",
       "failure",
     ]);
-    expect(entries[2]).toMatchObject({
+    expect(entries[1]).toMatchObject({
       part: {
         childConversationId: "child-1",
         status: "completed",
@@ -898,12 +786,6 @@ describe("canonical event transcript reduction", () => {
           event(4, "2026-01-01T00:00:04.000Z", {
             type: "compaction",
           }),
-          event(5, "2026-01-01T00:00:05.000Z", {
-            type: "handoff",
-            modelProfile: "fast",
-            modelId: "openai/gpt-5-mini",
-            reasoningLevel: "medium",
-          }),
           event(6, "2026-01-01T00:00:06.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-1",
@@ -927,8 +809,6 @@ describe("canonical event transcript reduction", () => {
       "advisor",
       "completed",
       "compacted",
-      "openai/gpt-5-mini",
-      "medium",
       "failed",
       "delivery failed",
     ]) {

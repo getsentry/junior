@@ -477,16 +477,27 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
-      reportEvent(3, iso(Date.parse(startedAt), 9_000), {
-        type: "turn_routed",
-        turnId: "active-turn",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-        costUsd: 0.0012,
-      }),
+      reportEvent(
+        3,
+        iso(Date.parse(startedAt), 9_000),
+        {
+          type: "assistant_message",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Compare the latest deploy with the previous baseline.",
+            },
+          ],
+        },
+        {
+          model: { modelId: "openai/gpt-5.6-sol" },
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+          },
+        },
+      ),
       reportEvent(
         4,
         iso(Date.parse(startedAt), 10_000),
@@ -501,11 +512,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
           modelCall: {
             provider: "vercel-ai-gateway",
             api: "openai-responses",
@@ -553,11 +560,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
         },
       ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
@@ -918,7 +921,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(11, iso(Date.parse(startedAt), 56_000), {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         details: {
           reason: "capacity",
@@ -1124,7 +1126,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
   events.push(
     reportEvent(nextSeq, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       summary:
         "The release is complete. Preserve the published version and continue by checking the update pull request.",
@@ -1138,17 +1139,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         retainedMessageCount: 1,
         summaryChars: 980,
       },
-    }),
-  );
-  nextSeq += 1;
-  events.push(
-    reportEvent(nextSeq, iso(Date.parse(startedAt), 90_000), {
-      type: "handoff",
-      modelProfile: "fast",
-      modelId: "openai/gpt-5-mini",
-      reasoningLevel: "medium",
-      summary:
-        "Investigate the remaining deployment checks and report any actionable failure.",
     }),
   );
   nextSeq += 1;
@@ -2298,6 +2288,39 @@ export function readMockConversationEvents(
       : conversation.previousCursor
         ? { previousCursor: conversation.previousCursor }
         : {}),
+  };
+}
+
+/**
+ * Return the page around a linked event or Turn. Mock transcripts fit one
+ * page, so it holds every event of the Conversation.
+ */
+export function readMockConversationEventsAround(
+  conversationId: string,
+  link: { event: number } | { turn: string },
+): ConversationEventPage | "turn-not-found" | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (
+    "turn" in link &&
+    !conversation.events.some(
+      ({ data }) =>
+        data.type === "turn_lifecycle" &&
+        data.state === "started" &&
+        data.turnId === link.turn,
+    )
+  ) {
+    return "turn-not-found";
+  }
+  return {
+    events: conversation.events,
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+    ...(conversation.previousCursor
+      ? { previousCursor: conversation.previousCursor }
+      : undefined),
   };
 }
 

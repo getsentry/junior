@@ -1,17 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApp } from "../src/app";
 import type { DashboardSession } from "../src/auth";
-import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import { readDashboardClientManifest } from "../src/public-assets";
+import {
+  auth,
+  embeddedBootstrap,
+  resetDashboardEnv,
+} from "./dashboard-test-helpers";
 
-const { resolveViewerUser } = vi.hoisted(() => ({
-  resolveViewerUser: vi.fn(async (email: string) => ({
-    email,
-    id: `user:${email}`,
-    identities: [] as [],
-  })),
-}));
+const { readUserAutoArchiveSettings, readViewerAvatarUrl, resolveViewerUser } =
+  vi.hoisted(() => ({
+    readUserAutoArchiveSettings: vi.fn(async (_userId: string) => ({
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 6,
+    })),
+    readViewerAvatarUrl: vi.fn(
+      async (): Promise<string | undefined> => undefined,
+    ),
+    resolveViewerUser: vi.fn(async (email: string) => ({
+      email,
+      id: `user:${email}`,
+      identities: [] as [],
+    })),
+  }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  readUserAutoArchiveSettings,
+  readViewerAvatarUrl,
   resolveViewerUser,
 }));
 
@@ -50,7 +65,13 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<title>Junior</title>");
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
-    expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
+    const client = readDashboardClientManifest();
+    expect(html).toContain(`src="/_junior/dashboard/assets/${client.entry}"`);
+    for (const file of client.imports) {
+      expect(html).toContain(
+        `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
+      );
+    }
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
@@ -58,6 +79,64 @@ describe("dashboard shell routes", () => {
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
     expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
+  });
+
+  it("embeds the same core data that /api/me and /api/config return", async () => {
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Person",
+      },
+    });
+
+    const page = await app.fetch(new Request("http://localhost/conversations"));
+    const me = await app.fetch(new Request("http://localhost/api/me"));
+    const config = await app.fetch(new Request("http://localhost/api/config"));
+
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(embeddedBootstrap(await page.text())).toEqual({
+      config: await config.json(),
+      me: await me.json(),
+    });
+  });
+
+  it("escapes viewer text in the embedded core data", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "</script><script>alert(1)</script>",
+      },
+    });
+
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+
+    expect(html).not.toContain("</script><script>alert(1)");
+    expect(embeddedBootstrap(html)).toMatchObject({
+      me: { user: { name: "</script><script>alert(1)</script>" } },
+    });
+  });
+
+  it("renders the shell without core data when the viewer read fails", async () => {
+    resolveViewerUser.mockRejectedValueOnce(new Error("database unavailable"));
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+      },
+    });
+
+    const response = await app.fetch(new Request("http://localhost/"));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Loading Junior");
+    expect(html).not.toContain("__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {
@@ -141,24 +220,41 @@ describe("dashboard shell routes", () => {
     }
   });
 
-  it("serves the dashboard client bundle without browser caching", async () => {
-    const app = dashboard({
-      user: {
-        email: "person@sentry.io",
-        emailVerified: true,
-      },
-    });
+  it("serves content-hashed browser files without auth and caches them for a year", async () => {
+    const app = dashboard(null);
+    const assetResponse = (file: string) =>
+      app.fetch(
+        new Request(`http://localhost/_junior/dashboard/assets/${file}`),
+      );
 
-    const response = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
+    const client = await assetResponse(readDashboardClientManifest().entry);
+    expect(client.status).toBe(200);
+    expect(client.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
     );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("content-type")).toContain(
+    expect(client.headers.get("content-type")).toContain(
       "application/javascript",
     );
-    expect(await response.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const clientScript = await client.text();
+    expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const chunk = clientScript.match(/["']\.\/(chunks\/[^"']+\.js)["']/)?.[1];
+    expect(chunk).toBeDefined();
+    const chunkResponse = await assetResponse(chunk!);
+    expect(chunkResponse.status).toBe(200);
+    expect(chunkResponse.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+
+    // A cached 404 would break an older deployment's files after a rollback.
+    for (const file of [
+      "client-AAAAAAAA.js",
+      "chunks/missing-AAAAAAAA.js",
+      "client.js",
+    ]) {
+      const missing = await assetResponse(file);
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("cache-control")).toBe("no-store");
+    }
   });
 
   it("serves the official dashboard avatar with revalidation", async () => {

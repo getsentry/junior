@@ -12,7 +12,7 @@ import {
   renderToolSignature,
   type CodemodeJsonSchema,
 } from "@earendil-works/pi-codemode";
-import { z } from "zod";
+import * as z from "zod";
 import {
   CODE_MODE_MAX_OUTPUT_CHARS,
   CODE_MODE_SCRIPT_TIMEOUT_MS,
@@ -158,7 +158,7 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
     // MCP tools are not script tools. Only `callMcpTool` reaches them.
     ...(Object.hasOwn(tools, "callMcpTool")
       ? [
-          "Call an MCP tool as `tools.callMcpTool({ tool_name, arguments })`. `tools.mcp__<provider>__<tool>` does not exist.",
+          "Call an MCP tool as `tools.callMcpTool({ tool_name, arguments })`. Its `result` field holds the structured content of the MCP tool, or its text. `tools.mcp__<provider>__<tool>` does not exist.",
         ]
       : []),
   ].join("\n");

@@ -6,8 +6,27 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+
+/**
+ * Add the mailbox that a first detail read asks for, so a mocked detail report
+ * answers that read the way the server does. The mailbox is empty by default.
+ */
+export function withRequestedMailbox<T extends { conversationId: string }>(
+  route: Route,
+  report: T,
+  mailbox: unknown = {
+    conversationId: report.conversationId,
+    generatedAt: NOW,
+    messages: [],
+  },
+): T {
+  const { searchParams } = new URL(route.request().url());
+  return searchParams.get("mailbox") === "true"
+    ? { ...report, mailbox }
+    : report;
+}
 
 export type DashboardE2eServer = {
   baseURL: string;
@@ -137,7 +156,7 @@ export async function mockDashboardApis(
     await route.fulfill({
       json: [
         {
-          description: "Personal facts Junior remembers about you.",
+          description: "Public memories Junior can use across conversations.",
           id: "memories",
           label: "Memories",
           navigation: "primary",
@@ -155,11 +174,13 @@ export async function mockDashboardApis(
           events: [
             {
               memoryIds: ["memory-checkout-runbook"],
+              seq: 2,
               source: "recalled",
               turnId: "active-turn",
             },
             {
               memoryIds: ["captured-memory-1", "captured-memory-2"],
+              seq: 13,
               source: "captured",
               turnId: "qa-turn",
             },
@@ -204,7 +225,6 @@ export async function mockDashboardApis(
             observedAt: "2026-07-29T09:14:00.000Z",
             origin: "automatic",
             sourcePlatform: "slack",
-            visibility: "private",
           }
         : id === "memory-2"
           ? {
@@ -215,7 +235,6 @@ export async function mockDashboardApis(
               observedAt: "2026-07-27T16:42:00.000Z",
               origin: "explicit",
               sourcePlatform: "slack",
-              visibility: "public",
             }
           : id === "memory-3"
             ? {
@@ -226,7 +245,6 @@ export async function mockDashboardApis(
                 observedAt: "2026-07-24T11:08:00.000Z",
                 origin: "automatic",
                 sourcePlatform: "slack",
-                visibility: "public",
               }
             : id === "memory-search"
               ? {
@@ -237,7 +255,6 @@ export async function mockDashboardApis(
                   observedAt: "2026-07-30T12:00:00.000Z",
                   origin: "explicit",
                   sourcePlatform: "slack",
-                  visibility: "private",
                 }
               : undefined;
     if (!memory) {
@@ -250,8 +267,7 @@ export async function mockDashboardApis(
     await route.fulfill({ json: memory });
   });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
-    const filter = new URL(route.request().url()).searchParams.get("filter");
-    const allRecords = [
+    const records = [
       {
         actions: [
           {
@@ -268,7 +284,6 @@ export async function mockDashboardApis(
           { label: "Type", value: "Preference" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Private" },
           { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
         ],
       },
@@ -280,7 +295,6 @@ export async function mockDashboardApis(
           { label: "Type", value: "Knowledge" },
           { label: "Learned", value: "Explicit" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
         ],
       },
@@ -292,19 +306,10 @@ export async function mockDashboardApis(
           { label: "Type", value: "Procedure" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
         ],
       },
     ];
-    const records = allRecords.filter((record) => {
-      const metadata = Object.fromEntries(
-        record.metadata.map((item) => [item.label, item.value]),
-      );
-      if (filter === "private") return metadata.Visibility === "Private";
-      if (filter === "public") return metadata.Visibility === "Public";
-      return true;
-    });
     await route.fulfill({
       json: {
         type: "list",
@@ -449,8 +454,7 @@ export async function mockDashboardApis(
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);
       return {
         date: date.toISOString().slice(0, 10),
-        personal: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
-        public:
+        count:
           index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
       };
     });
@@ -475,10 +479,8 @@ export async function mockDashboardApis(
           embedded: 201,
           explicit: 20,
           knowledge: 154,
-          personal: 24,
           preference: 12,
           procedure: 44,
-          public: 186,
         },
       },
     });

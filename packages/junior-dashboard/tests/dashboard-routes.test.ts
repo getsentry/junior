@@ -218,10 +218,12 @@ describe("dashboard routes", () => {
     process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     let callbackURL: string | undefined;
+    let errorCallbackURL: string | undefined;
     const app = createDashboardApp({
       allowedDomains: ["sentry.io"],
-      auth: auth(null, (value) => {
+      auth: auth(null, (value, errorValue) => {
         callbackURL = value;
+        errorCallbackURL = errorValue;
       }),
     });
     const canonicalLogin =
@@ -257,6 +259,8 @@ describe("dashboard routes", () => {
     expect(callbackURL).toBe(
       "https://junior.example.com/conversations/slack%3AC1%3A123?view=tools",
     );
+    // A failed callback restarts sign-in toward the same page, not `/`.
+    expect(errorCallbackURL).toBe(canonicalLogin);
   });
 
   it("preserves non-root dashboard base paths through Google sign-in", async () => {
@@ -412,12 +416,6 @@ describe("dashboard routes", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     }
-
-    const client = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
-    );
-    expect(client.status).toBe(302);
-    expect(client.headers.get("location")).toBe("http://localhost/auth/login");
   });
 
   it("allows verified users from an allowed Google hosted domain", async () => {

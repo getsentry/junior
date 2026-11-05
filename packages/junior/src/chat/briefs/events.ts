@@ -1,5 +1,5 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Durable cost and size record for one stored Brief version. */
 export const briefUpdatedEvent = defineConversationEvent({

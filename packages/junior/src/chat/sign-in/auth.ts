@@ -10,7 +10,7 @@ import { createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
-import { z } from "zod";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { parseAvatarUrl } from "@/chat/identities/avatar";
 import {

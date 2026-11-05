@@ -7,7 +7,7 @@
  * error redirects. A valid request waits for consent on a dashboard page.
  */
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { redirectUriMatches, resolveMcpClient } from "./client-metadata";
 import type { McpUrls } from "./metadata";
 import { renderMcpPage } from "./page";

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import {

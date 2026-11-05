@@ -228,8 +228,7 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
     hookPath,
     juniorRoot: dir,
     messagePath,
-    runHook: () =>
-      spawnSync("bash", [hookPath, messagePath], { cwd: dir, env }),
+    runHook: () => spawnSync("sh", [hookPath, messagePath], { cwd: dir, env }),
   };
 }
 
@@ -2729,6 +2728,13 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
       }),
+    ).rejects.toThrow("must use the github_commentOnPullRequest tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.comment.create",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
+      }),
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
@@ -4175,6 +4181,140 @@ Conversation: \`local:test:old-conversation\`
     }
   });
 
+  it("keeps existing co-authors and authors when a run with no human actor rewrites commits", async () => {
+    const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const hook = await prepareCommitMsgHookFixture("unused\n");
+    const human = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+    human.ctx.juniorRoot = hook.juniorRoot;
+    await githubPlugin().hooks?.beforeToolExecute?.(human.ctx as never);
+    // A PR follow-up run, such as a failed check or review comment event.
+    const event = beforeToolContext({ platform: "system", name: "event" });
+    event.ctx.juniorRoot = hook.juniorRoot;
+    await githubPlugin().hooks?.beforeToolExecute?.(event.ctx as never);
+    expect(event.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+
+    const repoDir = mkdtempSync(join(tmpdir(), "junior-github-rewrite-"));
+    const git = (env: Record<string, string>, ...args: string[]) =>
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "commit.gpgsign=false",
+          "-c",
+          "init.defaultBranch=main",
+          ...args,
+        ],
+        { cwd: repoDir, env: { ...process.env, ...env } },
+      );
+    const ok = (env: Record<string, string>, ...args: string[]) => {
+      const result = git(env, ...args);
+      expect(result.stderr.toString()).not.toContain("error");
+      expect(result.status).toBe(0);
+      return result.stdout.toString();
+    };
+    const coauthors = (rev = "HEAD") =>
+      ok(
+        {},
+        "log",
+        "-1",
+        "--format=%(trailers:key=Co-authored-by,valueonly)",
+        rev,
+      ).trim();
+    // A person pushes their own commit, outside Junior's hooks.
+    const pushAsPerson = (...args: string[]) =>
+      ok(
+        {
+          GIT_AUTHOR_NAME: "Pat Pusher",
+          GIT_AUTHOR_EMAIL: "pat@example.com",
+          GIT_COMMITTER_NAME: "Pat Pusher",
+          GIT_COMMITTER_EMAIL: "pat@example.com",
+        },
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      );
+
+    try {
+      ok(human.env, "init", "-q");
+      writeFileSync(join(repoDir, "base.txt"), "base\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "chore: base");
+      ok(human.env, "checkout", "-q", "-b", "feature");
+      writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "feat(x): Add feature");
+      writeFileSync(join(repoDir, "shared.txt"), "pat\n");
+      ok(human.env, "add", ".");
+      // A squash-style message with co-authors in two trailer paragraphs.
+      pushAsPerson(
+        "commit",
+        "-q",
+        "-m",
+        "fix(x): Tweak shared file\n\n" +
+          "fix: first\n\n" +
+          "Co-authored-by: Ann Early <ann@example.com>\n\n" +
+          "fix: second\n\n" +
+          "Co-authored-by: Ben Late <ben@example.com>",
+      );
+      ok(human.env, "checkout", "-q", "main");
+      writeFileSync(join(repoDir, "shared.txt"), "main\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "chore: move main");
+      ok(human.env, "checkout", "-q", "feature");
+
+      // Rebase onto the moved base, resolving a conflict on Pat's commit.
+      expect(git(event.env, "rebase", "-q", "main").status).not.toBe(0);
+      writeFileSync(join(repoDir, "shared.txt"), "resolved\n");
+      ok(event.env, "add", "shared.txt");
+      ok({ ...event.env, GIT_EDITOR: "true" }, "rebase", "--continue");
+      expect(coauthors("HEAD~1")).toBe("David Cramer <david@example.com>");
+      expect(coauthors()).toBe(
+        "Ann Early <ann@example.com>\nBen Late <ben@example.com>",
+      );
+      expect(ok({}, "log", "-1", "--format=%an <%ae>")).toBe(
+        "Pat Pusher <pat@example.com>\n",
+      );
+
+      ok(event.env, "reset", "-q", "--hard", "HEAD~1");
+      ok(event.env, "commit", "-q", "--amend", "--no-edit");
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+      ok(event.env, "commit", "-q", "--amend", "-m", "feat(x): Reword");
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+
+      writeFileSync(join(repoDir, "feature.txt"), "fixed\n");
+      ok(event.env, "commit", "-q", "-a", "--fixup=HEAD");
+      ok(
+        { ...event.env, GIT_SEQUENCE_EDITOR: "true" },
+        "rebase",
+        "-q",
+        "-i",
+        "--autosquash",
+        "main",
+      );
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+
+      const feature = ok({}, "rev-parse", "HEAD").trim();
+      ok(event.env, "checkout", "-q", "main");
+      ok(event.env, "cherry-pick", feature);
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+    } finally {
+      rmSync(hook.dir, { recursive: true, force: true });
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["simple-git-hooks in .git/hooks", ".git/hooks", false],
     ["husky in a repository core.hooksPath", ".husky/_", true],
@@ -4504,6 +4644,46 @@ Conversation: \`local:test:old-conversation\`
         "Signed-off-by: Reviewer <reviewer@example.com>\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "never extends a one-line subject that looks like a trailer",
+      "chore: update deps\n",
+      "chore: update deps\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "removes co-authors from every trailer paragraph, as in a squash message",
+      "feat: first\n" +
+        "\n" +
+        "Co-Authored-By: Model Supplied <model@example.com>\n" +
+        "\n" +
+        "feat: second\n" +
+        "\n" +
+        "Co-authored-by: Other Model <other@example.com>\n",
+      "feat: first\n" +
+        "\n" +
+        "feat: second\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "adds trailers before the comment block Git adds for an editor",
+      "initial commit message\n" + "\n" + "# Conflicts:\n" + "#\tREADME.md\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
+        "\n" +
+        "# Conflicts:\n" +
+        "#\tREADME.md\n",
+    ],
+    [
+      "leaves a message of only co-authors empty so Git aborts the commit",
+      "Co-Authored-By: Model Supplied <model@example.com>\n",
+      "\n",
     ],
   ])("%s", async (_name, initialMessage, expectedMessage) => {
     const { readFileSync, rmSync } = await import("node:fs");

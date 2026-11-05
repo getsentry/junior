@@ -1,4 +1,4 @@
-import { Globe2, Lock, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
@@ -24,14 +24,8 @@ import type {
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
 
-// The heading, origin, and scope rows already show these values.
-const SUMMARIZED_METADATA = new Set([
-  "Learned",
-  "Memory ID",
-  "Source",
-  "Type",
-  "Visibility",
-]);
+// The heading and origin rows already show these values.
+const SUMMARIZED_METADATA = new Set(["Learned", "Memory ID", "Source", "Type"]);
 
 /** Show one memory beside the library, or in a bottom sheet on small screens. */
 export function MemoryDetails(props: {
@@ -43,8 +37,6 @@ export function MemoryDetails(props: {
   const { record } = props;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const heading = record ? memoryHeading(record) : "Memory details";
-  const isPublic = record && metadataValue(record, "Visibility") === "Public";
-  const VisibilityIcon = isPublic ? Globe2 : Lock;
   const forgetAction = record?.actions?.find(
     (recordAction) => recordAction.tone === "danger",
   );
@@ -56,13 +48,6 @@ export function MemoryDetails(props: {
       sheetTitle={heading}
       title={
         <h2 className="m-0 flex items-center gap-2 font-display text-base font-medium text-dashboard-text">
-          {record ? (
-            <VisibilityIcon
-              aria-hidden="true"
-              className="shrink-0 text-dashboard-text-muted"
-              size={14}
-            />
-          ) : null}
           <span className="truncate">{heading}</span>
         </h2>
       }
@@ -147,15 +132,11 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
   const { record } = props;
   const learned = metadataValue(record, "Learned");
   const source = metadataValue(record, "Source");
-  const visibility = metadataValue(record, "Visibility");
-  const isPublic = visibility === "Public";
   const origin =
     learned === "Automatic"
       ? `From a ${source ?? "past"} conversation`
       : learned === "Explicit"
-        ? isPublic
-          ? "Someone asked Junior"
-          : "You asked Junior"
+        ? "Someone asked Junior"
         : learned
           ? "Before origin tracking"
           : undefined;
@@ -169,11 +150,6 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
   return (
     <dl className="m-0 grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3 text-xs leading-snug">
       {origin ? <MemoryFact label="Learned">{origin}</MemoryFact> : null}
-      {visibility ? (
-        <MemoryFact label="Used in">
-          {isPublic ? "Future workspace channels" : "Your future conversations"}
-        </MemoryFact>
-      ) : null}
       {dates.map((item) => (
         <MemoryFact key={item.label} label={item.label}>
           {item.value}
@@ -194,12 +170,9 @@ function MemoryFact(props: { children: ReactNode; label: string }) {
   );
 }
 
-/** Name a memory by visibility and type, such as "Private preference". */
+/** Name a memory by type, such as "Preference". */
 function memoryHeading(record: PluginUserPageRecord): string {
-  const kind = metadataValue(record, "Type");
-  const visibility = metadataValue(record, "Visibility");
-  if (!kind) return visibility ? `${visibility} memory` : "Memory";
-  return visibility ? `${visibility} ${kind.toLowerCase()}` : kind;
+  return metadataValue(record, "Type") ?? "Memory";
 }
 
 function metadataValue(

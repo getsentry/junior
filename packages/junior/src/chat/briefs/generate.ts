@@ -1,4 +1,5 @@
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
 import {
   briefOutcomeStatusSchema,
   conversationBriefSchema,

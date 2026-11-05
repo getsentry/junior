@@ -3,7 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   emailListSchema,
   googleApiError,
@@ -206,7 +206,11 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       }
       return {
         target: "updateCalendarEvent" as const,
-        ...ownEventResult(ownEventSchema.parse(response.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(response.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });

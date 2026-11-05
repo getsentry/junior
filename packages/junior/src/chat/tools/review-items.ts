@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {

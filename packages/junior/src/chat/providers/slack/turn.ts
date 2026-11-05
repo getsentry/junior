@@ -9,7 +9,6 @@ import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
@@ -157,8 +156,7 @@ import {
   collectAttachments,
   inboundMessageActor,
   inboundMessageProvenance,
-  resolveChannelName,
-  resolveSlackChannelType,
+  resolveSlackChannelFacts,
   saveSteeringMessages,
 } from "@/chat/providers/slack/input";
 
@@ -280,21 +278,21 @@ export function createSlackTurn(deps: SlackTurnDeps) {
 
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(thread, message);
-    const channelName =
-      !options.execution && channelId
-        ? await resolveChannelName(thread)
-        : undefined;
+    const channelFacts = options.execution
+      ? { channelType: resolveSlackChannelTypeFromMessage(message) }
+      : await resolveSlackChannelFacts(message, channelId);
+    const channelName = channelFacts.name;
+    const slackChannelType = channelFacts.channelType;
     const destination = requireSlackDestination(
       options.destination,
       "Slack reply execution",
     );
-    const slackChannelType = options.execution
-      ? resolveSlackChannelTypeFromMessage(message)
-      : await resolveSlackChannelType(message, channelId);
     const slackConversation = resolveSlackConversationContext({
       botUserId: deps.getSlackAdapter().botUserId,
       channelId,
       channelName,
+      channelTopic: channelFacts.topic,
+      channelDescription: channelFacts.description,
       channelType: slackChannelType,
     });
     // Persist only the live Slack signal. It refreshes the Destination row that
@@ -337,7 +335,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         destinationName: channelId,
         runId,
         assistantUserName: botConfig.userName,
-        modelId: defaultModelId(botConfig),
+        modelId: botConfig.modelId,
       },
       async () => {
         // Save Location and visibility before the agent reads the Conversation.

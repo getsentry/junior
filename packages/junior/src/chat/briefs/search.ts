@@ -13,8 +13,8 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import {
-  juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
@@ -134,26 +134,11 @@ export async function searchConversationBriefs(
     conditions.push(lt(briefs.createdAt, new Date(args.filters.beforeMs)));
   }
   if (args.filters.annotation) {
-    const annotation = args.filters.annotation.toLowerCase();
-    const nestedAnnotationPrefix = `${annotation}#`;
     conditions.push(
-      sql`exists (
-        select 1
-        from ${juniorConversationAnnotations}
-        where ${and(
-          eq(
-            juniorConversationAnnotations.conversationId,
-            juniorConversations.conversationId,
-          ),
-          sql`(
-            lower(${juniorConversationAnnotations.key}) = ${annotation}
-            or starts_with(
-              lower(${juniorConversationAnnotations.key}),
-              ${nestedAnnotationPrefix}
-            )
-          )`,
-        )}
-      )`,
+      hasAnnotationKey(
+        juniorConversations.conversationId,
+        args.filters.annotation,
+      ),
     );
   }
 

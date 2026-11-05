@@ -1,6 +1,6 @@
 import { listItems } from "@/chat/slack/tool-support/list/api";
 import { slackListIdParam } from "@/chat/slack/tool-support/list/params";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 /** Create a tool that reads items from an explicit Slack list. */

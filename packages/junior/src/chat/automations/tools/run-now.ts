@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { requireCredentialStart } from "@/chat/automations/edit-rules";
 import { automationRevision } from "@/chat/automations/revision";
 import {

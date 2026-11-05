@@ -25,7 +25,6 @@ import {
   ContextSummaryError,
   requestContextSummary,
 } from "@/chat/agent/context-summary";
-import { botConfig } from "@/chat/config";
 import {
   runWithConversationPrivacy,
   type ConversationPrivacy,
@@ -38,7 +37,6 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
-import type { ModelProfile } from "@/chat/model-profile";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -167,7 +165,6 @@ export async function requestBackgroundCompaction(args: {
   conversationId: string;
   conversationPrivacy: ConversationPrivacy | undefined;
   modelId: string;
-  modelProfile: ModelProfile;
   queue: BackgroundCompactionQueue | undefined;
   turnStartedAtMs: number;
 }): Promise<void> {
@@ -196,7 +193,6 @@ async function requestAboveMark(args: {
   conversationPrivacy: ConversationPrivacy | undefined;
   inputSize: number;
   modelId: string;
-  modelProfile: ModelProfile;
   queue: BackgroundCompactionQueue;
   turnStartedAtMs: number;
 }): Promise<void> {
@@ -210,9 +206,7 @@ async function requestAboveMark(args: {
   ) {
     return;
   }
-  const projection = projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  const projection = projectConversationEvents(events);
   // Messages of a replacement carry the seqs of their source events, which
   // are older than the replacement event. The job reads events up to the
   // mark, so the mark must not fall before the replacement.
@@ -264,7 +258,6 @@ async function requestAboveMark(args: {
           type: "compaction_requested",
           markSeq,
           historyVersion,
-          modelProfile: args.modelProfile,
           modelId: args.modelId,
         },
       },
@@ -387,7 +380,6 @@ async function prepareSummary(
             type: "compaction_prepared",
             markSeq: message.markSeq,
             historyVersion: message.historyVersion,
-            modelProfile: requested.modelProfile,
             modelId: requested.modelId,
             ...result,
           },
@@ -415,7 +407,6 @@ async function prepareSummary(
   }
   setSpanAttributes({ "app.compaction.input.size": snapshot.inputSize });
   const projection = projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
     maxSeq: message.markSeq,
   });
 

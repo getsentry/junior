@@ -4,7 +4,7 @@ import {
   type PluginRegistration,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,

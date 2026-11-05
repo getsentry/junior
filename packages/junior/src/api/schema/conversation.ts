@@ -6,7 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
-import { z } from "zod";
+import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
@@ -55,18 +55,59 @@ export const conversationAttachmentParamsSchema = z
   })
   .strict();
 
+/**
+ * Events in a default dashboard page. A read costs a fixed ~15 ms plus about
+ * 0.1 ms and 600 bytes per event, so this cap keeps a page within about twice
+ * the fixed cost. Smaller pages save little and need more requests.
+ */
+export const CONVERSATION_EVENT_PAGE_LIMIT = 150;
+
 export const conversationDetailQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
+    /** Omit to get the latest three Turns, up to the default page limit. */
+    limit: z.coerce.number().int().min(1).max(1_000).optional(),
+    /** Also return `unreadPage` when the detail has an `unreadCursor`. */
+    unreadPage: z.stringbool().optional(),
+    /**
+     * Also return `mailbox`, read before history, and never answer 304. A
+     * first load gets both in one request.
+     */
+    mailbox: z.stringbool().optional(),
   })
   .strict();
 
-export const conversationEventsQuerySchema = z
-  .object({
-    before: z.string().min(1),
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
-  })
-  .strict();
+const conversationEventsLimitSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(1_000)
+  .default(CONVERSATION_EVENT_PAGE_LIMIT);
+
+/**
+ * Page toward the start with `before`, toward the latest with `after`, or
+ * both ways from one event with `around`. A link target asks for the page
+ * around one event by its `event` seq, or around the start of a `turn`.
+ */
+export const conversationEventsQuerySchema = z.union([
+  z
+    .object({ before: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ after: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ around: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      event: z.coerce.number().int().min(0),
+      limit: conversationEventsLimitSchema,
+    })
+    .strict(),
+  z
+    .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+]);
 
 export const conversationFeedQuerySchema = z
   .object({
@@ -125,105 +166,6 @@ export const actorIdentitySchema = z
     fullName: z.string().optional(),
     slackUserId: z.string().optional(),
     slackUserName: z.string().optional(),
-  })
-  .strict();
-
-/** Mailbox delivery mode for one accepted inbound message. */
-export const conversationPendingMessageDeliverySchema = z.enum([
-  "defer",
-  "interrupt",
-]);
-
-/** One accepted mailbox message that has not reached durable history yet. */
-export const conversationPendingMessageSchema = z
-  .object({
-    actorIdentity: actorIdentitySchema.optional(),
-    /** Identity id of the author. Detail `authors` maps it to the person. */
-    actorIdentityId: z.string().min(1).optional(),
-    createdAt: z.string().datetime(),
-    delivery: conversationPendingMessageDeliverySchema,
-    inboundMessageId: z.string().min(1),
-    messageId: z.string().min(1),
-    receivedAt: z.string().datetime(),
-    role: z.literal("user"),
-    source: z.enum(["slack", "web"]),
-    text: z.string().optional(),
-    /** People mentioned in the text, resolved at read time. */
-    mentions: z.array(actorIdentitySchema).optional(),
-    attachments: z.array(messageAttachmentSchema).optional(),
-    /** Review item change that this Message records. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
-    redacted: z.literal(true).optional(),
-  })
-  .strict()
-  .superRefine((data, context) => {
-    if ((data.text === undefined) === (data.redacted !== true)) {
-      context.addIssue({
-        code: "custom",
-        message: "pending message content must be text or explicitly redacted",
-      });
-    }
-    if (
-      data.redacted &&
-      (data.actorIdentity ||
-        data.attachments ||
-        data.mentions ||
-        data.reviewItemChange)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "redacted pending messages must not expose actor identity, attachments, mentions, or a review item",
-      });
-    }
-  });
-
-/** Participant-only authorization prompt for a parked web turn. */
-export const conversationPendingAuthorizationSchema = z
-  .object({
-    authorizationUrl: z.string().url(),
-    completionText: z.string().min(1),
-    label: z.string().min(1),
-  })
-  .strict();
-
-/** Bounded mailbox snapshot for one conversation transcript. */
-export const conversationPendingMessagesReportSchema = z
-  .object({
-    authorization: conversationPendingAuthorizationSchema.optional(),
-    conversationId: z.string().min(1),
-    generatedAt: z.string().datetime(),
-    messages: z.array(conversationPendingMessageSchema),
-  })
-  .strict();
-
-/** Optional filters for cancelling accepted mailbox rows. */
-export const cancelConversationPendingMessagesBodySchema = z
-  .object({
-    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
-    receivedBefore: z.string().datetime().optional(),
-  })
-  .strict();
-
-/** Result of cancelling accepted human-facing mailbox rows. */
-export const cancelConversationPendingMessagesResponseSchema = z
-  .object({
-    cancelledCount: z.number().int().nonnegative(),
-    cancelledInboundMessageIds: z.array(z.string().min(1)),
-    conversationId: z.string().min(1),
-  })
-  .strict();
-
-/** Queued web messages that the viewer wants Junior to read now. */
-export const steerConversationPendingMessagesBodySchema = z
-  .object({ inboundMessageIds: z.array(z.string().min(1)).min(1) })
-  .strict();
-
-/** Result of steering queued web messages into the conversation. */
-export const steerConversationPendingMessagesResponseSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    steeredInboundMessageIds: z.array(z.string().min(1)),
   })
   .strict();
 
@@ -364,6 +306,7 @@ const conversationReportMessageEventDataSchema = z
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
+    quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
     /**
      * The Watch Events when several arrived together. A message that also
@@ -545,19 +488,6 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   ],
 );
 
-const conversationReportTurnRoutedEventDataSchema = z
-  .object({
-    type: z.literal("turn_routed"),
-    turnId: z.string().min(1),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    costUsd: z.number().finite().nonnegative().optional(),
-    reasoningLevel: z.string().min(1),
-    confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
-  })
-  .strict();
-
 const conversationReportGuardianActionReviewedEventDataSchema = z
   .object({
     type: z.literal("guardian_action_reviewed"),
@@ -602,7 +532,6 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
-    modelProfile: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     summary: z.string().min(1).optional(),
     details: z
@@ -618,17 +547,6 @@ const conversationReportCompactionEventDataSchema = z
       })
       .strict()
       .optional(),
-  })
-  .strict();
-
-const conversationReportHandoffEventDataSchema = z
-  .object({
-    type: z.literal("handoff"),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    reasoningLevel: z.string().min(1).optional(),
-    triggeringToolCallId: z.string().min(1).optional(),
-    summary: z.string().min(1).optional(),
   })
   .strict();
 
@@ -657,10 +575,8 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
-  conversationReportTurnRoutedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
-  conversationReportHandoffEventDataSchema,
   conversationReportSubagentEventDataSchema,
 ]);
 
@@ -675,8 +591,6 @@ export const conversationReportEventSchema = z
     model: z
       .object({
         modelId: z.string().min(1),
-        modelProfile: z.string().min(1).optional(),
-        reasoningLevel: z.string().min(1).optional(),
       })
       .strict()
       .optional(),
@@ -847,6 +761,25 @@ export type ConversationAgentTreeNode = z.infer<
   typeof conversationAgentTreeNodeSchema
 >;
 
+export const conversationEventPageSchema = z
+  .object({
+    events: z.array(conversationReportEventSchema),
+    eventHistory: conversationEventHistorySchema,
+    previousCursor: z.string().min(1).optional(),
+    /** Present on `after` and `around` pages when newer events follow. */
+    nextCursor: z.string().min(1).optional(),
+    generatedAt: z.string(),
+  })
+  .strict()
+  .superRefine(validateConversationEvents);
+
+/**
+ * Carries the detail version token in both directions. A custom header, not
+ * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
+ * validators itself, after the function had already built the full report.
+ */
+export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**
@@ -860,6 +793,16 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
+    /**
+     * Pass as `after` to the events API to read from the read position.
+     * Present only when unread events start before `events`.
+     */
+    unreadCursor: z.string().min(1).optional(),
+    /**
+     * The `around` page of `unreadCursor`, when the request asks for it. A
+     * reader who opens at the read position needs no second request.
+     */
+    unreadPage: conversationEventPageSchema.optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
@@ -887,16 +830,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
     sourceTask: conversationSourceTaskSchema.optional(),
-  })
-  .strict()
-  .superRefine(validateConversationEvents);
-
-export const conversationEventPageSchema = z
-  .object({
-    events: z.array(conversationReportEventSchema),
-    eventHistory: conversationEventHistorySchema,
-    previousCursor: z.string().min(1).optional(),
-    generatedAt: z.string(),
   })
   .strict()
   .superRefine(validateConversationEvents);
@@ -964,25 +897,4 @@ export type CreateConversationMessageBody = z.infer<
 >;
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
->;
-export type ConversationPendingMessageDelivery = z.infer<
-  typeof conversationPendingMessageDeliverySchema
->;
-export type ConversationPendingMessage = z.infer<
-  typeof conversationPendingMessageSchema
->;
-export type ConversationPendingMessagesReport = z.infer<
-  typeof conversationPendingMessagesReportSchema
->;
-export type CancelConversationPendingMessagesBody = z.infer<
-  typeof cancelConversationPendingMessagesBodySchema
->;
-export type CancelConversationPendingMessagesResponse = z.infer<
-  typeof cancelConversationPendingMessagesResponseSchema
->;
-export type SteerConversationPendingMessagesBody = z.infer<
-  typeof steerConversationPendingMessagesBodySchema
->;
-export type SteerConversationPendingMessagesResponse = z.infer<
-  typeof steerConversationPendingMessagesResponseSchema
 >;

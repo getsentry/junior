@@ -17,12 +17,15 @@ import {
 export function createUserCustomizationRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
-  app.use("*", async (_context, next) => {
-    if (!isExperimentalFeatureEnabled("user-customization")) {
-      throwApiError(404, "Resource not found.");
-    }
-    await next();
-  });
+  app.use(
+    "*",
+    async function requireUserCustomizationExperiment(_context, next) {
+      if (!isExperimentalFeatureEnabled("user-customization")) {
+        throwApiError(404, "Resource not found.");
+      }
+      await next();
+    },
+  );
 
   app.get("/", requireViewer, async (context) => {
     const viewer = context.get("viewer");

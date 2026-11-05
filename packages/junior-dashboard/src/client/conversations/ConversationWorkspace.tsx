@@ -1,11 +1,17 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { SearchInput } from "../components/SearchInput";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
@@ -15,7 +21,7 @@ import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
-import { useCreateConversation } from "./queries";
+import { useCreateConversation, type ConversationData } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -32,15 +38,28 @@ import {
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
-import { useConversationSidebarOpen } from "./useConversationSidebarOpen";
+import {
+  readSidebarWidth,
+  saveSidebarWidth,
+  SIDEBAR_WIDTH,
+  useConversationSidebarOpen,
+  useSidebarFits,
+} from "./conversationSidebarLayout";
 
 const CONVERSATION_PAGE_SIZE = 20;
+const SIDEBAR_PANEL_ID = "conversation-list";
 
 /** Render the conversation home page or one selected conversation. */
-export function ConversationWorkspace() {
+export function ConversationWorkspace(props: {
+  /** The selected Conversation's data, from the shell. */
+  detail: ConversationData;
+}) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
+  const sidebarFits = useSidebarFits();
+  const sidebarPanel = useRef<PanelImperativeHandle>(null);
+  const sidebarGroup = useRef<HTMLDivElement>(null);
   const sidebarId = useId();
   const search = useDebouncedValue(query.trim());
   const params = useParams();
@@ -151,70 +170,109 @@ export function ConversationWorkspace() {
     );
   }
 
+  const toggleSidebar = () => {
+    const panel = sidebarPanel.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
+    else panel.collapse();
+  };
+
   return (
-    <div
-      className={cn(
-        "grid h-full min-h-0 w-full grid-cols-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg",
-        sidebarOpen && "md:grid-cols-[20rem_minmax(0,1fr)]",
-      )}
+    <ResizablePanelGroup
+      className="min-h-0 overflow-hidden bg-dashboard-bg"
+      elementRef={sidebarGroup}
+      onLayoutChanged={(layout) => {
+        // Save after the drag ends. A drag that collapses the list passes
+        // the minimum width first, and that width is not the reader's pick.
+        const percent = layout[SIDEBAR_PANEL_ID] ?? 0;
+        const groupWidth = sidebarGroup.current?.offsetWidth ?? 0;
+        if (percent > 0) saveSidebarWidth((percent / 100) * groupWidth);
+      }}
     >
-      <div
-        className={cn(
-          "hidden h-full min-h-0 overflow-hidden",
-          sidebarOpen && "md:block",
-        )}
-        id={sidebarId}
-      >
-        <ConversationSidebar
-          conversations={conversations}
-          error={feed.error?.message}
-          finishedConversationIds={finishedConversationIds}
-          heldConversationId={heldConversationId}
-          loading={feed.isPending}
-          onNewConversation={openCreate}
-          onQueryChange={setQuery}
-          query={query}
-          selectedId={selectedId}
-          timeZone={getDashboardTimeZone()}
-          waitingConversations={waitingConversations}
-        />
-      </div>
-      <section
-        aria-label="Selected conversation"
-        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-      >
-        <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-          <ConversationPage
-            conversationId={selectedId}
-            data={
-              feed.data
-                ? {
-                    conversations: feed.data,
-                  }
-                : undefined
-            }
-            onRead={markRead}
-            pendingArchiveUpdate={pendingArchiveUpdates.find(
-              (update) => update.conversationId === selectedId,
-            )}
-            sidebarToggle={
-              <HeaderIconButton
-                controls={sidebarId}
-                expanded={sidebarOpen}
-                label={
-                  sidebarOpen
-                    ? "Hide conversation list"
-                    : "Show conversation list"
-                }
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-              >
-                <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
-              </HeaderIconButton>
-            }
+      {sidebarFits ? (
+        <>
+          <ResizablePanel
+            collapsible
+            defaultSize={sidebarOpen ? readSidebarWidth() : 0}
+            groupResizeBehavior="preserve-pixel-size"
+            id={SIDEBAR_PANEL_ID}
+            maxSize={SIDEBAR_WIDTH.max}
+            minSize={SIDEBAR_WIDTH.min}
+            onResize={(size) => {
+              // Dragging past the minimum width collapses the list too, so the
+              // panel size is the one source for the open state.
+              const open = size.inPixels > 0;
+              if (open !== sidebarOpen) setSidebarOpen(open);
+            }}
+            panelRef={sidebarPanel}
+          >
+            <div
+              className={cn(
+                "h-full min-h-0 overflow-hidden",
+                !sidebarOpen && "hidden",
+              )}
+              id={sidebarId}
+            >
+              <ConversationSidebar
+                conversations={conversations}
+                error={feed.error?.message}
+                finishedConversationIds={finishedConversationIds}
+                heldConversationId={heldConversationId}
+                loading={feed.isPending}
+                onNewConversation={openCreate}
+                onQueryChange={setQuery}
+                query={query}
+                selectedId={selectedId}
+                timeZone={getDashboardTimeZone()}
+                waitingConversations={waitingConversations}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle
+            aria-label="Resize conversation list"
+            className="w-px bg-transparent transition-colors after:w-2 focus-visible:ring-dashboard-border-interactive data-[separator=active]:bg-dashboard-border-interactive data-[separator=hover]:bg-dashboard-border-interactive"
           />
-        </UnsentAnswersProvider>
-      </section>
-    </div>
+        </>
+      ) : null}
+      <ResizablePanel id="selected-conversation">
+        <section
+          aria-label="Selected conversation"
+          className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+        >
+          <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
+            <ConversationPage
+              conversationId={selectedId}
+              detail={props.detail}
+              data={
+                feed.data
+                  ? {
+                      conversations: feed.data,
+                    }
+                  : undefined
+              }
+              onRead={markRead}
+              pendingArchiveUpdate={pendingArchiveUpdates.find(
+                (update) => update.conversationId === selectedId,
+              )}
+              sidebarToggle={
+                <HeaderIconButton
+                  controls={sidebarId}
+                  expanded={sidebarOpen}
+                  label={
+                    sidebarOpen
+                      ? "Hide conversation list"
+                      : "Show conversation list"
+                  }
+                  onClick={toggleSidebar}
+                >
+                  <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
+                </HeaderIconButton>
+              }
+            />
+          </UnsentAnswersProvider>
+        </section>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 

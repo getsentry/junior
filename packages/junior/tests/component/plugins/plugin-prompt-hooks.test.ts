@@ -115,7 +115,7 @@ import {
   defineJuniorPlugin,
   definePromptContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";

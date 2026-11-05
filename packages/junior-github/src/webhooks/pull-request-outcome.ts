@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,

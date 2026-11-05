@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 // Slack limits set these values, so one request renders the same on every
 // surface. Buttons and option text allow 75 characters. Radio buttons and

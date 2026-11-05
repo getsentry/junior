@@ -6,7 +6,7 @@
  * own Conversation. A child agent never has a message from a person: its task
  * comes from its parent agent, so it reads the root of its parent chain. The
  * source is the root's `message` events: the durable visible transcript.
- * Compaction and handoff never rewrite these events, so an early request or a
+ * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
  * A message counts as the user only when its stored author Identity is one

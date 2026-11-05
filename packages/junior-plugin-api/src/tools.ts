@@ -14,7 +14,8 @@ import { objectAnnotationSchema } from "./object-annotations";
 import type { SlackConversationLink } from "./operations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;

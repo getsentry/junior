@@ -14,6 +14,7 @@ import {
   conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
@@ -41,6 +42,8 @@ import {
   automationParamsSchema,
   automationSummarySchema,
   automationRunListSchema,
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import {
@@ -55,6 +58,7 @@ import {
   readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationEvents,
+  readMockConversationEventsAround,
   readMockConversationFeed,
   readMockConversationPendingMessages,
   readMockConversationStats,
@@ -203,6 +207,24 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
+    if ("event" in query.data || "turn" in query.data) {
+      const around = readMockConversationEventsAround(
+        params.data.conversationId,
+        "event" in query.data
+          ? { event: query.data.event }
+          : { turn: query.data.turn },
+      );
+      return around === "turn-not-found"
+        ? errorResponse("Turn not found.", 404)
+        : around
+          ? jsonResponse(conversationEventPageSchema, around)
+          : errorResponse("Conversation not found.", 404);
+    }
+    // Mock details fit one page and have no unread cursor, so mock history
+    // pages only backward from cursors.
+    if (!("before" in query.data)) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
     const report = readMockConversationEvents(
       params.data.conversationId,
       query.data.before,
@@ -255,12 +277,17 @@ export function createMockReportingApi(): Hono<{
     }
     const { conversationId } = params.data;
     const report = readMockConversationDetail(conversationId, query.data.limit);
-    return report
-      ? jsonResponse(
-          conversationDetailReportSchema,
-          withMockReadPosition(report),
-        )
-      : errorResponse("Conversation not found.", 404);
+    if (!report) return errorResponse("Conversation not found.", 404);
+    const detail = withMockReadPosition(report);
+    const mailbox = query.data.mailbox
+      ? readMockConversationPendingMessages(conversationId)
+      : undefined;
+    return mailbox
+      ? jsonResponse(conversationDetailWithMailboxReportSchema, {
+          ...detail,
+          mailbox,
+        })
+      : jsonResponse(conversationDetailReportSchema, detail);
   });
   app.put("/conversations/:conversationId/read-position", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -278,6 +305,24 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.post("/conversations/:conversationId/catch-up", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationCatchUpBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    return jsonResponse(conversationCatchUpSchema, {
+      needsYou: "Review the Safari fix on PR #12.",
+      summary:
+        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+    });
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

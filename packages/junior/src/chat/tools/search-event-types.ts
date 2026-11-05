@@ -4,7 +4,7 @@ import {
   eventMatchFieldSchema,
   type EventReach,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

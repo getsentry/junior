@@ -196,8 +196,7 @@ function assistantPiMessage(
   content: AssistantMessage["content"],
   timestamp: number,
 ): AssistantMessage {
-  const modelId =
-    botConfig.profiles[botConfig.defaultProfile]?.modelId ?? "history";
+  const modelId = botConfig.modelId;
   return {
     role: "assistant",
     content,
