@@ -131,6 +131,9 @@ export async function listThreadReplies(input: {
 export interface SlackConversationInfo {
   id: SlackChannelId;
   name?: string;
+  topic?: string;
+  /** Slack shows the channel purpose as its description. */
+  description?: string;
   isChannel: boolean;
   isPrivate: boolean;
   isIm: boolean;
@@ -163,6 +166,10 @@ export async function getConversationInfo(
     id: channelId,
     ...(typeof channel.name === "string" && channel.name
       ? { name: channel.name }
+      : undefined),
+    ...(channel.topic?.value ? { topic: channel.topic.value } : undefined),
+    ...(channel.purpose?.value
+      ? { description: channel.purpose.value }
       : undefined),
     isChannel: channel.is_channel === true,
     isPrivate: channel.is_private === true,
