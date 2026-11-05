@@ -149,12 +149,14 @@ describe("dashboard client API", () => {
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([false, false]);
+      // The first read brings the mailbox with the detail. Polls read the
+      // mailbox apart so the detail can answer 304.
       expect(reads).toEqual([
-        [`${detailPath}/pending-messages`, 200],
-        [detailPath, 200],
+        [`${detailPath}?mailbox=true`, 200],
         [`${detailPath}/pending-messages`, 200],
         [detailPath, 304],
       ]);
+      expect(first.mailbox?.conversationId).toBe(ARCHIVED_CONVERSATION_ID);
 
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
       const changed = await client.fetchQuery(options);

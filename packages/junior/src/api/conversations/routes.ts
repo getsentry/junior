@@ -33,6 +33,7 @@ import {
   cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
   steerConversationPendingMessagesResponseSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationPendingMessagesReportSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
@@ -495,8 +496,15 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const { conversationId } = context.req.valid("param");
-      const query = context.req.valid("query");
+      const { mailbox: withMailbox, ...query } = context.req.valid("query");
       const viewer = context.get("viewer");
+      // Read the mailbox before history, as two separate reads would, so
+      // input that moves from the mailbox to history is in at least one.
+      const mailbox = withMailbox
+        ? await requireConversationPendingMessages(conversationId, {
+            ...(viewer ? { viewer } : undefined),
+          })
+        : undefined;
       // Polls send the last version token. Compare it before the report is
       // built, because building the report is the expensive part of this route.
       const etag = await readConversationDetailEtag(conversationId, {
@@ -511,6 +519,7 @@ export function createConversationRoutes(
         : undefined;
       if (
         headers &&
+        !mailbox &&
         context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === etag
       ) {
         return new Response(null, { status: 304, headers });
@@ -520,11 +529,14 @@ export function createConversationRoutes(
         ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
-      return jsonResponse(
-        conversationDetailReportSchema,
-        report,
-        headers ? { headers } : undefined,
-      );
+      const init = headers ? { headers } : undefined;
+      return mailbox
+        ? jsonResponse(
+            conversationDetailWithMailboxReportSchema,
+            { ...report, mailbox },
+            init,
+          )
+        : jsonResponse(conversationDetailReportSchema, report, init);
     },
   );
 

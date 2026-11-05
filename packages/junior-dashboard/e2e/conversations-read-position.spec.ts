@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
 
@@ -177,7 +178,7 @@ async function mockReadPositionConversation(
       ? Math.max(0, state.eventCount - PAGE_SIZE)
       : 0;
     await route.fulfill({
-      json: {
+      json: withRequestedMailbox(route, {
         ...conversation,
         eventHistory: { status: "available" },
         events: events(firstSeq, state.eventCount - 1),
@@ -187,7 +188,7 @@ async function mockReadPositionConversation(
         ...(stored + 1 < firstSeq
           ? { unreadCursor: String(stored) }
           : undefined),
-      },
+      }),
     });
   });
   return state;
@@ -633,7 +634,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
       detailRequests.push(search);
       const unreadPage = search.includes("unreadPage");
       await route.fulfill({
-        json: {
+        json: withRequestedMailbox(route, {
           ...conversation,
           eventHistory: { status: "available" },
           events: events(latestSeq - 39, latestSeq),
@@ -642,7 +643,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
           readPosition: { lastReadSeq: 20 },
           unreadCursor: "20",
           ...(unreadPage ? { unreadPage: aroundPage(20) } : undefined),
-        },
+        }),
       });
       detailServed();
     },
@@ -657,8 +658,9 @@ test("opens far behind at the read position and loads newer pages after it", asy
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
   // The first detail fetch brings the page around the read position: the
-  // last read events and the unread events after them. Polls do not ask.
-  expect(detailRequests[0]).toBe("?unreadPage=true");
+  // last read events and the unread events after them, and the mailbox.
+  // Polls do not ask.
+  expect(detailRequests[0]).toBe("?unreadPage=true&mailbox=true");
 
   // The latest page waits below until the newer pages reach it, so the
   // transcript has no gap. Newer pages load only when the reader scrolls to

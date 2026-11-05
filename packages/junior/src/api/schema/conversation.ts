@@ -60,6 +60,11 @@ export const conversationDetailQuerySchema = z
     limit: z.coerce.number().int().min(1).max(1_000).default(500),
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
+    /**
+     * Also return `mailbox`, read before history, and never answer 304. A
+     * first load gets both in one request.
+     */
+    mailbox: z.stringbool().optional(),
   })
   .strict();
 

@@ -14,6 +14,7 @@ import {
   conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
@@ -257,12 +258,17 @@ export function createMockReportingApi(): Hono<{
     }
     const { conversationId } = params.data;
     const report = readMockConversationDetail(conversationId, query.data.limit);
-    return report
-      ? jsonResponse(
-          conversationDetailReportSchema,
-          withMockReadPosition(report),
-        )
-      : errorResponse("Conversation not found.", 404);
+    if (!report) return errorResponse("Conversation not found.", 404);
+    const detail = withMockReadPosition(report);
+    const mailbox = query.data.mailbox
+      ? readMockConversationPendingMessages(conversationId)
+      : undefined;
+    return mailbox
+      ? jsonResponse(conversationDetailWithMailboxReportSchema, {
+          ...detail,
+          mailbox,
+        })
+      : jsonResponse(conversationDetailReportSchema, detail);
   });
   app.put("/conversations/:conversationId/read-position", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
