@@ -1,5 +1,6 @@
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { promoteHttpRouteName } from "@/chat/sentry-route-name";
 import { consumePrivateTraceResultMarker } from "@/chat/tool-support/private-trace-result";
 import type * as Sentry from "@/chat/sentry";
 
@@ -243,6 +244,7 @@ export function scrubPrivateSentrySpan(span: SentrySpan): SentrySpan {
   if (span.attributes && typeof segmentName === "string") {
     span.attributes["sentry.segment.name"] = scrubSpanName(segmentName);
   }
+  promoteHttpRouteName(span);
   return span;
 }
 

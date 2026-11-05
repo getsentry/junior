@@ -98,6 +98,7 @@ import {
   useReadPositionAtOpen,
 } from "./transcriptReadPosition";
 import { TranscriptLoading } from "./TranscriptLoading";
+import { recordTranscriptShown } from "../sentry";
 import {
   useUnreadHistory,
   type TranscriptHistory,
@@ -286,6 +287,10 @@ export function ConversationPage(props: {
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
   const transcript = history.data;
+  const transcriptShown = !transcriptPending && Boolean(transcript);
+  useEffect(() => {
+    if (transcriptShown) recordTranscriptShown();
+  }, [conversationId, transcriptShown]);
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined

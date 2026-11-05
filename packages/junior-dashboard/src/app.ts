@@ -18,6 +18,7 @@ import { apiErrorSchema } from "@sentry/junior/api/schema";
 import {
   getBrowserSentryConfig,
   initSentry,
+  routeNameMiddleware,
 } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
@@ -404,7 +405,8 @@ export function createDashboardApp(
   }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
-  app.use("*", async (c, next) => {
+  app.use("*", routeNameMiddleware());
+  app.use("*", async function dashboardVersionHeader(c, next) {
     await next();
     c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
   });
