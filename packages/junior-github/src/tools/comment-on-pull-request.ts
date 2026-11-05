@@ -6,6 +6,12 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -38,33 +44,6 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(body: unknown): string {
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const message = (body as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof body === "string" && body.trim()) return body.trim();
-  return "GitHub request failed";
-}
-
 /**
  * Post a pull request comment as the App bot, or reply in an inline review
  * thread. GitHub keeps conversation comments under the issues endpoint and
@@ -85,27 +64,18 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
     outputSchema,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
-      const repoPath = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
-      const url =
-        input.in_reply_to === undefined
-          ? `${repoPath}/issues/${input.number}/comments`
-          : `${repoPath}/pulls/${input.number}/comments/${input.in_reply_to}/replies`;
-      const response = await egress.fetch({
-        provider: "github",
+      const prefix = repoPath(repo);
+      const response = await githubApi(egress, {
         operation: "github.pull.comment.create",
-        request: new Request(url, {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-          body: JSON.stringify({ body: input.body }),
-        }),
+        method: "POST",
+        path:
+          input.in_reply_to === undefined
+            ? `${prefix}/issues/${input.number}/comments`
+            : `${prefix}/pulls/${input.number}/comments/${input.in_reply_to}/replies`,
+        body: { body: input.body },
       });
-      const parsed = await readJson(response);
       if (!response.ok) {
-        const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubError(parsed)}`;
+        const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
         if (response.status === 404 || response.status === 422) {
           throw new PluginToolInputError(message);
         }
@@ -113,7 +83,7 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
       }
       const comment = z
         .object({ id: z.number(), html_url: z.string() })
-        .parse(parsed);
+        .parse(response.body);
       return {
         target: "commentOnPullRequest",
         repo: repo.ref,

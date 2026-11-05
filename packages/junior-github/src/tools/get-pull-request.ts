@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -41,23 +42,6 @@ const outputSchema = pluginToolOutputSchema.merge(
     target: z.literal("getPullRequest"),
   }),
 );
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
 export function createGitHubGetPullRequestTool(ctx: {
   egress: PluginEgress;
@@ -76,20 +60,10 @@ export function createGitHubGetPullRequestTool(ctx: {
     outputSchema,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
-      const response = await ctx.egress.fetch({
-        provider: "github",
+      const response = await githubApi(ctx.egress, {
         operation: "github.pull.get",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${input.number}`,
-          {
-            headers: {
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          },
-        ),
+        path: `${repoPath(repo)}/pulls/${input.number}`,
       });
-      const parsed = await readJson(response);
       if (!response.ok) {
         const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
         // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
@@ -109,7 +83,7 @@ export function createGitHubGetPullRequestTool(ctx: {
           state: z.string(),
           title: z.string(),
         })
-        .parse(parsed);
+        .parse(response.body);
       const subscribable = gitHubPullRequestSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: providerResult.number,
@@ -140,7 +114,7 @@ export function createGitHubGetPullRequestTool(ctx: {
               : data.state === "open" && data.draft
                 ? "draft"
                 : data.state,
-            ...githubObjectFacts("code_change", parsed),
+            ...githubObjectFacts("code_change", response.body),
           }),
         ],
         target: "getPullRequest",
