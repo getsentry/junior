@@ -8,9 +8,9 @@ import {
   selectSandboxEgressGrant,
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   clearSandboxEgressCredentialLease,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
@@ -190,20 +190,15 @@ function egressAttributes(input: {
   };
 }
 
-function redactedProxyPath(pathname: string): string {
-  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
-    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
-  }
-  return pathname;
-}
-
 function routingAttributes(
   request: Request,
   upstreamUrl?: URL,
 ): Record<string, unknown> {
   const proxyUrl = new URL(request.url);
   const attributes: Record<string, unknown> = {
-    "app.sandbox.egress.proxy_path": redactedProxyPath(proxyUrl.pathname),
+    "app.sandbox.egress.proxy_path": redactSandboxEgressProxyPath(
+      proxyUrl.pathname,
+    ),
   };
   if (upstreamUrl) {
     attributes["app.sandbox.egress.upstream_path"] = upstreamUrl.pathname;

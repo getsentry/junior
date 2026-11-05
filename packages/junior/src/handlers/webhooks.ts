@@ -86,8 +86,6 @@ export async function handleWebhookRequest(
         }
         logWarn("webhook.response.unsuccessful", {
           "http.response.status_code": response.status,
-          "http.request.header.x_slack_signature":
-            request.headers.get("x-slack-signature") ?? undefined,
           "http.request.header.x_slack_request_timestamp":
             request.headers.get("x-slack-request-timestamp") ?? undefined,
           ...(responseBodySnippet

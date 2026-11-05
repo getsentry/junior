@@ -98,9 +98,33 @@ export function initSentry(): void {
       { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
     ],
     dataCollection: {
-      // Outgoing calls carry model prompts and provider responses that the
-      // payload filter cannot see. Keep only incoming request bodies.
-      httpBodies: ["incomingRequest"],
+      // Request and response bodies carry model prompts, webhook payloads,
+      // signed callbacks, and sandbox egress content. Collect none.
+      httpBodies: [],
+      // Other request headers carry credentials and full upstream paths:
+      // `forwarded` holds a Vercel bearer, `vercel-forwarded-path` and
+      // `referer` keep query strings, and webhooks send HMAC signatures. The
+      // SDK matches these terms as substrings of the header name.
+      httpHeaders: {
+        request: {
+          allow: [
+            "accept",
+            "baggage",
+            "content-encoding",
+            "content-length",
+            "content-type",
+            "host",
+            "sentry-trace",
+            "user-agent",
+            "x-github-delivery",
+            "x-github-event",
+            "x-slack-request-timestamp",
+            "x-slack-retry",
+            "x-vercel-id",
+          ],
+        },
+      },
+      urlQueryParams: false,
       // Query spans must not carry bound parameter values.
       databaseQueryData: false,
     },

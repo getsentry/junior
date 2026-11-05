@@ -6,9 +6,9 @@ import {
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   parseSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
   type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
@@ -80,14 +80,6 @@ export function sandboxEgressAttributes(input: {
       ? { "http.response.status_code": input.status }
       : undefined),
   };
-}
-
-/** Hide the credential token in a sandbox egress proxy path before logging. */
-export function redactSandboxEgressProxyPath(pathname: string): string {
-  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
-    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
-  }
-  return pathname;
 }
 
 /** Return log attributes for the proxy route and the upstream path. */
