@@ -42,6 +42,7 @@ import { createPluginConversationEventReader } from "@/chat/plugins/conversation
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn, type SetSpanAttributes } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import {
   runAfterToolExecuteHooks,
   type AfterToolHookInput,
@@ -282,11 +283,19 @@ function invocationPluginContext(
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
+  const onCost = context.conversationId
+    ? createPluginModelCostRecorder({
+        conversationId: context.conversationId,
+        pluginName: plugin.manifest.name,
+        source: "userPrompt",
+        ...(turnId ? { turnId } : undefined),
+      })
+    : undefined;
   const common = {
     ...base,
     conversationId: context.conversationId,
     locationId: context.locationId,
-    embedder: createPluginEmbedder(plugin.manifest.name),
+    embedder: createPluginEmbedder(plugin.manifest.name, { onCost }),
     ...(context.conversationId && turnId
       ? {
           events: createPluginConversationEvents({
@@ -297,8 +306,8 @@ function invocationPluginContext(
           }),
         }
       : undefined),
-    model: createPluginModel(plugin.manifest.name, plugin.model),
-    reranker: createPluginReranker(plugin.manifest.name),
+    model: createPluginModel(plugin.manifest.name, plugin.model, { onCost }),
+    reranker: createPluginReranker(plugin.manifest.name, { onCost }),
     setSpanAttributes: pluginSpanAttributeSetter(
       plugin.manifest.name,
       setSpanAttributes,
@@ -761,6 +770,12 @@ export function getPluginTools(
       context.source.automationId
         ? getDashboardTaskLink(context.source.automationId)
         : undefined;
+    const onCost = createPluginModelCostRecorder({
+      conversationId: context.conversationId,
+      pluginName,
+      source: "tool",
+      ...(context.turnId ? { turnId: context.turnId } : undefined),
+    });
     const common = {
       ...basePluginContext(plugin),
       annotations,
@@ -771,10 +786,10 @@ export function getPluginTools(
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
-      embedder: createPluginEmbedder(pluginName),
+      embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),
-      model: createPluginModel(pluginName, plugin.model),
+      model: createPluginModel(pluginName, plugin.model, { onCost }),
       events,
       sandbox,
       state: createPluginState(pluginName),

@@ -17,7 +17,7 @@ import {
 /** Host hook for the priced cost of one plugin model call. */
 export type PluginModelCostRecorder = (cost: {
   costUsd: number;
-  modelRole: "decision" | "structured";
+  modelRole: "decision" | "embedding" | "reranking" | "structured";
 }) => Promise<void>;
 
 /** Create the host-owned structured model capability exposed to plugins. */
@@ -67,13 +67,13 @@ export function createPluginModel(
 /** Create the host-owned embedding capability exposed to prompt hooks. */
 export function createPluginEmbedder(
   pluginName: string,
-  runtime: { signal?: AbortSignal } = {},
+  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
 ): PluginEmbedder {
   return {
     model: botConfig.embeddingModelId,
     provider: GEN_AI_PROVIDER_NAME,
     async embedTexts(input) {
-      return await embedTexts({
+      const result = await embedTexts({
         modelId: botConfig.embeddingModelId,
         texts: input.texts,
         ...(input.inputType !== undefined
@@ -85,15 +85,25 @@ export function createPluginEmbedder(
           pluginModelRole: "embedding",
         },
       });
+      if (result.costUsd !== undefined) {
+        await runtime.onCost?.({
+          costUsd: result.costUsd,
+          modelRole: "embedding",
+        });
+      }
+      return result;
     },
   };
 }
 
 /** Create the host-owned reranking capability exposed to prompt hooks. */
-export function createPluginReranker(pluginName: string): PluginReranker {
+export function createPluginReranker(
+  pluginName: string,
+  runtime: { onCost?: PluginModelCostRecorder } = {},
+): PluginReranker {
   return {
     async rerank(input) {
-      return await rerankTexts({
+      const result = await rerankTexts({
         documents: input.documents,
         modelId: botConfig.rerankingModelId,
         query: input.query,
@@ -102,6 +112,13 @@ export function createPluginReranker(pluginName: string): PluginReranker {
           pluginModelRole: "reranking",
         },
       });
+      if (result.costUsd !== undefined) {
+        await runtime.onCost?.({
+          costUsd: result.costUsd,
+          modelRole: "reranking",
+        });
+      }
+      return result;
     },
   };
 }

@@ -15,6 +15,7 @@ import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
+import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
@@ -143,10 +144,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
-        });
+        const extractionDays = await memoryCostsByDay(
+          ctx.eventStats,
+          extractionCostFlow,
+          90,
+        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
           extractionDays,

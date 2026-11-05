@@ -2,7 +2,6 @@ import type {
   AfterToolExecuteHookContext,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { recordPluginHookModelCost } from "@/chat/conversations/projection";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import {
@@ -10,11 +9,8 @@ import {
   createSandboxCapability,
   withPluginHookSpan,
 } from "@/chat/plugins/hook-context";
-import {
-  createPluginDecider,
-  createPluginModel,
-  type PluginModelCostRecorder,
-} from "@/chat/plugins/model";
+import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
@@ -71,8 +67,7 @@ async function activeWorkspace(
 /**
  * Run each plugin's `afterToolExecute` hook in registration order. A denial
  * throws `PluginToolDeniedError` and skips later hooks. An abort stops the
- * checks and keeps the tool result. Model calls of a hook are part of the
- * Turn, so core records their cost; a plugin cannot skip it.
+ * checks and keeps the tool result.
  */
 export async function runAfterToolExecuteHooks(args: {
   plugins: PluginRegistration[];
@@ -104,13 +99,12 @@ export async function runAfterToolExecuteHooks(args: {
     // remaining checks, so a resumed agent does not retry finished work.
     if (signal?.aborted) break;
     const pluginName = plugin.manifest.name;
-    const onCost: PluginModelCostRecorder = async (cost) =>
-      await recordPluginHookModelCost({
-        ...args.turn,
-        ...cost,
-        pluginName,
-        toolName: args.tool.name,
-      });
+    const onCost = createPluginModelCostRecorder({
+      ...args.turn,
+      pluginName,
+      source: "afterToolExecute",
+      toolName: args.tool.name,
+    });
     let denial: string | undefined;
     try {
       await withPluginHookSpan(

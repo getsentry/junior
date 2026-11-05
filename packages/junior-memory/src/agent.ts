@@ -198,9 +198,8 @@ export type ExtractSessionRequest = z.output<
 >;
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
-/** Memories proposed by passive extraction and the model cost of that pass. */
+/** Memories proposed by passive extraction. */
 export type MemoryExtractionResult = {
-  costUsd?: number;
   memories: ExtractedMemory[];
 };
 
@@ -542,9 +541,6 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         memories: extractedMemoriesFromResponse(
           extractMemoriesResponseSchema.parse(result.object),
         ),
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
       };
     },
     async reviewCreateRequest(rawRequest) {

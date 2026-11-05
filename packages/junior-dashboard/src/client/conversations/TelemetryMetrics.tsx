@@ -330,10 +330,11 @@ export function auxiliaryOperationLabel(
   const knownLabels: Readonly<Record<string, string>> = {
     "junior/guardian_action_reviewed": "Guardian",
     "junior/passive_reply_routed": "Passive reply routing",
-    "junior/plugin_hook_model_called": "Plugin hooks",
     "junior/turn_routed": "Thinking routing",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
+    "memory/task_model_called": "Memory extraction",
+    "memory/user_prompt_model_called": "Memory recall",
   };
   const key = `${operation.namespace}/${operation.name}`;
   return (

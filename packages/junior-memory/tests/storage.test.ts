@@ -259,7 +259,6 @@ function cosineEmbedding(cosine: number): number[] {
 function createTestEmbedder(
   vectors: Record<string, number[]> = {},
   overrides: {
-    costUsd?: number;
     dimensions?: number;
     model?: string;
     provider?: string;
@@ -278,9 +277,6 @@ function createTestEmbedder(
       calls.push(input.texts);
       inputTypes.push(input.inputType);
       return {
-        ...(overrides.costUsd !== undefined
-          ? { costUsd: overrides.costUsd }
-          : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
         model,
         provider,
@@ -293,14 +289,10 @@ function createTestEmbedder(
 /** Fake reranker that scores each candidate memory by its content. */
 function testReranker(
   score: (content: string) => number = () => 0.9,
-  costUsd?: number,
 ): PluginReranker {
   return {
     async rerank({ documents }) {
-      return {
-        ...(costUsd !== undefined ? { costUsd } : undefined),
-        scores: documents.map(score),
-      };
+      return { scores: documents.map(score) };
     },
   };
 }
@@ -312,6 +304,24 @@ const recallOnlyModel: PluginModel = {
   },
 };
 
+// Last-bucket costs of the dashboard test, by event name.
+const DASHBOARD_DAY_COSTS: Record<string, { costUsd: number; events: number }> =
+  {
+    memories_captured: { costUsd: 0.0042, events: 1 },
+    memories_recalled: { costUsd: 0.0011, events: 3 },
+    task_model_called: { costUsd: 0.001, events: 2 },
+    user_prompt_model_called: { costUsd: 0.0004, events: 2 },
+  };
+const DASHBOARD_HOUR_COSTS: Record<
+  string,
+  { costUsd: number; events: number }
+> = {
+  memories_captured: { costUsd: 0.0012, events: 1 },
+  memories_recalled: { costUsd: 0.0003, events: 1 },
+  task_model_called: { costUsd: 0.0008, events: 2 },
+  user_prompt_model_called: { costUsd: 0.0002, events: 2 },
+};
+
 function extractionModel(
   memories: Array<{
     content: string;
@@ -319,7 +329,6 @@ function extractionModel(
     kind: "preference" | "procedure" | "knowledge";
     evidenceMessageIndices?: number[];
   }>,
-  costUsd?: number,
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
   const model: PluginModel = {
@@ -332,7 +341,6 @@ function extractionModel(
         evidenceMessageIndices: memory.evidenceMessageIndices ?? [0],
       });
       return {
-        ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
           memories: memories.map(toResponseMemory),
         },
@@ -902,19 +910,16 @@ describe("memory plugin storage", () => {
 
     try {
       const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
-      const { model } = extractionModel(
-        [
-          {
-            kind: "preference",
-            content: "Prefers QA notes that mention database row checks.",
-          },
-          {
-            content: "Deploy runbooks live in Notion.",
-            kind: "knowledge",
-          },
-        ],
-        0.0042,
-      );
+      const { model } = extractionModel([
+        {
+          kind: "preference",
+          content: "Prefers QA notes that mention database row checks.",
+        },
+        {
+          content: "Deploy runbooks live in Notion.",
+          kind: "knowledge",
+        },
+      ]);
       const embedder = createTestEmbedder();
 
       await processMemorySession(
@@ -971,7 +976,6 @@ describe("memory plugin storage", () => {
       expect(rows).toHaveLength(2);
       expect(emitted).toHaveLength(1);
       expect(emitted[0]?.data).toEqual({
-        costUsd: 0.0042,
         memories: expect.arrayContaining([
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
@@ -1008,7 +1012,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("records empty extraction cost without capturing memories", async () => {
+  it("emits an empty capture without storing memories", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -1021,12 +1025,12 @@ describe("memory plugin storage", () => {
               emitted.push(event);
             },
           },
-          model: extractionModel([], 0.0017).model,
+          model: extractionModel([]).model,
         }),
       );
 
       expect(emitted).toHaveLength(1);
-      expect(emitted[0]?.data).toEqual({ costUsd: 0.0017, memories: [] });
+      expect(emitted[0]?.data).toEqual({ memories: [] });
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
@@ -1245,15 +1249,12 @@ describe("memory plugin storage", () => {
     try {
       const state = createMemoryState();
       const emitted: Parameters<MemoryTaskContext["events"]["emit"]>[0][] = [];
-      const { model } = extractionModel(
-        [
-          {
-            content: "Prefers retry-safe memory extraction.",
-            kind: "preference",
-          },
-        ],
-        0.0023,
-      );
+      const { model } = extractionModel([
+        {
+          content: "Prefers retry-safe memory extraction.",
+          kind: "preference",
+        },
+      ]);
       const run = {
         async load() {
           return completedRun({
@@ -1306,7 +1307,6 @@ describe("memory plugin storage", () => {
       ]);
       expect(emitted).toHaveLength(2);
       expect(emitted[1]?.data).toEqual(emitted[0]?.data);
-      expect(emitted[0]?.data).toMatchObject({ costUsd: 0.0023 });
     } finally {
       await fixture.close();
     }
@@ -2444,44 +2444,26 @@ describe("memory plugin storage", () => {
         eventStats: {
           async costsByDay({ days, eventName }) {
             const start = Date.parse("2026-04-30T00:00:00.000Z");
+            const last = DASHBOARD_DAY_COSTS[eventName];
             return Array.from({ length: days }, (_, index) => ({
-              costUsd:
-                index === days - 1
-                  ? eventName === "memories_recalled"
-                    ? 0.0011
-                    : 0.0042
-                  : 0,
+              costUsd: index === days - 1 ? (last?.costUsd ?? 0) : 0,
               date: new Date(start + index * 24 * 60 * 60 * 1_000)
                 .toISOString()
                 .slice(0, 10),
-              events:
-                index === days - 1
-                  ? eventName === "memories_recalled"
-                    ? 3
-                    : 1
-                  : 0,
+              events: index === days - 1 ? (last?.events ?? 0) : 0,
             }));
           },
           async costsByHour({ eventName, hours = 24 }) {
             const end = new Date();
             end.setUTCMinutes(0, 0, 0);
             const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
+            const last = DASHBOARD_HOUR_COSTS[eventName];
             return Array.from({ length: hours }, (_, index) => ({
-              costUsd:
-                index === hours - 1
-                  ? eventName === "memories_recalled"
-                    ? 0.0003
-                    : 0.0012
-                  : 0,
+              costUsd: index === hours - 1 ? (last?.costUsd ?? 0) : 0,
               date: new Date(startMs + index * 60 * 60 * 1_000)
                 .toISOString()
                 .slice(0, 13),
-              events:
-                index === hours - 1
-                  ? eventName === "memories_recalled"
-                    ? 1
-                    : 1
-                  : 0,
+              events: index === hours - 1 ? (last?.events ?? 0) : 0,
             }));
           },
         },
@@ -2658,24 +2640,26 @@ describe("memory plugin storage", () => {
       });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.hours).toHaveLength(7 * 24);
+      // Cost adds legacy event cost and Junior's model cost events. Counts
+      // come from memory events only.
       expect(dashboard.extractionDays.at(-1)).toEqual({
-        costUsd: 0.0042,
+        costUsd: 0.0052,
         date: "2026-07-28",
         events: 1,
       });
       expect(dashboard.extractionHours).toHaveLength(7 * 24);
       expect(dashboard.extractionHours?.at(-1)).toMatchObject({
-        costUsd: 0.0012,
+        costUsd: 0.002,
         events: 1,
       });
       expect(dashboard.recallDays.at(-1)).toEqual({
-        costUsd: 0.0011,
+        costUsd: 0.0015,
         date: "2026-07-28",
         events: 3,
       });
       expect(dashboard.recallHours).toHaveLength(7 * 24);
       expect(dashboard.recallHours?.at(-1)).toMatchObject({
-        costUsd: 0.0003,
+        costUsd: 0.0005,
         events: 1,
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
@@ -4086,7 +4070,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         destination: slackDestination(context),
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
-        embedder: createTestEmbedder({}, { costUsd: 0.0003 }),
+        embedder: createTestEmbedder(),
         events: {
           async emit(event) {
             emitted.push(event);
@@ -4096,9 +4080,8 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         model: recallOnlyModel,
         plugin: { name: "memory" },
         // The lower-ranked memory scores higher, so the prompt leads with it.
-        reranker: testReranker(
-          (content) => (content === personal.memory.content ? 0.9 : 0.7),
-          0.0042,
+        reranker: testReranker((content) =>
+          content === personal.memory.content ? 0.9 : 0.7,
         ),
         setSpanAttributes() {},
         state: memoryState,
@@ -4142,7 +4125,6 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       expect(emitted).toEqual([
         expect.objectContaining({
           data: {
-            costUsd: 0.0045,
             memories: [personal.memory.id, conversation.memory.id],
           },
           definition: expect.objectContaining({
@@ -4367,7 +4349,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           destination: slackDestination(context),
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
-          embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
+          embedder: createTestEmbedder(),
           events: {
             async emit(event) {
               emitted.push(event);
@@ -4376,7 +4358,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           log: noopLogger,
           model: recallOnlyModel,
           plugin: { name: "memory" },
-          reranker: testReranker(() => 0.2, 0.0017),
+          reranker: testReranker(() => 0.2),
           setSpanAttributes() {},
           state: memoryState,
           text: "How do autofix PR tests use the dashboard workflow?",
@@ -4384,7 +4366,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
         expect.objectContaining({
-          data: { costUsd: 0.0019, memories: [] },
+          data: { memories: [] },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
             version: 1,
@@ -4396,7 +4378,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("records embedding cost when retrieval finds no recall candidates", async () => {
+  it("emits an empty recall when retrieval finds no candidates", async () => {
     const fixture = await createMemoryFixture();
     const emitted: PluginConversationEventValue[] = [];
 
@@ -4409,7 +4391,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
           destination: slackDestination(context),
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
-          embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
+          embedder: createTestEmbedder(),
           events: {
             async emit(event) {
               emitted.push(event);
@@ -4428,7 +4410,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
         expect.objectContaining({
-          data: { costUsd: 0.0002, memories: [] },
+          data: { memories: [] },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
             version: 1,
