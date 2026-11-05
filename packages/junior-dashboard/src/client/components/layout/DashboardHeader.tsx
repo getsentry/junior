@@ -9,6 +9,7 @@ import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderLiveSlot,
+  MobileHeaderTagsSlot,
   MobileSecondaryNavigationSlot,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
@@ -169,6 +170,7 @@ export function DashboardHeader(props: {
           </span>
         </Link>
         {conversationMode ? <MobileHeaderActionsSlot /> : null}
+        {conversationMode ? <MobileHeaderTagsSlot /> : null}
       </div>
       {props.mobileNavigationOpen ? (
         <MobileNavigationSheet

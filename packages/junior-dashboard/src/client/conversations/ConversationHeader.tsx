@@ -8,6 +8,7 @@ import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
   MobileHeaderLivePortal,
+  MobileHeaderTagsPortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
 import {
@@ -38,7 +39,7 @@ export function ConversationHeader(props: {
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
-  /** Linked work links below the title on mobile. */
+  /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
   live: boolean;
   onSearchChange(value: string): void;
@@ -119,8 +120,6 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.archive.error ||
     props.pin.error ||
-    Boolean(props.contextTags) ||
-    Boolean(props.linkedWork) ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -158,6 +157,17 @@ export function ConversationHeader(props: {
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
+      {props.contextTags || props.linkedWork ? (
+        <MobileHeaderTagsPortal>
+          {/* One row under the title. Tags keep their width and scroll. */}
+          <div className="-mt-1.5 flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+            {props.contextTags}
+            {props.linkedWork ? (
+              <div aria-label="Linked work">{props.linkedWork}</div>
+            ) : null}
+          </div>
+        </MobileHeaderTagsPortal>
+      ) : null}
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
           covers it. Mobile: below the app header, which holds the menu. */}
       <header
@@ -249,14 +259,6 @@ export function ConversationHeader(props: {
         ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
-        ) : null}
-        {props.contextTags || props.linkedWork ? (
-          <div className="grid min-w-0 gap-2 px-3 pb-2 pt-1.5 md:hidden">
-            {props.contextTags}
-            {props.linkedWork ? (
-              <div aria-label="Linked work">{props.linkedWork}</div>
-            ) : null}
-          </div>
         ) : null}
         {searchOpenVisible ? (
           <div className="px-4 py-3 md:px-7">
