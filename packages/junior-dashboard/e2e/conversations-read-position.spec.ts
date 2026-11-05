@@ -90,14 +90,6 @@ async function mockReadPositionConversation(
     });
   });
   await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
     `**/api/conversations/${conversationId}/messages`,
     async (route) => {
       await route.fulfill({
@@ -369,7 +361,9 @@ test.describe("opens at new messages after a cached reopen", () => {
     await newerRequest;
     // The fresh cached copy does not count as this visit's fetch, so the
     // reopen fetch still asks for the page around the read position.
-    expect(mock.detailRequests[detailRequestCount]).toBe("?unreadPage=true");
+    expect(mock.detailRequests[detailRequestCount]).toBe(
+      "?unreadPage=true&mailbox=true",
+    );
     await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
     await expect(transcript.getByText("Transcript message 119 ")).toHaveCount(
       0,
@@ -465,7 +459,7 @@ test.describe("opens from a hover prefetch", () => {
       transcript.getByText("Transcript message 21 "),
     ).toBeInViewport();
     await expect.poll(() => mock.detailRequests.length).toBe(2);
-    expect(mock.detailRequests[1]).toBe("");
+    expect(mock.detailRequests[1]).toBe("?mailbox=true");
     expect(pageRequests.filter((query) => query.includes("around"))).toEqual(
       [],
     );
@@ -811,14 +805,6 @@ test("opens far behind at the read position and loads newer pages after it", asy
     });
   });
   await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
     `**/api/conversations/${conversationId}/events?*`,
     async (route) => {
       const query = new URL(route.request().url()).searchParams;
@@ -952,7 +938,9 @@ test("opens far behind at the read position and loads newer pages after it", asy
   await expect(transcript.getByText("Loading newer messages…")).toHaveCount(0);
   expect(cursors).not.toContain("after-100");
   expect(detailRequests.length).toBeGreaterThan(1);
-  expect(detailRequests.slice(1)).not.toContain("?unreadPage=true");
+  expect(detailRequests.slice(1)).not.toContain(
+    "?unreadPage=true&mailbox=true",
+  );
 
   // A poll that skips more than one page cannot join the newer pages, so
   // the reader at the bottom goes to the latest page without a gap.

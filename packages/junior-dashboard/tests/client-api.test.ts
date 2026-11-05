@@ -184,21 +184,21 @@ describe("dashboard client API", () => {
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([false, false]);
-      // The first read brings the mailbox with the detail. Polls read the
-      // mailbox apart so the detail can answer 304.
+      // Each read brings the mailbox with the detail. An unchanged poll gets
+      // only the mailbox and keeps the cached detail.
       expect(reads).toEqual([
         [`${detailPath}?mailbox=true`, 200],
-        [`${detailPath}/pending-messages`, 200],
-        [detailPath, 304],
+        [`${detailPath}?mailbox=true`, 200],
       ]);
       expect(first.mailbox?.conversationId).toBe(ARCHIVED_CONVERSATION_ID);
+      expect(second.mailbox).not.toBe(first.mailbox);
 
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
       const changed = await client.fetchQuery(options);
       expect(first.archivedAt).toBeTruthy();
       expect(changed.archivedAt).toBeUndefined();
       expect(changed.detailEtag).not.toBe(first.detailEtag);
-      expect(reads.at(-1)).toEqual([detailPath, 200]);
+      expect(reads.at(-1)).toEqual([`${detailPath}?mailbox=true`, 200]);
       expect(sideReadsInvalidated()).toEqual([true, true]);
 
       // The detail endpoint must also reject a valid old validator after logout.

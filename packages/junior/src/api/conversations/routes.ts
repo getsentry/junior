@@ -39,6 +39,7 @@ import {
   steerConversationPendingMessagesResponseSchema,
   conversationDetailWithMailboxReportSchema,
   conversationPendingMessagesReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
@@ -527,39 +528,49 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const { mailbox: withMailbox, ...query } = context.req.valid("query");
       const viewer = context.get("viewer");
-      // Read the mailbox before history, as two separate reads would, so
-      // input that moves from the mailbox to history is in at least one. The
-      // version token and the state it hashes are not history, so they are
-      // read beside it. Polls send the last token: compare it before the
-      // report is built, because building the report is the expensive part.
-      const [mailbox, version] = await Promise.all([
-        withMailbox
-          ? requireConversationPendingMessages(conversationId, {
-              ...(viewer ? { viewer } : undefined),
-            })
-          : undefined,
+      const viewerOptions = viewer ? { viewer } : undefined;
+      const sentVersion = context.req.header(
+        CONVERSATION_DETAIL_VERSION_HEADER,
+      );
+      const readMailbox = () =>
+        requireConversationPendingMessages(conversationId, viewerOptions);
+      const readVersion = () =>
         readConversationDetailEtag(conversationId, {
           limit: query.limit,
-          ...(viewer ? { viewer } : undefined),
-        }),
-      ]);
+          ...viewerOptions,
+        });
+      // Read the mailbox before history, as two separate reads would, so
+      // input that moves from the mailbox to history is in at least one.
+      // Polls send the last token: compare it before the report is built,
+      // because building the report is the expensive part. A poll that may
+      // answer with the mailbox alone reads the token after the mailbox:
+      // input that left the mailbox is then in history, which changes it.
+      const [mailbox, version] =
+        withMailbox && sentVersion
+          ? [await readMailbox(), await readVersion()]
+          : await Promise.all([
+              withMailbox ? readMailbox() : undefined,
+              readVersion(),
+            ]);
       const headers = version
         ? {
             "cache-control": "private, no-store",
             [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
           }
         : undefined;
-      if (
-        version &&
-        !mailbox &&
-        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === version.etag
-      ) {
-        return new Response(null, { status: 304, headers });
+      if (version && sentVersion === version.etag) {
+        return mailbox
+          ? jsonResponse(
+              conversationUnchangedDetailWithMailboxSchema,
+              { mailbox, unchanged: true },
+              { headers },
+            )
+          : new Response(null, { status: 304, headers });
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
         ...(version ? { state: version.state } : undefined),
-        ...(viewer ? { viewer } : undefined),
+        ...viewerOptions,
       });
       if (!report) throwApiError(404, "Conversation not found.");
       const init = headers ? { headers } : undefined;

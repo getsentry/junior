@@ -362,17 +362,6 @@ test("inspects all reporting events and searches full event data", async ({
         }),
       }),
   );
-  const pendingResponse = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-  );
-  const pending = await pendingResponse.json();
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
-    (route) =>
-      route.fulfill({
-        json: { ...pending, conversationId: forkId, messages: [] },
-      }),
-  );
   await forkDialog
     .getByRole("textbox", { name: "Message" })
     .fill("Try the other region.");
