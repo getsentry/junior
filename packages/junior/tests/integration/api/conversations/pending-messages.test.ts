@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
+  conversationDetailWithMailboxReportSchema,
   conversationPendingMessagesReportSchema,
   type ConversationPendingMessagesReport,
 } from "@/api/schema";
@@ -78,6 +79,17 @@ describe("conversation pending messages API", () => {
         text: "dashboard follow-up",
       },
     ]);
+
+    // A first load reads the same mailbox with the detail in one request.
+    const detailResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(accepted.conversationId)}?mailbox=true`,
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = conversationDetailWithMailboxReportSchema.parse(
+      await detailResponse.json(),
+    );
+    expect(detail.conversationId).toBe(accepted.conversationId);
+    expect(detail.mailbox.messages).toEqual(report.messages);
   });
 
   it("returns accepted slack interrupt mailbox rows with Slack mention tokens", async () => {

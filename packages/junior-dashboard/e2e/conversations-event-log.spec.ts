@@ -1,7 +1,7 @@
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
-import { mockDashboardApis } from "./harness";
+import { mockDashboardApis, withRequestedMailbox } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
@@ -350,7 +350,7 @@ test("inspects all reporting events and searches full event data", async ({
     `**/api/conversations/${encodeURIComponent(forkId)}*`,
     (route) =>
       route.fulfill({
-        json: {
+        json: withRequestedMailbox(route, {
           ...report,
           conversationId: forkId,
           forkedFromConversationId: conversationId,
@@ -359,7 +359,7 @@ test("inspects all reporting events and searches full event data", async ({
           isParticipant: true,
           status: "completed",
           forks: [],
-        },
+        }),
       }),
   );
   const pendingResponse = await page.request.get(
@@ -493,7 +493,9 @@ for (const width of [1440, 390]) {
       createdAt: report.lastSeenAt,
       data: { type: "message_handled", messageId: "message-39" },
     });
-    await page.route(`**${api}*`, (route) => route.fulfill({ json: report }));
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({ json: withRequestedMailbox(route, report) }),
+    );
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
@@ -589,6 +591,9 @@ for (const view of [desktop, mobile]) {
     const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
     const response = await page.request.get(`${dashboard.baseURL}${api}`);
     const report = await response.json();
+    const mailbox = await (
+      await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
+    ).json();
     const item = {
       addedByConversationId: conversationId,
       assignedToEveryone: false,
@@ -669,7 +674,9 @@ for (const view of [desktop, mobile]) {
     ];
     // Junior asked and ended its Turn, so it waits for the answer.
     report.status = "completed";
-    await page.route(`**${api}*`, (route) => route.fulfill({ json: report }));
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
+    );
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );

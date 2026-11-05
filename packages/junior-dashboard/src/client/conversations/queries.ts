@@ -20,6 +20,7 @@ import {
   webMessageId,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
@@ -83,13 +84,19 @@ async function readConversationSnapshot(
   previous?: ConversationSnapshot,
   unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
+  // With no cached copy, the transcript waits for this read. The server reads
+  // both in the same order in one request, which saves a round trip. Polls
+  // read the mailbox apart, so the detail can still answer 304.
+  if (!previous) {
+    return readConversationData(conversationId, signal, undefined, {
+      mailbox: true,
+      unreadPage,
+    });
+  }
   const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(
-    conversationId,
-    signal,
-    previous,
+  const detail = await readConversationData(conversationId, signal, previous, {
     unreadPage,
-  );
+  });
   return { ...detail, mailbox };
 }
 
@@ -798,17 +805,29 @@ export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
-  unreadPage?: boolean,
+  options?: {
+    /** Also read the mailbox, before history, in the same request. */
+    mailbox?: boolean;
+    unreadPage?: boolean;
+  },
 ): Promise<ConversationSnapshot> {
+  const query = new URLSearchParams();
+  if (options?.unreadPage) query.set("unreadPage", "true");
+  if (options?.mailbox) query.set("mailbox", "true");
+  const search = query.size ? `?${query}` : "";
   const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}${unreadPage ? "?unreadPage=true" : ""}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
     signal,
     previous?.detailEtag
       ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
       : undefined,
   );
   if (response.status === 304 && previous) return previous;
-  const report = conversationDetailReportSchema.parse(await response.json());
+  const report = (
+    options?.mailbox
+      ? conversationDetailWithMailboxReportSchema
+      : conversationDetailReportSchema
+  ).parse(await response.json());
   return {
     ...report,
     detailEtag:

@@ -14,14 +14,17 @@ export const revalidateConversation: MiddlewareHandler = async (
   // The same route pattern also matches /conversations/stats.
   if (typeof report.conversationId !== "string") return;
   // generatedAt is the read time, not a change to the Conversation. The mailbox
-  // has its own live watermark and is never handled by this middleware.
-  const { generatedAt: _generatedAt, ...content } = report;
+  // has its own live watermark, and a read that asks for it never gets a 304.
+  const { generatedAt: _generatedAt, mailbox, ...content } = report;
   const version = createHash("sha256")
     .update(JSON.stringify(content))
     .digest("hex");
   context.header("cache-control", "private, no-store");
   context.header(CONVERSATION_DETAIL_VERSION_HEADER, version);
-  if (context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === version) {
+  if (
+    !mailbox &&
+    context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === version
+  ) {
     context.res = new Response(null, {
       status: 304,
       headers: context.res.headers,

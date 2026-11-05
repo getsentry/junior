@@ -1,3 +1,4 @@
+import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -358,7 +359,7 @@ test("scrolls long conversation and transcript panes independently", async ({
   );
   await page.route("**/api/conversations/long-0*", async (route) => {
     await route.fulfill({
-      json: {
+      json: withRequestedMailbox(route, {
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
@@ -376,7 +377,7 @@ test("scrolls long conversation and transcript panes independently", async ({
           },
           seq: index,
         })),
-      },
+      }),
     });
   });
 
