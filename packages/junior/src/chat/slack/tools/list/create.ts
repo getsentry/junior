@@ -14,7 +14,8 @@ export function createSlackListCreateTool(state: ToolState) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description: "Create a Slack todo list.",
+    description:
+      "Create a Slack todo list.",
     inputSchema: z.object({
       name: z.string().min(1).max(160).describe("Name for the new Slack list."),
     }),

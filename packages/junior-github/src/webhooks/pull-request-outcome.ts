@@ -110,7 +110,9 @@ const pullRequestConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    repository: z.object({ full_name: z.string().min(1) }).passthrough(),
+    repository: z
+      .object({ full_name: z.string().min(1) })
+      .passthrough(),
     sender: z.object({ login: z.string().min(1) }).passthrough(),
   })
   .passthrough()

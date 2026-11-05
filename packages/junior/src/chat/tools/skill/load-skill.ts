@@ -46,9 +46,7 @@ function toLoadedSkill(
     ...(metadata?.pluginProvider
       ? { pluginProvider: metadata.pluginProvider }
       : undefined),
-    ...(metadata?.allowedTools
-      ? { allowedTools: metadata.allowedTools }
-      : undefined),
+    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : undefined),
     body: result.instructions,
   };
 }

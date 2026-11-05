@@ -133,9 +133,7 @@ export function normalizeGitHubIssueOutcome(args: {
     repositoryId: String(parsed.repository.id),
     state: parsed.action === "closed" ? "closed" : "open",
     stateReason:
-      parsed.action === "closed"
-        ? (issue.state_reason ?? undefined)
-        : undefined,
+      parsed.action === "closed" ? (issue.state_reason ?? undefined) : undefined,
     updatedAt,
   };
 }
@@ -149,10 +147,7 @@ const canonicalIssueConversationSchema = z
         user: z.object({ login: z.string().min(1) }).strict(),
       })
       .strict(),
-    sender: z
-      .object({ login: z.string().min(1) })
-      .strict()
-      .optional(),
+    sender: z.object({ login: z.string().min(1) }).strict().optional(),
   })
   .strict();
 
@@ -165,10 +160,7 @@ const issueConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    sender: z
-      .object({ login: z.string().min(1) })
-      .passthrough()
-      .optional(),
+    sender: z.object({ login: z.string().min(1) }).passthrough().optional(),
   })
   .passthrough()
   .transform((provider) =>
