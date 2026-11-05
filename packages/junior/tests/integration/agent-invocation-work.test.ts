@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -294,7 +294,7 @@ describe("agent invocation conversation work", () => {
       expect(run.mock.calls[0]?.[0]).toMatchObject({
         conversationId: created.childConversationId,
         instruction: { text: slackInvocationInput.input },
-        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+        disabledFeatures: ["interactive-auth", "subagents"],
         reasoning: "medium",
         actor: slackInvocationInput.actor,
         destination: slackDestination,

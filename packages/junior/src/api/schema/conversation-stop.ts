@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** One queued web message from the viewer that a stop removed. */
 const stoppedConversationMessageSchema = z

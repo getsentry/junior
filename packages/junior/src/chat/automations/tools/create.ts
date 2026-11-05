@@ -3,7 +3,7 @@ import {
   taskOutcomeInputSchema,
   type TaskOutcomeInput,
 } from "@/chat/task-outcomes-schema";
-import { z } from "zod";
+import * as z from "zod";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
 import { requireInstructionReferences } from "@/chat/automations/instruction-references";
 import {

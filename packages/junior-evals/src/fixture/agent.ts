@@ -5,7 +5,7 @@
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. Other HTTP traffic goes through
  * Roach, the recording proxy, which replays model responses and the web pages that
- * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * `webFetch` reads. See `roach.json`. The fixture replaces only the
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
@@ -122,6 +122,8 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
+  /** Quiet messages: stored, but not delivered to the Slack thread. */
+  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -749,6 +751,7 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
+      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -860,6 +863,7 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
+      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],

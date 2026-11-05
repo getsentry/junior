@@ -5,7 +5,7 @@ import {
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface ResolvedSlackChannelTarget {

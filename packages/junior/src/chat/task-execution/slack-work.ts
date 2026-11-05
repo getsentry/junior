@@ -7,7 +7,7 @@ import {
   type SerializedThread,
   type StateAdapter,
 } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {

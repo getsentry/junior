@@ -16,7 +16,7 @@ import {
   type TextSearchResultDetails,
   type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
-import { z } from "zod";
+import * as z from "zod";
 import {
   juniorToolOutputSchema,
   makeStructuredToolOutput,

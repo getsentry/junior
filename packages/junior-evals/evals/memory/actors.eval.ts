@@ -15,28 +15,17 @@ import { test } from "@junior-evals/fixture/test";
  * another Actor can support shared knowledge, but not user memory. A run with
  * more than one Actor does not store any preference.
  *
- * A stored memory does not say which person it is about, and a private memory
- * is listed only for its owner. The checks read the memories of every person
- * in the thread and apply to all of them.
+ * A stored memory does not say which person it is about, so the checks apply
+ * to every stored memory.
  */
 
 const ALICE = person("UALICE", "Alice");
 const BOB = person("UBOB", "Bob");
 const CAROL = person("UCAROL", "Carol");
 
-/** The stored memories that any person in the thread can recall. */
-async function readThreadMemories() {
-  const memories = (
-    await Promise.all(
-      [ALICE, BOB, CAROL].map((author) => readMemories({ author })),
-    )
-  ).flat();
-  return [...new Map(memories.map((memory) => [memory.id, memory])).values()];
-}
-
 /** The stored memories about a person. */
 async function readUserMemories() {
-  return (await readThreadMemories()).filter(
+  return (await readMemories()).filter(
     (memory) => memory.subjectType === "user",
   );
 }
@@ -166,7 +155,7 @@ describe("Memory with Multiple Actors", () => {
     // non-actor remains valid conversation-scope evidence. Only the
     // user subjects require evidence written by the Actor.
     expect(await readUserMemories()).toEqual([]);
-    const freezeKnowledge = (await readThreadMemories()).filter(
+    const freezeKnowledge = (await readMemories()).filter(
       (memory) =>
         memory.subjectType === "conversation" && /freeze/i.test(memory.content),
     );

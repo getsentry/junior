@@ -309,10 +309,6 @@ describe("paused turn Slack integration", () => {
         surface: "slack",
       }),
       expect.objectContaining({
-        type: "turn_routed",
-        turnId: sessionId,
-      }),
-      expect.objectContaining({
         type: "turn_completed",
         turnId: sessionId,
         outcome: "success",

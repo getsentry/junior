@@ -325,7 +325,7 @@ Attributes on the `agent.context_compaction` span:
 
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
-| `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
+| `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
 | `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
@@ -340,7 +340,6 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
-  `handoff` runs for a model handoff.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
@@ -362,13 +361,10 @@ result.
 - `not_ready`: the job has not written a ready summary, or it failed. A
   blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
-  `profile_changed`, `over_target`, `conflict` (another replacement committed
-  first), or `split_tool_call` (the mark falls between a tool call and its
-  result).
+  `over_target`, `conflict` (another replacement committed first), or
+  `split_tool_call` (the mark falls between a tool call and its result).
 - A swap also sets `app.compaction.input.estimate`,
   `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
-- A `handoff` span has only `app.compaction.mode`. A failed handoff or an
-  input above the limit sets `error.type`.
 
 ### Background Compaction
 
@@ -436,10 +432,12 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   actions that need no review. Its `gen_ai.chat` children are the reviews.
 - `db.query.text` keeps placeholders. It never has parameter values or SQL
   comments.
+- Server spans and errors keep no URL query strings, fragments, request
+  bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
 
-## Dashboard browser spans
+## Dashboard
 
 - When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
   project. The `pageload` span continues the trace of the page request, and
@@ -447,6 +445,45 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - The browser sends only spans. It sends no errors, breadcrumbs, or replays.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
+- `pageload` and `navigation` spans have the dashboard route pattern as their
+  name, such as `/conversations/:conversationId`.
+- A `ui.render` span named `Conversation transcript shown` goes from the start
+  of the `pageload` or `navigation` span to the first render of the
+  Conversation transcript. `app.dashboard.load` is `pageload` or `navigation`.
+  Use it for the open time of a Conversation: the `pageload` or `navigation`
+  span ends only when all requests on the page stop, side panels included.
+- `app.dashboard.navigation.pre_fetch_ms` on a `pageload` span is the time
+  before the browser fetched the page. Sign-in redirects add to it.
+- A browser request after the `pageload` or `navigation` span ends, such as
+  a poll, is its own `http.client` segment. Add `!span.op:http.client` to
+  segment queries to leave them out.
+- `http.server` spans have the route pattern of the app that served the
+  request, also when the core app passes the request to the dashboard or a
+  plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
+  is `/api/internal/sandbox-egress/<token>`.
+
+Conversation open time, by the transcript render.
+
+```text
+dataset=spans query='span.op:ui.render span.name:"Conversation transcript shown"'
+fields=app.dashboard.load,count(),p50(span.duration),p95(span.duration)
+```
+
+Dashboard page load and navigation time by route.
+
+```text
+dataset=spans query='span.op:[pageload,navigation] is_transaction:true'
+fields=span.op,span.name,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
+
+Dashboard API latency by route.
+
+```text
+dataset=spans query='span.op:http.server is_transaction:true span.name:"GET /api/*"'
+fields=span.name,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
 
 ## Configuration
 

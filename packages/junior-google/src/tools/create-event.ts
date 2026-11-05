@@ -4,7 +4,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   emailListSchema,
   googleApiError,
@@ -219,7 +219,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(event.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });

@@ -47,7 +47,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | One test file          | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`              |
 | Eval harness test file | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                   |
 | One eval file or case  | `pnpm --filter @sentry/junior-evals evals:<suite> path/to/x.eval.ts [-t "case"]` |
-| Eval suites            | `behavioral`, `integration`, `guardian`, `router`, `classifiers`                 |
+| Eval suites            | `behavioral`, `integration`, `guardian`, `classifiers`                           |
 | Package schema         | `pnpm --filter <package> db:generate`                                            |
 | Dashboard e2e          | `pnpm test:e2e:dashboard`                                                        |
 | Release alignment      | `pnpm release:check`                                                             |
@@ -68,6 +68,8 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/context-bound-systems.md`: passing authority, destination, and
   scope.
 - `policies/security.md`: credentials, sandbox, and model access.
+- `policies/conversation-access.md`: when one Conversation may read, find,
+  or act on another.
 - `policies/data-redaction.md`: conversation privacy and redaction.
 - `policies/serverless-background-work.md`: work that must survive request
   edges.

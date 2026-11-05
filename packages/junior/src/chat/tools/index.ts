@@ -16,7 +16,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -62,7 +62,6 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
-import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -214,25 +213,16 @@ export function createTools(
     });
   }
 
-  if (context.handoff) {
-    tools.handoff = createHandoffTool(context.handoff);
-  }
-
   if (context.spawnAgent) {
-    if (!context.spawnAgentProfiles) {
-      throw new Error("spawnAgent is missing its configured model profiles");
-    }
-    tools.spawnAgent = createSpawnAgentTool(
-      context.spawnAgent,
-      context.spawnAgentProfiles,
-    );
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 
-  // A child agent that is too deep to start child agents can still list its
+  // A child agent that is too deep to start child agents can still find its
   // parent and siblings.
   if (context.spawnAgent || context.messageAgent) {
-    tools.listAgents = createListAgentsTool({
+    tools.searchAgents = createSearchAgentsTool({
+      ...(context.actor ? { actor: context.actor } : undefined),
       conversationId: context.conversationId,
       parentConversationId: context.parentConversationId,
     });

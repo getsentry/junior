@@ -2,7 +2,7 @@ import {
   eventMatchFieldsSchema,
   type EventMatchFields,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 // The plugin lowercases every identifier, so scope values in event data are
 // lowercase too. A saved identifier can then become exact filters.

@@ -426,8 +426,10 @@ export async function readConversationFeedFromSql(
     metricsByRoot,
     participantsByConversation,
     teamDomainByTeamId,
-    conversationWork,
-    lastUserMessageAtByConversation,
+    {
+      work: conversationWork,
+      lastUserMessageAt: lastUserMessageAtByConversation,
+    },
     activityPreviewByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
@@ -453,8 +455,17 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
-    listConversationWork(conversationIds),
-    readLastUserMessageAtByConversation(db, conversationIds),
+    listConversationWork(conversationIds).then(async (work) => ({
+      work,
+      // Priority uses this time only for finished assigned work. Skip the
+      // message scan for every other Conversation.
+      lastUserMessageAt: await readLastUserMessageAtByConversation(
+        db,
+        work.assignedIds.filter(
+          (conversationId) => work.finishedAtById[conversationId],
+        ),
+      ),
+    })),
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),

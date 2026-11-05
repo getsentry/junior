@@ -2,7 +2,7 @@
  * Owns model-facing schedule intent and materializes it against the trusted
  * server clock into the canonical schedule persisted by core.
  */
-import { z } from "zod";
+import * as z from "zod";
 import {
   getFirstRunAtMs,
   getZonedDateTimeParts,

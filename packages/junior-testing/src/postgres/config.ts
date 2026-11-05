@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 
 export const postgresHarnessConfigSchema = z
   .object({

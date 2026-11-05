@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,
@@ -112,14 +112,11 @@ type EnqueueOptions = {
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
   canSpawn: boolean,
-): Pick<AgentRun, "disabledFeatures" | "modelProfile" | "reasoning"> {
+): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
     disabledFeatures: canSpawn
-      ? ["handoff", "interactive-auth"]
-      : ["handoff", "interactive-auth", "subagents"],
-    ...(invocation.modelProfile
-      ? { modelProfile: invocation.modelProfile }
-      : undefined),
+      ? ["interactive-auth"]
+      : ["interactive-auth", "subagents"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),

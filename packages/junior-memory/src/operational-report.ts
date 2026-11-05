@@ -3,7 +3,7 @@ import type {
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
 import { and, gt, isNull, or, sql } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import type { MemoryDb } from "./store";
 

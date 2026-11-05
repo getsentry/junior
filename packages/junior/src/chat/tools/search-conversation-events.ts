@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
@@ -70,7 +70,7 @@ export function createSearchConversationEventsTool(
 ) {
   return zodTool({
     description:
-      "Search the durable event log for one conversation, including messages, agent history, tool results, handoffs, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
+      "Search the durable event log for one conversation, including messages, agent history, tool results, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -244,7 +244,6 @@ function eventIdentity(data: Record<string, unknown>) {
     "failureCode",
     "provider",
     "kind",
-    "modelProfile",
     "modelId",
   ] as const;
 

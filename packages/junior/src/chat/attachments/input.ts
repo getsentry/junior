@@ -1,5 +1,5 @@
 import { INPUT_IMAGE_TYPES } from "./media";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Bound JSON image input below the hosting platform's request size limit. */
 export const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;

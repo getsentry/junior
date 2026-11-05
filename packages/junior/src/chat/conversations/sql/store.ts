@@ -30,10 +30,8 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
-import type {
-  JuniorDestinationKind,
-  JuniorDestinationVisibility,
-} from "@/db/schema/destinations";
+import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
   getConversationIdByProviderConversation,

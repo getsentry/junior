@@ -16,3 +16,8 @@ export function ticketScreenshotPng(): Buffer {
 export function editedTicketScreenshotPng(): Buffer {
   return readFileSync(new URL("./images/ticket-1234.png", import.meta.url));
 }
+
+/** A small photo of a red panda, for image generation results. */
+export function redPandaPng(): Buffer {
+  return readFileSync(new URL("./images/red-panda.png", import.meta.url));
+}

@@ -225,7 +225,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, commit and push the fix without a person", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -240,19 +240,11 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The assistant handles the failed checks without asking a human to authorize GitHub.",
-          "The assistant reports that the fix is committed and pushed to the existing pull request branch.",
-        ],
-        fail: [
-          "Do not ask for OAuth, a personal access token, approval, or another human action before fixing the pull request.",
-          "Do not stop after describing a plan or editing the file without committing and pushing it.",
-        ],
-      }),
-    );
+    // A routine fix that worked needs nobody, so it posts nothing to Slack.
+    // The quiet reply stays in the Conversation.
+    expect(delivery.replies).toEqual([]);
+    expect(delivery.quietReplies).toHaveLength(1);
+    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.

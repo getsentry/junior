@@ -8,6 +8,10 @@
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
     },
     {
+      "name": "junior",
+      "specifier": "../../tools/oxlint/junior/index.ts"
+    },
+    {
       "name": "display-text",
       "specifier": "./oxlint/display-text.ts"
     }
@@ -27,6 +31,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/preserve-manual-memoization": "off",

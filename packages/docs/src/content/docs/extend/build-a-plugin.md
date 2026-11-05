@@ -317,6 +317,12 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
 
+When a hook, tool, or task belongs to a Conversation, Junior records the cost
+of each `ctx.model`, `ctx.decider`, `ctx.embedder`, and `ctx.reranker` call.
+The Conversation cost includes it. Do not put `costUsd` on your own events,
+because Junior then counts that cost two times. To show model cost in a plugin
+report, read `pluginModelCostEventNames` events with `ctx.eventStats`.
+
 In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
 
 - `ctx.decision.redirect(message)`: a different path is correct. The message

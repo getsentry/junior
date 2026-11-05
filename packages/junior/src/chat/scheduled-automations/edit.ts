@@ -9,7 +9,7 @@ import {
 import { compileScheduleIntent, ScheduleIntentError } from "./schedule-intent";
 import { defaultTimezone } from "@/chat/identities/timezone";
 import type { ScheduledAutomation } from "./types";
-import type { z } from "zod";
+import type * as z from "zod";
 
 /** Build an edit without restarting completed work or changing creator identity. */
 export async function editScheduledAutomation(

@@ -13,7 +13,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
@@ -34,7 +34,6 @@ import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
-import { botConfig } from "@/chat/config";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -159,7 +158,7 @@ export interface TurnRecord {
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Derived from committed provenance so a
-   * summary-only handoff cannot erase them. It never grants authority or
+   * summary-only history replacement cannot erase them. It never grants authority or
    * replaces the singular execution actor, which is rebuilt at resume.
    */
   actors: Actor[];
@@ -546,7 +545,6 @@ async function materializeStoredTurnRecord(
   const piProjection = followsReplacement
     ? projectConversationEvents(
         await eventStore.loadCurrentHistory(conversationId),
-        { defaultProfile: botConfig.defaultProfile },
       )
     : pinnedProjection;
   const turnStartMessageIndex = followsReplacement

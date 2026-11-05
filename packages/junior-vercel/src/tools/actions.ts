@@ -5,7 +5,7 @@ import {
   type ToolRegistrationHookContext,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 // Deployment and alias tools return selected fields because Vercel responses
 // can contain environment credentials.

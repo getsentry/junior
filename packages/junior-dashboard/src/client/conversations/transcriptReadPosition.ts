@@ -4,7 +4,8 @@
  * Rows from stored events carry `data-transcript-seq`. While the page is
  * visible, the reporter sends the sequence of the last row that has reached
  * the viewport. The server keeps the highest value, so every client of the
- * same user shares one position. Detail polls bring it back to other clients.
+ * same user shares one position. A write does not change the detail version,
+ * so other clients get it with the next detail change or a reload.
  *
  * The page reads the position once when a Conversation opens. That value
  * places the "New" marker and, by the reader's preference, where the
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   conversationReadPositionSchema,
   type ConversationDetailReport,
+  type ConversationEventPage,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
 import { put } from "../http";
@@ -42,6 +44,10 @@ export type TranscriptUnreadRange = { afterSeq: number; throughSeq: number };
 export type ReadPositionAtOpen = {
   lastReadSeq?: number;
   unread?: TranscriptUnreadRange;
+  /** Set when unread events start before the latest page. */
+  unreadCursor?: string;
+  /** The page around `unreadCursor`, when the fetch brought it. */
+  unreadPage?: ConversationEventPage;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -74,7 +80,9 @@ export function readConversationStartPosition(): ConversationStartPosition {
  * The read position comes from the first detail, which can be a cached copy.
  * The last unread row comes from the first detail fetched in this visit, so a
  * stale cache cannot hide messages that arrived while the reader was away,
- * and later polls cannot add rows that arrived after open.
+ * and later polls cannot add rows that arrived after open. `unreadCursor`
+ * and its page come from that fetch too: a cache from a visit that read to
+ * the end has no cursor, even when more than a page arrived after that visit.
  */
 export function useReadPositionAtOpen(
   detail: DetailAtOpen | undefined,
@@ -83,24 +91,41 @@ export function useReadPositionAtOpen(
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
   const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
-  const [fetchedEnd, setFetchedEnd] = useState<{ throughSeq?: number }>();
+  const [fetchedEnd, setFetchedEnd] = useState<{
+    throughSeq?: number;
+    unreadCursor?: string;
+    unreadPage?: ConversationEventPage;
+  }>();
   const read =
     opened ??
     (detail ? { lastReadSeq: detail.readPosition?.lastReadSeq } : undefined);
   if (!opened && read) setOpened(read);
   const end =
     fetchedEnd ??
-    (fetched ? { throughSeq: fetched.events.at(-1)?.seq } : undefined);
+    (fetched
+      ? {
+          throughSeq: fetched.events.at(-1)?.seq,
+          unreadCursor: fetched.unreadCursor,
+          unreadPage: fetched.unreadPage,
+        }
+      : undefined);
   if (!fetchedEnd && end) setFetchedEnd(end);
-  return readPositionAtOpen(
-    read?.lastReadSeq,
-    end ? end.throughSeq : detail?.events.at(-1)?.seq,
-  );
+  return {
+    ...readPositionAtOpen(
+      read?.lastReadSeq,
+      end ? end.throughSeq : detail?.events.at(-1)?.seq,
+    ),
+    ...(end?.unreadCursor
+      ? { unreadCursor: end.unreadCursor, unreadPage: end.unreadPage }
+      : undefined),
+  };
 }
 
 type DetailAtOpen = {
   events: readonly { seq: number }[];
   readPosition?: ConversationReadPosition;
+  unreadCursor?: string;
+  unreadPage?: ConversationEventPage;
 };
 
 /** Find the rows after the read position, through the last row at open. */
@@ -113,6 +138,27 @@ function readPositionAtOpen(
     return { lastReadSeq };
   }
   return { lastReadSeq, unread: { afterSeq: lastReadSeq, throughSeq } };
+}
+
+/**
+ * Put a stored read position in the cached detail. Polls answer 304 after a
+ * read, so the cache must also drop the unread cursor once the reader reaches
+ * the latest page, as the server would. Otherwise the next visit in this
+ * session opens at rows the reader has already read.
+ */
+function withReadPosition(
+  detail: ConversationDetailReport,
+  readPosition: ConversationReadPosition,
+): ConversationDetailReport {
+  const firstSeq = detail.events[0]?.seq;
+  if (
+    !detail.unreadCursor ||
+    (firstSeq !== undefined && readPosition.lastReadSeq + 1 < firstSeq)
+  ) {
+    return { ...detail, readPosition };
+  }
+  const { unreadCursor: _cursor, unreadPage: _page, ...rest } = detail;
+  return { ...rest, readPosition };
 }
 
 /**
@@ -133,7 +179,7 @@ export function useMarkConversationRead(conversationId: string) {
     onSuccess: (readPosition) => {
       queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
-        (detail) => (detail ? { ...detail, readPosition } : detail),
+        (detail) => detail && withReadPosition(detail, readPosition),
       );
     },
   });

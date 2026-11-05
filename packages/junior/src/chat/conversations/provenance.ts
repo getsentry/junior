@@ -3,7 +3,7 @@
  * Attribution never grants credential authority.
  */
 import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const conversationMessageAuthoritySchema = z.union([
   z.literal("instruction"),

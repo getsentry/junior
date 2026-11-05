@@ -14,7 +14,6 @@ import {
   MessageSquareText,
   Minimize2,
   Paperclip,
-  Send,
   Sparkles,
   TriangleAlert,
   Webhook,
@@ -27,7 +26,6 @@ import type { TranscriptViewStructuredEventPart } from "../types";
 type TranscriptRailEventKind =
   | "attachments_delivered"
   | "compaction"
-  | "handoff"
   | "message_context"
   | "event"
   | "structured_event"
@@ -117,12 +115,6 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     return {
       className: "text-cyan-200",
       icon: Bot,
-    };
-  }
-  if (kind === "handoff") {
-    return {
-      className: "text-sky-200",
-      icon: Send,
     };
   }
   return {

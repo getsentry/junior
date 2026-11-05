@@ -4,7 +4,7 @@ import {
   type SlackChannelId,
   type SlackUserId,
 } from "@/chat/slack/ids";
-import { z } from "zod";
+import * as z from "zod";
 
 type RequiredSlackChannelIdParamResult =
   | { ok: true; value: SlackChannelId }

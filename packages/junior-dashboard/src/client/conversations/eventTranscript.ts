@@ -51,9 +51,6 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (data.type === "handoff" && data.triggeringToolCallId) {
-      ids.add(data.triggeringToolCallId);
-    }
     if (data.type === "subagent" && data.parentToolCallId) {
       ids.add(data.parentToolCallId);
     }
@@ -243,6 +240,7 @@ export function transcriptMessagesFromEvents(
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
+        ...(data.quiet ? { quiet: data.quiet } : undefined),
         ...(data.reviewItemChanges
           ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
@@ -304,22 +302,6 @@ export function transcriptMessagesFromEvents(
         ) {
           message.context = true;
         }
-      }
-      continue;
-    }
-
-    if (data.type === "turn_routed") {
-      const message = latestUserMessageByTurn.get(data.turnId);
-      if (message) {
-        message.route = {
-          modelProfile: data.modelProfile,
-          modelId: data.modelId,
-          reasoningLevel: data.reasoningLevel,
-          ...(data.confidence !== undefined
-            ? { confidence: data.confidence }
-            : undefined),
-          source: data.source,
-        };
       }
       continue;
     }
@@ -437,34 +419,19 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
-    if (data.type === "compaction" || data.type === "handoff") {
+    if (data.type === "compaction") {
       messages.push(
         eventMessage(event, "system", [
           {
             type: "context_event",
             ...(event.mentions ? { mentions: event.mentions } : undefined),
-            event:
-              data.type === "handoff"
-                ? {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    modelId: data.modelId,
-                    modelProfile: data.modelProfile,
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.reasoningLevel
-                      ? { reasoningLevel: data.reasoningLevel }
-                      : undefined),
-                  }
-                : {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    ...(data.modelId ? { modelId: data.modelId } : undefined),
-                    ...(data.modelProfile
-                      ? { modelProfile: data.modelProfile }
-                      : undefined),
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.details ? { details: data.details } : undefined),
-                  },
+            event: {
+              type: data.type,
+              createdAt: event.createdAt,
+              ...(data.modelId ? { modelId: data.modelId } : undefined),
+              ...(data.summary ? { summary: data.summary } : undefined),
+              ...(data.details ? { details: data.details } : undefined),
+            },
           },
         ]),
       );

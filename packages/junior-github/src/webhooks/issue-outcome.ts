@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { githubIssueStateReasonSchema } from "../db/schema.js";
 import type {
   GitHubIssueConversationsInput,

@@ -1893,7 +1893,6 @@ describe("turn checkpoint", () => {
         createdAtMs: 2,
         data: {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "test/model",
           replacementHistory: [
             {
@@ -1933,14 +1932,14 @@ describe("turn checkpoint", () => {
     ).resolves.toEqual([newRequest, newFollowup]);
   });
 
-  it("resumes an unfinished turn from a committed handoff replacement", async () => {
+  it("resumes an unfinished turn from a committed history replacement", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getConversationEventStore } = await import("@/chat/db");
-    const conversationId = "conversation-handoff-resume";
-    const turnId = "turn-handoff-resume";
+    const conversationId = "conversation-replacement-resume";
+    const turnId = "turn-replacement-resume";
     const staleRuntimeContext =
       "<runtime-turn-context>stale runtime context</runtime-turn-context>";
     const oldRequest: PiMessage = {
@@ -1951,9 +1950,9 @@ describe("turn checkpoint", () => {
       ],
       timestamp: 1,
     };
-    const handoffSummary: PiMessage = {
+    const replacementSummary: PiMessage = {
       role: "user",
-      content: [{ type: "text", text: "continue from the handoff summary" }],
+      content: [{ type: "text", text: "continue from the compaction summary" }],
       timestamp: 2,
     };
 
@@ -1968,13 +1967,11 @@ describe("turn checkpoint", () => {
     await getConversationEventStore().replaceHistory(conversationId, {
       createdAtMs: 2,
       data: {
-        type: "handoff",
-        modelProfile: "handoff",
+        type: "compaction",
         modelId: "openai/gpt-5.6-sol",
-        triggeringToolCallId: "handoff-call",
         replacementHistory: [
           {
-            item: historyItemFromPiMessage(handoffSummary, {
+            item: historyItemFromPiMessage(replacementSummary, {
               authority: "context",
             }),
           },
@@ -1987,7 +1984,7 @@ describe("turn checkpoint", () => {
     ).resolves.toMatchObject({
       resumed: true,
       record: {
-        piMessages: [handoffSummary],
+        piMessages: [replacementSummary],
         turnStartMessageIndex: 0,
       },
     });

@@ -13,7 +13,7 @@ import {
 } from "@/chat/slack/channel-message-events";
 import { requireEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
-import type { z } from "zod";
+import type * as z from "zod";
 
 function changesEventAutomationTrigger(
   current: EventAutomation["trigger"],

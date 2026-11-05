@@ -10,9 +10,8 @@
     "evals:behavioral": "vitest run -c vitest.evals.behavioral.config.ts",
     "evals:integration": "vitest run -c vitest.evals.integration.config.ts",
     "evals:guardian": "vitest run -c vitest.evals.guardian.config.ts",
-    "evals:router": "vitest run -c vitest.evals.router.config.ts",
     "evals:classifiers": "vitest run -c vitest.evals.classifiers.config.ts",
-    "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.behavioral.config.ts"
+    "evals:record": "ROACH_MODE=record vitest run -c vitest.evals.behavioral.config.ts"
   },
   "devDependencies": {
     "@chat-adapter/slack": "4.29.0",
@@ -25,6 +24,7 @@
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
+    "@sentry/roach": "0.2.0",
     "ai": "^7.0.153",
     "chat": "4.29.0",
     "hono": "^4.13.11",

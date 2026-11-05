@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { reviewItemReaderForUser } from "@/chat/review-items/access";
 import { searchReviewItems } from "@/chat/review-items/store";

@@ -1,4 +1,6 @@
 import { describe, expect } from "vitest";
+import { mockGeneratedImage } from "@junior-evals/fixture/gateway";
+import { redPandaPng } from "@junior-evals/fixture/images";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
@@ -17,6 +19,20 @@ describe("Slack Message Delivery", () => {
 
     expect(completedToolCalls("addReaction", conversation)).not.toHaveLength(0);
     expect(conversation.replies).toEqual([]);
+  });
+
+  test("when a reply to a person ends with the quiet marker, still post it without the marker", async ({
+    run,
+  }) => {
+    // Only Event Turns can be quiet. A person who asks always sees the reply.
+    const conversation = await run(
+      slackMention("Reply with exactly this text: CI is green. [[QUIET]]"),
+    );
+
+    expect(conversation.quietReplies).toEqual([]);
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.replies[0]?.text).toMatch(/CI is green/);
+    expect(conversation.replies[0]?.text).not.toContain("[[QUIET]]");
   });
 
   test("when asked for a top-level channel post, explain the limitation instead", async ({
@@ -71,6 +87,8 @@ describe("Slack Message Delivery", () => {
   test("when asked to show an image, attach it without process chatter", async ({
     run,
   }) => {
+    // The default 1x1 stub looks blank, so the agent may not send it.
+    mockGeneratedImage(redPandaPng());
     const conversation = await run(
       slackMention("show me an image of a red panda"),
     );

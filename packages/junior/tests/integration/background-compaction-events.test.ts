@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
-import { defaultModelId } from "@/chat/model-profile";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import {
   processBackgroundCompaction,
@@ -38,7 +37,6 @@ function compaction(summary: string): HistoryReplacement {
     createdAtMs: 10,
     data: {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "test/model",
       replacementHistory: [{ item: userMessage(summary, 10) }],
     },
@@ -58,7 +56,6 @@ describe("background compaction events", () => {
           type: "compaction_requested",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
         },
       },
@@ -68,7 +65,6 @@ describe("background compaction events", () => {
           type: "compaction_prepared",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
           outcome: "ready",
           summary: "The person picked the blue option.",
@@ -80,7 +76,6 @@ describe("background compaction events", () => {
           type: "compaction_prepared",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
           outcome: "failed",
           errorType: "timeout",
@@ -94,14 +89,12 @@ describe("background compaction events", () => {
         type: "compaction_requested",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
       },
       {
         type: "compaction_prepared",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
         outcome: "ready",
         summary: "The person picked the blue option.",
@@ -110,7 +103,6 @@ describe("background compaction events", () => {
         type: "compaction_prepared",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
         outcome: "failed",
         errorType: "timeout",
@@ -161,7 +153,7 @@ describe("background compaction events", () => {
   });
 });
 
-const MODEL_ID = defaultModelId(botConfig);
+const MODEL_ID = botConfig.modelId;
 
 function assistant(text: string, input = 0): AssistantMessage {
   return {
@@ -239,7 +231,6 @@ async function completeTurn(
     conversationId: CONVERSATION_ID,
     conversationPrivacy: "private",
     modelId: MODEL_ID,
-    modelProfile: botConfig.defaultProfile,
     queue: { send: async (message) => void sent.push(message) },
     turnStartedAtMs,
   });
@@ -300,7 +291,6 @@ describe("background compaction job", () => {
     const request = {
       markSeq: first!.seq,
       historyVersion: 0,
-      modelProfile: botConfig.defaultProfile,
       modelId: MODEL_ID,
     };
     await expect(bookkeeping()).resolves.toEqual([
@@ -435,7 +425,6 @@ describe("background compaction job", () => {
       createdAtMs: 10,
       data: {
         type: "compaction",
-        modelProfile: botConfig.defaultProfile,
         modelId: MODEL_ID,
         replacementHistory: [
           {

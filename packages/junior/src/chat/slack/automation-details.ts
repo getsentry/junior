@@ -1,5 +1,5 @@
 import type { SlackEvent } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { readViewerAutomationSummary } from "@/chat/automations/read";
 import {

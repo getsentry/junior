@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * Child agent types. A type is plain data: when to pick it, whether the child
@@ -6,14 +6,13 @@ import { z } from "zod";
  * code reads only these fields, never a type name, so types can later come
  * from configuration. Types do not limit tools: Guardian reviews each child
  * action against the root user's messages, as for any child. A child keeps its
- * type for later agent invocations, the same as its profile. A child without
- * a type starts fresh.
+ * type for later agent invocations. A child without a type starts fresh.
  */
 export const AGENT_TYPES = ["fork", "explore", "reviewer"] as const;
 
 /**
- * Stored name of a child agent type. Like a model profile, a stored name stays
- * readable after its type is removed; the runtime then treats the child as a
+ * Stored name of a child agent type. A stored name stays readable after its
+ * type is removed; the runtime then treats the child as a
  * child without a type.
  */
 export const agentTypeSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);

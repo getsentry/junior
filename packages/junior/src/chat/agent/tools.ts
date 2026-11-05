@@ -118,11 +118,15 @@ export async function createRunSandbox(
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
     actors: args.currentActors,
-    // Read at tool time, after `agentSandbox` below exists.
-    sandbox: () => ({
-      workspace: agentSandbox.workspace,
-      workspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
-    }),
+    toolRun: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+      // Read at tool time, after `agentSandbox` below exists.
+      sandbox: () => ({
+        workspace: agentSandbox.workspace,
+        workspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
+      }),
+    },
   });
   const workspace = args.state.sandboxRef?.workspaceId
     ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
@@ -189,8 +193,6 @@ interface ToolWiringArgs {
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
-  requestHandoff?: ToolRuntimeContext["handoff"];
-  spawnAgentProfiles?: ToolRuntimeContext["spawnAgentProfiles"];
   resume: ResumeState;
   run: AgentRun;
   /** Sandbox from `createRunSandbox`. Tool wiring takes over closing it. */
@@ -449,17 +451,11 @@ export async function wireAgentTools(
         }
       : undefined),
     ...(args.durability.spawnAgent
-      ? {
-          spawnAgent: args.durability.spawnAgent,
-          ...(args.spawnAgentProfiles
-            ? { spawnAgentProfiles: args.spawnAgentProfiles }
-            : undefined),
-        }
+      ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
     ...(args.durability.messageAgent
       ? { messageAgent: args.durability.messageAgent }
       : undefined),
-    ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
     ...(args.run.dispatch?.declaresResult
       ? {
           // A dispatch record from before #1788 has no outcomes and sends to

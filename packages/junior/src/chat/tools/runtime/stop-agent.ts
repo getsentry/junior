@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -31,7 +31,7 @@ export function createStopAgentTool(conversationId: string) {
           .trim()
           .min(1)
           .describe(
-            "Child conversation ID from spawnAgent or listAgents to stop",
+            "Child conversation ID from spawnAgent or searchAgents to stop",
           ),
       })
       .strict(),
@@ -43,7 +43,7 @@ export function createStopAgentTool(conversationId: string) {
       });
       if (!stopped) {
         throw new ToolInputError(
-          `${input.conversation_id} is not a child agent of this conversation. Use listAgents to find its conversation_id.`,
+          `${input.conversation_id} is not a child agent of this conversation. Use searchAgents to find its conversation_id.`,
         );
       }
       return {

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
@@ -370,7 +372,7 @@ describe("dashboard canonical-event mock routes", () => {
 
     const long = await readDetail("slack:CQA456:1770021600.000600");
     expect(long.events.map((event) => event.data.type)).toEqual(
-      expect.arrayContaining(["compaction", "handoff"]),
+      expect.arrayContaining(["compaction"]),
     );
     const historyResponse = await app.fetch(
       new Request(
@@ -414,16 +416,31 @@ describe("dashboard canonical-event mock routes", () => {
       allowedDomains: [],
       mockConversations: true,
     });
-    const parentResponse = await app.fetch(
-      new Request(
-        `http://localhost/api/conversations/${encodeURIComponent(
-          DASHBOARD_QA_CONVERSATION_ID,
-        )}`,
-      ),
-    );
+    const parentPath = `http://localhost/api/conversations/${encodeURIComponent(
+      DASHBOARD_QA_CONVERSATION_ID,
+    )}`;
+    const parentResponse = await app.fetch(new Request(parentPath));
     const parent = conversationDetailReportSchema.parse(
       await parentResponse.json(),
     );
+    const version = {
+      [CONVERSATION_DETAIL_VERSION_HEADER]: parentResponse.headers.get(
+        CONVERSATION_DETAIL_VERSION_HEADER,
+      )!,
+    };
+    const unchanged = await app.fetch(
+      new Request(parentPath, { headers: version }),
+    );
+    expect(unchanged.status).toBe(304);
+    // The mailbox changes apart from the version, so it never gets a 304.
+    const withMailbox = await app.fetch(
+      new Request(`${parentPath}?mailbox=true`, { headers: version }),
+    );
+    expect(withMailbox.status).toBe(200);
+    expect(
+      conversationDetailWithMailboxReportSchema.parse(await withMailbox.json())
+        .mailbox.conversationId,
+    ).toBe(DASHBOARD_QA_CONVERSATION_ID);
     const childIds = parent.events.flatMap((event) =>
       event.data.type === "subagent" && event.data.status === "running"
         ? [event.data.childConversationId]
