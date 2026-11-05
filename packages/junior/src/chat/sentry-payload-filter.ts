@@ -74,9 +74,13 @@ function scrubSpanName(name: string): string {
 }
 
 function isSecretHeaderAttribute(key: string): boolean {
+  // Logs write header names with underscores, such as `x_slack_signature`.
+  const lowerKey = key.toLowerCase();
   if (
-    key.startsWith(SDK_REQUEST_HEADER_PREFIX) &&
-    SECRET_HEADER_NAMES.has(key.slice(SDK_REQUEST_HEADER_PREFIX.length))
+    lowerKey.startsWith(SDK_REQUEST_HEADER_PREFIX) &&
+    SECRET_HEADER_NAMES.has(
+      lowerKey.slice(SDK_REQUEST_HEADER_PREFIX.length).replaceAll("_", "-"),
+    )
   ) {
     return true;
   }

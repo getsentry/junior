@@ -152,6 +152,7 @@ describe("Sentry private payload filtering", () => {
         "http.request.header.user-agent": ["git/2.47"],
         "http.request.header.vercel-forwarded-path": ["/graphql?q=secret"],
         "http.request.header.x-hub-signature-256": ["sha256=secret"],
+        "http.request.header.x_slack_signature": "v0=secret",
         "http.target": `${proxyPath}?query=trace:abc`,
         "sentry.segment.name": `POST /junior${proxyPath}?q=secret`,
         "url.full": `https://junior.example${proxyPath}?query=trace:abc#frag`,
