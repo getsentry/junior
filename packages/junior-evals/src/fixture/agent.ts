@@ -5,7 +5,7 @@
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. Other HTTP traffic goes through
  * Roach, the recording proxy, which replays model responses and the web pages that
- * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * `webFetch` reads. See `roach.json`. The fixture replaces only the
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
