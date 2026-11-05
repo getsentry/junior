@@ -8,6 +8,7 @@ import {
   gt,
   inArray,
   lt,
+  max,
   sql,
 } from "drizzle-orm";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -329,4 +330,39 @@ export async function readConversationEventPageAfter(
       ? { nextSeq: events.at(-1)!.seq }
       : undefined),
   };
+}
+
+/** Read the newest event position, or -1 before the first event. */
+export async function readConversationLastEventSeq(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<number> {
+  const [row] = await executor
+    .db()
+    .select({ seq: max(juniorConversationEvents.seq) })
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId));
+  return row?.seq ?? -1;
+}
+
+/** Read the transcript position of one Message, when a Turn has read it. */
+export async function readConversationMessageEventSeq(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+  messageId: string,
+): Promise<number | undefined> {
+  const [row] = await executor
+    .db()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        sql`${juniorConversationEvents.payload}->>'messageId' = ${messageId}`,
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq))
+    .limit(1);
+  return row?.seq;
 }

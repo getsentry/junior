@@ -116,7 +116,8 @@ export const mcpMessageSchema = z
   })
   .strict();
 
-type McpMessage = z.output<typeof mcpMessageSchema>;
+/** One user or assistant Message in an MCP result. */
+export type McpMessage = z.output<typeof mcpMessageSchema>;
 
 /**
  * Keep the user and assistant Messages of a report event page, in order.
@@ -267,6 +268,13 @@ export async function readMcpPendingWorkAfterSend(
   }
 }
 
+/** `cursor` result field shared by getConversation and the send tools. */
+export const mcpCursorSchema = z
+  .string()
+  .describe(
+    "Pass as `after` to getConversation to read the messages that come after this point.",
+  );
+
 /** Result of a tool that sends a message. */
 export const mcpAcceptedMessageSchema = {
   conversationId: z.string(),
@@ -284,5 +292,6 @@ export const mcpAcceptedMessageSchema = {
       "Accepted messages that no turn has read yet, oldest first. Missing when the read failed after your message was accepted; use getConversation.",
     ),
   authorization: mcpAuthorizationSchema.optional(),
+  cursor: mcpCursorSchema,
   url: z.string().optional().describe("Dashboard link."),
 };

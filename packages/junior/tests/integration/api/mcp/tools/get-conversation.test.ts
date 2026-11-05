@@ -59,8 +59,56 @@ describe("getConversation MCP tool", () => {
         text: "The rollback is done.",
       }),
       pendingMessages: [],
+      cursor: expect.any(String),
     });
     expect(result.structuredContent).not.toHaveProperty("brief.record");
+  });
+
+  it("returns the messages after a cursor and a cursor to continue from", async () => {
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    await appendMcpMessages(CONVERSATION_ID, [
+      { role: "user", text: "What broke?" },
+      { role: "assistant", text: "The relay deploy broke ingestion." },
+    ]);
+    const call = await connectMcpTools();
+    const { cursor } = (
+      await call("getConversation", { conversationId: CONVERSATION_ID })
+    ).structuredContent as { cursor: string };
+    await appendMcpMessages(CONVERSATION_ID, [
+      { role: "user", text: "Roll it back." },
+      { role: "assistant", text: "The rollback is done." },
+    ]);
+
+    const newer = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+      after: cursor,
+    });
+    const next = (newer.structuredContent as { cursor: string }).cursor;
+    const caughtUp = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+      after: next,
+    });
+    const invalid = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+      after: "not-a-cursor",
+    });
+
+    expect(newer.structuredContent).toMatchObject({
+      messages: [
+        { role: "user", text: "Roll it back." },
+        { role: "assistant", text: "The rollback is done." },
+      ],
+    });
+    expect(newer.structuredContent).not.toHaveProperty("lastReply");
+    expect(caughtUp.structuredContent).toMatchObject({
+      cursor: next,
+      messages: [],
+    });
+    expect(invalid).toMatchObject({ isError: true });
   });
 
   it("reports another person's Conversation as not found", async () => {
