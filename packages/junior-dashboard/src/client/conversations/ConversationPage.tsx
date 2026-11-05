@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -16,6 +16,7 @@ import type {
 import type { ConversationData } from "./queries";
 import {
   useArchiveConversation,
+  type ArchivedFromConversationState,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
@@ -229,6 +230,7 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const navigate = useNavigate();
   const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
@@ -545,11 +547,22 @@ export function ConversationPage(props: {
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
               error: Boolean(archive.error),
-              onClick: () =>
+              onClick: () => {
+                const archived = !conversation!.archivedAt;
                 archive.mutate({
-                  archived: !conversation?.archivedAt,
+                  archived,
                   lastSeenAt: conversation!.lastSeenAt,
-                }),
+                });
+                // Archiving hides this conversation, so go home at once.
+                // The mutation keeps running after this page unmounts.
+                if (archived) {
+                  navigate("/", {
+                    state: {
+                      archivedConversation: conversation!,
+                    } satisfies ArchivedFromConversationState,
+                  });
+                }
+              },
               pending: archive.isPending,
             }}
             live={live}
