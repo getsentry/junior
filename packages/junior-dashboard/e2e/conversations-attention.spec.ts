@@ -251,6 +251,11 @@ test.describe("conversation sections", () => {
     ).toBeVisible();
 
     await finishedRow.click({ button: "right" });
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Mark as read",
+      "Pin",
+      "Archive",
+    ]);
     await screenshot(page, "conversation-sidebar-context-menu", {
       lightTheme: true,
       view: "desktop",

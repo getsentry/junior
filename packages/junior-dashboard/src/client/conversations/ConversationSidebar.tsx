@@ -382,6 +382,13 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const emphasized = props.unread || Boolean(props.waiting);
   // Unread tracks idle conversations only.
   const canMarkUnread = props.conversation.status === "completed";
+  const archived = Boolean(props.conversation.archivedAt);
+  const togglePin = () => pin.mutate(!pinned);
+  const toggleArchive = () =>
+    archive.mutate({
+      archived: !archived,
+      lastSeenAt: props.conversation.lastSeenAt,
+    });
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -452,7 +459,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-        {props.conversation.archivedAt ? null : (
+        {archived ? null : (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -464,7 +471,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
                     "right-9 max-sm:hidden",
                   )}
                   disabled={pin.isPending}
-                  onClick={() => pin.mutate(!pinned)}
+                  onClick={togglePin}
                   type="button"
                 >
                   <Pin
@@ -484,18 +491,13 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
           <TooltipTrigger
             render={
               <button
-                aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
+                aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
                 className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
                 disabled={archive.isPending}
-                onClick={() =>
-                  archive.mutate({
-                    archived: !props.conversation.archivedAt,
-                    lastSeenAt: props.conversation.lastSeenAt,
-                  })
-                }
+                onClick={toggleArchive}
                 type="button"
               >
-                {props.conversation.archivedAt ? (
+                {archived ? (
                   <ArchiveRestore aria-hidden="true" size={14} />
                 ) : (
                   <Archive aria-hidden="true" size={14} />
@@ -504,7 +506,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
             }
           />
           <TooltipContent size="compact">
-            {props.conversation.archivedAt ? "Restore" : "Archive"}
+            {archived ? "Restore" : "Archive"}
           </TooltipContent>
         </Tooltip>
       </ContextMenuTrigger>
@@ -525,6 +527,21 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
             Mark as unread
           </ContextMenuItem>
         )}
+        {/* Archived rows restore before they pin, like the row buttons. */}
+        {archived ? null : (
+          <ContextMenuItem disabled={pin.isPending} onClick={togglePin}>
+            <Pin aria-hidden="true" />
+            {pinned ? "Unpin" : "Pin"}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
+          {archived ? (
+            <ArchiveRestore aria-hidden="true" />
+          ) : (
+            <Archive aria-hidden="true" />
+          )}
+          {archived ? "Restore" : "Archive"}
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
