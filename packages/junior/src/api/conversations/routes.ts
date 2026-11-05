@@ -19,6 +19,10 @@ import {
   createConversationMessageBodySchema,
 } from "../schema/conversation";
 import {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "../schema/conversation-catch-up";
+import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
 } from "../schema/conversation-pin";
@@ -33,6 +37,7 @@ import {
   cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
   steerConversationPendingMessagesResponseSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationPendingMessagesReportSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
@@ -43,6 +48,7 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { catchUpOnConversation } from "./catch-up";
 import { pinConversation } from "./pin";
 import {
   archiveViewerDoneConversations,
@@ -321,6 +327,30 @@ export function createConversationRoutes(
       ),
   );
 
+  app.post(
+    "/:conversationId/catch-up",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationCatchUpBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        conversationCatchUpSchema,
+        await catchUpOnConversation(viewer, conversationId, body),
+      );
+    },
+  );
+
   app.get(
     "/:conversationId/events",
     validateRequest(
@@ -495,36 +525,51 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const { conversationId } = context.req.valid("param");
-      const query = context.req.valid("query");
+      const { mailbox: withMailbox, ...query } = context.req.valid("query");
       const viewer = context.get("viewer");
-      // Polls send the last version token. Compare it before the report is
-      // built, because building the report is the expensive part of this route.
-      const etag = await readConversationDetailEtag(conversationId, {
-        limit: query.limit,
-        ...(viewer ? { viewer } : undefined),
-      });
-      const headers = etag
+      // Read the mailbox before history, as two separate reads would, so
+      // input that moves from the mailbox to history is in at least one. The
+      // version token and the state it hashes are not history, so they are
+      // read beside it. Polls send the last token: compare it before the
+      // report is built, because building the report is the expensive part.
+      const [mailbox, version] = await Promise.all([
+        withMailbox
+          ? requireConversationPendingMessages(conversationId, {
+              ...(viewer ? { viewer } : undefined),
+            })
+          : undefined,
+        readConversationDetailEtag(conversationId, {
+          limit: query.limit,
+          ...(viewer ? { viewer } : undefined),
+        }),
+      ]);
+      const headers = version
         ? {
             "cache-control": "private, no-store",
-            [CONVERSATION_DETAIL_VERSION_HEADER]: etag,
+            [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
           }
         : undefined;
       if (
-        headers &&
-        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === etag
+        version &&
+        !mailbox &&
+        context.req.header(CONVERSATION_DETAIL_VERSION_HEADER) === version.etag
       ) {
         return new Response(null, { status: 304, headers });
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
+        ...(version ? { state: version.state } : undefined),
         ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
-      return jsonResponse(
-        conversationDetailReportSchema,
-        report,
-        headers ? { headers } : undefined,
-      );
+      const init = headers ? { headers } : undefined;
+      return mailbox
+        ? jsonResponse(
+            conversationDetailWithMailboxReportSchema,
+            { ...report, mailbox },
+            init,
+          )
+        : jsonResponse(conversationDetailReportSchema, report, init);
     },
   );
 

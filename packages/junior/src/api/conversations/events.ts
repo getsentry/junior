@@ -8,7 +8,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationEventModel,
   conversationEventModelCall,

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { unpublishArtifact } from "@/chat/artifacts/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -31,9 +31,7 @@ export function createUnpublishImageTool(args: {
         ref: z
           .string()
           .min(1)
-          .describe(
-            "Public artifact URL or artifact filename (`<id>.<ext>`).",
-          ),
+          .describe("Public artifact URL or artifact filename (`<id>.<ext>`)."),
       })
       .strict(),
     outputSchema,

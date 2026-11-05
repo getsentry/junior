@@ -1,3 +1,4 @@
+import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
@@ -685,13 +686,13 @@ test("keeps the message in view while earlier history and late content load", as
   );
   await page.route("**/api/conversations/long-history*", async (route) => {
     await route.fulfill({
-      json: {
+      json: withRequestedMailbox(route, {
         ...conversation,
         eventHistory: { status: "available" },
         events: events(40, 80),
         generatedAt,
         previousCursor: "before-40",
-      },
+      }),
     });
   });
 

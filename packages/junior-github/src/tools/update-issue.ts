@@ -14,13 +14,19 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -74,33 +80,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
-  return "GitHub request failed";
-}
-
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
@@ -152,26 +131,16 @@ export function createGitHubUpdateIssueTool(ctx: {
           : undefined),
         ...(update.state !== undefined ? { state: update.state } : undefined),
       };
-      const response = await ctx.egress.fetch({
-        provider: "github",
+      const response = await githubApi(ctx.egress, {
         operation: "github.issue.update",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${update.number}`,
-          {
-            method: "PATCH",
-            headers: {
-              Accept: "application/vnd.github+json",
-              "Content-Type": "application/json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-            body: JSON.stringify(payload),
-          },
-        ),
+        method: "PATCH",
+        path: `${repoPath(repo)}/issues/${update.number}`,
+        body: payload,
       });
-      const parsed = await readJson(response);
+      const parsed = response.body;
       if (!response.ok) {
         throw new Error(
-          `GitHub issue update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`,
+          `GitHub issue update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
         );
       }
       const providerResult = z

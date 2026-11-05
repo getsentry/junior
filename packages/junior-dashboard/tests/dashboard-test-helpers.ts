@@ -1,3 +1,7 @@
+import {
+  dashboardBootstrapSchema,
+  type DashboardBootstrap,
+} from "../src/api/schema";
 import type { DashboardAuth, DashboardSession } from "../src/auth";
 
 export const dashboardEnvNames = [
@@ -40,4 +44,14 @@ export function auth(
       );
     },
   };
+}
+
+/** Read the core data the page shell embeds for the client's first render. */
+export function embeddedBootstrap(
+  html: string,
+): DashboardBootstrap | undefined {
+  const match = /window\.__JUNIOR_DASHBOARD_BOOTSTRAP__ = (.*);\n/.exec(html);
+  return match
+    ? dashboardBootstrapSchema.parse(JSON.parse(match[1]!))
+    : undefined;
 }

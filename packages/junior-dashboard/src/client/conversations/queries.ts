@@ -20,6 +20,7 @@ import {
   webMessageId,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
@@ -74,7 +75,32 @@ const FAST_POLL_WINDOW_MS = 6_000;
 export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
+  /** Set by a list hover prefetch, so the next visit can use it as its open fetch. */
+  prefetchedAtMs?: number;
 };
+
+// A hover prefetch this recent is the open fetch of the next visit. The
+// reader has not opened the Conversation since, so its read position and
+// unread page are still the ones that the open would get.
+const PREFETCH_OPEN_WINDOW_MS = 30_000;
+
+function dropPrefetchMark(client: QueryClient, conversationId: string) {
+  const key = conversationDetailQueryKey(conversationId);
+  const state = client.getQueryState<ConversationSnapshot>(key);
+  if (!state?.data?.prefetchedAtMs) return;
+  const { prefetchedAtMs: _prefetchedAtMs, ...rest } = state.data;
+  // Keep the fetch time, so the copy goes stale as it would have.
+  client.setQueryData<ConversationSnapshot>(key, rest, {
+    updatedAt: state.dataUpdatedAt,
+  });
+}
+
+function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
+  return Boolean(
+    snapshot?.prefetchedAtMs &&
+    Date.now() - snapshot.prefetchedAtMs < PREFETCH_OPEN_WINDOW_MS,
+  );
+}
 
 /** Read the mailbox before history so acknowledged input is already committed. */
 async function readConversationSnapshot(
@@ -83,13 +109,19 @@ async function readConversationSnapshot(
   previous?: ConversationSnapshot,
   unreadPage?: boolean,
 ): Promise<ConversationSnapshot> {
+  // With no cached copy, the transcript waits for this read. The server reads
+  // both in the same order in one request, which saves a round trip. Polls
+  // read the mailbox apart, so the detail can still answer 304.
+  if (!previous) {
+    return readConversationData(conversationId, signal, undefined, {
+      mailbox: true,
+      unreadPage,
+    });
+  }
   const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(
-    conversationId,
-    signal,
-    previous,
+  const detail = await readConversationData(conversationId, signal, previous, {
     unreadPage,
-  );
+  });
   return { ...detail, mailbox };
 }
 
@@ -106,11 +138,24 @@ export function conversationSideReadQueryKey(
   return ["conversation", conversationId, read] as const;
 }
 
-/** Refresh the side reads and Review items. Only mounted reads refetch. */
-function refreshConversationSideReads(
+/**
+ * Refresh the side reads and Review items when a fetch brings a new ETag.
+ * Side reads do not poll. A new ETag means the Conversation changed, so the
+ * details panel may be stale too. Only mounted reads refetch.
+ */
+export function refreshSideReadsOnChange(
   client: QueryClient,
   conversationId: string,
+  previous: ConversationSnapshot | undefined,
+  next: ConversationSnapshot,
 ) {
+  if (
+    !previous?.detailEtag ||
+    !next.detailEtag ||
+    previous.detailEtag === next.detailEtag
+  ) {
+    return;
+  }
   for (const read of CONVERSATION_SIDE_READS) {
     void client.invalidateQueries({
       queryKey: conversationSideReadQueryKey(conversationId, read),
@@ -146,15 +191,7 @@ export function conversationDetailQueryOptions(
         previous,
         options?.unreadPage,
       );
-      // Side reads do not poll. A new ETag means the Conversation changed,
-      // so the details panel may be stale too.
-      if (
-        previous?.detailEtag &&
-        next.detailEtag &&
-        previous.detailEtag !== next.detailEtag
-      ) {
-        refreshConversationSideReads(client, conversationId!);
-      }
+      refreshSideReadsOnChange(client, conversationId!, previous, next);
       return next;
     },
     structuralSharing: (previous, next) => {
@@ -520,13 +557,23 @@ export function useConversationData(
 ) {
   const queryClient = useQueryClient();
   // The shell keeps one hook across Conversations, so a new Conversation
-  // starts a new visit.
-  const [visit, setVisit] = useState({ conversationId, fetched: false });
+  // starts a new visit. A recent hover prefetch is the open fetch of the visit.
+  const startVisit = () => {
+    const prefetched = isOpenPrefetch(
+      queryClient.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      ),
+    );
+    return { conversationId, fetched: prefetched, prefetched };
+  };
+  const [visit, setVisit] = useState(startVisit);
   if (visit.conversationId !== conversationId) {
-    setVisit({ conversationId, fetched: false });
+    setVisit(startVisit());
   }
   const fetchedAtOpen =
     visit.conversationId === conversationId && visit.fetched;
+  const openedFromPrefetch =
+    visit.conversationId === conversationId && visit.prefetched;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -570,13 +617,17 @@ export function useConversationData(
   // A reopened Conversation shows the cached copy at once, but it can miss
   // messages that arrived while the reader was away. Fetch it once at the
   // start of each visit, even when the cached copy is still fresh. A fetch
-  // that is already running counts.
+  // that is already running counts, such as a hover prefetch. After a done
+  // prefetch, this fetch only checks for newer events.
   const refetchDetail = detail.refetch;
   useEffect(() => {
-    if (conversationId) void refetchDetail({ cancelRefetch: false });
-  }, [conversationId, refetchDetail]);
+    if (!conversationId) return;
+    void refetchDetail({ cancelRefetch: false });
+    // After a visit, the read position can move past the prefetched one.
+    return () => dropPrefetchMark(queryClient, conversationId);
+  }, [conversationId, queryClient, refetchDetail]);
   if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
-    setVisit({ conversationId, fetched: true });
+    setVisit({ conversationId, fetched: true, prefetched: openedFromPrefetch });
   }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
@@ -769,7 +820,7 @@ export function useConversationData(
     fetchedAtOpen,
     /** The latest detail after a fetch in this visit, before it is deferred. */
     fetchedDetail:
-      detail.isFetchedAfterMount && !detail.isFetching
+      openedFromPrefetch || (detail.isFetchedAfterMount && !detail.isFetching)
         ? detail.data
         : undefined,
     isLoadingPreviousPage,
@@ -806,17 +857,29 @@ export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
-  unreadPage?: boolean,
+  options?: {
+    /** Also read the mailbox, before history, in the same request. */
+    mailbox?: boolean;
+    unreadPage?: boolean;
+  },
 ): Promise<ConversationSnapshot> {
+  const query = new URLSearchParams();
+  if (options?.unreadPage) query.set("unreadPage", "true");
+  if (options?.mailbox) query.set("mailbox", "true");
+  const search = query.size ? `?${query}` : "";
   const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}${unreadPage ? "?unreadPage=true" : ""}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
     signal,
     previous?.detailEtag
       ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
       : undefined,
   );
   if (response.status === 304 && previous) return previous;
-  const report = conversationDetailReportSchema.parse(await response.json());
+  const report = (
+    options?.mailbox
+      ? conversationDetailWithMailboxReportSchema
+      : conversationDetailReportSchema
+  ).parse(await response.json());
   return {
     ...report,
     detailEtag:

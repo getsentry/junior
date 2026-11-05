@@ -1,6 +1,6 @@
 /** Validate the ACP wire messages that Junior supports. */
 import * as acp from "@agentclientprotocol/sdk";
-import { z } from "zod";
+import * as z from "zod";
 
 const ACP_SESSION_ID_PATTERN = /^local:acp:[a-f0-9]{32}$/;
 const metaSchema = z.record(z.string(), z.unknown()).nullable();

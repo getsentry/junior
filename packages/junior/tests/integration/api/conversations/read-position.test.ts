@@ -16,7 +16,7 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorIdentities } from "@/db/schema";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -211,6 +211,69 @@ describe("conversation read position API", () => {
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { limit: 10, viewer }),
       ).unreadCursor,
+    ).toBeUndefined();
+  });
+
+  it("counts the viewer's own Messages as read", async () => {
+    const conversationId = "local:test:read-position-own";
+    await recordConversation(conversationId);
+    const { app, viewer } = await authenticatedApi("reader@example.com");
+    const { viewer: otherViewer } = await authenticatedApi(
+      "other-reader@example.com",
+    );
+    // Each reader also writes from Slack, with an Identity linked to them.
+    const identities = await getDb()
+      .insert(juniorIdentities)
+      .values(
+        [viewer, otherViewer].map((user, index) => ({
+          id: `identity-slack-${index}`,
+          createdAt: new Date(1_000),
+          kind: "user" as const,
+          provider: "slack",
+          providerSubjectId: `U${index}`,
+          updatedAt: new Date(1_000),
+          userId: user.id,
+        })),
+      )
+      .returning({ id: juniorIdentities.id });
+    const authorBySeq = new Map([
+      [3, identities[0]!.id],
+      [5, identities[1]!.id],
+    ]);
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 7 }, (_, seq) => {
+        const authorIdentityId = authorBySeq.get(seq);
+        return {
+          createdAtMs: 1_000 + seq,
+          data: {
+            type: "message" as const,
+            messageId: `message-${seq}`,
+            text: `Message ${seq}`,
+            ...(authorIdentityId
+              ? { authorIdentityId, role: "user" as const }
+              : { role: "assistant" as const }),
+          },
+        };
+      }),
+    );
+
+    // The viewer wrote Message 3 after reading Message 1, so it and the rows
+    // before it are not new. Message 5 is from someone else, so it is new.
+    const reported = await putReadPosition(app, conversationId, 1);
+    expect(conversationReadPositionSchema.parse(await reported.json())).toEqual(
+      { lastReadSeq: 3 },
+    );
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer }),
+      ).readPosition,
+    ).toEqual({ lastReadSeq: 3 });
+    // A reader who has not opened the Conversation keeps no position.
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer: otherViewer }),
+      ).readPosition,
     ).toBeUndefined();
   });
 

@@ -28,6 +28,7 @@ import {
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
@@ -367,6 +368,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
     onError: (pinned) => props.onPinError(props.conversation, pinned),
     onSuccess: () => props.onPinned(props.conversation),
   });
+  const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
@@ -374,6 +376,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const emphasized = props.unread || Boolean(props.waiting);
   return (
     <div
+      {...prefetch}
       className={cn(
         "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
         props.selected && "bg-dashboard-surface-active",

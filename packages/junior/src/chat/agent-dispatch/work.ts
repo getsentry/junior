@@ -6,7 +6,7 @@
  * leases, retries, continuation, delivery, and recovery.
  */
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";

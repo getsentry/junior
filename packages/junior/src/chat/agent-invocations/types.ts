@@ -3,7 +3,7 @@ import {
   destinationSchema,
   sourceSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
@@ -11,7 +11,7 @@ import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
   AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
-} from "@/db/schema/agent-invocations";
+} from "@/chat/agent-invocations/statuses";
 
 const exactStringSchema = z
   .string()

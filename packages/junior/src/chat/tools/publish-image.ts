@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { publishImage } from "@/chat/artifacts/store";
 import { resolveBaseUrl } from "@/chat/oauth-flow";

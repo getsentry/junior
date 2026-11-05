@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const archiveConversationBodySchema = z
   .object({ archived: z.boolean(), lastSeenAt: z.string().datetime() })

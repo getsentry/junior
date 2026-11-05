@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * Child agent types. A type is plain data: when to pick it, whether the child

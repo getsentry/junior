@@ -1,7 +1,7 @@
 /** Shared input and result shapes of the Automation tools. */
 import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import {
   compactEventAutomation,
   compactEventAutomationResultSchema,

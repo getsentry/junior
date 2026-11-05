@@ -12,7 +12,7 @@ import type {
   EventPublisher,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import { pullRequestTargets } from "./event-targets.js";

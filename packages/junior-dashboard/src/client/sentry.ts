@@ -1,7 +1,13 @@
 import {
   browserTracingIntegration,
+  getActiveSpan,
+  getRootSpan,
   init,
+  spanToJSON,
+  startInactiveSpan,
+  updateSpanName,
   type BrowserOptions,
+  type Span,
 } from "@sentry/browser";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
 
@@ -61,6 +67,58 @@ function scrubSpan(span: StreamedSpanJSON): StreamedSpanJSON {
 }
 
 /**
+ * Time from navigation start to the fetch of the page document. Sign-in
+ * redirects through the identity provider land here, and cross-origin
+ * redirects get no redirect timing of their own.
+ */
+function preFetchMs(): number | undefined {
+  const [entry] = performance.getEntriesByType?.("navigation") ?? [];
+  return entry
+    ? Math.round((entry as PerformanceNavigationTiming).fetchStart)
+    : undefined;
+}
+
+/** The open pageload or navigation span, if the page has one. */
+function activeRouteSpan(): Span | undefined {
+  const activeSpan = getActiveSpan();
+  if (!activeSpan) return undefined;
+  const rootSpan = getRootSpan(activeSpan);
+  const op = spanToJSON(rootSpan).attributes["sentry.op"];
+  return op === "pageload" || op === "navigation" ? rootSpan : undefined;
+}
+
+/**
+ * Name the open pageload or navigation span after the matched route pattern.
+ * With span streaming, the SDK names these spans only `Pageload` and
+ * `Navigation`.
+ */
+export function nameRouteSpan(pattern: string): void {
+  const span = activeRouteSpan();
+  if (!span) return;
+  updateSpanName(span, pattern);
+  span.setAttribute("sentry.segment.name.source", "route");
+}
+
+/**
+ * Add a span from the start of the open pageload or navigation to the first
+ * render of the Conversation transcript. The pageload or navigation span
+ * ends only after every request on the page is idle, side panels and polls
+ * included, so its duration is not the time to see the transcript.
+ */
+export function recordTranscriptShown(): void {
+  const span = activeRouteSpan();
+  if (!span) return;
+  const { attributes, start_timestamp } = spanToJSON(span);
+  startInactiveSpan({
+    attributes: { "app.dashboard.load": attributes["sentry.op"] as string },
+    name: "Conversation transcript shown",
+    op: "ui.render",
+    parentSpan: span,
+    startTime: start_timestamp,
+  }).end();
+}
+
+/**
  * Send dashboard performance spans to the server's Sentry project when the
  * server provides a DSN. Only tracing is enabled: error events and
  * breadcrumbs could carry conversation content shown on the page.
@@ -72,6 +130,19 @@ export function initDashboardSentry(): void {
     ...config,
     beforeSendSpan: scrubSpan,
     defaultIntegrations: false,
-    integrations: [browserTracingIntegration()],
+    integrations: [
+      browserTracingIntegration({
+        beforeStartSpan: (options) =>
+          options.op === "pageload"
+            ? {
+                ...options,
+                attributes: {
+                  ...options.attributes,
+                  "app.dashboard.navigation.pre_fetch_ms": preFetchMs(),
+                },
+              }
+            : options,
+      }),
+    ],
   });
 }

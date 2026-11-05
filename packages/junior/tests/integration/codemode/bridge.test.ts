@@ -4,7 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import { http } from "msw";
-import { z } from "zod";
+import * as z from "zod";
 import { createResumeState } from "@/chat/agent/resume";
 import {
   CODE_MODE_SCRIPT_TIMEOUT_MS,

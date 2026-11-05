@@ -1,5 +1,5 @@
 import { createTodoList } from "@/chat/slack/tool-support/list/api";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
@@ -14,8 +14,7 @@ export function createSlackListCreateTool(state: ToolState) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Create a Slack todo list.",
+    description: "Create a Slack todo list.",
     inputSchema: z.object({
       name: z.string().min(1).max(160).describe("Name for the new Slack list."),
     }),

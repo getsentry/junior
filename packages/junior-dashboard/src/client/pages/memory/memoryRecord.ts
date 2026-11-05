@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { z } from "zod";
+import * as z from "zod";
 
 import { fetchDashboardJson } from "../../http";
 import type { PluginUserPageRecord } from "../user/pluginUserPageData";

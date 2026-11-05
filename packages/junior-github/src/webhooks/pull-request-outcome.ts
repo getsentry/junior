@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
@@ -110,9 +110,7 @@ const pullRequestConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    repository: z
-      .object({ full_name: z.string().min(1) })
-      .passthrough(),
+    repository: z.object({ full_name: z.string().min(1) }).passthrough(),
     sender: z.object({ login: z.string().min(1) }).passthrough(),
   })
   .passthrough()

@@ -2,7 +2,7 @@ import type {
   ConversationsHistoryResponse,
   ConversationsRepliesResponse,
 } from "@slack/web-api";
-import { z } from "zod";
+import * as z from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";

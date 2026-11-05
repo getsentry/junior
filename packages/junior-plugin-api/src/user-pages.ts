@@ -4,7 +4,7 @@
  * Plugins own bounded data projection; Junior owns viewer authorization,
  * routing, response validation, and browser rendering.
  */
-import { z } from "zod";
+import * as z from "zod";
 import type { PluginContext, User } from "./context";
 import { nonBlankStringSchema } from "./schemas";
 

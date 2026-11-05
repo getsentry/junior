@@ -6,8 +6,27 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+
+/**
+ * Add the mailbox that a first detail read asks for, so a mocked detail report
+ * answers that read the way the server does. The mailbox is empty by default.
+ */
+export function withRequestedMailbox<T extends { conversationId: string }>(
+  route: Route,
+  report: T,
+  mailbox: unknown = {
+    conversationId: report.conversationId,
+    generatedAt: NOW,
+    messages: [],
+  },
+): T {
+  const { searchParams } = new URL(route.request().url());
+  return searchParams.get("mailbox") === "true"
+    ? { ...report, mailbox }
+    : report;
+}
 
 export type DashboardE2eServer = {
   baseURL: string;
@@ -155,11 +174,13 @@ export async function mockDashboardApis(
           events: [
             {
               memoryIds: ["memory-checkout-runbook"],
+              seq: 2,
               source: "recalled",
               turnId: "active-turn",
             },
             {
               memoryIds: ["captured-memory-1", "captured-memory-2"],
+              seq: 13,
               source: "captured",
               turnId: "qa-turn",
             },

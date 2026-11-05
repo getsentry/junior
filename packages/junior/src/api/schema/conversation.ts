@@ -6,7 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
-import { z } from "zod";
+import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
@@ -57,9 +57,15 @@ export const conversationAttachmentParamsSchema = z
 
 export const conversationDetailQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
+    /** Omit to get the latest three Turns, up to 500 events. */
+    limit: z.coerce.number().int().min(1).max(1_000).optional(),
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
+    /**
+     * Also return `mailbox`, read before history, and never answer 304. A
+     * first load gets both in one request.
+     */
+    mailbox: z.stringbool().optional(),
   })
   .strict();
 
@@ -72,7 +78,8 @@ const conversationEventsLimitSchema = z.coerce
 
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
- * both ways from one event with `around`.
+ * both ways from one event with `around`. A link target asks for the page
+ * around one event by its `event` seq, or around the start of a `turn`.
  */
 export const conversationEventsQuerySchema = z.union([
   z
@@ -83,6 +90,15 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
   z
     .object({ around: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      event: z.coerce.number().int().min(0),
+      limit: conversationEventsLimitSchema,
+    })
+    .strict(),
+  z
+    .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
     .strict(),
 ]);
 

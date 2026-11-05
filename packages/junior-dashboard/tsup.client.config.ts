@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -11,11 +12,21 @@ export default defineConfig({
   platform: "browser",
   tsconfig: "tsconfig.build.json",
   dts: false,
-  outDir: "dist",
+  // Only content-hashed browser files go here. Nitro serves this folder as
+  // immutable static assets, so an unhashed file would stay cached forever.
+  outDir: "dist/public",
   clean: true,
   splitting: true,
   esbuildOptions(options) {
+    options.entryNames = "[name]-[hash]";
     options.chunkNames = "chunks/[name]-[hash]";
+    // pnpm injects a separate copy of the plugin API into @sentry/junior.
+    // Resolve every import to one copy, so the browser loads it once.
+    options.alias = {
+      "@sentry/junior-plugin-api": fileURLToPath(
+        import.meta.resolve("@sentry/junior-plugin-api"),
+      ),
+    };
   },
   minify: true,
   define: {

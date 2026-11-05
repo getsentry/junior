@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 
 const CURSOR_CONTEXT = "junior-conversation-report-cursor";
 

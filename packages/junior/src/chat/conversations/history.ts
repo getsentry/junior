@@ -7,7 +7,7 @@
  * while malformed known events fail loudly. Provider-specific message fields
  * are validated by the Pi adapter when it restores model context.
  */
-import { z } from "zod";
+import * as z from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
 import { conversationMessageProvenanceSchema } from "./provenance";
 import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";

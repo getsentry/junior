@@ -3,7 +3,7 @@ import {
   actorUserIdSchema,
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const scheduledAutomationStatusSchema = z.enum([
   "active",

@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
@@ -12,16 +13,29 @@ import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
 import { throwApiError } from "../http";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorConversationEvents } from "@/db/schema";
 import {
   conversationEventPageSchema,
   type ConversationEventPage,
   type ConversationReportEvent,
 } from "../schema/conversation";
 
-/** Read one bounded page of reporting events before, after, or around a signed cursor. */
+/**
+ * Where one page starts. Cursors come from earlier pages. A link target
+ * (`event` seq or `turn` id) asks for the page around it, so the dashboard
+ * opens a linked row with one request.
+ */
+type ConversationEventsBoundary =
+  | { after: string }
+  | { around: string }
+  | { before: string }
+  | { event: number }
+  | { turn: string };
+
+/** Read one bounded page of reporting events before, after, or around a boundary. */
 export async function readConversationEvents(
   conversationId: string,
-  boundary: { after: string } | { around: string } | { before: string },
+  boundary: ConversationEventsBoundary,
   options: {
     limit?: number;
     viewer?: User;
@@ -30,17 +44,7 @@ export async function readConversationEvents(
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
-  const cursor = decodeConversationCursor({
-    conversationId,
-    cursor:
-      "after" in boundary
-        ? boundary.after
-        : "around" in boundary
-          ? boundary.around
-          : boundary.before,
-  });
-  if (!cursor) throwApiError(400, "Invalid conversation cursor.");
-
+  const position = await boundaryPosition(conversationId, boundary);
   const accessByConversation = await readConversationAccessFromSql(
     getDb(),
     [conversationId],
@@ -57,19 +61,19 @@ export async function readConversationEvents(
   const page: Awaited<ReturnType<typeof readConversationEventPageAround>> =
     transcriptPurgedAtMs !== undefined
       ? { events: [] }
-      : "after" in boundary
+      : position.direction === "after"
         ? await readConversationEventPageAfter(getSqlExecutor(), {
             ...pageArgs,
-            afterSeq: cursor.seq,
+            afterSeq: position.seq,
           })
-        : "around" in boundary
+        : position.direction === "around"
           ? await readConversationEventPageAround(getSqlExecutor(), {
               ...pageArgs,
-              seq: cursor.seq,
+              seq: position.seq,
             })
           : await readConversationEventPage(getSqlExecutor(), {
               ...pageArgs,
-              beforeSeq: cursor.seq,
+              beforeSeq: position.seq,
             });
   return conversationEventPageSchema.parse(
     await conversationEventPageReport(getSqlExecutor(), {
@@ -83,6 +87,50 @@ export async function readConversationEvents(
       page,
     }),
   );
+}
+
+/** Resolve a page boundary to a direction and an event seq. */
+async function boundaryPosition(
+  conversationId: string,
+  boundary: ConversationEventsBoundary,
+): Promise<{ direction: "after" | "around" | "before"; seq: number }> {
+  if ("event" in boundary) return { direction: "around", seq: boundary.event };
+  if ("turn" in boundary) {
+    const seq = await readTurnStartedSeq(conversationId, boundary.turn);
+    if (seq === undefined) throwApiError(404, "Turn not found.");
+    return { direction: "around", seq };
+  }
+  const [direction, value] =
+    "after" in boundary
+      ? (["after", boundary.after] as const)
+      : "around" in boundary
+        ? (["around", boundary.around] as const)
+        : (["before", boundary.before] as const);
+  const cursor = decodeConversationCursor({ conversationId, cursor: value });
+  if (!cursor) throwApiError(400, "Invalid conversation cursor.");
+  return { direction, seq: cursor.seq };
+}
+
+/**
+ * Find the event that started a Turn. The `(conversation_id, type, seq)`
+ * index reads only this Conversation's `turn_started` rows.
+ */
+async function readTurnStartedSeq(
+  conversationId: string,
+  turnId: string,
+): Promise<number | undefined> {
+  const [row] = await getDb()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "turn_started"),
+        sql`${juniorConversationEvents.payload}->>'turnId' = ${turnId}`,
+      ),
+    )
+    .limit(1);
+  return row?.seq;
 }
 
 /** Attach mentions and signed cursors to one bounded page of events. */

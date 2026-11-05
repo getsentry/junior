@@ -1,14 +1,14 @@
 import {
   type PluginEgress,
   definePluginTool,
-  PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubReleaseSourceSubscribable } from "../events/release.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -69,29 +69,6 @@ const providerReleaseSchema = z
   })
   .passthrough();
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-/** Read a provider response without assuming its error body is JSON. */
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function repositoryUrl(repo: { name: string; owner: string }, path: string) {
-  return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/${path}`;
-}
-
 function mapRelease(
   providerRelease: z.output<typeof providerReleaseSchema>,
 ): z.output<typeof releaseSchema> {
@@ -130,22 +107,12 @@ export function createGitHubGetReleaseTool(ctx: {
       let release: z.output<typeof releaseSchema> | null = null;
 
       if (tag) {
-        const response = await ctx.egress.fetch({
-          provider: "github",
+        const response = await githubApi(ctx.egress, {
           operation: "github.release.get",
-          request: new Request(
-            repositoryUrl(repo, `releases/tags/${encodeURIComponent(tag)}`),
-            {
-              headers: {
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-              },
-            },
-          ),
+          path: `${repoPath(repo)}/releases/tags/${encodeURIComponent(tag)}`,
         });
-        const body = await readJson(response);
         if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(body));
+          release = mapRelease(providerReleaseSchema.parse(response.body));
         } else if (response.status !== 404) {
           throw new Error(
             `GitHub release lookup failed with HTTP ${response.status}`,
@@ -155,19 +122,12 @@ export function createGitHubGetReleaseTool(ctx: {
       } else {
         // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
         // push access cannot surface a draft as the current release.
-        const response = await ctx.egress.fetch({
-          provider: "github",
+        const response = await githubApi(ctx.egress, {
           operation: "github.release.latest",
-          request: new Request(repositoryUrl(repo, "releases/latest"), {
-            headers: {
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          }),
+          path: `${repoPath(repo)}/releases/latest`,
         });
-        const body = await readJson(response);
         if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(body));
+          release = mapRelease(providerReleaseSchema.parse(response.body));
         } else if (response.status === 404) {
           // Missing repo and "no published release yet" both 404. Keep the
           // repository-wide source subscribable either way.

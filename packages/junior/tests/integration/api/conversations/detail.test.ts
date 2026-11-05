@@ -148,6 +148,17 @@ describe("conversation detail API", () => {
     const unchanged = await poll(firstEtag);
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
+    // The mailbox changes apart from the version token, so a read that asks
+    // for it always gets the full report.
+    const withMailbox = await app.request(
+      `http://localhost/api/conversations/${conversationId}?mailbox=true`,
+      { headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: firstEtag } },
+    );
+    expect(withMailbox.status).toBe(200);
+    expect(await withMailbox.json()).toMatchObject({
+      conversationId,
+      mailbox: { conversationId, messages: [] },
+    });
 
     await createChild({
       childConversationId,

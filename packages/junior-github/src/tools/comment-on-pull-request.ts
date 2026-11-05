@@ -5,7 +5,13 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -38,31 +44,28 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
+/**
+ * Return the id of the first comment in the review thread of `commentId`.
+ * GitHub accepts replies only to that comment, but Events can name a reply.
+ */
+async function threadRootId(
+  egress: PluginEgress,
+  prefix: string,
+  commentId: number,
+): Promise<number> {
+  const response = await githubApi(egress, {
+    operation: "github.pull.comment.get",
+    path: `${prefix}/pulls/comments/${commentId}`,
+  });
+  if (!response.ok) {
+    const message = `GitHub review comment lookup failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+    if (response.status === 404) throw new PluginToolInputError(message);
+    throw new Error(message);
   }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(body: unknown): string {
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const message = (body as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof body === "string" && body.trim()) return body.trim();
-  return "GitHub request failed";
+  const comment = z
+    .object({ in_reply_to_id: z.number().nullish() })
+    .parse(response.body);
+  return comment.in_reply_to_id ?? commentId;
 }
 
 /**
@@ -85,27 +88,19 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
     outputSchema,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
-      const repoPath = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
-      const url =
+      const prefix = repoPath(repo);
+      const path =
         input.in_reply_to === undefined
-          ? `${repoPath}/issues/${input.number}/comments`
-          : `${repoPath}/pulls/${input.number}/comments/${input.in_reply_to}/replies`;
-      const response = await egress.fetch({
-        provider: "github",
+          ? `${prefix}/issues/${input.number}/comments`
+          : `${prefix}/pulls/${input.number}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
+      const response = await githubApi(egress, {
         operation: "github.pull.comment.create",
-        request: new Request(url, {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-          body: JSON.stringify({ body: input.body }),
-        }),
+        method: "POST",
+        path,
+        body: { body: input.body },
       });
-      const parsed = await readJson(response);
       if (!response.ok) {
-        const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubError(parsed)}`;
+        const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
         if (response.status === 404 || response.status === 422) {
           throw new PluginToolInputError(message);
         }
@@ -113,7 +108,7 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
       }
       const comment = z
         .object({ id: z.number(), html_url: z.string() })
-        .parse(parsed);
+        .parse(response.body);
       return {
         target: "commentOnPullRequest",
         repo: repo.ref,

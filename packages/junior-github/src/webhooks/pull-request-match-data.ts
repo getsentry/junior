@@ -3,7 +3,7 @@ import type {
   EventPublisher,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";

@@ -1,7 +1,10 @@
-import { z } from "zod";
+import * as z from "zod";
 import { messageAttachmentSchema } from "@/chat/attachments/input";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
-import { actorIdentitySchema } from "./conversation";
+import {
+  actorIdentitySchema,
+  conversationDetailReportSchema,
+} from "./conversation";
 
 /** Mailbox delivery mode for one accepted inbound message. */
 export const conversationPendingMessageDeliverySchema = z.enum([
@@ -71,6 +74,12 @@ export const conversationPendingMessagesReportSchema = z
     messages: z.array(conversationPendingMessageSchema),
   })
   .strict();
+
+/** Detail report with the mailbox that was read before its history. */
+export const conversationDetailWithMailboxReportSchema =
+  conversationDetailReportSchema.extend({
+    mailbox: conversationPendingMessagesReportSchema,
+  });
 
 /** Optional filters for cancelling accepted mailbox rows. */
 export const cancelConversationPendingMessagesBodySchema = z

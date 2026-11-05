@@ -7,8 +7,9 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubDeploymentSourceSubscribable } from "../events/deployment.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -100,25 +101,6 @@ const providerStatusSchema = z
   })
   .passthrough();
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-/** Read a provider response without assuming its error body is JSON. */
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 /** Route repairable lookup failures through the model-visible tool error path. */
 function throwLookupError(
   target: "deployment" | "deployment status",
@@ -141,10 +123,6 @@ function throwLookupError(
   throw new Error(message);
 }
 
-function repositoryUrl(repo: { name: string; owner: string }, path: string) {
-  return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/${path}`;
-}
-
 /** Read deployment metadata and expose its stable subscription identity. */
 export function createGitHubGetDeploymentTool(ctx: {
   egress: PluginEgress;
@@ -164,60 +142,34 @@ export function createGitHubGetDeploymentTool(ctx: {
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const commitSha = input.commit_sha.toLowerCase();
-      const deploymentsUrl = new URL(repositoryUrl(repo, "deployments"));
-      deploymentsUrl.searchParams.set("sha", commitSha);
+      const deploymentsQuery = new URLSearchParams({ sha: commitSha });
       if (input.environment) {
-        deploymentsUrl.searchParams.set("environment", input.environment);
+        deploymentsQuery.set("environment", input.environment);
       }
-      deploymentsUrl.searchParams.set("per_page", "1");
-      const deploymentsResponse = await ctx.egress.fetch({
-        provider: "github",
+      deploymentsQuery.set("per_page", "1");
+      const deployments = await githubApi(ctx.egress, {
         operation: "github.deployment.list",
-        request: new Request(deploymentsUrl, {
-          headers: {
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        }),
+        path: `${repoPath(repo)}/deployments?${deploymentsQuery}`,
       });
-      const deploymentsBody = await readJson(deploymentsResponse);
-      if (!deploymentsResponse.ok) {
-        throwLookupError(
-          "deployment",
-          deploymentsResponse.status,
-          deploymentsBody,
-        );
+      if (!deployments.ok) {
+        throwLookupError("deployment", deployments.status, deployments.body);
       }
       const providerDeployment = z
         .array(providerDeploymentSchema)
-        .parse(deploymentsBody)[0];
+        .parse(deployments.body)[0];
 
       let deployment: z.output<typeof deploymentSchema> | null = null;
       if (providerDeployment) {
-        const statusesResponse = await ctx.egress.fetch({
-          provider: "github",
+        const statuses = await githubApi(ctx.egress, {
           operation: "github.deployment-status.list",
-          request: new Request(
-            `${repositoryUrl(repo, `deployments/${providerDeployment.id}/statuses`)}?per_page=1`,
-            {
-              headers: {
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-              },
-            },
-          ),
+          path: `${repoPath(repo)}/deployments/${providerDeployment.id}/statuses?per_page=1`,
         });
-        const statusesBody = await readJson(statusesResponse);
-        if (!statusesResponse.ok) {
-          throwLookupError(
-            "deployment status",
-            statusesResponse.status,
-            statusesBody,
-          );
+        if (!statuses.ok) {
+          throwLookupError("deployment status", statuses.status, statuses.body);
         }
         const providerStatus = z
           .array(providerStatusSchema)
-          .parse(statusesBody)[0];
+          .parse(statuses.body)[0];
         deployment = {
           created_at: providerDeployment.created_at,
           creator: providerDeployment.creator?.login ?? null,

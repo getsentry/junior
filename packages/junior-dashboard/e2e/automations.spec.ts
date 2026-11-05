@@ -2,6 +2,7 @@ import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 import { NOW } from "../src/mock-reporting/fixtures";
+import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -22,7 +23,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     const card = { key: "scheduled-1", kind: "object", plugin: "junior" };
     await route.fulfill({
-      json: {
+      json: withRequestedMailbox(route, {
         annotations: [
           {
             ...card,
@@ -58,7 +59,7 @@ test("opens scheduled and event automations in the native Automations view", asy
         startedAt: NOW,
         status: "completed",
         surface: "internal",
-      },
+      }),
     });
   });
   await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);

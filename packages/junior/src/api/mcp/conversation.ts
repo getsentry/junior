@@ -1,5 +1,5 @@
 /** Own the MCP view of one Conversation, shared by the conversation tools. */
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationReportStatusSchema,
   conversationSurfaceSchema,

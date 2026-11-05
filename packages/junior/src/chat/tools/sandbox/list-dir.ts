@@ -10,7 +10,7 @@ import {
   type TextSearchResultDetails,
   type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
