@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -10,7 +11,7 @@ import { readSlackAttachmentsVersion } from "@/chat/slack/attachments";
 import { juniorConversations } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
 import {
-  readConversationAccessFromSql,
+  createConversationAccessReader,
   type ConversationAccess,
 } from "./access";
 import { readConversationAgentTree } from "./agent-tree";
@@ -61,26 +62,40 @@ export type ConversationDetailState = {
   viewerMarks?: Awaited<ReturnType<typeof readConversationViewerMarks>>;
 };
 
+/** Read the viewer's marks and auto-archive choice, which live on the root. */
+async function readViewerRootState(viewer: User, conversationId: string) {
+  const rootConversationId = await resolveRootConversationId(
+    getSqlExecutor(),
+    conversationId,
+  );
+  const [viewerMarks, autoArchive] = await Promise.all([
+    readConversationViewerMarks(viewer, rootConversationId),
+    readConversationAutoArchive(viewer, rootConversationId),
+  ]);
+  return { autoArchive, viewerMarks };
+}
+
 /** Read the detail state that the ETag hashes and the report shows. */
 export async function readConversationDetailState(
   conversationId: string,
   viewer?: User,
 ): Promise<ConversationDetailState> {
+  // Access, forks, and the agent tree all need access to this Conversation.
+  // One reader per request reads each id once.
+  const readAccess = createConversationAccessReader(getDb(), viewer);
   const [
     accessById,
-    viewerMarks,
+    viewerRootState,
     forks,
     agentTree,
     readPosition,
-    autoArchive,
     attachmentsVersion,
   ] = await Promise.all([
-    readConversationAccessFromSql(getDb(), [conversationId], viewer),
-    viewer ? readConversationViewerMarks(viewer, conversationId) : undefined,
-    readConversationForks(conversationId, viewer),
-    readConversationAgentTree(conversationId, viewer),
+    readAccess([conversationId]),
+    viewer ? readViewerRootState(viewer, conversationId) : undefined,
+    readConversationForks(conversationId, readAccess),
+    readConversationAgentTree(conversationId, readAccess),
     viewer ? readConversationReadPosition(viewer, conversationId) : undefined,
-    viewer ? readConversationAutoArchive(viewer, conversationId) : undefined,
     readSlackAttachmentsVersion(getSqlExecutor(), conversationId),
   ]);
   const access = accessById.get(conversationId);
@@ -99,11 +114,11 @@ export async function readConversationDetailState(
   return {
     access,
     agentTree,
-    autoArchive,
+    autoArchive: viewerRootState?.autoArchive,
     forks,
     readPosition,
     transcriptVersion,
-    viewerMarks,
+    viewerMarks: viewerRootState?.viewerMarks,
   };
 }
 

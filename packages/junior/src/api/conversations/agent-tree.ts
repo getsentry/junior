@@ -1,11 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { User } from "@sentry/junior-plugin-api";
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import type { ConversationAccessReader } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
 
@@ -31,7 +30,7 @@ async function readParentConversationId(
  */
 export async function readConversationAgentTree(
   conversationId: string,
-  viewer?: User,
+  readAccess: ConversationAccessReader,
 ): Promise<ConversationAgentTreeNode[] | undefined> {
   // Read only parent ids. Every detail request calls this, and a root
   // Conversation must not need a full Conversation record.
@@ -58,7 +57,7 @@ export async function readConversationAgentTree(
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
   ] = await Promise.all([
-    readConversationAccessFromSql(getDb(), ids, viewer),
+    readAccess(ids),
     readAutomationTitlesByConversationId(root ? [root] : []),
     readFirstHumanMessageTexts(getDb(), root ? [root] : []),
   ]);

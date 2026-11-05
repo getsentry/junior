@@ -8,7 +8,10 @@ import {
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ForkConversationBody } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccessReader,
+} from "./access";
 import { throwApiError } from "../http";
 
 /** Fork a Conversation that the viewer can read into a new root they own. */
@@ -62,7 +65,7 @@ export async function keepQuickQuestionForViewer(
  */
 export async function readConversationForks(
   conversationId: string,
-  viewer?: User,
+  readAccess: ConversationAccessReader,
 ): Promise<{
   canFork: boolean;
   forkedFromConversationId?: string;
@@ -90,11 +93,11 @@ export async function readConversationForks(
     .limit(50);
   const forkedFrom = row?.forkedFrom ?? undefined;
   const ids = forks.map((fork) => fork.conversationId);
-  const access = await readConversationAccessFromSql(
-    db,
-    [conversationId, ...ids, ...(forkedFrom ? [forkedFrom] : [])],
-    viewer,
-  );
+  const access = await readAccess([
+    conversationId,
+    ...ids,
+    ...(forkedFrom ? [forkedFrom] : []),
+  ]);
   const canOpen = (id: string) => access.get(id)?.canViewPrivateContent;
   if (!canOpen(conversationId)) return { canFork: false, forks: [] };
   const result: {

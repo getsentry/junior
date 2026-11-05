@@ -396,15 +396,11 @@ export async function archiveViewerDoneConversations(
   return { archived };
 }
 
-/** Read the viewer's effective auto-archive choice for a conversation. */
+/** Read the viewer's effective auto-archive choice for a conversation root. */
 export async function readConversationAutoArchive(
   viewer: User,
-  conversationId: string,
+  rootConversationId: string,
 ): Promise<boolean> {
-  const rootConversationId = await resolveRootConversationId(
-    getSqlExecutor(),
-    conversationId,
-  );
   const [user] = await getDb()
     .select({
       autoArchive: juniorConversationParticipants.autoArchive,

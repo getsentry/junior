@@ -146,6 +146,40 @@ export async function readConversationAccessFromSql(
   );
 }
 
+/** Read viewer access for a bounded set of Conversations. */
+export type ConversationAccessReader = (
+  conversationIds: readonly string[],
+) => Promise<Map<string, ConversationAccess>>;
+
+/**
+ * Read access for one request. Each id is read at most once, so the parts of
+ * one response that need the same Conversation share a query.
+ */
+export function createConversationAccessReader(
+  db: JuniorDatabase,
+  viewer?: User,
+): ConversationAccessReader {
+  const byId = new Map<string, Promise<ConversationAccess | undefined>>();
+  return async (conversationIds) => {
+    const missing = [...new Set(conversationIds)].filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      const read = readConversationAccessFromSql(db, missing, viewer);
+      for (const id of missing) {
+        byId.set(
+          id,
+          read.then((access) => access.get(id)),
+        );
+      }
+    }
+    const entries = await Promise.all(
+      conversationIds.map(async (id) => [id, await byId.get(id)] as const),
+    );
+    return new Map(
+      entries.flatMap(([id, access]) => (access ? [[id, access]] : [])),
+    );
+  };
+}
+
 /** The fields of a Conversation that decide access from another one. */
 export type ConversationReach = Pick<
   ConversationAccess,
