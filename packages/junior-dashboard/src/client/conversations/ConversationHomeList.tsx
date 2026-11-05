@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  LockKeyhole,
+  MessageSquare,
+} from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import {
   conversationDisplayTitle,
-  formatRelativeTime,
-  slackLocationLabel,
+  formatTime,
   visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -18,6 +22,8 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { formatActivityDay } from "./conversationAge";
+import { conversationContextTags } from "./ConversationContextTags";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -188,28 +194,30 @@ export function ConversationHomeListLoading(props: { label?: string }) {
 
 function ConversationCardLoading(props: { index: number }) {
   return (
-    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
-      <Skeleton className="size-3 rounded-full" />
-      <div className="flex h-6 min-w-0 items-center">
-        <Skeleton
-          className={cn(
-            "h-3.5",
-            props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
-          )}
-        />
-      </div>
-      <Skeleton className="hidden h-3 w-32 opacity-70 sm:block" />
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-3 w-16 opacity-70" />
-        <Skeleton className="size-4" />
-      </div>
-      <div className="col-span-full col-start-2 flex h-6 items-center">
-        <Skeleton
-          className={cn(
-            "h-3 opacity-70",
-            props.index % 2 === 0 ? "w-full max-w-2xl" : "w-2/3 max-w-xl",
-          )}
-        />
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 sm:px-4">
+      <Skeleton className="mt-0.5 size-8 rounded-md" />
+      <div className="grid min-w-0 gap-1">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-6 min-w-0 flex-1 items-center">
+            <Skeleton
+              className={cn(
+                "h-3.5",
+                props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
+              )}
+            />
+          </div>
+          <Skeleton className="h-3 w-14 opacity-70" />
+          <Skeleton className="size-4" />
+        </div>
+        <div className="flex h-6 min-w-0 items-center gap-2">
+          <Skeleton className="h-6 w-28 shrink-0 rounded-md opacity-70" />
+          <Skeleton
+            className={cn(
+              "hidden h-3 opacity-70 sm:block",
+              props.index % 2 === 0 ? "w-full max-w-xl" : "w-1/2 max-w-md",
+            )}
+          />
+        </div>
       </div>
     </div>
   );
@@ -273,17 +281,22 @@ function ConversationCard(props: {
   });
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
-  const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
+  const contextTags = conversationContextTags(conversation);
+  const hasAnnotations = Boolean(conversation.sidebarAnnotations?.length);
   const prefetch = usePrefetchConversation(conversation.id);
+  const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
+  // Idle conversations get no badge, so the badges that show stand out.
+  const showStatus =
+    props.waitingOnViewer ||
+    props.finishedSinceSeen ||
+    status === "active" ||
+    status === "failed";
   return (
     <article
       {...prefetch}
-      // Status | title | metadata | time and archive on one line, then one
-      // line of activity. On narrow screens the metadata moves below the
-      // activity.
-      className="group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-2.5 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+      className="group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft sm:px-4"
       role="listitem"
     >
       <Link
@@ -291,77 +304,107 @@ function ConversationCard(props: {
         className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
         to={conversationPath(conversation.id)}
       />
-      <span className="pointer-events-none relative z-[1] col-start-1 row-start-1 grid size-3 place-items-center">
-        <ConversationListStatusIcon
-          finishedSinceSeen={props.finishedSinceSeen}
-          isPrivate={isPrivate}
-          status={status}
-          waitingOnViewer={props.waitingOnViewer}
-        />
-      </span>
-      <h4 className="pointer-events-none relative z-[1] col-start-2 row-start-1 m-0 min-w-0 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
-        {title}
-      </h4>
-      <div className="pointer-events-none relative z-[1] col-span-2 col-start-2 row-start-3 flex h-6 min-w-0 items-center gap-x-1.5 overflow-hidden font-sans text-xs text-dashboard-text-muted empty:hidden sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:max-w-96 sm:justify-end">
-        {location ? (
-          <span className="max-w-40 truncate">{location}</span>
-        ) : null}
-        {location && participants.length > 0 ? (
-          <span aria-hidden="true">·</span>
-        ) : null}
-        {participants.length > 0 ? (
-          <ParticipantAvatarStack participants={participants} size="list" />
-        ) : null}
-        <ConversationSidebarAnnotations
-          annotations={conversation.sidebarAnnotations}
-        />
-      </div>
-      <div className="relative z-[1] col-start-3 row-start-1 flex items-center gap-3 sm:col-start-4">
-        <Link
-          className="whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
-          to={conversationPath(conversation.id)}
-        >
-          {formatRelativeTime(conversation.lastSeenAt)}
-        </Link>
-        <button
-          aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-          className="relative shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={archive.isPending}
-          onClick={() =>
-            archive.mutate({
-              archived: !conversation.archivedAt,
-              lastSeenAt: conversation.lastSeenAt,
-            })
+      <span className="pointer-events-none relative z-[1] mt-0.5 grid size-8 place-items-center rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel text-dashboard-text-muted">
+        <VisibilityIcon
+          aria-label={
+            isPrivate ? "Private conversation" : "Public conversation"
           }
-          type="button"
-        >
-          {conversation.archivedAt ? (
-            <ArchiveRestore aria-hidden="true" size={15} />
-          ) : (
-            <Archive aria-hidden="true" size={15} />
-          )}
-        </button>
-      </div>
-      {conversation.activityPreview || status === "active" ? (
-        <p
-          className={cn(
-            "pointer-events-none relative z-[1] col-span-full col-start-2 row-start-2 m-0 min-w-0 truncate font-sans text-sm leading-6",
-            conversation.activityPreview
-              ? "text-dashboard-text-subtle"
-              : "text-dashboard-text-muted",
-          )}
-        >
-          {conversation.activityPreview ? (
-            <DisplayText
-              inline
-              mentions={conversation.activityPreview.mentions}
-              text={conversation.activityPreview.text}
+          role="img"
+          size={15}
+        />
+        {showStatus ? (
+          <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={false}
+              status={status}
+              waitingOnViewer={props.waitingOnViewer}
             />
-          ) : (
-            "Working…"
-          )}
-        </p>
-      ) : null}
+          </span>
+        ) : null}
+      </span>
+      <div className="grid min-w-0 gap-1">
+        <div className="flex min-w-0 items-center gap-3">
+          <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
+            {title}
+          </h4>
+          {participants.length > 0 ? (
+            <span className="pointer-events-none relative z-[1] hidden sm:inline-flex">
+              <ParticipantAvatarStack participants={participants} size="list" />
+            </span>
+          ) : null}
+          <time
+            className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+            dateTime={conversation.lastSeenAt}
+            title={formatTime(conversation.lastSeenAt, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          >
+            {formatActivityDay(conversation.lastSeenAt)}
+          </time>
+          <button
+            aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
+            className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={archive.isPending}
+            onClick={() =>
+              archive.mutate({
+                archived: !conversation.archivedAt,
+                lastSeenAt: conversation.lastSeenAt,
+              })
+            }
+            type="button"
+          >
+            {conversation.archivedAt ? (
+              <ArchiveRestore aria-hidden="true" size={15} />
+            ) : (
+              <Archive aria-hidden="true" size={15} />
+            )}
+          </button>
+        </div>
+        {contextTags ||
+        hasAnnotations ||
+        conversation.activityPreview ||
+        status === "active" ? (
+          // Tags first, so the source of each card lines up at the left edge.
+          // On narrow screens the activity wraps below the tags.
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {contextTags ? (
+              // Only the tag links take clicks. The gaps open the card.
+              <span className="pointer-events-none relative z-[1] min-w-0 max-w-full [&_a]:pointer-events-auto">
+                {contextTags}
+              </span>
+            ) : null}
+            {hasAnnotations ? (
+              <span className="pointer-events-none relative z-[1] inline-flex min-w-0">
+                <ConversationSidebarAnnotations
+                  annotations={conversation.sidebarAnnotations}
+                />
+              </span>
+            ) : null}
+            {conversation.activityPreview || status === "active" ? (
+              <p
+                className={cn(
+                  "pointer-events-none relative z-[1] m-0 min-w-0 basis-full truncate font-sans text-sm leading-6 sm:flex-1 sm:basis-0",
+                  conversation.activityPreview
+                    ? "text-dashboard-text-subtle"
+                    : "text-dashboard-text-muted",
+                )}
+              >
+                {conversation.activityPreview ? (
+                  <DisplayText
+                    inline
+                    mentions={conversation.activityPreview.mentions}
+                    text={conversation.activityPreview.text}
+                  />
+                ) : (
+                  "Working…"
+                )}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }
