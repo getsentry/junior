@@ -234,6 +234,22 @@ test.describe("conversation sections", () => {
       /Closed issue summary/,
     );
 
+    // Right-click marks the read row unread again, then read.
+    await finishedRow.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Mark as unread" }).click();
+    await expect(
+      finishedRow.getByRole("img", { name: "Unread" }),
+    ).toBeVisible();
+    await finishedRow.click({ button: "right" });
+    await screenshot(page, "conversation-sidebar-context-menu", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    await page.getByRole("menuitem", { name: "Mark as read" }).click();
+    await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
+      0,
+    );
+
     await page.goto(dashboard.baseURL);
     await expect(
       finishedCard.getByRole("img", { name: "Finished since last viewed" }),

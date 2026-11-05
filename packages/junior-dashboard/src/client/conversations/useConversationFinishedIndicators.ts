@@ -19,6 +19,7 @@ type ConversationFinishedIndicators = {
    */
   heldConversationId?: string;
   markRead(conversationId: string, lastReadAt: string): void;
+  markUnread(conversation: Conversation): void;
 };
 
 /** Track visible idle conversations that have activity after the user read them. */
@@ -73,6 +74,24 @@ export function useConversationFinishedIndicators(
     });
   }, []);
 
+  // Move the read time just before the last activity, so the row reads as
+  // finished since read until the user opens it again.
+  const markUnread = useCallback((conversation: Conversation) => {
+    const lastSeenMs = Date.parse(conversation.lastSeenAt);
+    if (!Number.isFinite(lastSeenMs)) return;
+
+    setStoredStates((current) => {
+      const next = {
+        ...current,
+        [conversation.id]: {
+          lastReadAt: new Date(lastSeenMs - 1).toISOString(),
+        },
+      };
+      writeStoredStates(next);
+      return next;
+    });
+  }, []);
+
   return {
     finishedConversationIds: useMemo(
       () => finishedConversationIds(storedStates, conversations, selectedId),
@@ -80,6 +99,7 @@ export function useConversationFinishedIndicators(
     ),
     heldConversationId: held.heldId,
     markRead,
+    markUnread,
   };
 }
 

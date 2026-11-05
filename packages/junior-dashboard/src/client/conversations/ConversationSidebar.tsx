@@ -6,6 +6,8 @@ import {
   CircleAlert,
   Inbox,
   LockKeyhole,
+  Mail,
+  MailOpen,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -33,6 +35,12 @@ import { useCollapsedConversationSections } from "./useCollapsedConversationSect
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -80,6 +88,8 @@ export function ConversationSidebar(props: {
    * `landing` = flow nav under create compose (parent owns scroll).
    */
   variant?: "panel" | "landing";
+  onMarkRead(conversationId: string, lastReadAt: string): void;
+  onMarkUnread(conversation: Conversation): void;
   onNewConversation(): void;
   onQueryChange(value: string): void;
 }) {
@@ -238,6 +248,8 @@ export function ConversationSidebar(props: {
                   conversation={entry.conversation}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
+                  onMarkRead={props.onMarkRead}
+                  onMarkUnread={props.onMarkUnread}
                   onPinError={handlePinError}
                   onPinned={clearRowError}
                   selected={entry.conversation.id === props.selectedId}
@@ -340,6 +352,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onMarkRead(conversationId: string, lastReadAt: string): void;
+  onMarkUnread(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
   selected: boolean;
@@ -369,128 +383,159 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const emphasized = props.unread || Boolean(props.waiting);
+  // Unread tracks idle conversations only, and the open one is always read.
+  const canMarkUnread =
+    !props.selected && props.conversation.status === "completed";
   return (
-    <div
-      {...prefetch}
-      className={cn(
-        "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
-        props.selected && "bg-dashboard-surface-active",
-      )}
-    >
-      <Link
-        aria-current={props.selected ? "page" : undefined}
-        className="grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10"
-        to={conversationPath(props.conversation.id)}
+    <ContextMenu>
+      <ContextMenuTrigger
+        {...prefetch}
+        className={cn(
+          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
+          props.selected && "bg-dashboard-surface-active",
+        )}
       >
-        <span className="grid place-items-center">
-          {emphasized ? (
-            <span
-              aria-label={props.waiting ? "Waiting on you" : "Unread"}
-              className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
-              role="img"
-            />
-          ) : props.conversation.visibility === "private" ? (
-            <LockKeyhole
-              aria-label="Private conversation"
-              className="size-3 shrink-0 text-dashboard-text-faint"
-            />
-          ) : null}
-        </span>
-        <span
-          className={cn(
-            "min-w-0 truncate font-sans text-sm leading-snug",
-            emphasized ? "font-semibold" : props.selected && "font-medium",
-            emphasized || props.selected || status === "active"
-              ? "text-dashboard-text"
-              : "text-dashboard-text-muted",
-          )}
-        >
-          {title}
-        </span>
-        <ConversationRowState
-          lastSeenAt={props.conversation.lastSeenAt}
-          status={status}
-        />
-      </Link>
-      {props.waiting ? (
         <Link
-          className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-          to={conversationPath(props.conversation.id, { reviewItems: true })}
+          aria-current={props.selected ? "page" : undefined}
+          className="grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10"
+          to={conversationPath(props.conversation.id)}
         >
-          <Inbox
-            aria-hidden="true"
-            className="size-3 shrink-0 text-dashboard-text-muted"
-          />
-          <span className="min-w-0 truncate">{props.waiting.title}</span>
-          {props.waiting.count > 1 ? (
-            <span className="ml-auto shrink-0 text-dashboard-text-faint">
-              +{props.waiting.count - 1} more
-            </span>
-          ) : null}
-          <ChevronRight
-            aria-hidden="true"
+          <span className="grid place-items-center">
+            {emphasized ? (
+              <span
+                aria-label={props.waiting ? "Waiting on you" : "Unread"}
+                className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
+                role="img"
+              />
+            ) : props.conversation.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private conversation"
+                className="size-3 shrink-0 text-dashboard-text-faint"
+              />
+            ) : null}
+          </span>
+          <span
             className={cn(
-              "size-3 shrink-0 text-dashboard-text-muted",
-              props.waiting.count > 1 ? undefined : "ml-auto",
+              "min-w-0 truncate font-sans text-sm leading-snug",
+              emphasized ? "font-semibold" : props.selected && "font-medium",
+              emphasized || props.selected || status === "active"
+                ? "text-dashboard-text"
+                : "text-dashboard-text-muted",
             )}
+          >
+            {title}
+          </span>
+          <ConversationRowState
+            lastSeenAt={props.conversation.lastSeenAt}
+            status={status}
           />
         </Link>
-      ) : null}
-      {/* Mobile rows pin from the conversation menu, so only the archive
+        {props.waiting ? (
+          <Link
+            className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            to={conversationPath(props.conversation.id, { reviewItems: true })}
+          >
+            <Inbox
+              aria-hidden="true"
+              className="size-3 shrink-0 text-dashboard-text-muted"
+            />
+            <span className="min-w-0 truncate">{props.waiting.title}</span>
+            {props.waiting.count > 1 ? (
+              <span className="ml-auto shrink-0 text-dashboard-text-faint">
+                +{props.waiting.count - 1} more
+              </span>
+            ) : null}
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3 shrink-0 text-dashboard-text-muted",
+                props.waiting.count > 1 ? undefined : "ml-auto",
+              )}
+            />
+          </Link>
+        ) : null}
+        {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-      {props.conversation.archivedAt ? null : (
+        {props.conversation.archivedAt ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                  aria-pressed={pinned}
+                  className={cn(
+                    ROW_ACTION_BUTTON_CLASS,
+                    "right-9 max-sm:hidden",
+                  )}
+                  disabled={pin.isPending}
+                  onClick={() => pin.mutate(!pinned)}
+                  type="button"
+                >
+                  <Pin
+                    aria-hidden="true"
+                    fill={pinned ? "currentColor" : "none"}
+                    size={14}
+                  />
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {pinned ? "Unpin" : "Pin"}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger
             render={
               <button
-                aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
-                aria-pressed={pinned}
-                className={cn(ROW_ACTION_BUTTON_CLASS, "right-9 max-sm:hidden")}
-                disabled={pin.isPending}
-                onClick={() => pin.mutate(!pinned)}
+                aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
+                className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
+                disabled={archive.isPending}
+                onClick={() =>
+                  archive.mutate({
+                    archived: !props.conversation.archivedAt,
+                    lastSeenAt: props.conversation.lastSeenAt,
+                  })
+                }
                 type="button"
               >
-                <Pin
-                  aria-hidden="true"
-                  fill={pinned ? "currentColor" : "none"}
-                  size={14}
-                />
+                {props.conversation.archivedAt ? (
+                  <ArchiveRestore aria-hidden="true" size={14} />
+                ) : (
+                  <Archive aria-hidden="true" size={14} />
+                )}
               </button>
             }
           />
           <TooltipContent size="compact">
-            {pinned ? "Unpin" : "Pin"}
+            {props.conversation.archivedAt ? "Restore" : "Archive"}
           </TooltipContent>
         </Tooltip>
-      )}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-              className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
-              disabled={archive.isPending}
-              onClick={() =>
-                archive.mutate({
-                  archived: !props.conversation.archivedAt,
-                  lastSeenAt: props.conversation.lastSeenAt,
-                })
-              }
-              type="button"
-            >
-              {props.conversation.archivedAt ? (
-                <ArchiveRestore aria-hidden="true" size={14} />
-              ) : (
-                <Archive aria-hidden="true" size={14} />
-              )}
-            </button>
-          }
-        />
-        <TooltipContent size="compact">
-          {props.conversation.archivedAt ? "Restore" : "Archive"}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {props.unread ? (
+          <ContextMenuItem
+            onClick={() =>
+              props.onMarkRead(
+                props.conversation.id,
+                props.conversation.lastSeenAt,
+              )
+            }
+          >
+            <MailOpen aria-hidden="true" />
+            Mark as read
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem
+            disabled={!canMarkUnread}
+            onClick={() => props.onMarkUnread(props.conversation)}
+          >
+            <Mail aria-hidden="true" />
+            Mark as unread
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });
 
