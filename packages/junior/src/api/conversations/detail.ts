@@ -40,6 +40,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { countUnreadMessages } from "./read-position";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -68,6 +69,7 @@ function projectConversationDetail(args: {
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
+  unreadMessageCount?: number;
   unreadPage?: ConversationDetailReport["unreadPage"];
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
@@ -131,6 +133,9 @@ function projectConversationDetail(args: {
         }
       : undefined),
     ...(args.unreadPage ? { unreadPage: args.unreadPage } : undefined),
+    ...(args.unreadMessageCount
+      ? { unreadMessageCount: args.unreadMessageCount }
+      : undefined),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
     ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
@@ -207,6 +212,7 @@ async function readConversationDetailFromSql(
     people,
     sourceTask,
     teamDomainByTeamId,
+    unreadMessageCount,
     page,
   ] = await Promise.all([
     listConversationAnnotations(getDb(), conversationId),
@@ -228,6 +234,10 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
+    // A 304 poll builds no report, so it does not count.
+    readPosition && !isPurged
+      ? countUnreadMessages(conversationId, readPosition.lastReadSeq)
+      : undefined,
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
@@ -328,6 +338,7 @@ async function readConversationDetailFromSql(
     ...(readPosition ? { readPosition } : undefined),
     ...(unreadAfterSeq === undefined ? undefined : { unreadAfterSeq }),
     ...(unreadPage ? { unreadPage } : undefined),
+    unreadMessageCount,
     usage: metrics?.usage ?? record.usage ?? undefined,
   };
   const report = startSpan(

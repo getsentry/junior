@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, max, sql } from "drizzle-orm";
+import { and, count, eq, gt, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationEvents,
@@ -33,6 +33,27 @@ export async function readConversationReadPosition(
     )
     .limit(1);
   return row;
+}
+
+/**
+ * Count the Messages after a read position. The Conversation, type, and seq
+ * index covers the read, so a reader far behind costs one index range scan.
+ */
+export async function countUnreadMessages(
+  conversationId: string,
+  lastReadSeq: number,
+): Promise<number> {
+  const [row] = await getDb()
+    .select({ count: count() })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        gt(juniorConversationEvents.seq, lastReadSeq),
+      ),
+    );
+  return row?.count ?? 0;
 }
 
 /** The seq of the latest Message that one of the viewer's Identities wrote. */

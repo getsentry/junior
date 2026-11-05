@@ -218,6 +218,9 @@ async function mockReadPositionConversation(
       ? Math.max(0, state.eventCount - PAGE_SIZE)
       : 0;
     const behind = stored + 1 < firstSeq;
+    const unreadMessageCount = events(stored + 1, state.eventCount - 1).filter(
+      (event) => event.data.type === "message",
+    ).length;
     await route.fulfill({
       json: withRequestedMailbox(route, {
         ...conversation,
@@ -225,6 +228,7 @@ async function mockReadPositionConversation(
         events: events(firstSeq, state.eventCount - 1),
         generatedAt,
         readPosition: { lastReadSeq: stored },
+        ...(unreadMessageCount > 0 ? { unreadMessageCount } : undefined),
         ...(firstSeq > 0 ? { previousCursor: String(firstSeq) } : undefined),
         ...(behind ? { unreadCursor: String(stored) } : undefined),
         ...(behind &&
@@ -304,7 +308,10 @@ test("catches the reader up on several unread Turns", async ({
 
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
-  await transcript.getByRole("button", { name: "Catch me up" }).click();
+  const offer = transcript.getByRole("button", { name: "Catch me up" });
+  // Seqs 21 to 59 are unread, and two of them finish Turns.
+  await expect(offer).toHaveAccessibleName("Catch me up, 37 new messages");
+  await offer.click();
   await expect(
     transcript.getByText("CI failed on Safari after you left."),
   ).toBeInViewport();

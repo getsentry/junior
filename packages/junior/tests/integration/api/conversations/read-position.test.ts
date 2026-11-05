@@ -264,11 +264,11 @@ describe("conversation read position API", () => {
     expect(conversationReadPositionSchema.parse(await reported.json())).toEqual(
       { lastReadSeq: 3 },
     );
-    expect(
-      conversationDetailReportSchema.parse(
-        await readConversationDetail(conversationId, { viewer }),
-      ).readPosition,
-    ).toEqual({ lastReadSeq: 3 });
+    const detail = conversationDetailReportSchema.parse(
+      await readConversationDetail(conversationId, { viewer }),
+    );
+    expect(detail.readPosition).toEqual({ lastReadSeq: 3 });
+    expect(detail.unreadMessageCount).toBe(3);
     // A reader who has not opened the Conversation keeps no position.
     expect(
       conversationDetailReportSchema.parse(

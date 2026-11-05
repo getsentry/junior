@@ -345,6 +345,7 @@ export function ConversationPage(props: {
     hasNewerPage: Boolean(history.newer),
     hasPreviousPage: history.hasPreviousPage,
     unread: holdShown ? undefined : readAtOpen.unread,
+    unreadMessageCount: readAtOpen.unreadMessageCount,
   });
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,

@@ -809,6 +809,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * reader who opens at the read position needs no second request.
      */
     unreadPage: conversationEventPageSchema.optional(),
+    /** Messages after `readPosition`. Absent when there are none. */
+    unreadMessageCount: z.number().int().positive().optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),

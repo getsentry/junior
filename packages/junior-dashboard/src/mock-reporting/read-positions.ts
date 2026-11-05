@@ -33,7 +33,13 @@ export function withMockReadPosition(
   report: ConversationDetailReport,
 ): ConversationDetailReport {
   const lastReadSeq = mockReadPositions.get(report.conversationId);
-  return lastReadSeq === undefined
-    ? report
-    : { ...report, readPosition: { lastReadSeq } };
+  if (lastReadSeq === undefined) return report;
+  const unreadMessageCount = report.events.filter(
+    (event) => event.seq > lastReadSeq && event.data.type === "message",
+  ).length;
+  return {
+    ...report,
+    readPosition: { lastReadSeq },
+    ...(unreadMessageCount > 0 ? { unreadMessageCount } : undefined),
+  };
 }

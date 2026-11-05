@@ -23,6 +23,8 @@ export type ConversationCatchUpState = {
   error: boolean;
   pending: boolean;
   request(): void;
+  /** Messages in the unread range, when the server counted them. */
+  unreadMessageCount?: number;
 };
 
 /**
@@ -59,6 +61,7 @@ export function useConversationCatchUp(input: {
   hasNewerPage: boolean;
   hasPreviousPage: boolean;
   unread?: TranscriptUnreadRange;
+  unreadMessageCount?: number;
 }): ConversationCatchUpState | undefined {
   const { unread } = input;
   const mutation = useMutation({
@@ -82,6 +85,7 @@ export function useConversationCatchUp(input: {
     error: mutation.isError,
     pending: mutation.isPending,
     request: () => mutation.mutate(unread),
+    unreadMessageCount: input.unreadMessageCount,
   };
 }
 

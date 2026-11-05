@@ -48,6 +48,8 @@ export type ReadPositionAtOpen = {
   unreadCursor?: string;
   /** The page around `unreadCursor`, when the fetch brought it. */
   unreadPage?: ConversationEventPage;
+  /** Messages in `unread`, from the server. */
+  unreadMessageCount?: number;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -92,8 +94,10 @@ export function useReadPositionAtOpen(
   // Store derived state during render so the first transcript render has it.
   const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
   const [fetchedEnd, setFetchedEnd] = useState<{
+    countedAfterSeq?: number;
     throughSeq?: number;
     unreadCursor?: string;
+    unreadMessageCount?: number;
     unreadPage?: ConversationEventPage;
   }>();
   const read =
@@ -104,17 +108,27 @@ export function useReadPositionAtOpen(
     fetchedEnd ??
     (fetched
       ? {
+          countedAfterSeq: fetched.readPosition?.lastReadSeq,
           throughSeq: fetched.events.at(-1)?.seq,
           unreadCursor: fetched.unreadCursor,
+          unreadMessageCount: fetched.unreadMessageCount,
           unreadPage: fetched.unreadPage,
         }
       : undefined);
   if (!fetchedEnd && end) setFetchedEnd(end);
+  const atOpen = readPositionAtOpen(
+    read?.lastReadSeq,
+    end ? end.throughSeq : detail?.events.at(-1)?.seq,
+  );
   return {
-    ...readPositionAtOpen(
-      read?.lastReadSeq,
-      end ? end.throughSeq : detail?.events.at(-1)?.seq,
-    ),
+    ...atOpen,
+    // The fetch counts from its own read position, which a cached copy can
+    // trail. Show no count rather than one for another range.
+    ...(atOpen.unread &&
+    end?.unreadMessageCount &&
+    end.countedAfterSeq === read?.lastReadSeq
+      ? { unreadMessageCount: end.unreadMessageCount }
+      : undefined),
     ...(end?.unreadCursor
       ? { unreadCursor: end.unreadCursor, unreadPage: end.unreadPage }
       : undefined),
@@ -125,6 +139,7 @@ type DetailAtOpen = {
   events: readonly { seq: number }[];
   readPosition?: ConversationReadPosition;
   unreadCursor?: string;
+  unreadMessageCount?: number;
   unreadPage?: ConversationEventPage;
 };
 
@@ -144,12 +159,14 @@ function readPositionAtOpen(
  * Put a stored read position in the cached detail. Polls answer 304 after a
  * read, so the cache must also drop the unread cursor once the reader reaches
  * the latest page, as the server would. Otherwise the next visit in this
- * session opens at rows the reader has already read.
+ * session opens at rows the reader has already read. The unread count was for
+ * the old position, so it goes too.
  */
 function withReadPosition(
-  detail: ConversationDetailReport,
+  report: ConversationDetailReport,
   readPosition: ConversationReadPosition,
 ): ConversationDetailReport {
+  const { unreadMessageCount: _count, ...detail } = report;
   const firstSeq = detail.events[0]?.seq;
   if (
     !detail.unreadCursor ||
