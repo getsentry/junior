@@ -15,7 +15,7 @@ import {
 
 /** Height of one item. The pointer maps to items with it. */
 const ITEM_PX = 8;
-const BAR_PX = { base: 10, active: 22, max: 28 };
+const BAR_PX = { base: 6, active: 14, max: 18 };
 /** Items within this distance of the pointer grow, the nearest the most. */
 const GROW_RADIUS_ITEMS = 4;
 /** Room above a selected message, so it does not touch the viewport edge. */
@@ -107,7 +107,7 @@ export function ConversationOutline(props: {
               <button
                 aria-current={item.seq === activeSeq ? "location" : undefined}
                 aria-label={item.title}
-                className="flex w-8 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55"
+                className="flex w-5 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55"
                 onClick={() => {
                   props.onSelect(item.seq);
                   setJumpSeq(item.seq);
@@ -121,10 +121,10 @@ export function ConversationOutline(props: {
                   className={cn(
                     "h-0.5 rounded-full transition-[width,background-color] duration-150 ease-out motion-reduce:transition-none",
                     item.seq === activeSeq
-                      ? "bg-dashboard-text"
+                      ? "bg-dashboard-text-faint"
                       : index === previewIndex
-                        ? "bg-dashboard-text-faint"
-                        : "bg-dashboard-border-heavy",
+                        ? "bg-dashboard-border-heavy"
+                        : "bg-dashboard-border-emphasis",
                   )}
                   style={{
                     width: barWidth(index, pointer, item.seq === activeSeq),
