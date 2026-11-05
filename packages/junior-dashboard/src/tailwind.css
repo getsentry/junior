@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -11,12 +10,12 @@
 @theme {
   /* Headings, record titles, and large metric values. */
   --font-display:
-    "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
+    "Outfit Variable", "Avenir Next", Avenir, "Segoe UI", -apple-system,
     BlinkMacSystemFont, sans-serif;
   /* UI face for prose, controls, navigation, labels, and names. */
   --font-sans:
-    "Inter", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu,
-    sans-serif;
+    "Inter Variable", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen,
+    Ubuntu, sans-serif;
   /*
    * Machine values only: code, ids, paths, file names, and raw payloads.
    * Use font-sans with tabular-nums for counts, times, and prices. Controls,
