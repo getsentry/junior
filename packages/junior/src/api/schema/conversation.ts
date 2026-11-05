@@ -57,7 +57,8 @@ export const conversationAttachmentParamsSchema = z
 
 export const conversationDetailQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
+    /** Omit to get the latest three Turns, up to 500 events. */
+    limit: z.coerce.number().int().min(1).max(1_000).optional(),
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
     /**
