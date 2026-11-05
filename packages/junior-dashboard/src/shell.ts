@@ -5,16 +5,16 @@ import type { DashboardBootstrap } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
-  dashboardClientAsset,
-  dashboardClientChunks,
   dashboardInstallIconAsset,
   dashboardTailwindAsset,
 } from "./assets";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import {
+  DASHBOARD_ASSETS_PATH,
+  dashboardClientFileName,
+} from "./public-assets";
 import { DASHBOARD_THEME_COLORS, DASHBOARD_THEME_SCRIPT } from "./theme";
 
-const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
-export const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 export const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 export const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
 export const DASHBOARD_MANIFEST_PATH =
@@ -51,33 +51,6 @@ function readWorkspaceAsset(fileName: string): string {
     return "";
   }
   return readFileSync(assetPath, "utf8");
-}
-
-/** Load the dashboard browser bundle from the package build output. */
-export function readDashboardClient(): string {
-  const client =
-    dashboardClientAsset ||
-    readAssetUrl(new URL("./client.js", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/client.js", import.meta.url)) ||
-    readWorkspaceAsset("client.js");
-  if (!client) {
-    throw new Error("Junior dashboard client bundle was not found");
-  }
-  return client;
-}
-
-/** Read a content-hashed browser chunk without allowing arbitrary file paths. */
-export function readDashboardClientChunk(file: string): string | undefined {
-  if (!/^[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+\.js$/.test(file)) return undefined;
-  return (
-    (Object.hasOwn(dashboardClientChunks, file)
-      ? dashboardClientChunks[file]
-      : undefined) ||
-    readAssetUrl(new URL(`./chunks/${file}`, import.meta.url)) ||
-    readAssetUrl(new URL(`../dist/chunks/${file}`, import.meta.url)) ||
-    readWorkspaceAsset(`chunks/${file}`) ||
-    undefined
-  );
 }
 
 function readDashboardTailwind(): string {
@@ -324,7 +297,7 @@ export function renderDashboard(
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_CLIENT_PATH}?v=${DASHBOARD_CLIENT_VERSION}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${dashboardClientFileName()}"></script>
 </body>
 </html>`,
     {

@@ -416,12 +416,6 @@ describe("dashboard routes", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     }
-
-    const client = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
-    );
-    expect(client.status).toBe(302);
-    expect(client.headers.get("location")).toBe("http://localhost/auth/login");
   });
 
   it("allows verified users from an allowed Google hosted domain", async () => {

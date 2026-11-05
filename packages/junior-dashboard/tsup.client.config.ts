@@ -11,10 +11,13 @@ export default defineConfig({
   platform: "browser",
   tsconfig: "tsconfig.build.json",
   dts: false,
-  outDir: "dist",
+  // Only content-hashed browser files go here. Nitro serves this folder as
+  // immutable static assets, so an unhashed file would stay cached forever.
+  outDir: "dist/public",
   clean: true,
   splitting: true,
   esbuildOptions(options) {
+    options.entryNames = "[name]-[hash]";
     options.chunkNames = "chunks/[name]-[hash]";
   },
   minify: true,

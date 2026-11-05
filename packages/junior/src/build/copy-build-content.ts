@@ -6,7 +6,7 @@ import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
 const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 const JUNIOR_PACKAGE_NAME = "@sentry/junior";
-const DASHBOARD_ASSET_NAMES = ["client.js", "tailwind.css"] as const;
+const DASHBOARD_ASSET_NAMES = ["tailwind.css"] as const;
 
 /** Copy app, built-in skill, and declared plugin content into server output. */
 export function copyRuntimeContent(
@@ -87,6 +87,17 @@ export function copyDashboardAssets(cwd: string, serverRoot: string): void {
       ),
     );
   }
+}
+
+/** Find the dashboard folder of content-hashed browser files that Nitro serves as static assets. */
+export function resolveDashboardPublicAssetsDir(cwd: string): string {
+  const packageDir = resolvePackageDir(cwd, DASHBOARD_PACKAGE_NAME);
+  if (!packageDir) {
+    throw new Error(
+      `createApp({ dashboard }) requires installing "${DASHBOARD_PACKAGE_NAME}"`,
+    );
+  }
+  return dashboardAssetPath(packageDir, "public");
 }
 
 /** Copy extra file patterns into server output for files the bundler cannot trace. */
