@@ -2068,7 +2068,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'user_message'",
+          "where": "\"junior_conversation_events\".\"type\" = 'user_message' and (\"junior_conversation_events\".\"payload\"->'provenance'->>'authority') = 'instruction' and (\"junior_conversation_events\".\"payload\"->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')",
           "concurrently": false,
           "method": "btree",
           "with": {}

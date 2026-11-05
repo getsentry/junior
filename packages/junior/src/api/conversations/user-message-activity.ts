@@ -5,11 +5,13 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
+import { isUserInstruction } from "@/db/schema/conversation-events";
 
 /**
  * The newest event of one type in the outer Conversation that matches the
  * filter. It walks the message role or user message time index from the
- * newest event and stops at the first match.
+ * newest event. The user message index has only matching entries, so that
+ * read stops at the first one.
  */
 function latestEventAt(
   db: JuniorDatabase,
@@ -48,12 +50,12 @@ export async function readLastUserMessageAtByConversation(
   const instruction = latestEventAt(
     db,
     "user_message",
-    sql`${payload}->'provenance'->>'authority' = 'instruction'
-      and ${payload}->'provenance'->'actor'->>'platform' in ('slack', 'local', 'web')`,
+    isUserInstruction(payload),
   );
   // System Messages, such as events, carry the system Identity. A scalar
-  // subquery, unlike a join or `exists`, keeps the newest-first index walk
-  // that stops at the first match.
+  // subquery, unlike a join or `exists`, keeps the newest-first index walk:
+  // it reads entries only until the first Message from a user. An index
+  // predicate cannot hold this check, because it reads another table.
   const authorKind = sql`(${db
     .select({ kind: juniorIdentities.kind })
     .from(juniorIdentities)

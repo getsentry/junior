@@ -8,7 +8,7 @@ BEGIN
     CREATE INDEX "junior_conversation_events_message_role_idx" ON "junior_conversation_events" USING btree ("conversation_id",("payload"->>'role'),"created_at","seq") WHERE "junior_conversation_events"."type" = 'message';
   END IF;
   IF to_regclass('junior_conversation_events_user_message_time_idx') IS NULL THEN
-    CREATE INDEX "junior_conversation_events_user_message_time_idx" ON "junior_conversation_events" USING btree ("conversation_id","created_at","seq") WHERE "junior_conversation_events"."type" = 'user_message';
+    CREATE INDEX "junior_conversation_events_user_message_time_idx" ON "junior_conversation_events" USING btree ("conversation_id","created_at","seq") WHERE "junior_conversation_events"."type" = 'user_message' and ("junior_conversation_events"."payload"->'provenance'->>'authority') = 'instruction' and ("junior_conversation_events"."payload"->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web');
   END IF;
 
   -- A failed concurrent build can leave an index that exists but cannot be used.
