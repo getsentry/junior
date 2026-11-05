@@ -29,7 +29,9 @@ export function ConversationSidePanelLayout(props: {
   // Below the panel width, side panels show as bottom sheets instead. The
   // side panel renders into one host node that moves between the column and
   // the sheet slot, so it keeps its state and focus at that width change.
+  // A server render has no document, so it renders the side panel inline.
   const [host] = useState(() => {
+    if (typeof document === "undefined") return undefined;
     const element = document.createElement("div");
     element.className = "grid min-h-0 min-w-0";
     return element;
@@ -38,7 +40,7 @@ export function ConversationSidePanelLayout(props: {
   const resizable = open && panelFits;
   useLayoutEffect(() => {
     const slot = resizable ? columnRef.current : sheetSlotRef.current;
-    if (slot && host.parentNode !== slot) slot.append(host);
+    if (host && slot && host.parentNode !== slot) slot.append(host);
   }, [host, resizable]);
 
   return (
@@ -81,7 +83,7 @@ export function ConversationSidePanelLayout(props: {
         ) : null}
       </ResizablePanelGroup>
       <div className="contents" ref={sheetSlotRef} />
-      {open ? createPortal(props.side, host) : null}
+      {open ? (host ? createPortal(props.side, host) : props.side) : null}
     </>
   );
 }
