@@ -86,7 +86,7 @@ export interface GitHubPullRequestSubscriptionConfig {
  * pull request's merge state settle both, and read access is enough.
  */
 const MERGE_STATE_CHECK =
-  "Do not guess whether it can merge. Before you say anything about that, run `gh pr view NUMBER --repo OWNER/REPO --json autoMergeRequest,mergeStateStatus,reviewDecision,baseRefName --jq '{autoMerge: (.autoMergeRequest != null), mergeStateStatus, reviewDecision, baseRefName}'` and `gh pr checks NUMBER --repo OWNER/REPO --required`. If auto-merge is on and only required checks remain, say only that it merges when they pass. If GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
+  "Do not guess whether it can merge. Before you say anything about that, run `gh pr view NUMBER --repo OWNER/REPO --json autoMergeRequest,mergeStateStatus,reviewDecision,baseRefName --jq '{autoMerge: (.autoMergeRequest != null), mergeStateStatus, reviewDecision, baseRefName}'` and `gh pr checks NUMBER --repo OWNER/REPO --required`. If it prints \"no required checks reported\", the required checks may not have started on the latest commit yet. It does not mean that none are required. If auto-merge is on and only required checks remain, say only that it merges when they pass. If GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
 
 /**
  * Watch guidance for outcomes that the people involved need to hear about.
