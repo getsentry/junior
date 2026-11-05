@@ -45,6 +45,11 @@ Required configuration:
 - Secret: `SENTRY_RELEASE_BOT_PRIVATE_KEY`
 - npm publish credentials for release runtime
 
+Craft adds short AI summaries above the changelog entries. It sends the
+request with the workflow token, so the organization must allow Copilot use in
+Actions. If the request fails, Craft keeps the entries without summaries and
+the release continues.
+
 ### GitHub packages
 
 Craft keeps the existing publish approval. Its first target creates the release

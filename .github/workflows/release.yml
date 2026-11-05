@@ -27,6 +27,8 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  # Craft writes AI changelog summaries with the workflow token.
+  copilot-requests: write
 
 jobs:
   release:
@@ -40,6 +42,7 @@ jobs:
           app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
           permission-checks: read
+          permission-issues: read
           permission-statuses: read
           permission-contents: write
           permission-pull-requests: write
@@ -81,9 +84,12 @@ jobs:
           echo "new=$NEW" >> $GITHUB_OUTPUT
 
       - name: Prepare release
-        uses: getsentry/action-prepare-release@c8e1c2009ab08259029170132c384f03c1064c0e # v1
+        uses: getsentry/craft@2e29b0819113d334c15da3d8cac2138cb9dc111a # 3.9.0
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
           version: ${{ steps.version.outputs.new }}
           force: ${{ inputs.force }}
+          git_user_name: getsentry-bot
+          git_user_email: bot@sentry.io
+          llm_api_key: ${{ github.token }}

@@ -1,7 +1,16 @@
-minVersion: 0.23.1
+minVersion: 3.9.0
 changelog:
   filePath: CHANGELOG.md
   policy: auto
+  aiSummary:
+    llm:
+      model: gpt-5.6-luna-utility
+    levels: [release, category]
+    minItems: 3
+    style: >-
+      Write for people who use and run Junior. Lead with what they can now do,
+      what no longer fails, and any action they must take. Use plain words. No
+      hype or marketing language.
 preReleaseCommand: bash scripts/craft-pre-release.sh
 # Craft owns approval and tag creation. The tag workflow owns GitHub assets.
 # Keep this first so npm publication cannot block GitHub release verification.
