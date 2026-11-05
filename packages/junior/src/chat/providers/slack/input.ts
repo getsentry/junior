@@ -1,4 +1,4 @@
-import type { Message, Thread } from "chat";
+import type { Message } from "chat";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import { createActor, parseActorUserId } from "@/chat/actor";
 import {
@@ -110,61 +110,47 @@ export function inboundMessageProvenance(
   return instructionProvenanceFor(author);
 }
 
-function metadataText(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-/**
- * Return the Slack channel name, topic, and description when available.
- * Slack shows the channel purpose as its description.
- */
-export async function resolveChannelDetails(thread: Thread): Promise<{
+/** Slack channel facts for one Turn. */
+export interface SlackChannelFacts {
+  channelType?: SlackEventChannelType;
   name?: string;
   topic?: string;
   description?: string;
-}> {
-  const cachedName = thread.channel.name?.trim() || undefined;
-  try {
-    const info = await thread.channel.fetchMetadata();
-    return {
-      name: info.name?.trim() || cachedName,
-      topic: metadataText(info.metadata.topic),
-      description: metadataText(info.metadata.purpose),
-    };
-  } catch {
-    return { name: cachedName };
-  }
 }
 
 /**
- * Return the Slack channel type of a message.
+ * Return the Slack channel type, name, topic, and description of a message
+ * with one `conversations.info` call.
  *
  * Slack delivers a channel mention as two events with the same `ts`: `message`
  * has `channel_type`, and `app_mention` does not. Junior stores the event that
- * arrives first. When that event has no `channel_type`, ask Slack for the
- * conversation, so the turn does not depend on the order of the two events.
+ * arrives first. When that event has no `channel_type`, the live conversation
+ * metadata supplies it, so the turn does not depend on the order of the two
+ * events.
  */
-export async function resolveSlackChannelType(
+export async function resolveSlackChannelFacts(
   message: Message,
   channelId: string | undefined,
-): Promise<SlackEventChannelType | undefined> {
+): Promise<SlackChannelFacts> {
   const eventChannelType = resolveSlackChannelTypeFromMessage(message);
-  if (eventChannelType) {
-    return eventChannelType;
-  }
   const slackChannelId = parseSlackChannelId(channelId);
   if (!slackChannelId) {
-    return undefined;
+    return { channelType: eventChannelType };
   }
   try {
-    return slackChannelTypeFromConversationInfo(
-      await getConversationInfo(slackChannelId),
-    );
+    const info = await getConversationInfo(slackChannelId);
+    return {
+      channelType:
+        eventChannelType ?? slackChannelTypeFromConversationInfo(info),
+      name: info.name,
+      topic: info.topic,
+      description: info.description,
+    };
   } catch (error) {
     // Slack can refuse the lookup, for example when an install has no read
     // scope for this conversation. The turn then has no confirmed visibility.
     if (error instanceof SlackActionError) {
-      return undefined;
+      return { channelType: eventChannelType };
     }
     throw error;
   }
