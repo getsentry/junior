@@ -320,6 +320,8 @@ export function usePinnedTranscriptBottom(input: {
   historyVersion: string;
   juniorMessageVersion: string;
   pinRequestVersion?: number;
+  /** Open where a link shows its row, not at the latest message. */
+  startAtLink?: boolean;
   /** Open at the "New" marker when the transcript has one. */
   startAtUnread?: boolean;
   view: TranscriptViewMode;
@@ -554,6 +556,12 @@ export function usePinnedTranscriptBottom(input: {
 
     initializedConversationRef.current = input.conversationId;
     setHasPendingUpdate(false);
+    // The link scrolls to its row, maybe before this runs. Do not move away.
+    if (input.startAtLink) {
+      previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
+      setFollowingIntent(false);
+      return;
+    }
     if (input.startAtUnread && openAtUnreadMarker()) return;
 
     setScrollTop(root, scrollSnapshot(root).scrollHeight);
@@ -566,6 +574,7 @@ export function usePinnedTranscriptBottom(input: {
   }, [
     contentElement,
     input.conversationId,
+    input.startAtLink,
     input.startAtUnread,
     openAtUnreadMarker,
     setFollowingIntent,
