@@ -734,7 +734,7 @@ export async function createApp(
     return c.text("Internal Server Error", 500);
   });
 
-  app.use("*", async (c, next) => {
+  app.use("*", async function sandboxEgress(c, next) {
     return await handleSandboxEgressRoute(
       c.req.raw,
       sandboxEgressTracePropagationDomains,

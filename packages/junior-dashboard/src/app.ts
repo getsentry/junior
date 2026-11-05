@@ -1,5 +1,6 @@
 import { objectIconImages } from "./object-icon-images";
 import { Hono, type Context, type Next } from "hono";
+import { routePath } from "hono/route";
 import {
   authenticatePersonalToken,
   createJuniorApi,
@@ -18,6 +19,8 @@ import { apiErrorSchema } from "@sentry/junior/api/schema";
 import {
   getBrowserSentryConfig,
   initSentry,
+  nameRequestRoute,
+  routeNameMiddleware,
 } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
@@ -404,7 +407,8 @@ export function createDashboardApp(
   }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
-  app.use("*", async (c, next) => {
+  app.use("*", routeNameMiddleware());
+  app.use("*", async function dashboardVersionHeader(c, next) {
     await next();
     c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
   });
@@ -573,8 +577,8 @@ export function createDashboardApp(
   }
   for (const route of options.pluginRoutes ?? []) {
     const prefix = pluginRoutePrefix(route.pluginName);
-    const handler = (c: Context<{ Variables: Variables }>) =>
-      route.app.fetch(
+    const handler = async (c: Context<{ Variables: Variables }>) => {
+      const response = await route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),
         pluginApiRouteRequestContextSchema.parse(
           pluginRouteContext(
@@ -584,6 +588,11 @@ export function createDashboardApp(
           ),
         ),
       );
+      // A plugin Hono app names the request span after its own route when it
+      // returns. Restore the dashboard route for the spans that end after it.
+      nameRequestRoute(c.req.method, routePath(c));
+      return response;
+    };
     app.all(prefix, handler);
     app.all(`${prefix}/*`, handler);
   }

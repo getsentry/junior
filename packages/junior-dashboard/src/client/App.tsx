@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
+import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
   useConversationsData,
@@ -72,6 +72,7 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
+import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
   ReviewDeskPage,
@@ -294,7 +295,7 @@ export function DashboardShell() {
               />
             }
           />
-          <Routes>
+          <TracedRoutes>
             <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
             <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
             <Route
@@ -675,7 +676,7 @@ export function DashboardShell() {
               path="/admin"
             />
             <Route element={<Navigate replace to="/" />} path="*" />
-          </Routes>
+          </TracedRoutes>
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
