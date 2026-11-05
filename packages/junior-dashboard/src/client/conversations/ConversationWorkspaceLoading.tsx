@@ -76,7 +76,7 @@ function ConversationHomeLoading() {
       role="status"
     >
       <span className="sr-only">Loading conversations</span>
-      <div className="mx-auto grid w-full max-w-6xl gap-8">
+      <div className="mx-auto grid w-full max-w-4xl gap-8 sm:pt-[clamp(1.5rem,10vh,7rem)]">
         <section className="mx-auto grid w-full max-w-3xl gap-3">
           <Skeleton className="mx-auto h-8 w-56" />
           <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">

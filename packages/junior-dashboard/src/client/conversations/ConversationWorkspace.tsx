@@ -138,7 +138,7 @@ export function ConversationWorkspace(props: {
   if (home) {
     return (
       <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mx-auto grid w-full max-w-6xl gap-8">
+        <div className="mx-auto grid w-full max-w-4xl gap-8 sm:pt-[clamp(1.5rem,10vh,7rem)]">
           {createView}
           <section aria-label="Conversations" className="grid gap-3">
             <SearchInput
