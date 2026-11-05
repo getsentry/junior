@@ -547,6 +547,13 @@
       "when": 1793840083445,
       "tag": "0077_drop_agent_invocation_model_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793853487201,
+      "tag": "0078_plugin_conversation_index",
+      "breakpoints": true
     }
   ]
 }

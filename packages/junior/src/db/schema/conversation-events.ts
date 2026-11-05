@@ -63,6 +63,17 @@ export const juniorConversationEvents = pgTable(
         table.createdAt,
       )
       .where(sql`${table.type} = 'structured_event'`),
+    // Reads of one plugin event in one Conversation. Postgres ignores the
+    // statistics of partial expression indexes, so without this index it
+    // reads the plugin_report_idx rows of every Conversation.
+    index("junior_conversation_events_plugin_conversation_idx")
+      .on(
+        table.conversationId,
+        sql`(${table.payload}->>'namespace')`,
+        sql`(${table.payload}->>'name')`,
+        table.seq,
+      )
+      .where(sql`${table.type} = 'structured_event'`),
     index("junior_conversation_events_actor_identity_idx").on(
       table.actorIdentityId,
       table.conversationId,
