@@ -23,7 +23,6 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Update issue fields | `github_updateIssue({ repo: "owner/repo", number: NUMBER, title?: "...", body?: "...", state?: "open" \| "closed" })` |
 | Close issue         | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "closed" })`                                         |
 | Reopen issue        | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "open" })`                                           |
-| Assign requester    | `github_updateIssue({ repo: "owner/repo", number: NUMBER, assign_requester: true })`                                  |
 | Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                                      |
 | Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                                  |
 | Add assignees       | `gh api repos/owner/repo/issues/NUMBER/assignees --method POST --input assignees.json`                                |
@@ -46,6 +45,6 @@ jr-rpc config set github.repo owner/repo
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
 - For creation, call `github_createIssue` directly instead of shelling out to `gh issue create`.
 - Use `github_updateIssue` for title, body, or state changes. Raw issue PATCH is denied because GitHub also uses that endpoint for pull requests.
-- To assign the requester, use `github_updateIssue` with `assign_requester: true`. It resolves their linked GitHub account. For other assignment changes, use the dedicated assignees endpoint. Do not send `assignees` through `github_updateIssue`.
+- Use the dedicated assignees endpoint for assignment changes. Do not send `assignees` through `github_updateIssue`.
 - Keep `--repo owner/repo` explicit when working across repositories.
 - Return actionable errors for access, permission, not-found, and validation failures.

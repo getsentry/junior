@@ -16,7 +16,6 @@ Use `git` and `gh` for repository work.
 | Comment on PR / reply in thread | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                              |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
 | Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
-| Claim an issue                  | `github_updateIssue` with `assign_requester: true`                                                            |
 
 ## Open when needed
 
@@ -30,7 +29,6 @@ Use `git` and `gh` for repository work.
 
 - Use the requested repo. Otherwise read `github.repo` with standalone `jr-rpc config get github.repo`.
 - Pass `--repo owner/repo` to `gh`. Use `git -C PATH` for local repos.
-- When a person asks you to work on, fix, or implement a GitHub issue, claim it before you investigate: call `github_updateIssue` with `assign_requester: true`. Skip it for investigation-only requests. If the claim fails, say so in the report and continue the work.
 - Read each applicable `AGENTS.md` before edits.
 - Keep unrelated work. Never delete refs or make destructive merges.
 - Force-push only with `--force-with-lease`, and only to branches Junior pushed or the requester named.
