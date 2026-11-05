@@ -615,13 +615,22 @@ test("inspects and copies a child agent transcript", async ({
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
-  // Child Conversations cannot be forked, so their replies offer no action.
+  // Child Conversations cannot be forked, so their replies offer only copy.
   await expect(
     drawer.getByText("Review complete; no blocking issues found."),
   ).toBeVisible();
   await expect(
     drawer.getByRole("button", { name: "Fork after this message" }),
   ).toHaveCount(0);
+  const reply = drawer
+    .getByRole("article")
+    .filter({ hasText: "Review complete; no blocking issues found." });
+  await reply.hover();
+  await reply.getByRole("button", { name: "Copy message" }).click();
+  await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Review complete; no blocking issues found.",
+  );
 
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {

@@ -1,5 +1,6 @@
 import type { ClipboardEventHandler, ReactNode } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { Message, MessageContent } from "../components/ui/message";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
 import juniorAvatarUrl from "../../assets/junior-avatar.webp";
@@ -20,9 +21,8 @@ export function TranscriptMessageShell(props: {
   const kind = transcriptRoleKind(props.role);
   const hasAvatar = kind === "assistant" || kind === "user";
   return (
-    <article
+    <Message
       className={cn(
-        "group/message grid min-w-0",
         hasAvatar && cn(transcriptColumnsClass, "text-dashboard-text"),
         kind === "system" &&
           "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
@@ -68,9 +68,7 @@ export function TranscriptMessageShell(props: {
           )}
         </div>
       ) : null}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-1">
-        {props.children}
-      </div>
-    </article>
+      <MessageContent className="py-1">{props.children}</MessageContent>
+    </Message>
   );
 }

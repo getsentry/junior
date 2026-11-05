@@ -5,6 +5,8 @@ import {
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
+import { CopyButton } from "../components/CopyButton";
+import { MessageActions } from "../components/ui/message";
 import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
@@ -79,7 +81,7 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          action={messageAction(props.message, props.conversation)}
+          action={turnContextAction(props.message, props.conversation)}
           message={props.message}
           conversation={props.conversation}
         />
@@ -114,6 +116,18 @@ export const TranscriptMessageView = memo(
               );
           }
         })}
+        {roleKind === "assistant" && !props.message.pending && rawText ? (
+          // The negative margin lines the first icon up with the text edge.
+          <MessageActions className="-ml-2.5">
+            <CopyButton getText={() => rawText} label="Copy message" />
+            {canForkAfter(props.message, props.conversation) ? (
+              <ForkConversationButton
+                conversationId={props.conversation.conversationId}
+                messageId={props.message.messageId}
+              />
+            ) : null}
+          </MessageActions>
+        ) : null}
       </TranscriptMessageShell>
     );
   },
@@ -154,29 +168,19 @@ export function RedactedMessageView(props: {
   );
 }
 
-function messageAction(
+function turnContextAction(
   message: TranscriptViewMessage,
   conversation: ConversationTranscript,
 ): ReactNode {
-  if (message.role === "user" && message.contexts?.length) {
-    return (
-      <TranscriptTurnContextView
-        actor={transcriptMessageActor(conversation, message)}
-        contexts={message.contexts}
-        messageId={message.messageId}
-        timestamp={message.timestamp}
-      />
-    );
-  }
-  if (canForkAfter(message, conversation)) {
-    return (
-      <ForkConversationButton
-        conversationId={conversation.conversationId}
-        messageId={message.messageId}
-      />
-    );
-  }
-  return undefined;
+  if (message.role !== "user" || !message.contexts?.length) return undefined;
+  return (
+    <TranscriptTurnContextView
+      actor={transcriptMessageActor(conversation, message)}
+      contexts={message.contexts}
+      messageId={message.messageId}
+      timestamp={message.timestamp}
+    />
+  );
 }
 
 /** A delivered Junior reply ends the history of a fork or Quick question. */
