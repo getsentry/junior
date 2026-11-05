@@ -106,10 +106,24 @@ export async function updateGitHubAnnotation(
       updatedAt: _updatedAt,
       ...annotation
     } = current;
+    // An object saved as the other GitHub type (for example, a pull request
+    // updated through the issues API) keeps facts for that type. Facts must
+    // match the object type, so drop them when the type changes.
+    const typeChanged =
+      annotation.objectType !== input.objectType ||
+      (annotation.facts !== undefined &&
+        annotation.facts.type !== input.objectType);
     await store.upsert({
       ...annotation,
       objectType: input.objectType,
       status: input.status,
+      ...(typeChanged
+        ? {
+            facts: undefined,
+            displayType:
+              input.objectType === "code_change" ? "Pull request" : "Issue",
+          }
+        : undefined),
     });
     return;
   }

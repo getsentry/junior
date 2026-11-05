@@ -3,7 +3,15 @@ import {
   type ConversationAnnotation,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import { githubSidebarAnnotations } from "../src/annotations";
+import type {
+  ConversationAnnotationInput,
+  PluginAnnotations,
+} from "@sentry/junior-plugin-api";
+import {
+  githubObjectAnnotation,
+  githubSidebarAnnotations,
+  updateGitHubAnnotation,
+} from "../src/annotations";
 
 function annotation(
   repo: string,
