@@ -130,6 +130,7 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
   options: {
+    latestTurns?: number;
     limit: number;
     state?: ConversationDetailState;
     unreadPage?: boolean;
@@ -186,6 +187,7 @@ async function readConversationDetailFromSql(
       ? readConversationEventPage(executor, {
           canExposePayload,
           conversationId,
+          latestTurns: options.latestTurns,
           limit: options.limit,
         })
       : purgedPage,
@@ -286,7 +288,15 @@ async function readConversationDetailFromSql(
   };
 }
 
-/** Load one conversation from its canonical event history. */
+/** Events in a detail page, and the cap of the default page. */
+const DETAIL_EVENT_LIMIT = 500;
+/** Turns in the default page: enough to read the latest exchange in context. */
+const DETAIL_LATEST_TURNS = 3;
+
+/**
+ * Load one conversation from its canonical event history. Without `limit`,
+ * events hold the latest Turns, up to the default limit.
+ */
 export async function readConversationDetail(
   conversationId: string,
   options: {
@@ -300,7 +310,9 @@ export async function readConversationDetail(
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, {
     ...options,
-    limit: options.limit ?? 500,
+    ...(options.limit === undefined
+      ? { latestTurns: DETAIL_LATEST_TURNS, limit: DETAIL_EVENT_LIMIT }
+      : { limit: options.limit }),
   });
   return report ? conversationDetailReportSchema.parse(report) : undefined;
 }

@@ -69,6 +69,54 @@ function assistantMessage(createdAtMs: number, inputTokens = 0) {
   };
 }
 
+/** One Turn: its input message, start, `replies` messages, and end. */
+function turn(index: number, createdAtMs: number, replies = 1) {
+  return [
+    message(`input-${index}`, createdAtMs),
+    {
+      data: {
+        type: "turn_started" as const,
+        turnId: `turn-${index}`,
+        inputMessageIds: [`input-${index}`],
+        surface: "internal" as const,
+      },
+      createdAtMs: createdAtMs + 1,
+    },
+    ...Array.from({ length: replies }, (_, reply) =>
+      message(`reply-${index}-${reply}`, createdAtMs + 2),
+    ),
+    {
+      data: {
+        type: "turn_completed" as const,
+        turnId: `turn-${index}`,
+        outcome: "success" as const,
+      },
+      createdAtMs: createdAtMs + 3,
+    },
+  ];
+}
+
+/** Read the default detail, then every earlier page through its cursors. */
+async function readDefaultDetailAndHistory(conversationId: string) {
+  const app = createJuniorApi();
+  const response = await app.request(
+    `http://localhost/api/conversations/${conversationId}`,
+  );
+  expect(response.status).toBe(200);
+  const detail = conversationDetailReportSchema.parse(await response.json());
+  const pages: ConversationReportEvent[][] = [detail.events];
+  let before = detail.previousCursor;
+  while (before) {
+    const pageResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(before)}&limit=7`,
+    );
+    const page = conversationEventPageSchema.parse(await pageResponse.json());
+    pages.unshift(page.events);
+    before = page.previousCursor;
+  }
+  return { detail, history: pages.flat().map((event) => event.seq) };
+}
+
 describe("conversation event list API", () => {
   afterEach(async () => {
     await closeDb();
@@ -144,6 +192,63 @@ describe("conversation event list API", () => {
       "subagent",
       "subagent",
     ]);
+  });
+
+  it("opens the default detail at the third-latest Turn", async () => {
+    const conversationId = "local:test:latest-turns";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(
+      conversationId,
+      Array.from({ length: 5 }, (_, index) => turn(index, index * 10)).flat(),
+    );
+
+    const { detail, history } =
+      await readDefaultDetailAndHistory(conversationId);
+    // Each Turn has 4 events. The page starts with the input message of the
+    // third-latest Turn, which comes before its start.
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 12 }, (_, index) => 8 + index),
+    );
+    expect(detail.events[0]?.data).toMatchObject({
+      type: "message",
+      messageId: "input-2",
+    });
+    expect(history).toEqual(Array.from({ length: 20 }, (_, index) => index));
+  });
+
+  it("opens the default detail at the start with fewer than three Turns", async () => {
+    const conversationId = "local:test:latest-turns-short";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      message("before-turns", 0),
+      ...turn(0, 10),
+      ...turn(1, 20),
+    ]);
+
+    const { detail } = await readDefaultDetailAndHistory(conversationId);
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 9 }, (_, index) => index),
+    );
+    expect(detail.previousCursor).toBeUndefined();
+  });
+
+  it("caps the default detail at 500 events when the latest Turns are longer", async () => {
+    const conversationId = "local:test:latest-turns-long";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      ...turn(0, 0),
+      ...turn(1, 10),
+      ...turn(2, 20, 300),
+      ...turn(3, 30, 300),
+    ]);
+
+    // The latest three Turns hold 610 events, so the latest 500 are shown.
+    const { detail, history } =
+      await readDefaultDetailAndHistory(conversationId);
+    expect(detail.events.map((event) => event.seq)).toEqual(
+      Array.from({ length: 500 }, (_, index) => 114 + index),
+    );
+    expect(history).toEqual(Array.from({ length: 614 }, (_, index) => index));
   });
 
   it("keeps recorded models and call usage across page boundaries", async () => {

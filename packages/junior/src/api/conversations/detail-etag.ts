@@ -91,7 +91,7 @@ export async function readConversationDetailState(
  */
 export async function readConversationDetailEtag(
   conversationId: string,
-  options: { limit: number; viewer?: User },
+  options: { limit?: number; viewer?: User },
 ): Promise<{ etag: string; state: ConversationDetailState } | undefined> {
   const [subtree, state] = await Promise.all([
     readSubtreeDetailVersion(conversationId),
@@ -104,7 +104,7 @@ export async function readConversationDetailEtag(
     autoArchive: state.autoArchive ?? null,
     forks: state.forks,
     junior: JUNIOR_VERSION,
-    limit: options.limit,
+    limit: options.limit ?? null,
     readPosition: state.readPosition ?? null,
     subtree,
     viewerMarks: state.viewerMarks ?? null,

@@ -10,7 +10,9 @@ import {
   lt,
   max,
   sql,
+  type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { eventFromRow } from "@/chat/conversations/sql/history";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -29,7 +31,7 @@ const MIN_SCAN_SIZE = 64;
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
-    afterSeq?: number;
+    afterSeq?: number | SQL;
     beforeSeq?: number;
     conversationId: string;
     direction: "backward" | "forward";
@@ -88,6 +90,46 @@ async function readConversationEventRows(
         : desc(juniorConversationEvents.seq),
     )
     .limit(args.limit);
+}
+
+/**
+ * Read the last Turn end before the `turns`-th latest Turn start. Its seq is
+ * null when the Conversation has fewer Turns, or no Turn ended before them.
+ *
+ * Input messages are written before their `turn_started`, so a page of the
+ * latest Turns starts after the Turn before them, not at the start event.
+ */
+function readLatestTurnsPageStart(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+  turns: number,
+) {
+  const started = alias(juniorConversationEvents, "started");
+  const ended = alias(juniorConversationEvents, "ended");
+  const turnStart = executor
+    .db()
+    .select({ seq: started.seq })
+    .from(started)
+    .where(
+      and(
+        eq(started.conversationId, conversationId),
+        eq(started.type, "turn_started"),
+      ),
+    )
+    .orderBy(desc(started.seq))
+    .offset(turns - 1)
+    .limit(1);
+  return executor
+    .db()
+    .select({ seq: max(ended.seq) })
+    .from(ended)
+    .where(
+      and(
+        eq(ended.conversationId, conversationId),
+        inArray(ended.type, ["turn_completed", "turn_failed"]),
+        lt(ended.seq, sql`(${turnStart})`),
+      ),
+    );
 }
 
 /** Read the first Turn start, which marks history inherited from a fork. */
@@ -197,7 +239,7 @@ async function projectConversationEvents(
 async function scanConversationEventPage(
   executor: JuniorSqlDatabase,
   args: {
-    afterSeq?: number;
+    afterSeq?: number | SQL;
     beforeSeq?: number;
     canExposePayload: boolean;
     conversationId: string;
@@ -252,7 +294,9 @@ async function scanConversationEventPage(
  * Read the latest reporting events before an exclusive boundary.
  *
  * Not every agent history event produces a reporting event, so source rows
- * are scanned until the requested page and one older event are known.
+ * are scanned until the requested page and one older event are known. With
+ * `latestTurns`, the page also starts after the Turn before the latest
+ * Turns, so it holds whole Turns when they fit in `limit`.
  */
 export async function readConversationEventPage(
   executor: JuniorSqlDatabase,
@@ -260,22 +304,37 @@ export async function readConversationEventPage(
     beforeSeq?: number;
     canExposePayload: boolean;
     conversationId: string;
+    latestTurns?: number;
     limit: number;
   },
 ): Promise<{
   events: ConversationReportEvent[];
   previousSeq?: number;
 }> {
-  const projected = await scanConversationEventPage(executor, {
-    ...args,
-    direction: "backward",
-  });
+  const { latestTurns, ...pageArgs } = args;
+  const pageStart =
+    latestTurns === undefined
+      ? undefined
+      : readLatestTurnsPageStart(executor, args.conversationId, latestTurns);
+  // The row read embeds the start lookup, so the page costs no extra round
+  // trip. The same lookup runs beside it to tell whether events precede it.
+  const [projected, startRows] = await Promise.all([
+    scanConversationEventPage(executor, {
+      ...pageArgs,
+      ...(pageStart
+        ? { afterSeq: sql`coalesce((${pageStart}), -1)` }
+        : undefined),
+      direction: "backward",
+    }),
+    pageStart,
+  ]);
   const events = projected.slice(-args.limit);
+  // A start seq is a Turn end, which is a reporting event before the page.
+  const hasEarlier =
+    projected.length > events.length || (startRows?.[0]?.seq ?? null) !== null;
   return {
     events,
-    ...(projected.length > events.length && events[0]
-      ? { previousSeq: events[0].seq }
-      : undefined),
+    ...(hasEarlier && events[0] ? { previousSeq: events[0].seq } : undefined),
   };
 }
 
