@@ -81,6 +81,14 @@ export interface GitHubPullRequestSubscriptionConfig {
 }
 
 /**
+ * A reply about an approval tends to guess why GitHub blocks the merge, or
+ * miss that a person already turned on auto-merge. The branch rules and the
+ * pull request's merge state settle both, and read access is enough.
+ */
+const MERGE_STATE_CHECK =
+  "Do not guess whether it can merge. Before you say anything about that, run `gh pr view NUMBER --repo OWNER/REPO --json autoMergeRequest,mergeStateStatus,reviewDecision,baseRefName --jq '{autoMerge: (.autoMergeRequest != null), mergeStateStatus, reviewDecision, baseRefName}'` and `gh pr checks NUMBER --repo OWNER/REPO --required`. If it prints \"no required checks reported\", the required checks may not have started on the latest commit yet. It does not mean that none are required. If auto-merge is on and only required checks remain, say only that it merges when they pass. If GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
+
+/**
  * Watch guidance for outcomes that the people involved need to hear about.
  * The Watch made after Junior creates a pull request always receives these
  * events. The webhook adds the people involved in the pull request to them.
@@ -88,8 +96,7 @@ export interface GitHubPullRequestSubscriptionConfig {
  * that stack and GitHub sends them no event when its own rebase stops.
  */
 const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
-  "pull_request.review.approved":
-    "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked.",
+  "pull_request.review.approved": `Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked. ${MERGE_STATE_CHECK}`,
   "pull_request.merged": `${STACK_CHECK} If open pull requests in the stack remain above it and Junior pushed their branches, restack them before you reply. Do not ask first. Run \`gh stack checkout NUMBER\` with the lowest open pull request, then \`gh stack sync\`. If sync reports a conflict, ${STACK_CONFLICT_STEPS} Then mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it. When you restacked, say so in the same reply.`,
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
