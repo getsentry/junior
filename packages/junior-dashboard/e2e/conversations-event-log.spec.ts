@@ -276,7 +276,8 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(log.getByText("No events match your search.")).toBeVisible();
   await search.fill("");
   await expect(entries).toHaveCount(report.events.length);
-  await chooseTranscriptView(page, "Conversation");
+  // The title in the Event log breadcrumb leads back to the Conversation.
+  await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
   await expect(
     page.getByText(

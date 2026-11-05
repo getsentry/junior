@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Menu, PanelRight, ScrollText, X } from "lucide-react";
+import { Menu, PanelRight } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
@@ -171,9 +171,35 @@ export function ConversationHeader(props: {
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}
-            <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
-              {props.title}
-            </h2>
+            {props.view === "raw" ? (
+              // Event log is a debug view reached from the `⋯` menu. The
+              // title leads back to the Conversation.
+              <>
+                <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
+                  <button
+                    className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
+                    onClick={() => props.onViewChange("rich")}
+                    title="Back to conversation"
+                    type="button"
+                  >
+                    {props.title}
+                  </button>
+                </h2>
+                <span aria-hidden="true" className="text-dashboard-text-faint">
+                  ›
+                </span>
+                <span
+                  aria-current="page"
+                  className="shrink-0 font-display text-base font-medium leading-6 tracking-tight"
+                >
+                  Event log
+                </span>
+              </>
+            ) : (
+              <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+                {props.title}
+              </h2>
+            )}
             {liveIndicator}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
@@ -194,20 +220,7 @@ export function ConversationHeader(props: {
                 {props.cost}
               </span>
             ) : null}
-            {props.view === "raw" ? (
-              // Event log is a debug view reached from the menu. Say which
-              // view this is, and give one click back.
-              <Button
-                aria-label="Close event log"
-                className="mr-1 h-8 px-2.5"
-                onClick={() => props.onViewChange("rich")}
-                variant="quiet"
-              >
-                <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
-                Event log
-                <X aria-hidden="true" size={14} strokeWidth={2} />
-              </Button>
-            ) : (
+            {props.view === "raw" ? null : (
               <TranscriptSearchToggle
                 onClick={toggleSearch}
                 open={searchOpenVisible}
