@@ -110,20 +110,29 @@ export function inboundMessageProvenance(
   return instructionProvenanceFor(author);
 }
 
-/** Return the Slack channel name when it is available. */
-export async function resolveChannelName(
-  thread: Thread,
-): Promise<string | undefined> {
-  const existingName = thread.channel.name?.trim();
-  if (existingName) {
-    return existingName;
-  }
+function metadataText(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
 
+/**
+ * Return the Slack channel name, topic, and description when available.
+ * Slack shows the channel purpose as its description.
+ */
+export async function resolveChannelDetails(thread: Thread): Promise<{
+  name?: string;
+  topic?: string;
+  description?: string;
+}> {
+  const cachedName = thread.channel.name?.trim() || undefined;
   try {
-    const metadata = await thread.channel.fetchMetadata();
-    return metadata.name?.trim() || undefined;
+    const info = await thread.channel.fetchMetadata();
+    return {
+      name: info.name?.trim() || cachedName,
+      topic: metadataText(info.metadata.topic),
+      description: metadataText(info.metadata.purpose),
+    };
   } catch {
-    return undefined;
+    return { name: cachedName };
   }
 }
 

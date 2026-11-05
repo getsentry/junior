@@ -156,7 +156,7 @@ import {
   collectAttachments,
   inboundMessageActor,
   inboundMessageProvenance,
-  resolveChannelName,
+  resolveChannelDetails,
   resolveSlackChannelType,
   saveSteeringMessages,
 } from "@/chat/providers/slack/input";
@@ -279,10 +279,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
 
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(thread, message);
-    const channelName =
+    const channelDetails =
       !options.execution && channelId
-        ? await resolveChannelName(thread)
-        : undefined;
+        ? await resolveChannelDetails(thread)
+        : {};
+    const channelName = channelDetails.name;
     const destination = requireSlackDestination(
       options.destination,
       "Slack reply execution",
@@ -294,6 +295,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       botUserId: deps.getSlackAdapter().botUserId,
       channelId,
       channelName,
+      channelTopic: channelDetails.topic,
+      channelDescription: channelDetails.description,
       channelType: slackChannelType,
     });
     // Persist only the live Slack signal. It refreshes the Destination row that
