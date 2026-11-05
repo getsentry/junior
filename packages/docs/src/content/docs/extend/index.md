@@ -36,6 +36,7 @@ fixed behavior that code must control.
 | [PagerDuty](/extend/pagerduty-plugin/)         | On-call, schedules, and incidents (read-only) |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
+| [X](/extend/xdotcom-plugin/)                   | Public X posts and accounts (read-only)       |
 
 ## Install packaged plugins
 
