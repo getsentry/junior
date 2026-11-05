@@ -94,8 +94,6 @@ import {
 } from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationOutline } from "./ConversationOutline";
-import { conversationOutlineItems } from "./conversationOutlineItems";
-import { transcriptMessagesFromEvents } from "./eventTranscript";
 import {
   QuickQuestionPanel,
   QuickQuestionSelectionButton,
@@ -386,16 +384,6 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "available"
       ? transcript.events
       : undefined;
-  // Outline items show text only, so they need no cards or annotations.
-  const outlineItems = useMemo(
-    () =>
-      outlineEvents
-        ? conversationOutlineItems(
-            transcriptMessagesFromEvents(outlineEvents, undefined),
-          )
-        : [],
-    [outlineEvents],
-  );
   const selectOutlineItem = useCallback((seq: number) => {
     // Search can hide the row.
     setSearch("");
@@ -661,9 +649,9 @@ export function ConversationPage(props: {
           />
         }
         overlay={
-          view === "rich" && !transcriptPending && outlineItems.length > 1 ? (
+          view === "rich" && !transcriptPending && outlineEvents ? (
             <ConversationOutline
-              items={outlineItems}
+              events={outlineEvents}
               onSelect={selectOutlineItem}
               scrollRef={scrollRef}
             />

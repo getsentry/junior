@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type RefObject,
+} from "react";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import {
   MessageOutline,
@@ -10,9 +18,13 @@ import {
   useMessageOutline,
 } from "../components/ui/message-outline";
 import {
+  conversationOutlineItems,
   outlineItemAtSeq,
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
+import { transcriptMessagesFromEvents } from "./eventTranscript";
+
+const NO_EVENTS: ConversationReportEvent[] = [];
 
 /** Room above a selected message, so it does not touch the viewport edge. */
 const JUMP_MARGIN_PX = 12;
@@ -20,17 +32,27 @@ const JUMP_MARGIN_PX = 12;
 /**
  * Show the person messages of a Conversation in an outline beside the
  * transcript. The item of the message being read is active, and a click puts
- * the message at the top of the transcript viewport.
+ * the message at the top of the transcript viewport. It shows two or more
+ * messages only.
  *
  * `onSelect` must make the transcript mount the row of the seq, because the
  * transcript mounts only the rows near the viewport.
  */
 export function ConversationOutline(props: {
-  items: readonly ConversationOutlineItem[];
+  events: ConversationReportEvent[];
   onSelect(seq: number): void;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const { items, scrollRef } = props;
+  const { scrollRef } = props;
+  // The transcript paints first. The outline builds after it, without
+  // blocking input.
+  const events = useDeferredValue(props.events, NO_EVENTS);
+  // Items show text only, so they need no cards or annotations.
+  const items = useMemo(
+    () =>
+      conversationOutlineItems(transcriptMessagesFromEvents(events, undefined)),
+    [events],
+  );
   const activeSeq = useActiveOutlineSeq(items, scrollRef);
   const [jumpSeq, setJumpSeq] = useState<number>();
 
@@ -46,6 +68,7 @@ export function ConversationOutline(props: {
       JUMP_MARGIN_PX;
   }, [jumpSeq, scrollRef]);
 
+  if (items.length < 2) return null;
   return (
     <MessageOutline
       activeIndex={items.findIndex((item) => item.seq === activeSeq)}
