@@ -16,25 +16,18 @@ export function ConversationCatchUpButton() {
   const state = useConversationCatchUpState();
   if (!state || state.data || state.pending) return null;
   return (
-    <>
-      <button
-        className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-dashboard-accent/30 bg-transparent px-2.5 font-sans text-xs font-medium text-dashboard-accent-text transition-colors hover:border-dashboard-accent/60 hover:bg-dashboard-accent/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus/55"
-        onClick={state.request}
-        type="button"
-      >
-        <Sparkles aria-hidden="true" size={12} strokeWidth={2} />
-        Catch me up
-      </button>
-      {state.error ? (
-        <InlineError className="shrink-0 text-xs">
-          Failed. Try again.
-        </InlineError>
-      ) : null}
-    </>
+    <button
+      className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-dashboard-accent/30 bg-transparent px-2.5 font-sans text-xs font-medium text-dashboard-accent-text transition-colors hover:border-dashboard-accent/60 hover:bg-dashboard-accent/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus/55"
+      onClick={state.request}
+      type="button"
+    >
+      <Sparkles aria-hidden="true" size={12} strokeWidth={2} />
+      Catch me up
+    </button>
   );
 }
 
-/** Show the loading or loaded catch-up under the "New" marker. */
+/** Show the loading, loaded, or failed catch-up under the "New" marker. */
 export function ConversationCatchUpCard() {
   const state = useConversationCatchUpState();
   const jumpToLatest = useContext(TranscriptJumpToLatestContext);
@@ -79,7 +72,7 @@ export function ConversationCatchUpCard() {
         ) : null}
         {jumpToLatest ? (
           <Button
-            className="-mb-1 -ml-2 h-7 justify-self-start gap-1.5 px-2 text-xs"
+            className="-mb-1 h-7 justify-self-center gap-1.5 px-2 text-xs"
             onClick={jumpToLatest}
             variant="quiet"
           >
@@ -88,6 +81,13 @@ export function ConversationCatchUpCard() {
           </Button>
         ) : null}
       </div>
+    );
+  }
+  if (state?.error) {
+    return (
+      <InlineError className="text-center text-xs">
+        Catch-up failed. Try again.
+      </InlineError>
     );
   }
   if (state?.pending) {

@@ -25,20 +25,23 @@ export function TranscriptRows({
 export function TranscriptUnreadMarker() {
   return (
     <div className="grid gap-2 py-1" data-transcript-unread-marker="">
-      <div className="flex items-center gap-3">
+      {/* Equal side columns keep "New" centered when the catch-up offer shows. */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <span
           aria-label="New messages"
-          className="h-px flex-1 bg-dashboard-accent/50"
+          className="h-px bg-dashboard-accent/50"
           role="separator"
         />
         <span
           aria-hidden="true"
-          className="shrink-0 font-sans text-xs font-semibold text-dashboard-accent-text"
+          className="font-sans text-xs font-semibold text-dashboard-accent-text"
         >
           New
         </span>
-        <ConversationCatchUpButton />
-        <span className="h-px flex-1 bg-dashboard-accent/50" />
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="h-px flex-1 bg-dashboard-accent/50" />
+          <ConversationCatchUpButton />
+        </div>
       </div>
       <ConversationCatchUpCard />
     </div>
