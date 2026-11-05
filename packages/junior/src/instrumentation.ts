@@ -98,9 +98,9 @@ export function initSentry(): void {
       { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
     ],
     dataCollection: {
-      // Outgoing calls carry model prompts and provider responses that the
-      // payload filter cannot see. Keep only incoming request bodies.
-      httpBodies: ["incomingRequest"],
+      // Request and response bodies carry model prompts, webhook payloads,
+      // signed callbacks, and sandbox egress content. Collect none.
+      httpBodies: [],
       // Query spans must not carry bound parameter values.
       databaseQueryData: false,
     },

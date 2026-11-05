@@ -72,7 +72,7 @@ describe("initSentry", () => {
     const options = init.mock.calls[0]?.[0];
     expect(options?.release).toBe(`${JUNIOR_VERSION}+git-sha`);
     expect(options?.dataCollection).toEqual({
-      httpBodies: ["incomingRequest"],
+      httpBodies: [],
       databaseQueryData: false,
     });
     expect(options?.beforeSend).toEqual(expect.any(Function));
