@@ -190,6 +190,10 @@ function truncate(text: string, maxChars: number): string {
  * widened the work can be older. Each older message from the person behind
  * the Run is read too, by its author Identity, so the read does not grow with
  * the other messages.
+ *
+ * A local Actor has no Identity of its own: its messages use the system
+ * Identity, like child results. So a local root reads only the newest page,
+ * the same as before, and Guardian asks when the request is older.
  */
 async function readMessageEvents(
   conversationId: string,
