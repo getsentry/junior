@@ -48,7 +48,7 @@ function ContextTag(props: {
   title?: string;
 }) {
   const className = cn(
-    "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 rounded-md border border-dashboard-border-subtle px-1.5 font-sans text-xs font-medium text-dashboard-text-muted",
+    "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 rounded-md border border-dashboard-border-subtle px-1.5 font-sans text-2xs font-medium text-dashboard-text-muted",
     props.className,
   );
   const content = (
@@ -179,7 +179,7 @@ function HiddenLinkCount(props: { className: string; count: number }) {
   return (
     <span
       className={cn(
-        "shrink-0 font-sans text-xs tabular-nums text-dashboard-text-muted",
+        "shrink-0 font-sans text-2xs tabular-nums text-dashboard-text-muted",
         props.className,
       )}
     >

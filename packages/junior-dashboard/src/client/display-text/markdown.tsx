@@ -30,6 +30,7 @@ import { renderTextTokens } from "./mentions";
  */
 export function MarkdownText(props: {
   chat?: boolean;
+  compact?: boolean;
   inline?: boolean;
   text: string;
 }): ReactNode {
@@ -54,7 +55,8 @@ export function MarkdownText(props: {
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.chat
           ? "font-sans text-base leading-relaxed"
-          : "font-sans text-sm leading-6 md:leading-7",
+          : "font-sans text-sm leading-6",
+        !props.chat && !props.compact && "md:leading-7",
       )}
     >
       <div className={cn("grid min-w-0", props.chat ? "gap-3" : "gap-2")}>

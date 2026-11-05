@@ -177,7 +177,9 @@ describe.sequential("dashboard Nitro production output", () => {
       );
       expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
       const chunkPaths = [
-        ...clientScript.matchAll(/["']\.\/(chunks\/[^"']+\.js)["']/g),
+        ...clientScript.matchAll(
+          /["']\/_junior\/dashboard\/assets\/(chunks\/[^"']+\.js)["']/g,
+        ),
       ].map((match) => match[1]!);
       expect(chunkPaths.length).toBeGreaterThan(0);
       for (const chunkPath of new Set(chunkPaths)) {
@@ -188,6 +190,14 @@ describe.sequential("dashboard Nitro production output", () => {
           "public, max-age=31536000, immutable",
         );
       }
+      // Binary files are embedded as base64 and must serve their bytes.
+      const fontFile = staticFiles.find((file) => file.endsWith(".woff2"));
+      expect(fontFile).toBeDefined();
+      const font = await assetResponse(fontFile!);
+      expect(font.headers.get("content-type")).toBe("font/woff2");
+      expect(Buffer.from(await font.arrayBuffer())).toEqual(
+        fs.readFileSync(path.join(staticAssetsDir, fontFile!)),
+      );
       const missing = await assetResponse("chunks/missing-AAAAAAAA.js");
       expect(missing.status).toBe(404);
       expect(missing.headers.get("cache-control")).toBe("no-store");

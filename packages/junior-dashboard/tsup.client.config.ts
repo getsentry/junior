@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Options } from "tsup";
 import {
+  DASHBOARD_ASSETS_PATH,
   DASHBOARD_CLIENT_MANIFEST_FILE,
   type DashboardClientManifest,
 } from "./src/public-assets";
@@ -11,10 +12,15 @@ type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
 
 const publicDir = "dist/public";
 
+// The first paint sets Latin text in both faces. Other subsets load only
+// when a page shows their characters.
+const FIRST_PAINT_FONT =
+  /^(?:inter|outfit)-latin-wght-normal-[A-Z0-9]{8}\.woff2$/;
+
 /**
- * Write the client manifest: the entry and every file it imports statically.
- * The page shell preloads those files, so the browser fetches them beside the
- * entry instead of after it.
+ * Write the client manifest: the entry, every file it imports statically,
+ * the stylesheet, and the first-paint fonts. The page shell preloads those
+ * files, so the browser fetches them beside the entry instead of after it.
  */
 function clientManifestPlugin(): EsbuildPlugin {
   return {
@@ -26,7 +32,12 @@ function clientManifestPlugin(): EsbuildPlugin {
         const entry = Object.keys(outputs).find(
           (file) => outputs[file]?.entryPoint === "src/client.tsx",
         );
-        if (!entry) throw new Error("Dashboard client entry was not built");
+        const stylesheet = Object.keys(outputs).find(
+          (file) => outputs[file]?.entryPoint === "src/styles.css",
+        );
+        if (!entry || !stylesheet) {
+          throw new Error("Dashboard client entry or stylesheet was not built");
+        }
         const imports = new Set<string>();
         const pending = [entry];
         for (let file = pending.pop(); file; file = pending.pop()) {
@@ -42,7 +53,12 @@ function clientManifestPlugin(): EsbuildPlugin {
           path.relative(publicDir, file).split(path.sep).join("/");
         const manifest: DashboardClientManifest = {
           entry: name(entry),
+          fonts: Object.keys(outputs)
+            .map(name)
+            .filter((file) => FIRST_PAINT_FONT.test(file))
+            .sort(),
           imports: [...imports].map(name).sort(),
+          stylesheet: name(stylesheet),
         };
         mkdirSync("dist", { recursive: true });
         writeFileSync(
@@ -57,6 +73,7 @@ function clientManifestPlugin(): EsbuildPlugin {
 export default defineConfig({
   entry: {
     client: "src/client.tsx",
+    styles: "src/styles.css",
   },
   format: "esm",
   // Fail the build when server-only code (Node builtins, @sentry/node) leaks
@@ -74,6 +91,11 @@ export default defineConfig({
   esbuildOptions(options) {
     options.entryNames = "[name]-[hash]";
     options.chunkNames = "chunks/[name]-[hash]";
+    // Fonts and images keep their source name plus a content hash, and
+    // their URLs point at the assets prefix.
+    options.assetNames = "[name]-[hash]";
+    options.publicPath = DASHBOARD_ASSETS_PATH;
+    options.loader = { ...options.loader, ".webp": "file", ".woff2": "file" };
     // pnpm injects a separate copy of the plugin API into @sentry/junior.
     // Resolve every import to one copy, so the browser loads it once.
     options.alias = {

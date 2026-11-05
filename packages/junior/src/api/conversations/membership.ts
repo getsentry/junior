@@ -10,8 +10,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { union } from "drizzle-orm/pg-core";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
@@ -254,12 +253,8 @@ export async function conversationViewerMarks(
 /** Read one viewer's archive and pin times for a conversation root. */
 export async function readConversationViewerMarks(
   viewer: { id: string },
-  conversationId: string,
+  rootConversationId: string,
 ): Promise<ConversationViewerMarks | undefined> {
-  const rootConversationId = await resolveRootConversationId(
-    getSqlExecutor(),
-    conversationId,
-  );
   const marks = await conversationViewerMarks(getDb(), [rootConversationId], {
     userId: viewer.id,
   });
