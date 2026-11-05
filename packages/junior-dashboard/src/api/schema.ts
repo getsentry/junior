@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 const dashboardSessionUserSchema = z
   .object({
@@ -62,6 +62,12 @@ export const dashboardConfigSchema = z
   })
   .strict();
 
+/** Core data the page shell embeds, so the client skips its first API reads. */
+export const dashboardBootstrapSchema = z
+  .object({ config: dashboardConfigSchema, me: dashboardIdentitySchema })
+  .strict();
+
 export type DashboardSession = z.infer<typeof dashboardSessionSchema>;
 export type DashboardIdentity = z.infer<typeof dashboardIdentitySchema>;
 export type DashboardConfig = z.infer<typeof dashboardConfigSchema>;
+export type DashboardBootstrap = z.infer<typeof dashboardBootstrapSchema>;

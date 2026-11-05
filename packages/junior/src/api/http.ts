@@ -1,6 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { z } from "zod";
+import * as z from "zod";
 import { apiErrorSchema } from "./schema/common";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" } as const;

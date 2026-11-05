@@ -4,7 +4,7 @@ import {
   EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
 } from "@/chat/event-automations/types";
 import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 
 export const automationTitleSchema = z.string().trim().min(1).max(60);

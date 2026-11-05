@@ -87,7 +87,9 @@ function buildPlugin(
         ...(options.wrappedTools
           ? { wrappedTools: options.wrappedTools }
           : undefined),
-        ...(options.auditTools ? { auditTools: options.auditTools } : undefined),
+        ...(options.auditTools
+          ? { auditTools: options.auditTools }
+          : undefined),
       },
     },
   };

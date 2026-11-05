@@ -15,6 +15,8 @@ Canonical words for Junior code and docs. One concept, one word.
   from Location.
 - **Brief**: the versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Catch-up**: a short summary of the rows after a reader's read position,
+  and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
   Event, Automation, plugin dispatch, Agent invocation). Each Inbound message
   has one; a Turn stores the one that started it.
@@ -67,18 +69,17 @@ Canonical words for Junior code and docs. One concept, one word.
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
-- **Turn route**: the Model profile and Reasoning level chosen before a Turn.
-- **Model profile**: a host model name (`standard`, `handoff`) with an
-  optional task-fit description for the router and `handoff`. **Reasoning
-  level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), or `tool_result` event. Not `model_item` or `model_message`.
-- **History replacement**: a compaction or handoff that sets later history.
+- **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
+- **Quiet message**: an Event Turn's assistant Message that the agent marked
+  as routine. Junior stores it but does not deliver it to the Location.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.

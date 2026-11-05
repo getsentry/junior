@@ -4,7 +4,7 @@ import type {
   EventPublisher,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Pull request outcomes that the people involved need to hear about. */
 const PEOPLE_EVENTS = new Set([

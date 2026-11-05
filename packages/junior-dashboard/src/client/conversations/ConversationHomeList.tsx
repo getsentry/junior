@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Archive, ArchiveRestore } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import {
   conversationDisplayTitle,
@@ -20,7 +20,11 @@ import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
-import { useArchiveConversation } from "./conversationArchive";
+import {
+  useArchiveConversation,
+  useLatestArchiveStatus,
+  type ArchivedFromConversationState,
+} from "./conversationArchive";
 import { DisplayText } from "../display-text/DisplayText";
 import {
   attentionConversationIds,
@@ -28,6 +32,7 @@ import {
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 
 /** Render grouped conversation cards on the dashboard home page. */
@@ -59,6 +64,7 @@ export function ConversationHomeList(props: {
     );
     setArchivedConversation(conversation);
   }, []);
+  useConversationPageArchiveResult(handleArchived, handleArchiveError);
   const notices = (
     <ConversationArchiveNotices
       archivedConversation={archivedConversation}
@@ -113,6 +119,39 @@ export function ConversationHomeList(props: {
       {notices}
     </>
   );
+}
+
+/**
+ * Report an archive started on the conversation page, which navigated home
+ * before the request finished.
+ */
+function useConversationPageArchiveResult(
+  onArchived: (conversation: Conversation) => void,
+  onArchiveError: (conversation: Conversation, wasArchiving: boolean) => void,
+) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const conversation = (location.state as ArchivedFromConversationState | null)
+    ?.archivedConversation;
+  const status = useLatestArchiveStatus(conversation?.id);
+  useEffect(() => {
+    if (!conversation || (status !== "success" && status !== "error")) return;
+    if (status === "success") onArchived(conversation);
+    else onArchiveError(conversation, true);
+    // Clear the state so a reload or a later restore does not report again.
+    navigate(
+      { hash: location.hash, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [
+    conversation,
+    location.hash,
+    location.search,
+    navigate,
+    onArchiveError,
+    onArchived,
+    status,
+  ]);
 }
 
 /** Match the grouped card list while its first feed request is pending. */
@@ -237,8 +276,10 @@ function ConversationCard(props: {
   const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
+  const prefetch = usePrefetchConversation(conversation.id);
   return (
     <article
+      {...prefetch}
       className="group relative grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5"
       role="listitem"
     >

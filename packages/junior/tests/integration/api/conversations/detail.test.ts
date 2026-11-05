@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
@@ -17,7 +18,10 @@ import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
-import { createChild } from "../../../fixtures/dashboard-reporting";
+import {
+  createChild,
+  insertLegacyEvent,
+} from "../../../fixtures/dashboard-reporting";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -80,27 +84,28 @@ describe("conversation detail API", () => {
           version: 1,
         },
       },
-      {
-        createdAtMs: 4,
-        data: {
-          confidence: 0.9,
-          costUsd: 0.0002,
-          modelId: "openai/gpt-5-mini",
-          modelProfile: "standard",
-          reasoningLevel: "medium",
-          source: "router",
-          turnId: "turn-1",
-          type: "turn_routed",
-        },
-      },
     ]);
+    // Turns routed before the Turn router was retired keep their router cost.
+    await insertLegacyEvent(conversationId, {
+      createdAtMs: 4,
+      data: {
+        confidence: 0.9,
+        costUsd: 0.0002,
+        modelId: "openai/gpt-5-mini",
+        modelProfile: "standard",
+        reasoningLevel: "medium",
+        source: "router",
+        turnId: "turn-1",
+        type: "turn_routed",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
+    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
     expect(refreshed.auxiliaryCosts).toEqual({
       costUsd: 0.0006,
       operations: [
@@ -134,23 +139,35 @@ describe("conversation detail API", () => {
     const app = createJuniorApi();
     const poll = (etag?: string) =>
       app.request(`http://localhost/api/conversations/${conversationId}`, {
-        headers: etag ? { "if-none-match": etag } : {},
+        headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {},
       });
 
     const first = await poll();
-    const firstEtag = first.headers.get("etag")!;
+    const firstEtag = first.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
     expect(first.status).toBe(200);
-    expect(firstEtag).toMatch(/^W\/"/);
     const unchanged = await poll(firstEtag);
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
+    // The mailbox changes apart from the version token, so a read that asks
+    // for it always gets the full report.
+    const withMailbox = await app.request(
+      `http://localhost/api/conversations/${conversationId}?mailbox=true`,
+      { headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: firstEtag } },
+    );
+    expect(withMailbox.status).toBe(200);
+    expect(await withMailbox.json()).toMatchObject({
+      conversationId,
+      mailbox: { conversationId, messages: [] },
+    });
 
     await createChild({
       childConversationId,
       parentConversationId: conversationId,
     });
     const withChild = await poll(firstEtag);
-    const childEtag = withChild.headers.get("etag")!;
+    const childEtag = withChild.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
     expect(withChild.status).toBe(200);
     expect(childEtag).not.toBe(firstEtag);
 
@@ -167,7 +184,9 @@ describe("conversation detail API", () => {
       },
     ]);
     const childChanged = await poll(childEtag);
-    const childChangedEtag = childChanged.headers.get("etag")!;
+    const childChangedEtag = childChanged.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
     expect(childChanged.status).toBe(200);
 
     await createPluginAnnotations({

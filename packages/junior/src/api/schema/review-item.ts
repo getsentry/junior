@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 const answerSchema = z

@@ -193,10 +193,10 @@ vi.mock("@/chat/logging", async (importOriginal) => {
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/session";
+import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
 import { ensureDockerDaemon } from "@/chat/sandbox/guest-docker";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import {

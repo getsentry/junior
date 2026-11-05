@@ -2,7 +2,7 @@ import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
-import { z } from "zod";
+import * as z from "zod";
 import {
   destinationFilterValue,
   type AutomationDestination,

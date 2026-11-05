@@ -1,5 +1,5 @@
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 export {
   missingFileResult,

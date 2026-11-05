@@ -1,6 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "tsup";
+import {
+  DASHBOARD_CLIENT_MANIFEST_FILE,
+  DASHBOARD_PUBLIC_ASSET_NAME,
+  dashboardClientManifestSchema,
+} from "./src/public-assets";
 
 interface EsbuildOnLoadArgs {
   path: string;
@@ -49,6 +54,32 @@ function readBuiltAsset(fileName: string): string {
   return readFileSync(assetPath, "utf8");
 }
 
+/**
+ * Read every browser file in dist/public, keyed by its path under the
+ * assets prefix. Fail the build when a name has no content hash.
+ */
+function readPublicAssets(): Record<string, string> {
+  const publicDir = path.join(packageRoot, "dist", "public");
+  const files = readdirSync(publicDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path
+        .relative(publicDir, path.join(entry.parentPath, entry.name))
+        .split(path.sep)
+        .join("/"),
+    );
+  for (const file of files) {
+    if (!DASHBOARD_PUBLIC_ASSET_NAME.test(file)) {
+      throw new Error(
+        `Dashboard public asset ${file} has no content hash in its name`,
+      );
+    }
+  }
+  return Object.fromEntries(
+    files.map((file) => [file, readBuiltAsset(`public/${file}`)]),
+  );
+}
+
 /** Inline dashboard browser assets so dashboard routes can serve static assets. */
 function dashboardAssetsPlugin(): EsbuildPlugin {
   return {
@@ -62,18 +93,24 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           };
         }
 
-        const chunks = Object.fromEntries(
-          readdirSync(path.join(packageRoot, "dist", "chunks"))
-            .filter((file) => file.endsWith(".js"))
-            .map((file) => [file, readBuiltAsset(`chunks/${file}`)]),
+        const publicAssets = readPublicAssets();
+        const clientManifest = dashboardClientManifestSchema.parse(
+          JSON.parse(readBuiltAsset(DASHBOARD_CLIENT_MANIFEST_FILE)),
         );
+        for (const file of [clientManifest.entry, ...clientManifest.imports]) {
+          if (!Object.hasOwn(publicAssets, file)) {
+            throw new Error(
+              `Dashboard client manifest names ${file}, which is not in dist/public`,
+            );
+          }
+        }
         const colorIconBase64 = readFileSync(dashboardColorIconPath).toString(
           "base64",
         );
         return {
           contents: [
-            `export const dashboardClientAsset = ${JSON.stringify(readBuiltAsset("client.js"))};`,
-            `export const dashboardClientChunks = ${JSON.stringify(chunks)};`,
+            `export const dashboardClientManifest = ${JSON.stringify(clientManifest)};`,
+            `export const dashboardPublicAssets = ${JSON.stringify(publicAssets)};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,
             `export const dashboardInstallIconAsset = ${JSON.stringify(colorIconBase64)};`,

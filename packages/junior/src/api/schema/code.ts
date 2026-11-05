@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
 export const codeChangeSummarySchema = z

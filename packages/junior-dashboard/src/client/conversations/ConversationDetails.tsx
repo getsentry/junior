@@ -1,6 +1,9 @@
 import { ArrowLeft } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationWatch,
+} from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
@@ -64,8 +67,22 @@ export function ConversationDetails(props: {
     setMemoriesOpen(false);
   }
   const agents = useConversationChildAgents(props.conversationId).data?.agents;
-  const watches =
+  const allWatches =
     useConversationWatches(props.conversationId).data?.watches ?? [];
+  // A Watch on linked work shows in that row, so the resource shows once.
+  const linkUrls = new Set(props.links.map((link) => link.url));
+  const watchesByUrl = new Map<string, ConversationWatch[]>();
+  const watches: ConversationWatch[] = [];
+  for (const watch of allWatches) {
+    if (watch.url && linkUrls.has(watch.url)) {
+      watchesByUrl.set(watch.url, [
+        ...(watchesByUrl.get(watch.url) ?? []),
+        watch,
+      ]);
+    } else {
+      watches.push(watch);
+    }
+  }
 
   if (memoriesOpen && memoryList) {
     // The list replaces details in place, so nothing stacks over the panel.
@@ -153,7 +170,10 @@ export function ConversationDetails(props: {
             title={props.links.length > 0 ? "Linked work" : "Waiting on"}
           >
             {props.links.length > 0 ? (
-              <ConversationLinkedWork links={props.links} />
+              <ConversationLinkedWork
+                links={props.links}
+                watchesByUrl={watchesByUrl}
+              />
             ) : null}
             {props.links.length > 0 && watches.length > 0 ? (
               <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-medium text-dashboard-text-faint">

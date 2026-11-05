@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";

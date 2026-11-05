@@ -8,7 +8,7 @@ import {
   sourceSchema,
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";

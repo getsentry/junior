@@ -19,6 +19,10 @@ export type SlackConversationVisibility = "public" | "private";
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
+  /** Channel topic. Channel members write it, so it is untrusted text. */
+  topic?: string;
+  /** Channel description (Slack purpose). Channel members write it. */
+  description?: string;
   /** Visibility proven by source or persisted metadata. */
   visibility?: SlackConversationVisibility;
   /** Junior's own Slack user ID, so the agent can recognize its mentions. */
@@ -130,6 +134,8 @@ export function resolveSlackConversationContext(input: {
   botUserId?: string;
   channelId?: string;
   channelName?: string;
+  channelTopic?: string;
+  channelDescription?: string;
   channelType?: SlackEventChannelType;
 }): SlackConversationContext | undefined {
   const type =
@@ -138,6 +144,8 @@ export function resolveSlackConversationContext(input: {
   if (!type) return undefined;
 
   const name = normalizeConversationName(type, input.channelName);
+  const topic = input.channelTopic?.trim();
+  const description = input.channelDescription?.trim();
   const visibility = conversationVisibilityFromSlackChannelType(
     input.channelType,
   );
@@ -145,6 +153,8 @@ export function resolveSlackConversationContext(input: {
   return {
     type,
     ...(name ? { name } : undefined),
+    ...(topic ? { topic } : undefined),
+    ...(description ? { description } : undefined),
     ...(visibility ? { visibility } : undefined),
     ...(input.botUserId ? { botUserId: input.botUserId } : undefined),
   };

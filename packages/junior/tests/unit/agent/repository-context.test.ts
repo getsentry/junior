@@ -25,13 +25,13 @@ describe("createRepositoryInstructionsContext", () => {
       shouldPromptAgent: true,
     });
 
-    await context.applyUpdate(undefined, {
+    await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
     });
     current = instructions("v2", "Use the new formatter.");
-    const update = await context.applyUpdate(undefined, {
+    const update = await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
@@ -54,13 +54,13 @@ describe("createRepositoryInstructionsContext", () => {
       shouldPromptAgent: true,
     });
 
-    await context.applyUpdate(undefined, {
+    await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
     });
     current = undefined;
-    const update = await context.applyUpdate(undefined, {
+    const update = await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
@@ -120,7 +120,7 @@ describe("createRepositoryInstructionsContext", () => {
 
       for (const next of sequence) {
         current = next;
-        await context.applyUpdate(undefined, {
+        await context.applyUpdate({
           messages: [],
           systemPrompt: "system",
           tools: [],

@@ -72,7 +72,6 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       await enqueueTopLevelAgentMessage({
-        actor,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         senderConversationId: run.conversationId,

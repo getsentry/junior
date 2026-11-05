@@ -170,7 +170,11 @@ export function createNeonJuniorSqlExecutor(args: {
 }): NeonJuniorSqlExecutor {
   const pool = new Pool({
     connectionString: args.connectionString,
-    max: 3,
+    // One function instance serves many requests at once, and they share this
+    // pool. A dashboard page load sends about ten requests, and the
+    // conversation list alone can hold three connections for seconds. With a
+    // smaller pool, the other requests wait for a free connection.
+    max: 10,
     statement_timeout: args.statementTimeoutMs,
   });
   // An idle client can fail when the server closes it. The pool replaces the

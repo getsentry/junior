@@ -1,6 +1,6 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
 import { parseContent } from "@/chat/slack/message/content";
@@ -11,12 +11,12 @@ import {
 } from "@/chat/task-execution/store";
 import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";
+import { type ActorIdentity } from "../schema/conversation";
 import {
   conversationPendingMessagesReportSchema,
-  type ActorIdentity,
   type ConversationPendingMessage,
   type ConversationPendingMessagesReport,
-} from "../schema/conversation";
+} from "../schema/conversation-pending-messages";
 import { readConversationAccessFromSql } from "./access";
 import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";

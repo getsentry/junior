@@ -7,7 +7,7 @@ import {
   type PluginToolOutput,
   type PluginWorkspaceToolContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { isReservedSandboxDirectory } from "../sandbox-paths.js";
 
 const inputSchema = z

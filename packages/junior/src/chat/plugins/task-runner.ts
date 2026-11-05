@@ -21,6 +21,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -415,9 +416,16 @@ function taskPluginContext(
 ): PluginTaskContext {
   const pluginName = plugin.manifest.name;
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
+  const onCost = createPluginModelCostRecorder({
+    conversationId: sessionParams.conversationId,
+    pluginName,
+    source: "task",
+    turnId: sessionParams.sessionId,
+  });
   return {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName, {
+      onCost,
       signal: options.signal,
     }),
     events: createPluginConversationEvents({
@@ -429,6 +437,7 @@ function taskPluginContext(
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     model: createPluginModel(pluginName, plugin.model, {
+      onCost,
       signal: options.signal,
     }),
     name: message.name,

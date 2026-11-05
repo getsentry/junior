@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   identityAvatarUrl,
   readUserAvatarUrls,
@@ -73,6 +73,29 @@ async function readParticipantRows(
   db: JuniorDatabase,
   conversationIds: readonly string[],
 ): Promise<ConversationParticipantRow[]> {
+  // Find each author's first message before the joins. This reads only the
+  // authored rows of these Conversations from
+  // `junior_conversation_events_author_idx`, not every event or every author.
+  const authors = db
+    .select({
+      conversationId: juniorConversationEvents.conversationId,
+      actorIdentityId: juniorConversationEvents.actorIdentityId,
+      seq: sql<number>`min(${juniorConversationEvents.seq})`
+        .mapWith(Number)
+        .as("first_seq"),
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        inArray(juniorConversationEvents.conversationId, [...conversationIds]),
+        isNotNull(juniorConversationEvents.actorIdentityId),
+      ),
+    )
+    .groupBy(
+      juniorConversationEvents.conversationId,
+      juniorConversationEvents.actorIdentityId,
+    )
+    .as("authors");
   const [rootRows, eventRows] = await Promise.all([
     db
       .select({
@@ -87,29 +110,20 @@ async function readParticipantRows(
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
       .where(inArray(juniorConversations.conversationId, [...conversationIds])),
     db
-      .selectDistinctOn(
-        [
-          juniorConversationEvents.conversationId,
-          juniorConversationEvents.actorIdentityId,
-        ],
-        {
-          conversationId: juniorConversationEvents.conversationId,
-          seq: juniorConversationEvents.seq,
-          ...identityColumns,
-        },
-      )
-      .from(juniorConversationEvents)
+      .select({
+        conversationId: authors.conversationId,
+        seq: authors.seq,
+        ...identityColumns,
+      })
+      .from(authors)
       .innerJoin(
         juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
+        eq(juniorIdentities.id, authors.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
       .innerJoin(
         juniorConversations,
-        eq(
-          juniorConversations.conversationId,
-          juniorConversationEvents.conversationId,
-        ),
+        eq(juniorConversations.conversationId, authors.conversationId),
       )
       // Message authors show only when they joined by starting a Turn.
       .innerJoin(
@@ -122,14 +136,8 @@ async function readParticipantRows(
           ),
         ),
       )
-      .where(
-        inArray(juniorConversationEvents.conversationId, [...conversationIds]),
-      )
-      .orderBy(
-        asc(juniorConversationEvents.conversationId),
-        asc(juniorConversationEvents.actorIdentityId),
-        asc(juniorConversationEvents.seq),
-      ),
+      // Postgres does not carry the `IN` list across the join, so repeat it.
+      .where(inArray(juniorConversations.conversationId, [...conversationIds])),
   ]);
   return [
     ...rootRows,

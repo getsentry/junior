@@ -77,8 +77,8 @@ import {
 import {
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
 } from "@/chat/sandbox/egress/session";
+import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";

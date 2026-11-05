@@ -10,41 +10,14 @@ import type { Actor, Destination, Source } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { ModelProfile } from "@/chat/model-profile";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
-
-export const AGENT_INVOCATION_STATUSES = [
-  "pending",
-  "running",
-  "paused",
-  "blocked",
-  "completed",
-  "failed",
-  "stopped",
-] as const;
-
-export const AGENT_INVOCATION_MAILBOX_STATUSES = [
-  "pending",
-  "appended",
-] as const;
-
-/**
- * Parent mailbox append state. Only terminal invocations have a value.
- * `replaced` means the child still had open work, so a later agent invocation
- * on the same child sends the result instead. `skipped` means a stop ended
- * the work, so the result is never used. `steered` means the agent invocation
- * that was running read the input as a steering message, so its result covers
- * this one.
- */
-export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
-  "pending",
-  "appended",
-  "replaced",
-  "skipped",
-  "steered",
-] as const;
+import type {
+  AGENT_INVOCATION_MAILBOX_STATUSES,
+  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
+  AGENT_INVOCATION_STATUSES,
+} from "@/chat/agent-invocations/statuses";
 
 export const juniorAgentBindings = pgTable(
   "junior_agent_bindings",
@@ -95,7 +68,6 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     agentType: text("agent_type").$type<AgentType>(),
-    modelProfile: text("model_profile").$type<ModelProfile>(),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.

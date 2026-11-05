@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
 import { QueryClient } from "@tanstack/react-query";
 import { webMessageId } from "@sentry/junior/api/schema";
@@ -6,7 +7,7 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 
 import { createDashboardApp } from "../src/app";
-import { auth } from "./dashboard-test-helpers";
+import { auth, embeddedBootstrap } from "./dashboard-test-helpers";
 import {
   ARCHIVED_CONVERSATION_ID,
   setMockConversationArchived,
@@ -20,6 +21,7 @@ import {
   readConversationEvents,
 } from "../src/client/conversations/queries";
 import { REVIEW_ITEMS_QUERY_KEY } from "../src/client/review-desk/queries";
+import { dashboardCoreQueryOptions } from "../src/client/api";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -49,6 +51,40 @@ describe("dashboard client API", () => {
     expect(await webMessageId({ conversationId, idempotencyKey })).toBe(
       storedId,
     );
+  });
+
+  it("seeds core data from the page shell once, then reads the API", async () => {
+    const app = createDashboardApp({
+      allowedDomains: ["example.com"],
+      mockConversations: true,
+      auth: auth({ user: { email: "dev@example.com", emailVerified: true } }),
+    });
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+    const bootstrap = embeddedBootstrap(html);
+    expect(bootstrap).toBeDefined();
+    const reads: string[] = [];
+    vi.stubGlobal("fetch", async (path: string, init: RequestInit) => {
+      reads.push(path);
+      return app.fetch(new Request(`http://localhost${path}`, init));
+    });
+    const shellWindow: Record<string, unknown> = {
+      __JUNIOR_DASHBOARD_BOOTSTRAP__: bootstrap,
+      dispatchEvent: vi.fn(),
+    };
+    vi.stubGlobal("window", shellWindow);
+
+    await expect(
+      new QueryClient().fetchQuery(dashboardCoreQueryOptions()),
+    ).resolves.toEqual(bootstrap);
+    expect(reads).toEqual([]);
+    expect(shellWindow).not.toHaveProperty("__JUNIOR_DASHBOARD_BOOTSTRAP__");
+
+    await expect(
+      new QueryClient().fetchQuery(dashboardCoreQueryOptions()),
+    ).resolves.toEqual(bootstrap);
+    expect(reads.sort()).toEqual(["/api/config", "/api/me"]);
   });
 
   it("restarts Google sign-in when product API auth expires", async () => {
@@ -148,12 +184,14 @@ describe("dashboard client API", () => {
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([false, false]);
+      // The first read brings the mailbox with the detail. Polls read the
+      // mailbox apart so the detail can answer 304.
       expect(reads).toEqual([
-        [`${detailPath}/pending-messages`, 200],
-        [detailPath, 200],
+        [`${detailPath}?mailbox=true`, 200],
         [`${detailPath}/pending-messages`, 200],
         [detailPath, 304],
       ]);
+      expect(first.mailbox?.conversationId).toBe(ARCHIVED_CONVERSATION_ID);
 
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
       const changed = await client.fetchQuery(options);
@@ -167,7 +205,9 @@ describe("dashboard client API", () => {
       signedIn = false;
       const denied = await app.fetch(
         new Request(`http://localhost${detailPath}`, {
-          headers: { "if-none-match": changed.detailEtag! },
+          headers: {
+            [CONVERSATION_DETAIL_VERSION_HEADER]: changed.detailEtag!,
+          },
         }),
       );
       expect(denied.status).toBe(401);

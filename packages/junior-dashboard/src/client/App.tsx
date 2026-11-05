@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
+import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
   useConversationsData,
@@ -34,49 +34,128 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
+import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
-import { RepositoryPage } from "./pages/code/RepositoryPage";
-import { CodePage } from "./pages/code/CodePage";
-import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
-import { LocationsPage } from "./pages/locations/LocationsPage";
-import { PeoplePage } from "./pages/people/PeoplePage";
-import { PersonProfilePage } from "./pages/people/PersonProfilePage";
-import { ConnectionsPage } from "./pages/settings/ConnectionsPage";
-import { McpSettingsPage } from "./pages/settings/McpSettingsPage";
-import { PersonalTokensPage } from "./pages/settings/PersonalTokensPage";
-import { SettingsPage } from "./pages/settings/SettingsPage";
 import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
-import { SystemPage } from "./pages/system/SystemPage";
 import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
-import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
-import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
 } from "./pages/memory/MemoryPageLayout";
-import { AutomationPage } from "./pages/automations/AutomationPage";
-import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
-import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
-import {
-  MemoryPermalinkRoute,
-  PluginUserPageRoute,
-} from "./pages/user/PluginUserPage";
-import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
+import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
   ReviewDeskPage,
 } from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
 import type { DashboardCoreData } from "./types";
+
+// Pages outside the conversation workspace load on first visit, so the
+// workspace's first paint skips their code and the chart library.
+const RepositoryPage = lazy(() =>
+  import("./pages/code/RepositoryPage").then((module) => ({
+    default: module.RepositoryPage,
+  })),
+);
+const CodePage = lazy(() =>
+  import("./pages/code/CodePage").then((module) => ({
+    default: module.CodePage,
+  })),
+);
+const LocationDetailPage = lazy(() =>
+  import("./pages/locations/LocationDetailPage").then((module) => ({
+    default: module.LocationDetailPage,
+  })),
+);
+const LocationsPage = lazy(() =>
+  import("./pages/locations/LocationsPage").then((module) => ({
+    default: module.LocationsPage,
+  })),
+);
+const PeoplePage = lazy(() =>
+  import("./pages/people/PeoplePage").then((module) => ({
+    default: module.PeoplePage,
+  })),
+);
+const PersonProfilePage = lazy(() =>
+  import("./pages/people/PersonProfilePage").then((module) => ({
+    default: module.PersonProfilePage,
+  })),
+);
+const ConnectionsPage = lazy(() =>
+  import("./pages/settings/ConnectionsPage").then((module) => ({
+    default: module.ConnectionsPage,
+  })),
+);
+const McpSettingsPage = lazy(() =>
+  import("./pages/settings/McpSettingsPage").then((module) => ({
+    default: module.McpSettingsPage,
+  })),
+);
+const PersonalTokensPage = lazy(() =>
+  import("./pages/settings/PersonalTokensPage").then((module) => ({
+    default: module.PersonalTokensPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("./pages/settings/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const SystemPage = lazy(() =>
+  import("./pages/system/SystemPage").then((module) => ({
+    default: module.SystemPage,
+  })),
+);
+const WorkspaceFormPage = lazy(() =>
+  import("./pages/system/WorkspaceFormPage").then((module) => ({
+    default: module.WorkspaceFormPage,
+  })),
+);
+const WorkspacesPage = lazy(() =>
+  import("./pages/system/WorkspacesPage").then((module) => ({
+    default: module.WorkspacesPage,
+  })),
+);
+const AutomationPage = lazy(() =>
+  import("./pages/automations/AutomationPage").then((module) => ({
+    default: module.AutomationPage,
+  })),
+);
+const AutomationRunsPage = lazy(() =>
+  import("./pages/automations/AutomationRunsPage").then((module) => ({
+    default: module.AutomationRunsPage,
+  })),
+);
+const AutomationsPage = lazy(() =>
+  import("./pages/automations/AutomationsPage").then((module) => ({
+    default: module.AutomationsPage,
+  })),
+);
+const MemoryPermalinkRoute = lazy(() =>
+  import("./pages/user/PluginUserPage").then((module) => ({
+    default: module.MemoryPermalinkRoute,
+  })),
+);
+const PluginUserPageRoute = lazy(() =>
+  import("./pages/user/PluginUserPage").then((module) => ({
+    default: module.PluginUserPageRoute,
+  })),
+);
+const AdminPage = lazy(() =>
+  import("./pages/admin/AdminPage").then((module) => ({
+    default: module.AdminPage,
+  })),
+);
 
 const dashboardNoise = {
   backgroundImage:
@@ -154,8 +233,12 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
-  const conversationDetail = useConversationData(conversationId);
+  // The shell owns the open Conversation's data, and the page reads it. On a
+  // direct load, this fetch runs beside the dashboard core reads, before the
+  // page mounts. One fetch for each visit also brings the unread page.
+  const conversationDetail = useConversationData(conversationId, {
+    unreadPageAtOpen: readConversationStartPosition() === "unread",
+  });
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -289,7 +372,7 @@ export function DashboardShell() {
               />
             }
           />
-          <Routes>
+          <TracedRoutes fallback={<LoadingView label="Loading page" />}>
             <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
             <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
             <Route
@@ -439,7 +522,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail={false} />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -481,7 +564,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -670,7 +753,7 @@ export function DashboardShell() {
               path="/admin"
             />
             <Route element={<Navigate replace to="/" />} path="*" />
-          </Routes>
+          </TracedRoutes>
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"

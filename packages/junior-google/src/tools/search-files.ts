@@ -2,7 +2,7 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   fileOutputFields,
   GOOGLE_FILE_TYPES,

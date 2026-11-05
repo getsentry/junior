@@ -7,8 +7,8 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`. A test can answer some pages
- * itself with `mockWebPages()`.
+ * replays them. See the `web` rule in `roach.json`. A test can answer some
+ * pages itself with `mockWebPages()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";

@@ -38,11 +38,10 @@ const coreMigrationCount = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
 }).length;
 
-it("accepts compaction and handoff as the only live history replacements", () => {
+it("reads compaction and stored handoff history replacements", () => {
   expect(
     conversationEventDataSchema.safeParse({
       type: "compaction",
-      modelProfile: "coding",
       modelId: "openai/gpt-5.4",
       replacementHistory: [],
     }).success,
@@ -66,7 +65,7 @@ it("accepts compaction and handoff as the only live history replacements", () =>
   ).toBe(true);
   for (const invalid of [
     { type: "context_epoch_started", reason: "initial" },
-    { type: "compaction", modelProfile: "standard" },
+    { type: "compaction", replacementHistory: [] },
     {
       type: "handoff",
       modelProfile: "handoff",
@@ -223,25 +222,24 @@ it("rejects history replacements through the ordinary append boundary", async ()
   ).rejects.toThrow("Invalid input");
 });
 
-it("rejects invalid turn route reasoning levels", async () => {
+it("rejects new turn route writes from the retired Turn router", async () => {
   await expect(
     getConversationEventStore().append("local:test:invalid-turn-route", [
       {
         data: {
           type: "turn_routed",
           turnId: "turn-1",
-          modelProfile: "standard",
           modelId: "test-model",
-          reasoningLevel: "maximum",
+          reasoningLevel: "high",
           source: "router",
         },
         createdAtMs: 1,
       } as never,
     ]),
-  ).rejects.toThrow("Invalid option");
+  ).rejects.toThrow("Invalid input");
 });
 
-it("rejects incomplete handoffs through the replacement boundary", async () => {
+it("rejects new handoff writes through the replacement boundary", async () => {
   const conversationId = "local:test:invalid-marker-start";
   await expect(
     getConversationEventStore().replaceHistory(conversationId, {
@@ -249,6 +247,7 @@ it("rejects incomplete handoffs through the replacement boundary", async () => {
       data: {
         type: "handoff",
         modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
         replacementHistory: [],
       },
     } as never),
@@ -269,7 +268,6 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
     createdAtMs: 2,
     data: {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "test-model",
       replacementHistory: [],
     },
@@ -281,7 +279,6 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
     }),
   ).resolves.toMatchObject({
     messages: [],
-    modelProfile: "standard",
     replacementSeq: 1,
   });
   await expect(
@@ -746,7 +743,6 @@ describe("SQL conversation storage", () => {
         createdAtMs: 3_000,
         data: {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "test/model",
           replacementHistory: [
             { item: userMessageEvent("epoch1\u0000summary") },
@@ -794,7 +790,6 @@ describe("SQL conversation storage", () => {
         createdAtMs: 3_000,
         data: {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "test/model",
           replacementHistory: [{ item: userMessageEvent("epoch1-summary") }],
         },
@@ -814,7 +809,6 @@ describe("SQL conversation storage", () => {
         data: {
           type: "compaction",
           modelId: "test/model",
-          modelProfile: "standard",
           replacementHistory: [{ item: userMessageEvent("epoch2-message") }],
         },
       });
@@ -1066,7 +1060,6 @@ WHERE conversation_id = $1 AND seq = 0
           data: {
             type: "compaction",
             modelId: "test/model",
-            modelProfile: "standard",
             replacementHistory: [{ item: userMessageEvent("never") }],
           },
         }),

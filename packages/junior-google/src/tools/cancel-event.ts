@@ -2,7 +2,7 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   googleApiError,
   googleApiRequest,
@@ -73,7 +73,7 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
       const { event, path } = read;
       const result = {
         target: "cancelCalendarEvent" as const,
-        ...ownEventResult(event, timeZone),
+        ...ownEventResult(event, timeZone, ctx.accountEmail),
       };
 
       const response = await googleApiRequest(ctx, {

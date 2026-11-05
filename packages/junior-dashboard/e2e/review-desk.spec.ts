@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -215,6 +216,22 @@ test("each review item gets a fresh answer form", async ({
     },
     id: license.id,
   });
+
+  // Other… lets the reader answer a button question in their own words.
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  await detail.getByRole("button", { name: "Other…" }).click();
+  await expect(detail.getByLabel("Anything else?")).toBeFocused();
+  await page.keyboard.type("Wait for the EU canary first.");
+  await screenshot(page, "review-desk-other", { view: "desktop" });
+  await detail.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => actions.length).toBe(3);
+  expect(actions[2]).toMatchObject({
+    body: {
+      action: "submit",
+      answer: { other: "Wait for the EU canary first.", values: {} },
+    },
+    id: rollout.id,
+  });
 });
 
 test("the inbox shows an item in its conversation", async ({
@@ -276,10 +293,13 @@ test("review item changes show as rows, not as context for other items", async (
   const takeText = `Dashboard User took review item "${answered.title}".`;
   const answerText = `Dashboard User answered review item "${answered.title}".`;
   await page.route(
-    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    `**/api/conversations/${encodeURIComponent(conversationId)}*`,
     async (route) => {
       const response = await route.fetch({
-        headers: { ...route.request().headers(), "if-none-match": "" },
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
       });
       const detail = await response.json();
       const askedAt = Date.parse(rollout.createdAt);
@@ -453,9 +473,12 @@ test("a message asks before it drops unsent picks", async ({
     });
   });
   // Show the tool call that added the item, so its card is in the transcript.
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     const last = detail.events.at(-1);

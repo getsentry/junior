@@ -3,7 +3,7 @@ import {
   resolveCanvasTarget,
   slackCanvasRefParam,
 } from "@/chat/slack/tool-support/canvas/context";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";

@@ -1,6 +1,6 @@
 import { declaredEventKeys } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import {
   automationEditor,
   changeAutomationLifecycle,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_MARKER, QUIET_MARKER } from "@/chat/no-reply";
 import { decideReply } from "@/chat/services/assistant-reply";
 
 function assistant(text: string, withToolCall = false): AssistantMessage {
@@ -61,6 +61,18 @@ describe("assistant reply", () => {
     });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
+    });
+  });
+
+  it("strips a trailing quiet marker and marks the reply quiet", () => {
+    expect(
+      decideReply(assistant(`Pushed a lint fix.\n${QUIET_MARKER}`)),
+    ).toEqual({ kind: "deliver", text: "Pushed a lint fix.", quiet: true });
+    expect(decideReply(assistant(QUIET_MARKER))).toEqual({ kind: "suppress" });
+    const mention = `Use ${QUIET_MARKER} for routine work.`;
+    expect(decideReply(assistant(mention))).toEqual({
+      kind: "deliver",
+      text: mention,
     });
   });
 

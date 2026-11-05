@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, inject, vi } from "vitest";
+import { afterEach, beforeEach, inject, vi } from "vitest";
 import "./eval-context";
 
 // The product waits 30 seconds after a watched event for more events. An
@@ -18,13 +18,6 @@ process.env.JUNIOR_BASE_URL = evalContext.baseUrl;
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
 process.env.REDIS_URL = evalContext.redisUrl;
-
-// Load model code only after the worker's runtime environment is set.
-// Global setup has a separate dispatcher, so install the limit here too.
-const { installEvalAiGatewayDispatcher } =
-  await import("./eval-ai-gateway-dispatcher");
-const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
-afterAll(restoreAiGatewayDispatcher);
 
 beforeEach(async () => {
   // `stable-setup.ts` set the eval clock of this test. The main process uses

@@ -1,5 +1,5 @@
 import { agentEventKeys, declaredEventKeys } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   eventNamespaceSchema,
   eventWatchUnavailable,

@@ -4,7 +4,7 @@ import type {
   AssistantThreadStartedEvent,
   GenericMessageEvent,
 } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 
 // Message dates must also fit JavaScript's Date range.

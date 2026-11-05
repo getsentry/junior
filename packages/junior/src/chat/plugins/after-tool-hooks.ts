@@ -10,6 +10,7 @@ import {
   withPluginHookSpan,
 } from "@/chat/plugins/hook-context";
 import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
@@ -21,6 +22,12 @@ export interface ToolHookSandbox {
   workspace: SandboxWorkspace;
   /** Active Workspace id, or undefined for an ad hoc sandbox. */
   workspaceId(): string | undefined;
+}
+
+/** The Turn whose tool calls run `afterToolExecute` hooks. */
+export interface ToolHookTurn {
+  conversationId: string;
+  turnId: string;
 }
 
 /** One finished tool call, as `afterToolExecute` hooks see it. */
@@ -66,6 +73,7 @@ export async function runAfterToolExecuteHooks(args: {
   plugins: PluginRegistration[];
   sandbox: ToolHookSandbox;
   tool: AfterToolHookInput;
+  turn: ToolHookTurn;
 }): Promise<ToolResultNudge[]> {
   const hooked = args.plugins.filter(
     (plugin) => plugin.hooks?.afterToolExecute,
@@ -91,6 +99,12 @@ export async function runAfterToolExecuteHooks(args: {
     // remaining checks, so a resumed agent does not retry finished work.
     if (signal?.aborted) break;
     const pluginName = plugin.manifest.name;
+    const onCost = createPluginModelCostRecorder({
+      ...args.turn,
+      pluginName,
+      source: "afterToolExecute",
+      toolName: args.tool.name,
+    });
     let denial: string | undefined;
     try {
       await withPluginHookSpan(
@@ -99,7 +113,7 @@ export async function runAfterToolExecuteHooks(args: {
         async () =>
           await plugin.hooks!.afterToolExecute!({
             ...basePluginContext(plugin),
-            decider: createPluginDecider(pluginName, { signal }),
+            decider: createPluginDecider(pluginName, { onCost, signal }),
             decision: {
               deny(reason) {
                 denial = reason;
@@ -108,7 +122,10 @@ export async function runAfterToolExecuteHooks(args: {
                 nudges.push({ message, pluginName });
               },
             },
-            model: createPluginModel(pluginName, plugin.model, { signal }),
+            model: createPluginModel(pluginName, plugin.model, {
+              onCost,
+              signal,
+            }),
             sandbox,
             ...(signal ? { signal } : undefined),
             tool: { input: args.tool.input, name: args.tool.name },

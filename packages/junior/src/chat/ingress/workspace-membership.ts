@@ -1,6 +1,6 @@
 import type { AppMentionEvent } from "@slack/types";
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackTeamId, parseSlackUserId } from "@/chat/slack/ids";
 import { lookupSlackUserProfile } from "@/chat/slack/users";

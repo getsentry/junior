@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { objectFactsSchema } from "./object-facts";
 import { objectTypeSchema } from "./object-presentation";
 

@@ -1,5 +1,5 @@
 import type { StateAdapter, Thread } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { logException } from "@/chat/logging";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";

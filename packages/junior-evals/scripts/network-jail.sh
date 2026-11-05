@@ -28,7 +28,7 @@ fi
 
 group=junior-evals-net
 chain=JUNIOR_EVALS_NET
-# The host of `ROACH_URL` in `src/recording-rules.ts`.
+# The host of the default service of `@sentry/roach/vitest`.
 ROACH_HOST=roach-proxy.getsentry.net
 # From https://www.cloudflare.com/ips/.
 cloudflare_v4=(

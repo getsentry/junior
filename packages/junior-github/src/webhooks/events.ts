@@ -1,5 +1,5 @@
 import type { EventInput } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubDeploymentSourceResource } from "../events/deployment.js";
 import { gitHubIssueResource } from "../events/issue.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";

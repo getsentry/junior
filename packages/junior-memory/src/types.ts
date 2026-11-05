@@ -1,5 +1,5 @@
 import { actorSchema, sourceSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 

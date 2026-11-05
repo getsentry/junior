@@ -333,6 +333,8 @@ export function auxiliaryOperationLabel(
     "junior/turn_routed": "Thinking routing",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
+    "memory/task_model_called": "Memory extraction",
+    "memory/user_prompt_model_called": "Memory recall",
   };
   const key = `${operation.namespace}/${operation.name}`;
   return (
