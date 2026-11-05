@@ -39,8 +39,10 @@ const MAX_ROOT_MESSAGES = 16;
 const MAX_ROOT_MESSAGE_CHARS = 4_000;
 /** Most characters of all root messages together, with their labels. */
 const MAX_ROOT_CONVERSATION_CHARS = 24_000;
-/** Message events read from the log. Edits and skipped messages use some. */
-const MAX_ROOT_MESSAGE_EVENTS = 64;
+/** Message events read in one query. */
+const ROOT_MESSAGE_EVENT_PAGE = 128;
+/** Most message events read from the log. Edits and skipped messages use some. */
+const MAX_ROOT_MESSAGE_EVENTS = 1_024;
 /** A parent chain longer than this is broken, so it gives no authority. */
 const MAX_PARENT_DEPTH = 32;
 
@@ -180,6 +182,48 @@ function truncate(text: string, maxChars: number): string {
 }
 
 /**
+ * Read the newest message events of a root, in event order. In a long thread,
+ * child results and edits add many events, so a request that started or
+ * widened the work can be far back. The read goes back page by page until the
+ * messages that can authorize fill the character budget, the log starts, or
+ * the read reaches its cap.
+ */
+async function readMessageEvents(
+  conversationId: string,
+  authorizes: (data: MessageData) => boolean,
+): Promise<{ events: ConversationEvent[]; hasOlder: boolean }> {
+  const store = getConversationEventStore();
+  const events: ConversationEvent[] = [];
+  let hasOlder = true;
+  let authorizingChars = 0;
+  while (
+    hasOlder &&
+    events.length < MAX_ROOT_MESSAGE_EVENTS &&
+    authorizingChars <= MAX_ROOT_CONVERSATION_CHARS
+  ) {
+    const page = await store.query(conversationId, {
+      ...(events[0] ? { beforeSeq: events[0].seq } : undefined),
+      limit: Math.min(
+        ROOT_MESSAGE_EVENT_PAGE,
+        MAX_ROOT_MESSAGE_EVENTS - events.length,
+      ),
+      types: ["message", "message_updated"],
+    });
+    events.unshift(...page.events);
+    hasOlder = page.hasOlder;
+    for (const event of page.events) {
+      const data = event.data as MessageData;
+      // An older message that can authorize is cut when the newer ones fill
+      // the budget, so the read can stop there.
+      if (data.type === "message" && authorizes(data)) {
+        authorizingChars += data.text.length;
+      }
+    }
+  }
+  return { events, hasOlder };
+}
+
+/**
  * Read the opening message of a root. For an Automation run root, it is the
  * run's instruction: its dispatch input message, loaded by id. For another
  * root, it is the oldest message, which usually holds the original request.
@@ -226,10 +270,13 @@ export async function readRootConversation(args: {
   if (!root || !args.actor) {
     return { messages: [], truncated: false };
   }
-  const page = await getConversationEventStore().query(root.conversationId, {
-    limit: MAX_ROOT_MESSAGE_EVENTS,
-    types: ["message", "message_updated"],
-  });
+  const { actor } = args;
+  const personIdentityIds = await actorIdentityIds(actor);
+  const label = (data: MessageData) =>
+    messageLabel(root, data, actor, personIdentityIds);
+  const page = await readMessageEvents(root.conversationId, (data) =>
+    canAuthorize({ author: label(data), text: data.text }),
+  );
   // Each message keeps the position of its original event. An edit changes
   // only the text, never the author. An edit of a message older than the page
   // has no position, so it is left out like the original.
@@ -262,7 +309,6 @@ export async function readRootConversation(args: {
     pinnedRead && openingEdit !== undefined
       ? { ...pinnedRead.data, text: openingEdit }
       : pinnedRead?.data;
-  const personIdentityIds = await actorIdentityIds(args.actor);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
@@ -272,7 +318,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor, personIdentityIds),
+      author: label(data),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -284,7 +330,7 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(root, opening, args.actor, personIdentityIds),
+            author: label(opening),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

@@ -382,6 +382,10 @@ describe("Slack webhook: Review item cards", () => {
     expect(work?.messages[0]?.input.text).toContain(
       `answered review item "Ship release 1.2.3" (${item.id})`,
     );
+    // The answer carries the question, so a choice says what it approves.
+    expect(work?.messages[0]?.input.text).toContain(
+      "Question: Ship release 1.2.3?",
+    );
     expect(work?.messages[0]?.input.text).toContain(
       "Decision (decision): Ship it",
     );

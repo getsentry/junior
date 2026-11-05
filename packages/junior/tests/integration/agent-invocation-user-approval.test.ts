@@ -397,6 +397,72 @@ describe("user approval for child agents", () => {
     }
   });
 
+  it("keeps a user request that widened the work after many child results and edits", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Find the missing MCP metadata.",
+      });
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Fix each gap and open a PR for each change.",
+      });
+      // Each child result writes a message and edits it with the same text,
+      // so the request falls far behind the newest message events.
+      for (let step = 1; step <= 150; step += 1) {
+        const messageId = `child-result-${step}`;
+        await recordRootMessage(slackParentConversationId, {
+          eventType: "agent_result",
+          messageId,
+          role: "user",
+          text: `Child result ${step}.`,
+        });
+        await getConversationEventStore().append(slackParentConversationId, [
+          {
+            idempotencyKey: `message:${messageId}:update:1`,
+            data: {
+              type: "message_updated",
+              messageId,
+              role: "user",
+              text: `Child result ${step}.`,
+              meta: { eventType: "agent_result" },
+            },
+            createdAtMs: 5_000 + step,
+          },
+        ]);
+      }
+      const child = await createAndEnqueueAgentInvocation(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "spawn-after-child-results",
+          input: "Update the PR description.",
+          parentToolCallId: "call-after-child-results",
+        },
+        { conversationStore, nowMs: 10_000, queue, state },
+      );
+
+      const read = await readRootConversation({
+        actor: user,
+        conversationId: child.childConversationId,
+      });
+      expect(
+        read.messages.filter((message) => message.author === "user"),
+      ).toEqual([
+        { author: "user", text: "Find the missing MCP metadata." },
+        { author: "user", text: "Fix each gap and open a PR for each change." },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("gives a child of an Automation run only that run's own instruction", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
@@ -451,8 +517,8 @@ describe("user approval for child agents", () => {
         messages: [{ author: "event", text: instruction }],
       });
 
-      // A long run keeps its instruction, pinned first, after more than a
-      // page of later events.
+      // A long run keeps its instruction, pinned first, after many later
+      // events.
       for (let step = 1; step <= 70; step += 1) {
         await recordRootMessage(dispatchConversationId, {
           role: "assistant",
@@ -467,11 +533,11 @@ describe("user approval for child agents", () => {
         author: "automation",
         text: instruction,
       });
-      // Steps 1 to 54 are not shown. The steps in the read page get a note.
+      // Steps 1 to 54 are not shown, and a note counts them.
       expect(long.messages.slice(1)).toEqual([
         {
           author: "system",
-          text: expect.stringMatching(/^\[48 messages are not shown here\./),
+          text: expect.stringMatching(/^\[54 messages are not shown here\./),
         },
         ...Array.from({ length: 16 }, (_, index) => ({
           author: "assistant",
