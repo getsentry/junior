@@ -87,6 +87,14 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     exact: true,
   });
   await expect(details).toBeVisible();
+  const usage = details.getByRole("button", { name: /^Usage/ });
+  const modelBreakdown = details.getByRole("table", { name: "Model" });
+  await expect(usage).toHaveAttribute("aria-expanded", "false");
+  await expect(modelBreakdown).toBeHidden();
+  await usage.click();
+  await expect(modelBreakdown).toBeVisible();
+  await usage.click();
+  await expect(modelBreakdown).toBeHidden();
   // Turn context takes the details panel and gives it back on close.
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
@@ -120,8 +128,8 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await contextAction.click();
   await expect(contextPanel).toBeHidden();
   await expect(details).toBeVisible();
-  await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+  await details
+    .getByRole("button", { name: "Close conversation details", exact: true })
     .click();
   await expect(details).toBeHidden();
   // Small screens show the same panel as a sheet.

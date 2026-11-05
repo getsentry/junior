@@ -54,14 +54,17 @@ test("opens conversation details beside the chat", async ({
     name: "Conversation details",
     exact: true,
   });
+  const closeDetails = details.getByRole("button", {
+    name: "Close conversation details",
+    exact: true,
+  });
   // Wide viewports open details beside the chat by default.
   await expect(details).toBeVisible();
-  // Cost stays in the title bar. Desktop details hide their copy of it.
+  await expect(detailsButton).toBeHidden();
   const costMetric = page
-    .getByRole("main")
-    .locator('span[tabindex="0"]')
+    .locator('header span[tabindex="0"]')
     .filter({ hasText: /^\$0\.03$/, visible: true });
-  await expect(costMetric).toHaveCount(1);
+  await expect(costMetric).toBeVisible();
   // Tooltips open on keyboard focus, not on focus after a mouse click. A key
   // press first makes this a keyboard focus.
   await page.keyboard.press("Shift");
@@ -78,16 +81,18 @@ test("opens conversation details beside the chat", async ({
   await expect(
     details.getByRole("link", { name: /getsentry\/payments#77/ }),
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
-  await detailsButton.click();
+  await closeDetails.click();
   await expect(details).toBeHidden();
-  await expect(costMetric).toHaveCount(1);
+  await expect(costMetric).toBeVisible();
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: dashboard.baseURL,
   });
   const conversationUrl = page.url();
 
-  await detailsButton.click();
+  await detailsButton.press("Enter");
   await expect(details).toBeVisible();
+  await expect(detailsButton).toBeHidden();
+  await expect(closeDetails).toBeFocused();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Hide search" }).click();
@@ -159,7 +164,7 @@ test("opens conversation details beside the chat", async ({
     page.getByRole("button", { name: "Conversation menu" }),
   ).toBeFocused();
   await expect(details).toBeVisible();
-  await detailsButton.click();
+  await closeDetails.click();
   await expect(details).toBeHidden();
 
   await page.setViewportSize({ width: 390, height: 844 });
