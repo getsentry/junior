@@ -190,6 +190,39 @@ test("opens conversation details beside the chat", async ({
   await expect(page.getByRole("note")).toContainText("Private conversation");
 });
 
+test("shows a Watch on linked work in its linked work row", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  const watched = details.getByRole("link", {
+    name: /getsentry\/getsentry#21572/,
+  });
+  // The watched pull request is linked work, so it shows once.
+  await expect(watched).toHaveCount(1);
+  await expect(details.getByText("Also waiting on")).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+  ).toBeVisible();
+
+  await details
+    .getByRole("button", { name: "Details for getsentry/getsentry#21572" })
+    .click();
+  await expect(
+    details.getByText(
+      "Fix failing checks and address requested changes on the dashboard PR.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "conversation-details-watched-linked-work");
+});
+
 test("shows recalled and captured memories in popovers", async ({
   page,
   dashboard,

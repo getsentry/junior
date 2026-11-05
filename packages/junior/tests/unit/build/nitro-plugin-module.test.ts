@@ -422,7 +422,7 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("copies dashboard assets when core dashboard config is enabled", async () => {
+  it("serves dashboard browser files as static assets when the dashboard is enabled", async () => {
     const tempRoot = await makeTempDir();
     const dashboardDist = path.join(
       tempRoot,
@@ -443,7 +443,7 @@ describe("juniorNitro plugin modules", () => {
       JSON.stringify({ name: "@sentry/junior-dashboard" }),
       "utf8",
     );
-    await fs.writeFile(path.join(dashboardDist, "client.js"), "client", "utf8");
+    await fs.mkdir(path.join(dashboardDist, "public"));
     await fs.writeFile(
       path.join(dashboardDist, "tailwind.css"),
       "tailwind",
@@ -465,6 +465,7 @@ describe("juniorNitro plugin modules", () => {
         output: {
           serverDir: path.join(tempRoot, ".output", "server"),
         },
+        publicAssets: [] as unknown[],
         rootDir: tempRoot,
         vercel: {},
         virtual,
@@ -475,27 +476,21 @@ describe("juniorNitro plugin modules", () => {
       dashboard: { basePath: "/ops" },
     }).nitro.setup(nitro);
 
+    expect(nitro.options.publicAssets).toEqual([
+      {
+        baseURL: "/_junior/dashboard/assets",
+        dir: path.join(dashboardDist, "public"),
+        fallthrough: false,
+        maxAge: 31_536_000,
+      },
+    ]);
+
     expect(rollupBeforeHooks).toHaveLength(1);
     await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
     await buildPlugins
       .find((plugin) => plugin.name === "junior:copy-build-content")
       ?.writeBundle?.();
 
-    await expect(
-      fs.readFile(
-        path.join(
-          tempRoot,
-          ".output",
-          "server",
-          "node_modules",
-          "@sentry",
-          "junior-dashboard",
-          "dist",
-          "client.js",
-        ),
-        "utf8",
-      ),
-    ).resolves.toBe("client");
     await expect(
       fs.readFile(
         path.join(

@@ -9,14 +9,13 @@
  */
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { githubApi, repoPath } from "../tool-support/github-api.js";
 
 /** Longest chain of base branches to walk down to the trunk. */
 const MAX_STACK_DEPTH = 10;
 
-const GITHUB_HEADERS = {
-  Accept: "application/vnd.github+json",
-  "X-GitHub-Api-Version": "2026-03-10",
-};
+// The Stacks API needs this version or newer.
+const GITHUB_STACKS_API_VERSION = "2026-03-10";
 
 /** The fields of a created pull request that decide if it is stacked work. */
 export const stackTargetSchema = z.object({
@@ -74,25 +73,19 @@ export async function stackGitHubPullRequest(
     return undefined;
   }
   const [owner, name] = repo.split("/");
-  const api = `https://api.github.com/repos/${encodeURIComponent(owner!)}/${encodeURIComponent(name!)}`;
+  const api = repoPath({ owner: owner!, name: name! });
   /** Call GitHub. A rejected call returns nothing and stops stacking. */
   const github = async <T>(
     operation: string,
-    url: string,
+    path: string,
     schema: z.ZodType<T>,
     body?: unknown,
   ): Promise<T | undefined> => {
-    const response = await ctx.egress.fetch({
-      provider: "github",
+    const response = await githubApi(ctx.egress, {
+      apiVersion: GITHUB_STACKS_API_VERSION,
       operation,
-      request: new Request(url, {
-        method: body === undefined ? "GET" : "POST",
-        headers:
-          body === undefined
-            ? GITHUB_HEADERS
-            : { ...GITHUB_HEADERS, "Content-Type": "application/json" },
-        ...(body === undefined ? undefined : { body: JSON.stringify(body) }),
-      }),
+      path,
+      ...(body === undefined ? undefined : { method: "POST", body }),
     });
     if (!response.ok) {
       // The Stacks API answers 404 when the repository cannot use stacks.
@@ -104,7 +97,7 @@ export async function stackGitHubPullRequest(
       });
       return undefined;
     }
-    return schema.parse(await response.json());
+    return schema.parse(response.body);
   };
   const result = (stack: GitHubStack): GitHubPullRequestStack => ({
     number: stack.number,

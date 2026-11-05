@@ -2378,11 +2378,13 @@ describe("memory plugin storage", () => {
                 {
                   content: { memories: [privateId] },
                   createdAt: "2026-07-28T12:02:00.000Z",
+                  seq: 11,
                   version: 1,
                 },
                 {
                   content: { memories: [hiddenId] },
                   createdAt: "2026-07-28T12:00:30.000Z",
+                  seq: 7,
                   turnId: "turn-2",
                   version: 1,
                 },
@@ -2391,6 +2393,7 @@ describe("memory plugin storage", () => {
                     memories: [publicMemory.memory.id, hiddenId],
                   },
                   createdAt: "2026-07-28T11:59:00.000Z",
+                  seq: 3,
                   turnId: "turn-1",
                   version: 1,
                 },
@@ -2418,6 +2421,7 @@ describe("memory plugin storage", () => {
                   ],
                 },
                 createdAt: "2026-07-28T12:01:00.000Z",
+                seq: 9,
                 turnId: "turn-2",
                 version: 2,
               },
@@ -2434,6 +2438,7 @@ describe("memory plugin storage", () => {
                   ],
                 },
                 createdAt: "2026-07-28T12:00:00.000Z",
+                seq: 5,
                 turnId: "turn-1",
                 version: 2,
               },
@@ -2505,16 +2510,19 @@ describe("memory plugin storage", () => {
         events: [
           {
             memoryIds: [publicMemory.memory.id],
+            seq: 3,
             source: "recalled",
             turnId: "turn-1",
           },
           {
             memoryIds: ["captured-memory"],
+            seq: 5,
             source: "captured",
             turnId: "turn-1",
           },
           {
             memoryIds: ["captured-memory", hiddenId],
+            seq: 9,
             source: "captured",
             turnId: "turn-2",
           },

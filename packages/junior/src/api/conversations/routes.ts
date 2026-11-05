@@ -19,6 +19,10 @@ import {
   createConversationMessageBodySchema,
 } from "../schema/conversation";
 import {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "../schema/conversation-catch-up";
+import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
 } from "../schema/conversation-pin";
@@ -44,6 +48,7 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { catchUpOnConversation } from "./catch-up";
 import { pinConversation } from "./pin";
 import {
   archiveViewerDoneConversations,
@@ -320,6 +325,30 @@ export function createConversationRoutes(
           context.req.valid("json").autoArchive,
         ),
       ),
+  );
+
+  app.post(
+    "/:conversationId/catch-up",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationCatchUpBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        conversationCatchUpSchema,
+        await catchUpOnConversation(viewer, conversationId, body),
+      );
+    },
   );
 
   app.get(

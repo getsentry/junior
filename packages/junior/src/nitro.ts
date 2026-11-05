@@ -7,6 +7,7 @@ import {
   copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
+  resolveDashboardPublicAssetsDir,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
@@ -320,6 +321,18 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         );
 
         applyRolldownTreeshakeWorkaround(nitro);
+        if (dashboardEnabled(options.dashboard)) {
+          // Nitro resolves configured public assets before modules run, so
+          // this entry must already have its final shape. The dashboard
+          // package serves the same files from `/_junior/dashboard/assets/*`
+          // when no static file matches.
+          nitro.options.publicAssets.push({
+            baseURL: "/_junior/dashboard/assets",
+            dir: resolveDashboardPublicAssetsDir(cwd),
+            fallthrough: false,
+            maxAge: 31_536_000,
+          });
+        }
         nitro.options.traceDeps = [
           ...(nitro.options.traceDeps ?? []),
           ...CODEMODE_TRACE_DEPS,
