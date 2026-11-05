@@ -20,6 +20,7 @@ export const mcpConversationSchema = z
     startedAt: z.string(),
     lastSeenAt: z.string(),
     archivedAt: z.string().optional(),
+    pinnedAt: z.string().optional(),
     url: z.string().optional(),
   })
   .strict();
@@ -40,6 +41,7 @@ export function mcpConversation(
     startedAt: summary.startedAt,
     lastSeenAt: summary.lastSeenAt,
     archivedAt: summary.archivedAt ?? undefined,
+    pinnedAt: summary.pinnedAt ?? undefined,
     url: getDashboardConversationLink(summary.conversationId),
   };
 }
