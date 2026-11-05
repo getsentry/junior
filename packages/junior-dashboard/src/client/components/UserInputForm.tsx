@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import {
   buttonUserInputField,
@@ -161,6 +162,7 @@ function TextField(props: {
   disabled: boolean;
   label: string;
   onChange(value: string): void;
+  ref?: Ref<HTMLTextAreaElement>;
   value: string;
 }) {
   const id = useId();
@@ -178,6 +180,7 @@ function TextField(props: {
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
+        ref={props.ref}
         value={props.value}
       />
     </Field>
@@ -188,7 +191,9 @@ function TextField(props: {
  * Render the answer controls of an action item request. A request with
  * one short choice field shows one button per choice, and a click is the
  * answer. Choices with descriptions stack as rows, so each description stays
- * with its choice. Other requests show a form that the reader submits once.
+ * with its choice. Other… turns the buttons into the form, so the reader can
+ * add a note or answer in their own words. Other requests show a form that
+ * the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent.
@@ -206,7 +211,15 @@ export function UserInputForm(props: {
   const choicesId = useId();
   const [values, setValues] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState("");
-  const buttonField = buttonUserInputField(props.request);
+  const [writeOther, setWriteOther] = useState(false);
+  const buttonField = writeOther
+    ? undefined
+    : buttonUserInputField(props.request);
+  // Other… unmounts the button that had focus, so move focus to the note.
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (writeOther) noteRef.current?.focus();
+  }, [writeOther]);
 
   // A ref blocks a second click before React renders the disabled controls.
   // The lock stays after a sent answer; only a failed send can retry.
@@ -260,6 +273,13 @@ export function UserInputForm(props: {
       {props.secondaryActions}
     </div>
   ) : null;
+  // Slack cards show the same button, so both surfaces take a free-text
+  // answer when no choice fits.
+  const otherButton = (
+    <Button disabled={sending} onClick={() => setWriteOther(true)}>
+      Other…
+    </Button>
+  );
 
   return (
     <>
@@ -308,9 +328,10 @@ export function UserInputForm(props: {
               </button>
             ))}
           </div>
-          {secondary ? (
-            <div className="mt-3 flex flex-wrap items-center">{secondary}</div>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {otherButton}
+            {secondary}
+          </div>
         </>
       ) : buttonField ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -325,6 +346,7 @@ export function UserInputForm(props: {
               {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
             </Button>
           ))}
+          {otherButton}
           {secondary}
         </div>
       ) : (
@@ -359,6 +381,7 @@ export function UserInputForm(props: {
             disabled={sending}
             label={USER_INPUT_NOTE.label}
             onChange={setOther}
+            ref={noteRef}
             value={other}
           />
           <div className="flex flex-wrap items-center gap-2">
