@@ -48,8 +48,10 @@ export function ConversationSidePanelLayout(props: {
       <ResizablePanelGroup
         className="min-h-0 min-w-0"
         elementRef={groupRef}
-        onLayoutChanged={(layout) => {
-          // Save after the drag ends, the same as the conversation list.
+        onLayoutChanged={(layout, meta) => {
+          // Save only the reader's own resize, after it ends. Mount and
+          // constraint passes can squeeze the panel below the chosen width.
+          if (!meta.isUserInteraction) return;
           const percent = layout[SIDE_PANEL_ID] ?? 0;
           const groupWidth = groupRef.current?.offsetWidth ?? 0;
           if (percent > 0) saveDetailsWidth((percent / 100) * groupWidth);
