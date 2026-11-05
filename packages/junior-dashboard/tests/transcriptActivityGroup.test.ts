@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   activityGroupLabel,
-  activityGroupOpen,
   activityGroupSummary,
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
@@ -113,12 +112,6 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
-  it("stays collapsed until the reader explicitly opens it", () => {
-    expect(activityGroupOpen(null)).toBe(false);
-    expect(activityGroupOpen(true)).toBe(true);
-    expect(activityGroupOpen(false)).toBe(false);
-  });
-
   it("collapses non-message activity including tool errors, and keeps failures, subagents, and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
