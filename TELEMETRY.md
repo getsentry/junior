@@ -454,6 +454,14 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   span ends only when all requests on the page stop, side panels included.
 - `app.dashboard.navigation.pre_fetch_ms` on a `pageload` span is the time
   before the browser fetched the page. Sign-in redirects add to it.
+- A browser `http.client` span ends when the response headers arrive. A
+  `deserialize` span named `Read API response` goes from there to the
+  validated value: body download, `JSON.parse`, and the schema check.
+  `app.dashboard.response.json_parse_ms` and
+  `app.dashboard.response.schema_parse_ms` time the last two, and
+  `app.dashboard.response.chars` is the body length. `url.path` is the API
+  path. The span is sent only while a `pageload` or `navigation` is open, so
+  polls after it add no spans.
 - A browser request after the `pageload` or `navigation` span ends, such as
   a poll, is its own `http.client` segment. Add `!span.op:http.client` to
   segment queries to leave them out.
@@ -467,6 +475,14 @@ Conversation open time, by the transcript render.
 ```text
 dataset=spans query='span.op:ui.render span.name:"Conversation transcript shown"'
 fields=app.dashboard.load,count(),p50(span.duration),p95(span.duration)
+```
+
+Dashboard API response read time by path.
+
+```text
+dataset=spans query='span.op:deserialize span.name:"Read API response"'
+fields=url.path,count(),p50(span.duration),p95(span.duration)
+sort=-count()
 ```
 
 Dashboard page load and navigation time by route.

@@ -29,6 +29,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
+import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
   del,
@@ -875,11 +876,12 @@ export async function readConversationData(
       : undefined,
   );
   if (response.status === 304 && previous) return previous;
-  const report = (
+  const report = await readResponseJson(
+    response,
     options?.mailbox
       ? conversationDetailWithMailboxReportSchema
-      : conversationDetailReportSchema
-  ).parse(await response.json());
+      : conversationDetailReportSchema,
+  );
   return {
     ...report,
     detailEtag:
