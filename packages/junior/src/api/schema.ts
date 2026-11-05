@@ -78,6 +78,7 @@ export {
   conversationPendingMessageSchema,
   conversationPendingMessagesReportSchema,
   conversationDetailWithMailboxReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
   archiveConversationBodySchema,

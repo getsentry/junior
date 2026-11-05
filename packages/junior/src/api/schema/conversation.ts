@@ -69,8 +69,9 @@ export const conversationDetailQuerySchema = z
     /** Also return `unreadPage` when the detail has an `unreadCursor`. */
     unreadPage: z.stringbool().optional(),
     /**
-     * Also return `mailbox`, read before history, and never answer 304. A
-     * first load gets both in one request.
+     * Also return `mailbox`, read before history. A sent version that still
+     * matches gets `{ unchanged: true, mailbox }` instead of 304, so a poll
+     * needs one request.
      */
     mailbox: z.stringbool().optional(),
   })

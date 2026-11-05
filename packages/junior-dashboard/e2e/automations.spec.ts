@@ -12,14 +12,6 @@ test("opens scheduled and event automations in the native Automations view", asy
 }) => {
   // Saved cards may refer to a different deployment. Stay in this dashboard.
   const conversationId = "automation-card";
-  await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt: NOW, messages: [] },
-      });
-    },
-  );
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     const card = { key: "scheduled-1", kind: "object", plugin: "junior" };
     await route.fulfill({

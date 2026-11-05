@@ -4,7 +4,7 @@ import {
   codeOverviewReportSchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
-  conversationDetailWithMailboxReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
   conversationEventPageSchema,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
@@ -432,14 +432,15 @@ describe("dashboard canonical-event mock routes", () => {
       new Request(parentPath, { headers: version }),
     );
     expect(unchanged.status).toBe(304);
-    // The mailbox changes apart from the version, so it never gets a 304.
+    // The mailbox changes apart from the version, so a poll gets it alone.
     const withMailbox = await app.fetch(
       new Request(`${parentPath}?mailbox=true`, { headers: version }),
     );
     expect(withMailbox.status).toBe(200);
     expect(
-      conversationDetailWithMailboxReportSchema.parse(await withMailbox.json())
-        .mailbox.conversationId,
+      conversationUnchangedDetailWithMailboxSchema.parse(
+        await withMailbox.json(),
+      ).mailbox.conversationId,
     ).toBe(DASHBOARD_QA_CONVERSATION_ID);
     const childIds = parent.events.flatMap((event) =>
       event.data.type === "subagent" && event.data.status === "running"

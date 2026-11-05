@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import * as z from "zod";
 import {
   type QueryClient,
   queryOptions,
@@ -22,7 +23,7 @@ import {
   conversationDetailReportSchema,
   conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
-  conversationPendingMessagesReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
   forkConversationResponseSchema,
   steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
@@ -103,29 +104,6 @@ function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
   );
 }
 
-/** Read the mailbox before history so acknowledged input is already committed. */
-async function readConversationSnapshot(
-  conversationId: string,
-  signal?: AbortSignal,
-  previous?: ConversationSnapshot,
-  unreadPage?: boolean,
-): Promise<ConversationSnapshot> {
-  // With no cached copy, the transcript waits for this read. The server reads
-  // both in the same order in one request, which saves a round trip. Polls
-  // read the mailbox apart, so the detail can still answer 304.
-  if (!previous) {
-    return readConversationData(conversationId, signal, undefined, {
-      mailbox: true,
-      unreadPage,
-    });
-  }
-  const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal, previous, {
-    unreadPage,
-  });
-  return { ...detail, mailbox };
-}
-
 const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
 
 /**
@@ -186,11 +164,13 @@ export function conversationDetailQueryOptions(
       const previous = client.getQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
       );
-      const next = await readConversationSnapshot(
+      // The server reads the mailbox before history, so acknowledged input
+      // is in at least one of them.
+      const next = await readConversationData(
         conversationId!,
         signal,
         previous,
-        options?.unreadPage,
+        { mailbox: true, unreadPage: options?.unreadPage },
       );
       refreshSideReadsOnChange(client, conversationId!, previous, next);
       return next;
@@ -876,29 +856,34 @@ export async function readConversationData(
       : undefined,
   );
   if (response.status === 304 && previous) return previous;
+  if (!options?.mailbox) {
+    return withDetailEtag(
+      await readResponseJson(response, conversationDetailReportSchema),
+      response,
+    );
+  }
   const report = await readResponseJson(
     response,
-    options?.mailbox
-      ? conversationDetailWithMailboxReportSchema
-      : conversationDetailReportSchema,
+    z.union([
+      conversationUnchangedDetailWithMailboxSchema,
+      conversationDetailWithMailboxReportSchema,
+    ]),
   );
+  if (!("unchanged" in report)) return withDetailEtag(report, response);
+  // Only a request that sent a version can get this answer.
+  if (!previous) throw new Error("Unchanged detail without a cached copy");
+  return { ...previous, mailbox: report.mailbox };
+}
+
+function withDetailEtag<T extends ConversationDetailReport>(
+  report: T,
+  response: Response,
+): T & { detailEtag?: string } {
   return {
     ...report,
     detailEtag:
       response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
   };
-}
-
-/** Read accepted mailbox messages that have not reached durable history yet. */
-export function readConversationPendingMessages(
-  conversationId: string,
-  signal?: AbortSignal,
-): Promise<ConversationPendingMessagesReport> {
-  return fetchDashboardJson(
-    conversationPendingMessagesReportSchema,
-    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-    signal,
-  );
 }
 
 /** Read one bounded page of events before the supplied history cursor. */

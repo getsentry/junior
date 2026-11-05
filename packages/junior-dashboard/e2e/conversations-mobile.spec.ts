@@ -668,14 +668,6 @@ test("keeps the message in view while earlier history and late content load", as
     });
   });
   await page.route(
-    "**/api/conversations/long-history/pending-messages",
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId: "long-history", generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
     "**/api/conversations/long-history/events?*",
     async (route) => {
       await earlierPageGate;

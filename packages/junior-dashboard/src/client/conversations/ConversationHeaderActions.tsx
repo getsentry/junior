@@ -82,8 +82,10 @@ export function ConversationHeaderActions(props: {
           <Info aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
       ) : null}
+      {/* The copy action is a sibling keyed by the same id. Unique keys keep
+          React from duplicating menu rows on re-render. */}
       <ShareConversationButton
-        key={props.conversationId}
+        key={`share:${props.conversationId}`}
         conversationId={props.conversationId}
       />
       {props.copyAction}
