@@ -241,10 +241,18 @@ export async function callMcpTool(
 
 /**
  * Connect one viewer to a new app and return a function that calls one
- * tool as that viewer. An empty scope asks for every scope.
+ * tool as that viewer. An empty scope asks for every scope. `appOptions`
+ * can swap in test services, such as in-process Conversation work.
  */
-export async function connectMcpTools(email = MCP_TEST_VIEWER, scope = "") {
-  const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+export async function connectMcpTools(
+  email = MCP_TEST_VIEWER,
+  scope = "",
+  appOptions: Parameters<typeof createApp>[0] = {},
+) {
+  const app = await createApp({
+    ...appOptions,
+    allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+  });
   const token = await connectMcpClient(app, email, scope);
   return (name: string, args: Record<string, unknown> = {}) =>
     callMcpTool(app, token, name, args);

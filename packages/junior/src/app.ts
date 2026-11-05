@@ -751,6 +751,7 @@ export async function createApp(
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
         baseURL: resolvePublicBaseURL(dashboard),
+        attachmentStorage,
         queue: conversationWorkQueue,
         state: getMcpState(),
       });
