@@ -105,6 +105,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Identity link request**: a plugin Review notice that asks a person to
+  link a provider account, so the plugin can improve work it did without it.
+  It never blocks a Turn. A link closes it and calls `identityLinked`.
 
 ## Naming
 

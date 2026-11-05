@@ -59,6 +59,7 @@ import {
 } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { updatePullRequestsForLinkedUser } from "./pull-request-requesters/identity-linked.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -443,6 +444,15 @@ export function githubPlugin(
         if (message) {
           ctx.permissionDenied(message);
         }
+      },
+      async identityLinked(ctx) {
+        await updatePullRequestsForLinkedUser({
+          db: ctx.db as GitHubDb,
+          env: { appIdEnv, installationIdEnv, privateKeyEnv },
+          log: ctx.log,
+          nowMs: Date.now(),
+          user: ctx.user,
+        });
       },
       async resolveOAuthAccount(ctx) {
         const [account, verifiedEmails] = await Promise.all([

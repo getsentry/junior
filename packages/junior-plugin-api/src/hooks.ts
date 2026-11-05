@@ -7,6 +7,7 @@ import type {
 import type {
   EgressHookContext,
   EgressResponseHookContext,
+  IdentityLinkedHookContext,
   IssueCredentialHookContext,
   PluginCredentialResult,
   PluginGrant,
@@ -155,6 +156,12 @@ export interface PluginHooks {
     | undefined;
   /** Return plugin-owned product API routes mounted under Junior's authenticated plugin namespace. */
   apiRoutes?(ctx: ApiRouteRegistrationHookContext): PluginRouteApp | undefined;
+  /**
+   * Update work that the plugin already did, after a person links an account
+   * of its provider. Junior runs it once per link, and does not retry it.
+   * Make it idempotent.
+   */
+  identityLinked?(ctx: IdentityLinkedHookContext): Promise<void> | void;
   resolveOAuthAccount?(
     ctx: ResolveOAuthAccountHookContext,
   ):

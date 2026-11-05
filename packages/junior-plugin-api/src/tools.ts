@@ -679,6 +679,19 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
     /**
+     * Ask the current Actor to link their account of this plugin's provider,
+     * so the plugin can improve work that it did without it. It never blocks
+     * the tool. Junior keeps one open Review notice per User and provider,
+     * and closes it when the account links. Then it calls the plugin's
+     * `identityLinked` hook. `skipped` means no notice: the Actor has no
+     * User, the User already has the account, or the person cannot connect
+     * one.
+     */
+    requestIdentityLink(input: {
+      /** Markdown that says what the link improves, such as which work. */
+      reason: string;
+    }): Promise<{ status: "requested" | "skipped" }>;
+    /**
      * Resolve the current actor's IANA timezone. Uses their profile when
      * Junior knows it, else the install default. Always returns a timezone.
      */

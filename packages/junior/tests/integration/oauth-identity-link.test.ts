@@ -5,8 +5,20 @@ import {
   recordWebConversationActivity,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { closeDb, getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
+import type { IdentityLinkedHookContext } from "@sentry/junior-plugin-api";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import {
+  identityLinkRequestDedupeKey,
+  requestIdentityLink,
+} from "@/chat/identities/link-request";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import { getReviewItem } from "@/chat/review-items/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   juniorConversationEvents,
@@ -163,6 +175,98 @@ describe("oauth identity link", () => {
       .where(eq(juniorConversationEvents.conversationId, conversationId));
     expect(conversation?.actorIdentityId).toBe(viewer?.identity.id);
     expect(event?.actorIdentityId).toBe(viewer?.identity.id);
+  });
+
+  it("asks for a link without blocking, then closes the request and updates work when the account links", async () => {
+    const linked: IdentityLinkedHookContext[] = [];
+    await createEvalOAuthAccountApp(
+      { id: "eval-account-request", handle: "person-handle" },
+      "eval-oauth",
+      { dashboard: true, identityLinked: (ctx) => void linked.push(ctx) },
+    );
+    const actor = webActorFromUser({
+      displayName: "Web Person",
+      email: "web.person@example.com",
+      id: "web-person",
+    });
+    await resolveActorIdentityId(getSqlExecutor(), actor);
+    const conversationId = createConversationId({
+      actorEmail: actor.email!,
+      idempotencyKey: "identity-link-request",
+    });
+    await recordWebConversationActivity({
+      actor,
+      conversationId,
+      nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+    });
+    const requester = await readActorIdentity(actor);
+    const shown: string[] = [];
+    const show = async (itemId: string) => void shown.push(itemId);
+
+    const request = {
+      conversationId,
+      provider: "eval-oauth",
+      reason: "Junior opened a pull request for you.",
+      requester,
+      show,
+    };
+    await expect(requestIdentityLink(request)).resolves.toEqual({
+      status: "requested",
+    });
+    // A repeat keeps one open request.
+    await requestIdentityLink(request);
+    const [itemId] = shown;
+    expect(new Set(shown)).toEqual(new Set([itemId]));
+    const item = await getReviewItem(getDb(), itemId!);
+    expect(item).toMatchObject({
+      assignees: [{ userId: requester?.user?.id }],
+      body: "Junior opened a pull request for you.\n\n[Connect your Eval OAuth account](https://junior.example.com/settings/connections)",
+      dedupeKey: identityLinkRequestDedupeKey(
+        "eval-oauth",
+        requester!.user!.id,
+      ),
+      kind: "notice",
+      status: "open",
+      title: "Link your Eval OAuth account",
+    });
+
+    await getStateAdapter().set("oauth-state:eval-oauth-request-link", {
+      actor,
+      provider: "eval-oauth",
+      userId: actor.userId,
+    });
+    const response = await handleOAuthCallback(
+      new Request(
+        "https://junior.example.com/api/oauth/callback/eval-oauth?state=eval-oauth-request-link&code=eval-oauth-code",
+      ),
+      "eval-oauth",
+      testWaitUntil,
+      { showReviewItem: show },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await getReviewItem(getDb(), itemId!)).toMatchObject({
+      closeReason: "Linked the account.",
+      status: "done",
+    });
+    expect(shown.at(-1)).toBe(itemId);
+    expect(linked).toHaveLength(1);
+    expect(linked[0]).toMatchObject({
+      identity: { handle: "person-handle", provider: "eval-oauth" },
+      user: {
+        id: requester?.user?.id,
+        identities: expect.arrayContaining([
+          expect.objectContaining({ provider: "eval-oauth" }),
+        ]),
+      },
+    });
+    // The User has the account now, so a later request adds nothing.
+    await expect(
+      requestIdentityLink({
+        ...request,
+        requester: await readActorIdentity(actor),
+      }),
+    ).resolves.toEqual({ status: "skipped" });
   });
 
   it("does not link a plugin OAuth account as a native Google identity", async () => {

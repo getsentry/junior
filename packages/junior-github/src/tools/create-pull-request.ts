@@ -312,6 +312,30 @@ async function recordOpener(
   });
 }
 
+/**
+ * Ask a requester with no linked GitHub account to link one, so Junior can
+ * assign and mention them. Optional: a failure must not fail PR creation.
+ */
+async function requestRequesterGitHubLink(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+  requester: GitHubRequester | undefined,
+): Promise<void> {
+  if (!requester?.user || linkedGitHubLogin(requester.user)) return;
+  try {
+    await ctx.users.requestIdentityLink({
+      reason: `Junior opened [${input.repo}#${result.number}](${result.url}) for you, but your GitHub account is not linked, so GitHub does not notify you about it. After you link it, Junior assigns you to the pull requests it opened for you and mentions you in them.`,
+    });
+  } catch (error) {
+    ctx.log.warn("github.pull_request.identity_link_request.failed", {
+      error: error instanceof Error ? error.message : String(error),
+      number: result.number,
+      repo: input.repo,
+    });
+  }
+}
+
 /** Assignment is optional: provider failures must not fail PR creation. */
 async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
@@ -558,6 +582,7 @@ export function createGitHubPullRequestTool(
             identityId,
           });
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
+          await requestRequesterGitHubLink(ctx, parsedInput, result, requester);
           const stack = stackTarget
             ? await stackGitHubPullRequest(ctx, stackTarget)
             : undefined;

@@ -796,6 +796,7 @@ export async function createApp(
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       conversationWorkQueue,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
     });
   });
 

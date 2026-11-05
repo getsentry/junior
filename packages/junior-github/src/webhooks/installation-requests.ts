@@ -1,8 +1,9 @@
 /**
- * GitHub requests that webhook handling makes with installation tokens.
+ * GitHub requests that webhook handling and Identity links make with
+ * installation tokens.
  *
- * A webhook delivery has no Turn and no egress context, so these requests
- * call GitHub directly. Other plugin code must use host egress.
+ * A webhook delivery or an account link has no Turn and no egress context, so
+ * these requests call GitHub directly. Other plugin code must use host egress.
  */
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -259,4 +260,70 @@ export async function loadPullRequestMergeState(
     reviewStates.includes("APPROVED") &&
     !reviewStates.includes("CHANGES_REQUESTED");
   return state;
+}
+
+const linkedPullRequestSchema = z.object({
+  assignees: z.array(z.object({ login: z.string() })).nullish(),
+  body: z.string().nullish(),
+  state: z.string(),
+});
+
+/**
+ * Update one open pull request for a person who linked their GitHub account:
+ * assign them when `assign` is set, and save the body that `mention` returns.
+ * A closed pull request, or one that needs no change, gets no write.
+ */
+export async function updatePullRequestForLinkedRequester(
+  env: GitHubInstallationEnv,
+  input: {
+    assign: boolean;
+    login: string;
+    mention(body: string): string | undefined;
+    number: number;
+    repositoryFullName: string;
+  },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "linked requester pull request",
+  );
+  const token = await issueInstallationToken({ ...env, repositories: [name] });
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  const current = linkedPullRequestSchema.parse(
+    await githubRequest(
+      "https://api.github.com",
+      `${path}/pulls/${input.number}`,
+      {
+        token: token.token,
+      },
+    ),
+  );
+  if (current.state !== "open") return;
+  const assigned = (current.assignees ?? []).some(
+    (assignee) => assignee.login.toLowerCase() === input.login.toLowerCase(),
+  );
+  if (input.assign && !assigned) {
+    // GitHub ignores an ineligible assignee. An unassigned PR is acceptable.
+    await githubRequest(
+      "https://api.github.com",
+      `${path}/issues/${input.number}/assignees`,
+      {
+        body: { assignees: [input.login] },
+        method: "POST",
+        token: token.token,
+      },
+    );
+  }
+  const body = current.body ? input.mention(current.body) : undefined;
+  if (body) {
+    await githubRequest(
+      "https://api.github.com",
+      `${path}/pulls/${input.number}`,
+      {
+        body: { body },
+        method: "PATCH",
+        token: token.token,
+      },
+    );
+  }
 }

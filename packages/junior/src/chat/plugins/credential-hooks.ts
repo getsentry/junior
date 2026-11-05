@@ -9,6 +9,8 @@ import {
   type PluginCredentialResult,
   type PluginGrant,
   type PluginProviderAccount,
+  type Identity,
+  type User,
 } from "@sentry/junior-plugin-api";
 import type {
   StoredTokens,
@@ -234,6 +236,22 @@ export async function resolvePluginOAuthAccount(input: {
         account,
         `Plugin "${plugin.manifest.name}" resolveOAuthAccount returned an invalid account`,
       );
+}
+
+/** Let the plugin of a provider update its work after a person links an account. */
+export async function runPluginIdentityLinked(input: {
+  identity: Identity;
+  provider: string;
+  user: User;
+}): Promise<void> {
+  const plugin = pluginFor(input.provider);
+  const hook = plugin?.hooks?.identityLinked;
+  if (!plugin || !hook) return;
+  await hook({
+    ...basePluginContext(plugin),
+    identity: input.identity,
+    user: input.user,
+  });
 }
 
 /** Ask a plugin to issue headers or describe why the selected grant is unavailable. */
