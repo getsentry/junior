@@ -651,6 +651,7 @@ async function executeAgentRunInPrivacyContext(
       abortAgent: () => agent?.abort(),
       activeSkills,
       currentActor: actor,
+      currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,

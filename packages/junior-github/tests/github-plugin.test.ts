@@ -1779,10 +1779,9 @@ Conversation: \`local:test:old-conversation\`
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
-    expect(ctx.identityLinkRequests()).toEqual([]);
   });
 
-  it("asks a requester with no linked GitHub account to link one", async () => {
+  it("asks the people of the Run to link GitHub without waiting for it", async () => {
     const ctx = githubToolsContext({
       actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
       resolveActor: async () => ({

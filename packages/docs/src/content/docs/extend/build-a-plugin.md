@@ -358,12 +358,13 @@ active actor's IANA timezone. It returns the install default when Junior does
 not know the person's timezone. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 
-When a tool does its work without the active actor's provider account, but
-the account would make the work better, call
+When a tool does its work without the provider account of a person in the
+Run, but the account would make the work better, call
 `ctx.users.requestIdentityLink({ reason })` and continue. For example, GitHub
 cannot assign a pull request to a person with no linked GitHub login. Junior
-puts one Review notice per person and provider on the review desk, with a link
-to connect the account. The notice never blocks the turn. When the account
+asks each person in the Run who has no account of your provider. It puts one
+Review notice per person and provider on the review desk, with a link to
+connect the account. The notice never blocks the turn. When the account
 links, Junior closes the notice and calls your `identityLinked` hook, so the
 plugin can update its earlier work. Make the hook idempotent.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where

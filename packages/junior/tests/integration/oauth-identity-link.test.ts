@@ -15,7 +15,7 @@ import type { IdentityLinkedHookContext } from "@sentry/junior-plugin-api";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   identityLinkRequestDedupeKey,
-  requestIdentityLink,
+  requestIdentityLinks,
 } from "@/chat/identities/link-request";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { getReviewItem } from "@/chat/review-items/store";
@@ -207,14 +207,16 @@ describe("oauth identity link", () => {
       conversationId,
       provider: "eval-oauth",
       reason: "Junior opened a pull request for you.",
-      requester,
+      // A person who is in the Run two times gets one request. An Actor with
+      // no User gets none.
+      requesters: [requester, requester, undefined],
       show,
     };
-    await expect(requestIdentityLink(request)).resolves.toEqual({
+    await expect(requestIdentityLinks(request)).resolves.toEqual({
       status: "requested",
     });
     // A repeat keeps one open request.
-    await requestIdentityLink(request);
+    await requestIdentityLinks(request);
     const [itemId] = shown;
     expect(new Set(shown)).toEqual(new Set([itemId]));
     const item = await getReviewItem(getDb(), itemId!);
@@ -262,9 +264,9 @@ describe("oauth identity link", () => {
     });
     // The User has the account now, so a later request adds nothing.
     await expect(
-      requestIdentityLink({
+      requestIdentityLinks({
         ...request,
-        requester: await readActorIdentity(actor),
+        requesters: [await readActorIdentity(actor)],
       }),
     ).resolves.toEqual({ status: "skipped" });
   });

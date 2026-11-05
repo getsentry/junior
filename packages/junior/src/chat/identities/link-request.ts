@@ -26,18 +26,43 @@ export function identityLinkRequestDedupeKey(
   return `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}${provider}:${linkRequestKey(userId)}`;
 }
 
+type Requester = { identity: Identity; user?: User } | undefined;
+
 /**
- * Ask the person of one Turn to link their account of `provider`. Junior
- * keeps one open notice per User and provider. A request from another
- * Conversation links that Conversation to the open notice, so its thread
- * shows the card too. A private notice stays with the Conversation that added
- * it, so a later request from another Conversation leaves it as it is.
+ * Ask each person of a Run who has no account of `provider` to link one.
+ * `requested` means at least one person has an open request.
  */
-export async function requestIdentityLink(args: {
+export async function requestIdentityLinks(args: {
   conversationId: string;
   provider: string;
   reason: string;
-  requester: { identity: Identity; user?: User } | undefined;
+  requesters: Requester[];
+  show: ShowReviewItem;
+}): Promise<{ status: "requested" | "skipped" }> {
+  const userIds = new Set<string>();
+  let requested = false;
+  for (const requester of args.requesters) {
+    const userId = requester?.user?.id;
+    if (!userId || userIds.has(userId)) continue;
+    userIds.add(userId);
+    const result = await requestIdentityLink({ ...args, requester });
+    requested ||= result.status === "requested";
+  }
+  return { status: requested ? "requested" : "skipped" };
+}
+
+/**
+ * Ask one person to link their account of `provider`. Junior keeps one open
+ * notice per User and provider. A request from another Conversation links
+ * that Conversation to the open notice, so its thread shows the card too. A
+ * private notice stays with the Conversation that added it, so a later
+ * request from another Conversation leaves it as it is.
+ */
+async function requestIdentityLink(args: {
+  conversationId: string;
+  provider: string;
+  reason: string;
+  requester: Requester;
   show: ShowReviewItem;
 }): Promise<{ status: "requested" | "skipped" }> {
   const { provider, requester } = args;

@@ -679,13 +679,13 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
     /**
-     * Ask the current Actor to link their account of this plugin's provider,
-     * so the plugin can improve work that it did without it. It never blocks
-     * the tool. Junior keeps one open Review notice per User and provider,
-     * and closes it when the account links. Then it calls the plugin's
-     * `identityLinked` hook. `skipped` means no notice: the Actor has no
-     * User, the User already has the account, or the person cannot connect
-     * one.
+     * Ask each Actor of this Run who has no account of this plugin's
+     * provider to link one, so the plugin can improve work that it did
+     * without it. It never blocks the tool. Junior keeps one open Review
+     * notice per User and provider, and closes it when the account links.
+     * Then it calls the plugin's `identityLinked` hook. `skipped` means no
+     * notice: no Actor has a User without the account, or the provider has
+     * no account to connect.
      */
     requestIdentityLink(input: {
       /** Markdown that says what the link improves, such as which work. */

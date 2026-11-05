@@ -93,7 +93,7 @@ import {
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
-import { requestIdentityLink } from "@/chat/identities/link-request";
+import { requestIdentityLinks } from "@/chat/identities/link-request";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
@@ -798,11 +798,16 @@ export function getPluginTools(
       users: {
         resolveActor,
         async requestIdentityLink(input: { reason: string }) {
-          return await requestIdentityLink({
+          // The current Actor can be in `actors` too. Junior asks each User once.
+          const actors = context.actors?.() ?? [];
+          return await requestIdentityLinks({
             conversationId: context.conversationId,
             provider: pluginName,
             reason: input.reason,
-            requester: await resolveActor(),
+            requesters: [
+              await resolveActor(),
+              ...(await Promise.all(actors.map(readActorIdentity))),
+            ],
             show: createSlackReviewItemShow(),
           });
         },

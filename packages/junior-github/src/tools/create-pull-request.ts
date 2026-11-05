@@ -313,19 +313,18 @@ async function recordOpener(
 }
 
 /**
- * Ask a requester with no linked GitHub account to link one, so Junior can
- * assign and mention them. Optional: a failure must not fail PR creation.
+ * Ask everyone in the Run with no linked GitHub account to link one, so
+ * Junior can assign and mention them. Optional: a failure must not fail PR
+ * creation.
  */
-async function requestRequesterGitHubLink(
+async function requestGitHubLinks(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
-  requester: GitHubRequester | undefined,
 ): Promise<void> {
-  if (!requester?.user || linkedGitHubLogin(requester.user)) return;
   try {
     await ctx.users.requestIdentityLink({
-      reason: `Junior opened [${input.repo}#${result.number}](${result.url}) for you, but your GitHub account is not linked, so GitHub does not notify you about it. After you link it, Junior assigns you to the pull requests it opened for you and mentions you in them.`,
+      reason: `Junior opened [${input.repo}#${result.number}](${result.url}) from a thread that you are in. Your GitHub account is not linked, so Junior cannot assign or mention you, and GitHub does not notify you. After you link it, Junior assigns and mentions you on the open pull requests that it opened for you.`,
     });
   } catch (error) {
     ctx.log.warn("github.pull_request.identity_link_request.failed", {
@@ -582,7 +581,7 @@ export function createGitHubPullRequestTool(
             identityId,
           });
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
-          await requestRequesterGitHubLink(ctx, parsedInput, result, requester);
+          await requestGitHubLinks(ctx, parsedInput, result);
           const stack = stackTarget
             ? await stackGitHubPullRequest(ctx, stackTarget)
             : undefined;

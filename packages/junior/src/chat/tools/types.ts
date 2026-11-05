@@ -106,6 +106,8 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor;
+  /** Live list of the Actors who gave instructions to this Run. */
+  actors?: () => Actor[];
   resolveActorIdentity?: () => Promise<
     { identity: Identity; user?: User } | undefined
   >;
