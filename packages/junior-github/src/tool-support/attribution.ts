@@ -153,15 +153,9 @@ function blockLabels(body: string | undefined): string[] {
   return contents === undefined ? [] : parseExistingLabels(contents);
 }
 
-/** The Automation ID of an automation label, linked or not. */
-function automationId(label: string): string | undefined {
-  return label.match(/^\[?automation `([^`]+)`/)?.[1];
-}
-
 /**
  * Merge requesters from the body on GitHub, the new body, and the current
- * Actor, in that order and without duplicates. An Automation keeps one
- * label, so its newest run replaces the earlier run ID.
+ * Actor, in that order and without duplicates.
  */
 function applyAttribution(
   body: string,
@@ -169,12 +163,13 @@ function applyAttribution(
   currentBody: string | undefined,
 ): string {
   const normalizedBody = body.trimEnd();
-  const automation = label ? automationId(label) : undefined;
-  const earlierLabels = [
-    ...blockLabels(currentBody),
-    ...blockLabels(normalizedBody),
-  ].filter((entry) => !automation || automationId(entry) !== automation);
-  const labels = [...new Set([...earlierLabels, ...(label ? [label] : [])])];
+  const labels = [
+    ...new Set([
+      ...blockLabels(currentBody),
+      ...blockLabels(normalizedBody),
+      ...(label ? [label] : []),
+    ]),
+  ];
   const attribution = labels.length
     ? formatAttributionBlock(labels)
     : undefined;

@@ -179,7 +179,7 @@ describe("updatePullRequest", () => {
       expected: "via @lcian, automation `evt_1` · Run ID `run_1`.",
     },
     {
-      name: "a newer run of the same automation replaces its run ID",
+      name: "each automation run is kept, like each person",
       actor: { platform: "system", name: "automation" },
       source: {
         kind: "event_automation",
@@ -191,7 +191,8 @@ describe("updatePullRequest", () => {
 <!-- junior-request-attribution:start -->
 via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 <!-- junior-request-attribution:end -->`,
-      expected: "via @lcian, automation `evt_1` · Run ID `run_2`.",
+      expected:
+        "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
     },
   ])("$name", async ({ actor, currentBody, expected, requester, source }) => {
     const { fetch, tool } = toolContext(undefined, {
