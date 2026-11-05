@@ -1,5 +1,5 @@
 import { agentEventKeys } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";

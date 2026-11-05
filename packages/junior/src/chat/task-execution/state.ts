@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";

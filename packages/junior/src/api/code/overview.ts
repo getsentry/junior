@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, or, sql, type SQL } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";

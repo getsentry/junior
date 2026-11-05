@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -19,6 +20,13 @@ export default defineConfig({
   esbuildOptions(options) {
     options.entryNames = "[name]-[hash]";
     options.chunkNames = "chunks/[name]-[hash]";
+    // pnpm injects a separate copy of the plugin API into @sentry/junior.
+    // Resolve every import to one copy, so the browser loads it once.
+    options.alias = {
+      "@sentry/junior-plugin-api": fileURLToPath(
+        import.meta.resolve("@sentry/junior-plugin-api"),
+      ),
+    };
   },
   minify: true,
   define: {

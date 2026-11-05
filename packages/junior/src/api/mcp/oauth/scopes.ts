@@ -7,7 +7,7 @@
  * A grant stores its scopes as one space-separated string (RFC 6749 section
  * 3.3), so grants from before the scope split still parse.
  */
-import { z } from "zod";
+import * as z from "zod";
 
 /** Every scope, in the order that the consent page shows it. */
 export const MCP_SCOPES = [

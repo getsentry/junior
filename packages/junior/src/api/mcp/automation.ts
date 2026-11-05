@@ -1,5 +1,5 @@
 /** Own the MCP view of one Automation, shared by the automation tools. */
-import { z } from "zod";
+import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 

@@ -1,6 +1,6 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
 import { parseContent } from "@/chat/slack/message/content";

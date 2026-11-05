@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * The unread rows to summarize: every event after `afterSeq`, through

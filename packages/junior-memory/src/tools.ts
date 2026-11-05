@@ -11,7 +11,7 @@ import {
   type User,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   createMemoryStore,
   type CreateMemoryInput,

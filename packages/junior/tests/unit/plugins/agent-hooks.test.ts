@@ -12,7 +12,7 @@ import {
   type ToolExposure,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { logWarnMock, resolveViewerUserMock } = vi.hoisted(() => ({

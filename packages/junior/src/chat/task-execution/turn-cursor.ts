@@ -13,7 +13,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {

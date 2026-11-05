@@ -5,7 +5,7 @@ import {
   type PluginSandbox,
   type User,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { emailDomain } from "../config";
 import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
 

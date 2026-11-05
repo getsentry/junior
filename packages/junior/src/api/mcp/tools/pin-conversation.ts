@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { pinConversation } from "@/api/conversations/pin";
 import { mcpConversationIdSchema } from "../conversation";
 import {

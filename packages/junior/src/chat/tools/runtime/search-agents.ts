@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import {
   listAgentRelatives,

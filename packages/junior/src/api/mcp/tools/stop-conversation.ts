@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { stopConversationTurnForViewer } from "@/api/conversations/stop";
 import { mcpConversationIdSchema } from "../conversation";
 import {

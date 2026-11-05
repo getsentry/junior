@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";

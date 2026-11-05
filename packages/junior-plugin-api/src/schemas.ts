@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 const slackTeamIdSchema = z.string().regex(/^T[A-Z0-9]+$/);
 const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);

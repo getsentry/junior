@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,

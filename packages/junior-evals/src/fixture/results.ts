@@ -2,7 +2,7 @@
  * Call results read through Junior's reporting API, the way the dashboard
  * reads a Conversation. Tests never read stored rows directly.
  */
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,

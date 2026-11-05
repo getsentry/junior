@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { messageAttachmentSchema } from "@/chat/attachments/input";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import {

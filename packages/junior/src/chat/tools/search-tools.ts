@@ -1,5 +1,5 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { z } from "zod";
+import * as z from "zod";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

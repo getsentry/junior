@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Pin or unpin one Conversation for the signed-in viewer. */
 export const pinConversationBodySchema = z

@@ -12,7 +12,7 @@ import {
   renderToolSignature,
   type CodemodeJsonSchema,
 } from "@earendil-works/pi-codemode";
-import { z } from "zod";
+import * as z from "zod";
 import {
   CODE_MODE_MAX_OUTPUT_CHARS,
   CODE_MODE_SCRIPT_TIMEOUT_MS,

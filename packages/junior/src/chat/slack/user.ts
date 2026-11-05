@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";

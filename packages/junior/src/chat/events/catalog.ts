@@ -14,7 +14,7 @@ import {
   type PluginEvents,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /**

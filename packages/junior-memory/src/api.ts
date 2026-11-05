@@ -3,7 +3,7 @@
  *
  * The signed-in User can read and forget public memory.
  */
-import { z } from "zod";
+import * as z from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventReader,

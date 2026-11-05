@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import type { TracePropagationHeaders } from "@/chat/logging";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { getSandboxProvider } from "@/chat/sandbox/provider";

@@ -2,6 +2,7 @@ import { definePlugin } from "@oxlint/plugins";
 
 import { touchConversationDetailRule } from "./rules/touch-conversation-detail.ts";
 import { useGitHubApiRule } from "./rules/use-github-api.ts";
+import { zodNamespaceImportRule } from "./rules/zod-namespace-import.ts";
 
 /** Oxlint rules for Junior runtime invariants. */
 const juniorPlugin = definePlugin({
@@ -9,6 +10,7 @@ const juniorPlugin = definePlugin({
   rules: {
     "touch-conversation-detail": touchConversationDetailRule,
     "use-github-api": useGitHubApiRule,
+    "zod-namespace-import": zodNamespaceImportRule,
   },
 });
 

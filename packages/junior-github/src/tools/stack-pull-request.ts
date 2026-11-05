@@ -8,7 +8,7 @@
  * chain of base branches.
  */
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { githubApi, repoPath } from "../tool-support/github-api.js";
 
 /** Longest chain of base branches to walk down to the trunk. */

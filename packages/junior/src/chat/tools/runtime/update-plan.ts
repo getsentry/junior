@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const planItemSchema = z

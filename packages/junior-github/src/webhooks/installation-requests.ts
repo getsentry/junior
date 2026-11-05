@@ -5,7 +5,7 @@
  * call GitHub directly. Other plugin code must use host egress.
  */
 import type { PluginCache } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   githubRequest,
   issueInstallationToken,

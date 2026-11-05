@@ -6,7 +6,7 @@ import {
   type PluginToolOutput,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { vercelProjectIdSchema } from "../project.js";
 import { vercelDeploymentSubscribable } from "../events/deployment.js";
 

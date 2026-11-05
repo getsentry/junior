@@ -4,7 +4,7 @@
  * Workspace account whose `hd` claim is one of them. Slack and the dashboard
  * share one list.
  */
-import { z } from "zod";
+import * as z from "zod";
 
 /** Read a list env var: a JSON string array or comma-separated values. */
 export function readEnvList(name: string): string[] | undefined {

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "./object-presentation";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;

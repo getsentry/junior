@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const CONVERSATION_QUEUE_SCHEMA_VERSION = 2;
 

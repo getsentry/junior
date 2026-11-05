@@ -2,7 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubRepoDataSchema, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_RELEASE_EVENTS = ["release.published"] as const;

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 // Conversation stats report schemas. Conversation detail and event schemas
 // live in `conversation.ts`.

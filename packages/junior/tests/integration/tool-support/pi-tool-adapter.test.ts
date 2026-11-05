@@ -6,7 +6,7 @@ import {
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
-import { z } from "zod";
+import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";

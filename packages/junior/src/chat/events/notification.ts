@@ -1,5 +1,5 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
