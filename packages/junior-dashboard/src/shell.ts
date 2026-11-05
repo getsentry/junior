@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
+import type { DashboardBootstrap } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
@@ -234,9 +235,15 @@ function renderSentryHead(sentry: BrowserSentryConfig | undefined): string {
 export function renderDashboard(
   basePath: string,
   agentName: string,
-  sentry?: BrowserSentryConfig,
+  {
+    bootstrap,
+    sentry,
+  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
 ): Response {
   const encodedAgentName = scriptJson(agentName);
+  const bootstrapScript = bootstrap
+    ? `window.__JUNIOR_DASHBOARD_BOOTSTRAP__ = ${scriptJson(bootstrap)};`
+    : "";
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
@@ -272,6 +279,7 @@ export function renderDashboard(
   <script>
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
     window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
+    ${bootstrapScript}
     (function () {
       function escapeHtml(value) {
         return String(value)

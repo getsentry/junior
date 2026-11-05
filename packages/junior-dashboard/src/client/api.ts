@@ -1,4 +1,8 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  queryOptions,
+  useQuery,
+} from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -28,18 +32,39 @@ import {
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
 
-import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import {
+  dashboardBootstrapSchema,
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+} from "../api/schema";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
+declare global {
+  interface Window {
+    __JUNIOR_DASHBOARD_BOOTSTRAP__?: unknown;
+  }
+}
+
 const dashboardMetadataStaleTimeMs = 5 * 60_000;
+
+// The shell embeds core data for the first read only. Taking it once means a
+// later cache entry for the same key reads the API instead of stale data.
+function takeDashboardBootstrap(): DashboardCoreData | undefined {
+  if (typeof window === "undefined") return undefined;
+  const embedded = window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  const parsed = dashboardBootstrapSchema.safeParse(embedded);
+  return parsed.success ? parsed.data : undefined;
+}
+
 // The server reuses its cached report until the viewer's spend changes, so a
 // short poll shows a finished Turn without a full aggregate query each time.
 const PERSONAL_SPEND_REFRESH_MS = 10_000;
 
-/** Fetch dashboard shell data shared across browser routes. */
-export function useDashboardCoreData() {
-  return useQuery({
+/** Query options for dashboard shell data, seeded from the page shell. */
+export function dashboardCoreQueryOptions() {
+  return queryOptions({
     queryKey: ["dashboard", "core"],
     queryFn: async ({ signal }): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
@@ -51,9 +76,17 @@ export function useDashboardCoreData() {
         me,
       };
     },
+    initialData: takeDashboardBootstrap,
+    // The server built the embedded data while it served the page.
+    initialDataUpdatedAt: () => performance.timeOrigin,
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });
+}
+
+/** Fetch dashboard shell data shared across browser routes. */
+export function useDashboardCoreData() {
+  return useQuery(dashboardCoreQueryOptions());
 }
 
 /** Fetch safe plugin metadata used by dashboard navigation and System pages. */

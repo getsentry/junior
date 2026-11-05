@@ -31,9 +31,13 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
 import {
+  dashboardBootstrapSchema,
   dashboardConfigSchema,
   dashboardIdentitySchema,
   dashboardProfileUpdateSchema,
+  type DashboardBootstrap,
+  type DashboardConfig,
+  type DashboardIdentity,
 } from "./api/schema";
 import {
   dashboardBearerSession,
@@ -459,6 +463,22 @@ export function createDashboardApp(
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
 
+  /** Resolve the Junior user for a verified dashboard session. */
+  const resolveSessionViewer = async (session: DashboardSession) => {
+    const email = verifiedDashboardSessionEmail(session);
+    if (!email) {
+      throw new Error("Authenticated dashboard session has no verified email");
+    }
+    // Mock reporting stays local and does not require durable user rows.
+    const viewer = options.mockConversations
+      ? mockViewerFromSession(session)
+      : await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error("Authenticated dashboard user could not be resolved");
+    }
+    return viewer;
+  };
+
   /**
    * Require dashboard auth for every later route; login, Better Auth callbacks,
    * favicon, install manifest, and install icon are the only registration-order
@@ -478,13 +498,7 @@ export function createDashboardApp(
       const session = localAuthBypassSession();
       c.set("authSession", session);
       if (pathname.startsWith("/api/") || appRoute) {
-        const viewer = options.mockConversations
-          ? mockViewerFromSession(session)
-          : await resolveViewerUser(LOCAL_VIEWER_EMAIL);
-        if (!viewer) {
-          throw new Error("Local dashboard viewer could not be resolved");
-        }
-        c.set("viewer", viewer);
+        c.set("viewer", await resolveSessionViewer(session));
       }
       await next();
       return;
@@ -519,22 +533,10 @@ export function createDashboardApp(
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
-    // Resolve the canonical user only for authenticated API requests.
+    // Resolve the canonical user only for authenticated API requests. Page
+    // routes resolve it themselves for the embedded core data.
     if (pathname.startsWith("/api/") || appRoute) {
-      const email = verifiedDashboardSessionEmail(sanitizedSession);
-      if (!email) {
-        throw new Error(
-          "Authenticated dashboard session has no verified email",
-        );
-      }
-      // Mock reporting stays local and does not require durable user rows.
-      const viewer = options.mockConversations
-        ? mockViewerFromSession(sanitizedSession)
-        : await resolveViewerUser(email);
-      if (!viewer) {
-        throw new Error("Authenticated dashboard user could not be resolved");
-      }
-      c.set("viewer", viewer);
+      c.set("viewer", await resolveSessionViewer(sanitizedSession));
     }
     await next();
     return undefined;
@@ -567,8 +569,28 @@ export function createDashboardApp(
     }
   }
 
-  const renderPage = () =>
-    renderDashboard(basePath, agentName, getBrowserSentryConfig());
+  const readPageBootstrap = async (
+    session: DashboardSession,
+  ): Promise<DashboardBootstrap | undefined> => {
+    // The embedded core data only saves the client a round trip. Without it,
+    // the client reads /api/me itself, and that request reports the failure.
+    try {
+      return dashboardBootstrapSchema.parse({
+        config: dashboardConfig(),
+        me: await dashboardIdentity(
+          session,
+          await resolveSessionViewer(session),
+        ),
+      });
+    } catch {
+      return undefined;
+    }
+  };
+  const renderPage = async (c: Context<{ Variables: Variables }>) =>
+    renderDashboard(basePath, agentName, {
+      bootstrap: await readPageBootstrap(c.get("authSession")),
+      sentry: getBrowserSentryConfig(),
+    });
   for (const { nested, path } of dashboardPagePaths(basePath)) {
     app.get(path, renderPage);
     if (nested) {
@@ -603,16 +625,17 @@ export function createDashboardApp(
     "/",
     createJuniorApi({ conversationWorkQueue: options.conversationWorkQueue }),
   );
-  app.get("/api/config", () => {
-    return jsonResponse(dashboardConfigSchema, {
-      allowedDomainCount: allowedDomains.length,
-      authRequired,
-      authPath,
-      basePath,
-      sentryConversationLinks: hasSentryConversationLinks(),
-      version: JUNIOR_VERSION,
-    });
+  const dashboardConfig = (): DashboardConfig => ({
+    allowedDomainCount: allowedDomains.length,
+    authRequired,
+    authPath,
+    basePath,
+    sentryConversationLinks: hasSentryConversationLinks(),
+    version: JUNIOR_VERSION,
   });
+  app.get("/api/config", () =>
+    jsonResponse(dashboardConfigSchema, dashboardConfig()),
+  );
   // Mock reporting has no SQL identities, so it has no profile photos.
   const viewerAvatarUrl = async (userId: string | undefined) =>
     userId && !options.mockConversations
@@ -629,11 +652,12 @@ export function createDashboardApp(
       DEFAULT_AUTO_ARCHIVE_SETTINGS
     );
   }
-  app.get("/api/me", async (c) => {
-    const session = c.get("authSession");
-    const viewer = c.get("viewer");
+  async function dashboardIdentity(
+    session: DashboardSession,
+    viewer: Variables["viewer"],
+  ): Promise<DashboardIdentity> {
     const avatarUrl = await viewerAvatarUrl(viewer?.id);
-    return jsonResponse(dashboardIdentitySchema, {
+    return {
       ...(viewer ? await readViewerAutoArchiveSettings(viewer) : undefined),
       user: {
         ...(avatarUrl ? { avatarUrl } : undefined),
@@ -642,8 +666,14 @@ export function createDashboardApp(
         isAdmin: viewer?.isAdmin === true,
         name: viewer?.displayName ?? session.user.name,
       },
-    });
-  });
+    };
+  }
+  app.get("/api/me", async (c) =>
+    jsonResponse(
+      dashboardIdentitySchema,
+      await dashboardIdentity(c.get("authSession"), c.get("viewer")),
+    ),
+  );
   app.patch("/api/me", async (c) => {
     let body: unknown;
     try {
