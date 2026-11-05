@@ -79,6 +79,11 @@ export const juniorConversationEvents = pgTable(
       table.conversationId,
       table.seq,
     ),
+    // Message authors of a set of Conversations. The dashboard reads them for
+    // each Conversation list and detail request.
+    index("junior_conversation_events_author_idx")
+      .on(table.conversationId, table.actorIdentityId, table.seq)
+      .where(sql`${table.actorIdentityId} is not null`),
     index("junior_conversation_events_message_search_idx")
       .using("gin", sql`to_tsvector('english', ${table.payload}->>'text')`)
       .where(sql`${table.type} = 'message'`),
