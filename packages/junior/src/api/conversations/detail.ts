@@ -6,10 +6,11 @@ import { startSpan } from "@/chat/sentry";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
-import { encodeConversationCursor } from "./cursor";
+import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
 import { readFirstHumanMessageTexts } from "./first-message";
 import {
   readConversationEventPage,
+  readConversationEventPageAfter,
   readConversationEventPageAround,
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
@@ -43,6 +44,9 @@ import { readConversationAuthors } from "./participants";
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
+  appendCursor?: string;
+  /** Events hold only the events after the request's `after` cursor. */
+  appended?: boolean;
   archivedAtMs?: number;
   pinnedAtMs?: number;
   automationTitle?: string;
@@ -97,6 +101,8 @@ function projectConversationDetail(args: {
     sidebarAnnotations: canExposePayload ? args.sidebarAnnotations : undefined,
     ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
+    ...(args.appended ? { appended: true as const } : undefined),
+    ...(args.appendCursor ? { appendCursor: args.appendCursor } : undefined),
     ...(canExposePayload && args.participants.length > 0
       ? { authors: args.authors, participants: args.participants }
       : undefined),
@@ -134,6 +140,7 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
   options: {
+    after?: string;
     latestTurns?: number;
     limit: number;
     state?: ConversationDetailState;
@@ -151,8 +158,42 @@ async function readConversationDetailFromSql(
   const canExposePayload = access?.canViewPrivateContent ?? false;
 
   const executor = getSqlExecutor();
-  const purgedPage: Awaited<ReturnType<typeof readConversationEventPage>> = {
-    events: [],
+  const isPurged = record.conversation.transcriptPurgedAtMs !== undefined;
+  // A poll extends the events that it has only while they still project the
+  // same way. The first read of a visit asks for the unread page, which needs
+  // the latest page.
+  const after =
+    options.after && !options.unreadPage && !isPurged
+      ? decodeConversationCursor({ conversationId, cursor: options.after })
+      : undefined;
+  const afterSeq =
+    after && after.transcript === state.transcriptVersion
+      ? after.seq
+      : undefined;
+  const readPage = async (): Promise<
+    Awaited<ReturnType<typeof readConversationEventPage>> & {
+      appended?: true;
+    }
+  > => {
+    if (isPurged) return { events: [] };
+    if (afterSeq !== undefined) {
+      const newer = await readConversationEventPageAfter(executor, {
+        afterSeq,
+        canExposePayload,
+        conversationId,
+        limit: options.limit,
+      });
+      // A reader more than a page behind gets the latest page instead.
+      if (newer.nextSeq === undefined) {
+        return { appended: true, events: newer.events };
+      }
+    }
+    return readConversationEventPage(executor, {
+      canExposePayload,
+      conversationId,
+      latestTurns: options.latestTurns,
+      limit: options.limit,
+    });
   };
   // Access is known, so the event page reads beside the metadata.
   const [
@@ -173,9 +214,9 @@ async function readConversationDetailFromSql(
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
     readFirstHumanMessageTexts(getDb(), [record.conversation]),
-    record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationModelUsageFromSql(executor, { conversationId })
-      : Promise.resolve([]),
+    isPurged
+      ? Promise.resolve([])
+      : readConversationModelUsageFromSql(executor, { conversationId }),
     readConversationTreeMetricsFromSql(getDb(), [conversationId]),
     readConversationAuthors(getDb(), conversationId),
     readConversationSourceTask({
@@ -187,14 +228,7 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
-    record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationEventPage(executor, {
-          canExposePayload,
-          conversationId,
-          latestTurns: options.latestTurns,
-          limit: options.limit,
-        })
-      : purgedPage,
+    readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
   // their read position instead, so they need a cursor there.
@@ -243,12 +277,24 @@ async function readConversationDetailFromSql(
           ).then((byConversation) => byConversation[conversationId])
         : undefined,
     ]);
+  // A poll with no newer events keeps the cursor that it sent.
+  const appendedAfterSeq = page.appended ? afterSeq : undefined;
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
   const detail: Parameters<typeof projectConversationDetail>[0] = {
     ...record,
     access,
+    ...(page.appended ? { appended: true } : undefined),
+    ...(isPurged
+      ? undefined
+      : {
+          appendCursor: encodeConversationCursor({
+            conversationId,
+            seq: page.events.at(-1)?.seq ?? appendedAfterSeq ?? -1,
+            transcript: state.transcriptVersion,
+          }),
+        }),
     ...state.viewerMarks,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
@@ -308,6 +354,8 @@ const DETAIL_LATEST_TURNS = 3;
 export async function readConversationDetail(
   conversationId: string,
   options: {
+    /** An `appendCursor`: return only newer events when it still applies. */
+    after?: string;
     limit?: number;
     /** The state that the route already read for the ETag. */
     state?: ConversationDetailState;

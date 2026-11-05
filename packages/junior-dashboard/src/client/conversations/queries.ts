@@ -847,6 +847,10 @@ export async function readConversationData(
   const query = new URLSearchParams();
   if (options?.unreadPage) query.set("unreadPage", "true");
   if (options?.mailbox) query.set("mailbox", "true");
+  // A poll asks only for the events after the cached ones. The unread page
+  // needs the latest page, so a read that asks for it reads that page.
+  const after = options?.unreadPage ? undefined : previous?.appendCursor;
+  if (after) query.set("after", after);
   const search = query.size ? `?${query}` : "";
   const response = await readDashboardResponse(
     `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
@@ -858,7 +862,10 @@ export async function readConversationData(
   if (response.status === 304 && previous) return previous;
   if (!options?.mailbox) {
     return withDetailEtag(
-      await readResponseJson(response, conversationDetailReportSchema),
+      withCachedEvents(
+        await readResponseJson(response, conversationDetailReportSchema),
+        previous,
+      ),
       response,
     );
   }
@@ -869,10 +876,47 @@ export async function readConversationData(
       conversationDetailWithMailboxReportSchema,
     ]),
   );
-  if (!("unchanged" in report)) return withDetailEtag(report, response);
+  if (!("unchanged" in report)) {
+    return withDetailEtag(withCachedEvents(report, previous), response);
+  }
   // Only a request that sent a version can get this answer.
   if (!previous) throw new Error("Unchanged detail without a cached copy");
   return { ...previous, mailbox: report.mailbox };
+}
+
+/**
+ * Put the cached events before the newer events of an `appended` report.
+ * The cached detail keeps its cursors: they still point before its events.
+ */
+function withCachedEvents(
+  report: ConversationSnapshot,
+  previous: ConversationSnapshot | undefined,
+): ConversationSnapshot {
+  if (!report.appended) return report;
+  // Only a request that sent an `appendCursor` can get this answer.
+  if (!previous) throw new Error("Appended detail without a cached copy");
+  const { appended: _appended, ...rest } = report;
+  const lastSeq = previous.events.at(-1)?.seq ?? -1;
+  const firstSeq = previous.events[0]?.seq;
+  // Like the server, keep the unread cursor while the reader is behind the
+  // first event.
+  const behind =
+    rest.readPosition !== undefined &&
+    firstSeq !== undefined &&
+    rest.readPosition.lastReadSeq + 1 < firstSeq;
+  return {
+    ...rest,
+    events: [
+      ...previous.events,
+      ...report.events.filter((event) => event.seq > lastSeq),
+    ],
+    ...(previous.previousCursor
+      ? { previousCursor: previous.previousCursor }
+      : undefined),
+    ...(behind && previous.unreadCursor
+      ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
+      : undefined),
+  };
 }
 
 function withDetailEtag<T extends ConversationDetailReport>(
