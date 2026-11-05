@@ -6,6 +6,7 @@ import {
   dashboardFaviconAsset,
   dashboardInstallIconAsset,
 } from "./assets";
+import { conversationOpenScript } from "./conversation-open";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
 import {
   DASHBOARD_ASSETS_PATH,
@@ -216,10 +217,11 @@ export function renderDashboard(
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
+  ${renderSentryHead(sentry)}
+  <script>${conversationOpenScript(basePath)}</script>
   ${stylesheetLink()}
   ${clientPreloads}
   <title>${escapeHtml(agentName)}</title>
-  ${renderSentryHead(sentry)}
 </head>
 <body class="m-0 bg-dashboard-ink text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <div id="dashboard-root">

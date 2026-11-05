@@ -248,8 +248,23 @@ test("opens where the reader left off and reports what they read", async ({
     lastReadSeq: 20,
   });
   const { reported } = mock;
+  // The page shell starts the first read before the client loads.
+  let releaseClient!: () => void;
+  const clientHeld = new Promise<void>((resolve) => {
+    releaseClient = resolve;
+  });
+  await page.route("**/_junior/dashboard/assets/*.js", async (route) => {
+    await clientHeld;
+    await route.fallback();
+  });
 
-  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`, {
+    waitUntil: "commit",
+  });
+  await expect
+    .poll(() => mock.detailRequests)
+    .toEqual(["?unreadPage=true&mailbox=true"]);
+  releaseClient();
   const transcript = page.getByLabel("Conversation transcript");
   const marker = transcript.getByRole("separator", { name: "New messages" });
   const firstUnread = transcript.getByText("Transcript message 21 ");
@@ -257,6 +272,8 @@ test("opens where the reader left off and reports what they read", async ({
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
   await expect(latest).not.toBeInViewport();
+  // The client uses that response and does not read again.
+  expect(mock.detailRequests).toEqual(["?unreadPage=true&mailbox=true"]);
   // Messages without finished Turns are quick to read, so no catch-up.
   await expect(
     transcript.getByRole("button", { name: "Catch me up" }),
@@ -273,9 +290,13 @@ test("opens where the reader left off and reports what they read", async ({
   // Readers who prefer the latest message open there, below the marker.
   await page.goto(`${dashboard.baseURL}/settings`);
   await page.getByRole("radio", { name: /Latest message/ }).click();
+  const detailRequestCount = mock.detailRequests.length;
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   await expect(latest).toBeInViewport();
   await expect(marker).not.toBeInViewport();
+  expect(mock.detailRequests.slice(detailRequestCount)).toEqual([
+    "?mailbox=true",
+  ]);
 });
 
 test("catches the reader up on several unread Turns", async ({
