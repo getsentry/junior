@@ -3,7 +3,7 @@ import {
   defineConversationEvent,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,

@@ -3,7 +3,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 

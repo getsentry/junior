@@ -13,7 +13,7 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {

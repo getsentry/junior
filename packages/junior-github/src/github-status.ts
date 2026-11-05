@@ -1,5 +1,5 @@
 import type { PluginCache } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const GITHUB_STATUS_INCIDENTS_URL =
   "https://www.githubstatus.com/api/v2/incidents.json";

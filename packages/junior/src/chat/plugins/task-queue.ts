@@ -5,7 +5,7 @@
  * send path, and HTTP/local callback. Core keeps one topic and one runner.
  */
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {

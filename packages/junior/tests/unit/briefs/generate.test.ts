@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
-import { z } from "zod";
+import * as z from "zod";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/schema";
 

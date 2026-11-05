@@ -1,5 +1,5 @@
 import { and, eq, lte, ne, sql } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestCommitComposition,

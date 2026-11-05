@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { z } from "zod";
+import * as z from "zod";
 
 export const TURN_REASONING_LEVELS = [
   "none",

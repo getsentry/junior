@@ -3,7 +3,7 @@
  * durable or CLI edge, so these schemas own the exported types.
  */
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const lineSchema = z.string().trim().min(1).max(400);
 const urlSchema = z.string().url().max(2_048);

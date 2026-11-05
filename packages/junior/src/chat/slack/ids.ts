@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 // Slack-owned runtime boundaries parse raw strings into branded IDs here.

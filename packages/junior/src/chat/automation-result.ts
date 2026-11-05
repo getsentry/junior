@@ -5,7 +5,7 @@
  * result. The run does not deliver its final assistant text. The work owner
  * reads the declared result and applies the stored outcomes.
  */
-import { z } from "zod";
+import * as z from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   isAssistantMessage,

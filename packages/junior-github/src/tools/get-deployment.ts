@@ -7,7 +7,7 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubDeploymentSourceSubscribable } from "../events/deployment.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 

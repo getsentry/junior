@@ -17,7 +17,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { z } from "zod";
+import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import {
   gitHubPullRequestCreateWatch,

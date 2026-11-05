@@ -1,17 +1,6 @@
 import { index, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
-import { z } from "zod";
+import type { JuniorDestinationKind } from "./destination-kind";
 import { timestamptz } from "./timestamps";
-
-export const juniorDestinationKindSchema = z.enum([
-  "channel",
-  "dm",
-  "group",
-  "local_conversation",
-  "thread",
-  "web_session",
-]);
-
-export type JuniorDestinationKind = z.infer<typeof juniorDestinationKindSchema>;
 
 export type JuniorDestinationVisibility =
   | "direct"

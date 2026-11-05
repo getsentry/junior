@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { encodeConversationCursor } from "@/api/conversations/cursor";
-import { z } from "zod";
+import * as z from "zod";
 import { createConversationForViewer } from "@/api/conversations/create";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import {

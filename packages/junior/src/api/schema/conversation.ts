@@ -6,7 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
-import { z } from "zod";
+import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {

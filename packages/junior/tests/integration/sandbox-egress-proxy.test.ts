@@ -10,7 +10,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import {
   createPluginAppFixture,
   type PluginAppFixture,

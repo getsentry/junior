@@ -1,5 +1,5 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
 import {
   REVIEW_ITEM_REPLIED_REASON,

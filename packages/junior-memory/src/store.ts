@@ -24,7 +24,7 @@ import {
 } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
-import { z } from "zod";
+import * as z from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
 import * as memorySqlSchema from "./db/schema";
 import {

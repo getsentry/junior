@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
-import { z } from "zod";
+import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./queries";

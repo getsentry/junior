@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { removedCardSchema } from "@/chat/conversations/cards";
 import {
   deleteToolAutomation,

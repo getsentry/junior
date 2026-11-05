@@ -9,7 +9,7 @@ import {
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { memoriesRecalledEvent } from "./events";
 import {
   createMemoryStore,

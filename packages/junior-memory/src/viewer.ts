@@ -17,7 +17,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import { publicMemoryScope } from "./scope";
 import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";

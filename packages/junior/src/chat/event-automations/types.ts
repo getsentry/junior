@@ -6,7 +6,7 @@ import {
   slackDestinationSchema,
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Keep indexed event-automation selectors within PostgreSQL B-tree entry limits. */
 export const EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH = 300;

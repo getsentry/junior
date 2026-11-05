@@ -5,7 +5,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

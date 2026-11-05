@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
-import { z } from "zod";
+import * as z from "zod";
 
 const LOCAL_OAUTH_STATE_PREFIX = "jr-local";
 const LOCAL_OAUTH_TOKEN_CONTEXT = "junior.local-oauth-relay.v1";

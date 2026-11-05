@@ -1,0 +1,10 @@
+id: no-named-zod-z-import
+valid:
+  - import * as z from "zod";
+  - import type * as z from "zod";
+  - import type { ZodTypeAny } from "zod";
+invalid:
+  - import { z } from "zod";
+  - import { z, type ZodTypeAny } from "zod";
+  - import type { z } from "zod";
+  - import type { ZodTypeAny, z } from "zod";

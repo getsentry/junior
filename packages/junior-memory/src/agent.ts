@@ -3,7 +3,7 @@ import {
   sourceSchema,
   type PluginModel,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   memorySupersessionDecisionSchema,
   memorySupersessionInputSchema,

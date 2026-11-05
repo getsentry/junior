@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plug } from "lucide-react";
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   connectionListSchema,
   disconnectConnectionResponseSchema,

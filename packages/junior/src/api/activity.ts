@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 import {
   WINDOW_SEVEN_DAY_HOURS,

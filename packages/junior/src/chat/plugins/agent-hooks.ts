@@ -84,7 +84,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
-import { z } from "zod";
+import * as z from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   getWorkspace,

@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { setConversationAutoArchive } from "@/api/conversations/auto-archive";
 import { mcpConversationIdSchema } from "../conversation";
 import {

@@ -5,7 +5,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
   githubApi,

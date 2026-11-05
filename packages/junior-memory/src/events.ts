@@ -1,5 +1,5 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 

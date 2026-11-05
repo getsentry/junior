@@ -12,7 +12,7 @@ import type {
   PluginConversationReviewItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   claimGitHubPullRequestReadySync,

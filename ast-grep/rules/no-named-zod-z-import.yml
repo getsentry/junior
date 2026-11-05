@@ -1,0 +1,39 @@
+id: no-named-zod-z-import
+language: TypeScript
+severity: error
+message: Use `import * as z from "zod"`. esbuild cannot tree-shake the named `z` export, so it adds every zod locale (about 250 KB) to the dashboard browser bundle.
+files:
+  - packages/**/*.ts
+  - apps/**/*.ts
+rule:
+  kind: import_statement
+  all:
+    - has:
+        field: source
+        regex: ^["']zod["']$
+    - has:
+        stopBy: end
+        kind: import_specifier
+        has:
+          field: name
+          regex: ^z$
+---
+id: no-named-zod-z-import-tsx
+language: Tsx
+severity: error
+message: Use `import * as z from "zod"`. esbuild cannot tree-shake the named `z` export, so it adds every zod locale (about 250 KB) to the dashboard browser bundle.
+files:
+  - packages/**/*.tsx
+  - apps/**/*.tsx
+rule:
+  kind: import_statement
+  all:
+    - has:
+        field: source
+        regex: ^["']zod["']$
+    - has:
+        stopBy: end
+        kind: import_specifier
+        has:
+          field: name
+          regex: ^z$

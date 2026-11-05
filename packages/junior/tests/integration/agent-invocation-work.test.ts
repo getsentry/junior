@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {

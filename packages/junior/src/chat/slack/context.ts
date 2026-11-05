@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { toOptionalString } from "@/chat/coerce";
 import {
   parseSlackChannelId,

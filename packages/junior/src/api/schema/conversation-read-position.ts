@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * How far the signed-in viewer has read a Conversation transcript.

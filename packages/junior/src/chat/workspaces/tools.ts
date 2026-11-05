@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { watchResultSchema, type WatchResult } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";

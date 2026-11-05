@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import type { completeObject } from "@/chat/pi/client";
 import {

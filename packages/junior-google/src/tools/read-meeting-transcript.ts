@@ -3,7 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   FILE_ID_PATTERN,
   googleFileMimeType,
