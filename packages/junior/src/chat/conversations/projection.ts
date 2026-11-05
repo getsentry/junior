@@ -763,6 +763,38 @@ export async function recordSubscribedReplyRoute(args: {
   ]);
 }
 
+/**
+ * Record the model cost of one `afterToolExecute` hook call in a Turn, so the
+ * Conversation's auxiliary cost counts it.
+ */
+export async function recordPluginHookModelCost(args: {
+  conversationId: string;
+  costUsd: number;
+  modelRole: "decision" | "structured";
+  pluginName: string;
+  toolName: string;
+  turnId: string;
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "structured_event",
+        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+        name: "plugin_hook_model_called",
+        version: 1,
+        turnId: args.turnId,
+        content: {
+          costUsd: args.costUsd,
+          modelRole: args.modelRole,
+          pluginName: args.pluginName,
+          toolName: args.toolName,
+        },
+      },
+    },
+  ]);
+}
+
 /** Record a host-observed parent tool start without adding it to Pi replay. */
 export async function recordToolExecutionStarted(args: {
   conversationId: string;

@@ -333,7 +333,9 @@ check does not cover. `ctx.sandbox` runs commands in the Run's sandbox, and
 `ctx.workspace` gives the active Workspace name and its repositories with their
 checkout paths. To run a check in some Workspaces only, return early when
 `ctx.workspace?.name` is not one of them. Use `ctx.decider.decide(...)` for a fast classifier choice, or
-`ctx.model.completeObject(...)` for a judgment that needs reasoning.
+`ctx.model.completeObject(...)` for a judgment that needs reasoning. Junior
+adds the cost of these calls to the Conversation cost. The plugin does not
+record it.
 
 - `ctx.decision.nudge(message)`: add guidance after the tool result. The agent
   reads both. The tool output does not change, so JSON output stays valid. In

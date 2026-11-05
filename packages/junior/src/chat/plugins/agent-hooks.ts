@@ -46,6 +46,7 @@ import {
   runAfterToolExecuteHooks,
   type AfterToolHookInput,
   type ToolHookSandbox,
+  type ToolHookTurn,
   type ToolResultNudge,
 } from "@/chat/plugins/after-tool-hooks";
 import {
@@ -1565,19 +1566,21 @@ export function createPluginHookRunner(
     actor?: Actor;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
     actors?: () => Actor[];
-    /** The Run's sandbox. Without it, `afterToolExecute` hooks do not run. */
-    sandbox?: () => ToolHookSandbox;
+    /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
+    toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
 ): PluginHookRunner {
   const loaded = getPlugins();
 
   return {
     async afterToolExecute(tool) {
-      if (!input.sandbox) return [];
+      if (!input.toolRun) return [];
+      const { sandbox, ...turn } = input.toolRun;
       return await runAfterToolExecuteHooks({
         plugins: loaded,
-        sandbox: input.sandbox(),
+        sandbox: sandbox(),
         tool,
+        turn,
       });
     },
     async afterMcpTool(tool) {

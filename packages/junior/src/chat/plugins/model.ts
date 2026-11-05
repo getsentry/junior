@@ -14,11 +14,17 @@ import {
   rerankTexts,
 } from "@/chat/pi/client";
 
+/** Host hook for the priced cost of one plugin model call. */
+export type PluginModelCostRecorder = (cost: {
+  costUsd: number;
+  modelRole: "decision" | "structured";
+}) => Promise<void>;
+
 /** Create the host-owned structured model capability exposed to plugins. */
 export function createPluginModel(
   pluginName: string,
   options: PluginModelConfig = {},
-  runtime: { signal?: AbortSignal } = {},
+  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
 ): PluginModel {
   return {
     async completeObject(input) {
@@ -42,6 +48,12 @@ export function createPluginModel(
           pluginModelRole: "structured",
         },
       });
+      if (result.costUsd !== undefined) {
+        await runtime.onCost?.({
+          costUsd: result.costUsd,
+          modelRole: "structured",
+        });
+      }
       return {
         object: result.object,
         ...(result.costUsd !== undefined
@@ -97,7 +109,7 @@ export function createPluginReranker(pluginName: string): PluginReranker {
 /** Create the host-owned decision model capability exposed to tool hooks. */
 export function createPluginDecider(
   pluginName: string,
-  runtime: { signal?: AbortSignal } = {},
+  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
 ): PluginDecider {
   return {
     async decide<TChoice extends string>(input: {
@@ -122,6 +134,12 @@ export function createPluginDecider(
           pluginModelRole: "decision",
         },
       });
+      if (result.costUsd !== undefined) {
+        await runtime.onCost?.({
+          costUsd: result.costUsd,
+          modelRole: "decision",
+        });
+      }
       const answer = result.answers.answer;
       return {
         choice: answer.choice as TChoice,

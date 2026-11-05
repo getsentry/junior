@@ -12,6 +12,7 @@ const completeDecision = vi.fn(async () => ({
       probabilities: { block: 0.9, allow: 0.1 },
     },
   },
+  costUsd: 0.0001,
 }));
 const embedTexts = vi.fn(async () => ({
   dimensions: 1,
@@ -45,7 +46,13 @@ describe("createPluginModel", () => {
   it("uses the fast model for structured plugin calls by default", async () => {
     const { createPluginModel } = await import("@/chat/plugins/model");
 
-    const result = await createPluginModel("test-plugin").completeObject({
+    const onCost = vi.fn(async () => undefined);
+
+    const result = await createPluginModel(
+      "test-plugin",
+      {},
+      { onCost },
+    ).completeObject({
       prompt: "classify",
       schema: {} as never,
     });
@@ -56,6 +63,10 @@ describe("createPluginModel", () => {
       }),
     );
     expect(result).toEqual({ costUsd: 0.0042, object: { ok: true } });
+    expect(onCost).toHaveBeenCalledWith({
+      costUsd: 0.0042,
+      modelRole: "structured",
+    });
   });
 
   it("uses the host default model when requested", async () => {
@@ -93,7 +104,9 @@ describe("createPluginModel", () => {
   it("asks the decision model one choice question", async () => {
     const { createPluginDecider } = await import("@/chat/plugins/model");
 
-    const result = await createPluginDecider("test-plugin").decide({
+    const onCost = vi.fn(async () => undefined);
+
+    const result = await createPluginDecider("test-plugin", { onCost }).decide({
       criteria: { allow: "Safe change.", block: "Risky change." },
       instructions: "Judge the eval change.",
       state: "+ expect(reply).toBe('done')",
@@ -114,7 +127,12 @@ describe("createPluginModel", () => {
     );
     expect(result).toEqual({
       choice: "block",
+      costUsd: 0.0001,
       probabilities: { block: 0.9, allow: 0.1 },
+    });
+    expect(onCost).toHaveBeenCalledWith({
+      costUsd: 0.0001,
+      modelRole: "decision",
     });
   });
 });
