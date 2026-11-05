@@ -6,6 +6,9 @@ import {
   readConversationLastEventSeq,
   readConversationMessageEventSeq,
 } from "@/api/conversations/event-page";
+import { steerConversationPendingMessagesForViewer } from "@/api/conversations/steer-pending-messages";
+import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
+import { logException } from "@/chat/logging";
 import { getSqlExecutor } from "@/chat/db";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import {
@@ -36,11 +39,16 @@ export function registerSendMessageTool(
     {
       title: "Send message",
       description:
-        "Send a message as you to one of your conversations. The agent answers in the background. When a turn is running, the message waits for it. Returns the messages that no turn has read yet and a `cursor`. Pass the `cursor` as `after` to getConversation to read the reply.",
+        "Send a message as you to one of your conversations. The agent answers in the background. When a turn is running, the message waits for it unless `delivery` is `interrupt`. Returns the messages that no turn has read yet and a `cursor`. Pass the `cursor` as `after` to getConversation to read the reply.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         message: mcpMessageTextSchema,
         idempotencyKey: mcpIdempotencyKeySchema,
+        delivery: conversationPendingMessageDeliverySchema
+          .default("defer")
+          .describe(
+            "`defer` waits for the running turn to end. `interrupt` joins the running turn at its next safe step. Use it to correct or add to the work in progress.",
+          ),
       },
       outputSchema: mcpAcceptedMessageSchema,
       annotations: {
@@ -50,7 +58,7 @@ export function registerSendMessageTool(
         readOnlyHint: false,
       },
     },
-    async ({ conversationId, idempotencyKey, message }) => {
+    async ({ conversationId, delivery, idempotencyKey, message }) => {
       if (!(await isConversationParticipant(user, conversationId))) {
         return mcpToolError("Conversation not found.");
       }
@@ -69,6 +77,23 @@ export function registerSendMessageTool(
         );
       } catch (error) {
         return apiToolError(error);
+      }
+      if (delivery === "interrupt") {
+        // The message already landed. If steering fails, it waits for the
+        // running Turn, and `pendingMessages` shows `defer`.
+        try {
+          await steerConversationPendingMessagesForViewer(
+            user,
+            conversationId,
+            {
+              inboundMessageIds: [accepted.messageId],
+            },
+          );
+        } catch (error) {
+          logException(error, "mcp.send_message.steer.failed", {
+            "gen_ai.conversation.id": conversationId,
+          });
+        }
       }
       // A retry can come after a Turn read the message and replied. Start
       // before the message then, so the cursor does not skip the reply.
