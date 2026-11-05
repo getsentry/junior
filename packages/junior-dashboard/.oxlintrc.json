@@ -64,6 +64,13 @@
     "no-restricted-imports": [
       "error",
       {
+        "paths": [
+          {
+            "name": "@sentry/browser",
+            "importNames": ["init"],
+            "message": "init() bundles every default integration. Build a BrowserClient, as in client/sentry.ts."
+          }
+        ],
         "patterns": [
           {
             "group": [
