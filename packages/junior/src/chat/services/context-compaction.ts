@@ -58,14 +58,6 @@ import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 
-/** Log fields of the Turn that compacts its history. */
-export interface CompactionMetadata {
-  channelId?: string;
-  actorId?: string;
-  runId?: string;
-  threadId?: string;
-}
-
 /** Outcome of one compaction attempt. */
 export interface CompactContextResult {
   compacted: boolean;
