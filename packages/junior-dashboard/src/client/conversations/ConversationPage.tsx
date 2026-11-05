@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -16,10 +16,15 @@ import type {
 import type { ConversationData } from "./queries";
 import {
   useArchiveConversation,
+  type ArchivedFromConversationState,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { conversationIsResponding } from "./transcript";
+import {
+  ConversationCatchUpContext,
+  useConversationCatchUp,
+} from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyButton } from "../components/CopyButton";
 import {
@@ -229,6 +234,7 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const navigate = useNavigate();
   const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
@@ -264,6 +270,13 @@ export function ConversationPage(props: {
     : (unreadHistory ?? detail);
   const transcriptPending =
     detail.isPending || Boolean(unreadHistory?.isPending && !cachedAtOpen);
+  const catchUp = useConversationCatchUp({
+    conversationId,
+    events: history.data?.events,
+    hasNewerPage: Boolean(history.newer),
+    hasPreviousPage: history.hasPreviousPage,
+    unread: holdCachedTranscript ? undefined : readAtOpen.unread,
+  });
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -545,11 +558,22 @@ export function ConversationPage(props: {
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
               error: Boolean(archive.error),
-              onClick: () =>
+              onClick: () => {
+                const archived = !conversation!.archivedAt;
                 archive.mutate({
-                  archived: !conversation?.archivedAt,
+                  archived,
                   lastSeenAt: conversation!.lastSeenAt,
-                }),
+                });
+                // Archiving hides this conversation, so go home at once.
+                // The mutation keeps running after this page unmounts.
+                if (archived) {
+                  navigate("/", {
+                    state: {
+                      archivedConversation: conversation!,
+                    } satisfies ArchivedFromConversationState,
+                  });
+                }
+              },
               pending: archive.isPending,
             }}
             live={live}
@@ -600,39 +624,41 @@ export function ConversationPage(props: {
                     </div>
                   ) : null}
                   <ConversationMemoryContext value={memoryState}>
-                    <Transcript
-                      hasPreviousPage={history.hasPreviousPage}
-                      historyError={history.historyError}
-                      historyVersion={history.historyVersion}
-                      lastReadSeq={readAtOpen.lastReadSeq}
-                      live={live}
-                      loadingPreviousPage={history.isLoadingPreviousPage}
-                      newerHistory={history.newer}
-                      onLoadPreviousPage={history.loadPreviousPage}
-                      onRead={holdCachedTranscript ? undefined : markRead}
-                      onSelectedEventSeqChange={setSelectedEventSeq}
-                      // Sends and the thinking row belong after the latest event.
-                      pendingMessages={
-                        history.newer ? undefined : detail.inlineMessages
-                      }
-                      pinRequestVersion={pinRequestVersion}
-                      responding={
-                        !detail.error &&
-                        !history.newer &&
-                        conversationIsResponding(detail.data)
-                      }
-                      onOpenSubagentTranscript={onOpenSubagentTranscript}
-                      search={search}
-                      onSearchChange={setSearch}
-                      selectedEventSeq={selectedEventSeq}
-                      startAtUnread={startAtUnread}
-                      transcript={transcript}
-                      turnContextPanel={turnContextPanel}
-                      unread={
-                        holdCachedTranscript ? undefined : readAtOpen.unread
-                      }
-                      view={view}
-                    />
+                    <ConversationCatchUpContext value={catchUp}>
+                      <Transcript
+                        hasPreviousPage={history.hasPreviousPage}
+                        historyError={history.historyError}
+                        historyVersion={history.historyVersion}
+                        lastReadSeq={readAtOpen.lastReadSeq}
+                        live={live}
+                        loadingPreviousPage={history.isLoadingPreviousPage}
+                        newerHistory={history.newer}
+                        onLoadPreviousPage={history.loadPreviousPage}
+                        onRead={holdCachedTranscript ? undefined : markRead}
+                        onSelectedEventSeqChange={setSelectedEventSeq}
+                        // Sends and the thinking row belong after the latest event.
+                        pendingMessages={
+                          history.newer ? undefined : detail.inlineMessages
+                        }
+                        pinRequestVersion={pinRequestVersion}
+                        responding={
+                          !detail.error &&
+                          !history.newer &&
+                          conversationIsResponding(detail.data)
+                        }
+                        onOpenSubagentTranscript={onOpenSubagentTranscript}
+                        search={search}
+                        onSearchChange={setSearch}
+                        selectedEventSeq={selectedEventSeq}
+                        startAtUnread={startAtUnread}
+                        transcript={transcript}
+                        turnContextPanel={turnContextPanel}
+                        unread={
+                          holdCachedTranscript ? undefined : readAtOpen.unread
+                        }
+                        view={view}
+                      />
+                    </ConversationCatchUpContext>
                   </ConversationMemoryContext>
                 </>
               )}
