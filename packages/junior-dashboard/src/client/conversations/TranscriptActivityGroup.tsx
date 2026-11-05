@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
@@ -15,6 +15,7 @@ import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
+import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -175,18 +176,16 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   );
 }
 
-/** Keep activity collapsed until the reader explicitly opens it. */
-export function activityGroupOpen(userOpen: boolean | null): boolean {
-  return userOpen ?? false;
-}
-
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
   entries: RenderedTranscriptEntry[];
+  /** Keeps the group open while it unmounts outside the viewport. */
+  openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  // Activity stays collapsed until the reader opens it.
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
@@ -202,14 +201,8 @@ export function TranscriptActivityGroup(props: {
     );
   }
 
-  const open = activityGroupOpen(userOpen);
-
   return (
-    <Collapsible
-      className="min-w-0 py-0.5"
-      onOpenChange={setUserOpen}
-      open={open}
-    >
+    <Collapsible className="min-w-0 py-0.5" onOpenChange={setOpen} open={open}>
       <TranscriptSummaryTrigger
         flush
         className={cn(

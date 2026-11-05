@@ -193,6 +193,10 @@ export function ConversationPage(props: {
   const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
   // A memory chosen in details waits here until its transcript row renders.
   const [memoryJump, setMemoryJump] = useState<MemoryJump>();
+  // The transcript mounts only rows near the viewport. The rows of the last
+  // memory jump stay mounted, so the jump finds its row and the popover
+  // keeps it.
+  const [revealSeq, setRevealSeq] = useState<number>();
   // The page stays mounted across Conversations. Memory state belongs to one.
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -201,6 +205,7 @@ export function ConversationPage(props: {
     setMemoryConversationId(props.conversationId);
     setMemoryPopover(undefined);
     setMemoryJump(undefined);
+    setRevealSeq(undefined);
   }
   const quickQuestion = useQuickQuestionThread(props.conversationId);
   // Event details and turn context also show over a Quick question.
@@ -665,6 +670,7 @@ export function ConversationPage(props: {
                           history.newer ? undefined : detail.inlineMessages
                         }
                         pinRequestVersion={pinRequestVersion}
+                        revealSeq={revealSeq}
                         responding={
                           !detail.error &&
                           !history.newer &&
@@ -744,6 +750,7 @@ export function ConversationPage(props: {
               // can hide them.
               if (view !== "rich") onViewChange("rich");
               setSearch("");
+              setRevealSeq(entry.seq);
               setMemoryJump({
                 memoryId: entry.memory.id,
                 seq: entry.seq,

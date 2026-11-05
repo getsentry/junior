@@ -52,6 +52,8 @@ export function Transcript(props: {
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
   responding?: boolean;
+  /** Keep the rows around this event seq mounted, so the page can show it. */
+  revealSeq?: number;
   search?: string;
   onSearchChange?(value: string): void;
   selectedEventSeq?: number;
@@ -182,6 +184,8 @@ export function Transcript(props: {
                 conversation={props.transcript}
                 pendingMessages={props.pendingMessages}
                 responding={props.responding ?? props.live ?? false}
+                revealSeq={props.revealSeq}
+                scrollAnchorKey={bottomPinning.scrollAnchorKey}
                 unread={props.unread}
               />
             </TranscriptJumpToLatestContext>
