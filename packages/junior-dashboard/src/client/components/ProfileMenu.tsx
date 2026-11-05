@@ -12,7 +12,7 @@ import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
-import { pluginUserPagePath } from "../pages/user/PluginUserPage";
+import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import { ThemeSwitcher } from "./ThemeSwitcher";

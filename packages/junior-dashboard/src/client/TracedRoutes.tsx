@@ -1,4 +1,4 @@
-import { useLayoutEffect, type ReactNode } from "react";
+import { Suspense, useLayoutEffect, type ReactNode } from "react";
 import {
   createRoutesFromChildren,
   matchRoutes,
@@ -23,9 +23,13 @@ function routePattern(matches: RouteMatch[]): string {
 /**
  * Render `<Route>` children like `<Routes>`, and name the open pageload or
  * navigation span after the route pattern that matched, such as
- * `/conversations/:conversationId`.
+ * `/conversations/:conversationId`. Lazy pages show `fallback` while their
+ * code loads.
  */
-export function TracedRoutes(props: { children: ReactNode }) {
+export function TracedRoutes(props: {
+  children: ReactNode;
+  fallback: ReactNode;
+}) {
   const location = useLocation();
   const routes = createRoutesFromChildren(props.children);
   const element = useRoutes(routes, location);
@@ -36,5 +40,5 @@ export function TracedRoutes(props: { children: ReactNode }) {
   useLayoutEffect(() => {
     if (pattern) nameRouteSpan(pattern);
   }, [location.key, pattern]);
-  return element;
+  return <Suspense fallback={props.fallback}>{element}</Suspense>;
 }
