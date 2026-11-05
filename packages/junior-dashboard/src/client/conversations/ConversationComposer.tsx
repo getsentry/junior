@@ -86,11 +86,12 @@ type ConversationComposerProps = {
   label: string;
   placeholder?: string;
   /**
-   * Restore the submitted text after a failed accept when there is no mailbox
-   * outbox (new conversation create). Existing conversations keep failures in
-   * the pending queue instead.
+   * Keep the draft in place and locked until `onSubmit` resolves, then clear
+   * it. Use it when no mailbox outbox shows the send (new Conversation, Quick
+   * question): the text leaves the composer when it shows somewhere else. A
+   * failure keeps the draft and its send key for a retry.
    */
-  restoreDraftOnError?: boolean;
+  holdDraftUntilAccept?: boolean;
   /** Lets the parent put a message taken out of the queue back in the draft. */
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
@@ -122,9 +123,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
-  // New-conversation create holds the send control until accept settles so a
-  // failed restore cannot race a later submit.
-  const [createPending, setCreatePending] = useState(false);
+  const [holdPending, setHoldPending] = useState(false);
   const [canSend, setCanSend] = useState(() =>
     Boolean(initialDraft.text.trim()),
   );
@@ -149,15 +148,12 @@ export const ConversationComposer = memo(function ConversationComposer(
     idempotencyKey: initialDraft.idempotencyKey,
     lastSubmittedText: initialDraft.lastSubmittedText,
   });
-  // Blocks same-tick double fire. For create restore, also blocks until settle.
+  // Blocks same-tick double fire. A held draft also blocks until settle.
   const submittingRef = useRef(false);
   // Blocks a second send while the reader answers `confirmSubmit`.
   const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
-  // Monotonic token so a late failed create never restores over a newer submit.
-  const submitTokenRef = useRef(0);
-  const sendLocked =
-    Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
+  const sendLocked = Boolean(props.disabled) || holdPending;
 
   // Flush the latest draft if the reader leaves before the debounce lands.
   useEffect(() => {
@@ -307,62 +303,56 @@ export const ConversationComposer = memo(function ConversationComposer(
       submittedImages.length ? submittedImages : undefined,
     );
     attemptRef.current = attempt;
-    const submitToken = ++submitTokenRef.current;
-    const submittedDraft: ConversationDraft = {
-      idempotencyKey: attempt.idempotencyKey,
-      lastSubmittedText: attempt.lastSubmittedText,
-      hasImages: submittedImages.length > 0,
-      text,
-    };
-    // Clear immediately so the reader can compose the next message. Existing
-    // conversations keep failures in the mailbox outbox; new roots may restore.
-    const nextAttempt = emptyDraft();
-    const clearedDraft: ConversationDraft = {
-      ...nextAttempt,
-      text: "",
-    };
-    replaceMessage(clearedDraft);
-    replaceImages([]);
-    setImageError(undefined);
-    storeDraft(storageKey, clearedDraft);
-    attemptRef.current = nextAttempt;
-    submittingRef.current = true;
-    if (props.restoreDraftOnError) setCreatePending(true);
-    props.onSubmitStart?.();
-    textareaRef.current?.focus({ preventScroll: true });
-    // Existing conversations unlock immediately so the next message can queue.
-    // Create restore stays locked until this accept settles.
-    if (!props.restoreDraftOnError) {
-      queueMicrotask(() => {
-        submittingRef.current = false;
-      });
-    }
-
-    try {
-      await props.onSubmit(
+    const send = () =>
+      props.onSubmit(
         text,
         attempt.idempotencyKey,
         submittedImages.length ? submittedImages : undefined,
       );
-    } catch {
-      if (!props.restoreDraftOnError) {
-        // Parent keeps the failed message in the mailbox queue for retry.
+    const clear = () => {
+      const nextAttempt = emptyDraft();
+      const clearedDraft: ConversationDraft = { ...nextAttempt, text: "" };
+      replaceMessage(clearedDraft);
+      replaceImages([]);
+      setImageError(undefined);
+      storeDraft(storageKey, clearedDraft);
+      attemptRef.current = nextAttempt;
+    };
+    submittingRef.current = true;
+    props.onSubmitStart?.();
+
+    if (props.holdDraftUntilAccept) {
+      // Save the send key with the draft, so a retry after a reload reuses it.
+      const heldDraft: ConversationDraft = {
+        ...draftRef.current,
+        idempotencyKey: attempt.idempotencyKey,
+        lastSubmittedText: attempt.lastSubmittedText,
+        hasImages: submittedImages.length > 0,
+      };
+      draftRef.current = heldDraft;
+      storeDraft(storageKey, heldDraft);
+      setHoldPending(true);
+      try {
+        await send();
+      } catch {
+        // The parent shows the error. The draft stays for a retry.
         return;
-      }
-      // Ignore stale failures after a newer submit owns the composer.
-      if (submitToken !== submitTokenRef.current) return;
-      // Restore only when the reader has not already started another draft.
-      if (draftRef.current.text || imagesRef.current.length) return;
-      replaceImages(submittedImages);
-      replaceMessage(submittedDraft);
-      attemptRef.current = attempt;
-      storeDraft(storageKey, submittedDraft);
-    } finally {
-      if (props.restoreDraftOnError && submitToken === submitTokenRef.current) {
+      } finally {
         submittingRef.current = false;
-        setCreatePending(false);
+        setHoldPending(false);
       }
+      clear();
+      return;
     }
+
+    // Clear at once so the reader can compose the next message. The parent
+    // keeps a failed send in the mailbox outbox for retry.
+    clear();
+    textareaRef.current?.focus({ preventScroll: true });
+    queueMicrotask(() => {
+      submittingRef.current = false;
+    });
+    await send().catch(() => {});
   };
 
   // Put queued text back ahead of anything the reader already typed.
@@ -521,7 +511,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
               : "md:min-h-14",
           )}
-          disabled={Boolean(props.restoreDraftOnError && createPending)}
+          disabled={holdPending}
           enterKeyHint="send"
           id={id}
           inputMode="text"

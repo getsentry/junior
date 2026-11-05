@@ -1,6 +1,7 @@
 import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
@@ -22,6 +23,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
+import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -69,6 +71,7 @@ export function ConversationWorkspace(props: {
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
+  const queryClient = useQueryClient();
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -130,7 +133,13 @@ export function ConversationWorkspace(props: {
           images,
           visibility,
         });
-        navigate(conversationPath(accepted.conversationId));
+        // Open the Conversation with its transcript and composer, not a
+        // skeleton. The draft stays on this page until the route changes, so
+        // the message moves from the composer to the transcript at once.
+        await prefetchConversationDetail(queryClient, accepted.conversationId);
+        await navigate(conversationPath(accepted.conversationId), {
+          flushSync: true,
+        });
       }}
     />
   );
@@ -318,7 +327,7 @@ function NewConversationView(props: {
           </ToggleGroup>
         }
         label="Start a conversation"
-        restoreDraftOnError
+        holdDraftUntilAccept
         submitLabel="Send"
         onSubmit={(message, idempotencyKey, images) =>
           props.onSubmit(message, idempotencyKey, visibility, images)

@@ -16,19 +16,20 @@ const HOVER_INTENT_MS = 150;
 /**
  * Fetch the detail as the open of the Conversation would: with the mailbox
  * and the unread page, and with no cached copy to compare. The next visit
- * uses this fetch as its open fetch.
+ * uses this fetch as its open fetch. A failed fetch resolves too: the open
+ * then fetches again.
  */
-function prefetchConversationDetail(
+export async function prefetchConversationDetail(
   client: QueryClient,
   conversationId: string,
-) {
+): Promise<void> {
   const query = client.getQueryCache().find({
     exact: true,
     queryKey: conversationDetailQueryKey(conversationId),
   });
   // An open Conversation polls by itself.
   if (query?.getObserversCount()) return;
-  void client.prefetchQuery({
+  await client.prefetchQuery({
     ...conversationDetailQueryOptions(conversationId),
     queryFn: async ({ signal }): Promise<ConversationSnapshot> => {
       const next = await readConversationData(
@@ -63,7 +64,7 @@ export function usePrefetchConversation(conversationId: string) {
   const start = () => {
     clearTimeout(timer.current);
     timer.current = setTimeout(
-      () => prefetchConversationDetail(queryClient, conversationId),
+      () => void prefetchConversationDetail(queryClient, conversationId),
       HOVER_INTENT_MS,
     );
   };
