@@ -291,6 +291,14 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
   await expect(
+    pending.getByRole("button", { name: "7 queued messages", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeHidden();
+
+  await page.setViewportSize({ height: 1050, width: 1600 });
+  await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeVisible();
   await expect(

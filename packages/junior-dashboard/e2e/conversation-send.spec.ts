@@ -238,7 +238,11 @@ test("starts and continues conversations from the dashboard", async ({
   // Distinct messages can queue while an earlier accept is still open.
   await composer.fill("Second queued message");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(pending.getByText("Second queued message")).toBeVisible();
+  const expandQueue = pending.getByRole("button", {
+    name: "2 queued messages",
+  });
+  await expect(expandQueue).toHaveAttribute("aria-expanded", "false");
+  await expect(pending.getByText("Second queued message")).toBeHidden();
   await expect.poll(() => continueRequests.length).toBe(2);
   // Empty-composer double submit must not mint another request.
   await composer.evaluate((element) => {
@@ -247,6 +251,7 @@ test("starts and continues conversations from the dashboard", async ({
   expect(continueRequests).toHaveLength(2);
   releaseFirstContinue?.();
   await expect(pending.getByText("Could not send.")).toBeVisible();
+  await expect(expandQueue).toHaveAttribute("aria-expanded", "false");
   await expect(composer).toHaveValue("");
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
@@ -261,6 +266,8 @@ test("starts and continues conversations from the dashboard", async ({
   // The accepted message stays out of the composer before background transcript
   // refreshes finish. Keep the local row until a server snapshot sees it.
   await expect(composer).toHaveValue("");
+  await expandQueue.click();
+  await expect(pending.getByText("Second queued message")).toBeVisible();
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   releaseDetailRefresh?.();
   await screenshot(page, "conversation-outbox-author");
@@ -713,6 +720,12 @@ test("stops the active Turn and returns queued text to the composer", async ({
   await expect(stop).toBeVisible();
   await composer.fill(sentMessage.text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await pending
+    .getByRole("button", { name: "2 queued messages" })
+    .press("Enter");
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toBeFocused();
   await expect(pending.getByText(sentMessage.text)).toBeVisible();
   await screenshot(page, "conversation-stop-active");
 
@@ -822,6 +835,7 @@ test("edits a queued message back into the composer", async ({
   );
   const composer = page.getByLabel("Continue this conversation");
   const pending = page.getByLabel("Pending messages");
+  await pending.getByRole("button", { name: "2 queued messages" }).click();
   await expect(pending.getByText(queuedMessage.text)).toBeVisible();
   await expect(
     pending.getByRole("img", { name: "queued-chart.png" }),
