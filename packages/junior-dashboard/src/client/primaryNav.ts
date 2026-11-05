@@ -1,7 +1,7 @@
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import type { DashboardHeaderNavItem } from "./components/layout/DashboardHeader";
-import { pluginUserPagePath } from "./pages/user/PluginUserPage";
+import { pluginUserPagePath } from "./pages/user/pluginUserPageRoutes";
 
 const AUTH_PRIMARY_NAV_PREFIXES = [
   "/admin",
