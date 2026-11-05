@@ -42,6 +42,8 @@ import {
   automationParamsSchema,
   automationSummarySchema,
   automationRunListSchema,
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import {
@@ -303,6 +305,24 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.post("/conversations/:conversationId/catch-up", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationCatchUpBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    return jsonResponse(conversationCatchUpSchema, {
+      needsYou: "Review the Safari fix on PR #12.",
+      summary:
+        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+    });
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

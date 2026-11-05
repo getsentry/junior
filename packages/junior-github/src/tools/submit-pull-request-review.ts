@@ -6,6 +6,12 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 const reviewCommentSchema = z
   .object({
     path: z.string().trim().min(1).describe("File path in the pull request."),
@@ -66,35 +72,8 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(body: unknown): string {
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const message = (body as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof body === "string" && body.trim()) return body.trim();
-  return "GitHub request failed";
-}
-
 function throwReviewError(status: number, body: unknown): never {
-  const message = `GitHub pull request review failed with HTTP ${status}: ${githubError(body)}`;
+  const message = `GitHub pull request review failed with HTTP ${status}: ${githubErrorMessage(body)}`;
   if (status === 404 || status === 422) {
     throw new PluginToolInputError(message);
   }
@@ -129,33 +108,22 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
           ? { start_side: comment.start_side }
           : undefined),
       }));
-      const response = await egress.fetch({
-        provider: "github",
+      const response = await githubApi(egress, {
         operation: "github.pull.review.create",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${review.number}/reviews`,
-          {
-            method: "POST",
-            headers: {
-              Accept: "application/vnd.github+json",
-              "Content-Type": "application/json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-            body: JSON.stringify({
-              body: review.body,
-              event: review.event,
-              ...(comments ? { comments } : undefined),
-            }),
-          },
-        ),
+        method: "POST",
+        path: `${repoPath(repo)}/pulls/${review.number}/reviews`,
+        body: {
+          body: review.body,
+          event: review.event,
+          ...(comments ? { comments } : undefined),
+        },
       });
-      const parsed = await readJson(response);
       if (!response.ok) {
-        throwReviewError(response.status, parsed);
+        throwReviewError(response.status, response.body);
       }
       const providerResult = z
         .object({ id: z.number(), html_url: z.string(), state: z.string() })
-        .parse(parsed);
+        .parse(response.body);
       return {
         target: "submitPullRequestReview",
         repo: repo.ref,

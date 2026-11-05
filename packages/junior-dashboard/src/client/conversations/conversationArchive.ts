@@ -11,6 +11,7 @@ import type {
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import type { Conversation } from "../types";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
@@ -80,6 +81,27 @@ export function usePendingArchiveConversationUpdates() {
       } satisfies PendingArchiveConversationUpdate;
     },
   });
+}
+
+/**
+ * Router state for home after a conversation archives itself. Home reports
+ * the background archive result, because the conversation page is gone.
+ */
+export type ArchivedFromConversationState = {
+  archivedConversation: Conversation;
+};
+
+/** Read the newest archive or restore status for one conversation. */
+export function useLatestArchiveStatus(conversationId: string | undefined) {
+  const statuses = useMutationState({
+    filters: {
+      exact: true,
+      mutationKey: [...archiveConversationMutationKey, conversationId],
+    },
+    select: (mutation) => mutation.state.status,
+  });
+  // The mutation cache keeps insertion order, so the last entry is newest.
+  return conversationId ? statuses.at(-1) : undefined;
 }
 
 /** Archive or restore one conversation with an immediate reversible cache update. */

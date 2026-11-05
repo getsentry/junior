@@ -4,6 +4,7 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
+import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
   defineJuniorPlugin,
   mergeEventMatchFields,
@@ -281,26 +282,17 @@ export function githubPlugin(
               } as const
             )[reference.kind];
             // Read through host egress so policy, grants, and audit apply.
-            const response = await ctx.egress.fetch({
-              provider: "github",
+            const response = await githubApi(ctx.egress, {
               operation,
-              request: new Request(
-                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
-                {
-                  headers: {
-                    Accept: "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                  },
-                  signal: ctx.signal,
-                },
-              ),
+              path: `${repoPath(reference)}/${collection}/${encodeURIComponent(reference.id)}`,
+              signal: ctx.signal,
             });
             if (!response.ok) {
               throw new Error(
                 `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
               );
             }
-            return await response.json();
+            return response.body;
           },
         });
       },

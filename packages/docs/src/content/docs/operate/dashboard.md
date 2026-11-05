@@ -95,7 +95,7 @@ The dashboard package owns these routes:
 | `/system/workspaces/:id/edit`   | Full-page Workspace editor.                       |
 | `/system/plugins`               | Loaded plugin and skill inventory.                |
 | `/system/plugins/:plugin`       | Plugin details and operational reports.           |
-| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.           |
+| `/_junior/dashboard/assets/*`   | Public content-hashed dashboard browser files.    |
 | `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.               |
 | `/auth/login`                   | Dashboard Google login starter.                   |
 | `/api/auth/*`                   | Better Auth Google login and callbacks.           |

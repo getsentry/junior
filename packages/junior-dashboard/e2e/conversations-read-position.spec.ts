@@ -64,6 +64,8 @@ async function mockReadPositionConversation(
     turnStartSeq: -1,
     /** The event that captured the memories of the shared memory mock. */
     memoryCaptureSeq: -1,
+    /** Events that finish a Turn. */
+    turnEndSeqs: [] as number[],
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     /** Return the page around the read position when a detail asks for it. */
@@ -137,12 +139,18 @@ async function mockReadPositionConversation(
                   turnId: "qa-turn",
                   presentation: { icon: "brain", title: "2 memories captured" },
                 }
-              : {
-                  type: "message",
-                  messageId: `message-${seq}`,
-                  role: seq % 2 === 0 ? "user" : "assistant",
-                  text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-                },
+              : state.turnEndSeqs.includes(seq)
+                ? {
+                    type: "turn_lifecycle",
+                    state: "succeeded",
+                    turnId: `turn-${seq}`,
+                  }
+                : {
+                    type: "message",
+                    messageId: `message-${seq}`,
+                    role: seq % 2 === 0 ? "user" : "assistant",
+                    text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+                  },
         seq,
       };
     });
@@ -244,6 +252,10 @@ test("opens where the reader left off and reports what they read", async ({
   await expect(marker).toBeInViewport();
   await expect(firstUnread).toBeInViewport();
   await expect(latest).not.toBeInViewport();
+  // Messages without finished Turns are quick to read, so no catch-up.
+  await expect(
+    transcript.getByRole("button", { name: "Catch me up" }),
+  ).toHaveCount(0);
   await screenshot(page, "conversation-unread-marker", { view: "mobile" });
 
   // Reading the first screen moves the shared position past the marker.
@@ -259,6 +271,51 @@ test("opens where the reader left off and reports what they read", async ({
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   await expect(latest).toBeInViewport();
   await expect(marker).not.toBeInViewport();
+});
+
+test("catches the reader up on several unread Turns", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 60,
+    lastReadSeq: 20,
+  });
+  mock.turnEndSeqs = [40, 50];
+  const requested: unknown[] = [];
+  await page.route(
+    `**/api/conversations/${mock.conversationId}/catch-up`,
+    async (route) => {
+      requested.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          needsYou: "Review the Safari fix on PR #12.",
+          summary: "CI failed on Safari after you left. Junior pushed a fix.",
+        },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await transcript.getByRole("button", { name: "Catch me up" }).click();
+  await expect(
+    transcript.getByText("CI failed on Safari after you left."),
+  ).toBeInViewport();
+  await expect(
+    transcript.getByText("Review the Safari fix on PR #12."),
+  ).toBeVisible();
+  // The range is the one from when the Conversation opened.
+  expect(requested).toEqual([{ afterSeq: 20, throughSeq: 59 }]);
+  await screenshot(page, "conversation-catch-up", { view: "mobile" });
+
+  // The summary replaces the unread rows, so it leads straight to the latest.
+  await transcript
+    .getByRole("group", { name: "Catch-up" })
+    .getByRole("button", { name: "Jump to latest" })
+    .click();
+  await expect(transcript.getByText("Transcript message 59 ")).toBeInViewport();
 });
 
 test.describe("opens at new messages after a cached reopen", () => {

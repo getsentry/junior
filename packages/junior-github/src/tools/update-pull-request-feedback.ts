@@ -7,6 +7,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 /**
  * GitHub has reactions but no feedback state. This tool maps each state to a
@@ -63,14 +69,6 @@ interface Result extends PluginToolOutput {
   reaction_id: number;
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
 interface PullRequestCommentRef {
   owner: string;
   name: string;
@@ -99,24 +97,6 @@ export function pullRequestFeedbackReactionContent(
   return STATUS_TO_REACTION_CONTENT[status];
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  return "GitHub request failed";
-}
-
 const reactionSchema = z.object({
   id: z.number(),
   content: z.string(),
@@ -132,21 +112,13 @@ async function assertBotAuthoredPullRequest(
   egress: PluginEgress,
   input: PullRequestCommentRef & { botUserId: number },
 ): Promise<void> {
-  const headers = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-  const commentResponse = await egress.fetch({
-    provider: "github",
+  const commentResponse = await githubApi(egress, {
     operation: "github.pull.comment.get",
-    request: new Request(
-      `https://api.github.com${pullRequestCommentPath(input)}`,
-      { headers },
-    ),
+    path: pullRequestCommentPath(input),
   });
-  const commentPayload = await readJson(commentResponse);
+  const commentPayload = commentResponse.body;
   if (!commentResponse.ok) {
-    const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubError(commentPayload)}`;
+    const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubErrorMessage(commentPayload)}`;
     if (commentResponse.status === 404) throw new PluginToolInputError(message);
     throw new Error(message);
   }
@@ -168,18 +140,14 @@ async function assertBotAuthoredPullRequest(
   }
 
   // GitHub returns 404 here when the conversation comment is on an issue.
-  const pullResponse = await egress.fetch({
-    provider: "github",
+  const pullResponse = await githubApi(egress, {
     operation: "github.pull.get",
-    request: new Request(
-      `https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/pulls/${number}`,
-      { headers },
-    ),
+    path: `${repoPath(input)}/pulls/${number}`,
   });
-  const pullPayload = await readJson(pullResponse);
+  const pullPayload = pullResponse.body;
   if (!pullResponse.ok && pullResponse.status !== 404) {
     throw new Error(
-      `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubError(pullPayload)}`,
+      `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubErrorMessage(pullPayload)}`,
     );
   }
   const pull = z
@@ -245,24 +213,21 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         botUserId,
       });
       const targetContent = pullRequestFeedbackReactionContent(status);
-      const baseUrl = `https://api.github.com${pullRequestCommentReactionsPath({
+      const reactionsPath = pullRequestCommentReactionsPath({
         owner: repo.owner,
         name: repo.name,
         commentKind,
         commentId,
-      })}`;
-
-      const listResponse = await ctx.egress.fetch({
-        provider: "github",
-        operation: "github.pull.comment-reaction.list",
-        request: new Request(`${baseUrl}?per_page=100`, {
-          headers: { Accept: "application/vnd.github+json" },
-        }),
       });
-      const listPayload = await readJson(listResponse);
+
+      const listResponse = await githubApi(ctx.egress, {
+        operation: "github.pull.comment-reaction.list",
+        path: `${reactionsPath}?per_page=100`,
+      });
+      const listPayload = listResponse.body;
       if (!listResponse.ok) {
         throw new Error(
-          `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubError(listPayload)}`,
+          `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubErrorMessage(listPayload)}`,
         );
       }
       const botReactions = z
@@ -279,17 +244,14 @@ export function createGitHubUpdatePullRequestFeedbackTool(
 
       for (const stale of botReactions) {
         if (stale.content === targetContent) continue;
-        const deleteResponse = await ctx.egress.fetch({
-          provider: "github",
+        const deleteResponse = await githubApi(ctx.egress, {
           operation: "github.pull.comment-reaction.delete",
-          request: new Request(`${baseUrl}/${stale.id}`, {
-            method: "DELETE",
-          }),
+          method: "DELETE",
+          path: `${reactionsPath}/${stale.id}`,
         });
         if (!deleteResponse.ok && deleteResponse.status !== 404) {
-          const deletePayload = await readJson(deleteResponse);
           throw new Error(
-            `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubError(deletePayload)}`,
+            `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubErrorMessage(deleteResponse.body)}`,
           );
         }
       }
@@ -304,22 +266,16 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         };
       }
 
-      const createResponse = await ctx.egress.fetch({
-        provider: "github",
+      const createResponse = await githubApi(ctx.egress, {
         operation: "github.pull.comment-reaction.create",
-        request: new Request(baseUrl, {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ content: targetContent }),
-        }),
+        method: "POST",
+        path: reactionsPath,
+        body: { content: targetContent },
       });
-      const createPayload = await readJson(createResponse);
+      const createPayload = createResponse.body;
       if (!createResponse.ok) {
         throw new Error(
-          `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubError(createPayload)}`,
+          `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`,
         );
       }
       const created = reactionSchema.parse(createPayload);

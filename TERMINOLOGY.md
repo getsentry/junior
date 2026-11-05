@@ -15,6 +15,8 @@ Canonical words for Junior code and docs. One concept, one word.
   from Location.
 - **Brief**: the versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Catch-up**: a short summary of the rows after a reader's read position,
+  and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
   Event, Automation, plugin dispatch, Agent invocation). Each Inbound message
   has one; a Turn stores the one that started it.

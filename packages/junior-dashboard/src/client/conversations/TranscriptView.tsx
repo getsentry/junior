@@ -12,6 +12,7 @@ import { cn } from "../styles";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
+  TranscriptJumpToLatestContext,
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
   useAutoLoadHistoryPage,
@@ -117,6 +118,11 @@ export function Transcript(props: {
     historyVersion: props.historyVersion ?? "empty",
     onLoad: () => newer?.load(),
   });
+  const jumpToLatest = () => {
+    // The latest page is in the detail, so the jump needs no request.
+    newer?.showLatest();
+    bottomPinning.jumpToBottom();
+  };
 
   if (!props.transcript) {
     return (
@@ -169,13 +175,15 @@ export function Transcript(props: {
           />
         ) : (
           <TurnContextPanelProvider panel={props.turnContextPanel}>
-            <ConversationTranscriptView
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.transcript}
-              pendingMessages={props.pendingMessages}
-              responding={props.responding ?? props.live ?? false}
-              unread={props.unread}
-            />
+            <TranscriptJumpToLatestContext value={jumpToLatest}>
+              <ConversationTranscriptView
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.transcript}
+                pendingMessages={props.pendingMessages}
+                responding={props.responding ?? props.live ?? false}
+                unread={props.unread}
+              />
+            </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
         )}
         {newer ? (
@@ -209,11 +217,7 @@ export function Transcript(props: {
         />
         <JumpToLatestButton
           hasPendingUpdate={bottomPinning.hasPendingUpdate}
-          onClick={() => {
-            // The latest page is in the detail, so the jump needs no request.
-            newer?.showLatest();
-            bottomPinning.jumpToBottom();
-          }}
+          onClick={jumpToLatest}
           visible={bottomPinning.showJumpToLatest}
         />
       </div>

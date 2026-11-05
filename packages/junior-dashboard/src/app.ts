@@ -54,19 +54,20 @@ import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
-  DASHBOARD_CLIENT_PATH,
   DASHBOARD_INSTALL_ICON_PATH,
   DASHBOARD_MANIFEST_PATH,
   dashboardPagePaths,
   readDashboardAvatarHeader,
-  readDashboardClient,
-  readDashboardClientChunk,
   renderDashboard,
   renderFavicon,
   renderForbiddenPage,
   renderInstallIcon,
   renderManifest,
 } from "./shell";
+import {
+  DASHBOARD_ASSETS_PATH,
+  dashboardPublicAssetResponse,
+} from "./public-assets";
 import { normalizeDashboardPath, resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
@@ -459,6 +460,13 @@ export function createDashboardApp(
       },
     });
   });
+  // Content-hashed browser files are public: the same files ship in the npm
+  // package, and Nitro serves them as static assets without auth.
+  app.get(`${DASHBOARD_ASSETS_PATH}/*`, (c) =>
+    dashboardPublicAssetResponse(
+      c.req.path.slice(DASHBOARD_ASSETS_PATH.length + 1),
+    ),
+  );
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
@@ -756,25 +764,6 @@ export function createDashboardApp(
         emailVerified: session.user.emailVerified,
         isAdmin: updated.isAdmin === true,
         name: updated.displayName ?? session.user.name,
-      },
-    });
-  });
-  app.get(DASHBOARD_CLIENT_PATH, () => {
-    return new Response(readDashboardClient(), {
-      headers: {
-        "cache-control": "no-store",
-        "content-type": "application/javascript; charset=utf-8",
-      },
-    });
-  });
-  app.get("/_junior/dashboard/chunks/:file", (c) => {
-    const chunk = readDashboardClientChunk(c.req.param("file"));
-    if (!chunk) return c.notFound();
-    return new Response(chunk, {
-      headers: {
-        "cache-control": "private, max-age=31536000, immutable",
-        "content-type": "application/javascript; charset=utf-8",
-        "x-content-type-options": "nosniff",
       },
     });
   });
