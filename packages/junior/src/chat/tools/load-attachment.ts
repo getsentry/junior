@@ -1,7 +1,11 @@
 import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { readLiveAttachment } from "@/chat/attachments/store";
+import {
+  readLiveAttachment,
+  readLiveAttachmentsForConversation,
+  type AttachmentRecord,
+} from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -28,6 +32,28 @@ export function createLoadAttachmentTool(args: {
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
 }) {
+  // Tools are built per turn. Load the conversation's attachment metadata once
+  // and share it across calls so a script loading N files issues one query.
+  let liveAttachments: Promise<Map<string, AttachmentRecord>> | undefined;
+  const findAttachment = async (
+    attachmentId: string,
+  ): Promise<AttachmentRecord | null> => {
+    liveAttachments ??= readLiveAttachmentsForConversation({
+      conversationId: args.conversationId,
+      db: args.db,
+    }).catch((error: unknown) => {
+      liveAttachments = undefined;
+      throw error;
+    });
+    const cached = (await liveAttachments).get(attachmentId);
+    if (cached) return cached;
+    // Attachments stored after the first load (e.g. mid-turn) miss the cache.
+    return readLiveAttachment({
+      attachmentId,
+      conversationId: args.conversationId,
+      db: args.db,
+    });
+  };
   return zodTool({
     description:
       "Load a stored attachment for this conversation into the sandbox. Use the attachment_id shown in attachment context or Slack read results.",
@@ -42,11 +68,7 @@ export function createLoadAttachmentTool(args: {
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {
-      const attachment = await readLiveAttachment({
-        attachmentId: attachment_id,
-        conversationId: args.conversationId,
-        db: args.db,
-      });
+      const attachment = await findAttachment(attachment_id);
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError("Attachment not found in this conversation.");
       }

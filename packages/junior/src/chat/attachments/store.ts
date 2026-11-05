@@ -413,6 +413,16 @@ export async function storeAttachment(args: {
   throw new Error(`Attachment ${id} disappeared while reviving`);
 }
 
+const liveAttachmentColumns = {
+  bytes: juniorAttachments.bytes,
+  contentType: juniorAttachments.contentType,
+  conversationId: juniorAttachments.conversationId,
+  filename: juniorAttachments.filename,
+  id: juniorAttachments.id,
+  storageProvider: juniorAttachments.storageProvider,
+  storageKey: juniorAttachments.storageKey,
+};
+
 /** Load one live attachment owned by a conversation. */
 export async function readLiveAttachment(args: {
   attachmentId: string;
@@ -421,16 +431,7 @@ export async function readLiveAttachment(args: {
 }): Promise<AttachmentRecord | null> {
   const [row] = await args.db
     .db()
-    .select({
-      bytes: juniorAttachments.bytes,
-      contentType: juniorAttachments.contentType,
-      conversationId: juniorAttachments.conversationId,
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
-      id: juniorAttachments.id,
-      storageProvider: juniorAttachments.storageProvider,
-      storageKey: juniorAttachments.storageKey,
-    })
+    .select(liveAttachmentColumns)
     .from(juniorAttachments)
     .where(
       and(
@@ -443,15 +444,32 @@ export async function readLiveAttachment(args: {
   if (await isConversationPurged(args.db, args.conversationId)) {
     return null;
   }
-  return {
-    bytes: row.bytes,
-    contentType: row.contentType,
-    conversationId: row.conversationId,
-    filename: row.filename,
-    id: row.id,
-    storageKey: row.storageKey,
-    storageProvider: row.storageProvider,
-  };
+  return { ...row };
+}
+
+/**
+ * Load every live attachment owned by a conversation in one query, keyed by
+ * id. Returns an empty map when the conversation transcript was purged.
+ */
+export async function readLiveAttachmentsForConversation(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+}): Promise<Map<string, AttachmentRecord>> {
+  const rows = await args.db
+    .db()
+    .select(liveAttachmentColumns)
+    .from(juniorAttachments)
+    .where(
+      and(
+        eq(juniorAttachments.conversationId, args.conversationId),
+        isNull(juniorAttachments.deleteRequestedAt),
+      ),
+    );
+  if (rows.length === 0) return new Map();
+  if (await isConversationPurged(args.db, args.conversationId)) {
+    return new Map();
+  }
+  return new Map(rows.map((row) => [row.id, { ...row }]));
 }
 
 /** Persist many conversation-owned files. */

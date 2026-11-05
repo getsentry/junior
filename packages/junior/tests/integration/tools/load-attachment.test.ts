@@ -125,4 +125,64 @@ describe("loadAttachment tool", () => {
     ).rejects.toThrow(/read 0 bytes, expected 11/);
     expect(sandboxWorkspace.written).toEqual([]);
   });
+
+  it("loads several attachments with one metadata lookup", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const db = getSqlExecutor();
+    await getConversationStore().recordActivity({
+      conversationId: CONVERSATION_ID,
+      destination: { channelId: "CLOAD", platform: "slack", teamId: "TLOAD" },
+      nowMs: 1,
+      source: "slack",
+      title: "Load attachment conversation",
+      visibility: "public",
+    });
+    const storeFile = (filename: string) =>
+      storeAttachment({
+        conversationId: CONVERSATION_ID,
+        db,
+        file: {
+          bytes: filename.length,
+          data: Buffer.from(filename),
+          filename,
+          mimeType: "text/plain",
+          path: `/tmp/${filename}`,
+        },
+        storage,
+      });
+    const first = await storeFile("a.txt");
+    const second = await storeFile("bb.txt");
+    const dbSpy = vi.spyOn(db, "db");
+    const sandboxWorkspace = workspace();
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db,
+      storage,
+      workspace: sandboxWorkspace,
+    });
+
+    await Promise.all([
+      tool.execute?.({ attachment_id: first.id }, {}),
+      tool.execute?.({ attachment_id: second.id }, {}),
+    ]);
+    // One attachments query plus one purge check, shared by both calls.
+    expect(dbSpy).toHaveBeenCalledTimes(2);
+    await tool.execute?.({ attachment_id: first.id }, {});
+
+    expect(dbSpy).toHaveBeenCalledTimes(2);
+    expect(sandboxWorkspace.written.map((file) => file.path)).toEqual([
+      `.junior/attachments/${first.id}/a.txt`,
+      `.junior/attachments/${second.id}/bb.txt`,
+      `.junior/attachments/${first.id}/a.txt`,
+    ]);
+
+    const late = await storeFile("late.txt");
+    await expect(
+      tool.execute?.({ attachment_id: late.id }, {}),
+    ).resolves.toMatchObject({ filename: "late.txt" });
+    await expect(
+      tool.execute?.({ attachment_id: "missing" }, {}),
+    ).rejects.toThrow(/Attachment not found/);
+    dbSpy.mockRestore();
+  });
 });
