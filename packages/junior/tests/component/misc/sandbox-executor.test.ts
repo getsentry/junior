@@ -172,6 +172,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/logging")>();
   return {
     ...actual,
+    logWarn: vi.fn(actual.logWarn),
     withSpan: (async (name, op, context, callback, attributes = {}) => {
       const span = { name, attributes: { ...attributes } };
       recordedSpans.push(span);
@@ -190,6 +191,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 
+import { logWarn } from "@/chat/logging";
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
@@ -2087,6 +2089,29 @@ describe("createTestSandbox", () => {
     expect(response.result.details.exit_code).toBe(1);
     expect(response.result.details.auth_required).toBeUndefined();
     expect(response.result.details.permission_denied).toBeUndefined();
+  });
+
+  it("logs a Vercel firewall challenge page in bash output", async () => {
+    const sandbox = makeSandbox("sbx_challenged");
+    sandbox.runCommand.mockImplementationOnce(async () => ({
+      exitCode: 1,
+      stdout: async () =>
+        "<!DOCTYPE html><html><head><title>Vercel Security Checkpoint</title>",
+      stderr: async () => "",
+    }));
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createTestSandbox({ sandboxId: "sbx_challenged" });
+    executor.configureSkills([]);
+
+    await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "gh api rate_limit" },
+    });
+
+    expect(logWarn).toHaveBeenCalledWith("sandbox.egress.challenged", {
+      "app.sandbox.egress_id": expect.any(String),
+    });
   });
 
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {

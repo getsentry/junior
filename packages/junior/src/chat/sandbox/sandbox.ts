@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import {
   getTracePropagationHeaders,
   logInfo,
+  logWarn,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
@@ -143,6 +144,8 @@ function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
     message: workspaceSnapshotNotReadyUserMessage(notReady),
   });
 }
+
+const VERCEL_FIREWALL_CHALLENGE_MARKER = "Vercel Security Checkpoint";
 
 const SANDBOX_TOOL_NAMES = new Set([
   "bash",
@@ -432,6 +435,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
                 ? { "error.type": "nonzero_exit" }
                 : {}),
           });
+          // Vercel's platform firewall can challenge the hop that forwards
+          // credentialed traffic to the egress route. That request never
+          // reaches Junior, so the checkpoint page is the only signal.
+          if (
+            `${response.stdout ?? ""}${response.stderr ?? ""}`.includes(
+              VERCEL_FIREWALL_CHALLENGE_MARKER,
+            )
+          ) {
+            logWarn("sandbox.egress.challenged", {
+              "app.sandbox.egress_id": activeSessionId,
+            });
+          }
           setSpanStatus(response.exitCode === 0 ? "ok" : "error");
           return response;
         },
