@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
+import { http } from "msw";
+import { z } from "zod";
 import { createResumeState } from "@/chat/agent/resume";
 import {
   CODE_MODE_SCRIPT_TIMEOUT_MS,
@@ -8,6 +12,7 @@ import {
 } from "@/chat/codemode/bridge";
 import { botConfig } from "@/chat/config";
 import { createToolActionReview } from "@/chat/guardian/gate";
+import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
@@ -15,6 +20,7 @@ import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
+import { mswServer } from "../../msw/server";
 
 const CONVERSATION_ID = "local:test:codemode-bridge";
 const DESTINATION = {
@@ -255,6 +261,87 @@ describe("Code Mode bridge", () => {
     expect(result.value).toContain("tools.spawnAgent does not exist.");
     expect(result.calls).toEqual([]);
     expect(spawnAgent).not.toHaveBeenCalled();
+  });
+
+  it("gives a script the result of an MCP tool, not only its cards", async () => {
+    const mcpUrl = "https://mcp.ci.example.com/mcp";
+    const server = new McpServer({ name: "ci-test", version: "1.0.0" });
+    server.registerTool(
+      "pipelines",
+      {
+        description: "List pipelines",
+        inputSchema: {},
+        outputSchema: { pipelines: z.array(z.string()) },
+      },
+      () => ({
+        content: [{ type: "text", text: '{"pipelines":["filestore"]}' }],
+        structuredContent: { pipelines: ["filestore"] },
+      }),
+    );
+    server.registerTool(
+      "status",
+      { description: "Show status", inputSchema: {} },
+      () => ({ content: [{ type: "text", text: "all green" }] }),
+    );
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => "ci-test-session",
+    });
+    await server.connect(transport);
+    mswServer.use(
+      http.all(mcpUrl, async ({ request }) => transport.handleRequest(request)),
+    );
+    const manager = new McpToolManager([
+      {
+        dir: "/plugins/ci",
+        skillsDir: "/plugins/ci/skills",
+        manifest: {
+          name: "ci",
+          displayName: "CI",
+          description: "CI MCP provider",
+          configKeys: [],
+          mcp: { transport: "http", url: mcpUrl },
+        },
+      },
+    ]);
+    try {
+      expect(await manager.activateProvider("ci")).toBe(true);
+      const registry = createTools([], {}, {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        mcpToolManager: manager,
+        source: SOURCE,
+        workspace: {} as never,
+      } as never);
+      const { scriptTools } = planToolExposure(registry);
+
+      const { result } = await runCodeModeScript({
+        countToolCall: turnCount().countToolCall,
+        pipeline: pipelineFor(fakeGuardian()),
+        source: `
+          const [pipelines, status] = await Promise.all([
+            tools.callMcpTool({ tool_name: "mcp__ci__pipelines", arguments: {} }),
+            tools.callMcpTool({ tool_name: "mcp__ci__status", arguments: {} }),
+          ]);
+          return { pipelines: pipelines.result, status: status.result };
+        `,
+        toolCallId: CODEMODE_CALL_ID,
+        tools: scriptTools,
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: { pipelines: { pipelines: ["filestore"] }, status: "all green" },
+      });
+    } finally {
+      await manager.close();
+      await transport.close();
+    }
   });
 
   it("rejects only the denied call and keeps its marker", async () => {
