@@ -14,6 +14,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setBriefsConfig } from "@/chat/briefs/registration";
+import { botConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
@@ -293,6 +294,7 @@ describe("Conversation Brief task", () => {
       modelId: TEST.calls[0]?.modelId,
       costUsd: 0.0042,
     });
+    expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
     expect(rows[0]?.searchText).not.toBe("");
     expect(rows[0]?.content.links).toEqual([
       expect.objectContaining({

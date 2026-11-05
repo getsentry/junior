@@ -155,8 +155,9 @@ export async function updateConversationBrief(
         terminalSeq,
       );
       // Same request as `junior briefs run`, so the tuned prompt and
-      // temperature apply in production.
-      const modelId = botConfig.modelId;
+      // temperature apply in production. Briefs run after the reply and share
+      // no prompt prefix with the Turn, so the main model's cache cannot help.
+      const modelId = botConfig.fastModelId;
       const generation = await generateBrief({
         completeObject: (request) =>
           completeObject({
