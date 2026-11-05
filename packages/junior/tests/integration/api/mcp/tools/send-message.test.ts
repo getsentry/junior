@@ -14,7 +14,7 @@ import {
 mockMcpDashboardConfig();
 
 describe("sendMessage MCP tool", () => {
-  it("queues a follow-up for the Conversation", async () => {
+  it("queues a follow-up that joins the running Turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
       conversationWorkQueue: () => queue,
@@ -26,6 +26,7 @@ describe("sendMessage MCP tool", () => {
     const sent = await call("sendMessage", {
       conversationId,
       message: "Did the relay deploy finish?",
+      delivery: "interrupt",
     });
     const { cursor, messageId } = sent.structuredContent as {
       cursor: string;
@@ -46,7 +47,7 @@ describe("sendMessage MCP tool", () => {
       {
         author: MCP_TEST_VIEWER,
         createdAt: expect.any(String),
-        delivery: "defer",
+        delivery: "interrupt",
         messageId,
         text: "Did the relay deploy finish?",
       },
