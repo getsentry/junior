@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { encodeConversationCursor } from "@/api/conversations/cursor";
 import { appendConversationMessageForViewer } from "@/api/conversations/create";
-import { readConversationLastEventSeq } from "@/api/conversations/event-page";
+import {
+  readConversationLastEventSeq,
+  readConversationMessageEventSeq,
+} from "@/api/conversations/event-page";
 import { getSqlExecutor } from "@/chat/db";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import {
@@ -67,12 +70,22 @@ export function registerSendMessageTool(
       } catch (error) {
         return apiToolError(error);
       }
+      // A retry can come after a Turn read the message and replied. Start
+      // before the message then, so the cursor does not skip the reply.
+      const messageSeq =
+        accepted.status === "duplicate"
+          ? await readConversationMessageEventSeq(
+              getSqlExecutor(),
+              accepted.conversationId,
+              accepted.messageId,
+            )
+          : undefined;
       return mcpToolResult({
         ...accepted,
         ...(await readMcpPendingWorkAfterSend(user, accepted.conversationId)),
         cursor: encodeConversationCursor({
           conversationId: accepted.conversationId,
-          seq: lastSeq,
+          seq: messageSeq === undefined ? lastSeq : messageSeq - 1,
         }),
         url: getDashboardConversationLink(accepted.conversationId),
       });

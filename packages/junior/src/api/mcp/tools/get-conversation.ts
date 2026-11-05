@@ -99,7 +99,7 @@ export function registerGetConversationTool(
     {
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `status` is not `active`. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `status` is not `active` and `hasMore` is not set. Use listConversationMessages for older messages.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         after: z
@@ -129,7 +129,7 @@ export function registerGetConversationTool(
           .boolean()
           .optional()
           .describe(
-            "True when more messages already follow `cursor`. Call again now.",
+            "True when more messages already follow `cursor`. Call again now, also when `status` is not `active`.",
           ),
         pendingMessages: mcpPendingMessagesSchema,
         authorization: mcpAuthorizationSchema.optional(),
