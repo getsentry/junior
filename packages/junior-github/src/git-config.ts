@@ -237,6 +237,11 @@ fi
  * for an editor at the end. A message with no content stays empty, so Git
  * still aborts the commit.
  *
+ * With `JUNIOR_COAUTHOR_LIST` set, it prints only the `Co-authored-by` lines
+ * that it would remove. The hook uses this to read the co-authors of a
+ * rewritten commit with the same rules, so a squash-style message keeps the
+ * co-authors in its earlier trailer paragraphs too.
+ *
  * The hook puts this program in single quotes, so it must not contain one.
  */
 const SET_COAUTHOR_TRAILERS_AWK = String.raw`
@@ -281,6 +286,15 @@ END {
       if (!comment(lines[j])) kept_content[p]++
     }
     if (kept_content[p]) content_count++
+  }
+  if (ENVIRON["JUNIOR_COAUTHOR_LIST"] != "") {
+    for (j = 1; j <= last; j++) {
+      if (!drop[j]) continue
+      line = lines[j]
+      sub(/^[^:]*:[[:space:]]*/, "", line)
+      print "Co-Authored-By: " line
+    }
+    exit
   }
   last_paragraph = 0
   for (p = 1; p <= count; p++) {
@@ -418,21 +432,28 @@ if [ "\${GIT_AUTHOR_NAME:-}" != "$JUNIOR_GIT_AUTHOR_NAME" ] || [ "\${GIT_AUTHOR_
   fi
 fi
 
+set_coauthor_trailers() {
+  awk '${SET_COAUTHOR_TRAILERS_AWK}' "$@"
+}
+
 # Existing co-authors first, then the host-derived human run actors.
 coauthor_trailers=""
 for rewritten_commit in $rewritten_commits; do
-  coauthors=$(git show -s --format='%(trailers:key=Co-authored-by,valueonly,unfold)' "$rewritten_commit" -- 2>/dev/null) || continue
-  while IFS= read -r coauthor; do
-    if [ -n "$coauthor" ]; then
-      coauthor_trailers="$coauthor_trailers"'Co-Authored-By: '"$coauthor$nl"
-    fi
-  done <<COAUTHORS
-$coauthors
-COAUTHORS
+  rewritten_message=$(git show -s --format=%B "$rewritten_commit" -- 2>/dev/null) || continue
+  coauthors=$(
+    JUNIOR_COAUTHOR_LIST=1
+    export JUNIOR_COAUTHOR_LIST
+    printf '%s\\n' "$rewritten_message" | set_coauthor_trailers
+  )
+  coauthor_trailers="$coauthor_trailers$coauthors$nl"
 done
 coauthor_trailers="$coauthor_trailers\${JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:-}"
 
-message=$(JUNIOR_COAUTHOR_TRAILERS=$coauthor_trailers awk '${SET_COAUTHOR_TRAILERS_AWK}' "$message_file")
+message=$(
+  JUNIOR_COAUTHOR_TRAILERS=$coauthor_trailers
+  export JUNIOR_COAUTHOR_TRAILERS
+  set_coauthor_trailers "$message_file"
+)
 printf '%s\\n' "$message" > "$message_file"
 `;
 }

@@ -4257,7 +4257,17 @@ Conversation: \`local:test:old-conversation\`
       ok(human.env, "commit", "-q", "-m", "feat(x): Add feature");
       writeFileSync(join(repoDir, "shared.txt"), "pat\n");
       ok(human.env, "add", ".");
-      pushAsPerson("commit", "-q", "-m", "fix(x): Tweak shared file");
+      // A squash-style message with co-authors in two trailer paragraphs.
+      pushAsPerson(
+        "commit",
+        "-q",
+        "-m",
+        "fix(x): Tweak shared file\n\n" +
+          "fix: first\n\n" +
+          "Co-authored-by: Ann Early <ann@example.com>\n\n" +
+          "fix: second\n\n" +
+          "Co-authored-by: Ben Late <ben@example.com>",
+      );
       ok(human.env, "checkout", "-q", "main");
       writeFileSync(join(repoDir, "shared.txt"), "main\n");
       ok(human.env, "add", ".");
@@ -4270,6 +4280,9 @@ Conversation: \`local:test:old-conversation\`
       ok(event.env, "add", "shared.txt");
       ok({ ...event.env, GIT_EDITOR: "true" }, "rebase", "--continue");
       expect(coauthors("HEAD~1")).toBe("David Cramer <david@example.com>");
+      expect(coauthors()).toBe(
+        "Ann Early <ann@example.com>\nBen Late <ben@example.com>",
+      );
       expect(ok({}, "log", "-1", "--format=%an <%ae>")).toBe(
         "Pat Pusher <pat@example.com>\n",
       );
