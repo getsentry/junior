@@ -30,7 +30,7 @@ import {
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
-import { escapeXml } from "@/chat/xml";
+import { escapeXml, escapeXmlText } from "@/chat/xml";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import type { Workspace } from "@/chat/workspaces/types";
 import type {
@@ -389,10 +389,10 @@ function buildSlackChannelDetailsSection(
 ): string | null {
   const lines = [
     slackConversation?.topic
-      ? `topic: ${escapeXml(slackConversation.topic)}`
+      ? `topic: ${escapeXmlText(slackConversation.topic)}`
       : "",
     slackConversation?.description
-      ? `description: ${escapeXml(slackConversation.description)}`
+      ? `description: ${escapeXmlText(slackConversation.description)}`
       : "",
   ].filter(Boolean);
 
