@@ -5,6 +5,40 @@
 import type { EventInput } from "@sentry/junior-plugin-api";
 import { gitHubRepositoryResource } from "../events/repository.js";
 
+/** The GitHub user who did what an Event describes, when GitHub names one. */
+export function gitHubDoneBy(
+  login: string | undefined,
+): Pick<EventInput, "doneBy"> | undefined {
+  const handle = login?.trim();
+  return handle ? { doneBy: { provider: "github", handle } } : undefined;
+}
+
+/** The text of a webhook value, or undefined when it is missing or blank. */
+export function nonBlank(value: string | null | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
+/** The title and body of an issue or pull request, as untrusted text. */
+export function titleAndBodyText(item: {
+  body?: string | null;
+  title?: string;
+}): string | undefined {
+  const parts = [
+    item.title ? `Title: ${item.title}` : undefined,
+    nonBlank(item.body),
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+/** Convert an optional provider timestamp for receipt-time fallback ordering. */
+export function providerTime(
+  value: string | null | undefined,
+): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 /**
  * Drop missing values from event data. A filter on a value that GitHub did not
  * send then does not match.

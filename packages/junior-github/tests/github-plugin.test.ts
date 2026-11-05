@@ -971,6 +971,7 @@ describe("github plugin", () => {
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "issue.updated",
         ],
       },
       url: "https://github.com/getsentry/junior/issues/660",
