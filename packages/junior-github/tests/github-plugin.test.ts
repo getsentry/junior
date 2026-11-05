@@ -781,6 +781,7 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "GET",
+        operation: "github.issue.get",
         url: "https://api.github.com/repos/getsentry/junior/issues/449",
       }),
     ).toMatchObject({
@@ -2657,6 +2658,48 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).rejects.toThrow("must use the github_updatePullRequest tool");
+  });
+
+  it("routes raw issue reads to github_getIssue", async () => {
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            "query IssueByNumber($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issueOrPullRequest(number: $number) { ... on Issue { title } } } }",
+        }),
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "GET",
+        operation: "github.issue.get",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768/comments",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            'query { repository(owner: "getsentry", name: "junior") { issues(first: 1) { nodes { number } } } }',
+        }),
+      }),
+    ).resolves.toMatchObject({ access: "read" });
   });
 
   it("keeps unsupported repository writes outside the allowlist", async () => {
