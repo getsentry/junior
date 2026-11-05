@@ -88,6 +88,11 @@ export async function readConversationDetailState(
  * so it is read on each request. Names, avatars, Automation titles, and
  * plugin sidebar labels are not covered: they refresh with the next detail
  * change or a reload.
+ *
+ * The read position is not hashed. The dashboard writes it as the reader
+ * scrolls and puts the stored value in its cached detail, so a poll after a
+ * read can answer 304. Other tabs and devices get it with the next detail
+ * change or a reload.
  */
 export async function readConversationDetailEtag(
   conversationId: string,
@@ -105,7 +110,6 @@ export async function readConversationDetailEtag(
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
-    readPosition: state.readPosition ?? null,
     subtree,
     viewerMarks: state.viewerMarks ?? null,
   });
