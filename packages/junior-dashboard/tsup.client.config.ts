@@ -39,6 +39,7 @@ export default defineConfig({
     "@sentry/junior/version",
     "@sentry/junior-plugin-api",
     "@tanstack/react-query",
+    "@tanstack/react-virtual",
     "@uidotdev/usehooks",
     "class-variance-authority",
     "cn",
