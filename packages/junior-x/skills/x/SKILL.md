@@ -22,7 +22,7 @@ The X API is pay-per-use. Each post returned costs about $0.005 and each user ab
 
 - Request only the posts the answer needs. Use `max_results=10` for search (the minimum) and `5` for timelines unless the user asks for more.
 - Do not follow `next_token` unless the user asks for more results. Never page more than 100 posts in one request without saying the rough cost first.
-- For "how much" or "how many" questions, use the counts endpoint. It bills per request, not per post.
+- For "how much" or "how many" questions, use a counts endpoint. It bills per request, not per post. `counts/recent` covers only the last 7 days; use `counts/all` for older periods and say which range the count covers.
 - Add `expansions=author_id` only when you need author names. Each expanded user is billed like a user read.
 - Use full-archive search only when the user needs posts older than 7 days.
 - Reuse results that are already in the thread instead of fetching them again.
@@ -36,16 +36,17 @@ The X API is pay-per-use. Each post returned costs about $0.005 and each user ab
 
 2. Pick the most direct endpoint.
 
-| Question                                  | Endpoint                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| One post or a few posts                   | `GET /2/tweets/<id>` or `GET /2/tweets?ids=<id1>,<id2>` (up to 100)                     |
-| What people are saying about X (≤ 7 days) | `GET /2/tweets/search/recent?query=<query>&max_results=10`                              |
-| Posts older than 7 days                   | `GET /2/tweets/search/all?query=<query>&start_time=<iso>&end_time=<iso>&max_results=10` |
-| How much chatter, volume over time        | `GET /2/tweets/counts/recent?query=<query>&granularity=day`                             |
-| Replies to a post                         | Search with `query=conversation_id:<id>`                                                |
-| An account's profile                      | `GET /2/users/by/username/<username>?user.fields=description,public_metrics,created_at` |
-| An account's recent posts                 | `GET /2/users/<id>/tweets?max_results=5`                                                |
-| Posts mentioning an account               | `GET /2/users/<id>/mentions?max_results=5`                                              |
+| Question                                  | Endpoint                                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- |
+| One post or a few posts                   | `GET /2/tweets/<id>` or `GET /2/tweets?ids=<id1>,<id2>` (up to 100)                      |
+| What people are saying about X (≤ 7 days) | `GET /2/tweets/search/recent?query=<query>&max_results=10`                               |
+| Posts older than 7 days                   | `GET /2/tweets/search/all?query=<query>&start_time=<iso>&end_time=<iso>&max_results=10`  |
+| How much chatter, volume over time        | `GET /2/tweets/counts/recent?query=<query>&granularity=day`                              |
+| Volume older than 7 days                  | `GET /2/tweets/counts/all?query=<query>&start_time=<iso>&end_time=<iso>&granularity=day` |
+| Replies to a post                         | Search with `query=conversation_id:<id>`                                                 |
+| An account's profile                      | `GET /2/users/by/username/<username>?user.fields=description,public_metrics,created_at`  |
+| An account's recent posts                 | `GET /2/users/<id>/tweets?max_results=5`                                                 |
+| Posts mentioning an account               | `GET /2/users/<id>/mentions?max_results=5`                                               |
 
 - Ask for the fields you report, for example `tweet.fields=created_at,public_metrics,author_id,conversation_id,lang`. The default response has only `id` and `text`.
 - Build search queries with operators: `from:<handle>`, `to:<handle>`, `"exact phrase"`, `url:<domain>`, `lang:en`, `-is:reply`, `has:links`, `min_likes:<n>`, `min_replies:<n>`, `min_reposts:<n>`. Recent search queries can be up to 512 characters.
