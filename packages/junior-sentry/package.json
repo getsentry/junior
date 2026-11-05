@@ -23,10 +23,12 @@
   },
   "files": [
     "dist",
+    "migrations",
     "skills"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
@@ -35,12 +37,14 @@
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
+    "drizzle-kit": "catalog:",
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
