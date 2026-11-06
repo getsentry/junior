@@ -672,7 +672,7 @@ function conversationStatItems(
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
-          label: "Subagents",
+          label: "Child conversations",
         }
       : undefined,
   ];
