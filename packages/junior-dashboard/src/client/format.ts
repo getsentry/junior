@@ -16,6 +16,7 @@ import type {
 import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
+import { isChildConversation } from "./conversations/transcript";
 
 /** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
 export function getDashboardTimeZone(): string {
@@ -673,7 +674,7 @@ export function conversationDetailTitle(
     | undefined,
 ): string | undefined {
   return (
-    detail?.agentTree?.at(-1)?.label ??
+    (isChildConversation(detail) ? detail.agentTree.at(-1)?.label : null) ??
     (detail?.displayTitle?.trim() || undefined)
   );
 }
