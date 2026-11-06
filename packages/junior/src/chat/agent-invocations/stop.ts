@@ -60,9 +60,10 @@ export async function stopChildAgent(args: {
 }
 
 /**
- * Stop the child agents of an agent Conversation that a stop interrupted.
- * The worker of that Conversation calls this after it records its own stop,
- * so this sends no stop request to that Conversation.
+ * Stop the child agents of a Conversation whose run saw its stop. A child
+ * agent's worker calls this after it records its own stop, and the root work
+ * path in `app/conversation-work.ts` calls it for a root. So this sends no
+ * stop request to that Conversation.
  *
  * The worker can see its stop late. The stop already reached every child
  * agent that existed then, so this stops only child agents that this
@@ -101,13 +102,11 @@ export async function stopChildAgentsOf(
  * agent, its worker records the stop and reports it to its parent. Call it
  * through `stopConversation`, which stops the Conversation's Turn next.
  *
- * Known gap: the Conversation's run sees its stop only at its next stop
- * signal check. A child agent that it spawns or gives new work to before
- * then is not stopped, and a `messageAgent` call then ends the stop of that
- * child agent. A child agent's worker stops such child agents when it sees
- * the stop (`stopChildAgentsOf`), but a root's worker does not. Their stop
- * is later than the root's, so a person's input to the root does not end
- * it. Only new work from their parent does.
+ * The Conversation's run sees its stop only at its next stop signal check.
+ * When it does, `stopChildAgentsOf` stops the child agents that it spawned or
+ * gave new work to before then. Their stop is later than this one, so a
+ * person's input to this Conversation does not end it. Only new work from
+ * their parent does.
  */
 export async function stopChildAgentsBelow(
   conversationId: string,

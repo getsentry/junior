@@ -21,6 +21,7 @@ import {
   enqueueAgentInvocationResult,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { botConfig } from "@/chat/config";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
@@ -174,6 +175,25 @@ export function createConversationWork(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );
   };
+  const runRoot = async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const mailboxTurn = await resolveMailboxTurnWork(context);
+    if (mailboxTurn) {
+      const work = await withAgentInvocationResultActors(mailboxTurn);
+      if (!work) {
+        // A stop skipped every child result in this input.
+        await context.attempt.ack();
+        return { status: "completed" };
+      }
+      return await conversationTurnWorker(context, work);
+    }
+    const dispatchId = await resolveAgentDispatchId(context);
+    if (dispatchId) {
+      return await dispatchWorker(context, dispatchId);
+    }
+    return await destinationWorker(context);
+  };
   const run = async (
     attemptContext: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
@@ -191,21 +211,20 @@ export function createConversationWork(
     if (conversation?.parentConversationId) {
       return await childWorker(context);
     }
-    const mailboxTurn = await resolveMailboxTurnWork(context);
-    if (mailboxTurn) {
-      const work = await withAgentInvocationResultActors(mailboxTurn);
-      if (!work) {
-        // A stop skipped every child result in this input.
-        await context.attempt.ack();
-        return { status: "completed" };
-      }
-      return await conversationTurnWorker(context, work);
+    // A root's run can see its stop late. Then it stops the child agents that
+    // it spawned or gave new work to after the stop, as a child's worker does.
+    const readStopSignal = context.stopSignal;
+    let stopSignal: AbortSignal | undefined;
+    const result = await runRoot({
+      ...context,
+      stopSignal: readStopSignal
+        ? () => (stopSignal = readStopSignal())
+        : undefined,
+    });
+    if (stopSignal?.aborted) {
+      await stopChildAgentsOf(context.conversationId, options.state);
     }
-    const dispatchId = await resolveAgentDispatchId(context);
-    if (dispatchId) {
-      return await dispatchWorker(context, dispatchId);
-    }
-    return await destinationWorker(context);
+    return result;
   };
   return {
     conversationStore: options.conversationStore,

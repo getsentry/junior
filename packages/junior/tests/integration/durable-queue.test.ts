@@ -3,6 +3,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-webhook";
 import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   botConfig,
@@ -643,13 +644,10 @@ describe("durable queue contract", () => {
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({ state: "abandoned" });
       // Only the stop acknowledgment posts. The paused turn never replies.
-      expect(q.replies()).toEqual([
-        expect.stringContaining("stay out of this thread"),
-      ]);
+      expect(q.replies()).toEqual([SLACK_STOP_ACK]);
       // The stop queued its own wake. It finds no work left.
       await expect(q.next()).resolves.toEqual({ status: "no_work" });
-      // A later mention still gets a normal reply. Stop timestamps compare in
-      // milliseconds, so the mention must be at least one millisecond later.
+      // A later mention ends the stop and gets a normal reply.
       await expectNextTurn(q, "1712346.0001");
     }, 30_000);
   });

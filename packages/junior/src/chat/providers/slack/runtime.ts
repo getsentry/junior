@@ -97,7 +97,6 @@ export interface ReplyHooks {
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
   stopSignal?: AbortSignal;
-  subscribeThread?: () => Promise<boolean>;
 }
 
 interface SteeringDrainContext {
@@ -731,13 +730,7 @@ export function createSlackTurnRuntime<
           actorUserName: actorUserName(message),
           runId,
         });
-        const subscribed = hooks.subscribeThread
-          ? await hooks.subscribeThread()
-          : (await thread.subscribe(), true);
-        if (!subscribed) {
-          await hooks.ack?.();
-          return;
-        }
+        await thread.subscribe();
         processingReaction = await processingReactions.start(context, message);
         const toolInvocationHook = createToolInvocationHook(
           processingReaction,

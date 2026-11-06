@@ -71,9 +71,7 @@ export async function stopConversationTurn(args: {
  *
  * The child agents and sessions stop first, so a failure leaves the Turn
  * running and the stop can be retried. A child agent can outlive the parent
- * Turn, so this runs even when no Turn runs. Known gap: `stopChildAgentsBelow`
- * names the gap for a child agent that the Turn spawns or messages before it
- * sees the stop.
+ * Turn, so this runs even when no Turn runs.
  */
 export async function stopConversation(args: {
   conversationId: string;

@@ -45,7 +45,10 @@ import {
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
-import { createConversationWorkHarness } from "../../../fixtures/conversation-work";
+import {
+  createConversationWorkHarness,
+  deferred,
+} from "../../../fixtures/conversation-work";
 import { testViewer } from "../../../fixtures/user";
 
 function stopRequest(
@@ -487,5 +490,65 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(missed.childConversationId),
     ).resolves.toBe(clock());
+  });
+
+  it("stops a child agent that a stopped root spawned before its run saw the stop", async () => {
+    const started = deferred();
+    const toolCallDone = deferred();
+    // The root's run is in a long tool call when the stop comes. It sees the
+    // stop only when that call returns.
+    const work = await createConversationWorkHarness({
+      run: async (run) => {
+        started.resolve();
+        await toolCallDone.promise;
+        const signal = run.signal!;
+        if (!signal.aborted) {
+          await new Promise((resolve) =>
+            signal.addEventListener("abort", resolve, { once: true }),
+          );
+        }
+        throw signal.reason;
+      },
+    });
+    const fixture = {
+      ...(await createConversationFixture()),
+      queue: work.queue,
+    };
+    const { actor, conversationStore, queue, state } = fixture;
+    const created = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "late-root-spawn",
+        message: "Start a long Turn.",
+      },
+      { conversationStore, queue, state },
+    );
+    const processing = work.process(
+      queue.takeMessageFor(created.conversationId),
+    );
+    await started.promise;
+    const response = await stopRequest(
+      fixture,
+      created.conversationId,
+      actor.email,
+    );
+    expect(response.status).toBe(200);
+
+    // The tool call spawns a child agent after the stop.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const missed = await createAgentInvocation({
+      ...invocationInput,
+      idempotencyKey: "late-root-spawn-child",
+      parentConversationId: created.conversationId,
+    });
+    toolCallDone.resolve();
+    await expect(processing).resolves.toMatchObject({ status: "completed" });
+
+    await expect(
+      getAgentInvocation(missed.invocationId),
+    ).resolves.toMatchObject({ status: "stopped" });
+    await expect(
+      getConversationStoppedAtMs(missed.childConversationId),
+    ).resolves.toBeDefined();
   });
 });
