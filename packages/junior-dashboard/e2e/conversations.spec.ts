@@ -1,6 +1,6 @@
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { mobile, screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -194,20 +194,24 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.keyboard.press("ArrowRight");
   await expect(preview.getByText("1 of 2")).toBeVisible();
 
-  // Touch readers can pinch to zoom.
-  const previewImage = preview.getByRole("img", { name: "chart.png" });
-  const touch = (type: string, pointerId: number, clientX: number) =>
-    previewImage.dispatchEvent(type, {
-      clientX,
-      clientY: 300,
-      pointerId,
-      pointerType: "touch",
-    });
-  await touch("pointerdown", 1, 180);
-  await touch("pointerdown", 2, 220);
-  await touch("pointermove", 2, 260);
-  await touch("pointerup", 1, 180);
-  await touch("pointerup", 2, 260);
+  // Touch readers can pinch to zoom. Real touch input checks that the image
+  // keeps the gesture after a finger leaves it.
+  await page.setViewportSize(mobile);
+  const touch = await page.context().newCDPSession(page);
+  const pinch = (
+    type: "touchStart" | "touchMove" | "touchEnd",
+    points: { id: number; x: number; y: number }[],
+  ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+  await pinch("touchStart", [
+    { id: 1, x: 180, y: 450 },
+    { id: 2, x: 210, y: 450 },
+  ]);
+  await pinch("touchMove", [
+    { id: 1, x: 120, y: 450 },
+    { id: 2, x: 300, y: 700 },
+  ]);
+  await pinch("touchEnd", []);
+  await touch.detach();
   await screenshot(page, "conversation-attachment-zoom");
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();

@@ -216,6 +216,13 @@ const DOUBLE_TAP_MS = 300;
 
 type Zoom = { scale: number; x: number; y: number };
 type Point = { x: number; y: number };
+type Gesture = {
+  /** Untransformed image center. The transform scales around it. */
+  center: Point;
+  distance: number;
+  start: Point;
+  zoom: Zoom;
+};
 
 const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
 
@@ -226,14 +233,19 @@ const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
 function ZoomableImage(props: { alt: string; src: string }) {
   const [zoom, setZoom] = useState(NO_ZOOM);
   const pointers = useRef(new Map<number, Point>());
-  const gesture = useRef<{ distance: number; start: Point; zoom: Zoom }>(
-    undefined,
-  );
+  const gesture = useRef<Gesture>(undefined);
   const lastTapAt = useRef(0);
 
-  const startGesture = (from: Zoom) => {
+  const startGesture = (element: HTMLElement, from: Zoom) => {
     const points = [...pointers.current.values()];
+    // The rendered rect still shows the current zoom, even when `from` is a
+    // zoom that was just set.
+    const rect = element.getBoundingClientRect();
     gesture.current = {
+      center: {
+        x: rect.left + rect.width / 2 - zoom.x,
+        y: rect.top + rect.height / 2 - zoom.y,
+      },
       distance: pointDistance(points),
       start: midpoint(points),
       zoom: from,
@@ -242,22 +254,31 @@ function ZoomableImage(props: { alt: string; src: string }) {
 
   const onPointerDown = (event: PointerEvent<HTMLImageElement>) => {
     if (event.pointerType === "mouse") return;
-    pointers.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
-    if (pointers.current.size === 1) {
-      if (event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS) {
-        lastTapAt.current = 0;
-        const next =
-          zoom.scale > 1 ? NO_ZOOM : { scale: DOUBLE_TAP_ZOOM, x: 0, y: 0 };
-        setZoom(next);
-        startGesture(next);
-        return;
-      }
-      lastTapAt.current = event.timeStamp;
+    // Keep move and end events when a finger slides off the image.
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = { x: event.clientX, y: event.clientY };
+    pointers.current.set(event.pointerId, point);
+    if (
+      pointers.current.size === 1 &&
+      event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS
+    ) {
+      lastTapAt.current = 0;
+      startGesture(event.currentTarget, zoom);
+      const next =
+        zoom.scale > 1
+          ? NO_ZOOM
+          : zoomAt(
+              gesture.current!,
+              point,
+              DOUBLE_TAP_ZOOM,
+              event.currentTarget,
+            );
+      setZoom(next);
+      startGesture(event.currentTarget, next);
+      return;
     }
-    startGesture(zoom);
+    if (pointers.current.size === 1) lastTapAt.current = event.timeStamp;
+    startGesture(event.currentTarget, zoom);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLImageElement>) => {
@@ -270,28 +291,16 @@ function ZoomableImage(props: { alt: string; src: string }) {
     const points = [...pointers.current.values()];
     const scale =
       points.length > 1 && start.distance > 0
-        ? clamp(
-            (start.zoom.scale * pointDistance(points)) / start.distance,
-            1,
-            MAX_ZOOM,
-          )
+        ? (start.zoom.scale * pointDistance(points)) / start.distance
         : start.zoom.scale;
-    const center = midpoint(points);
-    // Keep the image edges inside the frame while it is dragged.
-    const maxX = ((scale - 1) * event.currentTarget.offsetWidth) / 2;
-    const maxY = ((scale - 1) * event.currentTarget.offsetHeight) / 2;
-    setZoom({
-      scale,
-      x: clamp(start.zoom.x + center.x - start.start.x, -maxX, maxX),
-      y: clamp(start.zoom.y + center.y - start.start.y, -maxY, maxY),
-    });
+    setZoom(zoomAt(start, midpoint(points), scale, event.currentTarget));
   };
 
   const onPointerEnd = (event: PointerEvent<HTMLImageElement>) => {
     if (!pointers.current.delete(event.pointerId)) return;
     const next = zoom.scale < 1.05 ? NO_ZOOM : zoom;
     if (next !== zoom) setZoom(next);
-    if (pointers.current.size > 0) startGesture(next);
+    if (pointers.current.size > 0) startGesture(event.currentTarget, next);
     else gesture.current = undefined;
   };
 
@@ -310,6 +319,36 @@ function ZoomableImage(props: { alt: string; src: string }) {
       }}
     />
   );
+}
+
+/**
+ * Zoom so the image point under `gesture.start` moves to `point`. This keeps
+ * the detail under the reader's fingers while they pinch or drag.
+ */
+function zoomAt(
+  gesture: Gesture,
+  point: Point,
+  scale: number,
+  element: HTMLElement,
+): Zoom {
+  const next = clamp(scale, 1, MAX_ZOOM);
+  const ratio = next / gesture.zoom.scale;
+  const x =
+    point.x -
+    gesture.center.x -
+    ratio * (gesture.start.x - gesture.center.x - gesture.zoom.x);
+  const y =
+    point.y -
+    gesture.center.y -
+    ratio * (gesture.start.y - gesture.center.y - gesture.zoom.y);
+  // Keep the image edges inside the frame.
+  const maxX = ((next - 1) * element.offsetWidth) / 2;
+  const maxY = ((next - 1) * element.offsetHeight) / 2;
+  return {
+    scale: next,
+    x: clamp(x, -maxX, maxX),
+    y: clamp(y, -maxY, maxY),
+  };
 }
 
 function midpoint(points: readonly Point[]): Point {
