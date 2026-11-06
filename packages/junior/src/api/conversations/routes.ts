@@ -51,6 +51,10 @@ import {
 } from "../schema/conversation-title";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
+import {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
@@ -65,6 +69,7 @@ import {
   setConversationAutoArchive,
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
+import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
 import {
   appendConversationMessageForViewer,
@@ -189,6 +194,30 @@ export function createConversationRoutes(
         await stopConversationTurnForViewer(viewer, conversationId, options),
       );
     },
+  );
+
+  app.post(
+    "/:conversationId/continue-in-slack",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      continueConversationInSlackBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        continueConversationInSlackResponseSchema,
+        await continueConversationInSlackForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.post(

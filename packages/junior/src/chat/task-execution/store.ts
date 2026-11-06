@@ -17,6 +17,7 @@ export {
   hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
+  moveIdleConversationDestination,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
