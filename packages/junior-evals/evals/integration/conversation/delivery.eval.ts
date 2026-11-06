@@ -122,6 +122,25 @@ describe("Slack Message Delivery", () => {
     expect(conversation.replies.length).toBeLessThanOrEqual(1);
   });
 
+  test("when asked for several images, send them together in one upload", async ({
+    run,
+  }) => {
+    mockGeneratedImage(redPandaPng());
+    const conversation = await run(
+      slackMention(
+        "show me three separate images of a red panda: one sleeping, one eating, one climbing",
+      ),
+    );
+
+    expect(
+      completedToolCalls("imageGenerate", conversation).length,
+    ).toBeGreaterThanOrEqual(1);
+    // One sendFiles call is one Slack message, so the person can page
+    // through the images instead of opening each one.
+    expect(completedToolCalls("sendFiles", conversation)).toHaveLength(1);
+    expect(conversation.files).toHaveLength(3);
+  });
+
   test("when Slack rejects the reply, the turn fails and the next turn does not use the lost reply", async ({
     run,
   }) => {

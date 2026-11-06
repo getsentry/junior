@@ -272,7 +272,7 @@ export function createImageGenerateTool(
           images: artifactRefs,
           ...resizeResult,
           delivery: options.canSendFilesToActiveConversation
-            ? "Generated images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
+            ? "Generated images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files, together with the other files for the same reply."
             : "Generated images were written to sandbox paths, but this runtime has no file-send tool for the active conversation.",
         };
       }

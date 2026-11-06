@@ -100,7 +100,7 @@ export function createSendFilesTool(
         .array(sandboxFileReferenceSchema)
         .min(1)
         .describe(
-          "One or more existing sandbox files. Objects returned by imageGenerate or webFetch can be passed unchanged.",
+          "One or more existing sandbox files. Objects returned by imageGenerate or webFetch can be passed unchanged. Files in one call arrive together as one message, so pass every file for a reply in one call.",
         ),
     }),
     outputSchema: sendFilesResultSchema,
