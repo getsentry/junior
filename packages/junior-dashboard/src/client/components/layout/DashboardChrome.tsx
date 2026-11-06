@@ -185,8 +185,9 @@ export function MobileHeaderLiveSlot() {
 }
 
 /**
- * Tags row under the mobile conversation title. It starts at the title's
- * left edge and runs to the screen edge. It collapses when empty.
+ * Tags row under the mobile conversation title. It scrolls edge to edge, and
+ * its left pad (header pad + back button + gap) starts the first tag at the
+ * title's left edge. It collapses when empty.
  */
 export function MobileHeaderTagsSlot() {
   const chrome = useContext(DashboardChromeContext);
@@ -195,7 +196,7 @@ export function MobileHeaderTagsSlot() {
   }
   return (
     <div
-      className="col-span-2 col-start-2 row-start-2 -mr-3 min-w-0 empty:hidden md:hidden"
+      className="col-span-3 col-start-1 row-start-2 -mx-3 -mt-1.5 min-w-0 overflow-x-auto pb-0.5 pl-15 pr-3 [scrollbar-width:none] empty:hidden md:hidden [&::-webkit-scrollbar]:hidden"
       ref={chrome.mobileHeaderTagsSlotRef}
     />
   );
