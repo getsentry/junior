@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useRef, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
@@ -11,6 +11,7 @@ import {
 import { formatMs } from "../format";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
+import { TranscriptNoticeUpdateContext } from "./transcriptBottomPinning";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -186,6 +187,16 @@ export function TranscriptActivityGroup(props: {
   const { active: searchActive } = useTranscriptSearch();
   // Activity stays collapsed until the reader opens it.
   const [open, setOpen] = useTranscriptRowOpen(props.openKey);
+  const noticeUpdate = useContext(TranscriptNoticeUpdateContext);
+  const lastKey = props.entries.at(-1)?.key;
+  const lastKeyRef = useRef(lastKey);
+  // The notice version skips activity, because a closed group shows only its
+  // label. An open group shows its new rows, so they are news.
+  useEffect(() => {
+    if (lastKeyRef.current === lastKey) return;
+    lastKeyRef.current = lastKey;
+    if (open) noticeUpdate?.();
+  }, [lastKey, noticeUpdate, open]);
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));

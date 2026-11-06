@@ -7,9 +7,12 @@ import {
   shouldShowJumpToLatest,
   terminalReplyPinState,
   transcriptFollowIntent,
+} from "../src/client/conversations/transcriptBottomPinning";
+import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
-} from "../src/client/conversations/transcriptBottomPinning";
+  transcriptNoticeVersion,
+} from "../src/client/conversations/transcriptTailVersions";
 import type { ConversationTranscript } from "../src/client/types";
 
 function activeTurn(
@@ -281,6 +284,64 @@ describe("transcript bottom pinning", () => {
     },
   );
 
+  it("keeps the notice version stable for activity that collapses", () => {
+    const current = activeTurn();
+    const before = transcriptNoticeVersion(current);
+    const after = transcriptNoticeVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "assistant_message",
+              parts: [{ type: "reasoning", text: "thinking" }],
+            },
+          },
+          {
+            seq: 2,
+            createdAt: "2026-01-01T00:00:03.000Z",
+            data: {
+              type: "tool_calls",
+              calls: [
+                { toolCallId: "search-1", name: "search", status: "running" },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(after).toBe(before);
+  });
+
+  it("changes the notice version for a reply and for the end of the Turn", () => {
+    const current = activeTurn();
+    const before = transcriptNoticeVersion(current);
+    const reply = transcriptNoticeVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "message",
+              messageId: "assistant-2",
+              role: "assistant",
+              text: "done",
+            },
+          },
+        ],
+      }),
+    );
+    const ended = transcriptNoticeVersion(activeTurn({ status: "completed" }));
+
+    expect(reply).not.toBe(before);
+    expect(ended).not.toBe(before);
+  });
+
   it("changes the tail version when the live turn completes", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
@@ -410,39 +471,20 @@ describe("transcript bottom pinning", () => {
     ).toBe("pause");
   });
 
-  it("shows jump-to-latest only after the reader leaves the bottom and a newer tail arrives", () => {
+  it("shows jump-to-latest only after the reader leaves the bottom and a visible update arrives", () => {
     expect(
-      shouldShowJumpToLatest({
-        enabled: true,
-        following: true,
-        hasPendingUpdate: true,
-      }),
+      shouldShowJumpToLatest({ following: true, hasPendingUpdate: true }),
     ).toBe(false);
     expect(
-      shouldShowJumpToLatest({
-        enabled: true,
-        following: false,
-        hasPendingUpdate: false,
-      }),
+      shouldShowJumpToLatest({ following: false, hasPendingUpdate: false }),
     ).toBe(false);
+    // The update can be the reply that ended the Turn.
     expect(
-      shouldShowJumpToLatest({
-        enabled: true,
-        following: false,
-        hasPendingUpdate: true,
-      }),
+      shouldShowJumpToLatest({ following: false, hasPendingUpdate: true }),
     ).toBe(true);
-    expect(
-      shouldShowJumpToLatest({
-        enabled: false,
-        following: false,
-        hasPendingUpdate: true,
-      }),
-    ).toBe(false);
     // Newer pages are not loaded, so the end is not the latest event.
     expect(
       shouldShowJumpToLatest({
-        enabled: false,
         endsAtLatest: false,
         following: false,
         hasPendingUpdate: false,

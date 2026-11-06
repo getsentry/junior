@@ -10,9 +10,6 @@ import {
   type RefObject,
 } from "react";
 
-import type { ConversationReportEvent } from "@sentry/junior/api/schema";
-
-import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
   captureScrollAnchor,
@@ -53,6 +50,8 @@ type BottomPinResult = {
   contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
+  /** Report a visible change below the reader that no version shows. */
+  noticeUpdate: () => void;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -69,160 +68,6 @@ export function isNearScrollBottom(
   const remaining =
     snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight;
   return remaining <= thresholdPx;
-}
-
-/** Build a version that changes only when a visible Junior message appears. */
-export function transcriptJuniorMessageVersion(
-  conversation: ConversationTranscript | undefined,
-): string {
-  if (!conversation) return "empty";
-  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
-    const event = conversation.events[index]!;
-    const data = event.data;
-    if (data.type === "message" && data.role === "assistant") {
-      return [
-        event.seq,
-        event.createdAt,
-        data.messageId,
-        data.redacted ? "redacted" : (data.text?.length ?? 0),
-      ].join(":");
-    }
-    if (data.type === "assistant_message" && data.parts.length > 0) {
-      const lastPart = data.parts.at(-1);
-      return [
-        event.seq,
-        event.createdAt,
-        data.parts.length,
-        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
-      ].join(":");
-    }
-  }
-  return "empty";
-}
-
-/** Build a compact visible-tail key so metadata-only polls do not look new. */
-export function transcriptBottomVersion(
-  conversation: ConversationTranscript | undefined,
-  view: TranscriptViewMode = "rich",
-): string {
-  if (!conversation) return "empty";
-
-  // Only the visible tail matters. Earlier pages must not count as new activity.
-  // The event log shows all events; the transcript omits some metadata events.
-  let last: ConversationReportEvent | undefined;
-  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
-    const event = conversation.events[index]!;
-    if (view === "rich" && !changesVisibleTranscript(event)) continue;
-    last = event;
-    break;
-  }
-
-  return [
-    conversation.conversationId,
-    conversation.status,
-    last?.seq ?? "",
-    last?.createdAt ?? "",
-    eventTailVersion(last),
-  ].join("|");
-}
-
-function changesVisibleTranscript(event: ConversationReportEvent): boolean {
-  const data = event.data;
-  if (data.type === "turn_lifecycle") return data.state === "failed";
-  return (
-    data.type === "message" ||
-    (data.type === "assistant_message" && data.parts.length > 0) ||
-    data.type === "tool_calls" ||
-    data.type === "subagent" ||
-    data.type === "structured_event" ||
-    data.type === "attachments_delivered" ||
-    data.type === "compaction"
-  );
-}
-
-function eventTailVersion(event: ConversationReportEvent | undefined): string {
-  if (!event) return "";
-  const data = event.data;
-  switch (data.type) {
-    case "message":
-      return [
-        data.type,
-        data.role,
-        data.messageId,
-        data.redacted ? "redacted" : (data.text?.length ?? 0),
-        data.eventType ?? "",
-      ].join(":");
-    case "assistant_message": {
-      const parts = data.parts;
-      const lastPart = parts.at(-1);
-      return [
-        data.type,
-        parts.length,
-        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
-      ].join(":");
-    }
-    case "tool_calls": {
-      const call = data.calls.at(-1);
-      return [
-        data.type,
-        data.calls.length,
-        call?.toolCallId ?? "",
-        call?.name ?? "",
-        call?.status ?? "",
-        call?.output === undefined ? "" : "output",
-      ].join(":");
-    }
-    case "subagent":
-      return [
-        data.type,
-        data.childConversationId,
-        data.status,
-        data.subagentKind,
-        data.parentToolCallId ?? "",
-      ].join(":");
-    case "turn_lifecycle":
-      return [
-        data.type,
-        data.turnId,
-        data.state,
-        "failureCode" in data ? data.failureCode : "",
-        "failureReason" in data ? (data.failureReason ?? "") : "",
-      ].join(":");
-    case "structured_event":
-      return [
-        data.type,
-        data.namespace,
-        data.name,
-        data.version,
-        data.presentation.title,
-        data.presentation.preview?.length ?? 0,
-      ].join(":");
-    case "message_handled":
-      return [data.type, data.messageId].join(":");
-    case "attachments_delivered":
-      return [
-        data.type,
-        data.attachments.length,
-        ...data.attachments.map(
-          (attachment) =>
-            `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
-        ),
-      ].join(":");
-    case "compaction":
-      return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "guardian_action_reviewed":
-      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
-    case "turn_context":
-      return [
-        data.type,
-        data.turnId,
-        data.pluginName,
-        data.kind,
-        data.version,
-      ].join(":");
-    default:
-      return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
-  }
 }
 
 /** Require both live mode and reader intent before moving the viewport. */
@@ -251,13 +96,12 @@ export function terminalReplyPinState(input: {
 }
 
 /**
- * Show the jump control only when the reader left the bottom and a newer tail
- * arrived, when the transcript opened at unread rows, or when it does not end
- * at the latest event. Staying pinned, or intentionally following, must not
- * flash it.
+ * Show the jump control only when the reader left the bottom and a visible
+ * update arrived, when the transcript opened at unread rows, or when it does
+ * not end at the latest event. Staying pinned, or intentionally following,
+ * must not flash it.
  */
 export function shouldShowJumpToLatest(input: {
-  enabled: boolean;
   endsAtLatest?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
@@ -267,7 +111,7 @@ export function shouldShowJumpToLatest(input: {
     !input.following &&
     (input.endsAtLatest === false ||
       Boolean(input.openedAtUnread) ||
-      (input.enabled && input.hasPendingUpdate))
+      input.hasPendingUpdate)
   );
 }
 
@@ -321,6 +165,11 @@ export function usePinnedTranscriptBottom(input: {
   endsAtLatest?: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
+  /**
+   * Changes when an update that the reader can see arrives. Without it, each
+   * change of the view's tail counts.
+   */
+  noticeVersion?: string;
   pinRequestVersion?: number;
   /** Open where a link shows its row, not at the latest message. */
   startAtLink?: boolean;
@@ -351,6 +200,8 @@ export function usePinnedTranscriptBottom(input: {
   const terminalEnabledRef = useRef(input.enabled);
   const terminalPinPendingRef = useRef(false);
   const versionsRef = useRef(input.versions);
+  const noticeVersion = input.noticeVersion ?? input.versions[input.view];
+  const noticeVersionRef = useRef(noticeVersion);
   const programmaticScrollGenerationRef = useRef(0);
   const seenPinStartsRef = useRef(new Set<string>());
   const [following, setFollowing] = useState(false);
@@ -365,9 +216,10 @@ export function usePinnedTranscriptBottom(input: {
     setContentElement(node);
   }, []);
 
+  // A pending update stays after the Turn ends, so the reader can find the
+  // reply that ended it.
   useEffect(() => {
     enabledRef.current = input.enabled;
-    if (!input.enabled) setHasPendingUpdate(false);
   }, [input.enabled]);
 
   // The transcript opened at the latest message, but the reader prefers the
@@ -621,6 +473,8 @@ export function usePinnedTranscriptBottom(input: {
     const tailChanged =
       versionsRef.current[input.view] !== input.versions[input.view];
     versionsRef.current = input.versions;
+    const noticeChanged = noticeVersionRef.current !== noticeVersion;
+    noticeVersionRef.current = noticeVersion;
     const wasEnabled = enabledRef.current;
     if (initializedRef.current && !tailChanged && wasEnabled === input.enabled)
       return;
@@ -654,7 +508,7 @@ export function usePinnedTranscriptBottom(input: {
       return;
     }
 
-    if (input.enabled && wasInitialized) {
+    if (noticeChanged && wasInitialized) {
       setHasPendingUpdate(true);
     }
   }, [
@@ -662,6 +516,7 @@ export function usePinnedTranscriptBottom(input: {
     input.view,
     input.versions.rich,
     input.versions.raw,
+    noticeVersion,
     followLatest,
     setFollowingIntent,
   ]);
@@ -784,6 +639,11 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom("auto");
   }, [input.pinRequestVersion, scrollToBottom, setFollowingIntent]);
 
+  const noticeUpdate = useCallback(() => {
+    // A follower is already pinned to the change.
+    if (enabledRef.current && !followingRef.current) setHasPendingUpdate(true);
+  }, []);
+
   const scrollAnchorKey = useCallback(() => scrollAnchorRef.current?.key, []);
 
   return useMemo(
@@ -793,9 +653,9 @@ export function usePinnedTranscriptBottom(input: {
       contentRef,
       hasPendingUpdate,
       jumpToBottom,
+      noticeUpdate,
       scrollAnchorKey,
       showJumpToLatest: shouldShowJumpToLatest({
-        enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
         following,
         hasPendingUpdate,
@@ -807,9 +667,9 @@ export function usePinnedTranscriptBottom(input: {
       contentRef,
       following,
       hasPendingUpdate,
-      input.enabled,
       input.endsAtLatest,
       jumpToBottom,
+      noticeUpdate,
       openedAtUnread,
       scrollAnchorKey,
     ],
@@ -818,6 +678,11 @@ export function usePinnedTranscriptBottom(input: {
 
 /** Jump to the latest row from inside the transcript, like the floating pill. */
 export const TranscriptJumpToLatestContext = createContext<
+  (() => void) | undefined
+>(undefined);
+
+/** Report a visible change that the notice version cannot see. */
+export const TranscriptNoticeUpdateContext = createContext<
   (() => void) | undefined
 >(undefined);
 

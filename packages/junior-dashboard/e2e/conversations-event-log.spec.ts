@@ -604,12 +604,11 @@ for (const width of [1440, 390]) {
         }),
       ).toBeHidden();
     }
-    // A later poll can wake an idle conversation while the reader is above the tail.
-    // Rows far below the reader do not mount, so the taller transcript shows
-    // that a poll brought the event.
-    const scrollHeight = () =>
-      scroll.evaluate((element) => element.scrollHeight);
-    const heightBeforeIdle = await scrollHeight();
+    const jump = page.getByRole("button", {
+      name: "Jump to latest update",
+      exact: true,
+    });
+    // The Turn ends while the reader is above the tail. Its last row is news.
     report.status = "completed";
     report.events.push({
       seq: 41,
@@ -621,9 +620,14 @@ for (const width of [1440, 390]) {
         text: "Idle update",
       },
     });
-    await expect
-      .poll(scrollHeight, { timeout: 15_000 })
-      .toBeGreaterThan(heightBeforeIdle);
+    await expect(jump).toBeVisible({ timeout: 15_000 });
+    await jump.click();
+    await expect(
+      page.getByText("Idle update", { exact: true }),
+    ).toBeInViewport();
+    await expect(jump).toBeHidden();
+    // A later poll can wake the idle conversation while the reader is above
+    // the tail.
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
@@ -639,10 +643,6 @@ for (const width of [1440, 390]) {
       },
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
-    const jump = page.getByRole("button", {
-      name: "Jump to latest update",
-      exact: true,
-    });
     await expect(jump).toBeVisible({ timeout: 15_000 });
     // New activity must not move a reader who scrolled into history, on either
     // mobile or desktop. Following resumes only when the reader requests it.
@@ -664,6 +664,28 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByText("Next live update", { exact: true }),
     ).toBeInViewport({ timeout: 15_000 });
+    await expect(jump).toBeHidden();
+
+    // Collapsed activity shows only its label, so it does not offer the jump.
+    // Rows far below the reader do not mount, so the taller transcript shows
+    // that a poll brought the event.
+    await scroll.hover();
+    await page.mouse.wheel(0, -10_000);
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
+    const scrollHeight = () =>
+      scroll.evaluate((element) => element.scrollHeight);
+    const heightBeforeActivity = await scrollHeight();
+    report.events.push({
+      seq: 44,
+      createdAt: report.lastSeenAt,
+      data: {
+        type: "tool_calls",
+        calls: [{ toolCallId: "search-1", name: "search", status: "running" }],
+      },
+    });
+    await expect
+      .poll(scrollHeight, { timeout: 15_000 })
+      .toBeGreaterThan(heightBeforeActivity);
     await expect(jump).toBeHidden();
   });
 }

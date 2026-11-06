@@ -13,11 +13,15 @@ import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
   TranscriptJumpToLatestContext,
-  transcriptBottomVersion,
-  transcriptJuniorMessageVersion,
+  TranscriptNoticeUpdateContext,
   useAutoLoadHistoryPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
+import {
+  transcriptBottomVersion,
+  transcriptJuniorMessageVersion,
+  transcriptNoticeVersion,
+} from "./transcriptTailVersions";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
   useTranscriptReadReporter,
@@ -83,6 +87,9 @@ export function Transcript(props: {
     endsAtLatest: !props.newerHistory,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
+    // The event log shows each event, so each one is news there.
+    noticeVersion:
+      view === "rich" ? transcriptNoticeVersion(props.transcript) : undefined,
     pinRequestVersion: props.pinRequestVersion,
     startAtLink: props.startAtLink,
     startAtUnread: view === "rich" && props.startAtUnread,
@@ -179,15 +186,17 @@ export function Transcript(props: {
         ) : (
           <TurnContextPanelProvider panel={props.turnContextPanel}>
             <TranscriptJumpToLatestContext value={jumpToLatest}>
-              <ConversationTranscriptView
-                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                conversation={props.transcript}
-                pendingMessages={props.pendingMessages}
-                responding={props.responding ?? props.live ?? false}
-                revealSeq={props.revealSeq}
-                scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                unread={props.unread}
-              />
+              <TranscriptNoticeUpdateContext value={bottomPinning.noticeUpdate}>
+                <ConversationTranscriptView
+                  onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                  conversation={props.transcript}
+                  pendingMessages={props.pendingMessages}
+                  responding={props.responding ?? props.live ?? false}
+                  revealSeq={props.revealSeq}
+                  scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                  unread={props.unread}
+                />
+              </TranscriptNoticeUpdateContext>
             </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
         )}
