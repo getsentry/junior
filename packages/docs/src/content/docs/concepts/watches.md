@@ -2,7 +2,7 @@
 title: Watches
 description: Follow plugin events temporarily, or turn them into durable automations.
 type: conceptual
-summary: Choose a temporary watch for updates or an event automation for automation.
+summary: Choose a temporary watch for updates, or an event automation for durable work.
 prerequisites:
   - /concepts/skills-and-plugins/
 related:

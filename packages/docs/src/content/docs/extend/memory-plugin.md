@@ -183,7 +183,7 @@ authenticated dashboard browser session.
 After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin schema:
 
 ```bash
-pnpm junior upgrade
+pnpm exec junior upgrade
 ```
 
 On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector` column plus an HNSW cosine index for 1024-dimensional vectors.
@@ -221,8 +221,8 @@ Memories are workspace-visible. A durable fact remembered in a public channel or
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
-- **Memories not recalled**: first run `pnpm junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
+- **Memories not recalled**: first run `pnpm exec junior upgrade` against the production database. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 
-Read [Config & Env Reference](/reference/config-and-env/) for the full list of database and model environment variables.
+Read [Config & Environment](/reference/config-and-env/) for the full list of database and model environment variables.
