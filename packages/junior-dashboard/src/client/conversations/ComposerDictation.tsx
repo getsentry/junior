@@ -44,7 +44,10 @@ export function ComposerDictation(props: ComposerDictationProps) {
 
   if (!supported) return null;
 
-  if (dictation.state === "recording") {
+  // Show the recording controls on click. The dot turns red only when the
+  // mic is live, because opening the device can take a moment.
+  if (listening) {
+    const live = dictation.state === "recording";
     const warn = dictation.elapsedSeconds >= DICTATION_WARN_SECONDS;
     return (
       <div className="flex items-center gap-1">
@@ -56,10 +59,19 @@ export function ComposerDictation(props: ComposerDictationProps) {
         >
           <span
             aria-hidden="true"
-            className="size-2 rounded-full bg-rose-400"
+            className={cn(
+              "size-2 rounded-full",
+              live ? "bg-rose-400" : "bg-dashboard-border-interactive",
+            )}
           />
-          <span className="sr-only">Recording </span>
-          {formatSeconds(dictation.elapsedSeconds)}
+          {live ? (
+            <>
+              <span className="sr-only">Recording </span>
+              {formatSeconds(dictation.elapsedSeconds)}
+            </>
+          ) : (
+            "Starting"
+          )}
         </span>
         <Button
           aria-label="Cancel dictation"
@@ -72,6 +84,7 @@ export function ComposerDictation(props: ComposerDictationProps) {
         </Button>
         <Button
           aria-label="Stop and transcribe"
+          disabled={!live}
           onClick={dictation.stop}
           size="icon"
           type="button"
@@ -99,6 +112,12 @@ export function ComposerDictation(props: ComposerDictationProps) {
             }
             disabled={props.disabled || busy}
             onClick={() => void dictation.start()}
+            // Ask for the mic on press, not release, to start sooner.
+            onPointerDown={(event) => {
+              if (event.button === 0 && !props.disabled) {
+                void dictation.start();
+              }
+            }}
             size="icon"
             type="button"
           >
