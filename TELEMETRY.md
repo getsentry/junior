@@ -484,8 +484,11 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   breadcrumbs, or replays.
 - A Reply rating is Sentry user feedback with `source`
   `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
-  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
-  and no person. The dashboard hides the thumbs when it has no DSN.
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating per page load. The dashboard hides the thumbs when
+  it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their
