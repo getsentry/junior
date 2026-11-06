@@ -1,6 +1,7 @@
 import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
@@ -27,6 +28,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
+import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -83,6 +85,7 @@ export function ConversationWorkspace(props: {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const conversations = useMemo(
     () =>
@@ -132,6 +135,16 @@ export function ConversationWorkspace(props: {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  // Aborts when the reader leaves home, so a late create does not pull them
+  // back from the page they went to.
+  const homeVisit = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    if (!home) return;
+    const visit = new AbortController();
+    homeVisit.current = visit.signal;
+    return () => visit.abort();
+  }, [home]);
+
   const createView = (
     <NewConversationView
       composerRef={createComposer}
@@ -141,13 +154,21 @@ export function ConversationWorkspace(props: {
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
+        const visit = homeVisit.current;
         const accepted = await createConversation.mutateAsync({
           idempotencyKey,
           message,
           images,
           visibility,
         });
-        navigate(conversationPath(accepted.conversationId));
+        // Open the Conversation with its transcript and composer, not a
+        // skeleton. The draft stays on this page until the route changes, so
+        // the message moves from the composer to the transcript at once.
+        await prefetchConversationDetail(queryClient, accepted.conversationId);
+        if (visit?.aborted) return;
+        await navigate(conversationPath(accepted.conversationId), {
+          flushSync: true,
+        });
       }}
     />
   );
@@ -367,8 +388,8 @@ function NewConversationView(props: {
           </ToggleGroup>
         }
         label="Start a conversation"
+        holdDraftUntilAccept
         ref={props.composerRef}
-        restoreDraftOnError
         submitLabel="Send"
         onSubmit={(message, idempotencyKey, images) =>
           props.onSubmit(message, idempotencyKey, visibility, images)
