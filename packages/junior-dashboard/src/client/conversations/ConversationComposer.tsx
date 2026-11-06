@@ -439,7 +439,9 @@ export const ConversationComposer = memo(function ConversationComposer(
           // only for the bare reply dock.
           props.footerStart
             ? "block overflow-hidden focus-within:border-dashboard-focus/45 focus-within:ring-1 focus-within:ring-dashboard-focus/25"
-            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35 md:block",
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35",
+          // A compact form has only the send button: keep it beside the text.
+          replyLayout && "md:block",
           dashboardComposerSurfaceClass,
           dragging && "ring-2 ring-dashboard-focus",
         )}
@@ -516,10 +518,13 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoComplete="off"
           autoCorrect={autocorrect ? "on" : "off"}
           className={cn(
-            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
+            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",
+            props.compact
+              ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)] md:text-sm"
+              : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
             replyLayout
               ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
-              : "md:min-h-14",
+              : !props.compact && "md:min-h-14",
           )}
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
@@ -540,8 +545,9 @@ export const ConversationComposer = memo(function ConversationComposer(
         />
         <div
           className={cn(
-            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3",
-            replyLayout ? "md:tall:py-2" : "md:py-2",
+            "flex min-w-0 items-center gap-3 px-2 py-1.5",
+            !props.compact && "md:px-3",
+            replyLayout ? "md:tall:py-2" : !props.compact && "md:py-2",
             props.footerStart
               ? "justify-between"
               : "justify-end md:justify-between",
