@@ -64,12 +64,12 @@ describe("Coding File Tools", () => {
     ).not.toHaveLength(0);
   });
 
-  test("when changing a web page, share a preview URL without being asked", async ({
+  test("when asked to build a web page, share a preview URL without being asked", async ({
     run,
   }) => {
     const conversation = await run(
       slackMention(
-        "/coding-workspace-fixture On the alert status page in project/web/index.html, change the retries line to say 3.",
+        "Can you make me a simple one-page website for my lemonade stand, Sunny Cups? Show the menu with prices.",
       ),
     );
 
