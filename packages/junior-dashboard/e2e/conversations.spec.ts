@@ -704,6 +704,21 @@ test("inspects and copies a child agent transcript", async ({
     "Review complete; no blocking issues found.",
   );
 
+  // The shortcut searches the drawer's transcript, not the page behind it.
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(
+    drawer.getByRole("searchbox", { name: "Search transcript" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(1);
+  // Escape closes only the search, not the drawer.
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
     name: "Event 0: message",
