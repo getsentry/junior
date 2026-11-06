@@ -42,8 +42,8 @@ import {
 import {
   getTurnInputSpanAttributes,
   withTurnSpan,
-  type SlackTurnInputTelemetry,
-} from "@/chat/providers/slack/turn-input-telemetry";
+  type TurnInputTelemetry,
+} from "@/chat/task-execution/turn-telemetry";
 import {
   getChannelId,
   getMessageTs,
@@ -107,7 +107,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
-  telemetry?: SlackTurnInputTelemetry;
+  telemetry?: TurnInputTelemetry;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */

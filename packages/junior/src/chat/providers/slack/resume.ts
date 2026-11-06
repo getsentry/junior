@@ -35,7 +35,7 @@ import {
   setTags,
   type LogContext,
 } from "@/chat/logging";
-import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { withTurnSpan } from "@/chat/task-execution/turn-telemetry";
 import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
