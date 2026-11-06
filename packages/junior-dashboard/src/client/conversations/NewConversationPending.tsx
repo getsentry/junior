@@ -91,12 +91,12 @@ export function NewConversationPending(props: {
     [pending, queryClient],
   );
 
-  // The page opens its details panel at this width. Open it here too, so
-  // the transcript does not move when the page replaces this view. Its
-  // content fills in on the page.
   // The reader keeps typing in the reply box, as on the page.
   const composerRef = useRef<ConversationComposerHandle>(null);
   useEffect(() => composerRef.current?.focus(), []);
+  // The page opens its details panel at this width. Open it here too, so
+  // the transcript does not move when the page replaces this view. Its
+  // content fills in on the page.
   const detailsDefaultOpen = useDetailsDefaultOpen();
   const [detailsClosed, setDetailsClosed] = useState(false);
   const showDetails = detailsDefaultOpen && !detailsClosed;

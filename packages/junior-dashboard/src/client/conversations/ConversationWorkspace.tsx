@@ -179,6 +179,7 @@ export function ConversationWorkspace(props: {
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
         const visit = homeVisit.current;
+        const pendingDraftId = newConversationDraftId(idempotencyKey);
         // Show the Conversation at once. The create view stays mounted but
         // hidden, so a failed create comes back with the draft and its key.
         setPendingCreate({
@@ -201,21 +202,21 @@ export function ConversationWorkspace(props: {
           // focus the draft for a retry. A reply typed meanwhile has no
           // Conversation to go to.
           flushSync(() => setPendingCreate(undefined));
-          takeStoredDraftText(newConversationDraftId(idempotencyKey));
+          takeStoredDraftText(pendingDraftId);
           throw error;
         }
         // The page then opens with its transcript, not a skeleton. The
         // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
         if (visit?.aborted) {
-          takeStoredDraftText(newConversationDraftId(idempotencyKey));
+          takeStoredDraftText(pendingDraftId);
           return;
         }
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
           // The page's reply box takes focus and the text typed meanwhile.
           state: {
-            [COMPOSER_DRAFT_FROM_STATE]: newConversationDraftId(idempotencyKey),
+            [COMPOSER_DRAFT_FROM_STATE]: pendingDraftId,
           },
         });
       }}
