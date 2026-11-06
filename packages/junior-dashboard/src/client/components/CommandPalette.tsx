@@ -53,11 +53,13 @@ export function CommandPalette(props: {
   const { onOpenChange, open } = props;
   useEffect(() => {
     const toggle = (event: globalThis.KeyboardEvent) => {
+      // Only the advertised modifier: Ctrl+K on Apple is kill-line in text fields.
       if (
         event.key.toLowerCase() !== "k" ||
-        !(event.metaKey || event.ctrlKey) ||
+        !(isApple ? event.metaKey : event.ctrlKey) ||
         event.altKey ||
-        event.shiftKey
+        event.shiftKey ||
+        event.repeat
       ) {
         return;
       }
@@ -94,15 +96,27 @@ function CommandPaletteBody(props: {
   const feed = useConversationsData(search);
   const navigate = useNavigate();
   const listId = useId();
+  // Hide conversation rows until they match the typed text, so stale or
+  // placeholder rows never take Enter from a matching page.
+  const conversationsCurrent =
+    query.trim() === search && !feed.isPlaceholderData;
   const items = useMemo(
     () =>
       paletteItems({
-        conversations: buildConversations(feed.data?.conversations ?? []),
+        conversations: conversationsCurrent
+          ? buildConversations(feed.data?.conversations ?? [])
+          : [],
         navItems: props.navItems,
         query: query.trim(),
         search,
       }),
-    [feed.data?.conversations, props.navItems, query, search],
+    [
+      conversationsCurrent,
+      feed.data?.conversations,
+      props.navItems,
+      query,
+      search,
+    ],
   );
   const active = items[Math.min(activeIndex, items.length - 1)];
 

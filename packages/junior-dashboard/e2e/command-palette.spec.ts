@@ -48,11 +48,11 @@ test("jumps to a page from the command palette", async ({
 
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Search" });
-  await palette.getByRole("combobox").fill("code");
-  await palette
-    .getByRole("group", { name: "Go to" })
-    .getByRole("option", { name: "Code" })
-    .click();
+  const input = palette.getByRole("combobox");
+  await expect(palette.getByRole("group", { name: "Recent" })).toBeVisible();
+  // Enter before the conversation search settles still takes the page.
+  await input.fill("code");
+  await input.press("Enter");
 
   await expect(page).toHaveURL(/\/code$/);
   await expect(palette).toHaveCount(0);
