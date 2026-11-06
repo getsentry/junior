@@ -16,7 +16,7 @@ export function registerArchiveDoneConversationsTool(
     {
       title: "Archive done conversations",
       description:
-        "Archive all of your conversations whose work is done, once. It skips pinned conversations, conversations with auto-archive off, and conversations that wait on you. Archiving hides them only for you.",
+        "Archive all of your conversations whose work is done and that stayed quiet for your auto-archive wait time, once. It skips pinned conversations, conversations with auto-archive off, and conversations that wait on you. Archiving hides them only for you.",
       inputSchema: {},
       outputSchema: {
         archived: z.number().int().describe("Conversations archived."),
