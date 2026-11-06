@@ -33,14 +33,11 @@ import { prefetchConversationDetail } from "./conversationPrefetch";
 import {
   newConversationDraftId,
   NewConversationPending,
+  type NewConversationState,
   type PendingNewConversation,
 } from "./NewConversationPending";
 import { takeStoredDraftText } from "./ConversationComposer";
-import {
-  COMPOSER_DRAFT_FROM_STATE,
-  conversationPath,
-  NEW_CONVERSATION_PATH,
-} from "./conversationRoutes";
+import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
   pinnedAndAttentionFirst,
@@ -216,8 +213,8 @@ export function ConversationWorkspace(props: {
           flushSync: true,
           // The page's reply box takes focus and the text typed meanwhile.
           state: {
-            [COMPOSER_DRAFT_FROM_STATE]: pendingDraftId,
-          },
+            composerDraftFrom: pendingDraftId,
+          } satisfies NewConversationState,
         });
       }}
     />
@@ -363,41 +360,45 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        {home ? (
-          <>
-            {pendingCreate ? (
+        {home ? homePane : null}
+        {/* A pending create shows in the same section as the page that
+            replaces it, so the swap keeps this element. */}
+        {selectedId || pendingCreate ? (
+          <section
+            aria-busy={home || undefined}
+            aria-label="Selected conversation"
+            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+          >
+            {selectedId ? (
+              <UnsentAnswersProvider
+                conversationId={selectedId}
+                key={selectedId}
+              >
+                <ConversationPage
+                  conversationId={selectedId}
+                  detail={props.detail}
+                  data={
+                    feed.data
+                      ? {
+                          conversations: feed.data,
+                        }
+                      : undefined
+                  }
+                  onRead={markRead}
+                  pendingArchiveUpdate={pendingArchiveUpdates.find(
+                    (update) => update.conversationId === selectedId,
+                  )}
+                  sidebarToggle={sidebarToggle}
+                />
+              </UnsentAnswersProvider>
+            ) : pendingCreate ? (
               <NewConversationPending
                 pending={pendingCreate}
                 sidebarToggle={sidebarToggle}
               />
             ) : null}
-            {homePane}
-          </>
-        ) : (
-          <section
-            aria-label="Selected conversation"
-            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-          >
-            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-              <ConversationPage
-                conversationId={selectedId}
-                detail={props.detail}
-                data={
-                  feed.data
-                    ? {
-                        conversations: feed.data,
-                      }
-                    : undefined
-                }
-                onRead={markRead}
-                pendingArchiveUpdate={pendingArchiveUpdates.find(
-                  (update) => update.conversationId === selectedId,
-                )}
-                sidebarToggle={sidebarToggle}
-              />
-            </UnsentAnswersProvider>
           </section>
-        )}
+        ) : null}
       </ResizablePanel>
     </ResizablePanelGroup>
   );

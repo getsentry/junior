@@ -37,7 +37,6 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
-  readComposerDraftFrom,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -65,7 +64,6 @@ import {
   type TurnContextPanel,
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
-import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { conversationContextTags } from "./ConversationContextTags";
@@ -95,7 +93,12 @@ import {
   conversationParticipants,
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
-import { ChatLayout } from "./ChatLayout";
+import {
+  ChatLayout,
+  TranscriptColumn,
+  transcriptScrollClassName,
+} from "./ChatLayout";
+import type { NewConversationState } from "./NewConversationPending";
 import { ConversationOutline } from "./ConversationOutline";
 import {
   QuickQuestionPanel,
@@ -149,7 +152,8 @@ export function ConversationPage(props: {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const composerDraftFrom = readComposerDraftFrom(useLocation().state);
+  const composerDraftFrom = (useLocation().state as NewConversationState | null)
+    ?.composerDraftFrom;
   // The URL owns the open event log entry so readers can share that link.
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
@@ -749,78 +753,69 @@ export function ConversationPage(props: {
           scrollMinTall
           scrollAriaLabel="Conversation transcript"
           scrollRef={scrollRef}
-          scrollClassName={cn(
-            "thin-scrollbar",
-            view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
-          )}
+          scrollClassName={
+            view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
+          }
           scroll={
-            <section className="min-w-0">
-              <div
-                className={
-                  view === "raw"
-                    ? "w-full"
-                    : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
-                }
-              >
-                {transcriptPending ? (
-                  view === "raw" ? (
-                    <ConversationEventLogLoading />
-                  ) : (
-                    <TranscriptLoading />
-                  )
-                ) : detail.error && !detail.data ? (
-                  <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                    {detail.error.message}
-                  </Card>
+            <TranscriptColumn full={view === "raw"}>
+              {transcriptPending ? (
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
                 ) : (
-                  <>
-                    {detail.error ? (
-                      <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                        Transcript refresh failed. Showing the latest available
-                        data.
-                      </div>
-                    ) : null}
-                    <ConversationMemoryContext value={memoryState}>
-                      <ConversationCatchUpContext value={catchUp}>
-                        <Transcript
-                          hasPreviousPage={history.hasPreviousPage}
-                          historyError={history.historyError}
-                          historyVersion={history.historyVersion}
-                          lastReadSeq={readAtOpen.lastReadSeq}
-                          live={live}
-                          loadingPreviousPage={history.isLoadingPreviousPage}
-                          newerHistory={history.newer}
-                          onLoadPreviousPage={history.loadPreviousPage}
-                          onRead={holdShown ? undefined : markRead}
-                          onSelectedEventSeqChange={setSelectedEventSeq}
-                          // Sends and the thinking row belong after the latest event.
-                          pendingMessages={
-                            history.newer ? undefined : detail.inlineMessages
-                          }
-                          pinRequestVersion={pinRequestVersion}
-                          revealSeq={revealSeq}
-                          responding={
-                            !detail.error &&
-                            !history.newer &&
-                            conversationIsResponding(detail.data)
-                          }
-                          onOpenSubagentTranscript={onOpenSubagentTranscript}
-                          search={search}
-                          onSearchChange={setSearch}
-                          selectedEventSeq={selectedEventSeq}
-                          startAtLink={startAtLink}
-                          startAtUnread={startAtUnread}
-                          transcript={transcript}
-                          turnContextPanel={turnContextPanel}
-                          unread={holdShown ? undefined : readAtOpen.unread}
-                          view={view}
-                        />
-                      </ConversationCatchUpContext>
-                    </ConversationMemoryContext>
-                  </>
-                )}
-              </div>
-            </section>
+                  <TranscriptLoading />
+                )
+              ) : detail.error && !detail.data ? (
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                  {detail.error.message}
+                </Card>
+              ) : (
+                <>
+                  {detail.error ? (
+                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                      Transcript refresh failed. Showing the latest available
+                      data.
+                    </div>
+                  ) : null}
+                  <ConversationMemoryContext value={memoryState}>
+                    <ConversationCatchUpContext value={catchUp}>
+                      <Transcript
+                        hasPreviousPage={history.hasPreviousPage}
+                        historyError={history.historyError}
+                        historyVersion={history.historyVersion}
+                        lastReadSeq={readAtOpen.lastReadSeq}
+                        live={live}
+                        loadingPreviousPage={history.isLoadingPreviousPage}
+                        newerHistory={history.newer}
+                        onLoadPreviousPage={history.loadPreviousPage}
+                        onRead={holdShown ? undefined : markRead}
+                        onSelectedEventSeqChange={setSelectedEventSeq}
+                        // Sends and the thinking row belong after the latest event.
+                        pendingMessages={
+                          history.newer ? undefined : detail.inlineMessages
+                        }
+                        pinRequestVersion={pinRequestVersion}
+                        revealSeq={revealSeq}
+                        responding={
+                          !detail.error &&
+                          !history.newer &&
+                          conversationIsResponding(detail.data)
+                        }
+                        onOpenSubagentTranscript={onOpenSubagentTranscript}
+                        search={search}
+                        onSearchChange={setSearch}
+                        selectedEventSeq={selectedEventSeq}
+                        startAtLink={startAtLink}
+                        startAtUnread={startAtUnread}
+                        transcript={transcript}
+                        turnContextPanel={turnContextPanel}
+                        unread={holdShown ? undefined : readAtOpen.unread}
+                        view={view}
+                      />
+                    </ConversationCatchUpContext>
+                  </ConversationMemoryContext>
+                </>
+              )}
+            </TranscriptColumn>
           }
           dock={
             // A child Conversation takes input only from its parent agent, and it

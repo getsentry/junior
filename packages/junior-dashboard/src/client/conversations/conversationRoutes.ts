@@ -19,21 +19,6 @@ export function conversationPath(
   return search ? `${path}?${search}` : path;
 }
 
-/**
- * History state key on a Conversation route. Its value is the draft id of a
- * composer that is gone. The page's reply box takes that draft and focus.
- */
-export const COMPOSER_DRAFT_FROM_STATE = "composerDraftFrom";
-
-/** Read the draft id that the page's reply box takes, if any. */
-export function readComposerDraftFrom(state: unknown): string | undefined {
-  if (typeof state !== "object" || state === null) return undefined;
-  const value: unknown = (state as Record<string, unknown>)[
-    COMPOSER_DRAFT_FROM_STATE
-  ];
-  return typeof value === "string" ? value : undefined;
-}
-
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
 export const NEW_CONVERSATION_PATH = "/";
 

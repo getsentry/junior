@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../types";
-import { ChatLayout } from "./ChatLayout";
+import {
+  ChatLayout,
+  TranscriptColumn,
+  transcriptScrollClassName,
+} from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
@@ -32,6 +36,15 @@ export type PendingNewConversation = {
 
 const noop = () => {};
 
+// The page shows the server's title when it opens.
+const PENDING_TITLE = "New conversation";
+
+/**
+ * Router state of a Conversation opened from the pending view. Its reply box
+ * takes the pending draft and focus.
+ */
+export type NewConversationState = { composerDraftFrom: string };
+
 /**
  * The draft of the reply box shown while a new Conversation is created. The
  * Conversation page takes it when it opens.
@@ -51,17 +64,11 @@ export function NewConversationPending(props: {
 }) {
   const queryClient = useQueryClient();
   const { pending } = props;
-  // The server's title until title generation runs: the first line.
-  const title =
-    pending.message
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean) ?? "New conversation";
   const transcript = useMemo(
     (): ConversationTranscript => ({
       conversationId: pending.idempotencyKey,
       cumulativeDurationMs: 0,
-      displayTitle: title,
+      displayTitle: PENDING_TITLE,
       eventHistory: { status: "available" },
       events: [],
       generatedAt: pending.createdAt,
@@ -73,7 +80,7 @@ export function NewConversationPending(props: {
       surface: "internal",
       visibility: pending.visibility,
     }),
-    [pending, title],
+    [pending],
   );
   const messages = useMemo(
     () => [
@@ -102,98 +109,90 @@ export function NewConversationPending(props: {
   const showDetails = useDetailsDefaultOpen();
 
   return (
-    <section
-      aria-busy="true"
-      aria-label="Selected conversation"
-      className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-    >
-      <div className="grid h-full min-h-0 min-w-0">
-        <ConversationSidePanelLayout
-          side={
-            showDetails ? (
-              <div className="contents" inert>
-                <DetailsPanel
-                  label="Conversation details"
-                  onClose={noop}
-                  title={
-                    <h2 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
-                      <span className="font-semibold text-dashboard-text">
-                        Details
-                      </span>
-                    </h2>
-                  }
-                >
-                  {null}
-                </DetailsPanel>
-              </div>
-            ) : undefined
-          }
-        >
-          <ChatLayout
-            header={
-              <ConversationHeader
-                archive={{
-                  archived: false,
-                  disabled: true,
-                  error: false,
-                  onClick: noop,
-                  pending: false,
-                }}
-                conversationId={pending.idempotencyKey}
-                detailsOpen={showDetails}
-                live
-                pending
-                onDetailsClick={noop}
-                onSearchChange={noop}
-                onViewChange={noop}
-                pin={{
-                  disabled: true,
-                  error: false,
-                  onClick: noop,
-                  pinned: false,
-                }}
-                privacy={
-                  <ConversationPrivacyChip visibility={pending.visibility} />
+    <div className="grid h-full min-h-0 min-w-0">
+      <ConversationSidePanelLayout
+        side={
+          showDetails ? (
+            <div className="contents" inert>
+              <DetailsPanel
+                label="Conversation details"
+                onClose={noop}
+                title={
+                  <h2 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
+                    <span className="font-semibold text-dashboard-text">
+                      Details
+                    </span>
+                  </h2>
                 }
-                search=""
-                sidebarToggle={props.sidebarToggle}
-                title={title}
-                view="rich"
+              >
+                {null}
+              </DetailsPanel>
+            </div>
+          ) : undefined
+        }
+      >
+        <ChatLayout
+          header={
+            <ConversationHeader
+              archive={{
+                archived: false,
+                disabled: true,
+                error: false,
+                onClick: noop,
+                pending: false,
+              }}
+              conversationId={pending.idempotencyKey}
+              detailsOpen={showDetails}
+              live
+              pending
+              onDetailsClick={noop}
+              onSearchChange={noop}
+              onViewChange={noop}
+              pin={{
+                disabled: true,
+                error: false,
+                onClick: noop,
+                pinned: false,
+              }}
+              privacy={
+                <ConversationPrivacyChip visibility={pending.visibility} />
+              }
+              search=""
+              sidebarToggle={props.sidebarToggle}
+              title={PENDING_TITLE}
+              view="rich"
+            />
+          }
+          scrollMinTall
+          scrollAriaLabel="Conversation transcript"
+          scrollClassName={transcriptScrollClassName}
+          scroll={
+            // The message lands with a short fade. The page that replaces
+            // this view has the same rows, so the swap does not show.
+            <TranscriptColumn className="duration-200 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1">
+              <Transcript
+                pendingMessages={messages}
+                responding
+                transcript={transcript}
               />
-            }
-            scrollMinTall
-            scrollAriaLabel="Conversation transcript"
-            scrollClassName="thin-scrollbar px-4 pb-4 md:px-7 md:pb-6"
-            scroll={
-              <section className="min-w-0">
-                {/* The message lands with a short fade. The page that replaces
-                this view has the same rows, so the swap does not show. */}
-                <div className="mx-auto w-full max-w-[52.5rem] pt-5 duration-200 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 md:pt-7">
-                  <Transcript
-                    pendingMessages={messages}
-                    responding
-                    transcript={transcript}
-                  />
-                </div>
-              </section>
-            }
-            dock={
-              // Sends wait until the Conversation exists. Typed text moves to
-              // the page's reply box.
-              <ComposerDock>
-                <ConversationComposer
-                  disabled
-                  draftId={newConversationDraftId(pending.idempotencyKey)}
-                  label="Continue this conversation"
-                  ref={composerRef}
-                  submitLabel="Send"
-                  onSubmit={async () => {}}
-                />
-              </ComposerDock>
-            }
-          />
-        </ConversationSidePanelLayout>
-      </div>
-    </section>
+            </TranscriptColumn>
+          }
+          dock={
+            // Sends wait until the Conversation exists. Typed text moves to
+            // the page's reply box.
+            <ComposerDock>
+              <ConversationComposer
+                disabled
+                draftId={newConversationDraftId(pending.idempotencyKey)}
+                label="Continue this conversation"
+                ref={composerRef}
+                submitLabel="Send"
+                onSubmit={async () => {}}
+              />
+            </ComposerDock>
+          }
+        />
+      </ConversationSidePanelLayout>
+    </div>
   );
 }
