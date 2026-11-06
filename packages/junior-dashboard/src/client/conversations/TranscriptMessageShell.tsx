@@ -7,6 +7,8 @@ import juniorAvatarUrl from "../../assets/junior-avatar.webp";
 import {
   transcriptAvatarClass,
   transcriptColumnsClass,
+  transcriptCompactAvatarClass,
+  transcriptCompactColumnsClass,
 } from "./TranscriptRows";
 
 /** Align message text and attachments beside their avatars. */
@@ -15,6 +17,8 @@ export function TranscriptMessageShell(props: {
   /** Junior API path of the author photo. Initials show without it. */
   avatarUrl?: string;
   children: ReactNode;
+  /** Keep the small avatar column at every width, for narrow side panels. */
+  compact?: boolean;
   onCopy?: ClipboardEventHandler<HTMLElement>;
   role: string;
 }) {
@@ -23,7 +27,13 @@ export function TranscriptMessageShell(props: {
   return (
     <Message
       className={cn(
-        hasAvatar && cn(transcriptColumnsClass, "text-dashboard-text"),
+        hasAvatar &&
+          cn(
+            props.compact
+              ? transcriptCompactColumnsClass
+              : transcriptColumnsClass,
+            "text-dashboard-text",
+          ),
         kind === "system" &&
           "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
         kind === "tool" &&
@@ -38,7 +48,9 @@ export function TranscriptMessageShell(props: {
           aria-hidden="true"
           className={cn(
             "flex items-center justify-center",
-            transcriptAvatarClass,
+            props.compact
+              ? transcriptCompactAvatarClass
+              : transcriptAvatarClass,
           )}
         >
           {kind === "assistant" ? (
