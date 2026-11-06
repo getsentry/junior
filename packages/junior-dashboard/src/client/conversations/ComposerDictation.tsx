@@ -112,12 +112,6 @@ export function ComposerDictation(props: ComposerDictationProps) {
             }
             disabled={props.disabled || busy}
             onClick={() => void dictation.start()}
-            // Ask for the mic on press, not release, to start sooner.
-            onPointerDown={(event) => {
-              if (event.button === 0 && !props.disabled) {
-                void dictation.start();
-              }
-            }}
             size="icon"
             type="button"
           >

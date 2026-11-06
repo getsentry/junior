@@ -106,38 +106,47 @@ export function useDictation(callbacks: DictationCallbacks) {
       releaseMicrophone(session);
       return;
     }
-    const mimeType = RECORDING_TYPES.find((type) =>
-      MediaRecorder.isTypeSupported(type),
-    );
-    const recorder = new MediaRecorder(
-      session.stream,
-      mimeType ? { mimeType } : undefined,
-    );
-    const chunks: Blob[] = [];
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size) chunks.push(event.data);
-    });
-    recorder.addEventListener("stop", () => {
-      releaseMicrophone(session);
-      if (session.cancelled) return;
-      const audio = new Blob(chunks, {
-        type: recorder.mimeType || mimeType || "audio/webm",
+    // Recorder setup can throw, such as for an unsupported device. Turn the
+    // mic off so it does not stay live.
+    try {
+      const mimeType = RECORDING_TYPES.find((type) =>
+        MediaRecorder.isTypeSupported(type),
+      );
+      const recorder = new MediaRecorder(
+        session.stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      const chunks: Blob[] = [];
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) chunks.push(event.data);
       });
-      if (!audio.size) {
-        callbacksRef.current.onError("No audio recorded. Try again.");
-        finish(session);
-        return;
-      }
-      void transcribe(session, audio);
-    });
-    session.recorder = recorder;
-    const startedAt = Date.now();
-    session.timer = window.setInterval(() => {
-      const seconds = Math.floor((Date.now() - startedAt) / 1000);
-      setElapsedSeconds(seconds);
-      if (seconds >= DICTATION_MAX_SECONDS) stop();
-    }, 1000);
-    recorder.start();
+      recorder.addEventListener("stop", () => {
+        releaseMicrophone(session);
+        if (session.cancelled) return;
+        const audio = new Blob(chunks, {
+          type: recorder.mimeType || mimeType || "audio/webm",
+        });
+        if (!audio.size) {
+          callbacksRef.current.onError("No audio recorded. Try again.");
+          finish(session);
+          return;
+        }
+        void transcribe(session, audio);
+      });
+      session.recorder = recorder;
+      const startedAt = Date.now();
+      session.timer = window.setInterval(() => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        setElapsedSeconds(seconds);
+        if (seconds >= DICTATION_MAX_SECONDS) stop();
+      }, 1000);
+      recorder.start();
+    } catch {
+      releaseMicrophone(session);
+      finish(session);
+      callbacksRef.current.onError("Could not start recording.");
+      return;
+    }
     setState("recording");
   };
 
