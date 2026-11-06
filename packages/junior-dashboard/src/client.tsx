@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter } from "react-router";
+// The DOM provider lets a navigation ask for `flushSync`.
+import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";

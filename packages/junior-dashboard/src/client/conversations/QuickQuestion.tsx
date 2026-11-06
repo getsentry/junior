@@ -442,7 +442,7 @@ export function QuickQuestionPanel(props: {
             placeholder={
               messages.length ? "Ask a follow-up…" : "Ask a quick question…"
             }
-            restoreDraftOnError
+            holdDraftUntilAccept
             submitLabel="Ask"
           />
           <div className="flex min-w-0 items-center justify-between gap-2 pl-1 text-xs text-dashboard-text-muted">
