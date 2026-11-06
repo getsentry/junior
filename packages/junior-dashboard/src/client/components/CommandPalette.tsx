@@ -125,12 +125,13 @@ function CommandPaletteBody(props: {
     setActiveId(null);
   }, [query, search]);
   const activeOptionId = active ? `${listId}-${active.id}` : undefined;
+  // Rerun when rows change too: rows that load above the highlight push it down.
   useEffect(() => {
     if (!activeOptionId) return;
     document
       .getElementById(activeOptionId)
       ?.scrollIntoView({ block: "nearest" });
-  }, [activeOptionId]);
+  }, [activeOptionId, items]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
