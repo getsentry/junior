@@ -79,6 +79,49 @@ test("sends a message from a Thread page", async ({ page, dashboard }) => {
   await expect(page.getByText(message)).toBeVisible();
 });
 
+test("archives a Thread from its page", async ({ page, dashboard }) => {
+  const archiveCalls: Array<{ archived: boolean; url: string }> = [];
+  page.on("request", (request) => {
+    if (request.method() !== "PATCH" || !request.url().endsWith("/archive")) {
+      return;
+    }
+    const body = request.postDataJSON() as { archived: boolean };
+    archiveCalls.push({ archived: body.archived, url: request.url() });
+  });
+  const threadUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`;
+  const threadArchiveUrl = `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`;
+  await page.goto(threadUrl);
+  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
+  const threadRow = sidebar.getByRole("link", {
+    name: /Check pinned row order/,
+  });
+  const rootRow = sidebar.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await expect(threadRow).toBeVisible();
+
+  // A Thread archive hides only the Thread, and its page stays open.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unarchive" })).toBeHidden();
+  await expect(threadRow).toHaveCount(0);
+  await expect(page).toHaveURL(threadUrl);
+  await expect(rootRow).toBeVisible();
+  await expect
+    .poll(() => archiveCalls)
+    .toEqual([{ archived: true, url: threadArchiveUrl }]);
+
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive" }).click();
+  await expect(threadRow).toBeVisible();
+  await expect
+    .poll(() => archiveCalls)
+    .toEqual([
+      { archived: true, url: threadArchiveUrl },
+      { archived: false, url: threadArchiveUrl },
+    ]);
+});
+
 test("hides the composer on a Task page", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(TASK_ID)}`,

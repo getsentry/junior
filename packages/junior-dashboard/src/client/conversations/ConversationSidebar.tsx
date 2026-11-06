@@ -42,7 +42,7 @@ import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
 } from "./ConversationSidebarThreadRow";
-import { SIDEBAR_THREAD_LIMIT, sidebarThreads } from "./sidebarThreads";
+import { sidebarThreads } from "./sidebarThreads";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -345,7 +345,7 @@ function threadEntries(
   expanded: boolean,
   selectedId: string | undefined,
 ): ConversationSidebarEntry[] {
-  const { hiddenCount, threads } = sidebarThreads(root.threads, {
+  const { collapsible, hiddenCount, threads } = sidebarThreads(root.threads, {
     expanded,
     selectedId,
   });
@@ -354,7 +354,7 @@ function threadEntries(
     key: `thread-${thread.conversation.id}`,
     kind: "thread" as const,
   }));
-  if (hiddenCount > 0 || (expanded && threads.length > SIDEBAR_THREAD_LIMIT)) {
+  if (collapsible && (expanded || hiddenCount > 0)) {
     entries.push({
       expanded,
       hiddenCount,

@@ -2,61 +2,80 @@ import { describe, expect, it } from "vitest";
 import { sidebarThreads } from "../src/client/conversations/sidebarThreads";
 import type { Conversation } from "../src/client/types";
 
+/** Build a Thread whose last activity is `hour` hours into the day. */
 function thread(
   id: string,
-  lastSeenAt: string,
+  hour: number,
   threads?: Conversation[],
 ): Conversation {
+  const at = new Date(Date.UTC(2026, 0, 1, hour)).toISOString();
   return {
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
     kind: "thread",
-    lastProgressAt: lastSeenAt,
-    lastSeenAt,
-    startedAt: lastSeenAt,
+    lastProgressAt: at,
+    lastSeenAt: at,
+    startedAt: at,
     status: "completed",
     surface: "internal",
     ...(threads ? { threads } : undefined),
   };
 }
 
-const threads = [
-  thread("a", "2026-01-05T00:00:00.000Z", [
-    thread("a1", "2026-01-01T00:00:00.000Z"),
-  ]),
-  thread("b", "2026-01-04T00:00:00.000Z"),
-  thread("c", "2026-01-06T00:00:00.000Z"),
-  thread("d", "2026-01-02T00:00:00.000Z"),
-];
-
-function ids(result: ReturnType<typeof sidebarThreads>) {
-  return result.threads.map((entry) => entry.conversation.id);
+function rows(result: ReturnType<typeof sidebarThreads>) {
+  return result.threads.map((entry) => [entry.conversation.id, entry.depth]);
 }
 
 describe("sidebarThreads", () => {
-  it("shows the three most recent Threads in tree order", () => {
+  // a1 is recent, but only direct Threads count toward the cap.
+  const threads = [
+    thread("b", 10),
+    thread("c", 8),
+    thread("a", 2, [thread("a1", 9)]),
+    thread("d", 1),
+  ];
+
+  it("caps direct Threads and keeps nested Threads under their parent", () => {
     const result = sidebarThreads(threads, { expanded: false });
-    expect(ids(result)).toEqual(["a", "b", "c"]);
-    expect(result.hiddenCount).toBe(2);
+    expect(rows(result)).toEqual([
+      ["b", 0],
+      ["c", 0],
+      ["a", 0],
+      ["a1", 1],
+    ]);
+    expect(result).toMatchObject({ collapsible: true, hiddenCount: 1 });
   });
 
-  it("keeps the open Thread and its depth", () => {
-    const result = sidebarThreads(threads, {
-      expanded: false,
-      selectedId: "a1",
-    });
-    expect(result.threads).toContainEqual({
-      conversation: threads[0]!.threads![0],
-      depth: 1,
-    });
-    expect(ids(result)).toEqual(["a", "a1", "b", "c"]);
-    expect(result.hiddenCount).toBe(1);
+  it("shows the chain to an open Thread past the cap", () => {
+    const result = sidebarThreads(
+      [
+        thread("b", 10),
+        thread("c", 8),
+        thread("e", 6),
+        thread("a", 1, [thread("a1", 2)]),
+      ],
+      { expanded: false, selectedId: "a1" },
+    );
+    expect(rows(result)).toEqual([
+      ["b", 0],
+      ["c", 0],
+      ["e", 0],
+      ["a", 0],
+      ["a1", 1],
+    ]);
+    expect(result.hiddenCount).toBe(0);
   });
 
   it("shows every Thread when expanded", () => {
     const result = sidebarThreads(threads, { expanded: true });
-    expect(ids(result)).toEqual(["a", "a1", "b", "c", "d"]);
+    expect(rows(result)).toEqual([
+      ["b", 0],
+      ["c", 0],
+      ["a", 0],
+      ["a1", 1],
+      ["d", 0],
+    ]);
     expect(result.hiddenCount).toBe(0);
   });
 });
