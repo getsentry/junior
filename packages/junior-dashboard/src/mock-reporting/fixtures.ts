@@ -1817,10 +1817,17 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
   };
 }
 
-/** Active root summaries used by mock aggregates and directories. */
+/**
+ * Active root summaries used by mock aggregates and directories. Like the
+ * feed, they leave out unlisted Conversations.
+ */
 function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
   return mockConversations(nowMs)
-    .filter((conversation) => conversation.kind === "root")
+    .filter(
+      (conversation) =>
+        conversation.kind === "root" &&
+        !isUnlistedMockConversation(conversation.conversationId),
+    )
     .map(summaryFromConversation)
     .filter((summary) => !summary.archivedAt);
 }
