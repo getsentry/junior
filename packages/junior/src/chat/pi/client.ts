@@ -63,6 +63,7 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   createProviderError,
+  getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
@@ -892,6 +893,7 @@ export async function transcribeAudio(params: {
       modelId: params.modelId,
     });
     logException(providerError, "ai.transcription.failed", {
+      ...getProviderErrorAttributes(providerError),
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
       "gen_ai.request.model": params.modelId,
