@@ -1,5 +1,5 @@
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useDashboardCoreData } from "../api";
 import { Button } from "../components/ui/button";
@@ -35,9 +35,14 @@ export function ReplyRatingActions(props: {
   const [rating, setRating] = useState<ReplyRating>();
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
+  // State updates after the next render, so a fast second submit still sees
+  // no rating. The ref blocks it at once.
+  const sent = useRef(false);
   if (!canSendReplyRating()) return null;
 
   const rate = (next: ReplyRating, text?: string) => {
+    if (sent.current) return;
+    sent.current = true;
     setRating(next);
     sendReplyRating({ ...props, comment: text, rating: next, reader });
   };
@@ -52,9 +57,7 @@ export function ReplyRatingActions(props: {
         <MessageAction
           aria-pressed={rating === "good"}
           label="Good reply"
-          onClick={() => {
-            if (!rating) rate("good");
-          }}
+          onClick={() => rate("good")}
         >
           <ThumbsUp
             aria-hidden="true"
