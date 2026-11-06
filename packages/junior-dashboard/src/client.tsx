@@ -10,6 +10,10 @@ import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
+import {
+  clearAppBadge,
+  registerDashboardServiceWorker,
+} from "./client/notifications/push";
 
 declare global {
   interface Window {
@@ -75,6 +79,36 @@ const root = document.getElementById("dashboard-root");
 if (!root) {
   throw new Error("Junior dashboard root element was not found");
 }
+
+// Keep the worker current for devices that already allow notifications.
+// Other devices register it on the Settings page.
+if (
+  typeof Notification !== "undefined" &&
+  Notification.permission === "granted"
+) {
+  void registerDashboardServiceWorker()?.catch(() => undefined);
+}
+// The worker asks the page to open a notification URL when it cannot
+// navigate this window itself.
+navigator.serviceWorker?.addEventListener("message", (event) => {
+  const data: unknown = event.data;
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("type" in data) ||
+    data.type !== "junior:open" ||
+    !("url" in data) ||
+    typeof data.url !== "string"
+  ) {
+    return;
+  }
+  const url = new URL(data.url, window.location.href);
+  if (url.origin === window.location.origin) window.location.assign(url.href);
+});
+clearAppBadge();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") clearAppBadge();
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

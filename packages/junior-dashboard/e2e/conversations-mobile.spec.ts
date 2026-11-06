@@ -53,6 +53,25 @@ test("records focused mobile conversation composer", async ({
     },
     view: "mobile",
   });
+
+  // A downward swipe puts the keyboard away. An upward swipe keeps it.
+  const touch = await page.context().newCDPSession(page);
+  const swipe = async (from: { x: number; y: number }, dy: number) => {
+    const send = (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      points: { id: number; x: number; y: number }[],
+    ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+    await send("touchStart", [{ id: 1, ...from }]);
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await send("touchMove", [{ id: 1, x: from.x, y: from.y + dy * step }]);
+    }
+    await send("touchEnd", []);
+  };
+  await swipe({ x: 200, y: 400 }, -120);
+  await expect(composer).toBeFocused();
+  await swipe({ x: 200, y: 300 }, 120);
+  await expect(composer).not.toBeFocused();
+  await touch.detach();
 });
 
 /**
@@ -152,6 +171,26 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("adds a line on Return instead of sending", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toHaveAttribute("enterkeyhint", "enter");
+    await composer.fill("First line");
+    await composer.press("Enter");
+    await composer.pressSequentially("Second line");
+    await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
 });
 
 test("opens and closes a conversation on mobile", async ({
@@ -606,6 +645,12 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
+  // Back leaves the event log for its Conversation, then the list.
+  await page
+    .getByRole("button", { name: "Back to conversation", exact: true })
+    .click();
+  await expect(page.getByPlaceholder("Search events…")).toBeHidden();
+  await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(

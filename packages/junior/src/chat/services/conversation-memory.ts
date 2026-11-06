@@ -224,6 +224,14 @@ export function markConversationMessage(
   };
 }
 
+// A take only records who took a Review item. It never reaches the model.
+function isTakeOnly(message: ConversationMessage): boolean {
+  const changes = message.meta?.reviewItemChanges;
+  return Boolean(
+    changes?.length && changes.every((change) => change.kind === "taken"),
+  );
+}
+
 /**
  * Render thread history as structured XML. Each compaction and message is
  * wrapped with index/ts metadata so the model can reference prior items
@@ -237,7 +245,8 @@ export function buildConversationContext(
   } = {},
 ): string | undefined {
   const messages = conversation.messages.filter(
-    (entry) => !options.excludeMessageIds?.includes(entry.id),
+    (entry) =>
+      !options.excludeMessageIds?.includes(entry.id) && !isTakeOnly(entry),
   );
   if (messages.length === 0 && conversation.compactions.length === 0) {
     return undefined;

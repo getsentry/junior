@@ -5,7 +5,7 @@
  * because a child has no Location that records visible messages.
  */
 import { getConversationEventStore } from "@/chat/db";
-import { getAgentInvocationMessageId } from "./store";
+import { getAgentInvocationMessageId } from "./ids";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.

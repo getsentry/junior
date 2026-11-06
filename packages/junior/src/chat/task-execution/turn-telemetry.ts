@@ -5,18 +5,32 @@ import {
 } from "@/chat/logging";
 import { continueTrace, getActiveSpan } from "@/chat/sentry";
 import { measureTurnCompactionWait } from "@/chat/services/context-compaction-telemetry";
-import type { TraceContext } from "@/chat/task-execution/state";
+import type { InboundMessage, TraceContext } from "@/chat/task-execution/state";
 
-/** Mailbox timing facts for the input messages that start a Slack turn. */
-export interface SlackTurnInputTelemetry {
+/** Mailbox timing facts for the input messages that start a Turn. */
+export interface TurnInputTelemetry {
   /** Input messages in the batch that starts the turn. */
   count: number;
-  /** Slack send time of the oldest input message. */
+  /** Send time of the oldest input message, such as its Slack timestamp. */
   oldestCreatedAtMs: number;
-  /** Webhook receipt time of the oldest input message. */
+  /** Ingress receipt time of the oldest input message. */
   oldestReceivedAtMs: number;
   /** Ingress trace contexts of the input messages, oldest first. */
   traceContexts: TraceContext[];
+}
+
+/** Read the turn input timing facts from a mailbox batch, oldest first. */
+export function turnInputTelemetry(
+  messages: readonly InboundMessage[],
+): TurnInputTelemetry | undefined {
+  const oldest = messages[0];
+  if (!oldest) return undefined;
+  return {
+    count: messages.length,
+    oldestCreatedAtMs: oldest.createdAtMs,
+    oldestReceivedAtMs: oldest.receivedAtMs,
+    traceContexts: messages.flatMap((message) => message.traceContext ?? []),
+  };
 }
 
 const SENTRY_TRACE_PATTERN = /^([0-9a-f]{32})-([0-9a-f]{16})(?:-([01]))?$/;
@@ -39,7 +53,7 @@ function spanLinks({ sentryTrace }: TraceContext) {
  */
 export async function withTurnSpan<T>(
   context: LogContext,
-  input: Pick<SlackTurnInputTelemetry, "traceContexts"> | undefined,
+  input: Pick<TurnInputTelemetry, "traceContexts"> | undefined,
   callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
 ): Promise<T> {
   const [parent, ...others] = input?.traceContexts ?? [];
@@ -67,11 +81,11 @@ export async function withTurnSpan<T>(
 /**
  * Build the `chat.turn` timing attributes for the oldest input message.
  *
- * Slack, the webhook host, and the worker host use separate clocks. A negative
+ * The provider, the ingress host, and the worker host use separate clocks. A negative
  * duration is clock skew, not latency, so it is left out.
  */
 export function getTurnInputSpanAttributes(
-  input: SlackTurnInputTelemetry,
+  input: TurnInputTelemetry,
   turnStartedAtMs: number,
 ): Record<string, number> {
   const attributes: Record<string, number> = {

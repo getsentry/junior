@@ -10,9 +10,9 @@ import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
-  MobileHeaderLiveSlot,
   MobileHeaderTagsSlot,
   MobileSecondaryNavigationSlot,
+  useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
@@ -24,6 +24,9 @@ export type DashboardHeaderNavItem = {
   label: string;
   to: string;
 };
+
+const mobileBackClass =
+  "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
 
 function NavCount(props: { count?: number }) {
   if (!props.count) return null;
@@ -64,6 +67,7 @@ export function DashboardHeader(props: {
   // Conversation chrome is path-driven. Undefined title keeps the loading
   // fallback; explicit empty string means no title (create compose).
   const conversationMode = Boolean(props.mobileBackTo);
+  const mobileBack = useMobileHeaderBack();
   const mobileTitle =
     props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
 
@@ -138,10 +142,22 @@ export function DashboardHeader(props: {
         </div>
       </div>
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
-        {conversationMode && props.mobileBackTo ? (
+        {conversationMode && mobileBack ? (
+          <button
+            aria-label={mobileBack.label}
+            className={cn(
+              mobileBackClass,
+              "cursor-pointer border-0 bg-transparent",
+            )}
+            onClick={mobileBack.onClick}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
+          </button>
+        ) : conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+            className={mobileBackClass}
             to={props.mobileBackTo}
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
@@ -167,7 +183,6 @@ export function DashboardHeader(props: {
                 {mobileTitle}
               </h1>
             ) : null}
-            <MobileHeaderLiveSlot />
           </div>
         ) : null}
         <Link

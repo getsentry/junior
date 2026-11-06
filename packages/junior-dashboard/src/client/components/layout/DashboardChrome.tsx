@@ -11,11 +11,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+/** Replaces the mobile header back link while a page shows a nested view. */
+type MobileHeaderBack = { label: string; onClick(): void };
+
 type DashboardChromeContextValue = {
+  mobileHeaderBack: MobileHeaderBack | null;
   mobileHeaderActionsSlot: HTMLElement | null;
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
-  mobileHeaderLiveSlot: HTMLElement | null;
-  mobileHeaderLiveSlotRef: RefCallback<HTMLDivElement>;
   mobileHeaderTagsSlot: HTMLElement | null;
   mobileHeaderTagsSlotRef: RefCallback<HTMLDivElement>;
   mobileSecondarySlot: HTMLElement | null;
@@ -24,6 +26,7 @@ type DashboardChromeContextValue = {
   registerOpenMobileNavigation(open: (() => void) | null): void;
   secondarySlot: HTMLElement | null;
   secondarySlotRef: RefCallback<HTMLDivElement>;
+  setMobileHeaderBack(back: MobileHeaderBack | null): void;
 };
 
 const DashboardChromeContext =
@@ -36,10 +39,10 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     useState<HTMLElement | null>(null);
   const [mobileHeaderActionsSlot, setMobileHeaderActionsSlot] =
     useState<HTMLElement | null>(null);
-  const [mobileHeaderLiveSlot, setMobileHeaderLiveSlot] =
-    useState<HTMLElement | null>(null);
   const [mobileHeaderTagsSlot, setMobileHeaderTagsSlot] =
     useState<HTMLElement | null>(null);
+  const [mobileHeaderBack, setMobileHeaderBack] =
+    useState<MobileHeaderBack | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
   const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     setSecondarySlot(node);
@@ -53,12 +56,6 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   const mobileHeaderActionsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
     (node) => {
       setMobileHeaderActionsSlot(node);
-    },
-    [],
-  );
-  const mobileHeaderLiveSlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileHeaderLiveSlot(node);
     },
     [],
   );
@@ -79,10 +76,9 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   }, []);
   const value = useMemo(
     () => ({
+      mobileHeaderBack,
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
-      mobileHeaderLiveSlot,
-      mobileHeaderLiveSlotRef,
       mobileHeaderTagsSlot,
       mobileHeaderTagsSlotRef,
       mobileSecondarySlot,
@@ -91,12 +87,12 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       registerOpenMobileNavigation,
       secondarySlot,
       secondarySlotRef,
+      setMobileHeaderBack,
     }),
     [
+      mobileHeaderBack,
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
-      mobileHeaderLiveSlot,
-      mobileHeaderLiveSlotRef,
       mobileHeaderTagsSlot,
       mobileHeaderTagsSlotRef,
       mobileSecondarySlot,
@@ -105,6 +101,7 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       registerOpenMobileNavigation,
       secondarySlot,
       secondarySlotRef,
+      setMobileHeaderBack,
     ],
   );
 
@@ -170,23 +167,10 @@ export function MobileHeaderActionsSlot() {
   );
 }
 
-/** Live-indicator slot next to the mobile conversation title. */
-export function MobileHeaderLiveSlot() {
-  const chrome = useContext(DashboardChromeContext);
-  if (!chrome) {
-    throw new Error("MobileHeaderLiveSlot requires DashboardChromeProvider");
-  }
-  return (
-    <div
-      className="flex shrink-0 items-center md:hidden"
-      ref={chrome.mobileHeaderLiveSlotRef}
-    />
-  );
-}
-
 /**
- * Tags row under the mobile conversation title. It starts at the title's
- * left edge and runs to the screen edge. It collapses when empty.
+ * Tags row under the mobile conversation title. It scrolls edge to edge, and
+ * its left pad (header pad + back button + gap) starts the first tag at the
+ * title's left edge. It collapses when empty.
  */
 export function MobileHeaderTagsSlot() {
   const chrome = useContext(DashboardChromeContext);
@@ -195,7 +179,7 @@ export function MobileHeaderTagsSlot() {
   }
   return (
     <div
-      className="col-span-2 col-start-2 row-start-2 -mr-3 min-w-0 empty:hidden md:hidden"
+      className="col-span-3 col-start-1 row-start-2 -mx-3 -mt-1.5 min-w-0 overflow-x-auto pb-0.5 pl-15 pr-3 [scrollbar-width:none] empty:hidden md:hidden [&::-webkit-scrollbar]:hidden"
       ref={chrome.mobileHeaderTagsSlotRef}
     />
   );
@@ -206,13 +190,6 @@ export function MobileHeaderActionsPortal(props: { children: ReactNode }) {
   const chrome = useContext(DashboardChromeContext);
   if (!chrome?.mobileHeaderActionsSlot) return null;
   return createPortal(props.children, chrome.mobileHeaderActionsSlot);
-}
-
-/** Mount the polled live indicator into the mobile shell title row. */
-export function MobileHeaderLivePortal(props: { children: ReactNode }) {
-  const chrome = useContext(DashboardChromeContext);
-  if (!chrome?.mobileHeaderLiveSlot) return null;
-  return createPortal(props.children, chrome.mobileHeaderLiveSlot);
 }
 
 /** Mount conversation tags into the row under the mobile title. */
@@ -244,6 +221,30 @@ export function useRegisterOpenMobileNavigation(open?: () => void): void {
       chrome.registerOpenMobileNavigation(null);
     };
   }, [chrome, open]);
+}
+
+/** Read the back action that replaces the mobile header back link. */
+export function useMobileHeaderBack(): MobileHeaderBack | null {
+  return useContext(DashboardChromeContext)?.mobileHeaderBack ?? null;
+}
+
+/**
+ * Point the mobile header back control at `onClick` while `label` is set,
+ * such as from the event log back to its Conversation.
+ */
+export function useRegisterMobileHeaderBack(
+  label: string | undefined,
+  onClick: () => void,
+): void {
+  const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
+  const onClickRef = useRef(onClick);
+  onClickRef.current = onClick;
+
+  useEffect(() => {
+    if (!setBack || !label) return;
+    setBack({ label, onClick: () => onClickRef.current() });
+    return () => setBack(null);
+  }, [label, setBack]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */

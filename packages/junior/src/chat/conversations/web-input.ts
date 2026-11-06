@@ -15,6 +15,7 @@ import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { getActiveTraceContext } from "@/chat/logging";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -174,6 +175,8 @@ export function buildWebInboundMessage(args: {
     existing: args.destination,
   });
   const nowMs = args.nowMs ?? Date.now();
+  // The Turn continues the trace of the request that sent this Message.
+  const traceContext = getActiveTraceContext();
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
@@ -209,6 +212,7 @@ export function buildWebInboundMessage(args: {
     // TODO(dcramer): Replace this string after deployed mailbox readers and
     // writers use a complete web Source.
     source: "web",
+    ...(traceContext ? { traceContext } : undefined),
   };
 }
 

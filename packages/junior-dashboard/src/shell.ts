@@ -213,7 +213,6 @@ export function renderDashboard(
   <script>${DASHBOARD_THEME_SCRIPT}</script>
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />

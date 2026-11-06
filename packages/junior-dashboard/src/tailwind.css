@@ -307,6 +307,29 @@
     text-rendering: geometricPrecision;
   }
 
+  /*
+   * Tailwind v4 resets buttons to the default cursor. Give every enabled
+   * control a pointer, so a component cannot forget `cursor-pointer`.
+   * Utilities such as `cursor-default` still win.
+   */
+  :is(
+    button,
+    summary,
+    select,
+    input:is([type="checkbox"], [type="radio"]),
+    [role="button"],
+    [role="checkbox"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="option"],
+    [role="radio"],
+    [role="switch"],
+    [role="tab"]
+  ):not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    cursor: pointer;
+  }
+
   ::-webkit-scrollbar {
     height: 8px;
     width: 8px;

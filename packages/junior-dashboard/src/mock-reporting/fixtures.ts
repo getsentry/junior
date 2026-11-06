@@ -32,6 +32,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
@@ -140,6 +141,9 @@ const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
 
+/** Process-local renames so rename can be exercised in visual QA. */
+const mockTitles = new Map<string, string>();
+
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
@@ -152,11 +156,14 @@ export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
+  mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
 }
 
-/** Add the viewer's mock archive and pin times to one conversation. */
-function withMockViewerState<T extends { conversationId: string }>(
+/** Add the viewer's mock archive and pin times and any rename to one conversation. */
+function withMockViewerState<
+  T extends { conversationId: string; displayTitle: string },
+>(
   report: T & { archivedAt?: string | null },
 ): T & {
   archivedAt: string | undefined;
@@ -166,6 +173,7 @@ function withMockViewerState<T extends { conversationId: string }>(
   const pinPosition = mockPinPositions.get(report.conversationId);
   return {
     ...report,
+    displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedConversationIds.has(report.conversationId)
       ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
       : undefined,
@@ -1047,6 +1055,16 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         role: "assistant",
         text: "I mean the empty, loading, and failed transcript states.",
       }),
+      // The reviewer card already shows this result, so the transcript
+      // hides the row.
+      reportEvent(20, iso(Date.parse(startedAt), 70_000), {
+        type: "message",
+        messageId: "qa-reviewer-result",
+        role: "user",
+        eventType: "agent_invocation.blocked",
+        trustedSummary: 'Child agent "reviewer" is blocked.',
+        text: "The reviewer needs access to the dashboard repository.",
+      }),
     ],
   });
 }
@@ -1502,17 +1520,12 @@ function eventAutomationRunConversation(
             slackUserName: "junior",
           },
           text: [
-            "[task]",
-            "",
-            "This is a task, not a message from a person.",
-            "",
-            "About: Issue · ACME-42",
-            'Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.',
-            "Instructions: Summarize the closed issue",
-            "",
-            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-            "",
+            '<task about="Issue · ACME-42" event="issue.closed">',
+            '<created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>',
+            "<instructions>Summarize the closed issue</instructions>",
+            "<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>",
             "End with `finishAutomationRun`.",
+            "</task>",
           ].join("\n"),
         },
         { mentions: [MOCK_MENTION_MORGAN] },
@@ -1566,7 +1579,12 @@ function usage(cost: number) {
   };
 }
 
+/** Fixture Conversations with the mock sends of this process. */
 function mockConversations(nowMs: number): MockConversation[] {
+  return withMockSends(fixtureConversations(nowMs));
+}
+
+function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -1682,6 +1700,9 @@ function summaryFromConversation(
     brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
+    forkedFromConversationId: _forkedFromConversationId,
+    forkedFromTitle: _forkedFromTitle,
+    forks: _forks,
     generatedAt: _generatedAt,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
@@ -1706,7 +1727,11 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     source: "conversation_index",
     generatedAt: iso(nowMs),
     conversations: mockConversations(nowMs)
-      .filter((conversation) => !conversation.parentConversationId)
+      .filter(
+        (conversation) =>
+          !conversation.parentConversationId &&
+          !isUnlistedMockConversation(conversation.conversationId),
+      )
       .map(summaryFromConversation),
   };
 }
@@ -1987,6 +2012,19 @@ export function setMockConversationPinned(
   return { pinnedAt: pinned ? NOW : null };
 }
 
+/** Rename one mock conversation for local dashboard visual QA. */
+export function setMockConversationTitle(
+  conversationId: string,
+  title: string,
+): { title: string } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockTitles.set(conversationId, title);
+  return { title };
+}
+
 /** Save the mock Pinned order, like the pin-order API. */
 export function setMockPinOrder(conversationIds: string[]): {
   conversationIds: string[];
@@ -2253,6 +2291,7 @@ export function readMockConversationDetail(
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !parentConversationId &&
+      !isUnlistedMockConversation(conversationId) &&
       conversationDetail.eventHistory.status !== "redacted",
     ...(conversationDetail.isParticipant
       ? {

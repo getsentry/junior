@@ -26,7 +26,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversations");
 
   const composer = page.getByLabel("Start a conversation");
-  await composer.focus();
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
@@ -212,14 +211,40 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.keyboard.press("ArrowRight");
   await expect(preview.getByText("1 of 2")).toBeVisible();
 
-  // Touch readers can pinch to zoom. Real touch input checks that the image
-  // keeps the gesture after a finger leaves it.
+  // Touch readers swipe to page and dismiss, and pinch to zoom. Real touch
+  // input checks that the frame keeps a gesture after a finger leaves it.
   await page.setViewportSize(mobile);
   const touch = await page.context().newCDPSession(page);
   const pinch = (
     type: "touchStart" | "touchMove" | "touchEnd",
     points: { id: number; x: number; y: number }[],
   ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+  const swipe = async (
+    from: { x: number; y: number },
+    dx: number,
+    dy: number,
+  ) => {
+    await pinch("touchStart", [{ id: 1, ...from }]);
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await pinch("touchMove", [
+        { id: 1, x: from.x + dx * step, y: from.y + dy * step },
+      ]);
+    }
+    await pinch("touchEnd", []);
+  };
+  await swipe({ x: 300, y: 450 }, -200, 0);
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await swipe({ x: 100, y: 450 }, 200, 0);
+  await expect(preview.getByText("1 of 2")).toBeVisible();
+  // A short swipe springs back, so the preview still pages.
+  await swipe({ x: 200, y: 300 }, 0, 30);
+  await page.keyboard.press("ArrowRight");
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await swipe({ x: 200, y: 300 }, 0, 250);
+  await expect(detailPreview).toBeHidden();
+
+  await image.click();
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await pinch("touchStart", [
     { id: 1, x: 180, y: 450 },
     { id: 2, x: 210, y: 450 },
@@ -587,15 +612,24 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagent rows show in the main view, outside collapsed activity groups.
+  // Adjacent child agents share one group card in the main view. A blocked
+  // row stays visible; a completed row folds until the card opens.
+  const group = page.getByRole("button", { name: /^2 agents/ });
+  await expect(group).toContainText("1 blocked");
   const planner = page.getByRole("button", {
     name: "Open planner transcript",
   });
   const reviewer = page.getByRole("button", {
     name: "Open reviewer transcript",
   });
-  await expect(planner).toContainText("Review the dashboard plan");
   await expect(reviewer).toContainText("blocked");
+  await expect(planner).toBeHidden();
+  // The card already shows the result, so its Event row does not render.
+  await expect(
+    page.getByText('Child agent "reviewer" is blocked.'),
+  ).toBeHidden();
+  await page.getByRole("button", { name: "1 completed" }).click();
+  await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
   // Details lists child agents with the runtime status.
@@ -679,6 +713,21 @@ test("inspects and copies a child agent transcript", async ({
     "Review complete; no blocking issues found.",
   );
 
+  // The shortcut searches the drawer's transcript, not the page behind it.
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(
+    drawer.getByRole("searchbox", { name: "Search transcript" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(1);
+  // Escape closes only the search, not the drawer.
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
     name: "Event 0: message",
@@ -709,6 +758,96 @@ test("inspects and copies a child agent transcript", async ({
       ),
   );
   await expect(entry).toBeFocused();
+});
+
+test("rates a Junior Reply once, with time to change it", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  const open = () =>
+    page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+  const transcript = page.getByLabel("Conversation transcript");
+  const good = transcript.getByRole("button", { name: "Good reply" });
+  const bad = transcript.getByRole("button", { name: "Bad reply" });
+
+  // Good waits before it sends. The reader can clear it or switch to Bad,
+  // and a mistaken Bad can switch back to Good.
+  await page.clock.install();
+  await open();
+  await good.hover();
+  await good.click();
+  await good.click();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await bad.click();
+  const why = page.getByRole("dialog", { name: "What went wrong?" });
+  await expect(why).toBeVisible();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await expect(why).toHaveCount(0);
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  expect(feedback).toHaveLength(0);
+  await page.clock.runFor(5000);
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await expect.poll(() => feedback.length).toBe(1);
+  expect(feedback[0]).toMatchObject({
+    contexts: {
+      feedback: {
+        contact_email: "dev@example.com",
+        message: "Good reply",
+        name: "Dashboard User",
+      },
+    },
+  });
+
+  // Leaving the Conversation sends a pending Good at once.
+  await open();
+  await good.hover();
+  await good.click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
+  await expect.poll(() => feedback.length).toBe(2);
+  await open();
+
+  // Bad asks for an optional comment. Escape sends nothing.
+  await bad.hover();
+  await bad.click();
+  await expect(why.getByRole("textbox", { name: "Comment" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(why).toHaveCount(0);
+  await expect(bad).toHaveAttribute("aria-pressed", "false");
+  await bad.click();
+  await why
+    .getByRole("textbox", { name: "Comment" })
+    .fill("It read the wrong repo");
+  await why.getByRole("button", { name: "Send" }).click();
+  await expect(bad).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeFocused();
+  await expect(good).toHaveCount(0);
+  await expect.poll(() => feedback.length).toBe(3);
+  expect(feedback[2]).toMatchObject({
+    contexts: { feedback: { message: "Bad reply: It read the wrong repo" } },
+    tags: { "app.reply.rating": "bad" },
+  });
 });
 
 test("shows the agent tree of a child agent conversation", async ({

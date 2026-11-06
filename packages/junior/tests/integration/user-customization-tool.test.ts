@@ -61,7 +61,10 @@ describe("user customization tool", () => {
     ]);
     expect(
       createUserCustomizationTools(
-        context({ parentConversationId: "local:user-customization:parent" }),
+        context({
+          agentInvocationId: "invocation-1",
+          parentConversationId: "local:user-customization:parent",
+        }),
       ),
     ).toEqual({});
   });

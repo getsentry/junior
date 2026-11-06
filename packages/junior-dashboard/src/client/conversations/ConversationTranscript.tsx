@@ -1,12 +1,14 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { History } from "lucide-react";
+import { History, Network } from "lucide-react";
+import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -25,6 +27,7 @@ import type {
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
+import { TranscriptSubagentGroup } from "./TranscriptSubagentGroup";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
@@ -42,6 +45,10 @@ import {
   structuredEventIcon,
   TranscriptRailEvent,
 } from "./TranscriptRailEvent";
+import {
+  TranscriptReplyRatings,
+  useTranscriptReplyRatings,
+} from "./ReplyRatingActions";
 import { TranscriptMessageContextView } from "./TranscriptMessageContextView";
 import {
   RedactedMessageView,
@@ -97,6 +104,22 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
       part={entry.part}
       timestamp={entry.timestamp}
     />
+  );
+}
+
+function renderSubagentGroupEntries(
+  entries: TranscriptSubagentEntry[],
+  openKey: string,
+  onOpenTranscript: (part: TranscriptViewSubagentPart) => void,
+): ReactNode {
+  return (
+    <TranscriptRailEvent icon={Network} kind="subagent">
+      <TranscriptSubagentGroup
+        entries={entries}
+        onOpenTranscript={onOpenTranscript}
+        openKey={openKey}
+      />
+    </TranscriptRailEvent>
   );
 }
 
@@ -374,6 +397,14 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           />
         </TranscriptRailEvent>
       )}
+      renderSubagentGroup={(entries, openKey) =>
+        renderSubagentGroupEntries(entries, openKey, (part) =>
+          props.onOpenSubagentTranscript?.({
+            part,
+            conversation: props.conversation,
+          }),
+        )
+      }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
@@ -392,6 +423,10 @@ type TranscriptEntryRenderers = {
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
+  renderSubagentGroup: (
+    entries: TranscriptSubagentEntry[],
+    openKey: string,
+  ) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 };
 
@@ -399,7 +434,8 @@ type TranscriptEntryRenderers = {
  * Render transcript entries as list rows. Only the rows near the viewport
  * mount. These rows also stay mounted, because the scroll owner and the
  * page find them in the DOM: the row that holds the reader's place, the
- * "New" marker and the row after it, and the rows around `revealSeq`.
+ * "New" marker and the row after it, the rows around `revealSeq`, and the
+ * current search match.
  */
 function TranscriptEntryList(
   props: TranscriptEntryRenderers &
@@ -412,6 +448,7 @@ function TranscriptEntryList(
   const search = useTranscriptSearch();
   const activityKeys = useRef(new Map<string, string>());
   const [openRows] = useState(() => new Map<string, boolean>());
+  const replyRatings = useTranscriptReplyRatings();
   const listRef = useRef<HTMLDivElement>(null);
   const searchQuery = search.active ? search.normalizedQuery : undefined;
   const rows = useMemo(
@@ -429,6 +466,45 @@ function TranscriptEntryList(
     () => new Map(rows.map((row, index) => [row.key, index])),
     [rows],
   );
+  const matchCount = searchQuery === undefined ? 0 : rows.length;
+  const { match, onMatches } = search;
+  // Search rows are all matches. Earlier history can put matches before
+  // the current one, so report how many, and the current match stays on
+  // its row. The current row stays mounted, so it can scroll into view like
+  // a reveal. Scroll only when the reader steps to another row. A new query
+  // or a loaded page does not scroll: a scroll to the top match shows the
+  // history sentinel, and each loaded page would then load the next one.
+  const shownMatch = useRef<{
+    firstKey?: string;
+    matchKey?: string;
+    query?: string;
+  }>({});
+  useEffect(() => {
+    const previous = shownMatch.current;
+    const sameQuery = previous.query === searchQuery;
+    const prepended =
+      matchCount > 0 && sameQuery && previous.firstKey !== undefined
+        ? (indexByKey.get(previous.firstKey) ?? 0)
+        : 0;
+    const current = Math.min(match + prepended, matchCount - 1);
+    const matchKey = matchCount > 0 ? rows[current]?.key : undefined;
+    shownMatch.current = {
+      firstKey: rows[0]?.key,
+      matchKey,
+      query: searchQuery,
+    };
+    onMatches?.(matchCount, prepended);
+    if (
+      !sameQuery ||
+      matchKey === undefined ||
+      matchKey === previous.matchKey
+    ) {
+      return;
+    }
+    listRef.current
+      ?.querySelector(`[data-index="${current}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -450,6 +526,7 @@ function TranscriptEntryList(
       markerIndex === undefined ? undefined : markerIndex + 1,
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
+      matchCount === 0 ? undefined : match,
     ],
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
@@ -463,6 +540,7 @@ function TranscriptEntryList(
     renderReasoning,
     renderStructuredEvent,
     renderSubagent,
+    renderSubagentGroup,
     renderTool,
   } = props;
   const renderEntry = useCallback(
@@ -498,22 +576,26 @@ function TranscriptEntryList(
 
   return (
     <TranscriptOpenRows value={openRows}>
-      <div
-        className="relative min-w-0"
-        ref={listRef}
-        style={{ height: virtualizer.getTotalSize() }}
-      >
-        {virtualizer.getVirtualItems().map((item) => (
-          <VirtualTranscriptRow
-            index={item.index}
-            key={item.key}
-            measure={virtualizer.measureElement}
-            offset={item.start - virtualizer.options.scrollMargin}
-            renderEntry={renderEntry}
-            row={rows[item.index]!}
-          />
-        ))}
-      </div>
+      <TranscriptReplyRatings value={replyRatings}>
+        <div
+          className="relative min-w-0"
+          ref={listRef}
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualizer.getVirtualItems().map((item) => (
+            <VirtualTranscriptRow
+              current={matchCount > 0 && item.index === match}
+              index={item.index}
+              key={item.key}
+              measure={virtualizer.measureElement}
+              offset={item.start - virtualizer.options.scrollMargin}
+              renderEntry={renderEntry}
+              renderSubagentGroup={renderSubagentGroup}
+              row={rows[item.index]!}
+            />
+          ))}
+        </div>
+      </TranscriptReplyRatings>
     </TranscriptOpenRows>
   );
 }
@@ -531,16 +613,22 @@ type TranscriptListPlacement = {
  * or offset changes, not when the mounted range changes.
  */
 const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
+  /** The current search match. */
+  current: boolean;
   index: number;
   measure: (element: HTMLElement | null) => void;
   offset: number;
   renderEntry: (entry: TranscriptEntry) => ReactNode;
+  renderSubagentGroup: TranscriptEntryRenderers["renderSubagentGroup"];
   row: TranscriptListRow;
 }) {
   const { row } = props;
   return (
     <div
-      className="absolute left-0 top-0 w-full"
+      className={cn(
+        "absolute left-0 top-0 w-full rounded-lg",
+        props.current && "ring-1 ring-amber-400/40",
+      )}
       data-index={props.index}
       ref={props.measure}
       style={{ transform: `translateY(${props.offset}px)` }}
@@ -554,6 +642,10 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
             openKey={row.key}
             renderEntry={props.renderEntry}
           />
+        </TranscriptRow>
+      ) : row.kind === "subagents" ? (
+        <TranscriptRow anchorKey={row.key} seq={row.seq}>
+          {props.renderSubagentGroup(row.entries, row.key)}
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
@@ -659,6 +751,14 @@ function RedactedTranscriptView(
           />
         </TranscriptRailEvent>
       )}
+      renderSubagentGroup={(entries, openKey) =>
+        renderSubagentGroupEntries(entries, openKey, (part) =>
+          props.onOpenSubagentTranscript?.({
+            part,
+            conversation: props.conversation,
+          }),
+        )
+      }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
@@ -6,10 +6,12 @@ import {
   conversationDetailReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
   conversationEventPageSchema,
+  conversationFeedSchema,
+  type ConversationDetailReport,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
-import { createDashboardApp } from "../src/app";
+import { createDashboardApp, resetMockDashboardState } from "../src/app";
 import {
   ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
@@ -460,5 +462,163 @@ describe("dashboard canonical-event mock routes", () => {
       expect(child.conversationId).toBe(childId);
       expect(child.events.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("dashboard mock sends", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetMockDashboardState();
+  });
+
+  const app = createDashboardApp({
+    authRequired: false,
+    allowedDomains: [],
+    mockConversations: true,
+  });
+  const post = (path: string, body: unknown) =>
+    app.fetch(
+      new Request(`http://localhost/api${path}`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    );
+  const readDetail = async (conversationId: string) =>
+    conversationDetailReportSchema.parse(
+      await (
+        await app.fetch(
+          new Request(
+            `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+          ),
+        )
+      ).json(),
+    );
+  const readFeedIds = async () =>
+    conversationFeedSchema
+      .parse(
+        await (
+          await app.fetch(new Request("http://localhost/api/conversations"))
+        ).json(),
+      )
+      .conversations.map((conversation) => conversation.conversationId);
+  const messages = (detail: ConversationDetailReport) =>
+    detail.events.flatMap(({ data }) =>
+      data.type === "message" ? [`${data.role}: ${data.text}`] : [],
+    );
+
+  it("starts a Conversation that shows a working Turn, then a fixed reply", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const created = await post("/conversations", {
+      idempotencyKey: "new-1",
+      message: "Draw the release checklist",
+    });
+    expect(created.status).toBe(200);
+    const accepted = (await created.json()) as {
+      conversationId: string;
+      messageId: string;
+      status: string;
+    };
+    expect(accepted.status).toBe("accepted");
+    expect(await readFeedIds()).toContain(accepted.conversationId);
+
+    const working = await readDetail(accepted.conversationId);
+    expect(working).toMatchObject({
+      displayTitle: "Draw the release checklist",
+      isParticipant: true,
+      status: "active",
+      surface: "api",
+    });
+    expect(messages(working)).toEqual(["user: Draw the release checklist"]);
+
+    vi.advanceTimersByTime(2_000);
+    const replied = await readDetail(accepted.conversationId);
+    expect(replied.status).toBe("completed");
+    expect(messages(replied)).toEqual([
+      "user: Draw the release checklist",
+      "assistant: Mock reply. No agent ran.\n\n> Draw the release checklist",
+    ]);
+
+    const retry = await post("/conversations", {
+      idempotencyKey: "new-1",
+      message: "Draw the release checklist",
+    });
+    await expect(retry.json()).resolves.toEqual({
+      ...accepted,
+      status: "duplicate",
+    });
+
+    // A fork at the reply copies the end of its Turn too.
+    const fork = await post(
+      `/conversations/${encodeURIComponent(accepted.conversationId)}/forks`,
+      {
+        idempotencyKey: "fork-1",
+        messageId: `mock-reply:${accepted.messageId}`,
+      },
+    );
+    const { conversationId: forkId } = (await fork.json()) as {
+      conversationId: string;
+    };
+    expect(
+      (await readDetail(forkId)).events.flatMap(({ data }) =>
+        data.type === "turn_lifecycle" ? [data.state] : [],
+      ),
+    ).toEqual(["started", "succeeded"]);
+  });
+
+  it("adds a send to a fixture Conversation", async () => {
+    const before = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    const response = await post(
+      `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/messages`,
+      { idempotencyKey: "append-1", message: "One more thing" },
+    );
+    expect(response.status).toBe(200);
+    const after = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    expect(after.status).toBe("active");
+    expect(messages(after)).toEqual([
+      ...messages(before),
+      "user: One more thing",
+    ]);
+  });
+
+  it("keeps a Quick question unlisted until the reader keeps it", async () => {
+    const fork = await post(
+      `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/forks`,
+      {
+        idempotencyKey: "quick-1",
+        messageId: "qa-assistant",
+        quickQuestion: { quote: "the plan" },
+      },
+    );
+    expect(fork.status).toBe(200);
+    const { conversationId } = (await fork.json()) as {
+      conversationId: string;
+    };
+    const asked = await post(
+      `/conversations/${encodeURIComponent(conversationId)}/messages`,
+      { idempotencyKey: "quick-ask-1", message: "Why this order?" },
+    );
+    expect(asked.status).toBe(200);
+
+    const thread = await readDetail(conversationId);
+    expect(thread).toMatchObject({
+      canFork: false,
+      forkedFromConversationId: DASHBOARD_QA_CONVERSATION_ID,
+    });
+    expect(messages(thread).at(-1)).toBe("user: Why this order?");
+    expect(await readFeedIds()).not.toContain(conversationId);
+    expect(
+      (await readDetail(DASHBOARD_QA_CONVERSATION_ID)).forks,
+    ).toBeUndefined();
+
+    const kept = await post(
+      `/conversations/${encodeURIComponent(conversationId)}/quick-question/keep`,
+      {},
+    );
+    expect(kept.status).toBe(200);
+    expect(await readFeedIds()).toContain(conversationId);
+    expect((await readDetail(DASHBOARD_QA_CONVERSATION_ID)).forks).toEqual([
+      conversationId,
+    ]);
   });
 });
