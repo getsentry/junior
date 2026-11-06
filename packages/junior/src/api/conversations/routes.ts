@@ -58,10 +58,7 @@ import {
   setConversationAutoArchive,
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
-import {
-  conversationAttachmentHeaders,
-  requireConversationAttachment,
-} from "./attachments";
+import { conversationAttachmentResponse } from "./attachments";
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
@@ -516,18 +513,12 @@ export function createConversationRoutes(
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
       const viewer = context.get("viewer");
-      const opened = await requireConversationAttachment({
+      return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),
-      });
-      return new Response(opened.body, {
-        headers: conversationAttachmentHeaders({
-          bytes: opened.attachment.bytes,
-          contentType: opened.attachment.contentType,
-          filename: opened.attachment.filename,
-        }),
       });
     },
   );
