@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { isPushServiceEndpoint } from "../../chat/notifications/push-endpoint";
 import { notificationScheduleSchema } from "../../chat/notifications/schedule";
 

@@ -575,6 +575,13 @@
       "when": 1793927683295,
       "tag": "0081_conversation_pin_position",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793958604674,
+      "tag": "0082_push_notifications",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import {
   type JuniorApiVariables,
 } from "@/api";
 import { notificationSettingsSchema } from "@/api/schema";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb, getConversationStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -83,8 +83,10 @@ async function completeDashboardTurn(reply: string): Promise<string[]> {
     title: "Deploy status",
     visibility: "private",
   });
+  const user = await resolveViewerUser(EMAIL);
+  if (!user) throw new Error("Test user was not created");
   await upsertTurnRecord({
-    actor: webActorFromEmail(EMAIL, { fullName: "Alice Example" }),
+    actor: webActorFromUser({ ...user, displayName: "Alice Example" }),
     conversationId,
     destination,
     piMessages: [

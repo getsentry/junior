@@ -15,7 +15,7 @@ import { Input } from "../components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
-import { Select } from "../components/Select";
+import { NativeSelect } from "../components/ui/native-select";
 import { Skeleton } from "../components/ui/skeleton";
 import { del, fetchDashboardJson, post, put } from "../http";
 import {
@@ -333,7 +333,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
       </fieldset>
       <Field className="mt-4 sm:max-w-sm">
         <FieldLabel htmlFor="notification-timezone">Timezone</FieldLabel>
-        <Select
+        <NativeSelect
           id="notification-timezone"
           onChange={(event) =>
             update({ timezone: event.target.value || undefined })
@@ -350,7 +350,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
               {zone}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
         <FieldDescription>
           Automatic uses your Slack timezone when Junior can read it.
         </FieldDescription>

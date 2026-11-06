@@ -2,6 +2,7 @@
  * Hosts of the browser push services. A push endpoint is a URL that the
  * browser gives us, and Junior sends a POST request to it. Only these hosts
  * are accepted, so a user cannot make Junior send requests to other servers.
+ * Add a host here when a browser uses another push service.
  */
 const PUSH_SERVICE_HOSTS = [
   // Chrome, Edge on Android, Opera, Samsung Internet and other Chromium browsers.

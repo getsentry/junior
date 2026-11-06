@@ -104,6 +104,7 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
     return skip(context, "outside_hours");
   }
 
+  // The payload holds only a short plain-text preview. Logs hold only counts.
   const payload: PushNotificationPayload = {
     body: notificationPreview(reply) || "New reply",
     tag: run.conversationId,

@@ -4,7 +4,7 @@
  * This module imports only zod and the browser-safe cadence helpers, so the
  * dashboard client bundle can use it.
  */
-import { z } from "zod";
+import * as z from "zod";
 import { isValidTimeZone } from "../scheduled-automations/cadence";
 
 const clockTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
