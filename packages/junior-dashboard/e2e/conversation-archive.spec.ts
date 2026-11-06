@@ -148,6 +148,8 @@ for (const outcome of ["success", "error"] as const) {
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
     ).toBeVisible();
 
+    // Home must report the result even with the list hidden.
+    await page.getByRole("button", { name: "Hide conversation list" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("button", { name: "Archive", exact: true }).click();
 
@@ -170,6 +172,7 @@ for (const outcome of ["success", "error"] as const) {
       hasText: "Could not archive",
     });
     await expect(archiveError).toContainText("Dashboard QA edge cases");
+    await page.getByRole("button", { name: "Show conversation list" }).click();
     await expect(conversationLink).toBeVisible();
   });
 }
@@ -340,6 +343,9 @@ test("shows archive failures after the row returns", async ({
   await expect(archiveError).toBeVisible();
   await expect(archiveError).toContainText("Dashboard QA edge cases");
 
+  // Hover again: the first hover's tooltip can cover the returned row.
+  await page.mouse.move(0, 0);
+  await conversationLink.hover();
   await page
     .getByRole("button", { name: "Archive Dashboard QA edge cases" })
     .click();
