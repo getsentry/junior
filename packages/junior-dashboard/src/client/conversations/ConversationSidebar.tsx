@@ -407,7 +407,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           </span>
           <span
             className={cn(
-              "min-w-0 truncate font-sans text-sm leading-snug",
+              // The title fills its grid column, so the fade reaches only a
+              // title that does not fit, in place of an ellipsis.
+              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
               emphasized ? "font-semibold" : props.selected && "font-medium",
               emphasized || props.selected || status === "active"
                 ? "text-dashboard-text"
