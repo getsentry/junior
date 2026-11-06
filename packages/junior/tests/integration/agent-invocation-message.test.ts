@@ -1,12 +1,14 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
-  completeAgentInvocation,
-  createAgentInvocation,
-  getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationIdForMessage,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";

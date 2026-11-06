@@ -4,9 +4,9 @@ import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   createAgentInvocationForMessage,
-  getAgentInvocation,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
-} from "@/chat/agent-invocations/store";
+} from "@/chat/agent-invocations/create";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocation,
   createAndEnqueueAgentInvocation,
@@ -369,6 +369,12 @@ describe("agent invocation identity and concurrency", () => {
   it("rejects new children once the parent concurrent active limit is reached", async () => {
     const harness = await createHarness(taskModel);
     try {
+      const idle = await harness.spawn({
+        idempotencyKey: "limit-idle",
+        input: "idle task",
+      });
+      await harness.drainQueuedWork();
+
       const active = await Promise.all(
         Array.from(
           { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
@@ -397,6 +403,24 @@ describe("agent invocation identity and concurrency", () => {
       ).resolves.toMatchObject({
         invocationId: active[0]?.invocationId,
       });
+
+      // A message to an idle child makes it active, so it needs room.
+      await expect(
+        harness.message({
+          childConversationId: idle.childConversationId,
+          idempotencyKey: "limit-idle-message",
+          input: "wake the idle child",
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+
+      // A busy child already counts, so a message to it queues.
+      await expect(
+        harness.message({
+          childConversationId: active[0]!.childConversationId,
+          idempotencyKey: "limit-busy-message",
+          input: "more for the busy child",
+        }),
+      ).resolves.toMatchObject({ status: "pending" });
 
       await harness.drainQueuedWork();
 
