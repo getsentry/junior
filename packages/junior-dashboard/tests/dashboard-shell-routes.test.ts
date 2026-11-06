@@ -248,9 +248,7 @@ describe("dashboard shell routes", () => {
     );
     const clientScript = await client.text();
     expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
-    const chunk = clientScript.match(
-      /["']\/_junior\/dashboard\/assets\/(chunks\/[^"']+\.js)["']/,
-    )?.[1];
+    const chunk = clientScript.match(/["']\.\/(chunks\/[^"']+\.js)["']/)?.[1];
     expect(chunk).toBeDefined();
     const chunkResponse = await assetResponse(chunk!);
     expect(chunkResponse.status).toBe(200);

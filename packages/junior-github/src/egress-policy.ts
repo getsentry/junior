@@ -329,6 +329,31 @@ type GitHubBodyWrite = {
   restPath: RegExp;
 };
 
+const ISSUE_PATH = /^\/repos\/[^/]+\/[^/]+\/issues\/\d+$/;
+const ISSUE_READ_DENIAL = `Use github_getIssue to read a GitHub issue, not gh issue view or gh api. Read comments with gh api repos/OWNER/REPO/issues/NUMBER/comments. ${CREATE_TOOL_ROUTING_GUIDANCE}`;
+
+/** Match one-issue reads: the REST issue path or a GraphQL issue field. */
+function isGitHubIssueRead(input: {
+  bodyText?: string;
+  method: string;
+  upstreamUrl: URL;
+}): boolean {
+  if (isGitHubGraphqlUrl(input.upstreamUrl)) {
+    // `gh issue view` selects `issue(number:)` or `issueOrPullRequest(number:)`.
+    const parsed = parseGitHubGraphqlRequest(input.bodyText);
+    return (
+      input.method === "POST" &&
+      parsed !== undefined &&
+      /\b(?:issue|issueOrPullRequest)\s*\(/.test(parsed.normalized)
+    );
+  }
+  return (
+    isGitHubApiUrl(input.upstreamUrl) &&
+    HTTP_READ_METHODS.has(input.method) &&
+    ISSUE_PATH.test(input.upstreamUrl.pathname.toLowerCase())
+  );
+}
+
 const PULL_REQUEST_COMMENT_REACTIONS_PATH =
   /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
 
@@ -559,6 +584,13 @@ function applyGitHubEgressPolicy(input: {
       allowed: input.operation === expectedOperation,
       denialMessage:
         "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
+  if (isGitHubIssueRead(input)) {
+    enforceEgressPolicy({
+      allowed: input.operation === "github.issue.get",
+      denialMessage: ISSUE_READ_DENIAL,
     });
   }
 

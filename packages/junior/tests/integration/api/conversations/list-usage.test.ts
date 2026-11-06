@@ -100,6 +100,117 @@ describe("conversation list API usage rollup", () => {
           },
         ],
       });
+
+      // Later reads add only events after the cached seqs, including the
+      // events of a child agent that started after the first read.
+      const laterChildAt = new Date(5_000);
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "advisor:later-child",
+        parentConversationId: "advisor:child",
+        rootConversationId: "slack:C1:root",
+        createdAt: laterChildAt,
+        lastActivityAt: laterChildAt,
+        updatedAt: laterChildAt,
+        executionStatus: "idle",
+      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:root",
+            createdAt: new Date(6_000),
+            historyVersion: 1,
+            payload: {
+              content: { costUsd: 0.0001, memories: [] },
+              name: "memories_recalled",
+              namespace: "memory",
+              version: 1,
+            },
+            seq: 1,
+            type: "structured_event",
+          },
+          {
+            conversationId: "advisor:later-child",
+            createdAt: new Date(7_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0004 },
+            seq: 0,
+            type: "guardian_action_reviewed",
+          },
+        ]);
+
+      const laterFeed = await readConversationFeedFromSql();
+
+      expect(laterFeed.conversations[0]?.childAgentTotals).toMatchObject({
+        auxiliaryCostUsd: 0.0007,
+      });
+      expect(laterFeed.conversations[0]?.auxiliaryCosts).toEqual({
+        costUsd: 0.001,
+        operations: [
+          {
+            costUsd: 0.0007,
+            events: 2,
+            name: "guardian_action_reviewed",
+            namespace: "junior",
+          },
+          {
+            costUsd: 0.0003,
+            events: 2,
+            name: "memories_recalled",
+            namespace: "memory",
+          },
+        ],
+      });
+
+      // A purged root gets new events under the same id, with seq starting
+      // again at 0. Its totals start again, even when its last seq is the
+      // cached one again.
+      await fixture.sql
+        .db()
+        .delete(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.conversationId, "slack:C1:root"));
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:root",
+            createdAt: new Date(8_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0005 },
+            seq: 0,
+            type: "turn_routed",
+          },
+          {
+            conversationId: "slack:C1:root",
+            createdAt: new Date(9_000),
+            historyVersion: 1,
+            payload: { role: "user", text: "again" },
+            seq: 1,
+            type: "message",
+          },
+        ]);
+
+      const purgedFeed = await readConversationFeedFromSql();
+
+      expect(purgedFeed.conversations[0]?.auxiliaryCosts).toEqual({
+        costUsd: 0.0012,
+        operations: [
+          {
+            costUsd: 0.0007,
+            events: 2,
+            name: "guardian_action_reviewed",
+            namespace: "junior",
+          },
+          {
+            costUsd: 0.0005,
+            events: 1,
+            name: "turn_routed",
+            namespace: "junior",
+          },
+        ],
+      });
     } finally {
       await fixture.close();
     }

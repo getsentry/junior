@@ -84,22 +84,55 @@ describe("conversation activity sections", () => {
   });
 
   it("puts pinned conversations only in Pinned, before Needs attention", () => {
-    const pinned = (id: string, lastSeenAt: string) => ({
-      ...conversation(id, lastSeenAt),
-      pinnedAt: "2026-08-03T08:00:00-07:00",
-    });
+    const pinned = (
+      id: string,
+      lastSeenAt: string,
+      pinnedAt: string,
+      pinPosition?: number,
+    ) => ({ ...conversation(id, lastSeenAt), pinnedAt, pinPosition });
     const sections = buildConversationSections(
       [
         conversation("today", "2026-08-03T11:00:00-07:00"),
-        pinned("pinned-old", "2026-06-20T12:00:00-07:00"),
-        pinned("pinned-waiting", "2026-08-03T10:00:00-07:00"),
+        // The older pin has the newer activity.
+        pinned(
+          "pinned-earlier",
+          "2026-08-03T10:00:00-07:00",
+          "2026-07-01T08:00:00-07:00",
+        ),
+        pinned(
+          "pinned-later",
+          "2026-06-20T12:00:00-07:00",
+          "2026-08-01T15:00:00Z",
+        ),
+        pinned(
+          "placed-second",
+          "2026-08-03T11:30:00-07:00",
+          "2026-06-01T08:00:00-07:00",
+          1,
+        ),
+        pinned(
+          "placed-first",
+          "2026-06-01T12:00:00-07:00",
+          "2026-08-02T08:00:00-07:00",
+          0,
+        ),
         conversation("waiting", "2026-08-03T09:00:00-07:00"),
       ],
-      { ...NOW, attentionIds: new Set(["pinned-waiting", "waiting"]) },
+      { ...NOW, attentionIds: new Set(["pinned-earlier", "waiting"]) },
     );
 
+    // Pins without a place go first, newest pin first, then the viewer's
+    // order. Activity does not move a pin.
     expect(sectionIds(sections)).toEqual([
-      { conversations: ["pinned-waiting", "pinned-old"], label: "Pinned" },
+      {
+        conversations: [
+          "pinned-later",
+          "pinned-earlier",
+          "placed-first",
+          "placed-second",
+        ],
+        label: "Pinned",
+      },
       { conversations: ["waiting"], label: "Needs attention" },
       { conversations: ["today"], label: "Today" },
     ]);

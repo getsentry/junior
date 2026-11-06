@@ -4,7 +4,13 @@ import {
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
 import { FileText } from "lucide-react";
-import { ImageAttachment } from "../components/ImageAttachment";
+import { type ReactNode, createContext, useContext, useMemo } from "react";
+
+import {
+  ImageAttachment,
+  type PreviewImage,
+} from "../components/ImageAttachment";
+import type { TranscriptViewMessage } from "../types";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Build a data URL that previews an image before the server stores it. */
@@ -24,6 +30,83 @@ function formatAttachmentBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isInlineImage(attachment: MessageAttachment): boolean {
+  return INPUT_IMAGE_TYPES.some((type) => type === attachment.contentType);
+}
+
+function attachmentMeta(attachment: MessageAttachment): string {
+  return [attachment.contentType, formatAttachmentBytes(attachment.bytes)].join(
+    " · ",
+  );
+}
+
+function previewImages(
+  conversationId: string,
+  attachments: readonly MessageAttachment[],
+): PreviewImage[] {
+  return attachments.filter(isInlineImage).map((attachment) => ({
+    context: attachmentMeta(attachment),
+    filename: attachment.filename,
+    src: conversationAttachmentUrl(conversationId, attachment.id),
+  }));
+}
+
+/**
+ * Group stored transcript images so one preview pages through one group. A
+ * user message keeps its own images. The images Junior sends after it, across
+ * any number of messages, form that message's response.
+ */
+export function transcriptImageGroups(
+  conversationId: string,
+  messages: readonly TranscriptViewMessage[],
+): PreviewImage[][] {
+  const groups: PreviewImage[][] = [];
+  let response: PreviewImage[] | undefined;
+  for (const message of messages) {
+    if (message.role === "user") {
+      const sent = previewImages(conversationId, message.attachments ?? []);
+      if (sent.length > 0) groups.push(sent);
+      // A context message can arrive during a response. It does not start one.
+      if (!message.context) response = undefined;
+      continue;
+    }
+    const delivered = previewImages(conversationId, [
+      ...(message.attachments ?? []),
+      ...message.parts.flatMap((part) =>
+        part.type === "attachments_delivered" ? part.attachments : [],
+      ),
+    ]);
+    if (delivered.length === 0) continue;
+    if (!response) {
+      response = [];
+      groups.push(response);
+    }
+    response.push(...delivered);
+  }
+  return groups;
+}
+
+const TranscriptImageGroupsContext = createContext<
+  readonly (readonly PreviewImage[])[]
+>([]);
+
+/** Share the transcript image groups with each image preview below it. */
+export function TranscriptImagesProvider(props: {
+  children: ReactNode;
+  conversationId: string;
+  messages: readonly TranscriptViewMessage[];
+}) {
+  const groups = useMemo(
+    () => transcriptImageGroups(props.conversationId, props.messages),
+    [props.conversationId, props.messages],
+  );
+  return (
+    <TranscriptImageGroupsContext.Provider value={groups}>
+      {props.children}
+    </TranscriptImageGroupsContext.Provider>
+  );
 }
 
 /** Keep message attachments at their own size and wrap them when the row is full. */
@@ -73,21 +156,25 @@ function TranscriptAttachment(props: {
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
+  const groups = useContext(TranscriptImageGroupsContext);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
   );
-  const size = formatAttachmentBytes(props.attachment.bytes);
-  const inline = INPUT_IMAGE_TYPES.some(
-    (type) => type === props.attachment.contentType,
+  const gallery = groups.find((group) =>
+    group.some(
+      (image) =>
+        image.src === href && image.filename === props.attachment.filename,
+    ),
   );
-  const meta = [props.attachment.contentType, size].join(" · ");
+  const meta = attachmentMeta(props.attachment);
 
-  if (inline && !search.active) {
+  if (isInlineImage(props.attachment) && !search.active) {
     return (
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
+        gallery={gallery}
         imageClassName={TRANSCRIPT_IMAGE_CLASS}
         loading="lazy"
         src={href}
@@ -96,12 +183,15 @@ function TranscriptAttachment(props: {
     );
   }
 
+  // `target="_blank"`: an installed iOS home screen app has no back button.
+  // Opening a file in the same window traps the user in the iOS file preview.
   return (
     <a
       className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"
+      target="_blank"
     >
       <span
         aria-hidden="true"

@@ -37,6 +37,7 @@ import {
   dashboardConfigSchema,
   dashboardIdentitySchema,
 } from "../api/schema";
+import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
@@ -113,7 +114,11 @@ export function usePluginUserPagesData() {
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
+  const pinOrderSaving = usePinOrderSaving();
   return useQuery({
+    // A read that ends during a Pinned order save can hold the old order.
+    // The feed keeps its data and refetches when the save ends.
+    enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
     queryFn: ({ signal }) =>
       fetchDashboardJson(

@@ -2,6 +2,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
+import { buildPendingConcurrentIndexes } from "@/db/concurrent-indexes";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorSqlSchema as schema } from "@/db/schema";
@@ -129,6 +130,11 @@ export async function migrateSchema(
       return migrationResult(migrations, lockedState);
     }
     assertSupportedMigrationState(lockedState);
+    await buildPendingConcurrentIndexes(
+      executor,
+      migrations,
+      lockedState.appliedAt,
+    );
     await executor.migrate({
       migrationsFolder,
       migrationsTable: MIGRATIONS_TABLE,

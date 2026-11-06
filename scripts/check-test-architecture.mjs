@@ -15,6 +15,7 @@ const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/conversation-storage-sql.test.ts",
   "packages/junior/tests/component/memory-plugin-storage.test.ts",
   "packages/junior/tests/component/scheduled-automations-sql.test.ts",
+  "packages/junior/tests/integration/concurrent-index-migrations.test.ts",
   "packages/junior/tests/integration/conversation-sql.test.ts",
   "packages/junior/tests/integration/workspace-snapshot-migration.test.ts",
 ]);

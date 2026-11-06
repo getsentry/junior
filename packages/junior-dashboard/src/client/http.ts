@@ -2,6 +2,29 @@ import type { ZodType } from "zod";
 import { recordDashboardServerVersion } from "./dashboard-version";
 import { readResponseJson } from "./sentry";
 
+declare global {
+  interface Window {
+    __JUNIOR_DASHBOARD_EARLY_RESPONSE__?: {
+      path: string;
+      response: Promise<Response>;
+    };
+  }
+}
+
+// The page shell starts the first read of a Conversation page before this
+// module loads (see `conversationOpenScript`). The first request for the same
+// path takes it, once, so later reads see fresh data.
+function takeEarlyResponse(path: string): Promise<Response> | undefined {
+  if (typeof window === "undefined") return undefined;
+  const early = window.__JUNIOR_DASHBOARD_EARLY_RESPONSE__;
+  if (early?.path !== path) return undefined;
+  delete window.__JUNIOR_DASHBOARD_EARLY_RESPONSE__;
+  return early.response.then((response) => {
+    recordDashboardServerVersion(response);
+    return response;
+  });
+}
+
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
@@ -181,13 +204,16 @@ export async function readDashboardResponse(
   signal?: AbortSignal,
   validator?: Record<string, string>,
 ): Promise<Response> {
-  const response = await fetchDashboard(path, {
-    credentials: "same-origin",
-    ...(signal ? { signal } : undefined),
-    ...(validator
-      ? { cache: "no-store" as const, headers: validator }
-      : undefined),
-  });
+  // A read with a validator has a cached copy, so it is never the first.
+  const early = validator ? undefined : takeEarlyResponse(path);
+  const response = await (early ??
+    fetchDashboard(path, {
+      credentials: "same-origin",
+      ...(signal ? { signal } : undefined),
+      ...(validator
+        ? { cache: "no-store" as const, headers: validator }
+        : undefined),
+    }));
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok && !(validator && response.status === 304)) {
     await throwDashboardApiError(path, response);

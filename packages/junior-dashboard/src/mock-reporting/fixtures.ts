@@ -137,6 +137,8 @@ const DASHBOARD_QA_PLAN_CHECK_ID =
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
 const mockPinnedConversationIds = new Set<string>();
+/** Process-local Pinned order from drag reorders. */
+const mockPinPositions = new Map<string, number>();
 
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
@@ -149,19 +151,26 @@ export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.clear();
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
+  mockPinPositions.clear();
   mockAutoArchiveByConversationId.clear();
 }
 
 /** Add the viewer's mock archive and pin times to one conversation. */
 function withMockViewerState<T extends { conversationId: string }>(
   report: T & { archivedAt?: string | null },
-): T & { archivedAt: string | undefined; pinnedAt: string | null } {
+): T & {
+  archivedAt: string | undefined;
+  pinnedAt: string | null;
+  pinPosition?: number;
+} {
+  const pinPosition = mockPinPositions.get(report.conversationId);
   return {
     ...report,
     archivedAt: mockArchivedConversationIds.has(report.conversationId)
       ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
       : undefined,
     pinnedAt: mockPinnedConversationIds.has(report.conversationId) ? NOW : null,
+    ...(pinPosition === undefined ? undefined : { pinPosition }),
   };
 }
 
@@ -987,6 +996,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
           {
             id: "qa-chart-png",
             filename: "chart.png",
+            contentType: "image/png",
+            bytes: 18211,
+          },
+          {
+            id: "qa-chart-png",
+            filename: "chart-detail.png",
             contentType: "image/png",
             bytes: 18211,
           },
@@ -1936,6 +1951,7 @@ export function setMockConversationArchived(
     mockArchivedConversationIds.add(conversationId);
     // Match the API: archive also unpins.
     mockPinnedConversationIds.delete(conversationId);
+    mockPinPositions.delete(conversationId);
   } else {
     mockArchivedConversationIds.delete(conversationId);
     // Match the API: a manual restore turns auto-archive off.
@@ -1953,6 +1969,8 @@ export function setMockConversationPinned(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
+  // Match the API: a new or removed pin has no place.
+  mockPinPositions.delete(conversationId);
   if (pinned) {
     mockPinnedConversationIds.add(conversationId);
     // Match the API: a pin also restores an archived conversation.
@@ -1961,6 +1979,18 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
+}
+
+/** Save the mock Pinned order, like the pin-order API. */
+export function setMockPinOrder(conversationIds: string[]): {
+  conversationIds: string[];
+} {
+  const placed = conversationIds.flatMap((conversationId, index) => {
+    if (!mockPinnedConversationIds.has(conversationId)) return [];
+    mockPinPositions.set(conversationId, index);
+    return [conversationId];
+  });
+  return { conversationIds: placed };
 }
 
 /** Archive every done mock conversation once, like the archive-done API. */

@@ -162,6 +162,7 @@ export type Conversation = {
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
   pinnedAt?: string | null;
+  pinPosition?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;

@@ -374,6 +374,12 @@ importers:
       '@base-ui/react':
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@dnd-kit/core':
+        specifier: ^6.3.1
+        version: 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@dnd-kit/sortable':
+        specifier: ^10.0.0
+        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
       '@sentry/browser':
         specifier: 'catalog:'
         version: 11.10.0
@@ -485,7 +491,7 @@ importers:
         version: 4.3.0
       tsdown:
         specifier: 0.23.1
-        version: 0.23.1(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
+        version: 0.23.1(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)(unrun@0.3.1)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
@@ -495,6 +501,9 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      unrun:
+        specifier: ^0.3.1
+        version: 0.3.1
       vitest:
         specifier: ^4.1.12
         version: 4.1.12(@types/node@25.9.1)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)
@@ -1585,6 +1594,28 @@ packages:
   '@ctrl/tinycolor@4.2.0':
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
+
+  '@dnd-kit/accessibility@3.1.1':
+    resolution: {integrity: sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw==}
+    peerDependencies:
+      react: '>=16.8.0'
+
+  '@dnd-kit/core@6.3.1':
+    resolution: {integrity: sha512-xkGBRQQab4RLwgXxoqETICr6S5JlogafbhNsidmrkVv2YRs5MLwpjoF2qpiGjQt8S9AoxtIV603s0GIUpY5eYQ==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
+  '@dnd-kit/sortable@10.0.0':
+    resolution: {integrity: sha512-+xqhmIIzvAYMGfBYYnbKuNicfSsk4RksY2XdmJhT+HAC01nix6fHCztU68jooFiMUB01Ky3F0FyOvhG/BZrWkg==}
+    peerDependencies:
+      '@dnd-kit/core': ^6.3.0
+      react: '>=16.8.0'
+
+  '@dnd-kit/utilities@3.2.2':
+    resolution: {integrity: sha512-+MKAJEOfaBe5SmV6t34p80MMKhjvUz0vRrvVJbPT0WElzaOJ/1xs+D+KDv+tD/NE5ujfrChEcshd4fLn0wpiqg==}
+    peerDependencies:
+      react: '>=16.8.0'
 
   '@dotenvx/dotenvx@1.75.1':
     resolution: {integrity: sha512-/BITOC9dmS/edY2zQwZNicQ059O6RKabtQfyEafV0nGtfYRNHYy1DIPiYVcov40+tob9hfmBnbR963dS+EQ1DQ==}
@@ -9516,6 +9547,16 @@ packages:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
 
+  unrun@0.3.1:
+    resolution: {integrity: sha512-onIck/oNnCaytwths1ZVp1LK2Gq2hPoyFhiHebObuUXqR3S0uHuLLaBK8K6mRRgV7Ptip8AnNvaUsgzwWwBZuA==}
+    engines: {node: ^22.13.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      synckit: ^0.11.11
+    peerDependenciesMeta:
+      synckit:
+        optional: true
+
   unstorage@1.17.5:
     resolution: {integrity: sha512-0i3iqvRfx29hkNntHyQvJTpf5W9dQ9ZadSoRU8+xVlhVtT7jAX57fazYO9EHvcRCfBCyi5YRya7XCDOsbTgkPg==}
     peerDependencies:
@@ -11110,6 +11151,31 @@ snapshots:
     optional: true
 
   '@ctrl/tinycolor@4.2.0': {}
+
+  '@dnd-kit/accessibility@3.1.1(react@19.2.6)':
+    dependencies:
+      react: 19.2.6
+      tslib: 2.8.1
+
+  '@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@dnd-kit/accessibility': 3.1.1(react@19.2.6)
+      '@dnd-kit/utilities': 3.2.2(react@19.2.6)
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+      tslib: 2.8.1
+
+  '@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@dnd-kit/utilities': 3.2.2(react@19.2.6)
+      react: 19.2.6
+      tslib: 2.8.1
+
+  '@dnd-kit/utilities@3.2.2(react@19.2.6)':
+    dependencies:
+      react: 19.2.6
+      tslib: 2.8.1
 
   '@dotenvx/dotenvx@1.75.1':
     dependencies:
@@ -12933,6 +12999,8 @@ snapshots:
   '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0)))':
     dependencies:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@dnd-kit/core': 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
       '@sentry/browser': 11.10.0
       '@sentry/junior': file:packages/junior(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
@@ -20022,6 +20090,34 @@ snapshots:
       - oxc-resolver
       - vue-tsc
 
+  tsdown@0.23.1(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)(unrun@0.3.1):
+    dependencies:
+      cac: 7.1.0
+      defu: 6.1.7
+      empathic: 2.1.0
+      hookable: 6.1.2
+      import-without-cache: 0.4.1
+      obug: 3.0.0
+      picomatch: 4.0.7
+      rolldown: 1.2.15
+      rolldown-plugin-dts: 0.28.8(rolldown@1.2.15)(typescript@7.0.2)
+      tinyexec: 1.1.2
+      tinyglobby: 0.2.17
+      tree-kill: 1.2.2
+      unconfig-core: 7.5.0
+      verkit: 0.5.0
+    optionalDependencies:
+      publint: 0.3.21
+      tsx: 4.22.3
+      typescript: 7.0.2
+      unrun: 0.3.1
+    transitivePeerDependencies:
+      - '@typescript/native-preview'
+      - '@volar/typescript'
+      - '@vue/language-core'
+      - oxc-resolver
+      - vue-tsc
+
   tslib@2.8.1: {}
 
   tsup@8.5.1(tsx@4.22.3)(typescript@7.0.2):
@@ -20234,6 +20330,10 @@ snapshots:
   universalify@2.0.1: {}
 
   unpipe@1.0.0: {}
+
+  unrun@0.3.1:
+    dependencies:
+      rolldown: 1.2.15
 
   unstorage@1.17.5:
     dependencies:
