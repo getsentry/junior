@@ -32,6 +32,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
@@ -1561,7 +1562,12 @@ function usage(cost: number) {
   };
 }
 
+/** Fixture Conversations with the mock sends of this process. */
 function mockConversations(nowMs: number): MockConversation[] {
+  return withMockSends(fixtureConversations(nowMs));
+}
+
+function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -1677,6 +1683,9 @@ function summaryFromConversation(
     brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
+    forkedFromConversationId: _forkedFromConversationId,
+    forkedFromTitle: _forkedFromTitle,
+    forks: _forks,
     generatedAt: _generatedAt,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
@@ -1701,7 +1710,11 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     source: "conversation_index",
     generatedAt: iso(nowMs),
     conversations: mockConversations(nowMs)
-      .filter((conversation) => !conversation.parentConversationId)
+      .filter(
+        (conversation) =>
+          !conversation.parentConversationId &&
+          !isUnlistedMockConversation(conversation.conversationId),
+      )
       .map(summaryFromConversation),
   };
 }
@@ -2248,6 +2261,7 @@ export function readMockConversationDetail(
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !parentConversationId &&
+      !isUnlistedMockConversation(conversationId) &&
       conversationDetail.eventHistory.status !== "redacted",
     ...(conversationDetail.isParticipant
       ? {
