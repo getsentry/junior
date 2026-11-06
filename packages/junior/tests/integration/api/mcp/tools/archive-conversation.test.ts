@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getConversationStore } from "@/chat/db";
 import {
   connectMcpTools,
   MCP_TEST_OTHER_VIEWER,
@@ -52,6 +53,43 @@ describe("archiveConversation MCP tool", () => {
       CONVERSATION_ID,
     ]);
     expect(restored.structuredContent).toEqual({ archivedAt: null });
+  });
+
+  it("archives a Thread without archiving its root", async () => {
+    const threadId = "agent:mcp-archive-thread";
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    await getConversationStore().createChild({
+      childConversationId: threadId,
+      kind: "thread",
+      parentConversationId: CONVERSATION_ID,
+    });
+    const call = await connectMcpTools();
+    const readConversation = async (conversationId: string) =>
+      (
+        (await call("getConversation", { conversationId }))
+          .structuredContent as {
+          conversation: { archivedAt?: string; lastSeenAt: string };
+        }
+      ).conversation;
+
+    const archived = await call("archiveConversation", {
+      conversationId: threadId,
+      lastSeenAt: (await readConversation(threadId)).lastSeenAt,
+    });
+
+    expect(archived.structuredContent).toEqual({
+      archivedAt: expect.any(String),
+    });
+    expect((await readConversation(threadId)).archivedAt).toEqual(
+      expect.any(String),
+    );
+    expect(
+      (await readConversation(CONVERSATION_ID)).archivedAt,
+    ).toBeUndefined();
   });
 
   it("refuses a stale lastSeenAt and another person's Conversation", async () => {

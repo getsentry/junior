@@ -2,7 +2,6 @@ import {
   and,
   eq,
   exists,
-  gte,
   inArray,
   isNotNull,
   notExists,
@@ -19,23 +18,48 @@ import {
   juniorUsers,
 } from "@/db/schema";
 
-/** True when the viewer is a materialized participant on this root conversation. */
-export function conversationHasParticipantUser(userId: string): SQL {
-  const participant = getDb()
+/** A person by User id, or by primary email when no User is known. */
+export type ConversationMember = { userId: string } | { email: string };
+
+/**
+ * Select the person's participant row on the outer `juniorConversations`
+ * root, with an optional extra condition.
+ */
+function memberParticipantRow(member: ConversationMember, condition?: SQL) {
+  const rows = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
+    .from(juniorConversationParticipants);
+  const onRoot = eq(
+    juniorConversationParticipants.rootConversationId,
+    juniorConversations.conversationId,
+  );
+  return "userId" in member
+    ? rows.where(
+        and(
+          onRoot,
+          eq(juniorConversationParticipants.userId, member.userId),
+          condition,
         ),
-        eq(juniorConversationParticipants.userId, userId),
-      ),
-    );
-  return exists(participant);
+      )
+    : rows
+        .innerJoin(
+          juniorUsers,
+          eq(juniorUsers.id, juniorConversationParticipants.userId),
+        )
+        .where(
+          and(
+            onRoot,
+            eq(juniorUsers.primaryEmailNormalized, member.email),
+            condition,
+          ),
+        );
+}
+
+/** True when the viewer is a materialized participant on this root conversation. */
+export function conversationHasParticipantUser(userId: string): SQL {
+  return exists(memberParticipantRow({ userId }));
 }
 
 /**
@@ -43,9 +67,7 @@ export function conversationHasParticipantUser(userId: string): SQL {
  * Feeds filter with this id set instead of a per-row membership check, so
  * Postgres reads only that person's conversations, not every root.
  */
-export function conversationIsMemberRoot(
-  member: { userId: string } | { email: string },
-): SQL {
+export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const db = getDb();
   const started = db
     .select({ conversationId: juniorConversations.conversationId })
@@ -81,104 +103,24 @@ export function conversationIsMemberRoot(
   return inArray(juniorConversations.conversationId, memberRoots);
 }
 
-/** True when one user's personal feed has archived this root after the cutoff. */
-export function conversationArchivedForUser(
-  userId: string,
-  archivedAfter?: Date,
-): SQL {
-  const archive = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationParticipants.userId, userId),
-        isNotNull(juniorConversationParticipants.archivedAt),
-        archivedAfter
-          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
-          : undefined,
-      ),
-    );
-  return exists(archive);
+/** True when the person's personal feed has archived this root. */
+export function conversationArchivedFor(member: ConversationMember): SQL {
+  return exists(
+    memberParticipantRow(
+      member,
+      isNotNull(juniorConversationParticipants.archivedAt),
+    ),
+  );
 }
 
-/** True when one user's personal feed has not archived this root. */
-export function conversationNotArchivedForUser(userId: string): SQL {
-  const archive = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationParticipants.userId, userId),
-        isNotNull(juniorConversationParticipants.archivedAt),
-      ),
-    );
-  return notExists(archive);
-}
-
-/** True when one primary-email user's feed archived this root after the cutoff. */
-export function conversationArchivedForEmail(
-  email: string,
-  archivedAfter?: Date,
-): SQL {
-  const archive = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
-    .innerJoin(
-      juniorUsers,
-      eq(juniorUsers.id, juniorConversationParticipants.userId),
-    )
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorUsers.primaryEmailNormalized, email),
-        isNotNull(juniorConversationParticipants.archivedAt),
-        archivedAfter
-          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
-          : undefined,
-      ),
-    );
-  return exists(archive);
-}
-
-/** True when one primary-email user's personal feed has not archived this root. */
-export function conversationNotArchivedForEmail(email: string): SQL {
-  const archive = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
-    .innerJoin(
-      juniorUsers,
-      eq(juniorUsers.id, juniorConversationParticipants.userId),
-    )
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorUsers.primaryEmailNormalized, email),
-        isNotNull(juniorConversationParticipants.archivedAt),
-      ),
-    );
-  return notExists(archive);
+/** True when the person's personal feed has not archived this root. */
+export function conversationNotArchivedFor(member: ConversationMember): SQL {
+  return notExists(
+    memberParticipantRow(
+      member,
+      isNotNull(juniorConversationParticipants.archivedAt),
+    ),
+  );
 }
 
 /** Root-actor ownership or a materialized participant row for the same person. */
@@ -203,7 +145,7 @@ export type ConversationViewerMarks = {
 export async function conversationViewerMarks(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  subject: { email: string } | { userId: string } | undefined,
+  subject: ConversationMember | undefined,
 ): Promise<Map<string, ConversationViewerMarks>> {
   if (!subject || conversationIds.length === 0) return new Map();
   const marked = and(
@@ -267,22 +209,12 @@ export function viewerMarksFromParticipant(row: {
 
 /** True when one user pinned this root. Feeds sort these rows first. */
 export function conversationPinnedForUser(userId: string): SQL {
-  const pin = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationParticipants.userId, userId),
-        isNotNull(juniorConversationParticipants.pinnedAt),
-      ),
-    );
-  return exists(pin);
+  return exists(
+    memberParticipantRow(
+      { userId },
+      isNotNull(juniorConversationParticipants.pinnedAt),
+    ),
+  );
 }
 
 /** Find which of the supplied roots include the linked viewer as a participant. */

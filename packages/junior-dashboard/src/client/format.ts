@@ -2,6 +2,7 @@ import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationFeedItem,
   ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
@@ -864,7 +865,7 @@ export function detectOutputLanguage(text: string): BundledLanguage {
 
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
-  summaries: ConversationSummaryReport[],
+  summaries: ConversationFeedItem[],
 ): Conversation[] {
   return summaries
     .map((summary) => ({
@@ -895,6 +896,10 @@ export function buildConversations(
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,
+      kind: summary.kind,
+      parentConversationId: summary.parentConversationId,
+      threadArchivedAt: summary.threadArchivedAt,
+      threads: summary.threads && buildConversations(summary.threads),
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))

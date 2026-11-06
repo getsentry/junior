@@ -13,6 +13,7 @@ const detail: ConversationDetailReport = {
   displayTitle: "Release follow-up",
   cumulativeDurationMs: 100,
   conversationId: "conversation-1",
+  kind: "root",
   isParticipant: true,
   visibility: "public",
   status: "completed",

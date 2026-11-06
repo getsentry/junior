@@ -184,6 +184,12 @@ export type Conversation = {
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
+  kind: ConversationSummaryReport["kind"];
+  parentConversationId?: string;
+  /** Set only on Threads. Null when the Thread is not archived. */
+  threadArchivedAt?: string | null;
+  /** Visible Threads under this row, newest first. */
+  threads?: Conversation[];
   unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };

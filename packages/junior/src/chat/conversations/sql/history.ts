@@ -6,6 +6,7 @@ import {
   gt,
   gte,
   inArray,
+  isNotNull,
   lt,
   lte,
   sql,
@@ -32,10 +33,10 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
-import { conversationDetailTouch } from "./detail-version";
+import { conversationDetailTouch, nextDetailVersion } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -286,15 +287,32 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         ),
       );
+    let restoresThread = false;
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
-      await recordConversationParticipant(this.executor, {
+      const restoreArchive = eventUnarchivesConversation(data);
+      const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
-        restoreArchive: eventUnarchivesConversation(data),
+        restoreArchive,
       });
+      restoresThread ||= isPerson && restoreArchive;
+    }
+    if (restoresThread) {
+      // A Thread archive is shared, so any person's message restores it.
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({ detailVersion: nextDetailVersion, threadArchivedAt: null })
+        .where(
+          and(
+            eq(juniorConversations.conversationId, conversationId),
+            eq(juniorConversations.kind, "thread"),
+            isNotNull(juniorConversations.threadArchivedAt),
+          ),
+        );
     }
   }
 

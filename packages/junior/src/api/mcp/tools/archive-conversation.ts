@@ -8,7 +8,10 @@ import {
   type McpToolContext,
 } from "../tool-context";
 
-/** Register `archiveConversation`, which archives or restores for the user. */
+/**
+ * Register `archiveConversation`. It archives or restores a root for the
+ * user, or a Thread for everyone.
+ */
 export function registerArchiveConversationTool(
   server: McpServer,
   { user }: McpToolContext,
@@ -18,7 +21,7 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving hides it only for you, and new activity restores it.",
+        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it only for you. Archiving a Thread hides it for everyone. A new message from a person restores either one.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z

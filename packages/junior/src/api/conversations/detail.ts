@@ -15,7 +15,7 @@ import {
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./list";
+import { readConversationRecordFromSql } from "./record";
 import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,

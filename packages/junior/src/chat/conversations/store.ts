@@ -72,6 +72,11 @@ export interface Conversation {
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /**
+   * When a Thread was archived for everyone. Only Thread archive and a
+   * person's message write it; `upsertConversation` does not.
+   */
+  threadArchivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the

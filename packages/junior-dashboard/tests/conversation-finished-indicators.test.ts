@@ -12,6 +12,7 @@ function conversation(
   lastSeenAt = "2026-09-11T00:00:00.000Z",
 ): Conversation {
   return {
+    kind: "root",
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,

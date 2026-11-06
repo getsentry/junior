@@ -589,6 +589,13 @@
       "when": 1793982460508,
       "tag": "0083_conversation_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1793987322535,
+      "tag": "0084_thread_archived_at",
+      "breakpoints": true
     }
   ]
 }

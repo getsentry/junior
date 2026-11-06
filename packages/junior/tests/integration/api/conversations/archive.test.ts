@@ -18,13 +18,25 @@ import {
   conversationAutoArchiveSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { webActorFromUser } from "@/chat/conversations/web-input";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
-import { juniorConversationParticipants, juniorUsers } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorUsers,
+} from "@/db/schema";
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -152,6 +164,191 @@ describe("conversation archive API", () => {
         await readConversationDetail(conversationId, { viewer }),
       ).archivedAt,
     ).toBeNull();
+  });
+
+  it("archives a Thread for everyone and keeps root archives per viewer", async () => {
+    const rootId = "local:test:thread-archive-root";
+    const threadId = "agent:thread-archive-thread";
+    const taskId = "agent:thread-archive-task";
+    const taskThreadId = "agent:thread-archive-task-thread";
+    const lastSeenAt = "1970-01-01T00:00:01.000Z";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId: rootId },
+      conversationId: rootId,
+      nowMs: Date.parse(lastSeenAt),
+      source: "internal",
+      title: "Thread archive",
+    });
+    // Only spawnAgent creates children today, and always as Tasks.
+    for (const [childConversationId, parentConversationId, kind, nowMs] of [
+      [threadId, rootId, "thread", 2_000],
+      [taskId, rootId, "task", 3_000],
+      [taskThreadId, taskId, "thread", 4_000],
+    ] as const) {
+      await getConversationStore().createChild({
+        childConversationId,
+        kind,
+        nowMs,
+        parentConversationId,
+      });
+    }
+    const viewer = await addParticipant({
+      conversationId: rootId,
+      email: "thread-viewer@example.com",
+      lastMessageAt: new Date(lastSeenAt),
+    });
+    const otherViewer = await addParticipant({
+      conversationId: rootId,
+      email: "thread-other@example.com",
+      lastMessageAt: new Date(lastSeenAt),
+    });
+    const { app } = await authenticatedApi(viewer.email);
+    const archive = (conversationId: string, archived: boolean, at: string) =>
+      app.request(
+        `http://localhost/api/conversations/${conversationId}/archive`,
+        {
+          body: JSON.stringify({ archived, lastSeenAt: at }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      );
+    const feedThreads = async (feedViewer: typeof viewer) =>
+      (await readConversationFeed({ viewer: feedViewer })).conversations.map(
+        (conversation) => ({
+          conversationId: conversation.conversationId,
+          threads: conversation.threads?.map((thread) => ({
+            conversationId: thread.conversationId,
+            kind: thread.kind,
+            parentConversationId: thread.parentConversationId,
+            threadArchivedAt: thread.threadArchivedAt,
+          })),
+        }),
+      );
+
+    // A Thread under a Task nests under the root. Tasks never show.
+    const visibleThreads = [
+      {
+        conversationId: taskThreadId,
+        kind: "thread",
+        parentConversationId: taskId,
+        threadArchivedAt: null,
+      },
+      {
+        conversationId: threadId,
+        kind: "thread",
+        parentConversationId: rootId,
+        threadArchivedAt: null,
+      },
+    ];
+    await expect(feedThreads(viewer)).resolves.toEqual([
+      { conversationId: rootId, threads: visibleThreads },
+    ]);
+
+    const threadLastSeenAt = new Date(2_000).toISOString();
+    expect((await archive(threadId, true, lastSeenAt)).status).toBe(409);
+    const archivedThread = await archive(threadId, true, threadLastSeenAt);
+    expect(archivedThread.status).toBe(200);
+    const { archivedAt: threadArchivedAt } =
+      archiveConversationResponseSchema.parse(await archivedThread.json());
+    expect(threadArchivedAt).toEqual(expect.any(String));
+    for (const feedViewer of [viewer, otherViewer]) {
+      await expect(feedThreads(feedViewer)).resolves.toEqual([
+        { conversationId: rootId, threads: [visibleThreads[0]] },
+      ]);
+    }
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(threadId, { viewer: otherViewer }),
+      ),
+    ).toMatchObject({
+      archivedAt: null,
+      kind: "thread",
+      parentConversationId: rootId,
+      threadArchivedAt,
+    });
+
+    // A root archive hides the tree for this viewer with no child writes.
+    const readChildRows = () =>
+      getDb()
+        .select({
+          conversationId: juniorConversations.conversationId,
+          detailVersion: juniorConversations.detailVersion,
+          threadArchivedAt: juniorConversations.threadArchivedAt,
+        })
+        .from(juniorConversations)
+        .where(
+          inArray(juniorConversations.conversationId, [threadId, taskThreadId]),
+        )
+        .orderBy(juniorConversations.conversationId);
+    const childRows = await readChildRows();
+    expect((await archive(rootId, true, lastSeenAt)).status).toBe(200);
+    await expect(feedThreads(viewer)).resolves.toEqual([]);
+    await expect(feedThreads(otherViewer)).resolves.toEqual([
+      { conversationId: rootId, threads: [visibleThreads[0]] },
+    ]);
+    await expect(readChildRows()).resolves.toEqual(childRows);
+
+    // Restoring the root leaves the archived Thread archived.
+    expect((await archive(rootId, false, lastSeenAt)).status).toBe(200);
+    await expect(feedThreads(viewer)).resolves.toEqual([
+      { conversationId: rootId, threads: [visibleThreads[0]] },
+    ]);
+
+    const startTurn = (
+      messageId: string,
+      message: {
+        authorIdentityId?: string;
+        meta?: Record<string, unknown>;
+        text: string;
+      },
+      createdAtMs: number,
+    ) =>
+      getConversationEventStore().append(threadId, [
+        {
+          createdAtMs,
+          data: { ...message, messageId, role: "user", type: "message" },
+          idempotencyKey: `message:${messageId}`,
+        },
+        {
+          createdAtMs,
+          data: {
+            inputMessageIds: [messageId],
+            surface: "api",
+            turnId: `${messageId}:turn`,
+            type: "turn_started",
+          },
+          idempotencyKey: `turn:${messageId}:started`,
+        },
+      ]);
+    // The parent agent's input, as recordSubagentStarted stores it, is not a
+    // person's message.
+    await startTurn(
+      "thread-archive-invocation",
+      { meta: { agentInvocationId: "invocation-1" }, text: "Keep going." },
+      5_000,
+    );
+    await expect(feedThreads(otherViewer)).resolves.toEqual([
+      { conversationId: rootId, threads: [visibleThreads[0]] },
+    ]);
+
+    // A person's message in the Thread restores it for everyone.
+    await startTurn(
+      "thread-archive-message",
+      {
+        authorIdentityId: await resolveActorIdentityId(
+          getSqlExecutor(),
+          webActorFromUser(otherViewer),
+        ),
+        text: "picking this back up",
+      },
+      6_000,
+    );
+    await expect(feedThreads(viewer)).resolves.toEqual([
+      {
+        conversationId: rootId,
+        threads: [visibleThreads[1], visibleThreads[0]],
+      },
+    ]);
   });
 
   it("archives for a root actor without an existing participant row", async () => {
