@@ -737,7 +737,7 @@ test("inspects and copies a child agent transcript", async ({
   await expect(entry).toBeFocused();
 });
 
-test("rates a Junior Reply once and asks why it was bad", async ({
+test("rates a Junior Reply once, with time to change it", async ({
   page,
   dashboard,
 }) => {
@@ -763,13 +763,26 @@ test("rates a Junior Reply once and asks why it was bad", async ({
   const good = transcript.getByRole("button", { name: "Good reply" });
   const bad = transcript.getByRole("button", { name: "Bad reply" });
 
-  // The first rating is final, so repeat clicks send one feedback.
+  // Good waits before it sends. The reader can clear it or switch to Bad,
+  // and a mistaken Bad can switch back to Good.
+  await page.clock.install();
   await open();
   await good.hover();
   await good.click();
   await good.click();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await bad.click();
+  const why = page.getByRole("dialog", { name: "What went wrong?" });
+  await expect(why).toBeVisible();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await expect(why).toHaveCount(0);
   await expect(good).toHaveAttribute("aria-pressed", "true");
+  expect(feedback).toHaveLength(0);
+  await page.clock.runFor(5000);
   await expect(bad).toHaveCount(0);
+  await good.click();
   await expect.poll(() => feedback.length).toBe(1);
   expect(feedback[0]).toMatchObject({
     contexts: {
@@ -781,11 +794,20 @@ test("rates a Junior Reply once and asks why it was bad", async ({
     },
   });
 
-  // Bad asks for an optional comment. Escape sends nothing.
+  // Leaving the Conversation sends a pending Good at once.
   await open();
+  await good.hover();
+  await good.click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
+  await expect.poll(() => feedback.length).toBe(2);
+  await open();
+
+  // Bad asks for an optional comment. Escape sends nothing.
   await bad.hover();
   await bad.click();
-  const why = page.getByRole("dialog", { name: "What went wrong?" });
   await expect(why.getByRole("textbox", { name: "Comment" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(why).toHaveCount(0);
@@ -798,8 +820,8 @@ test("rates a Junior Reply once and asks why it was bad", async ({
   await expect(bad).toHaveAttribute("aria-pressed", "true");
   await expect(bad).toBeFocused();
   await expect(good).toHaveCount(0);
-  await expect.poll(() => feedback.length).toBe(2);
-  expect(feedback[1]).toMatchObject({
+  await expect.poll(() => feedback.length).toBe(3);
+  expect(feedback[2]).toMatchObject({
     contexts: { feedback: { message: "Bad reply: It read the wrong repo" } },
     tags: { "app.reply.rating": "bad" },
   });

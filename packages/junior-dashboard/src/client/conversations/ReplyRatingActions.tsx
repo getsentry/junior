@@ -1,5 +1,5 @@
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDashboardCoreData } from "../api";
 import { Button } from "../components/ui/button";
@@ -22,10 +22,14 @@ import {
   type ReplyRating,
 } from "../sentry";
 
+// Good waits this long before it sends, so a mistaken click can be undone.
+const GOOD_SEND_DELAY_MS = 5000;
+
 /**
- * Rate one Junior Reply with thumbs up or down. Bad asks for an optional
- * comment first. The first rating is final, so each Reply sends at most one
- * Sentry feedback. Ratings are not stored: a remount can rate again.
+ * Rate one Junior Reply with thumbs up or down. Good sends after a short
+ * delay, so the reader can clear it or switch to Bad first. Bad asks for an
+ * optional comment and sends on Send. Each Reply sends at most one Sentry
+ * feedback. Ratings are not stored: a remount can rate again.
  */
 export function ReplyRatingActions(props: {
   conversationId: string;
@@ -33,31 +37,67 @@ export function ReplyRatingActions(props: {
 }) {
   const reader = useDashboardCoreData().data?.me.user;
   const [rating, setRating] = useState<ReplyRating>();
+  const [sent, setSent] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   // State updates after the next render, so a fast second submit still sees
   // no rating. The ref blocks it at once.
-  const sent = useRef(false);
+  const sentRef = useRef(false);
+  const goodTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const sendPendingGood = useRef<() => void>(undefined);
+
+  // Send a pending Good now when the reader leaves the page or the row goes.
+  useEffect(() => {
+    const flush = () => sendPendingGood.current?.();
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
   if (!canSendReplyRating()) return null;
 
-  const rate = (next: ReplyRating, text?: string) => {
-    if (sent.current) return;
-    sent.current = true;
+  const send = (next: ReplyRating, text?: string) => {
+    if (sentRef.current) return;
+    sentRef.current = true;
     setRating(next);
+    setSent(true);
     sendReplyRating({ ...props, comment: text, rating: next, reader });
+  };
+  const cancelGood = () => {
+    clearTimeout(goodTimer.current);
+    sendPendingGood.current = undefined;
+  };
+  const toggleGood = () => {
+    if (sentRef.current) return;
+    cancelGood();
+    if (rating === "good") {
+      setRating(undefined);
+      return;
+    }
+    setRating("good");
+    sendPendingGood.current = () => {
+      cancelGood();
+      send("good");
+    };
+    goodTimer.current = setTimeout(
+      () => sendPendingGood.current?.(),
+      GOOD_SEND_DELAY_MS,
+    );
   };
   const sendBad = () => {
     setCommentOpen(false);
-    rate("bad", comment.trim() || undefined);
+    send("bad", comment.trim() || undefined);
   };
 
   return (
     <>
-      {rating !== "bad" ? (
+      {!sent || rating === "good" ? (
         <MessageAction
           aria-pressed={rating === "good"}
           label="Good reply"
-          onClick={() => rate("good")}
+          onClick={toggleGood}
         >
           <ThumbsUp
             aria-hidden="true"
@@ -66,11 +106,18 @@ export function ReplyRatingActions(props: {
           />
         </MessageAction>
       ) : null}
-      {rating !== "good" ? (
+      {!sent || rating === "bad" ? (
         <Popover
           // A rated Reply keeps this button, so focus returns to it after
-          // Send, but it opens nothing.
-          onOpenChange={(open) => setCommentOpen(open && !rating)}
+          // Send, but it opens nothing. Opening it drops a pending Good.
+          onOpenChange={(open) => {
+            if (open && sentRef.current) return;
+            if (open && rating === "good") {
+              cancelGood();
+              setRating(undefined);
+            }
+            setCommentOpen(open);
+          }}
           open={commentOpen}
         >
           <Tooltip>
