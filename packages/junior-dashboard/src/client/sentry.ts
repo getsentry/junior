@@ -173,16 +173,22 @@ export function canSendReplyRating(): boolean {
 }
 
 /**
- * Send a reader's rating of one Junior Reply as Sentry user feedback. It
- * holds the rating and IDs only: no Reply text, page query, or person.
+ * Send a reader's rating of one Junior Reply as Sentry user feedback, with
+ * the reader's name and email and their optional comment. It holds no Reply
+ * text or page query.
  */
 export function sendReplyRating(props: {
+  comment?: string;
   conversationId: string;
   messageId: string;
   rating: ReplyRating;
+  reader?: { email: string; name?: string | null };
 }): void {
+  const label = props.rating === "good" ? "Good reply" : "Bad reply";
   captureFeedback({
-    message: props.rating === "good" ? "Good reply" : "Bad reply",
+    email: props.reader?.email,
+    message: props.comment ? `${label}: ${props.comment}` : label,
+    name: props.reader?.name || undefined,
     source: "dashboard_reply_rating",
     tags: {
       "app.reply.rating": props.rating,

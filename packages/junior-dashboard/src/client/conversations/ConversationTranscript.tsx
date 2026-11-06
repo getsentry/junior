@@ -44,6 +44,10 @@ import {
   structuredEventIcon,
   TranscriptRailEvent,
 } from "./TranscriptRailEvent";
+import {
+  TranscriptReplyRatings,
+  useTranscriptReplyRatings,
+} from "./ReplyRatingActions";
 import { TranscriptMessageContextView } from "./TranscriptMessageContextView";
 import {
   RedactedMessageView,
@@ -415,6 +419,7 @@ function TranscriptEntryList(
   const search = useTranscriptSearch();
   const activityKeys = useRef(new Map<string, string>());
   const [openRows] = useState(() => new Map<string, boolean>());
+  const replyRatings = useTranscriptReplyRatings();
   const listRef = useRef<HTMLDivElement>(null);
   const searchQuery = search.active ? search.normalizedQuery : undefined;
   const rows = useMemo(
@@ -523,23 +528,25 @@ function TranscriptEntryList(
 
   return (
     <TranscriptOpenRows value={openRows}>
-      <div
-        className="relative min-w-0"
-        ref={listRef}
-        style={{ height: virtualizer.getTotalSize() }}
-      >
-        {virtualizer.getVirtualItems().map((item) => (
-          <VirtualTranscriptRow
-            current={matchCount > 0 && item.index === match}
-            index={item.index}
-            key={item.key}
-            measure={virtualizer.measureElement}
-            offset={item.start - virtualizer.options.scrollMargin}
-            renderEntry={renderEntry}
-            row={rows[item.index]!}
-          />
-        ))}
-      </div>
+      <TranscriptReplyRatings value={replyRatings}>
+        <div
+          className="relative min-w-0"
+          ref={listRef}
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualizer.getVirtualItems().map((item) => (
+            <VirtualTranscriptRow
+              current={matchCount > 0 && item.index === match}
+              index={item.index}
+              key={item.key}
+              measure={virtualizer.measureElement}
+              offset={item.start - virtualizer.options.scrollMargin}
+              renderEntry={renderEntry}
+              row={rows[item.index]!}
+            />
+          ))}
+        </div>
+      </TranscriptReplyRatings>
     </TranscriptOpenRows>
   );
 }

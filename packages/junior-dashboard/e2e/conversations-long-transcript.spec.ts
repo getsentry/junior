@@ -278,6 +278,61 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await expect(details).toBeVisible();
 });
 
+test("keeps a Reply rating while its row unmounts", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: unknown[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  await page.clock.install();
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const reply = row(transcript, EVENT_COUNT - 1);
+  const good = reply.getByRole("button", { name: "Good reply" });
+  const bad = reply.getByRole("button", { name: "Bad reply" });
+  const scrollTo = (place: "top" | "bottom") =>
+    transcript.evaluate(
+      (element, top) => element.scrollTo({ top }),
+      place === "top" ? 0 : 1e9,
+    );
+  await good.hover();
+  await good.click();
+
+  // A pending Good stays pending while its row unmounts, then sends once.
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeVisible();
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await page.clock.runFor(5000);
+  await expect.poll(() => feedback.length).toBe(1);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await page.clock.runFor(5000);
+  expect(feedback).toHaveLength(1);
+});
+
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   // The outline shows only beside a transcript with room to its left.
   await page.setViewportSize({ height: 900, width: 1920 });
