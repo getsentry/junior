@@ -115,13 +115,19 @@ function ImagePreview(props: {
   onClose(): void;
 }) {
   const sheet = useSheet(props.onClose);
-  const [index, setIndex] = useState(props.initialIndex);
+  // Track the shown image, not its position. Transcript rows can load above
+  // it while the preview is open, which moves its index.
+  const [current, setCurrent] = useState(props.images[props.initialIndex]!);
   const count = props.images.length;
-  // The gallery can change while open, as new transcript rows arrive.
-  const image = props.images[Math.min(index, count - 1)]!;
+  const index = Math.max(
+    props.images.findIndex((image) => samePreviewImage(image, current)),
+    0,
+  );
+  const image = props.images[index]!;
   // Wrap at the ends. A disabled button would drop focus out of the dialog
   // and stop the arrow keys.
-  const show = (next: number) => setIndex((next + count) % count);
+  const show = (next: number) =>
+    setCurrent(props.images[(next + count) % count]!);
 
   return (
     <Dialog {...sheet.rootProps}>
@@ -193,7 +199,7 @@ function ImagePreview(props: {
             <img
               alt={image.filename}
               className="max-h-full max-w-full object-contain"
-              key={index}
+              key={image.src}
               src={image.src}
             />
           </div>
