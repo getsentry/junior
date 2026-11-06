@@ -6,6 +6,7 @@ import {
   type SlackEventEnvelope,
   type SlackInboundEvent,
 } from "./slack-payload";
+import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -718,6 +719,16 @@ async function handleSlackEvent(args: {
           } else {
             await presentSlackAutomationDetails(event, installation.teamId);
           }
+          return;
+        }
+
+        if (event.type === "link_shared") {
+          await unfurlDashboardConversationLinks({
+            event,
+            isExtSharedChannel: args.body.is_ext_shared_channel === true,
+            state,
+            teamId: installation.teamId,
+          });
           return;
         }
 

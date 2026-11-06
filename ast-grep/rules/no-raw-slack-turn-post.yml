@@ -14,9 +14,9 @@ ignores:
   - packages/junior/src/handlers/oauth-callback.ts
   # DM to the Automation creator, not Turn output.
   - packages/junior/src/chat/automations/blocked-notice.ts
-  # Thread root for a dashboard conversation that moves to a channel. It
-  # starts the thread, so it is not Turn output.
-  - packages/junior/src/api/conversations/continue-in-slack.ts
+  # First message of a dashboard conversation that moves to a Slack thread.
+  # It is not Turn output.
+  - packages/junior/src/chat/slack/continue-in-slack.ts
   # Review item cards. They are Block Kit controls that change in place, not
   # reply text, and the thread comes from resolveSlackReplyTarget.
   - packages/junior/src/chat/slack/review-item-card-sync.ts

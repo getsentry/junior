@@ -179,6 +179,36 @@ export async function postSlackMessage(input: {
   };
 }
 
+/** Set or replace the link previews that Junior shows on a posted message. */
+export async function unfurlSlackLinks(input: {
+  channelId: string;
+  messageTs: string;
+  unfurls: Record<string, { blocks: KnownBlock[] }>;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack link unfurl",
+  );
+  const ts = requireSlackMessageTimestamp(input.messageTs, "Slack link unfurl");
+  await withSlackRetries(
+    () =>
+      getSlackClient().chat.unfurl({
+        channel: channelId,
+        ts,
+        unfurls: input.unfurls,
+      }),
+    3,
+    {
+      action: "chat.unfurl",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": ts,
+      },
+    },
+  );
+}
+
 /** Delete a previously posted Slack message through the shared outbound boundary. */
 export async function deleteSlackMessage(input: {
   channelId: string;
