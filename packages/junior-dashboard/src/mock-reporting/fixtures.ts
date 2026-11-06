@@ -2065,11 +2065,16 @@ export function readMockConversationFeed(
 export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
-): { archivedAt: string | null } | undefined {
+): { archivedAt: string | null } | { error: string } | undefined {
   const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
-  if (!conversation || conversation.kind === "task") return undefined;
+  if (!conversation) return undefined;
+  if (conversation.kind === "task") {
+    return {
+      error: "A Task cannot be archived. Archive its root or Thread instead.",
+    };
+  }
   if (conversation.kind === "thread") {
     if (archived) mockThreadArchivedAt.set(conversationId, NOW);
     else mockThreadArchivedAt.delete(conversationId);

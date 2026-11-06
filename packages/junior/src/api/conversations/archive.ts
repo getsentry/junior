@@ -156,7 +156,12 @@ export async function archiveConversation(
   if (!target) throwApiError(404, "Conversation not found.");
   const kind = conversationKindFromRow(target);
   // A Task has no archive state of its own. Its root or Thread holds it.
-  if (kind === "task") throwApiError(409, "A Task cannot be archived.");
+  if (kind === "task") {
+    throwApiError(
+      409,
+      "A Task cannot be archived. Archive its root or Thread instead.",
+    );
+  }
   const result =
     kind === "thread"
       ? await setThreadArchive({
