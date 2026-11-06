@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { ensureConversationRow } from "@/chat/conversations/sql/conversation-row";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
@@ -243,6 +244,39 @@ describe("conversation SQL store", () => {
           ),
         },
       });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-unknown",
+            kind: "unknown" as "task",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining("junior_conversations_kind_check"),
+        },
+      });
+
+      // A history append creates a root row for the child id after
+      // createChild reads it and before createChild writes it.
+      const readChild = store.get.bind(store);
+      vi.spyOn(store, "get").mockImplementation(async (args) => {
+        const existing = await readChild(args);
+        if (args.conversationId === "agent:kind-raced") {
+          await ensureConversationRow(fixture.sql, args.conversationId, 5);
+        }
+        return existing;
+      });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-raced",
+          kind: "task",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation parent changed for agent:kind-raced");
     } finally {
       await fixture.close();
     }

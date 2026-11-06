@@ -883,6 +883,15 @@ export class SqlStore implements ConversationStore {
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
+    // A conflict keeps the stored parent. A history append can create the row
+    // first under the event lock, so a new child can find a root row here.
+    if (
+      row.parentConversationId !== (conversation.parentConversationId ?? null)
+    ) {
+      throw new Error(
+        `Conversation parent changed for ${conversation.conversationId}`,
+      );
+    }
     // Root actors stay in the personal feed even before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
