@@ -398,8 +398,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
             "grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
-            // A long press drags the row instead of opening the link menu.
-            drag && "[-webkit-touch-callout:none]",
+            // A long press opens the row menu or drags a pin, not the iOS
+            // link callout.
+            "[-webkit-touch-callout:none]",
           )}
           // The browser's own link drag would take the pointer from the reorder.
           draggable={drag ? false : undefined}
