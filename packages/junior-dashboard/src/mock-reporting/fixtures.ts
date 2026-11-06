@@ -1006,6 +1006,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             bytes: 18211,
           },
           {
+            id: "qa-demo-mp4",
+            filename: "demo.mp4",
+            contentType: "video/mp4",
+            bytes: 5922,
+          },
+          {
             id: "qa-notes-txt",
             filename: "notes.txt",
             contentType: "text/plain",

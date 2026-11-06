@@ -48,6 +48,7 @@ import {
   conversationCatchUpSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import { mockDemoMp4 } from "./demo-mp4";
 import {
   markMockConversationRead,
   withMockReadPosition,
@@ -396,7 +397,8 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
-  // Fixed bodies so dashboard mock can exercise image/file attachment cards.
+  // Fixed bodies so dashboard mock can exercise image, video, and file
+  // attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
     const conversationId = c.req.param("conversationId");
     const attachmentId = c.req.param("attachmentId");
@@ -413,6 +415,16 @@ export function createMockReportingApi(): Hono<{
           "content-disposition": 'inline; filename="chart.png"',
           "content-type": "image/png",
           "content-length": String(mockChartPng.byteLength),
+        },
+      });
+    }
+    if (attachmentId === "qa-demo-mp4") {
+      return new Response(mockDemoMp4, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'inline; filename="demo.mp4"',
+          "content-type": "video/mp4",
+          "content-length": String(mockDemoMp4.byteLength),
         },
       });
     }

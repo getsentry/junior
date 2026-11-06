@@ -1,9 +1,10 @@
 import {
+  INLINE_VIDEO_TYPES,
   INPUT_IMAGE_TYPES,
   type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
-import { FileText } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { type ReactNode, createContext, useContext, useMemo } from "react";
 
 import {
@@ -34,6 +35,10 @@ function formatAttachmentBytes(bytes: number): string {
 
 function isInlineImage(attachment: MessageAttachment): boolean {
   return INPUT_IMAGE_TYPES.some((type) => type === attachment.contentType);
+}
+
+function isInlineVideo(attachment: MessageAttachment): boolean {
+  return INLINE_VIDEO_TYPES.some((type) => type === attachment.contentType);
 }
 
 function attachmentMeta(attachment: MessageAttachment): string {
@@ -180,6 +185,36 @@ function TranscriptAttachment(props: {
         src={href}
         triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
       />
+    );
+  }
+
+  if (isInlineVideo(props.attachment) && !search.active) {
+    return (
+      <figure className="grid w-full min-w-0 max-w-md flex-none gap-1">
+        <video
+          aria-label={props.attachment.filename}
+          className="max-h-80 w-full rounded-lg border border-dashboard-border bg-dashboard-fill-faint"
+          controls
+          playsInline
+          preload="metadata"
+          src={href}
+        />
+        <figcaption className="flex min-w-0 items-center justify-between gap-2 px-1">
+          <span className="truncate font-mono text-xs text-dashboard-text-muted">
+            {props.attachment.filename} · {meta}
+          </span>
+          <a
+            aria-label={`Download ${props.attachment.filename}`}
+            className="grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            download={props.attachment.filename}
+            href={href}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <Download size={13} />
+          </a>
+        </figcaption>
+      </figure>
     );
   }
 
