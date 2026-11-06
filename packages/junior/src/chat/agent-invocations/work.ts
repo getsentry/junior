@@ -815,6 +815,7 @@ export function createAgentInvocationWorker(
         agentRunner,
         {
           conversationId: invocation.childConversationId,
+          agentInvocationId: invocation.invocationId,
           parentConversationId: invocation.parentConversationId,
           turnId,
           runId: invocation.invocationId,

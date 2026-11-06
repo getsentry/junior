@@ -268,9 +268,13 @@ export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
   /**
-   * Parent of a child agent Conversation. The final reply of this run goes to
-   * that parent, not to a person. Unset for a root Conversation.
+   * Agent invocation that this Run advances. Only the Agent invocation worker
+   * sets it. Its input is agent-written, and its final reply goes to the
+   * parent. Behavior that depends on that reads this field, not the
+   * Conversation kind: a person's Turn in a Thread has no Agent invocation.
    */
+  agentInvocationId?: string;
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;

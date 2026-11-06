@@ -749,7 +749,7 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      .set({ parentConversationId: cyclicChild })
+      .set({ kind: "task", parentConversationId: cyclicChild })
       .where(eq(juniorConversations.conversationId, cyclicRoot));
 
     await expect(

@@ -404,6 +404,9 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
+    ...(args.run.agentInvocationId
+      ? { agentInvocationId: args.run.agentInvocationId }
+      : undefined),
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -479,7 +482,7 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
-  const childAgent = Boolean(args.run.parentConversationId);
+  const childAgent = Boolean(args.run.agentInvocationId);
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,

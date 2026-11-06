@@ -14,7 +14,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location.
+  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+- **Thread**: a child Conversation that people can message like a root. Say
+  "Slack thread" for the Location. A bare "Thread" is the Conversation.
+- **Task**: a child Conversation that only its parent messages. People can
+  view it. Existing code names with `task` (`task-execution`, the Ticket
+  `task` type, the `spawnAgent` `task` field) keep their meaning.
+- **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
+  bindings, Agent invocations). Not a UI word.
 - **Brief**: the versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence. Public Briefs outlive the transcript.
 - **Catch-up**: a short summary of the rows after a reader's read position,
@@ -24,8 +31,9 @@ Canonical words for Junior code and docs. One concept, one word.
   has one; a Turn stores the one that started it.
 - **Destination**: an explicit target for output or a side effect. Not a
   synonym for Location; a new Conversation stores it as its Location.
-- **Location**: the one outside place (Slack channel or thread) a Conversation
-  is delivered to. The Run carries it. It grants no delivery or visibility.
+- **Location**: the one outside place (a Slack channel or a Slack thread) a
+  Conversation is delivered to. The Run carries it. It grants no delivery or
+  visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
   assistant Messages are stored.
 - **Conversation execution**: mutable operational state (mailbox, worker

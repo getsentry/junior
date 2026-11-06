@@ -328,6 +328,7 @@ describe("conversation forks", () => {
     expect(hidden.canFork).toBe(false);
     const child = "local:web:private-child";
     await store.createChild({
+      kind: "task",
       childConversationId: child,
       parentConversationId: source,
     });

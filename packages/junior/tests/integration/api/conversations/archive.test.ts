@@ -272,6 +272,7 @@ describe("conversation archive API", () => {
       });
     }
     await getConversationStore().createChild({
+      kind: "task",
       childConversationId: `${busyChildId}:child`,
       nowMs: nowMs - 2 * hour,
       parentConversationId: busyChildId,
@@ -279,6 +280,7 @@ describe("conversation archive API", () => {
     for (const parentConversationId of [childDoneId, childOpenId]) {
       await getConversationStore().createChild({
         childConversationId: `${parentConversationId}:child`,
+        kind: "task",
         nowMs: nowMs - 48 * hour,
         parentConversationId,
       });

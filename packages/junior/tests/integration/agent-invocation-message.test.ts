@@ -93,6 +93,7 @@ function topLevelRun(
 /** The Run of one child agent invocation, as the invocation worker builds it. */
 function childRun(invocation: AgentInvocation): AgentRun {
   return {
+    agentInvocationId: invocation.invocationId,
     actor: invocation.actor,
     conversationId: invocation.childConversationId,
     destination: invocation.destination,
@@ -667,6 +668,7 @@ describe("messageAgent", () => {
       // through a child agent.
       const publicChild = "agent:public-child";
       await getConversationStore().createChild({
+        kind: "task",
         childConversationId: publicChild,
         parentConversationId: publicTarget,
       });

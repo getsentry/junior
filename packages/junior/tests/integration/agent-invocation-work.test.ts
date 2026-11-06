@@ -292,6 +292,8 @@ describe("agent invocation conversation work", () => {
       ]);
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
+        // Guardian intent, prompt mode, and reportBlocked read this field.
+        agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
         instruction: { text: slackInvocationInput.input },
         disabledFeatures: ["interactive-auth", "subagents"],
