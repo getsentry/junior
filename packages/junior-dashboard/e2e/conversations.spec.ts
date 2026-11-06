@@ -1,6 +1,6 @@
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { mobile, screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -163,11 +163,13 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await inputImage.scrollIntoViewIfNeeded();
   await expect(inputImage).toBeVisible();
   await inputImage.click();
+  const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
+  await expect(inputPreview).toBeVisible();
+  // The sent image is not part of the response, so it has no pager.
   await expect(
-    page.getByRole("dialog", { name: "input-chart.png" }),
-  ).toBeVisible();
-  await page
-    .getByRole("dialog", { name: "input-chart.png" })
+    inputPreview.getByRole("button", { name: "Next image" }),
+  ).toHaveCount(0);
+  await inputPreview
     .getByRole("button", { name: "Close", exact: true })
     .click();
   const image = page
@@ -183,7 +185,34 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await image.click();
   const preview = page.getByRole("dialog", { name: "chart.png" });
   await expect(preview).toBeVisible();
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await screenshot(page, "conversation-attachment-modal");
+  // The preview pages through the images of one response.
+  await preview.getByRole("button", { name: "Next image" }).click();
+  const detailPreview = page.getByRole("dialog", { name: "chart-detail.png" });
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(preview.getByText("1 of 2")).toBeVisible();
+
+  // Touch readers can pinch to zoom. Real touch input checks that the image
+  // keeps the gesture after a finger leaves it.
+  await page.setViewportSize(mobile);
+  const touch = await page.context().newCDPSession(page);
+  const pinch = (
+    type: "touchStart" | "touchMove" | "touchEnd",
+    points: { id: number; x: number; y: number }[],
+  ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+  await pinch("touchStart", [
+    { id: 1, x: 180, y: 450 },
+    { id: 2, x: 210, y: 450 },
+  ]);
+  await pinch("touchMove", [
+    { id: 1, x: 120, y: 450 },
+    { id: 2, x: 300, y: 700 },
+  ]);
+  await pinch("touchEnd", []);
+  await touch.detach();
+  await screenshot(page, "conversation-attachment-zoom");
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
 });
