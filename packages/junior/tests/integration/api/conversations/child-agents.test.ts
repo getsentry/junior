@@ -5,10 +5,8 @@ import {
   conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import {
-  completeAgentInvocation,
-  createAgentInvocation,
-} from "@/chat/agent-invocations/store";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { completeAgentInvocation } from "@/chat/agent-invocations/store";
 import { closeDb, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {

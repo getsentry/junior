@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import { useRef, type ReactNode, type Ref, type RefObject } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -21,7 +21,9 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
+import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
 
@@ -200,10 +202,14 @@ export function HeaderIconButton(props: {
   children: ReactNode;
   controls?: string;
   expanded?: boolean;
+  /** `aria-keyshortcuts` value for the shortcut. */
+  keyShortcuts?: string;
   ref?: Ref<HTMLButtonElement>;
   label: string;
   onClick(): void;
   pressed?: boolean;
+  /** Shortcut text shown in the tooltip, such as `⌘F`. */
+  shortcut?: string;
   /** Hide the tooltip, such as while the menu this button opens covers it. */
   tooltipDisabled?: boolean;
 }) {
@@ -215,6 +221,7 @@ export function HeaderIconButton(props: {
             ref={props.ref}
             aria-controls={props.controls}
             aria-expanded={props.expanded}
+            aria-keyshortcuts={props.keyShortcuts}
             aria-label={props.label}
             aria-pressed={props.pressed}
             className={cn(
@@ -228,21 +235,37 @@ export function HeaderIconButton(props: {
           </Button>
         }
       />
-      <TooltipContent size="compact">{props.label}</TooltipContent>
+      <TooltipContent size="compact">
+        {props.label}
+        {props.shortcut ? (
+          <kbd className="ml-1.5 font-sans">{props.shortcut}</kbd>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
-/** Toggle transcript search visibility with the shared header icon control. */
+/** Toggle transcript search with the header icon control or ⌘F / Ctrl+F. */
 export function TranscriptSearchToggle(props: {
+  inputRef: RefObject<HTMLInputElement | null>;
   onClick(): void;
   open: boolean;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useTranscriptFindShortcut({
+    anchorRef: buttonRef,
+    inputRef: props.inputRef,
+    onOpen: props.onClick,
+    open: props.open,
+  });
   return (
     <HeaderIconButton
+      ref={buttonRef}
+      keyShortcuts={props.open ? undefined : "Meta+F Control+F"}
       label={props.open ? "Hide search" : "Search transcript"}
       onClick={props.onClick}
       pressed={props.open}
+      shortcut={props.open ? undefined : platformShortcut("f")}
     >
       {props.open ? (
         <X aria-hidden="true" size={15} strokeWidth={2} />

@@ -112,7 +112,7 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
-  it("collapses non-message activity including tool errors, and keeps failures, subagents, and chat messages open", () => {
+  it("collapses non-message activity and agent invocation results, and keeps failures, subagents, and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
     expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
@@ -122,6 +122,9 @@ describe("transcript activity group", () => {
     expect(isCollapsibleActivityEntry(message("pull_request.opened"))).toBe(
       false,
     );
+    expect(
+      isCollapsibleActivityEntry(message("agent_invocation.completed")),
+    ).toBe(true);
     expect(isCollapsibleActivityEntry(failure())).toBe(false);
   });
 

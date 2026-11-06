@@ -47,7 +47,7 @@ describe("conversation activity sections", () => {
         conversation("today-early", "2026-08-03T00:10:00-07:00"),
         conversation("today-late", "2026-08-03T11:45:00-07:00"),
       ],
-      NOW,
+      { ...NOW, attentionIds: new Set() },
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -61,7 +61,7 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts unread and waiting conversations in Needs attention before Today", () => {
+  it("puts unread, waiting, and open-PR conversations in Needs attention before Today", () => {
     const conversations = [
       conversation("today", "2026-08-03T11:00:00-07:00"),
       {
@@ -71,6 +71,16 @@ describe("conversation activity sections", () => {
       conversation("yesterday", "2026-08-02T12:00:00-07:00"),
       conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
       conversation("saturday", "2026-08-01T12:00:00-07:00"),
+      // An open pull request waits on a person once Junior stops running.
+      {
+        ...conversation("open-pr", "2026-08-02T08:00:00-07:00"),
+        unfinishedWork: true,
+      },
+      {
+        ...conversation("open-pr-running", "2026-08-03T10:00:00-07:00"),
+        status: "active" as const,
+        unfinishedWork: true,
+      },
     ];
     const sections = buildConversationSections(conversations, {
       ...NOW,
@@ -79,10 +89,10 @@ describe("conversation activity sections", () => {
 
     expect(sectionIds(sections)).toEqual([
       {
-        conversations: ["today-unread", "waiting-old"],
+        conversations: ["today-unread", "open-pr", "waiting-old"],
         label: "Needs attention",
       },
-      { conversations: ["today"], label: "Today" },
+      { conversations: ["today", "open-pr-running"], label: "Today" },
       { conversations: ["yesterday"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
@@ -148,9 +158,10 @@ describe("conversation activity sections", () => {
       conversation(id, "2026-08-03T12:00:00-07:00"),
     );
     feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
+    feed[2] = { ...feed[2]!, unfinishedWork: true };
 
     expect(
       pinnedAndAttentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
-    ).toEqual(["e", "b", "d", "a", "c"]);
+    ).toEqual(["e", "b", "c", "d", "a"]);
   });
 });

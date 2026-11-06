@@ -586,8 +586,15 @@
     {
       "idx": 83,
       "version": "7",
-      "when": 1793979010753,
-      "tag": "0083_conversation_participant_read_at",
+      "when": 1793982460508,
+      "tag": "0083_conversation_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794006872439,
+      "tag": "0084_conversation_participant_read_at",
       "breakpoints": true
     }
   ]

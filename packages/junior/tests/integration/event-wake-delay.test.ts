@@ -280,34 +280,32 @@ describe("event wake delay", () => {
     // Each Watch states its instructions once and keeps its Events together.
     const text = userMessages[1]!.text;
     expect(text).toContain("You received 4 events.");
-    expect(text.match(/Instructions: /g)).toHaveLength(3);
+    expect(text.match(/<instructions>/g)).toHaveLength(3);
     expect(text).toContain(
       [
-        `About: ${prWatch.label}`,
-        'People involved: <@U123> (did Event 1; called "dcramer" in the Event data)',
+        `<watch about="${prWatch.label}">`,
+        '<people><@U123> (did Event 1; called "dcramer" in the Event data)</people>',
         'If you mention <@U123>, write to them as "you", and do not also call them "dcramer".',
-        `Instructions: ${prWatch.intent}`,
+        `<instructions>${prWatch.intent}</instructions>`,
       ].join("\n"),
     );
     expect(text).toContain(
       "- pull_request.review_comment.created: Reply on the thread.",
     );
     expect(text).toContain(
-      "Event 1: pull_request.review.approved\nTrusted summary: Approved by dcramer.\n\nEvent 2: pull_request.review_comment.created",
+      '<event index="1" type="pull_request.review.approved">\n<summary>Approved by dcramer.</summary>\n</event>\n<event index="2" type="pull_request.review_comment.created">',
     );
     expect(text).toContain(
       [
-        `About: ${deployWatch.label}`,
-        `Instructions: ${deployWatch.intent}`,
-        "",
-        "Event 3: deployment.succeeded",
+        `<watch about="${deployWatch.label}">`,
+        `<instructions>${deployWatch.intent}</instructions>`,
+        '<event index="3" type="deployment.succeeded">',
       ].join("\n"),
     );
     expect(text).toContain(
       [
-        `Instructions: ${releaseWatch.intent}`,
-        "",
-        "Event 4: pull_request.merged",
+        `<instructions>${releaseWatch.intent}</instructions>`,
+        '<event index="4" type="pull_request.merged">',
       ].join("\n"),
     );
   });

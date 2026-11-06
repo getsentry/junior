@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   Mail,
   MailOpen,
+  Pencil,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -16,6 +17,8 @@ import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
 import {
   PinnedConversationOrder,
   usePinnedRowDrag,
@@ -44,6 +47,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
 import { Button } from "../components/ui/button";
@@ -69,7 +73,12 @@ type ConversationSidebarEntry =
   | { conversation: Conversation; key: string; kind: "conversation" };
 
 const ROW_ACTION_BUTTON_CLASS =
-  "absolute top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed";
+  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
+
+// While the row actions show, the row content fades out under them, so the
+// title does not end in a hard cut. --row-actions-width is set per row.
+const ROW_ACTIONS_FADE_CLASS =
+  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
@@ -104,6 +113,11 @@ export function ConversationSidebar(props: {
           : "Could not mark as read",
       );
     },
+    [showActionError],
+  );
+  const handleRenameError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not rename"),
     [showActionError],
   );
   const { collapsedKeys, toggle: toggleSection } =
@@ -207,6 +221,7 @@ export function ConversationSidebar(props: {
                     onPinError={handlePinError}
                     onPinned={clearActionError}
                     onUnreadError={handleUnreadError}
+                    onRenameError={handleRenameError}
                     selected={entry.conversation.id === props.selectedId}
                     waiting={props.waitingConversations.get(
                       entry.conversation.id,
@@ -287,6 +302,7 @@ type ConversationSidebarRowProps = {
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
   onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
+  onRenameError(conversation: Conversation): void;
   selected: boolean;
   waiting?: WaitingConversation;
 };
@@ -330,6 +346,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const markUnread = useMarkConversationUnread(props.conversation.id, {
     onError: (unread) => props.onUnreadError(props.conversation, unread),
   });
+  const rename = useRenameConversation(props.conversation.id, {
+    onError: () => props.onRenameError(props.conversation),
+  });
+  const [renaming, setRenaming] = useState(false);
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
@@ -353,9 +373,12 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         {...prefetch}
         {...drag?.listeners}
         className={cn(
-          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
+          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
           props.selected && "bg-dashboard-surface-active",
           drag?.dragging && "opacity-40",
+          archived
+            ? "[--row-actions-width:2.25rem]"
+            : "[--row-actions-width:4.25rem]",
         )}
         onKeyDown={drag?.onKeyDown}
         ref={drag?.setNodeRef}
@@ -365,6 +388,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
             "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            ROW_ACTIONS_FADE_CLASS,
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
             "[-webkit-touch-callout:none]",
@@ -389,7 +413,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           </span>
           <span
             className={cn(
-              "min-w-0 truncate font-sans text-sm leading-snug",
+              // The title fills its grid column, so the fade reaches only a
+              // title that does not fit, in place of an ellipsis.
+              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
               emphasized ? "font-semibold" : props.selected && "font-medium",
               emphasized || props.selected || status === "active"
                 ? "text-dashboard-text"
@@ -429,56 +455,55 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-        {archived ? null : (
+        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+          {archived ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                    aria-pressed={pinned}
+                    className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
+                    disabled={pin.isPending}
+                    onClick={togglePin}
+                    type="button"
+                  >
+                    <Pin
+                      aria-hidden="true"
+                      fill={pinned ? "currentColor" : "none"}
+                      size={14}
+                    />
+                  </button>
+                }
+              />
+              <TooltipContent size="compact">
+                {pinned ? "Unpin" : "Pin"}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
-                  aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
-                  aria-pressed={pinned}
-                  className={cn(
-                    ROW_ACTION_BUTTON_CLASS,
-                    "right-9 max-sm:hidden",
-                  )}
-                  disabled={pin.isPending}
-                  onClick={togglePin}
+                  aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
+                  className={ROW_ACTION_BUTTON_CLASS}
+                  disabled={archive.isPending}
+                  onClick={toggleArchive}
                   type="button"
                 >
-                  <Pin
-                    aria-hidden="true"
-                    fill={pinned ? "currentColor" : "none"}
-                    size={14}
-                  />
+                  {archived ? (
+                    <ArchiveRestore aria-hidden="true" size={14} />
+                  ) : (
+                    <Archive aria-hidden="true" size={14} />
+                  )}
                 </button>
               }
             />
             <TooltipContent size="compact">
-              {pinned ? "Unpin" : "Pin"}
+              {archived ? "Restore" : "Archive"}
             </TooltipContent>
           </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
-                className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
-                disabled={archive.isPending}
-                onClick={toggleArchive}
-                type="button"
-              >
-                {archived ? (
-                  <ArchiveRestore aria-hidden="true" size={14} />
-                ) : (
-                  <Archive aria-hidden="true" size={14} />
-                )}
-              </button>
-            }
-          />
-          <TooltipContent size="compact">
-            {archived ? "Restore" : "Archive"}
-          </TooltipContent>
-        </Tooltip>
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
         {unread ? (
@@ -502,6 +527,11 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             {pinned ? "Unpin" : "Pin"}
           </ContextMenuItem>
         )}
+        <ContextMenuItem onClick={() => setRenaming(true)}>
+          <Pencil aria-hidden="true" />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
           {archived ? (
             <ArchiveRestore aria-hidden="true" />
@@ -511,6 +541,13 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           {archived ? "Restore" : "Archive"}
         </ContextMenuItem>
       </ContextMenuContent>
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
+        />
+      ) : null}
     </ContextMenu>
   );
 });

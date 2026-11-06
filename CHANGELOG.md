@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.284.0
+
+Dashboard users can schedule Web Push notifications, work more smoothly on mobile, and rely on broader composing, navigation, appearance, and migration fixes.
+
+### New Features ✨
+
+#### Dashboard
+
+- Add phone notifications with working hours by @sentry-junior in [#2357](https://github.com/getsentry/junior/pull/2357)
+- Add mobile swipe gestures to image preview and composer by @sentry-junior in [#2813](https://github.com/getsentry/junior/pull/2813)
+
+### Bug Fixes 🐛
+
+Dashboard fixes improve composing, navigation, mobile palettes, iOS app appearance, and migration targeting across Neon and local Postgres.
+
+#### Dashboard
+
+- Focus the home composer on open by @betegon with @sentry-junior in [#2806](https://github.com/getsentry/junior/pull/2806)
+- Add a line on Return in the composer on touch screens by @sentry-junior in [#2816](https://github.com/getsentry/junior/pull/2816)
+- Return mobile back from the event log to its conversation by @sentry-junior in [#2819](https://github.com/getsentry/junior/pull/2819)
+- Stop the iOS top blur in the Home Screen app by @sentry-junior in [#2811](https://github.com/getsentry/junior/pull/2811)
+- Show every command palette row on mobile by @sentry-junior in [#2809](https://github.com/getsentry/junior/pull/2809)
+
+#### Other
+
+- (upgrade) Run migrations on the direct Neon endpoint by @sentry-junior in [#2810](https://github.com/getsentry/junior/pull/2810)
+
 ## 0.283.0
 
 Junior expands everyday workflows, strengthens dashboard and mobile dependability, clarifies conversations, improves composing, and keeps documentation and package releases aligned for smoother use.

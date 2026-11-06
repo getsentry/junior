@@ -56,6 +56,7 @@ describe("plugin unfinished work", () => {
         "conversation-finished",
       ]),
     ).resolves.toEqual({
+      failed: false,
       assignedIds: [
         "conversation-a",
         "conversation-b",
@@ -115,6 +116,7 @@ describe("plugin unfinished work", () => {
       ]),
     ).resolves.toEqual({
       assignedIds: ["conversation-a", "conversation-c"],
+      failed: true,
       finishedAtById: {},
       unfinishedIds: ["conversation-a"],
     });

@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
-  completeAgentInvocation,
-  createAgentInvocation,
-  getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -480,7 +482,7 @@ describe("agent invocation spawn and result delivery", () => {
         state,
       });
       expect(parentWork?.messages[0]?.input.text).toContain(
-        'have not reported yet: "analyst"',
+        ' waiting_on="analyst"',
       );
     } finally {
       await fixture.close();
