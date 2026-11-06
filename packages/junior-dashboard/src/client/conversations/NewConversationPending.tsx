@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../types";
@@ -96,10 +96,10 @@ export function NewConversationPending(props: {
   useEffect(() => composerRef.current?.focus(), []);
   // The page opens its details panel at this width. Open it here too, so
   // the transcript does not move when the page replaces this view. Its
-  // content fills in on the page.
-  const detailsDefaultOpen = useDetailsDefaultOpen();
-  const [detailsClosed, setDetailsClosed] = useState(false);
-  const showDetails = detailsDefaultOpen && !detailsClosed;
+  // content fills in on the page. The header and panel are inert until
+  // then: their actions need a Conversation, and a details choice made here
+  // would not carry over to the page.
+  const showDetails = useDetailsDefaultOpen();
 
   return (
     <section
@@ -111,52 +111,56 @@ export function NewConversationPending(props: {
         <ConversationSidePanelLayout
           side={
             showDetails ? (
-              <DetailsPanel
-                label="Conversation details"
-                onClose={() => setDetailsClosed(true)}
-                title={
-                  <h2 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
-                    <span className="font-semibold text-dashboard-text">
-                      Details
-                    </span>
-                  </h2>
-                }
-              >
-                {null}
-              </DetailsPanel>
+              <div className="contents" inert>
+                <DetailsPanel
+                  label="Conversation details"
+                  onClose={noop}
+                  title={
+                    <h2 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
+                      <span className="font-semibold text-dashboard-text">
+                        Details
+                      </span>
+                    </h2>
+                  }
+                >
+                  {null}
+                </DetailsPanel>
+              </div>
             ) : undefined
           }
         >
           <ChatLayout
             header={
-              <ConversationHeader
-                archive={{
-                  archived: false,
-                  disabled: true,
-                  error: false,
-                  onClick: noop,
-                  pending: false,
-                }}
-                conversationId={pending.idempotencyKey}
-                detailsOpen={showDetails}
-                live
-                onDetailsClick={() => setDetailsClosed(showDetails)}
-                onSearchChange={noop}
-                onViewChange={noop}
-                pin={{
-                  disabled: true,
-                  error: false,
-                  onClick: noop,
-                  pinned: false,
-                }}
-                privacy={
-                  <ConversationPrivacyChip visibility={pending.visibility} />
-                }
-                search=""
-                sidebarToggle={props.sidebarToggle}
-                title={title}
-                view="rich"
-              />
+              <div inert>
+                <ConversationHeader
+                  archive={{
+                    archived: false,
+                    disabled: true,
+                    error: false,
+                    onClick: noop,
+                    pending: false,
+                  }}
+                  conversationId={pending.idempotencyKey}
+                  detailsOpen={showDetails}
+                  live
+                  onDetailsClick={noop}
+                  onSearchChange={noop}
+                  onViewChange={noop}
+                  pin={{
+                    disabled: true,
+                    error: false,
+                    onClick: noop,
+                    pinned: false,
+                  }}
+                  privacy={
+                    <ConversationPrivacyChip visibility={pending.visibility} />
+                  }
+                  search=""
+                  sidebarToggle={props.sidebarToggle}
+                  title={title}
+                  view="rich"
+                />
+              </div>
             }
             scrollMinTall
             scrollAriaLabel="Conversation transcript"
