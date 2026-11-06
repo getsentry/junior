@@ -232,6 +232,7 @@ export function ConversationHeader(props: {
             ) : null}
             {props.view === "raw" ? null : (
               <TranscriptSearchToggle
+                inputRef={searchInputRef}
                 onClick={toggleSearch}
                 open={searchOpenVisible}
               />

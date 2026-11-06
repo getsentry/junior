@@ -1,4 +1,10 @@
-import { type ReactNode, createContext, useContext } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  createContext,
+  useContext,
+  useEffect,
+} from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
 import {
@@ -7,6 +13,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptFailureSearchText } from "./transcriptFailure";
 import { stringifyPartValue } from "../format";
+import { isPlatformShortcut } from "../keyboard";
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -47,6 +54,51 @@ export function TranscriptSearchProvider({
 
 export function useTranscriptSearch() {
   return useContext(TranscriptSearchContext);
+}
+
+// ─── Find shortcut ───────────────────────────────────────────────────────────
+
+/**
+ * Take ⌘F / Ctrl+F for transcript search. The first press opens or focuses
+ * the search box; a press while the search box has focus goes to the
+ * browser's find. Only the search in the front layer (the page, or the
+ * topmost drawer or dialog) takes the shortcut.
+ */
+export function useTranscriptFindShortcut(props: {
+  /** Element in the search's layer, such as its toggle button. */
+  anchorRef: RefObject<HTMLElement | null>;
+  inputRef: RefObject<HTMLInputElement | null>;
+  onOpen(): void;
+  open: boolean;
+}) {
+  const { anchorRef, inputRef, onOpen, open } = props;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isPlatformShortcut(event, "f")) return;
+      const input = inputRef.current;
+      // A new press in the search box goes to the browser's find. A key
+      // repeat from holding the keys does not.
+      if (input && document.activeElement === input && !event.repeat) return;
+      if (!inFrontLayer(anchorRef.current)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      if (open && input) {
+        input.focus();
+        input.select();
+        return;
+      }
+      onOpen();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [anchorRef, inputRef, onOpen, open]);
+}
+
+function inFrontLayer(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const modals = document.querySelectorAll("[data-dashboard-modal]");
+  const front = modals[modals.length - 1] ?? null;
+  return element.closest("[data-dashboard-modal]") === front;
 }
 
 // ─── Inline highlighting ─────────────────────────────────────────────────────

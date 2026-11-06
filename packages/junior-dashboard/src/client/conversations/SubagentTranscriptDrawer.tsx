@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
@@ -72,6 +72,12 @@ function SubagentTranscriptDrawerContent(props: {
   const startedAt = detail ? Date.parse(detail.startedAt) : undefined;
   const searchOpenVisible =
     view === "rich" && (searchOpen || search.length > 0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!searchOpenVisible) return;
+    searchInputRef.current?.focus();
+  }, [searchOpenVisible]);
 
   const titleId = "subagent-transcript-drawer-title";
 
@@ -81,6 +87,7 @@ function SubagentTranscriptDrawerContent(props: {
         <>
           {view === "rich" ? (
             <TranscriptSearchToggle
+              inputRef={searchInputRef}
               onClick={() => {
                 if (searchOpenVisible) {
                   setSearchOpen(false);
@@ -163,6 +170,7 @@ function SubagentTranscriptDrawerContent(props: {
             <div className="mt-3 min-w-0">
               <SearchInput
                 className="min-w-0"
+                inputRef={searchInputRef}
                 label="Search transcript"
                 onChange={setSearch}
                 placeholder="Search transcript…"

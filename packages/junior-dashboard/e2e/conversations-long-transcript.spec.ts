@@ -238,11 +238,27 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await page
-    .getByPlaceholder("Search transcript…")
-    .fill("Transcript message 1234 with");
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  await expect(search).toBeFocused();
+  await search.fill("Transcript message 1234 with");
   await expect(transcript.getByText("Transcript message 1234 ")).toBeVisible();
+
+  // A second press goes to the browser's find.
+  await page.evaluate(() => {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        document.body.dataset.findPrevented = String(event.defaultPrevented);
+      },
+      { once: true },
+    );
+  });
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-find-prevented",
+    "false",
+  );
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
