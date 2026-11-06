@@ -266,6 +266,22 @@ test.describe("conversation sections", () => {
     await page.reload();
     await expect(finishedRow).toBeVisible();
     await expect(unreadDot).toHaveCount(0);
+
+    // The leading marker toggles read state too.
+    const markUnread = sidebar.getByRole("button", {
+      name: /^Mark Closed issue summary.* as unread$/,
+    });
+    await markUnread.hover();
+    await screenshot(page, "conversation-sidebar-read-toggle", {
+      view: "desktop",
+    });
+    await markUnread.click();
+    await expect(unreadDot).toBeVisible();
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
+    await sidebar
+      .getByRole("button", { name: /^Mark Closed issue summary.* as read$/ })
+      .click();
+    await expect(unreadDot).toHaveCount(0);
   });
 
   test("marks a conversation read or unread from its menu on mobile", async ({

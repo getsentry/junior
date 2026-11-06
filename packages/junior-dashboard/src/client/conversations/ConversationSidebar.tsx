@@ -361,6 +361,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   // Unread tracks idle conversations only.
   const canMarkUnread = props.conversation.status === "completed";
   const archived = Boolean(props.conversation.archivedAt);
+  // The leading marker toggles read state. A waiting row's marker is about
+  // its review item, so it stays a plain marker.
+  const canToggleRead = !props.waiting && (unread || canMarkUnread);
   const togglePin = () => pin.mutate(!pinned);
   const toggleArchive = () =>
     archive.mutate({
@@ -429,6 +432,35 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             status={status}
           />
         </Link>
+        {canToggleRead ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
+                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  disabled={markUnread.isPending}
+                  onClick={() => markUnread.mutate(!unread)}
+                  type="button"
+                >
+                  {/* On hover, preview the state that a click sets. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "hidden size-1.5 rounded-full group-hover/read:block group-focus-visible/read:block",
+                      unread
+                        ? "border border-dashboard-text-muted"
+                        : "bg-dashboard-accent",
+                    )}
+                  />
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {unread ? "Mark as read" : "Mark as unread"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {props.waiting ? (
           <Link
             className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
