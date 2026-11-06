@@ -163,11 +163,16 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await inputImage.scrollIntoViewIfNeeded();
   await expect(inputImage).toBeVisible();
   await inputImage.click();
-  await expect(
-    page.getByRole("dialog", { name: "input-chart.png" }),
-  ).toBeVisible();
-  await page
-    .getByRole("dialog", { name: "input-chart.png" })
+  const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
+  await expect(inputPreview).toBeVisible();
+  // The preview pages through every image in the transcript.
+  await expect(inputPreview.getByText("1 of 2")).toBeVisible();
+  await inputPreview.getByRole("button", { name: "Next image" }).click();
+  const deliveredPreview = page.getByRole("dialog", { name: "chart.png" });
+  await expect(deliveredPreview.getByText("2 of 2")).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await expect(inputPreview.getByText("1 of 2")).toBeVisible();
+  await inputPreview
     .getByRole("button", { name: "Close", exact: true })
     .click();
   const image = page

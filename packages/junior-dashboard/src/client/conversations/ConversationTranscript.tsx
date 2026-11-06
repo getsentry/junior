@@ -70,6 +70,7 @@ import {
   type TranscriptListRow,
 } from "./transcriptListRows";
 import { useVirtualRows } from "./virtualRows";
+import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
@@ -131,17 +132,22 @@ export const ConversationTranscriptView = memo(
 
     return (
       <TranscriptTimestampProvider>
-        <section className="min-w-0 pt-1">
-          <SegmentEvents
-            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-            conversation={props.conversation}
-            messages={messages}
-            responding={props.responding}
-            revealSeq={props.revealSeq}
-            scrollAnchorKey={props.scrollAnchorKey}
-            unread={props.unread}
-          />
-        </section>
+        <TranscriptImagesProvider
+          conversationId={props.conversation.conversationId}
+          messages={messages}
+        >
+          <section className="min-w-0 pt-1">
+            <SegmentEvents
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+              conversation={props.conversation}
+              messages={messages}
+              responding={props.responding}
+              revealSeq={props.revealSeq}
+              scrollAnchorKey={props.scrollAnchorKey}
+              unread={props.unread}
+            />
+          </section>
+        </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
     );
   },

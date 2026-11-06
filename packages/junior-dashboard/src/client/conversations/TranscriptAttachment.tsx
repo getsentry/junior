@@ -4,7 +4,13 @@ import {
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
 import { FileText } from "lucide-react";
-import { ImageAttachment } from "../components/ImageAttachment";
+import { type ReactNode, createContext, useContext, useMemo } from "react";
+
+import {
+  ImageAttachment,
+  type PreviewImage,
+} from "../components/ImageAttachment";
+import type { TranscriptViewMessage } from "../types";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Build a data URL that previews an image before the server stores it. */
@@ -24,6 +30,58 @@ function formatAttachmentBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isInlineImage(attachment: MessageAttachment): boolean {
+  return INPUT_IMAGE_TYPES.some((type) => type === attachment.contentType);
+}
+
+function attachmentMeta(attachment: MessageAttachment): string {
+  return [attachment.contentType, formatAttachmentBytes(attachment.bytes)].join(
+    " · ",
+  );
+}
+
+/** List the stored images of a transcript in reading order. */
+function transcriptPreviewImages(
+  conversationId: string,
+  messages: readonly TranscriptViewMessage[],
+): PreviewImage[] {
+  return messages.flatMap((message) =>
+    [
+      ...(message.attachments ?? []),
+      ...message.parts.flatMap((part) =>
+        part.type === "attachments_delivered" ? part.attachments : [],
+      ),
+    ]
+      .filter(isInlineImage)
+      .map((attachment) => ({
+        context: attachmentMeta(attachment),
+        filename: attachment.filename,
+        src: conversationAttachmentUrl(conversationId, attachment.id),
+      })),
+  );
+}
+
+// One preview pages through every image in the transcript, so a reader does
+// not open and close each image.
+const TranscriptImagesContext = createContext<readonly PreviewImage[]>([]);
+
+/** Share the transcript images with each image preview below it. */
+export function TranscriptImagesProvider(props: {
+  children: ReactNode;
+  conversationId: string;
+  messages: readonly TranscriptViewMessage[];
+}) {
+  const images = useMemo(
+    () => transcriptPreviewImages(props.conversationId, props.messages),
+    [props.conversationId, props.messages],
+  );
+  return (
+    <TranscriptImagesContext.Provider value={images}>
+      {props.children}
+    </TranscriptImagesContext.Provider>
+  );
 }
 
 /** Keep message attachments at their own size and wrap them when the row is full. */
@@ -73,21 +131,19 @@ function TranscriptAttachment(props: {
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
+  const gallery = useContext(TranscriptImagesContext);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
   );
-  const size = formatAttachmentBytes(props.attachment.bytes);
-  const inline = INPUT_IMAGE_TYPES.some(
-    (type) => type === props.attachment.contentType,
-  );
-  const meta = [props.attachment.contentType, size].join(" · ");
+  const meta = attachmentMeta(props.attachment);
 
-  if (inline && !search.active) {
+  if (isInlineImage(props.attachment) && !search.active) {
     return (
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
+        gallery={gallery}
         imageClassName={TRANSCRIPT_IMAGE_CLASS}
         loading="lazy"
         src={href}
