@@ -1,9 +1,11 @@
-import { ArrowLeft, Menu, X } from "lucide-react";
+import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -49,6 +51,8 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
+  /** Open the command palette. */
+  onSearch(): void;
   /** Spend and account control at the right of the tall desktop top bar. */
   profile?: ReactNode;
   version?: string;
@@ -120,9 +124,18 @@ export function DashboardHeader(props: {
             </NavLink>
           ))}
         </nav>
-        {props.profile ? (
-          <div className="justify-self-end">{props.profile}</div>
-        ) : null}
+        <div className="flex items-center gap-3 justify-self-end">
+          <Button
+            aria-keyshortcuts="Meta+K Control+K"
+            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+            onClick={props.onSearch}
+          >
+            <Search aria-hidden="true" className="size-4 shrink-0" />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
+          </Button>
+          {props.profile}
+        </div>
       </div>
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && props.mobileBackTo ? (
@@ -199,6 +212,15 @@ export function DashboardHeader(props: {
                 <div className="mb-3">{props.mobileSpend}</div>
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
+                <Button
+                  className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
+                  data-mobile-nav-dismiss=""
+                  onClick={props.onSearch}
+                  size="menu"
+                >
+                  <Search aria-hidden="true" className="size-4" />
+                  Search
+                </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
