@@ -14,6 +14,31 @@ import type {
   TranscriptViewTextPart,
   TranscriptViewToolCallPart,
 } from "../types";
+import { memoryRecallContent } from "./turnContext";
+
+// Core sends each agent invocation result to the parent mailbox with this
+// Event type prefix (`agent-invocations/result.ts`).
+const AGENT_INVOCATION_RESULT_EVENT_PREFIX = "agent_invocation.";
+
+/**
+ * True for the parent Event message that delivers agent invocation results.
+ * Its child agent card already shows each outcome, so the transcript shows
+ * this message only for the memories its Turn recalled.
+ */
+export function isAgentInvocationResultMessage(
+  message: Pick<TranscriptViewMessage, "eventType" | "role">,
+): boolean {
+  return (
+    message.role === "user" &&
+    message.eventType?.startsWith(AGENT_INVOCATION_RESULT_EVENT_PREFIX) === true
+  );
+}
+
+function hasRecalledMemories(message: TranscriptViewMessage): boolean {
+  return (
+    message.contexts?.some((context) => memoryRecallContent(context)) === true
+  );
+}
 
 export type RenderedFailureEntry = {
   key: string;
@@ -98,6 +123,12 @@ export function groupTranscriptMessages(
   const entries: RenderedTranscriptEntry[] = [];
 
   for (const message of messages) {
+    if (
+      isAgentInvocationResultMessage(message) &&
+      !hasRecalledMemories(message)
+    ) {
+      continue;
+    }
     const seq = message.pending ? undefined : message.sourceSeq;
     const source = seq === undefined ? {} : { seq };
     let textParts: TranscriptViewTextPart[] = [];

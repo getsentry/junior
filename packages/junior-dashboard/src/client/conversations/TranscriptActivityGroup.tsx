@@ -29,7 +29,7 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Child agent rows stay in the main view, like their result events.
+  // Child agent rows stay in the main view. A run of them is one group card.
   if (entry.kind === "subagent") return false;
   if (entry.kind === "message") return false;
   // A Turn's captured memories stay visible, so the reader sees what it saved.

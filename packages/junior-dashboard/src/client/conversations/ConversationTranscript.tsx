@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { History } from "lucide-react";
+import { Brain, History, Network } from "lucide-react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -25,6 +25,7 @@ import type {
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
+import { TranscriptSubagentGroup } from "./TranscriptSubagentGroup";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
@@ -57,7 +58,10 @@ import {
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
-import { groupTranscriptMessages } from "./transcriptRenderModel";
+import {
+  groupTranscriptMessages,
+  isAgentInvocationResultMessage,
+} from "./transcriptRenderModel";
 import { useTranscriptSearch } from "./transcriptSearch";
 import {
   TranscriptOpenRows,
@@ -101,6 +105,22 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
       part={entry.part}
       timestamp={entry.timestamp}
     />
+  );
+}
+
+function renderSubagentGroupEntries(
+  entries: TranscriptSubagentEntry[],
+  openKey: string,
+  onOpenTranscript: (part: TranscriptViewSubagentPart) => void,
+): ReactNode {
+  return (
+    <TranscriptRailEvent icon={Network} kind="subagent">
+      <TranscriptSubagentGroup
+        entries={entries}
+        onOpenTranscript={onOpenTranscript}
+        openKey={openKey}
+      />
+    </TranscriptRailEvent>
   );
 }
 
@@ -304,6 +324,12 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             />
             <TranscriptRecalledMemories message={entry.message} />
           </div>
+        ) : isAgentInvocationResultMessage(entry.message) ? (
+          // The child agent cards show the results. Keep what the Turn
+          // recalled, the only thing this message adds.
+          <TranscriptRailEvent icon={Brain} kind="event">
+            <TranscriptRecalledMemories message={entry.message} />
+          </TranscriptRailEvent>
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
@@ -378,6 +404,14 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           />
         </TranscriptRailEvent>
       )}
+      renderSubagentGroup={(entries, openKey) =>
+        renderSubagentGroupEntries(entries, openKey, (part) =>
+          props.onOpenSubagentTranscript?.({
+            part,
+            conversation: props.conversation,
+          }),
+        )
+      }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
@@ -396,6 +430,10 @@ type TranscriptEntryRenderers = {
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
+  renderSubagentGroup: (
+    entries: TranscriptSubagentEntry[],
+    openKey: string,
+  ) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 };
 
@@ -468,6 +506,7 @@ function TranscriptEntryList(
     renderReasoning,
     renderStructuredEvent,
     renderSubagent,
+    renderSubagentGroup,
     renderTool,
   } = props;
   const renderEntry = useCallback(
@@ -516,6 +555,7 @@ function TranscriptEntryList(
               measure={virtualizer.measureElement}
               offset={item.start - virtualizer.options.scrollMargin}
               renderEntry={renderEntry}
+              renderSubagentGroup={renderSubagentGroup}
               row={rows[item.index]!}
             />
           ))}
@@ -542,6 +582,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   measure: (element: HTMLElement | null) => void;
   offset: number;
   renderEntry: (entry: TranscriptEntry) => ReactNode;
+  renderSubagentGroup: TranscriptEntryRenderers["renderSubagentGroup"];
   row: TranscriptListRow;
 }) {
   const { row } = props;
@@ -561,6 +602,10 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
             openKey={row.key}
             renderEntry={props.renderEntry}
           />
+        </TranscriptRow>
+      ) : row.kind === "subagents" ? (
+        <TranscriptRow anchorKey={row.key} seq={row.seq}>
+          {props.renderSubagentGroup(row.entries, row.key)}
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
@@ -666,6 +711,14 @@ function RedactedTranscriptView(
           />
         </TranscriptRailEvent>
       )}
+      renderSubagentGroup={(entries, openKey) =>
+        renderSubagentGroupEntries(entries, openKey, (part) =>
+          props.onOpenSubagentTranscript?.({
+            part,
+            conversation: props.conversation,
+          }),
+        )
+      }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />

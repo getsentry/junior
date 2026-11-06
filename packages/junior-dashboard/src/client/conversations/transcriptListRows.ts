@@ -6,6 +6,8 @@ import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
+type SubagentEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
+
 /** One row of the rich transcript list, in seq order. */
 export type TranscriptListRow =
   | { kind: "unread_marker"; key: string }
@@ -21,6 +23,13 @@ export type TranscriptListRow =
       key: string;
       /** Last event sequence in the group. */
       seq?: number;
+    }
+  | {
+      kind: "subagents";
+      entries: SubagentEntry[];
+      key: string;
+      /** Last event sequence in the group. */
+      seq?: number;
     };
 
 /** The key of the "New" marker row. */
@@ -28,7 +37,8 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, search drops rows that do not match, and the
+ * become one group row, runs of two or more child agents become one
+ * child agent group row, search drops rows that do not match, and the
  * "New" marker becomes its own row before the first unread row.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
@@ -88,6 +98,33 @@ export function transcriptListRows(input: {
           }),
           seq: lastEntrySeq(group),
         });
+      }
+      continue;
+    }
+    if (entry.kind === "subagent") {
+      const group: SubagentEntry[] = [];
+      while (index < entries.length && entries[index]!.kind === "subagent") {
+        group.push(entries[index] as SubagentEntry);
+        index += 1;
+      }
+      const visible = group.filter(matches);
+      if (visible.length > 1) {
+        pushRow({
+          kind: "subagents",
+          entries: visible,
+          // New child agents join at the end, so the first one keeps the key.
+          key: `${input.keyPrefix}:subagents:${group[0]!.key}`,
+          seq: lastEntrySeq(group),
+        });
+      } else {
+        for (const subagent of visible) {
+          pushRow({
+            kind: "entry",
+            entry: subagent,
+            key: `${input.keyPrefix}:${subagent.key}`,
+            seq: subagent.seq,
+          });
+        }
       }
       continue;
     }
@@ -154,6 +191,7 @@ export function transcriptRowSizeClass(row: TranscriptListRow): string {
 export function defaultTranscriptRowSize(sizeClass: string): number {
   if (sizeClass === "unread_marker") return 32;
   if (sizeClass === "activity") return 36;
+  if (sizeClass === "subagents") return 120;
   if (sizeClass === "attachments_delivered") return 240;
   if (sizeClass === "message:assistant") return 120;
   if (sizeClass.startsWith("message:")) return 80;
