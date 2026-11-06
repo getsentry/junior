@@ -150,7 +150,7 @@ export function ConversationSidebar(props: {
         >
           <span
             aria-hidden="true"
-            className="grid size-5 place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14]"
+            className="grid size-[1.125rem] place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14] dark:bg-dashboard-accent/[0.22]"
           >
             <SquarePen className="size-3" strokeWidth={2.25} />
           </span>
