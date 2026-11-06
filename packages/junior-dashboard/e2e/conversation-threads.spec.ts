@@ -80,13 +80,27 @@ test("sends a message from a Thread page", async ({ page, dashboard }) => {
 });
 
 test("archives a Thread from its page", async ({ page, dashboard }) => {
-  const archiveCalls: Array<{ archived: boolean; url: string }> = [];
-  page.on("request", (request) => {
-    if (request.method() !== "PATCH" || !request.url().endsWith("/archive")) {
-      return;
-    }
-    const body = request.postDataJSON() as { archived: boolean };
-    archiveCalls.push({ archived: body.archived, url: request.url() });
+  const archiveCalls: Array<{
+    applyToChildren?: boolean;
+    archived: boolean;
+    url: string;
+  }> = [];
+  let releaseArchive: (() => void) | undefined;
+  const archiveReleased = new Promise<void>((resolve) => {
+    releaseArchive = resolve;
+  });
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    const body = route.request().postDataJSON() as {
+      applyToChildren?: boolean;
+      archived: boolean;
+    };
+    archiveCalls.push({
+      applyToChildren: body.applyToChildren,
+      archived: body.archived,
+      url: route.request().url(),
+    });
+    await archiveReleased;
+    await route.continue();
   });
   const threadUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`;
   const threadArchiveUrl = `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`;
@@ -98,27 +112,45 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   const rootRow = sidebar.getByRole("link", {
     name: /Dashboard QA edge cases/,
   });
+  const openMenu = page.getByRole("button", {
+    name: "Conversation menu",
+    exact: true,
+  });
   await expect(threadRow).toBeVisible();
 
-  // A Thread archive hides only the Thread, and its page stays open.
-  await page.getByRole("button", { name: "Conversation menu" }).click();
+  // A Thread archive is for everyone, so it asks first. It hides only the
+  // Thread, and the page goes home like any archive.
+  await openMenu.click();
   await page.getByRole("button", { name: "Archive", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Unarchive" })).toBeHidden();
-  await expect(threadRow).toHaveCount(0);
-  await expect(page).toHaveURL(threadUrl);
-  await expect(rootRow).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Close conversation menu" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("alertdialog", { name: "Archive for everyone?" })
+    .getByRole("button", { name: "Archive" })
+    .click();
+  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
   await expect
     .poll(() => archiveCalls)
-    .toEqual([{ archived: true, url: threadArchiveUrl }]);
+    .toEqual([
+      { applyToChildren: true, archived: true, url: threadArchiveUrl },
+    ]);
+  // The row hides while the archive is still in flight, so the feed update
+  // is the optimistic one, not a refetch.
+  await expect(threadRow).toHaveCount(0);
+  releaseArchive?.();
+  await expect(rootRow).toBeVisible();
 
-  await page.getByRole("button", { name: "Conversation menu" }).click();
+  // An archived Thread stays readable, and Unarchive brings its row back.
+  await page.goto(threadUrl);
+  await openMenu.click();
   await page.getByRole("button", { name: "Unarchive" }).click();
   await expect(threadRow).toBeVisible();
   await expect
     .poll(() => archiveCalls)
     .toEqual([
-      { archived: true, url: threadArchiveUrl },
-      { archived: false, url: threadArchiveUrl },
+      { applyToChildren: true, archived: true, url: threadArchiveUrl },
+      { applyToChildren: true, archived: false, url: threadArchiveUrl },
     ]);
 });
 
