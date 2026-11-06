@@ -6,6 +6,7 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -14,7 +15,7 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
@@ -631,16 +632,15 @@ async function saveAgentInvocationResult(args: {
 async function readChildDepthAndRootLocation(
   conversationId: string,
 ): Promise<{ depth: number; location?: Location }> {
-  const conversationStore = getConversationStore();
-  let depth = 0;
-  let conversation = await conversationStore.get({ conversationId });
-  while (conversation?.parentConversationId) {
-    depth += 1;
-    conversation = await conversationStore.get({
-      conversationId: conversation.parentConversationId,
-    });
+  const lineage = await readConversationLineage(conversationId);
+  const root = lineage[0];
+  if (!root) {
+    return { depth: 0 };
   }
-  return { depth, location: conversation?.location };
+  // A broken chain also counts the link to the parent that it could not read.
+  return root.parentConversationId
+    ? { depth: lineage.length }
+    : { depth: lineage.length - 1, location: root.location };
 }
 
 /**
