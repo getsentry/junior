@@ -10,6 +10,8 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recordConversationExecution } from "@/chat/task-execution/state";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import { getActiveConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -552,6 +554,17 @@ describe("remote ACP recovery", () => {
         softYieldAfterMs: 0,
       }),
     ).resolves.toMatchObject({ status: "yielded" });
+    // The worker recorded its Turn, so the yield wake names that Turn.
+    const yieldedTurnId = await getActiveConversationTurnId(sessionId);
+    expect(yieldedTurnId).toEqual(expect.any(String));
+    await expect(
+      getConversationWorkState({
+        conversationId: sessionId,
+        state: harness.state,
+      }),
+    ).resolves.toMatchObject({
+      execution: { resumeTurnIds: [yieldedTurnId] },
+    });
     if (!cancelActiveTurn) {
       throw new Error("ACP cancellation handler was not ready");
     }

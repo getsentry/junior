@@ -15,6 +15,11 @@ import {
   waitUntilCallbacks,
 } from "../fixtures/oauth-callback-after-harness";
 import { mswServer } from "../msw/server";
+import {
+  CONVERSATION_ID,
+  SLACK_DESTINATION,
+  createConversationWorkQueueTestAdapter,
+} from "../fixtures/conversation-work";
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
@@ -56,22 +61,38 @@ describe("oauth callback integration", () => {
     process.env = { ...ORIGINAL_ENV };
   }, 45_000);
 
-  it("publishes the App Home of the Slack person after the callback", async () => {
+  it("publishes the App Home and wakes the paused Turn after the callback", async () => {
+    const { upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const { getConversationWorkState } =
+      await import("@/chat/task-execution/store");
+    await upsertTurnRecord({
+      conversationId: CONVERSATION_ID,
+      piMessages: [],
+      resumeReason: "auth",
+      sliceId: 1,
+      state: "paused",
+      turnId: "turn-signin",
+    });
     await stateAdapterModule
       .getStateAdapter()
       .set("oauth-state:eval-oauth-state", {
         userId: "U123",
         provider: "eval-oauth",
+        destination: SLACK_DESTINATION,
+        resumeConversationId: CONVERSATION_ID,
+        resumeSessionId: "turn-signin",
       });
 
     waitUntilCallbacks.length = 0;
+    const queue = createConversationWorkQueueTestAdapter();
     const response = await oauthCallbackModule.GET(
       new Request(
         "https://junior.example.com/api/oauth/callback/eval-oauth?state=eval-oauth-state&code=eval-oauth-code",
       ),
       "eval-oauth",
       testWaitUntil,
-      {},
+      { conversationWorkQueue: queue },
     );
     for (const callback of waitUntilCallbacks.splice(0)) {
       await callback();
@@ -95,6 +116,13 @@ describe("oauth callback integration", () => {
         }),
       }),
     ]);
+    // The wake names the Turn it is for, so the worker resumes that Turn.
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: { resumeTurnIds: ["turn-signin"] },
+    });
+    expect(queue.sentRecords()).toHaveLength(1);
   }, 20_000);
 
   it("stores and syncs local credentials through the real loopback callback", async () => {

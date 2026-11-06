@@ -30,6 +30,7 @@ import {
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
 } from "./ids";
 import {
   getAgentInvocation,
@@ -450,6 +451,11 @@ export function createChildConversationWorker(
       throw new Error(
         `Child conversation ${context.conversationId} has no agent invocation for this work`,
       );
+    }
+    // A wake that recovers this lease then resumes this agent invocation.
+    const turnId = getAgentInvocationTurnId(invocationId);
+    if (turnId !== context.attempt.resumeTurnId) {
+      await context.recordTurn?.(turnId);
     }
     return await invocationWorker(context, invocationId);
   };

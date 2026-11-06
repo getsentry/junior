@@ -586,6 +586,18 @@ describe("agent invocation conversation work", () => {
             }),
           ]),
         });
+        // The child worker recorded the invocation's Turn, so the yield wake
+        // names it.
+        await expect(
+          getConversationWorkState({
+            conversationId: childConversationId,
+            state,
+          }),
+        ).resolves.toMatchObject({
+          execution: {
+            resumeTurnIds: [getAgentInvocationTurnId(invocationId)],
+          },
+        });
         if (endBeforeWake) {
           await completeAgentInvocation({
             errorMessage: "Agent invocation ended",

@@ -412,6 +412,8 @@ export async function requestConversationWork(args: {
   conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
+  /** The Turn to resume. Omit it when the request is for no one Turn. */
+  turnId?: string;
 }) {
   const result = await workState.requestConversationWork(args);
   await recordExecutionMetadata({
@@ -545,7 +547,10 @@ export async function requestAnotherSlice(args: {
   return result;
 }
 
-/** Begin a requested turn resume without releasing the current lease. */
+/**
+ * Begin a requested Turn resume without releasing the current lease. Returns
+ * the Turn that the resume is for, when its request named one.
+ */
 export async function beginConversationResume(args: {
   conversationId: string;
   leaseToken: string;
@@ -558,6 +563,17 @@ export async function beginConversationResume(args: {
     await recordExecutionMetadata(args);
   }
   return result;
+}
+
+/** Record the Turn that the leased attempt runs, or clear it. */
+export async function recordConversationTurn(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+  turnId: string | undefined;
+}) {
+  return await workState.recordConversationTurn(args);
 }
 
 /** Release the durable execution lease without changing completion state. */

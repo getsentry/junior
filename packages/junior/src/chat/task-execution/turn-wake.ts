@@ -96,7 +96,7 @@ export async function getPausedTurnRequest(args: {
   };
 }
 
-/** Wake the conversation worker for a paused turn. */
+/** Wake the conversation worker to resume one paused Turn. */
 export async function wakePausedTurn(
   request: PausedTurnRequest,
   options: TurnWakeOptions = {},
@@ -107,6 +107,7 @@ export async function wakePausedTurn(
     destination: request.destination,
     nowMs,
     state: options.state,
+    turnId: request.turnId,
   });
   const queue = options.queue ?? getVercelConversationWorkQueue();
   await ensureConversationWake({

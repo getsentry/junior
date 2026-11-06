@@ -150,6 +150,8 @@ export interface Lease {
   expiresAtMs: number;
   lastCheckInAtMs: number;
   token: string;
+  /** The Turn the leased attempt runs, when its worker recorded one. */
+  turnId?: string;
 }
 
 /** Durable request to stop one Conversation run. */
@@ -167,6 +169,11 @@ export interface ConversationExecution {
   lease?: Lease;
   pendingCount: number;
   pendingMessages: InboundMessage[];
+  /**
+   * Turns that resume requests are for, oldest first. Each one gets its own
+   * attempt. A request without a Turn adds none.
+   */
+  resumeTurnIds?: string[];
   runId?: string;
   status: ExecutionStatus;
   updatedAtMs?: number;
@@ -193,6 +200,7 @@ export interface ConversationWorkLease {
   lastCheckInAtMs: number;
   leaseExpiresAtMs: number;
   leaseToken: string;
+  turnId?: string;
 }
 
 export interface ConversationWorkState extends Conversation {
@@ -435,11 +443,13 @@ function normalizeLease(value: unknown): Lease | undefined {
   ) {
     return undefined;
   }
+  const turnId = toOptionalString(value.turnId);
   return {
     token,
     acquiredAtMs,
     lastCheckInAtMs,
     expiresAtMs,
+    ...(turnId ? { turnId } : undefined),
   };
 }
 
@@ -494,6 +504,11 @@ function normalizeExecution(
 
   const lease = normalizeLease(value.lease);
   const runId = toOptionalString(value.runId);
+  const resumeTurnIds = Array.isArray(value.resumeTurnIds)
+    ? value.resumeTurnIds.filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      )
+    : [];
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -514,6 +529,7 @@ function normalizeExecution(
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
     retryCount: toOptionalNumber(value.retryCount),
+    ...(resumeTurnIds.length > 0 ? { resumeTurnIds } : undefined),
     runId,
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
@@ -627,6 +643,18 @@ function hasRunnableWork(conversation: Conversation): boolean {
   );
 }
 
+/** Add the Turn of one resume request after the requests already waiting. */
+function withResumeTurn(
+  execution: ConversationExecution,
+  turnId: string | undefined,
+): ConversationExecution {
+  const resumeTurnIds = execution.resumeTurnIds ?? [];
+  if (!turnId || resumeTurnIds.includes(turnId)) {
+    return execution;
+  }
+  return { ...execution, resumeTurnIds: [...resumeTurnIds, turnId] };
+}
+
 function executionWithPendingMessages(
   execution: ConversationExecution,
   pending: InboundMessage[],
@@ -655,11 +683,19 @@ function withExecutionUpdate(
   execution: ConversationExecution,
   nowMs: number,
 ): Conversation {
+  const { resumeTurnIds, ...rest } = executionWithPendingMessages(
+    execution,
+    execution.pendingMessages,
+  );
+  // An idle or failed run resumes nothing, so its resume Turns go with it.
+  const keepsResumeTurns =
+    isRunnableStatus(rest.status) && resumeTurnIds && resumeTurnIds.length > 0;
   return {
     ...conversation,
     updatedAtMs: nowMs,
     execution: {
-      ...executionWithPendingMessages(execution, execution.pendingMessages),
+      ...rest,
+      ...(keepsResumeTurns ? { resumeTurnIds } : undefined),
       updatedAtMs: nowMs,
     },
   };
@@ -1126,6 +1162,7 @@ function conversationWorkState(
             lastCheckInAtMs: lease.lastCheckInAtMs,
             leaseExpiresAtMs: lease.expiresAtMs,
             leaseToken: lease.token,
+            ...(lease.turnId ? { turnId: lease.turnId } : undefined),
           },
         }
       : undefined),
@@ -1309,6 +1346,8 @@ export async function requestConversationWork(args: {
   destination?: Destination;
   nowMs?: number;
   state?: StateAdapter;
+  /** The Turn to resume. Omit it when the request is for no one Turn. */
+  turnId?: string;
 }): Promise<RequestConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -1337,7 +1376,7 @@ export async function requestConversationWork(args: {
           destination: current.destination ?? args.destination,
         },
         {
-          ...current.execution,
+          ...withResumeTurn(current.execution, args.turnId),
           status,
         },
         nowMs,
@@ -2025,7 +2064,7 @@ export async function requestAnotherSlice(args: {
       withExecutionUpdate(
         current,
         {
-          ...current.execution,
+          ...withResumeTurn(current.execution, current.execution.lease.turnId),
           status: "paused",
         },
         nowMs,
@@ -2035,20 +2074,26 @@ export async function requestAnotherSlice(args: {
   });
 }
 
-/** Begin a requested turn resume under the worker's existing lease. */
+/**
+ * Begin a requested Turn resume under the worker's existing lease. Takes the
+ * oldest resume Turn, records it on the lease, and returns it. Resume Turns
+ * left after it keep the run paused, so each gets its own attempt.
+ */
 export async function beginConversationResume(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<boolean> {
+}): Promise<false | { turnId?: string }> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
+    const lease = current?.execution.lease;
+    const [turnId, ...resumeTurnIds] = current?.execution.resumeTurnIds ?? [];
     if (
       !current ||
-      current.execution.lease?.token !== args.leaseToken ||
-      current.execution.status !== "paused"
+      lease?.token !== args.leaseToken ||
+      (current.execution.status !== "paused" && !turnId)
     ) {
       return false;
     }
@@ -2059,7 +2104,44 @@ export async function beginConversationResume(args: {
         current,
         {
           ...current.execution,
-          status: "running",
+          lease: { ...lease, turnId },
+          resumeTurnIds,
+          status: resumeTurnIds.length > 0 ? "paused" : "running",
+        },
+        nowMs,
+      ),
+    );
+    return turnId ? { turnId } : {};
+  });
+}
+
+/**
+ * Record the Turn that the leased attempt runs, or clear it. Wakes that
+ * recover this lease resume that Turn.
+ */
+export async function recordConversationTurn(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+  turnId: string | undefined;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    const lease = current?.execution.lease;
+    if (!current || lease?.token !== args.leaseToken) {
+      return false;
+    }
+    const { turnId: _previous, ...rest } = lease;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lease: args.turnId ? { ...rest, turnId: args.turnId } : rest,
         },
         nowMs,
       ),
@@ -2122,7 +2204,7 @@ export async function recordConversationRetry(args: {
       withExecutionUpdate(
         current,
         {
-          ...current.execution,
+          ...withResumeTurn(current.execution, current.execution.lease.turnId),
           lastEnqueuedAtMs: undefined,
           lease: stopped ? undefined : current.execution.lease,
           retryCount: count,
@@ -2158,7 +2240,10 @@ export async function completeConversationWork(args: {
       args.resumeIfStopped === true &&
       (await readConversationStop(state, args.conversationId))?.runId ===
         current.execution.runId;
-    const needsRun = current.execution.status === "paused" || stopped;
+    const needsRun =
+      current.execution.status === "paused" ||
+      (current.execution.resumeTurnIds?.length ?? 0) > 0 ||
+      stopped;
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -2357,7 +2442,7 @@ export async function clearExpiredConversationLease(args: {
       withExecutionUpdate(
         current,
         {
-          ...current.execution,
+          ...withResumeTurn(current.execution, current.execution.lease.turnId),
           lastEnqueuedAtMs: undefined,
           lease: undefined,
           retryCount,

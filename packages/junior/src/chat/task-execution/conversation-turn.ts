@@ -296,6 +296,10 @@ export function createConversationTurnWorker(
     } else {
       turnId = resolved.turnId;
     }
+    // A wake that recovers this lease then resumes this Turn.
+    if (turnId !== context.attempt.resumeTurnId) {
+      await context.recordTurn?.(turnId);
+    }
 
     const persisted = await getPersistedThreadState(context.conversationId);
     const conversation = coerceThreadConversationState(persisted);

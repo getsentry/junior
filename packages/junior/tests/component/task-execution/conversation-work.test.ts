@@ -22,6 +22,7 @@ import {
   listConversationsByActivity,
   ackMessages,
   recordConversationActivity,
+  recordConversationTurn,
   requestAnotherSlice,
   requestConversationWork,
   releaseConversationWork,
@@ -1134,6 +1135,7 @@ describe("conversation work execution", () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     let runs = 0;
+    const resumeTurnIds: (string | undefined)[] = [];
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     await expect(
@@ -1142,18 +1144,21 @@ describe("conversation work execution", () => {
         queue,
         run: async (context) => {
           runs += 1;
+          resumeTurnIds.push(context.attempt.resumeTurnId);
           await context.attempt.drain(async () => {});
           if (runs === 1) {
             currentNowMs = 2_000;
-            await wakePausedTurn(
-              {
-                conversationId: context.conversationId,
-                destination: context.destination ?? SLACK_DESTINATION,
-                expectedVersion: 2,
-                turnId: "turn-1",
-              },
-              { queue, nowMs: currentNowMs },
-            );
+            for (const turnId of ["turn-1", "turn-2", "turn-1"]) {
+              await wakePausedTurn(
+                {
+                  conversationId: context.conversationId,
+                  destination: context.destination ?? SLACK_DESTINATION,
+                  expectedVersion: 2,
+                  turnId,
+                },
+                { queue, nowMs: currentNowMs },
+              );
+            }
             await appendInboundMessage({
               message: inboundMessage("m2", {
                 createdAtMs: 2_100,
@@ -1170,7 +1175,10 @@ describe("conversation work execution", () => {
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
-    expect(runs).toBe(3);
+    // The interrupt runs first. Then each woken Turn gets one attempt, oldest
+    // first.
+    expect(resumeTurnIds).toEqual([undefined, undefined, "turn-1", "turn-2"]);
+    expect(runs).toBe(4);
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(false);
     expect(state?.messages).toEqual([]);
@@ -1683,12 +1691,14 @@ describe("conversation work execution", () => {
       nowMs: 1_000,
     });
     const attempts: string[][] = [];
+    const resumeTurnIds: (string | undefined)[] = [];
     await processConversationWork(conversationQueueMessage(), {
       queue,
       run: async (context) => {
         attempts.push(
           context.attempt.messages.map((message) => message.inboundMessageId),
         );
+        await context.recordTurn?.("turn-a1");
         await context.attempt.ack();
         await appendInboundMessage({
           message: webMessage("b1", "dashboard:b"),
@@ -1708,6 +1718,7 @@ describe("conversation work execution", () => {
         attempts.push(
           context.attempt.messages.map((message) => message.inboundMessageId),
         );
+        resumeTurnIds.push(context.attempt.resumeTurnId);
         await context.attempt.ack();
         return { status: "completed" };
       },
@@ -1715,6 +1726,8 @@ describe("conversation work execution", () => {
 
     // A second Turn must not start while the first waits to resume.
     expect(attempts).toEqual([["a1"], [], ["b1"]]);
+    // The yield resumes the Turn that the attempt recorded, and only that one.
+    expect(resumeTurnIds).toEqual(["turn-a1", undefined]);
   });
 
   it("does not rewrite mailbox state for an empty drain result", async () => {
@@ -2328,6 +2341,12 @@ describe("conversation work execution", () => {
       leaseToken: lease.leaseToken,
       nowMs: 3_000,
     });
+    await recordConversationTurn({
+      conversationId: CONVERSATION_ID,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      turnId: "turn-m1",
+    });
 
     await expect(
       recoverConversationWork({
@@ -2339,15 +2358,22 @@ describe("conversation work execution", () => {
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
       execution: {
+        resumeTurnIds: ["turn-m1"],
         status: "paused",
       },
     });
+    const resumeTurnIds: (string | undefined)[] = [];
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
-        run: async () => ({ status: "completed" }),
+        run: async (context) => {
+          resumeTurnIds.push(context.attempt.resumeTurnId);
+          return { status: "completed" };
+        },
       }),
     ).resolves.toEqual({ status: "completed" });
+    // The recovery wake resumes the Turn that the lost worker recorded.
+    expect(resumeTurnIds).toEqual(["turn-m1"]);
   });
 
   it("requeues pending mailbox work with no recent queue marker", async () => {

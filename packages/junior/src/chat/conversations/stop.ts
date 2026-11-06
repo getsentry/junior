@@ -28,20 +28,23 @@ export async function stopConversationTurn(args: {
     });
   let result = await stop();
 
-  if (
-    result.status === "no_work" &&
-    (await getAuthPausedConversationTurnId(args.conversationId))
-  ) {
+  const authPausedTurnId =
+    result.status === "no_work"
+      ? await getAuthPausedConversationTurnId(args.conversationId)
+      : undefined;
+  if (authPausedTurnId) {
     const conversation = await getConversation({
       conversationId: args.conversationId,
       state: args.state,
     });
+    // Wake the paused Turn so that its worker cancels it.
     await requestConversationWork({
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
       destination: conversation?.destination,
       nowMs,
       state: args.state,
+      turnId: authPausedTurnId,
     });
     result = await stop();
   }

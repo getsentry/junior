@@ -35,6 +35,7 @@ import {
   isInvalidConversationRecordError,
   recordAttemptFailure,
   recordConversationRetry,
+  recordConversationTurn,
   releaseConversationWork,
   requestAnotherSlice,
   startConversationWork,
@@ -43,15 +44,20 @@ import {
   type InboundMessage,
 } from "./store";
 import { isAttemptInterrupt, selectAttemptMessages } from "./attempt-selection";
+import { createConversationStopSignal } from "./stop-signal";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
-const CONVERSATION_STOP_CHECK_INTERVAL_MS = 500;
 
 export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
+  /**
+   * Record the Turn that this attempt runs. A wake that recovers the lease,
+   * such as after a lost worker or a yield, then resumes that Turn.
+   */
+  recordTurn?(turnId: string): Promise<void>;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -78,6 +84,11 @@ export interface InboxAttempt {
    */
   isFinalAttempt: boolean;
   messages: InboundMessage[];
+  /**
+   * The Turn that this resume attempt is for, when its wake named one. Wakes
+   * from older workers name none.
+   */
+  resumeTurnId?: string;
 }
 
 export interface ConversationWorkerResult {
@@ -289,70 +300,6 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
-function createConversationStopSignal(args: {
-  conversationId: string;
-  initiallyStopped: boolean;
-  options: ProcessConversationWorkOptions;
-  runId: string;
-}) {
-  const controller = new AbortController();
-  let checking = false;
-  let failureCaptured = false;
-  let listening = false;
-  let timer: ReturnType<typeof setInterval> | undefined;
-
-  const requestStop = (): void => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error("Conversation work stopped"));
-    }
-  };
-  if (args.initiallyStopped) requestStop();
-
-  const check = async (): Promise<void> => {
-    if (checking || controller.signal.aborted) return;
-    checking = true;
-    try {
-      const stopped = await hasConversationStop({
-        conversationId: args.conversationId,
-        runId: args.runId,
-        state: args.options.state,
-      });
-      if (stopped) requestStop();
-    } catch (error) {
-      if (!failureCaptured) {
-        failureCaptured = true;
-        logException(error, "conversation.work.stop_check.failed");
-      }
-    } finally {
-      checking = false;
-    }
-  };
-
-  return {
-    close(): void {
-      if (timer) clearInterval(timer);
-    },
-    isEnabled(): boolean {
-      return listening;
-    },
-    wasObserved(): boolean {
-      return listening && controller.signal.aborted;
-    },
-    signal(): AbortSignal {
-      listening = true;
-      if (!timer && !controller.signal.aborted) {
-        timer = setInterval(
-          () => void check(),
-          CONVERSATION_STOP_CHECK_INTERVAL_MS,
-        );
-        timer.unref?.();
-      }
-      return controller.signal;
-    },
-  };
-}
-
 /** Process one queue wake-up for a conversation. */
 export async function processConversationWork(
   message: ConversationQueueMessage,
@@ -527,6 +474,18 @@ async function processConversationWorkInContext(
     }
     return checkedIn;
   };
+  const recordTurn = async (turnId: string | undefined): Promise<void> => {
+    const recorded = await recordConversationTurn({
+      conversationId,
+      leaseToken: lease.leaseToken,
+      nowMs: now(options),
+      state: options.state,
+      turnId,
+    });
+    if (!recorded) {
+      markLeaseLost();
+    }
+  };
   const yieldWork = async (): Promise<ConversationWorkProcessResult> => {
     const yieldNowMs = now(options);
     await ensureConversationWake({
@@ -599,7 +558,11 @@ async function processConversationWorkInContext(
         break;
       }
 
-      if (resumePending && attemptMessages.length === 0) {
+      let resumeTurnId: string | undefined;
+      if (
+        attemptMessages.length === 0 &&
+        (resumePending || (leasedWork.execution.resumeTurnIds?.length ?? 0) > 0)
+      ) {
         const resumeStarted = await beginConversationResume({
           conversationId,
           leaseToken: lease.leaseToken,
@@ -618,6 +581,10 @@ async function processConversationWorkInContext(
           });
           return { status: "lost_lease" };
         }
+        resumeTurnId = resumeStarted.turnId;
+      } else if (leasedWork.lease?.turnId) {
+        // The Turn of an earlier attempt under this lease is not this one's.
+        await recordTurn(undefined);
       }
 
       attemptMessageIds = attemptMessages.map(
@@ -647,8 +614,8 @@ async function processConversationWorkInContext(
           runId,
           state: options.state,
         }),
-        options,
         runId,
+        state: options.state,
       });
       const workerContext: ConversationWorkerContext = {
         attempt: {
@@ -661,9 +628,11 @@ async function processConversationWorkInContext(
             attemptMessages,
           ),
           messages: attemptMessages,
+          ...(resumeTurnId ? { resumeTurnId } : undefined),
         },
         conversationId,
         destination,
+        recordTurn,
         shouldYield,
         stopSignal: stop.signal,
         checkIn,
@@ -814,6 +783,7 @@ async function processConversationWorkInContext(
       }
       if (
         next.execution.status !== "paused" &&
+        (next.execution.resumeTurnIds?.length ?? 0) === 0 &&
         countPendingConversationMessages(next) === 0
       ) {
         break;
