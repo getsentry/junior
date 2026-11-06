@@ -143,7 +143,6 @@ export function NewConversationPending(props: {
               }}
               conversationId={pending.idempotencyKey}
               detailsOpen={showDetails}
-              live
               pending
               onDetailsClick={noop}
               onSearchChange={noop}

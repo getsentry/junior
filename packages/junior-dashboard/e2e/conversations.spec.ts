@@ -736,6 +736,96 @@ test("inspects and copies a child agent transcript", async ({
   await expect(entry).toBeFocused();
 });
 
+test("rates a Junior Reply once, with time to change it", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  const open = () =>
+    page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+  const transcript = page.getByLabel("Conversation transcript");
+  const good = transcript.getByRole("button", { name: "Good reply" });
+  const bad = transcript.getByRole("button", { name: "Bad reply" });
+
+  // Good waits before it sends. The reader can clear it or switch to Bad,
+  // and a mistaken Bad can switch back to Good.
+  await page.clock.install();
+  await open();
+  await good.hover();
+  await good.click();
+  await good.click();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await bad.click();
+  const why = page.getByRole("dialog", { name: "What went wrong?" });
+  await expect(why).toBeVisible();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await expect(why).toHaveCount(0);
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  expect(feedback).toHaveLength(0);
+  await page.clock.runFor(5000);
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await expect.poll(() => feedback.length).toBe(1);
+  expect(feedback[0]).toMatchObject({
+    contexts: {
+      feedback: {
+        contact_email: "dev@example.com",
+        message: "Good reply",
+        name: "Dashboard User",
+      },
+    },
+  });
+
+  // Leaving the Conversation sends a pending Good at once.
+  await open();
+  await good.hover();
+  await good.click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
+  await expect.poll(() => feedback.length).toBe(2);
+  await open();
+
+  // Bad asks for an optional comment. Escape sends nothing.
+  await bad.hover();
+  await bad.click();
+  await expect(why.getByRole("textbox", { name: "Comment" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(why).toHaveCount(0);
+  await expect(bad).toHaveAttribute("aria-pressed", "false");
+  await bad.click();
+  await why
+    .getByRole("textbox", { name: "Comment" })
+    .fill("It read the wrong repo");
+  await why.getByRole("button", { name: "Send" }).click();
+  await expect(bad).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeFocused();
+  await expect(good).toHaveCount(0);
+  await expect.poll(() => feedback.length).toBe(3);
+  expect(feedback[2]).toMatchObject({
+    contexts: { feedback: { message: "Bad reply: It read the wrong repo" } },
+    tags: { "app.reply.rating": "bad" },
+  });
+});
+
 test("shows the agent tree of a child agent conversation", async ({
   page,
   dashboard,

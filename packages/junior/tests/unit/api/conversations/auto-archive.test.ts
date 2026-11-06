@@ -11,7 +11,6 @@ describe("isConversationWorkDone", () => {
         cutoffMs,
       ),
     ).toBe(true);
-    expect(isConversationWorkDone({}, cutoffMs)).toBe(false);
     expect(
       isConversationWorkDone(
         {
@@ -28,6 +27,10 @@ describe("isConversationWorkDone", () => {
         cutoffMs,
       ),
     ).toBe(false);
+  });
+
+  it("treats a conversation without reported work as done", () => {
+    expect(isConversationWorkDone({}, cutoffMs)).toBe(true);
   });
 
   it("keeps conversations where a person replied after the work finished", () => {
