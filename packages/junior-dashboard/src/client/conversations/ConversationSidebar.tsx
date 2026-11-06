@@ -221,13 +221,17 @@ export function ConversationSidebar(props: {
 /** Match the usual conversation row density while the first feed loads. */
 function ConversationRowsLoading() {
   return (
-    <div
-      aria-busy="true"
-      aria-live="polite"
-      className="grid gap-0.5"
-      role="status"
-    >
+    <div aria-busy="true" aria-live="polite" role="status">
       <span className="sr-only">Loading your conversations</span>
+      <ConversationRowSkeletons />
+    </div>
+  );
+}
+
+/** Draw placeholder rows in the sidebar row geometry. Callers own the status text. */
+export function ConversationRowSkeletons() {
+  return (
+    <div aria-hidden="true" className="grid gap-0.5">
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div

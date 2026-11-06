@@ -4,6 +4,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { ConversationRowSkeletons } from "./ConversationSidebar";
 import {
   readSidebarWidth,
   useConversationSidebarOpen,
@@ -43,31 +44,20 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
   );
 }
 
+// Mirror the live sidebar chrome so the first paint does not jump.
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-fill-faint md:grid">
-      <div className="flex items-center justify-between gap-2 px-4 py-3">
-        <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
-          Conversations
-        </h2>
-        <div className="flex gap-1">
-          <Skeleton className="size-7 rounded-md" />
-          <Skeleton className="size-7 rounded-md" />
+    <aside className="hidden h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel md:grid">
+      <div className="px-3 pb-1 pt-3">
+        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-1.5 text-sm leading-snug">
+          <Skeleton className="size-3.5" />
+          <span className="flex h-[1lh] items-center">
+            <Skeleton className="h-3 w-28" />
+          </span>
         </div>
       </div>
-      <div className="px-4 pb-2">
-        <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
-      </div>
-      <div className="grid content-start gap-1 px-1.5 pb-2">
-        <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
-        {Array.from({ length: 7 }, (_, index) => (
-          <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
-            <Skeleton
-              className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
-            />
-            <Skeleton className="h-2.5 w-2/5 opacity-70" />
-          </div>
-        ))}
+      <div className="min-h-0 overflow-hidden px-3">
+        <ConversationRowSkeletons />
       </div>
     </aside>
   );
