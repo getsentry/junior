@@ -47,11 +47,11 @@ function InboxRow(props: {
         )}
         to={props.to}
       >
-        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2">
+        <div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] items-start gap-x-2">
           <span
             aria-hidden="true"
             className={cn(
-              "mt-[0.4rem] size-2 shrink-0 rounded-full",
+              "mt-[0.4rem] size-2 shrink-0 justify-self-center rounded-full",
               dotClass[props.dot],
             )}
           />
