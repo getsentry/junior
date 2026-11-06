@@ -591,7 +591,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               </Tooltip>
             )}
             {props.footerStart}
-            {props.footerStart || props.compact ? null : (
+            {props.footerStart || props.compact || !enterSends ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>
