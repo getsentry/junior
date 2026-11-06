@@ -64,6 +64,25 @@ export function useSidebarFits(): boolean {
   );
 }
 
+const DETAILS_DEFAULT_OPEN_QUERY = "(min-width: 1440px)";
+
+/**
+ * Report whether a Conversation opens with its details panel. A new
+ * Conversation shown before its page exists uses this too, so the page
+ * opens with the same layout.
+ */
+export function useDetailsDefaultOpen(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY).matches,
+    () => false,
+  );
+}
+
 function readStorage(key: string): string | null {
   try {
     return window.localStorage.getItem(key);

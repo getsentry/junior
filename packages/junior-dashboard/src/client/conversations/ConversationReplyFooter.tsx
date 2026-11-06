@@ -14,6 +14,7 @@ import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
   restoreStoredDraftText,
+  takeStoredDraftText,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
@@ -39,6 +40,8 @@ function ReplyFooter(props: {
   authors?: ConversationDetailReport["authors"];
   committedMessageIds: readonly string[];
   conversationId: string;
+  /** Draft id of a composer that is gone. Its text and focus move here. */
+  draftFrom?: string;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
@@ -184,6 +187,15 @@ function ReplyFooter(props: {
   editCancelRef.current = editCancel;
   const editingRef = useRef(false);
   const composerRef = useRef<ConversationComposerHandle>(null);
+  // A new Conversation opens here after its first send. The reader was in
+  // its reply box, so the cursor and any text typed meanwhile move here.
+  const { draftFrom } = props;
+  useEffect(() => {
+    if (!draftFrom) return;
+    const text = takeStoredDraftText(draftFrom);
+    if (text) composerRef.current?.restoreMessage({ text });
+    else composerRef.current?.focus();
+  }, [draftFrom]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
