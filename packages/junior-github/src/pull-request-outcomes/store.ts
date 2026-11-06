@@ -270,7 +270,7 @@ export async function listGitHubAttentionWork(
 
 /** One webhook fact that changes whether a pull request needs fixes. */
 export type GitHubPullRequestAttentionChange =
-  | { kind: "push"; headSha: string }
+  | { headSha: string; kind: "push"; pushedAt: Date }
   | {
       checkSuiteId: string;
       failed: boolean;
@@ -286,8 +286,9 @@ function arrayWith(column: SQL, value: string): SQL {
 
 /**
  * Save one change to the "needs fixes" state of a Junior pull request. A
- * push starts a new head commit with no failures and no change requests. A
- * check suite of another commit than the saved head is ignored. Rows that
+ * push starts a new head commit with no failures and no change requests; a
+ * push that is not newer than the saved one is ignored. A check suite of
+ * another commit than the saved head is ignored. Rows that
  * Junior does not own are not changed.
  */
 export async function recordGitHubPullRequestAttention(
@@ -301,10 +302,16 @@ export async function recordGitHubPullRequestAttention(
       .update(t)
       .set({
         changesRequestedBy: [],
+        checksHeadAt: change.pushedAt,
         checksHeadSha: change.headSha,
         failingCheckSuiteIds: [],
       })
-      .where(pullRequestRow(target));
+      .where(
+        and(
+          pullRequestRow(target),
+          sql`(${t.checksHeadAt} is null or ${t.checksHeadAt} < ${change.pushedAt.toISOString()})`,
+        ),
+      );
     return;
   }
   if (change.kind === "check_suite") {

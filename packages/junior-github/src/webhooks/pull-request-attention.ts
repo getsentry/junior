@@ -25,6 +25,7 @@ const pushSchema = z.object({
   pull_request: z.object({
     head: z.object({ sha: z.string().min(1) }).passthrough(),
     number: z.number().int().positive(),
+    updated_at: z.string().datetime({ offset: true }),
   }),
   repository: repositorySchema,
 });
@@ -67,7 +68,11 @@ function attentionUpdates(eventName: string, body: unknown): AttentionUpdate[] {
     if (!push.success) return [];
     return [
       {
-        change: { kind: "push", headSha: push.data.pull_request.head.sha },
+        change: {
+          headSha: push.data.pull_request.head.sha,
+          kind: "push",
+          pushedAt: new Date(push.data.pull_request.updated_at),
+        },
         target: {
           number: push.data.pull_request.number,
           repositoryFullName: push.data.repository.full_name,

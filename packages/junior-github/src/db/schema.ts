@@ -110,6 +110,11 @@ export const juniorGitHubPullRequests = pgTable(
      * and clears the failures, so a late suite of an old commit is ignored.
      */
     checksHeadSha: text("checks_head_sha"),
+    /**
+     * GitHub `updated_at` of the push that set `checksHeadSha`. A redelivered
+     * or older push is not newer, so it cannot clear newer state.
+     */
+    checksHeadAt: timestamp("checks_head_at", { withTimezone: true }),
     /** Check suites on the head commit whose latest run failed. */
     failingCheckSuiteIds: text("failing_check_suite_ids")
       .array()

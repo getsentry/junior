@@ -1,5 +1,5 @@
 {
-  "id": "92a8ab2e-92ed-477a-8f68-4d80ac79acb3",
+  "id": "1add15be-a8a1-4731-97a8-d672c2f99c78",
   "prevId": "3156d5c8-917d-416b-a19b-f58e7ee76acc",
   "version": "7",
   "dialect": "postgresql",
@@ -328,6 +328,12 @@
         "checks_head_sha": {
           "name": "checks_head_sha",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checks_head_at": {
+          "name": "checks_head_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

@@ -2999,17 +2999,17 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
 
-      // A push answers both. A late suite of the old commit changes nothing.
-      await send(
+      const push = (headSha: string, updatedAt: string) =>
         pullRequestPayload({
           action: "synchronize",
           pull_request: {
             ...(pullRequestPayload().pull_request as Record<string, unknown>),
-            head: { sha: "bbbbbbb" },
+            head: { sha: headSha },
+            updated_at: updatedAt,
           },
-        }),
-        "pull_request",
-      );
+        });
+      // A push answers both. A late suite of the old commit changes nothing.
+      await send(push("bbbbbbb", "2026-07-02T12:00:00.000Z"), "pull_request");
       await send(suite(11, "aaaaaaa", "failure"), "check_suite");
       await expect(attention()).resolves.toEqual({
         changesRequestedBy: [],
@@ -3021,6 +3021,13 @@ describe("GitHub-owned pull request outcomes", () => {
         review("submitted", "changes_requested", "octocat"),
         "pull_request_review",
       );
+      // A redelivered or older push does not clear newer state.
+      await send(push("bbbbbbb", "2026-07-02T12:00:00.000Z"), "pull_request");
+      await send(push("aaaaaaa", "2026-07-01T18:00:00.000Z"), "pull_request");
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: ["octocat"],
+        failingCheckSuiteIds: ["13"],
+      });
       await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
       // A re-run that passes clears the suite, and a dismissal clears the
       // change request.
