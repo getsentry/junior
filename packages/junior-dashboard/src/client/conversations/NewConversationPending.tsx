@@ -96,8 +96,8 @@ export function NewConversationPending(props: {
   useEffect(() => composerRef.current?.focus(), []);
   // The page opens its details panel at this width. Open it here too, so
   // the transcript does not move when the page replaces this view. Its
-  // content fills in on the page. The header and panel are inert until
-  // then: their actions need a Conversation, and a details choice made here
+  // content fills in on the page. The header actions and panel are inert
+  // until then: they need a Conversation, and a details choice made here
   // would not carry over to the page.
   const showDetails = useDetailsDefaultOpen();
 
@@ -131,36 +131,35 @@ export function NewConversationPending(props: {
         >
           <ChatLayout
             header={
-              <div inert>
-                <ConversationHeader
-                  archive={{
-                    archived: false,
-                    disabled: true,
-                    error: false,
-                    onClick: noop,
-                    pending: false,
-                  }}
-                  conversationId={pending.idempotencyKey}
-                  detailsOpen={showDetails}
-                  live
-                  onDetailsClick={noop}
-                  onSearchChange={noop}
-                  onViewChange={noop}
-                  pin={{
-                    disabled: true,
-                    error: false,
-                    onClick: noop,
-                    pinned: false,
-                  }}
-                  privacy={
-                    <ConversationPrivacyChip visibility={pending.visibility} />
-                  }
-                  search=""
-                  sidebarToggle={props.sidebarToggle}
-                  title={title}
-                  view="rich"
-                />
-              </div>
+              <ConversationHeader
+                archive={{
+                  archived: false,
+                  disabled: true,
+                  error: false,
+                  onClick: noop,
+                  pending: false,
+                }}
+                conversationId={pending.idempotencyKey}
+                detailsOpen={showDetails}
+                live
+                pending
+                onDetailsClick={noop}
+                onSearchChange={noop}
+                onViewChange={noop}
+                pin={{
+                  disabled: true,
+                  error: false,
+                  onClick: noop,
+                  pinned: false,
+                }}
+                privacy={
+                  <ConversationPrivacyChip visibility={pending.visibility} />
+                }
+                search=""
+                sidebarToggle={props.sidebarToggle}
+                title={title}
+                view="rich"
+              />
             }
             scrollMinTall
             scrollAriaLabel="Conversation transcript"
