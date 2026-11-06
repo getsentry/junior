@@ -31,6 +31,7 @@ related:
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
 | `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
+| `AI_TRANSCRIPTION_MODEL`                    | No          | Speech-to-text model for dashboard dictation. Defaults to `openai/gpt-transcribe`.                                                                                          |
 | `AI_VISION_MODEL`                           | No          | Image summary model for thread history and a text-only `AI_MODEL`. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                     |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
@@ -306,6 +307,7 @@ const app = await createApp({
   rerankingModelId: "voyage/rerank-2.5-lite",
   webSearchModelId: "openai/gpt-6-luna",
   imageGenerationModelId: "openai/gpt-image-2",
+  transcriptionModelId: "openai/gpt-transcribe",
   visionModelId: "openai/gpt-5.6-sol",
 });
 ```

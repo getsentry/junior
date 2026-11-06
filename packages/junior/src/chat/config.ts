@@ -88,6 +88,8 @@ export interface BotModelConfig {
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
+  /** Model used to transcribe dictated audio. */
+  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
@@ -102,6 +104,7 @@ export interface BotConfig {
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
+  transcriptionModelId: string;
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
@@ -248,6 +251,7 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "openai/gpt-transcribe";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -323,6 +327,9 @@ function readBotConfig(
     imageGenerationModelId:
       toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
+    transcriptionModelId:
+      toOptionalTrimmed(env.AI_TRANSCRIPTION_MODEL) ??
+      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
@@ -704,6 +711,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       "imageGenerationModelId",
       config.imageGenerationModelId,
       validateEmbeddingModelId,
+    );
+  }
+  if (config.transcriptionModelId !== undefined) {
+    botConfig.transcriptionModelId = requireModelId(
+      "transcriptionModelId",
+      config.transcriptionModelId,
+      toOptionalTrimmed,
     );
   }
   if (config.visionModelId !== undefined) {
