@@ -67,28 +67,18 @@ body:has(.jr-hero-stage) {
   color: var(--jr-cream);
 }
 
+/* The homepage is one screen: no top bar, just the hero. */
 body:has(.jr-hero-stage) header.header {
-  background: var(--ve-bg-soft);
-  border-bottom: 1px solid var(--ve-line);
+  display: none;
+}
+
+body:has(.jr-hero-stage) .main-frame {
+  padding-top: 0;
 }
 
 /* The docs heading marker is for article pages, not the homepage. */
 body:has(.jr-hero-stage) .sl-markdown-content h2::before {
   content: none;
-}
-
-body:has(.jr-hero-stage) .site-title,
-body:has(.jr-hero-stage) .social-icons a,
-body:has(.jr-hero-stage) starlight-theme-select label,
-body:has(.jr-hero-stage) site-search button {
-  color: var(--jr-cream);
-}
-
-body:has(.jr-hero-stage) site-search button {
-  background: var(--ve-surface-raised);
-  border: 1px solid var(--ve-line);
-  border-radius: 0.5rem;
-  box-shadow: none;
 }
 
 body:has(.jr-hero-stage) .page {
@@ -103,6 +93,17 @@ body:has(.jr-hero-stage) .page {
 
 body:has(.jr-hero-stage) main {
   overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+
+body:has(.jr-hero-stage) .content-panel {
+  padding: 0;
+}
+
+/* The page body is empty; only the hero renders. */
+body:has(.jr-hero-stage) .sl-markdown-content {
+  display: none;
 }
 
 /*
@@ -117,8 +118,9 @@ body:has(.jr-hero-stage) .sl-container {
   box-sizing: border-box;
   margin-inline: calc(50% - 50vw);
   max-width: none;
-  min-height: min(76vw, 54rem);
-  padding: clamp(2rem, 5vw, 5rem) max(1.25rem, calc((100vw - 86rem) / 2));
+  align-content: center;
+  min-height: 100svh;
+  padding: 4rem max(1.25rem, calc((100vw - 86rem) / 2));
   position: relative;
   width: 100vw;
 }
@@ -280,8 +282,17 @@ body:has(.jr-hero-stage) .sl-container {
   transform: translate(4px, 4px);
 }
 
+/* Overlay the footer link on the hero's bottom padding so it adds no height. */
 body:has(.jr-hero-stage) footer {
+  bottom: 1.25rem;
   color: var(--jr-cream);
+  inset-inline: 0;
+  margin: 0;
+  position: absolute;
+}
+
+body:has(.jr-hero-stage) footer table {
+  height: auto;
 }
 
 @media (min-width: 72rem) {
@@ -294,7 +305,6 @@ body:has(.jr-hero-stage) footer {
 @media (max-width: 71.99rem) {
   :root:not([data-has-sidebar]) .hero {
     grid-template-columns: 100%;
-    min-height: auto;
   }
 }
 
