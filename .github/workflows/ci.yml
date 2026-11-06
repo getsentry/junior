@@ -85,6 +85,7 @@ jobs:
               - packages/junior-notion/**
               - packages/junior-octolens/**
               - packages/junior-pagerduty/**
+              - packages/junior-restream/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
               - packages/junior-xdotcom/**
@@ -522,6 +523,7 @@ jobs:
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
           pnpm --filter @sentry/junior-octolens pack --pack-destination artifacts
           pnpm --filter @sentry/junior-pagerduty pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-restream pack --pack-destination artifacts
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
