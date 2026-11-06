@@ -54,7 +54,6 @@ export default defineConfig({
         "@fontsource/caveat/500.css",
         "@fontsource/caveat/700.css",
         "./src/styles/custom.css",
-        "./src/styles/homepage-mocks.css",
       ],
       social: [
         {
