@@ -9,6 +9,8 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
   archiveDoneConversationsResponseSchema,
   conversationAutoArchiveSchema,
   conversationChildAgentsReportSchema,
@@ -75,6 +77,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
+  setMockPinOrder,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
 } from "./fixtures";
@@ -357,6 +360,18 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(pinConversationResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.put("/conversations/pin-order", async (c) => {
+    const body = reorderPinnedConversationsBodySchema.safeParse(
+      await c.req.json(),
+    );
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    return jsonResponse(
+      reorderPinnedConversationsResponseSchema,
+      setMockPinOrder(body.data.conversationIds),
+    );
   });
   app.post("/conversations/archive-done", () =>
     jsonResponse(

@@ -84,22 +84,34 @@ describe("conversation activity sections", () => {
   });
 
   it("puts pinned conversations only in Pinned, before Needs attention", () => {
-    const pinned = (id: string, lastSeenAt: string) => ({
+    const pinned = (id: string, lastSeenAt: string, pinPosition?: number) => ({
       ...conversation(id, lastSeenAt),
       pinnedAt: "2026-08-03T08:00:00-07:00",
+      pinPosition,
     });
     const sections = buildConversationSections(
       [
         conversation("today", "2026-08-03T11:00:00-07:00"),
         pinned("pinned-old", "2026-06-20T12:00:00-07:00"),
         pinned("pinned-waiting", "2026-08-03T10:00:00-07:00"),
+        pinned("placed-second", "2026-08-03T11:30:00-07:00", 1),
+        pinned("placed-first", "2026-06-01T12:00:00-07:00", 0),
         conversation("waiting", "2026-08-03T09:00:00-07:00"),
       ],
       { ...NOW, attentionIds: new Set(["pinned-waiting", "waiting"]) },
     );
 
+    // Pins without a place go first by activity, then the viewer's order.
     expect(sectionIds(sections)).toEqual([
-      { conversations: ["pinned-waiting", "pinned-old"], label: "Pinned" },
+      {
+        conversations: [
+          "pinned-waiting",
+          "pinned-old",
+          "placed-first",
+          "placed-second",
+        ],
+        label: "Pinned",
+      },
       { conversations: ["waiting"], label: "Needs attention" },
       { conversations: ["today"], label: "Today" },
     ]);

@@ -21,8 +21,8 @@ const ATTENTION_SECTION = {
  * section per month.
  *
  * A pinned conversation shows only in Pinned, even when it needs attention.
- * Conversations in `attentionIds` go to Needs attention. Each section lists
- * the newest first.
+ * Conversations in `attentionIds` go to Needs attention. Pinned follows the
+ * viewer's order; every other section lists the newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
@@ -57,6 +57,7 @@ export function buildConversationSections(
     }
   }
 
+  sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
@@ -71,9 +72,10 @@ export function attentionConversationIds(
 }
 
 /**
- * Sort pinned, then attention conversations to the front. The sort is stable,
- * so each group keeps the feed order. Paginated lists call this before paging,
- * so page 1 holds every pinned and attention conversation.
+ * Sort pinned, then attention conversations to the front. Pinned follows the
+ * viewer's order. The sort is stable, so the other groups keep the feed order.
+ * Paginated lists call this before paging, so page 1 holds every pinned and
+ * attention conversation.
  */
 export function pinnedAndAttentionFirst(
   conversations: Conversation[],
@@ -81,7 +83,23 @@ export function pinnedAndAttentionFirst(
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
     conversation.pinnedAt ? 0 : attentionIds.has(conversation.id) ? 1 : 2;
-  return [...conversations].sort((left, right) => rank(left) - rank(right));
+  return [...conversations].sort(
+    (left, right) =>
+      rank(left) - rank(right) ||
+      (left.pinnedAt && right.pinnedAt ? comparePinOrder(left, right) : 0),
+  );
+}
+
+/**
+ * Order pins by the viewer's places. Pins without a place, from before the
+ * first reorder or pinned since, go first. The sort is stable, so they keep
+ * their activity order.
+ */
+function comparePinOrder(left: Conversation, right: Conversation): number {
+  return (
+    (left.pinPosition ?? Number.NEGATIVE_INFINITY) -
+      (right.pinPosition ?? Number.NEGATIVE_INFINITY) || 0
+  );
 }
 
 function activityTime(conversation: Conversation): number {

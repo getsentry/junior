@@ -568,6 +568,13 @@
       "when": 1793903334195,
       "tag": "0080_conversation_event_latest_message_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793927683295,
+      "tag": "0081_conversation_pin_position",
+      "breakpoints": true
     }
   ]
 }

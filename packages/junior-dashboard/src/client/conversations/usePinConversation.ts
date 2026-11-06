@@ -23,10 +23,11 @@ export function usePinConversation(
   const feeds = { queryKey: ["dashboard", "conversations"] };
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   const setPinnedAt = (pinnedAt: string | null) => {
-    // Match the API: a pin also restores an archived conversation.
+    // Match the API: a pin also restores an archived conversation, and a new
+    // or removed pin has no place in the Pinned order.
     const viewerMarks = pinnedAt
-      ? { archivedAt: null, pinnedAt }
-      : { pinnedAt };
+      ? { archivedAt: null, pinnedAt, pinPosition: undefined }
+      : { pinnedAt, pinPosition: undefined };
     queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
       feed
         ? {

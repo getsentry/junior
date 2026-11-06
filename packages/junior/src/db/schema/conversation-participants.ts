@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+} from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
@@ -21,6 +28,12 @@ export const juniorConversationParticipants = pgTable(
     lastMessageAt: timestamptz("last_message_at").notNull(),
     archivedAt: timestamptz("archived_at"),
     pinnedAt: timestamptz("pinned_at"),
+    /**
+     * The viewer's place for this pin in the Pinned section, from a drag
+     * reorder. Null until the first reorder, and cleared on unpin, re-pin,
+     * and archive. Null pins sort first, by activity.
+     */
+    pinPosition: integer("pin_position"),
     /**
      * Per-conversation auto-archive choice for this user. Null uses the
      * user's `autoArchiveDefault`.

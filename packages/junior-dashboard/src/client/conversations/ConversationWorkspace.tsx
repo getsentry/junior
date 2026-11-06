@@ -43,6 +43,7 @@ import {
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
+import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -80,6 +81,7 @@ export function ConversationWorkspace(props: {
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
+  const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const conversations = useMemo(
@@ -205,6 +207,15 @@ export function ConversationWorkspace(props: {
               emptyLabel={feed.error?.message}
               finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
+              // Search, or more pins than one page holds, shows only some
+              // pins, so a drop could not place the rest.
+              onReorderPins={
+                search ||
+                conversations.filter((conversation) => conversation.pinnedAt)
+                  .length > CONVERSATION_PAGE_SIZE
+                  ? undefined
+                  : reorderPins
+              }
               timeZone={getDashboardTimeZone()}
               waitingConversationIds={waitingConversationIds}
             />
@@ -266,6 +277,7 @@ export function ConversationWorkspace(props: {
                 loading={feed.isPending}
                 onNewConversation={openCreate}
                 onQueryChange={setQuery}
+                onReorderPins={reorderPins}
                 query={query}
                 selectedId={selectedId}
                 timeZone={getDashboardTimeZone()}
