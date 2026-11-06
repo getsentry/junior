@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
@@ -108,14 +108,13 @@ export async function reorderPinnedConversations(
   const updated = await getDb()
     .update(participants)
     .set({
-      pinPosition: sql`case ${participants.rootConversationId} ${positions} end`,
+      // The client can see only the pins in one feed page. A placed pin that
+      // is not in the list moves after the listed pins and keeps its order,
+      // so its old place cannot collide with a new index.
+      pinPosition: sql`case ${participants.rootConversationId} ${positions} else ${participants.pinPosition} + ${ids.length}::integer end`,
     })
     .where(
-      and(
-        eq(participants.userId, viewer.id),
-        isNotNull(participants.pinnedAt),
-        inArray(participants.rootConversationId, ids),
-      ),
+      and(eq(participants.userId, viewer.id), isNotNull(participants.pinnedAt)),
     )
     .returning({ rootConversationId: participants.rootConversationId });
   const updatedIds = new Set(updated.map((row) => row.rootConversationId));

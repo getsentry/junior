@@ -210,6 +210,14 @@ describe("conversation pin API", () => {
       [unpinned]: undefined,
     });
 
+    // A placed pin that the list leaves out moves after the listed pins.
+    expect((await setPinOrder(app, [second, third])).status).toBe(200);
+    await expect(pinPositions(viewer)).resolves.toMatchObject({
+      [first]: 3,
+      [second]: 0,
+      [third]: 1,
+    });
+
     // A pin made again has no place, so it sorts first.
     await setPin(app, first, false);
     await setPin(app, first, true);

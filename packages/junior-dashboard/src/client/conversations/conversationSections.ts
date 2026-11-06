@@ -92,14 +92,20 @@ export function pinnedAndAttentionFirst(
 
 /**
  * Order pins by the viewer's places. Pins without a place, from before the
- * first reorder or pinned since, go first. The sort is stable, so they keep
- * their activity order.
+ * first reorder or pinned since, go first, newest pin first. Activity never
+ * moves a pin.
  */
 function comparePinOrder(left: Conversation, right: Conversation): number {
   return (
     (left.pinPosition ?? Number.NEGATIVE_INFINITY) -
-      (right.pinPosition ?? Number.NEGATIVE_INFINITY) || 0
+      (right.pinPosition ?? Number.NEGATIVE_INFINITY) ||
+    pinTime(right) - pinTime(left) ||
+    left.id.localeCompare(right.id)
   );
+}
+
+function pinTime(conversation: Conversation): number {
+  return conversation.pinnedAt ? Date.parse(conversation.pinnedAt) || 0 : 0;
 }
 
 function activityTime(conversation: Conversation): number {
