@@ -87,7 +87,11 @@ Rules:
 
 - Serve mock data only. Do not give the server provider credentials.
 - After more edits, run the `curl` check first. If it returns `200`, do not
-  restart the server: it reloads your edits, so tell the person to refresh the
+  restart the server. It rebuilds `packages/junior` edits by itself. It does
+  not rebuild the dashboard browser bundle, so after edits in
+  `packages/junior-dashboard`, run
+  `pnpm --filter @sentry/junior-dashboard run build:css && pnpm --filter @sentry/junior-dashboard run build:client && pnpm --filter @sentry/junior-dashboard run build:server`.
+  The server restarts on the new build. Then tell the person to refresh the
   same URL.
 - When the person asks to refresh the preview after the Sandbox stopped, check
   out the branch, start the server again, and send the new URL.
