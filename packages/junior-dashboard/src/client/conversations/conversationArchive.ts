@@ -276,7 +276,11 @@ export function archiveConversationMutationOptions(
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {
           ...feed,
-          conversations,
+          // The feed nests Threads under their root, so hide an archived
+          // Thread there too.
+          conversations: args.archived
+            ? withoutThread(conversations, conversationId)
+            : conversations,
         });
       });
       queryClient.setQueryData<ConversationSnapshot>(
@@ -410,4 +414,20 @@ export function conversationArchivedAt(conversation: Conversation | undefined) {
   return conversation?.kind === "root"
     ? conversation.archivedAt
     : conversation?.childArchivedAt;
+}
+
+/** Drop one Thread from the nested `threads` of feed rows, at any depth. */
+function withoutThread(
+  rows: ConversationFeedItem[],
+  threadId: string,
+): ConversationFeedItem[] {
+  return rows.map((row) => {
+    if (!row.threads) return row;
+    const { threads, ...rest } = row;
+    const kept = withoutThread(
+      threads.filter((thread) => thread.conversationId !== threadId),
+      threadId,
+    );
+    return kept.length ? { ...rest, threads: kept } : rest;
+  });
 }

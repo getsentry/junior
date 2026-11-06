@@ -41,6 +41,7 @@ import {
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { ConversationSidebarThreadRow } from "./ConversationSidebarThreadRow";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -71,7 +72,8 @@ type ConversationSidebarEntry =
       label: string;
       sectionKey: string;
     }
-  | { conversation: Conversation; key: string; kind: "conversation" };
+  | { conversation: Conversation; key: string; kind: "conversation" }
+  | { conversation: Conversation; depth: number; key: string; kind: "thread" };
 
 const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
@@ -214,6 +216,15 @@ export function ConversationSidebar(props: {
                     label={entry.label}
                     onToggle={() => toggleSection(entry.sectionKey)}
                   />
+                ) : entry.kind === "thread" ? (
+                  <ConversationSidebarThreadRow
+                    conversation={entry.conversation}
+                    depth={entry.depth}
+                    selected={entry.conversation.id === props.selectedId}
+                    waiting={props.waitingConversations.has(
+                      entry.conversation.id,
+                    )}
+                  />
                 ) : (
                   <ConversationSidebarEntryRow
                     conversation={entry.conversation}
@@ -285,13 +296,32 @@ function conversationSidebarEntries(
         label: section.label,
         sectionKey: section.key,
       },
-      ...(collapsed ? [] : section.conversations).map((conversation) => ({
-        conversation,
-        key: `conversation-${conversation.id}`,
-        kind: "conversation" as const,
-      })),
+      ...(collapsed ? [] : section.conversations).flatMap((conversation) => [
+        {
+          conversation,
+          key: `conversation-${conversation.id}`,
+          kind: "conversation" as const,
+        },
+        ...threadEntries(conversation.threads, 0),
+      ]),
     ];
   });
+}
+
+/** List the shown Threads under one row, depth first, in feed order. */
+function threadEntries(
+  threads: Conversation[] | undefined,
+  depth: number,
+): ConversationSidebarEntry[] {
+  return (threads ?? []).flatMap((thread) => [
+    {
+      conversation: thread,
+      depth,
+      key: `thread-${thread.id}`,
+      kind: "thread" as const,
+    },
+    ...threadEntries(thread.threads, depth + 1),
+  ]);
 }
 
 type ConversationSidebarRowProps = {
