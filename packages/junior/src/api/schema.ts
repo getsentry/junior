@@ -114,10 +114,14 @@ export type {
 export {
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
 } from "./schema/conversation-pin";
 export type {
   PinConversationBody,
   PinConversationResponse,
+  ReorderPinnedConversationsBody,
+  ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export type {
   AcceptedConversationMessage,

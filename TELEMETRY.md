@@ -215,6 +215,7 @@ attributes. Nested logs and spans inherit them.
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
@@ -443,7 +444,12 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
   project. The `pageload` span continues the trace of the page request, and
   dashboard API calls continue the browser trace.
-- The browser sends only spans. It sends no errors, breadcrumbs, or replays.
+- The browser sends only spans and Reply ratings. It sends no errors,
+  breadcrumbs, or replays.
+- A Reply rating is Sentry user feedback with `source`
+  `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
+  and no person. The dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their

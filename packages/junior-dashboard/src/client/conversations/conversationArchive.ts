@@ -1,4 +1,6 @@
 import {
+  mutationOptions,
+  type QueryClient,
   useMutation,
   useMutationState,
   useQueryClient,
@@ -9,6 +11,8 @@ import type {
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
+import { useEffect } from "react";
+import { useLocation, useNavigate } from "react-router";
 
 import { patch } from "../http";
 import type { Conversation } from "../types";
@@ -92,7 +96,7 @@ export type ArchivedFromConversationState = {
 };
 
 /** Read the newest archive or restore status for one conversation. */
-export function useLatestArchiveStatus(conversationId: string | undefined) {
+function useLatestArchiveStatus(conversationId: string | undefined) {
   const statuses = useMutationState({
     filters: {
       exact: true,
@@ -104,16 +108,65 @@ export function useLatestArchiveStatus(conversationId: string | undefined) {
   return conversationId ? statuses.at(-1) : undefined;
 }
 
+/**
+ * Report an archive started on the conversation page, which navigated home
+ * before the request finished.
+ */
+export function useConversationPageArchiveResult(
+  onArchived: (conversation: Conversation) => void,
+  onArchiveError: (conversation: Conversation, wasArchiving: boolean) => void,
+) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const conversation = (location.state as ArchivedFromConversationState | null)
+    ?.archivedConversation;
+  const status = useLatestArchiveStatus(conversation?.id);
+  useEffect(() => {
+    if (!conversation || (status !== "success" && status !== "error")) return;
+    if (status === "success") onArchived(conversation);
+    else onArchiveError(conversation, true);
+    // Clear the state so a reload or a later restore does not report again.
+    navigate(
+      { hash: location.hash, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [
+    conversation,
+    location.hash,
+    location.search,
+    navigate,
+    onArchiveError,
+    onArchived,
+    status,
+  ]);
+}
+
+type ArchiveConversationOptions = {
+  onError?(): void;
+  onSuccess?(archivedAt: string | null): void;
+};
+
 /** Archive or restore one conversation with an immediate reversible cache update. */
 export function useArchiveConversation(
   conversationId: string,
-  options?: {
-    onError?(): void;
-    onSuccess?(archivedAt: string | null): void;
-  },
+  options?: ArchiveConversationOptions,
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation(
+    archiveConversationMutationOptions(queryClient, conversationId, options),
+  );
+}
+
+/**
+ * Build the archive mutation for callers that outlive a component, such as a
+ * toast action. The shared mutation key keeps pending-state readers in sync.
+ */
+export function archiveConversationMutationOptions(
+  queryClient: QueryClient,
+  conversationId: string,
+  options?: ArchiveConversationOptions,
+) {
+  return mutationOptions({
     mutationKey: [...archiveConversationMutationKey, conversationId],
     mutationFn: (args: ArchiveConversationVariables) =>
       patch(

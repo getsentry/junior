@@ -1,6 +1,6 @@
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { mobile, screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -15,7 +15,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Loading conversations")).toBeAttached();
+  await expect(page.getByText("Loading your conversations")).toBeAttached();
   await expect(page.getByText("No conversations match this view.")).toHaveCount(
     0,
   );
@@ -163,11 +163,13 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await inputImage.scrollIntoViewIfNeeded();
   await expect(inputImage).toBeVisible();
   await inputImage.click();
+  const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
+  await expect(inputPreview).toBeVisible();
+  // The sent image is not part of the response, so it has no pager.
   await expect(
-    page.getByRole("dialog", { name: "input-chart.png" }),
-  ).toBeVisible();
-  await page
-    .getByRole("dialog", { name: "input-chart.png" })
+    inputPreview.getByRole("button", { name: "Next image" }),
+  ).toHaveCount(0);
+  await inputPreview
     .getByRole("button", { name: "Close", exact: true })
     .click();
   const image = page
@@ -183,7 +185,34 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await image.click();
   const preview = page.getByRole("dialog", { name: "chart.png" });
   await expect(preview).toBeVisible();
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await screenshot(page, "conversation-attachment-modal");
+  // The preview pages through the images of one response.
+  await preview.getByRole("button", { name: "Next image" }).click();
+  const detailPreview = page.getByRole("dialog", { name: "chart-detail.png" });
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(preview.getByText("1 of 2")).toBeVisible();
+
+  // Touch readers can pinch to zoom. Real touch input checks that the image
+  // keeps the gesture after a finger leaves it.
+  await page.setViewportSize(mobile);
+  const touch = await page.context().newCDPSession(page);
+  const pinch = (
+    type: "touchStart" | "touchMove" | "touchEnd",
+    points: { id: number; x: number; y: number }[],
+  ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+  await pinch("touchStart", [
+    { id: 1, x: 180, y: 450 },
+    { id: 2, x: 210, y: 450 },
+  ]);
+  await pinch("touchMove", [
+    { id: 1, x: 120, y: 450 },
+    { id: 2, x: 300, y: 700 },
+  ]);
+  await pinch("touchEnd", []);
+  await touch.detach();
+  await screenshot(page, "conversation-attachment-zoom");
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
 });
@@ -209,7 +238,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("region", { name: "Conversations" }),
+    page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -615,13 +644,22 @@ test("inspects and copies a child agent transcript", async ({
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
-  // Child Conversations cannot be forked, so their replies offer no action.
+  // Child Conversations cannot be forked, so their replies offer only copy.
   await expect(
     drawer.getByText("Review complete; no blocking issues found."),
   ).toBeVisible();
   await expect(
     drawer.getByRole("button", { name: "Fork after this message" }),
   ).toHaveCount(0);
+  const reply = drawer
+    .getByRole("article")
+    .filter({ hasText: "Review complete; no blocking issues found." });
+  await reply.hover();
+  await reply.getByRole("button", { name: "Copy message" }).click();
+  await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Review complete; no blocking issues found.",
+  );
 
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {

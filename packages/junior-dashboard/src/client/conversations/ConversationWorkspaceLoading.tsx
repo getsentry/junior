@@ -13,7 +13,6 @@ import { TranscriptLoading } from "./TranscriptLoading";
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
   const [sidebarOpen] = useConversationSidebarOpen();
-  if (!props.detail) return <ConversationHomeLoading />;
   return (
     <div
       aria-busy="true"
@@ -31,9 +30,15 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
         } as CSSProperties
       }
     >
-      <span className="sr-only">Loading conversation</span>
+      <span className="sr-only">
+        {props.detail ? "Loading conversation" : "Loading conversations"}
+      </span>
       {sidebarOpen ? <ConversationSidebarLoading /> : null}
-      <ConversationDetailLoading />
+      {props.detail ? (
+        <ConversationDetailLoading />
+      ) : (
+        <ConversationHomeLoading />
+      )}
     </div>
   );
 }
@@ -68,15 +73,11 @@ function ConversationSidebarLoading() {
   );
 }
 
+// Wide screens show only the create view beside the list. Narrow screens
+// stack the create view above the home list.
 function ConversationHomeLoading() {
   return (
-    <main
-      aria-busy="true"
-      aria-live="polite"
-      className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6"
-      role="status"
-    >
-      <span className="sr-only">Loading conversations</span>
+    <div className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 md:grid md:place-items-center md:py-13">
       <div className="mx-auto grid w-full max-w-6xl gap-8">
         <section className="mx-auto grid w-full max-w-3xl gap-3">
           <Skeleton className="mx-auto h-8 w-56" />
@@ -88,12 +89,12 @@ function ConversationHomeLoading() {
             </div>
           </div>
         </section>
-        <section className="grid gap-3">
+        <section className="grid gap-3 md:hidden">
           <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
           <ConversationHomeListLoading />
         </section>
       </div>
-    </main>
+    </div>
   );
 }
 

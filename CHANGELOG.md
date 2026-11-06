@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.282.0
+
+Users can navigate conversations, assign issues, trust approval status, and receive firewall alerts, while releases and data operations become safer and more predictable.
+
+### New Features ✨
+
+Users gain clearer conversation navigation, issue assignment, and firewall challenge alerting.
+
+#### Dashboard
+
+- Add copy and thumbs up/down actions to Junior replies by @betegon with @sentry-junior in [#2763](https://github.com/getsentry/junior/pull/2763)
+- Add a message outline beside the conversation transcript by @betegon with @sentry-junior in [#2756](https://github.com/getsentry/junior/pull/2756)
+- Show the unread Message count on Catch me up by @BYK with @sentry-junior in [#2762](https://github.com/getsentry/junior/pull/2762)
+
+#### Other
+
+- (github) Claim an issue for the requester when work starts by @sentry-junior in [#2771](https://github.com/getsentry/junior/pull/2771)
+- (sandbox) Log Vercel firewall challenges on sandbox egress by @sentry-junior in [#2778](https://github.com/getsentry/junior/pull/2778)
+
+### Bug Fixes 🐛
+
+- (github) Check merge state and auto-merge before approval replies by @BYK with @sentry-junior in [#2767](https://github.com/getsentry/junior/pull/2767)
+- (upgrade) Build marked index migrations concurrently by @sentry-junior in [#2772](https://github.com/getsentry/junior/pull/2772)
+
+### Internal Changes 🔧
+
+The system improves data access, dashboard delivery, release controls, connection reuse, and cleanup of retired metadata.
+
+#### Api
+
+- Read list previews and costs without scanning every event by @BYK with @sentry-junior in [#2761](https://github.com/getsentry/junior/pull/2761)
+- Read access, root, and viewer once per detail request by @sentry-junior in [#2758](https://github.com/getsentry/junior/pull/2758)
+
+#### Dashboard
+
+- Build client scripts with rolldown to merge tiny chunks by @sentry-junior in [#2765](https://github.com/getsentry/junior/pull/2765)
+- Start the first conversation read from the page head by @BYK with @sentry-junior in [#2764](https://github.com/getsentry/junior/pull/2764)
+- Serve styles, fonts, and avatar as hashed static assets by @BYK with @sentry-junior in [#2757](https://github.com/getsentry/junior/pull/2757)
+- Refine conversation typography and spacing by @betegon in [#2736](https://github.com/getsentry/junior/pull/2736)
+- Use body weight and muted icons in menu rows by @thomasjiangcy with @sentry-junior in [#2751](https://github.com/getsentry/junior/pull/2751)
+
+#### Release
+
+- Use Craft's default changelog categories by @BYK with @sentry-junior in [#2759](https://github.com/getsentry/junior/pull/2759)
+- Prepare releases with the Craft action and AI summaries by @BYK with @sentry-junior in [#2745](https://github.com/getsentry/junior/pull/2745)
+
+#### Other
+
+- (db) Keep idle Neon pool clients for 60s by @sentry-junior in [#2760](https://github.com/getsentry/junior/pull/2760)
+- Remove leftovers of the retired router, handoff, and private memory by @sentry-junior in [#2754](https://github.com/getsentry/junior/pull/2754)
+
 ## 0.281.0
 
 ### New Features ✨

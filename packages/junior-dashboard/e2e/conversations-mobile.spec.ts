@@ -412,8 +412,9 @@ test("opens and closes a conversation on mobile", async ({
   // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
-  // When the page already shrank for the keyboard, a leftover visual offset
-  // must not shove the fixed shell down (composer under the keyboard).
+  // iOS 18 Safari shrinks innerHeight with the keyboard but keeps
+  // documentElement.clientHeight tall and pans the visual viewport down. The
+  // shell must follow that pan, or it slides up off screen.
   await page.evaluate(() => {
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
@@ -422,6 +423,25 @@ test("opens and closes a conversation on mobile", async ({
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
       offsetTop: { configurable: true, value: 140 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("140px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+  // When the whole page shrank for the keyboard (resizes-content), a leftover
+  // visual offset must not shove the fixed shell down (composer under the
+  // keyboard).
+  await page.evaluate(() => {
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 520,
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
@@ -441,8 +461,9 @@ test("opens and closes a conversation on mobile", async ({
     .toBe("0px");
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 0);
 
-  // Restore classic Safari visual-dock geometry for the remaining checks.
+  // Restore classic visual-dock geometry for the remaining checks.
   await page.evaluate(() => {
+    Reflect.deleteProperty(document.documentElement, "clientHeight");
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
       value: 844,
@@ -743,7 +764,7 @@ test("keeps the message in view while earlier history and late content load", as
     };
   });
   await transcript.hover();
-  for (let step = 0; step < 8; step += 1) {
+  for (let step = 0; step < 10; step += 1) {
     await page.mouse.wheel(0, -150);
   }
   await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();

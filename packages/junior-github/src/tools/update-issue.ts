@@ -18,6 +18,7 @@ import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
+  linkedGitHubLogin,
   readGitHubBody,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
@@ -49,15 +50,25 @@ const inputSchema = z
       .enum(["open", "closed"])
       .optional()
       .describe("Replacement issue state."),
+    assign_requester: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to add the requester's linked GitHub account as an assignee. Other assignees stay.",
+      ),
   })
   .strict()
   .refine(
-    ({ title, body, state }) =>
-      title !== undefined || body !== undefined || state !== undefined,
+    ({ title, body, state, assign_requester }) =>
+      title !== undefined ||
+      body !== undefined ||
+      state !== undefined ||
+      assign_requester === true,
     { message: "At least one issue field must be provided." },
   );
 
 const issueSchema = z.object({
+  assignees: z.array(z.string()),
   body: z.string().nullable(),
   number: z.number(),
   state: z.string(),
@@ -75,6 +86,18 @@ const outputSchema = pluginToolOutputSchema.merge(
     target: z.literal("updateIssue"),
   }),
 );
+
+const providerIssueSchema = z.object({
+  assignees: z
+    .array(z.object({ login: z.string() }))
+    .nullish()
+    .transform((assignees) => assignees?.map(({ login }) => login) ?? []),
+  body: z.string().nullable().optional().default(null),
+  html_url: z.string(),
+  number: z.number(),
+  state: z.string(),
+  title: z.string(),
+});
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) throw new PluginToolInputError(`${name} is required`);
@@ -103,7 +126,7 @@ export function createGitHubUpdateIssueTool(ctx: {
       readOnlyHint: false,
     },
     description:
-      "Update an existing GitHub issue's title, body, or open/closed state. Use this instead of raw GitHub API calls when changing issue metadata.",
+      "Update an existing GitHub issue's title, body, or open/closed state, or assign it to the requester. Use this instead of raw GitHub API calls when changing issue metadata.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -115,6 +138,19 @@ export function createGitHubUpdateIssueTool(ctx: {
       }
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
+      const requester =
+        update.body !== undefined || update.assign_requester
+          ? await resolveGitHubRequester(ctx)
+          : undefined;
+      // Check before any write, so a failed assignment changes nothing.
+      const assignee = update.assign_requester
+        ? linkedGitHubLogin(requester?.user)
+        : undefined;
+      if (update.assign_requester && !assignee) {
+        throw new PluginToolInputError(
+          "The requester has no linked GitHub account, so Junior cannot assign the issue to them.",
+        );
+      }
       const currentBody =
         update.body !== undefined
           ? await readGitHubBody(ctx.egress, {
@@ -130,7 +166,7 @@ export function createGitHubUpdateIssueTool(ctx: {
                 appendGitHubRequesterAttribution(
                   update.body,
                   ctx,
-                  await resolveGitHubRequester(ctx),
+                  requester,
                   currentBody,
                 ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
@@ -140,27 +176,52 @@ export function createGitHubUpdateIssueTool(ctx: {
           : undefined),
         ...(update.state !== undefined ? { state: update.state } : undefined),
       };
-      const response = await githubApi(ctx.egress, {
-        operation: "github.issue.update",
-        method: "PATCH",
-        path: `${repoPath(repo)}/issues/${update.number}`,
-        body: payload,
-      });
-      const parsed = response.body;
-      if (!response.ok) {
-        throw new Error(
-          `GitHub issue update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
+      let parsed: unknown;
+      if (Object.keys(payload).length > 0) {
+        const response = await githubApi(ctx.egress, {
+          operation: "github.issue.update",
+          method: "PATCH",
+          path: `${repoPath(repo)}/issues/${update.number}`,
+          body: payload,
+        });
+        parsed = response.body;
+        if (!response.ok) {
+          throw new Error(
+            `GitHub issue update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
+          );
+        }
+      }
+      if (assignee) {
+        // This endpoint adds assignees. A PATCH with `assignees` replaces them.
+        const response = await githubApi(ctx.egress, {
+          operation: "github.issue.assign",
+          method: "POST",
+          path: `${repoPath(repo)}/issues/${update.number}/assignees`,
+          body: { assignees: [assignee] },
+        });
+        parsed = response.body;
+        if (!response.ok) {
+          const message = `GitHub issue assignment failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+          // A missing issue or an invalid assignee is a wrong target.
+          if (response.status === 404 || response.status === 422) {
+            throw new PluginToolInputError(message);
+          }
+          throw new Error(message);
+        }
+      }
+      const providerResult = providerIssueSchema.parse(parsed);
+      // GitHub ignores an assignee who cannot be assigned in the repo. Logins
+      // are case-insensitive.
+      if (
+        assignee &&
+        !providerResult.assignees.some(
+          (login) => login.toLowerCase() === assignee.toLowerCase(),
+        )
+      ) {
+        throw new PluginToolInputError(
+          `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
         );
       }
-      const providerResult = z
-        .object({
-          body: z.string().nullable().optional().default(null),
-          html_url: z.string(),
-          number: z.number(),
-          state: z.string(),
-          title: z.string(),
-        })
-        .parse(parsed);
       const subscribable = gitHubIssueSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: providerResult.number,
@@ -179,6 +240,7 @@ export function createGitHubUpdateIssueTool(ctx: {
           }),
         ],
         target: "updateIssue",
+        assignees: providerResult.assignees,
         body: providerResult.body,
         number: providerResult.number,
         state: providerResult.state,

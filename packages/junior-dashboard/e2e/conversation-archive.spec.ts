@@ -94,7 +94,7 @@ test("archives and restores a conversation from the sidebar", async ({
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);
 
-  const undoNotice = page.getByRole("status").filter({
+  const undoNotice = page.getByRole("dialog").filter({
     hasText: "Conversation archived",
   });
   await expect(undoNotice).toBeVisible();
@@ -148,6 +148,8 @@ for (const outcome of ["success", "error"] as const) {
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
     ).toBeVisible();
 
+    // Home must report the result even with the list hidden.
+    await page.getByRole("button", { name: "Hide conversation list" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("button", { name: "Archive", exact: true }).click();
 
@@ -160,7 +162,7 @@ for (const outcome of ["success", "error"] as const) {
     releaseArchive();
 
     if (outcome === "success") {
-      const undoNotice = page.getByRole("status").filter({
+      const undoNotice = page.getByRole("dialog").filter({
         hasText: "Conversation archived",
       });
       await expect(undoNotice).toContainText("Dashboard QA edge cases");
@@ -170,6 +172,7 @@ for (const outcome of ["success", "error"] as const) {
       hasText: "Could not archive",
     });
     await expect(archiveError).toContainText("Dashboard QA edge cases");
+    await page.getByRole("button", { name: "Show conversation list" }).click();
     await expect(conversationLink).toBeVisible();
   });
 }
@@ -200,6 +203,63 @@ test.describe("expires the archive undo notice", () => {
     await expect(undo).toBeVisible();
     await page.clock.fastForward(1_000);
     await expect(undo).toHaveCount(0);
+  });
+});
+
+test.describe("keeps undo through a slow failed restore", () => {
+  test.use({ controlTimers: true });
+  test("keeps undo through a slow failed restore", async ({
+    page,
+    dashboard,
+  }) => {
+    let releaseRestore!: () => void;
+    const restoreReleased = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    let restoreRequests = 0;
+    await page.route("**/api/conversations/*/archive", async (route) => {
+      const archived = route.request().postDataJSON().archived;
+      if (archived) {
+        await route.fulfill({
+          json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+        });
+        return;
+      }
+      restoreRequests += 1;
+      if (restoreRequests === 1) {
+        await restoreReleased;
+        await route.fulfill({ json: { error: "Restore failed" }, status: 500 });
+        return;
+      }
+      await route.fulfill({ json: { archivedAt: null } });
+    });
+    await page.goto(dashboard.baseURL);
+
+    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+    await page
+      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+      .click();
+    const undo = page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    });
+    await page.clock.fastForward(5_000);
+    await undo.click();
+    await expect(undo).toHaveText("Restoring…");
+    await expect(undo).toBeDisabled();
+
+    // A pending restore outlives the undo window.
+    await page.clock.fastForward(3_000);
+    await expect(undo).toHaveText("Restoring…");
+
+    releaseRestore();
+    const restoreError = page.getByRole("dialog").filter({
+      hasText: "Could not restore",
+    });
+    await expect(restoreError).toContainText("Dashboard QA edge cases");
+    await expect(undo).toHaveText("Undo");
+    await undo.click();
+    await expect(undo).toHaveCount(0);
+    expect(restoreRequests).toBe(2);
   });
 });
 
@@ -283,6 +343,9 @@ test("shows archive failures after the row returns", async ({
   await expect(archiveError).toBeVisible();
   await expect(archiveError).toContainText("Dashboard QA edge cases");
 
+  // Hover again: the first hover's tooltip can cover the returned row.
+  await page.mouse.move(0, 0);
+  await conversationLink.hover();
   await page
     .getByRole("button", { name: "Archive Dashboard QA edge cases" })
     .click();
