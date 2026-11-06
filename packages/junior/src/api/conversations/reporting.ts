@@ -21,6 +21,7 @@ export type ReportingConversationRow = {
   lastActivityAt: Date;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
+  stoppedAt: Date | null;
   title: string | null;
   updatedAt: Date;
   usage: (typeof juniorConversations.$inferSelect)["usage"];
@@ -111,6 +112,7 @@ export function summaryFromRow(
     ...(actor ? { actor } : undefined),
     ...(row.channelName ? { channelName: row.channelName } : undefined),
     ...(row.source ? { source: row.source } : undefined),
+    ...(row.stoppedAt ? { stoppedAtMs: row.stoppedAt.getTime() } : undefined),
     ...(row.title ? { title: row.title } : undefined),
   };
   return conversationSummaryFromStoredConversation({

@@ -31,6 +31,7 @@ export const conversationReportStatusSchema = z.enum([
   "active",
   "completed",
   "failed",
+  "stopped",
 ]);
 
 export const conversationSurfaceSchema = z.enum([

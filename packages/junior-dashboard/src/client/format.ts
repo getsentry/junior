@@ -752,6 +752,7 @@ export function visualStatusForSummary(
 ): VisualStatus {
   if (isFailedConversationSummary(summary)) return "failed";
   if (isActiveSummary(summary)) return "active";
+  if (summary.status === "stopped") return "stopped";
   return "idle";
 }
 
@@ -761,6 +762,7 @@ export function visualStatusForConversation(
 ): VisualStatus {
   if (isActiveConversation(conversation)) return "active";
   if (isFailedConversation(conversation)) return "failed";
+  if (conversation.status === "stopped") return "stopped";
   return "idle";
 }
 

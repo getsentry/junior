@@ -397,6 +397,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
         ${juniorIdentities.email}
       )`,
       executionStatus: juniorConversations.executionStatus,
+      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,

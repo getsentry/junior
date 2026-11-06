@@ -362,6 +362,9 @@ function conversationFromRow(row: ConversationRow): Conversation {
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
       : undefined),
+    ...(value.stoppedAt
+      ? { stoppedAtMs: value.stoppedAt.getTime() }
+      : undefined),
   };
 }
 

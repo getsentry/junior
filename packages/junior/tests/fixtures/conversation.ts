@@ -4,8 +4,10 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
+  conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
   type ConversationPendingMessagesReport,
+  type ConversationReportStatus,
 } from "@/api/schema";
 import type { WebActor } from "@/chat/actor";
 import { executeAgentRun } from "@/chat/agent";
@@ -122,6 +124,8 @@ export type ConversationWebHarness = {
   ) => Promise<ConversationPendingMessagesReport>;
   /** Load durable assistant/user history for one conversation. */
   historyTexts: (conversationId: string) => Promise<string[]>;
+  /** Read the status that the dashboard API reports for one conversation. */
+  status: (conversationId: string) => Promise<ConversationReportStatus>;
 };
 
 /**
@@ -230,6 +234,17 @@ export async function createConversationWebHarness(
       return conversationPendingMessagesReportSchema.parse(
         await response.json(),
       );
+    },
+    status: async (conversationId) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      );
+      if (response.status !== 200) {
+        throw new Error(
+          `conversation detail failed: ${response.status} ${await response.text()}`,
+        );
+      }
+      return conversationDetailReportSchema.parse(await response.json()).status;
     },
     historyTexts: async (conversationId) => {
       const history =

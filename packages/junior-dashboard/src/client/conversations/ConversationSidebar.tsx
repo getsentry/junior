@@ -584,7 +584,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs or failed. */
+/** Show the row age, or the status when the conversation runs, failed, or stopped. */
 function ConversationRowState(props: {
   lastSeenAt: string;
   status: ReturnType<typeof visualStatusForConversation>;
@@ -599,6 +599,13 @@ function ConversationRowState(props: {
   }
   if (props.status === "failed") {
     return <span className="font-sans text-xs text-rose-400">Failed</span>;
+  }
+  if (props.status === "stopped") {
+    return (
+      <span className="font-sans text-xs text-dashboard-text-muted">
+        Stopped
+      </span>
+    );
   }
   return (
     <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">

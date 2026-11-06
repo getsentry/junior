@@ -301,6 +301,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
+    ...(msFromDate(row.stoppedAt) !== undefined
+      ? { stoppedAtMs: msFromDate(row.stoppedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
