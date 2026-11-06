@@ -1,9 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
-import { getSqlExecutor } from "@/chat/db";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
-import { withConversationMutationLock } from "@/chat/conversations/sql/store";
-import { juniorConversations } from "@/db/schema";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { throwApiError } from "../http";
 import type {
   RenameConversationBody,
@@ -21,28 +18,19 @@ export async function renameConversation(
   conversationId: string,
   body: RenameConversationBody,
 ): Promise<RenameConversationResponse> {
-  const executor = getSqlExecutor();
   const access = await readConversationAccessFromSql(
-    executor.db(),
+    getDb(),
     [conversationId],
     viewer,
   );
   if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  // Take the lock that recordActivity holds while it reads and writes back the
-  // title, so a concurrent Turn cannot restore the old title.
-  const [row] = await withConversationMutationLock(
-    executor,
+  const title = await setConversationTitle(
+    getSqlExecutor(),
     conversationId,
-    async () =>
-      await executor
-        .db()
-        .update(juniorConversations)
-        .set({ detailVersion: nextDetailVersion, title: body.title })
-        .where(eq(juniorConversations.conversationId, conversationId))
-        .returning({ title: juniorConversations.title }),
+    body.title,
   );
-  if (!row?.title) throwApiError(404, "Conversation not found.");
-  return { title: row.title };
+  if (!title) throwApiError(404, "Conversation not found.");
+  return { title };
 }
