@@ -253,6 +253,8 @@ async function selectDoneRoots(
   cutoffMs: number,
 ): Promise<string[]> {
   const work = await listConversationWork(rootIds);
+  // A failed plugin may hide open work, so archive nothing in this page.
+  if (work.failed) return [];
   const assigned = new Set(work.assignedIds);
   const unfinished = new Set(work.unfinishedIds);
   const finished = work.assignedIds.filter(

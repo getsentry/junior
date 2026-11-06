@@ -8,6 +8,11 @@ import { juniorConversations } from "@/db/schema";
 
 export type ConversationWork = {
   assignedIds: string[];
+  /**
+   * A plugin hook failed, so missing work may be unreported. Feed Priority
+   * fails open; auto-archive must not read missing work as done.
+   */
+  failed: boolean;
   /** Latest finish time per conversation, used with activity for Priority. */
   finishedAtById: Record<string, string>;
   unfinishedIds: string[];
@@ -46,13 +51,19 @@ export async function listConversationWork(
   conversationIds: string[],
 ): Promise<ConversationWork> {
   if (conversationIds.length === 0) {
-    return { assignedIds: [], finishedAtById: {}, unfinishedIds: [] };
+    return {
+      assignedIds: [],
+      failed: false,
+      finishedAtById: {},
+      unfinishedIds: [],
+    };
   }
   const owners = await readWorkOwners(conversationIds);
   const queriedIds = [...owners.keys()];
   const assigned = new Set<string>();
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
+  let failed = false;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.unfinishedWork;
     if (!hook) continue;
@@ -87,6 +98,7 @@ export async function listConversationWork(
         }
       }
     } catch (error) {
+      failed = true;
       // Fail open: a broken plugin must not invent assigned or unfinished work
       // and demote recent conversations out of Priority.
       logWarn("plugin.unfinished_work.hook.failed", {
@@ -100,6 +112,7 @@ export async function listConversationWork(
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),
     ),
+    failed,
     finishedAtById: Object.fromEntries(
       conversationIds.flatMap((conversationId) => {
         const finishedAt = finishedAtById.get(conversationId);

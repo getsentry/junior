@@ -443,6 +443,48 @@ describe("conversation archive API", () => {
     ).resolves.toEqual([oldId, noWorkId, childDoneId].sort());
   });
 
+  it("archives nothing when a plugin cannot report work", async () => {
+    const nowMs = Date.now();
+    const conversationId = "local:test:archive-done-plugin-failed";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: nowMs - 60_000,
+      source: "internal",
+    });
+    const viewer = await addParticipant({
+      conversationId,
+      email: "archive-failed@example.com",
+      lastMessageAt: new Date(nowMs - 60_000),
+    });
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "work",
+            displayName: "Work",
+            description: "Failing work test plugin",
+          },
+          hooks: {
+            unfinishedWork: () => {
+              throw new Error("provider unavailable");
+            },
+          },
+        }),
+      ]),
+    });
+
+    const { app } = await authenticatedApi(viewer.email);
+    const response = await app.request(
+      "http://localhost/api/conversations/archive-done",
+      { method: "POST" },
+    );
+    expect(
+      archiveDoneConversationsResponseSchema.parse(await response.json()),
+    ).toEqual({ archived: 0 });
+  });
+
   it("archives the viewer's done conversations once on request", async () => {
     const nowMs = Date.now();
     const doneId = "local:test:archive-done-now";
