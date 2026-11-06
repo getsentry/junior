@@ -90,7 +90,11 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
-    /** Latest session stop. Automated input received before it is dropped. */
+    /**
+     * Set while the Conversation is stopped. Its Watch Events are then saved
+     * as Messages that start no Turn. A person's later input, or new work
+     * from its parent, clears it.
+     */
     stoppedAt: timestamptz("stopped_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),

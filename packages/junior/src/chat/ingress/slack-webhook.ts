@@ -27,12 +27,12 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
-import { stopConversationTurn } from "@/chat/conversations/stop";
-import { stopConversationSession } from "@/chat/agent-invocations/stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
+  type StopConversationWorkResult,
 } from "@/chat/task-execution/store";
 import { withLock } from "@/chat/state/locks";
 import {
@@ -368,7 +368,7 @@ async function handleSlackThreadStop(args: {
     return;
   }
 
-  await stopConversationTurn({
+  await stopConversation({
     conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,
@@ -379,7 +379,6 @@ async function handleSlackThreadStop(args: {
     messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
-  await stopConversationSession({ conversationId, state: args.state });
 
   await bindSlackAuthorIdentity(args.message, args.installation);
   const content = parseContent(args.message);
@@ -404,9 +403,9 @@ export const SLACK_SESSION_STOP_ACK = "Stopped.";
 /**
  * Stop the active Turn when a user clicks Slack's native agent stop button.
  *
- * Unlike the `stop` keyword, this only interrupts current work. The thread
- * stays subscribed and resource watches stay active. Slack does not leave the
- * `processing` status by itself, so clear the status even when no work runs.
+ * It stops the Conversation the same way the `stop` keyword does, but the
+ * thread stays subscribed. Slack does not leave the `processing` status by
+ * itself, so clear the status even when no work runs.
  * https://docs.slack.dev/reference/events/agent_session_stopped
  */
 async function handleSlackSessionStop(args: {
@@ -424,16 +423,21 @@ async function handleSlackSessionStop(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  const stopped = await stopConversationTurn({
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    state: args.state,
-  });
-  await createSlackWebApiStatusSender({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
-  })("");
+  let stopped: StopConversationWorkResult;
+  try {
+    stopped = await stopConversation({
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      state: args.state,
+    });
+  } finally {
+    // The person pressed stop, so Slack stops showing the status either way.
+    await createSlackWebApiStatusSender({
+      channelId: args.channelId,
+      threadTs: args.threadTs,
+    })("");
+  }
   if (stopped.status !== "requested") {
     return;
   }

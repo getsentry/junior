@@ -22,7 +22,7 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { botConfig } from "@/chat/config";
-import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
+import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -175,13 +175,14 @@ export function createConversationWork(
     );
   };
   const run = async (
-    context: ConversationWorkerContext,
+    attemptContext: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // Drop automated input that a session stop ended, on a root or a child.
-    const skipped = await skipInputBeforeConversationStop(context);
-    if (skipped) {
-      return skipped;
+    // Apply a session stop to automated input, on a root or a child.
+    const stopped = await skipInputAfterConversationStop(attemptContext);
+    if ("skipped" in stopped) {
+      return stopped.skipped;
     }
+    const { context } = stopped;
     // The stored parent decides the kind of Conversation, so child work never
     // reaches a root worker. A child Turn can have any Source.
     const conversation = await options.conversationStore.get({
@@ -192,10 +193,13 @@ export function createConversationWork(
     }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
-      return await conversationTurnWorker(
-        context,
-        await withAgentInvocationResultActors(mailboxTurn),
-      );
+      const work = await withAgentInvocationResultActors(mailboxTurn);
+      if (!work) {
+        // A stop skipped every child result in this input.
+        await context.attempt.ack();
+        return { status: "completed" };
+      }
+      return await conversationTurnWorker(context, work);
     }
     const dispatchId = await resolveAgentDispatchId(context);
     if (dispatchId) {

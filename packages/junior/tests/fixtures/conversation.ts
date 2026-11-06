@@ -17,6 +17,7 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -242,4 +243,15 @@ export async function createConversationWebHarness(
         .filter(Boolean);
     },
   };
+}
+
+/** Return the texts of Messages that saved Events for a stopped Conversation. */
+export async function stoppedConversationMessageTexts(
+  conversationId: string,
+): Promise<string[]> {
+  const history =
+    await getConversationEventStore().loadMessageHistory(conversationId);
+  return projectConversationMessages(history)
+    .filter((message) => message.meta?.skippedReason === "stopped conversation")
+    .map((message) => message.text);
 }

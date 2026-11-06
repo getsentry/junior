@@ -22,6 +22,7 @@ import {
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { commitMessages } from "@/chat/conversations/projection";
+import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -34,6 +35,7 @@ import type {
   InboxAttempt,
 } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
@@ -168,7 +170,7 @@ describe("agent invocation worker", () => {
     }
   });
 
-  it("stops open child agents when a stop comes after the child saved its result", async () => {
+  it("stops open child agents when the child is stopped during its run", async () => {
     const fixture = await prepareParentConversation();
     try {
       const created = await createAgentInvocation({
@@ -183,7 +185,12 @@ describe("agent invocation worker", () => {
       const stopRequest = new AbortController();
       const worker = createAgentInvocationWorker({
         run: async () => {
-          // The stop request arrives after the run finished.
+          // A person stops the child as its run finishes. This harness has no
+          // stop check, so abort the signal that the check would abort.
+          await stopConversation({
+            conversationId: created.childConversationId,
+            queue: createConversationWorkQueueTestAdapter(),
+          });
           stopRequest.abort(new Error("Conversation work stopped"));
           return {
             status: "completed" as const,
@@ -220,8 +227,8 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
 
-      // The open helper would have reported for the child. The stop ends the
-      // helper, so the child's own result reports now.
+      // The open helper would have reported for the child. The stop ended the
+      // helper before the child saved, so the child's own result reports.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({

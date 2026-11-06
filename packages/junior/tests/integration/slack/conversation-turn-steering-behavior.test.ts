@@ -3,6 +3,7 @@
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
 import { ThreadImpl } from "chat";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import {
   SLACK_BOT_USER_ID,
   createConversationWorkQueueTestAdapter,
@@ -12,9 +13,14 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import {
+  expectChildAgentStopped,
+  startRunningChildAgent,
+} from "../../fixtures/agent-invocations";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { getConversationStore } from "@/chat/db";
 import { SLACK_SESSION_STOP_ACK } from "@/chat/ingress/slack-webhook";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
@@ -105,7 +111,7 @@ describe("Slack ingress: thread messages", () => {
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
   });
 
-  it("stops the active Turn from Slack's native stop button and keeps the thread", async () => {
+  it("stops the active Turn and its child agents from Slack's native stop button and keeps the thread", async () => {
     const { queue, send, sendSessionStop, state } = ingress();
     const statusClears = () =>
       slackApiOutbox
@@ -134,6 +140,13 @@ describe("Slack ingress: thread messages", () => {
     });
     await state.subscribe(CONVERSATION_ID);
     expect(queue.queuedMessages()).toHaveLength(1);
+    const child = await startRunningChildAgent({
+      conversationStore: getConversationStore(),
+      idempotencyKey: "slack-session-stop-child",
+      parentConversationId: CONVERSATION_ID,
+      queue,
+      state,
+    });
 
     await expect(sendSessionStop()).resolves.toMatchObject({ status: 200 });
 
@@ -158,6 +171,10 @@ describe("Slack ingress: thread messages", () => {
         }),
       }),
     ]);
+    await expectChildAgentStopped(child, state);
+    await expect(
+      getConversationStoppedAtMs(CONVERSATION_ID),
+    ).resolves.toBeDefined();
     // Unlike the `stop` keyword, the native button does not opt out.
     await expect(state.isSubscribed(CONVERSATION_ID)).resolves.toBe(true);
   });
