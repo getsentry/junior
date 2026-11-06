@@ -10,8 +10,8 @@ import { stopConversationWork } from "@/chat/task-execution/store";
 import { juniorAgentInvocations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
+import { getChildAgentLockName } from "./ids";
 import {
-  getChildAgentLockName,
   getLatestAgentInvocationForConversation,
   invocationFromRow,
   isTerminalAgentInvocation,

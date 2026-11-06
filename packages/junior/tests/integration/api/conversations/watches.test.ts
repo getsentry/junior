@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { conversationWatchesReportSchema } from "@/api/schema";
-import { createAgentInvocation } from "@/chat/agent-invocations/store";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { closeDb } from "@/chat/db";
 import { createWatch } from "@/chat/events/store";
 import {
