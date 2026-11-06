@@ -18,6 +18,11 @@ export function isNativeIdentityProvider(provider: string): boolean {
 export type IdentityKind = "service" | "system" | "user";
 
 export interface IdentityUpsert {
+  /**
+   * Profile photo URL from the provider. Omit it to keep the saved photo. Null
+   * clears it, for example when the person removes their photo.
+   */
+  avatarUrl?: string | null;
   displayName?: string;
   email?: string;
   emailVerified?: boolean;

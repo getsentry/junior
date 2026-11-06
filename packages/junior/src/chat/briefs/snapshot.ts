@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -157,7 +157,9 @@ export function completedTurnIndexesFromSnapshot(
     .filter(
       (event) =>
         event.data.type === "turn_lifecycle" &&
-        (event.data.state === "succeeded" || event.data.state === "no_reply"),
+        (event.data.state === "succeeded" ||
+          event.data.state === "no_reply" ||
+          event.data.state === "blocked"),
     )
     .map((event) => event.seq);
 }

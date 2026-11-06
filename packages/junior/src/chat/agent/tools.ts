@@ -22,6 +22,7 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
   createAgentSandbox,
   createPluginToolSandbox,
+  type AgentSandbox,
 } from "@/chat/agent/sandbox";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
@@ -51,6 +52,7 @@ import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb } from "@/chat/db";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
+import type { PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -70,7 +72,7 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
@@ -84,12 +86,90 @@ import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
+interface RunSandboxArgs {
+  availableSkills: SkillMetadata[];
+  configurationValues: Record<string, unknown>;
+  currentActor?: Actor;
+  /** Live projection of the run's committed instruction-authority actors so far. */
+  currentActors?: () => Actor[];
+  durability: Pick<AgentDurability, "onSandboxRefChanged">;
+  onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
+  run: AgentRun;
+  skillSandbox: SkillSandbox;
+  spanContext: LogContext;
+  state: Pick<AgentRunState, "sandboxRef">;
+}
+
+/** The run's sandbox handle and the plugin hooks that prepare it. */
+export interface RunSandbox {
+  agentSandbox: AgentSandbox;
+  pluginHooks: PluginHookRunner;
+}
+
+/** Create the run's sandbox handle without acquiring a sandbox. */
+export async function createRunSandbox(
+  args: RunSandboxArgs,
+): Promise<RunSandbox> {
+  const pluginHooks = createPluginHookRunner({
+    actor: args.currentActor,
+    actors: args.currentActors,
+    toolRun: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+      // Read at tool time, after `agentSandbox` below exists.
+      sandbox: () => ({
+        workspace: agentSandbox.workspace,
+        workspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
+      }),
+    },
+  });
+  const workspace = args.state.sandboxRef?.workspaceId
+    ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
+    : undefined;
+  const agentSandbox = createAgentSandbox({
+    sandboxRef: args.state.sandboxRef,
+    workspace,
+    skills: args.availableSkills,
+    traceContext: args.spanContext,
+    tracePropagation: args.run.environment?.sandboxTracePropagation,
+    egressSignals: args.run.environment?.sandboxEgressSignals,
+    conversationId: args.run.conversationId,
+    credentialEgress: args.run.credentialContext,
+    actor: args.currentActor,
+    locationConfiguration: args.run.environment?.locationConfiguration,
+    configurationValues: args.configurationValues,
+    getActiveSkill: () => args.skillSandbox.getActiveSkill(),
+    prepareSandbox: pluginHooks.prepareSandbox,
+    prepareWorkspace: async (sandbox, recipe, signal) =>
+      await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
+    onSandboxRefChanged: args.onSandboxRefChanged,
+    persistSandboxRef: args.durability.onSandboxRefChanged,
+  });
+  return { agentSandbox, pluginHooks };
+}
+
+/** Build the context that plugin prompt hooks read, before tool wiring exists. */
+export function createPromptHookContext(args: {
+  actor?: Actor;
+  run: AgentRun;
+  userInput: string;
+}): PromptHookContext {
+  const actor = args.actor;
+  return {
+    conversationId: args.run.conversationId,
+    ...(args.run.location ? { locationId: args.run.location.id } : undefined),
+    ...resolveToolRuntimeRoute({ actor, run: args.run }),
+    ...(actor
+      ? { resolveActorIdentity: async () => await readActorIdentity(actor) }
+      : undefined),
+    userText: args.userInput,
+  };
+}
+
 interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
   currentActor?: Actor;
-  /** Live projection of the run's committed instruction-authority actors so far. */
-  currentActors?: () => Actor[];
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
@@ -106,13 +186,12 @@ interface ToolWiringArgs {
   invokedSkill: SkillMetadata | null;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onFatalToolError(error: Error): void;
-  onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
-  requestHandoff?: ToolRuntimeContext["handoff"];
-  spawnAgentProfiles?: ToolRuntimeContext["spawnAgentProfiles"];
   resume: ResumeState;
   run: AgentRun;
+  /** Sandbox from `createRunSandbox`. Tool wiring takes over closing it. */
+  sandbox: RunSandbox;
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
   state: AgentRunState;
@@ -244,7 +323,7 @@ export interface ToolWiring {
   toolRuntimeContext: ToolRuntimeContext;
 }
 
-/** Wire sandbox, auth orchestration, MCP restoration, and Pi tool surfaces for one slice. */
+/** Wire sandbox tools, auth orchestration, MCP restoration, and Pi tool surfaces for one slice. */
 export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
@@ -253,32 +332,7 @@ export async function wireAgentTools(
     ? credentialUserSubjectId(args.run.credentialContext)
     : undefined;
   const userTokenStore = createUserTokenStore();
-  const pluginHooks = createPluginHookRunner({
-    actor: args.currentActor,
-    actors: args.currentActors,
-  });
-  const workspace = args.state.sandboxRef?.workspaceId
-    ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
-    : undefined;
-  const agentSandbox = createAgentSandbox({
-    sandboxRef: args.state.sandboxRef,
-    workspace,
-    skills: args.availableSkills,
-    traceContext: args.spanContext,
-    tracePropagation: args.run.environment?.sandboxTracePropagation,
-    egressSignals: args.run.environment?.sandboxEgressSignals,
-    conversationId: args.run.conversationId,
-    credentialEgress: args.run.credentialContext,
-    actor: args.currentActor,
-    locationConfiguration: args.run.environment?.locationConfiguration,
-    configurationValues: args.configurationValues,
-    getActiveSkill: () => args.skillSandbox.getActiveSkill(),
-    prepareSandbox: pluginHooks.prepareSandbox,
-    prepareWorkspace: async (sandbox, recipe, signal) =>
-      await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
-    onSandboxRefChanged: args.onSandboxRefChanged,
-    persistSandboxRef: args.durability.onSandboxRefChanged,
-  });
+  const { agentSandbox, pluginHooks } = args.sandbox;
 
   const slackDestination =
     args.run.destination.platform === "slack"
@@ -347,13 +401,9 @@ export async function wireAgentTools(
   const getPendingAuthPause = () =>
     pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
 
-  const loadableSkills = args.availableSkills.filter(
-    (skill) =>
-      skill.disableModelInvocation !== true ||
-      skill.name === args.invokedSkill?.name,
-  );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
+    turnId: args.run.turnId,
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -396,17 +446,11 @@ export async function wireAgentTools(
         }
       : undefined),
     ...(args.durability.spawnAgent
-      ? {
-          spawnAgent: args.durability.spawnAgent,
-          ...(args.spawnAgentProfiles
-            ? { spawnAgentProfiles: args.spawnAgentProfiles }
-            : undefined),
-        }
+      ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
     ...(args.durability.messageAgent
       ? { messageAgent: args.durability.messageAgent }
       : undefined),
-    ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
     ...(args.run.dispatch?.declaresResult
       ? {
           // A dispatch record from before #1788 has no outcomes and sends to
@@ -429,6 +473,7 @@ export async function wireAgentTools(
     ...commonToolRuntimeContext,
     ...toolRoute,
     attachmentStorage: args.run.environment?.attachmentStorage,
+    conversationWorkQueue: args.run.environment?.conversationWorkQueue,
     workspaces: {
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
       switch: agentSandbox.switchWorkspace,
@@ -481,7 +526,7 @@ export async function wireAgentTools(
     }),
   });
   const tools = createTools(
-    loadableSkills,
+    loadableSkills(args.availableSkills, args.invokedSkill?.name),
     {
       writeGeneratedArtifacts: async (files) => {
         const refs = await agentSandbox.writeGeneratedArtifacts(files);
@@ -613,6 +658,10 @@ export async function wireAgentTools(
     args.conversationPrivacy,
     onToolResult,
     actionReview,
+    {
+      countToolCall: args.resume.countToolCall,
+      workspace: agentSandbox.workspace,
+    },
   );
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic

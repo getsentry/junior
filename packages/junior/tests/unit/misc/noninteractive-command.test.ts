@@ -29,6 +29,27 @@ describe("non-interactive shell commands", () => {
     expect(script).toContain("echo ok");
   });
 
+  it("adds command Git config before the runtime Git config", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const script = buildNonInteractiveShellScript(
+      "git config core.hooksPath && git config credential.helper; git config http.emptyAuth",
+      {
+        env: {
+          GIT_CONFIG_COUNT: "2",
+          GIT_CONFIG_KEY_0: "core.hooksPath",
+          GIT_CONFIG_VALUE_0: "/junior/git-hooks",
+          GIT_CONFIG_KEY_1: "credential.helper",
+          GIT_CONFIG_VALUE_1: "store",
+        },
+      },
+    );
+
+    const result = spawnSync("bash", ["-c", script]);
+
+    expect(result.stderr.toString()).toBe("");
+    expect(result.stdout.toString()).toBe("/junior/git-hooks\n\ntrue\n");
+  });
+
   it("wraps argv commands in a non-interactive bash invocation", async () => {
     const runCommand = vi.fn(async () => ({
       exitCode: 0,

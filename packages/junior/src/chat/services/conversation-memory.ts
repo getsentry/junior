@@ -153,6 +153,7 @@ export function upsertConversationMessage(
 export function recordDeliveredAssistantMessage(args: {
   cards?: MessageCard[];
   conversation: ThreadConversationState;
+  quiet?: true;
   sessionId: string;
   source?: "slack" | "web";
   text: string;
@@ -180,6 +181,7 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       ...(objectCards?.length ? { objectCards } : undefined),
+      ...(args.quiet ? { quiet: args.quiet } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },
@@ -222,6 +224,14 @@ export function markConversationMessage(
   };
 }
 
+// A take only records who took a Review item. It never reaches the model.
+function isTakeOnly(message: ConversationMessage): boolean {
+  const changes = message.meta?.reviewItemChanges;
+  return Boolean(
+    changes?.length && changes.every((change) => change.kind === "taken"),
+  );
+}
+
 /**
  * Render thread history as structured XML. Each compaction and message is
  * wrapped with index/ts metadata so the model can reference prior items
@@ -230,11 +240,13 @@ export function markConversationMessage(
 export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
-    excludeMessageId?: string;
+    /** Turn input Messages, which the prompt already holds. */
+    excludeMessageIds?: readonly string[];
   } = {},
 ): string | undefined {
   const messages = conversation.messages.filter(
-    (entry) => entry.id !== options.excludeMessageId,
+    (entry) =>
+      !options.excludeMessageIds?.includes(entry.id) && !isTakeOnly(entry),
   );
   if (messages.length === 0 && conversation.compactions.length === 0) {
     return undefined;

@@ -1,6 +1,9 @@
 import { describe, expect } from "vitest";
 import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
-import { insertWatch } from "@junior-evals/fixture/insert";
+import {
+  insertLinkedGitHubIdentity,
+  insertWatch,
+} from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
@@ -70,7 +73,7 @@ function watchedEvents(conversation: { toolCalls: ToolCall[] }) {
 }
 
 describe("Watches", () => {
-  test("looks up and subscribes to an exact deployment before GitHub creates it", async ({
+  test("subscribes to an exact deployment before GitHub creates it", async ({
     run,
   }) => {
     const commitSha = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
@@ -84,7 +87,6 @@ describe("Watches", () => {
       rubric({
         pass: [
           "The reply confirms the exact deployment target will be monitored through event-based updates.",
-          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not claim a polling task or recurring schedule was created.",
@@ -93,15 +95,6 @@ describe("Watches", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("github_getDeployment", conversation).map(
-        (call) => call.input,
-      ),
-    ).toContainEqual({
-      commitSha,
-      environment: "Production",
-      repo: "getsentry/junior-prod",
-    });
     expect(
       completedToolCalls("watchEvents", conversation).map((call) => call.input),
     ).toContainEqual(
@@ -113,11 +106,11 @@ describe("Watches", () => {
         ]),
         identifier: `deployment-source:getsentry/junior-prod:production:${commitSha}`,
         namespace: "github",
-        resourceType: "deployment_source",
+        resource_type: "deployment_source",
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 
@@ -134,7 +127,6 @@ describe("Watches", () => {
       rubric({
         pass: [
           "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
-          "The reply makes clear that the watch is temporary and says when it expires.",
         ],
         fail: [
           "Do not ask the user to monitor GitHub manually.",
@@ -156,7 +148,7 @@ describe("Watches", () => {
         ]),
         identifier: pullRequest,
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
       }),
     );
     expect(watches.map(toolOutput)).toContainEqual(
@@ -171,7 +163,7 @@ describe("Watches", () => {
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
+      "createAutomation",
     );
   });
 
@@ -233,7 +225,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, commit and push the fix without a person", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -248,19 +240,11 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The assistant handles the failed checks without asking a human to authorize GitHub.",
-          "The assistant reports that the fix is committed and pushed to the existing pull request branch.",
-        ],
-        fail: [
-          "Do not ask for OAuth, a personal access token, approval, or another human action before fixing the pull request.",
-          "Do not stop after describing a plan or editing the file without committing and pushing it.",
-        ],
-      }),
-    );
+    // A routine fix that worked needs nobody, so it posts nothing to Slack.
+    // The quiet reply stays in the Conversation.
+    expect(delivery.replies).toEqual([]);
+    expect(delivery.quietReplies).toHaveLength(1);
+    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -302,6 +286,54 @@ describe("Watches", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when the person who asked reviews the PR, address them once as you", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`Let me know here when ${pullRequest} lands.`),
+    );
+    // The Slack person who asked also reviews on GitHub as this login.
+    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertWatch({
+      conversation,
+      events: ["pull_request.review.changes_requested"],
+      identifier: pullRequest,
+      intent:
+        "When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Do not change the pull request.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Please add a regression test.",
+          state: "changes_requested",
+          user: { login: "octo-requester" },
+        },
+      }),
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says changes were requested on GitHub PR ${pullRequest}.`,
+          "The reply treats the person it notifies as the reviewer, for example by saying that you requested changes.",
+        ],
+        fail: [
+          "Do not present the reviewer as a different person from the person the reply notifies.",
+          'Do not name "octo-requester" as the reviewer.',
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
   });
 
   test("when directly mentioned during a watch delivery, answer the mention in its own turn", async ({

@@ -14,11 +14,10 @@ import {
 } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import { getAgentBinding } from "./bindings";
 import {
-  agentBindingSchema,
   agentInvocationSchema,
   createAgentInvocationSchema,
-  type AgentBinding,
   type AgentInvocation,
   type AgentInvocationStatus,
   type CreateAgentInvocationInput,
@@ -51,6 +50,11 @@ const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "completed",
   "failed",
   "stopped",
+] as const satisfies readonly AgentInvocationStatus[];
+/** Statuses of an agent invocation that owns its child's Turn. */
+export const ACTIVE_AGENT_INVOCATION_STATUSES = [
+  "running",
+  "paused",
 ] as const satisfies readonly AgentInvocationStatus[];
 /** Statuses of an agent invocation that has not finished. */
 export const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
@@ -152,16 +156,6 @@ export function parseAgentInvocationResultMessageId(
   return invocationId || undefined;
 }
 
-function bindingFromRow(
-  row: typeof juniorAgentBindings.$inferSelect,
-): AgentBinding {
-  return agentBindingSchema.parse({
-    childConversationId: row.childConversationId,
-    name: row.name,
-    parentConversationId: row.parentConversationId,
-  });
-}
-
 /** Parse one agent invocation row. */
 export function invocationFromRow(
   row: typeof juniorAgentInvocations.$inferSelect,
@@ -189,7 +183,6 @@ export function invocationFromRow(
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
     ...(row.agentType ? { agentType: row.agentType } : undefined),
-    ...(row.modelProfile ? { modelProfile: row.modelProfile } : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
@@ -218,31 +211,12 @@ function sameCreateInput(
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
     invocation.agentType === input.agentType &&
-    invocation.modelProfile === input.modelProfile &&
     invocation.reasoningLevel === input.reasoningLevel &&
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
       JSON.stringify(input.credentialContext) &&
     JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
   );
-}
-
-/** Read one named child binding in its parent-agent scope. */
-async function getAgentBinding(args: {
-  name: string;
-  parentConversationId: string;
-}): Promise<AgentBinding | undefined> {
-  const rows = await getSqlExecutor()
-    .db()
-    .select()
-    .from(juniorAgentBindings)
-    .where(
-      and(
-        eq(juniorAgentBindings.parentConversationId, args.parentConversationId),
-        eq(juniorAgentBindings.name, args.name),
-      ),
-    );
-  return rows[0] ? bindingFromRow(rows[0]) : undefined;
 }
 
 /** Read one durable agent invocation. */
@@ -257,10 +231,11 @@ export async function getAgentInvocation(
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
-/** Resolve the single invocation that may resume for one child conversation. */
-export async function getActiveAgentInvocationForConversation(
+/** List the agent invocations of one child Conversation in the given statuses. */
+export async function listAgentInvocationsForConversation(
   childConversationId: string,
-): Promise<AgentInvocation | undefined> {
+  statuses: readonly AgentInvocationStatus[],
+): Promise<AgentInvocation[]> {
   const rows = await getSqlExecutor()
     .db()
     .select()
@@ -268,17 +243,27 @@ export async function getActiveAgentInvocationForConversation(
     .where(
       and(
         eq(juniorAgentInvocations.childConversationId, childConversationId),
-        inArray(juniorAgentInvocations.status, ["running", "paused"]),
+        inArray(juniorAgentInvocations.status, [...statuses]),
       ),
     )
-    .orderBy(asc(juniorAgentInvocations.createdAt))
-    .limit(2);
-  if (rows.length > 1) {
+    .orderBy(asc(juniorAgentInvocations.createdAt));
+  return rows.map(invocationFromRow);
+}
+
+/** Resolve the single invocation that may resume for one child conversation. */
+export async function getActiveAgentInvocationForConversation(
+  childConversationId: string,
+): Promise<AgentInvocation | undefined> {
+  const active = await listAgentInvocationsForConversation(
+    childConversationId,
+    ACTIVE_AGENT_INVOCATION_STATUSES,
+  );
+  if (active.length > 1) {
     throw new Error(
       `Child conversation ${childConversationId} has multiple active agent invocations`,
     );
   }
-  return rows[0] ? invocationFromRow(rows[0]) : undefined;
+  return active[0];
 }
 
 /** Read the newest agent invocation of one child Conversation. */
@@ -485,7 +470,6 @@ export async function createAgentInvocation(
         source: { kind: "agent_invocation" },
         destination: input.destination,
         agentType: input.agentType ?? null,
-        modelProfile: input.modelProfile ?? null,
         reasoningLevel: input.reasoningLevel ?? null,
         parentToolCallId: input.parentToolCallId ?? null,
         status: "pending",
@@ -536,7 +520,6 @@ export async function createAgentInvocationFromLatest(
       source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: args.latest.destination,
       agentType: args.latest.agentType ?? null,
-      modelProfile: args.latest.modelProfile ?? null,
       reasoningLevel: args.latest.reasoningLevel ?? null,
       status: "pending",
       mailboxStatus: "pending",
@@ -553,35 +536,6 @@ export async function createAgentInvocationFromLatest(
     throw new Error(`Agent invocation creation raced for ${invocationId}`);
   }
   return invocation;
-}
-
-/** Find a direct child agent of one parent by name or child Conversation id. */
-export async function findChildAgentConversationId(args: {
-  parentConversationId: string;
-  target: string;
-}): Promise<string | undefined> {
-  const binding = await getAgentBinding({
-    name: args.target,
-    parentConversationId: args.parentConversationId,
-  });
-  if (binding) {
-    return binding.childConversationId;
-  }
-  const rows = await getSqlExecutor()
-    .db()
-    .select({ childConversationId: juniorAgentInvocations.childConversationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          args.parentConversationId,
-        ),
-        eq(juniorAgentInvocations.childConversationId, args.target),
-      ),
-    )
-    .limit(1);
-  return rows[0]?.childConversationId;
 }
 
 /**
@@ -701,7 +655,6 @@ export async function createAgentInvocationForMessage(
           source: { kind: "agent_invocation" },
           destination: input.destination,
           agentType: latest.agentType ?? null,
-          modelProfile: latest.modelProfile ?? null,
           reasoningLevel: latest.reasoningLevel ?? null,
           parentToolCallId: input.parentToolCallId,
           status: "pending",
@@ -909,21 +862,22 @@ export async function markAgentInvocationPaused(
  * result. The same write marks the result for the parent mailbox. If the
  * child still has open work, the result is `replaced`: the parent gets one
  * report, from the agent invocation that finishes the child's work.
+ * `reportNow` sends the result even then, when that open work does not
+ * continue this task.
  */
 export async function completeAgentInvocation(
-  args:
+  args: (
     | {
         invocationId: string;
         result: string;
         status: "completed";
-        nowMs?: number;
       }
     | {
         errorMessage: string;
         invocationId: string;
         status: "blocked" | "failed" | "stopped";
-        nowMs?: number;
-      },
+      }
+  ) & { nowMs?: number; reportNow?: boolean },
 ): Promise<AgentInvocation | undefined> {
   const nowMs = args.nowMs ?? Date.now();
   const current = await getAgentInvocation(args.invocationId);
@@ -934,7 +888,9 @@ export async function completeAgentInvocation(
   // each `replaced` result has open work that starts a later invocation. A
   // stop is always reported, because the stop also stops that open work.
   const parentMailboxStatus =
-    args.status !== "stopped" && (await hasOpenChildWork(current))
+    !args.reportNow &&
+    args.status !== "stopped" &&
+    (await hasOpenChildWork(current))
       ? "replaced"
       : "pending";
   await getSqlExecutor()

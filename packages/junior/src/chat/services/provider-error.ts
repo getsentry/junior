@@ -145,7 +145,9 @@ function extractTransportKind(
 
   const providerError = error as ProviderErrorFields;
   const code =
-    typeof providerError.code === "string" ? providerError.code.toUpperCase() : undefined;
+    typeof providerError.code === "string"
+      ? providerError.code.toUpperCase()
+      : undefined;
   if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
   if (code && NETWORK_ERROR_CODES.has(code)) return "network";
   return extractTransportKind(providerError.cause, depth + 1);
@@ -155,7 +157,8 @@ function extractStatus(error: unknown, message: string): number | undefined {
   if (error instanceof Error) {
     const providerError = error as ProviderErrorFields;
     if (typeof providerError.status === "number") return providerError.status;
-    if (typeof providerError.statusCode === "number") return providerError.statusCode;
+    if (typeof providerError.statusCode === "number")
+      return providerError.statusCode;
   }
 
   const match = message.match(
@@ -285,7 +288,7 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
     case "server":
       return "The model provider had a temporary connection problem. Please try again.";
     case "auth":
-      return "The model provider rejected Junior's credentials. This needs an administrator or configuration fix.";
+      return "The model provider rejected the configured credentials. This needs an administrator or configuration fix.";
     case "permission":
       return "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.";
     case "quota":

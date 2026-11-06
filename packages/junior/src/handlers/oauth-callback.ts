@@ -50,10 +50,10 @@ import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
 import {
   findUserByVerifiedEmails,
-  upsertIdentity,
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
-import { identityFromActor } from "@/chat/conversations/sql/actor-identity";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { readIdentityById } from "@/chat/plugins/viewer";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
 import type { SlackActor, WebActor } from "@/chat/actor";
 import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
@@ -101,37 +101,35 @@ function pluginAuthorizationId(args: {
 async function resolveOAuthActorUserId(
   actor: SlackActor | WebActor,
 ): Promise<string | undefined> {
-  if (actor.platform === "web") {
-    // Dashboard sign-in verified the web actor email.
-    const observation = identityFromActor(
-      actor.email
-        ? {
-            email: actor.email,
-            ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-          }
-        : undefined,
-    );
-    return observation
-      ? (await upsertIdentity(getSqlExecutor(), observation)).userId
-      : undefined;
-  }
+  // Dashboard sign-in verified the web actor email.
+  const identityActor =
+    actor.platform === "web" ? actor : await slackProfileActor(actor);
+  const identityId = await resolveActorIdentityId(
+    getSqlExecutor(),
+    identityActor,
+  );
+  return identityId
+    ? (await readIdentityById(identityId))?.user?.id
+    : undefined;
+}
+
+/** Refresh a Slack actor with the profile Slack returns for that user. */
+async function slackProfileActor(actor: SlackActor): Promise<SlackActor> {
   const slackUserId = parseSlackUserId(actor.userId);
   if (!slackUserId) {
     throw new Error("OAuth Slack actor user id is invalid");
   }
   const profile = await lookupSlackUserProfile(slackUserId);
-  const slackIdentity = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: actor.teamId,
-    providerSubjectId: profile.id,
-    displayName: profile.real_name || profile.display_name,
-    handle: profile.name,
-    ...(profile.email
-      ? { email: profile.email, emailVerified: true }
+  return {
+    platform: "slack",
+    teamId: actor.teamId,
+    userId: profile.id,
+    ...(profile.real_name || profile.display_name
+      ? { fullName: profile.real_name || profile.display_name }
       : undefined),
-  });
-  return slackIdentity.userId;
+    ...(profile.name ? { userName: profile.name } : undefined),
+    ...(profile.email ? { email: profile.email } : undefined),
+  };
 }
 
 /**
@@ -243,13 +241,13 @@ export async function GET(
     if (errorParam === "access_denied") {
       return htmlErrorResponse(
         "Authorization declined",
-        `You declined the ${providerLabel} authorization request. Return to Junior and connect your ${providerLabel} account again if you change your mind.`,
+        `You declined the ${providerLabel} authorization request. Return to the conversation and connect your ${providerLabel} account again if you change your mind.`,
         400,
       );
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${errorParam}. Return to Junior and try again.`,
+      `${providerLabel} returned an error: ${errorParam}. Return to the conversation and try again.`,
       400,
     );
   }
@@ -268,7 +266,7 @@ export async function GET(
   if (!stored) {
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Junior and connect your ${providerLabel} account again to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to the conversation and connect your ${providerLabel} account again to get a new link.`,
       400,
     );
   }
@@ -377,7 +375,7 @@ export async function GET(
   if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
     return htmlErrorResponse(
       "Connection failed",
-      `The ${providerLabel} authorization did not grant the access Junior requires. Return to Junior and connect your ${providerLabel} account again.`,
+      `The ${providerLabel} authorization did not grant the required access. Return to the conversation and connect your ${providerLabel} account again.`,
       400,
     );
   }
@@ -400,7 +398,7 @@ export async function GET(
   } catch {
     return htmlErrorResponse(
       "Connection failed",
-      `Junior could not verify the connected ${providerLabel} account. Please try again.`,
+      `The connected ${providerLabel} account could not be verified. Please try again.`,
       500,
     );
   }

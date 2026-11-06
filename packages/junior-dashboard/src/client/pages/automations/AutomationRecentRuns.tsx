@@ -8,6 +8,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
+  automationPath,
   formatCostSummary,
   formatRelativeTime,
   formatRuntime,
@@ -15,7 +16,7 @@ import {
 import { dashboardInlineLinkClass } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 
-/** Preview the newest terminal runs without leaving the Automation list. */
+/** Preview the newest terminal runs on the Automation overview. */
 export function AutomationRecentRuns({
   automation,
 }: {
@@ -32,7 +33,7 @@ export function AutomationRecentRuns({
         {automation.totalRuns > 0 || runs.length > 0 ? (
           <Link
             className={`${dashboardInlineLinkClass} text-xs`}
-            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
+            to={automationPath(automation.id, "runs")}
           >
             View all runs
           </Link>

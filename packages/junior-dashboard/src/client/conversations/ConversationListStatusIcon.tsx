@@ -1,15 +1,34 @@
 import { LockKeyhole } from "lucide-react";
 
-import { ActiveIndicator } from "../components/ActiveIndicator";
+import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 import type { VisualStatus } from "../types";
 
-/** Render a conversation status marker, with new completions taking priority. */
+/**
+ * Render a conversation status marker. "Waiting on you" replaces every other
+ * marker. A running conversation shows a spinner, so it never looks like an
+ * ended one.
+ */
 export function ConversationListStatusIcon(props: {
   finishedSinceSeen: boolean;
   isPrivate: boolean;
   status: VisualStatus;
+  waitingOnViewer: boolean;
 }) {
+  if (props.waitingOnViewer) {
+    return (
+      <span
+        aria-label="Waiting on you"
+        className="size-2 shrink-0 rounded-full bg-violet-300 shadow-[0_0_6px_rgba(196,181,253,0.7)]"
+        role="img"
+      />
+    );
+  }
+
+  if (props.status === "active") {
+    return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
+  }
+
   if (props.finishedSinceSeen) {
     return (
       <span
@@ -26,8 +45,6 @@ export function ConversationListStatusIcon(props: {
         aria-label="Private conversation"
         className={cn(
           "size-3 shrink-0",
-          props.status === "active" &&
-            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
           props.status === "failed" && "text-rose-300",
           props.status === "idle" && "text-dashboard-text-muted",
         )}
@@ -35,18 +52,20 @@ export function ConversationListStatusIcon(props: {
     );
   }
 
-  if (props.status === "active") {
-    return <ActiveIndicator className="size-1.5" />;
+  if (props.status === "failed") {
+    return (
+      <span
+        aria-label="Failed"
+        className="size-1.5 shrink-0 rounded-full bg-rose-300"
+        role="img"
+      />
+    );
   }
 
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-dashboard-text-faint",
-      )}
+      className="size-1.5 shrink-0 rounded-full bg-dashboard-text-faint"
     />
   );
 }

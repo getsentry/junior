@@ -1,19 +1,30 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { afterEach, describe, expect, it } from "vitest";
+import { avatarPath } from "../../../fixtures/avatar";
 import { testViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { storeAttachment } from "@/chat/attachments/store";
 import {
   closeDb,
   getDb,
   getConversationEventStore,
   getConversationStore,
+  getSqlExecutor,
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
+import {
+  createChild,
+  insertLegacyEvent,
+} from "../../../fixtures/dashboard-reporting";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -76,27 +87,28 @@ describe("conversation detail API", () => {
           version: 1,
         },
       },
-      {
-        createdAtMs: 4,
-        data: {
-          confidence: 0.9,
-          costUsd: 0.0002,
-          modelId: "openai/gpt-5-mini",
-          modelProfile: "standard",
-          reasoningLevel: "medium",
-          source: "router",
-          turnId: "turn-1",
-          type: "turn_routed",
-        },
-      },
     ]);
+    // Turns routed before the Turn router was retired keep their router cost.
+    await insertLegacyEvent(conversationId, {
+      createdAtMs: 4,
+      data: {
+        confidence: 0.9,
+        costUsd: 0.0002,
+        modelId: "openai/gpt-5-mini",
+        modelProfile: "standard",
+        reasoningLevel: "medium",
+        source: "router",
+        turnId: "turn-1",
+        type: "turn_routed",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
+    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
     expect(refreshed.auxiliaryCosts).toEqual({
       costUsd: 0.0006,
       operations: [
@@ -114,6 +126,163 @@ describe("conversation detail API", () => {
         },
       ],
     });
+  });
+
+  it("returns only newer events to a poll until stored events project differently", async () => {
+    const conversationId = "local:test:appended-detail";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Appended conversation",
+      visibility: "public",
+    });
+    const appendMessage = (messageId: string, createdAtMs: number) =>
+      getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs,
+          data: {
+            messageId,
+            role: "assistant",
+            text: messageId,
+            type: "message",
+          },
+        },
+      ]);
+    const app = createJuniorApi();
+    const read = async (query = "") =>
+      conversationDetailReportSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}${query}`,
+          )
+        ).json(),
+      );
+    const after = (cursor: string | undefined) =>
+      `after=${encodeURIComponent(cursor!)}`;
+    const seqs = (report: { events: { seq: number }[] }) =>
+      report.events.map((event) => event.seq);
+
+    await appendMessage("first", 2);
+    const first = await read();
+    expect(seqs(first)).toEqual([0]);
+    expect(first.appended).toBeUndefined();
+
+    await appendMessage("second", 3);
+    const poll = await read(`?${after(first.appendCursor)}`);
+    expect(poll.appended).toBe(true);
+    expect(seqs(poll)).toEqual([1]);
+    const idle = await read(`?${after(poll.appendCursor)}`);
+    expect(idle).toMatchObject({ appended: true, events: [] });
+    expect(idle.appendCursor).toBe(poll.appendCursor);
+
+    // A stored Slack file can attach to a message that the reader already
+    // has, so the poll gets the latest page again.
+    await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 5,
+        data: Buffer.from("notes"),
+        filename: "notes.txt",
+        mimeType: "text/plain",
+        path: "/tmp/notes.txt",
+      },
+      storage: createMemoryAttachmentStorage(),
+      source: { provider: "slack", id: "FNOTES" },
+    });
+    const changed = await read(`?${after(poll.appendCursor)}`);
+    expect(changed.appended).toBeUndefined();
+    expect(seqs(changed)).toEqual([0, 1]);
+
+    // A reader more than a page behind gets the latest page.
+    await appendMessage("third", 4);
+    await appendMessage("fourth", 5);
+    const behind = await read(`?limit=1&${after(changed.appendCursor)}`);
+    expect(behind.appended).toBeUndefined();
+    expect(seqs(behind)).toEqual([3]);
+    expect(behind.previousCursor).toBeDefined();
+  });
+
+  it("answers unchanged polls with 304 until the subtree or annotations change", async () => {
+    const conversationId = "local:test:revalidated-detail";
+    const childConversationId = "local:test:revalidated-detail:child";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Revalidated conversation",
+      visibility: "public",
+    });
+    const app = createJuniorApi();
+    const poll = (etag?: string) =>
+      app.request(`http://localhost/api/conversations/${conversationId}`, {
+        headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {},
+      });
+
+    const first = await poll();
+    const firstEtag = first.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
+    expect(first.status).toBe(200);
+    const unchanged = await poll(firstEtag);
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+    // The mailbox changes apart from the version token, so a poll that asks
+    // for it gets the mailbox without the report.
+    const withMailbox = await app.request(
+      `http://localhost/api/conversations/${conversationId}?mailbox=true`,
+      { headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: firstEtag } },
+    );
+    expect(withMailbox.status).toBe(200);
+    expect(withMailbox.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)).toBe(
+      firstEtag,
+    );
+    expect(await withMailbox.json()).toEqual({
+      mailbox: expect.objectContaining({ conversationId, messages: [] }),
+      unchanged: true,
+    });
+
+    await createChild({
+      childConversationId,
+      parentConversationId: conversationId,
+    });
+    const withChild = await poll(firstEtag);
+    const childEtag = withChild.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
+    expect(withChild.status).toBe(200);
+    expect(childEtag).not.toBe(firstEtag);
+
+    // A child agent writes only its own row. The parent still revalidates.
+    await getConversationEventStore().append(childConversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          messageId: "child-message",
+          role: "assistant",
+          text: "child-message",
+          type: "message",
+        },
+      },
+    ]);
+    const childChanged = await poll(childEtag);
+    const childChangedEtag = childChanged.headers.get(
+      CONVERSATION_DETAIL_VERSION_HEADER,
+    )!;
+    expect(childChanged.status).toBe(200);
+
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1",
+      label: "getsentry/junior #1",
+      url: "https://github.com/getsentry/junior/pull/1",
+    });
+    expect((await poll(childChangedEtag)).status).toBe(200);
   });
 
   it("titles an untitled conversation from its first human message", async () => {
@@ -325,6 +494,79 @@ describe("conversation detail API", () => {
         slackUserId: "UOWNER1",
       },
     ]);
+  });
+
+  it("names the participant who wrote each message", async () => {
+    const conversationId = "slack:C123:author-photos";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "Author photos",
+      visibility: "public",
+    });
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id, userId: juniorIdentities.userId });
+    // The same person can send next from the web before history has it.
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        id: "identity-owner-google",
+        createdAt: new Date(1_000),
+        kind: "user",
+        provider: "google",
+        providerSubjectId: "google-owner",
+        updatedAt: new Date(1_000),
+        userId: owner!.userId,
+      });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          authorIdentityId: owner!.id,
+          messageId: "owner-1",
+          meta: { author: { fullName: "Owner Person", userId: "UOWNER1" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+    ]);
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer("owner@example.com"),
+    });
+    // Messages name their author. The detail carries each author once.
+    expect(detail?.events[0]?.data).toMatchObject({
+      actorIdentityId: owner!.id,
+    });
+    expect(detail?.events[0]?.data).not.toHaveProperty(
+      "actorIdentity.avatarUrl",
+    );
+    expect(detail?.authors?.[owner!.id]).toMatchObject({
+      avatarUrl: avatarPath(owner!.id),
+      fullName: "Owner Person",
+      slackUserId: "UOWNER1",
+    });
+    expect(detail?.authors?.["identity-owner-google"]).toEqual(
+      detail?.authors?.[owner!.id],
+    );
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

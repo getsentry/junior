@@ -55,7 +55,7 @@ describe("Child Agents", () => {
     expect(tasks[0]).toContain("12");
   });
 
-  test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
+  test("when a child agent is missing input, it reports the block in one result turn", async ({
     agent,
   }) => {
     const { run } = await agent();
@@ -77,17 +77,9 @@ describe("Child Agents", () => {
     // Only the child agent has reportBlocked.
     expect(requestedTools).toContain("reportBlocked");
     expect(conversation.turns).toHaveLength(2);
-    const resultTurn = conversation.turns[1];
-    expect(resultTurn?.status).toBe("succeeded");
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The last reply says the child agent could not finish because it does not know the deploy region.",
-        ],
-        fail: ["Do not name a deploy region or say the task is done."],
-      }),
-    );
+    // The parent can end the result Turn with only a review item card, so
+    // `no_reply` is a success. `asking.eval.ts` owns how the parent asks.
+    expect(["no_reply", "succeeded"]).toContain(conversation.turns[1]?.status);
   });
 
   test("when a child agent is no longer needed, stop it without a result turn", async ({

@@ -197,7 +197,6 @@ Apply the URL to:
 
 - Event Subscriptions
 - Interactivity
-- Slash command configured by `JUNIOR_SLASH_COMMAND` (defaults to `/jr`)
 
 Reinstall the Slack app if scopes changed.
 

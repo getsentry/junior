@@ -1,6 +1,7 @@
+import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
-import { mockDashboardApis } from "./harness";
+import { desktop, mobile, screenshot } from "./screenshot";
+import { mockDashboardApis, withRequestedMailbox } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
@@ -22,7 +23,7 @@ test("inspects all reporting events and searches full event data", async ({
   });
   const toolRow = transcript.getByRole("button", { name: /^webSearch/ });
   const activity = transcript
-    .locator("details")
+    .locator('[data-slot="collapsible"]')
     .filter({
       has: page.getByRole("button", {
         includeHidden: true,
@@ -30,7 +31,7 @@ test("inspects all reporting events and searches full event data", async ({
       }),
     })
     .first();
-  await activity.locator(":scope > summary").click();
+  await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
   const toolResult = transcript
@@ -51,7 +52,7 @@ test("inspects all reporting events and searches full event data", async ({
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
 
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button", { name: /^Event \d+:/ });
   await expect(entries).toHaveCount(report.events.length);
@@ -71,7 +72,7 @@ test("inspects all reporting events and searches full event data", async ({
   await screenshot(page, "conversation-event-log");
 
   const entry = log.getByRole("button", {
-    name: "Event 3: turn_routed",
+    name: "Event 3: assistant_message",
     exact: true,
   });
   await page
@@ -90,10 +91,12 @@ test("inspects all reporting events and searches full event data", async ({
     name: "Event details",
     exact: true,
   });
-  await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Call usage", { exact: true })).toBeVisible();
   // The open entry is in the URL, so a reader can share a link to it.
   await expect(page).toHaveURL(/[?&]event=3(&|$)/);
-  await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("openai/gpt-5.6-sol", { exact: true }),
+  ).toBeVisible();
   await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
   // The log stays interactive while the selected event is open.
@@ -132,7 +135,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(page).toHaveURL(/[?&]event=1(&|$)/);
   await entry.click();
   await expect(
-    panel.getByRole("heading", { name: "turn_routed", exact: true }),
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
   ).toBeVisible();
   // Conversation details were open before the event, so they come back.
   await close.click();
@@ -151,7 +154,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(localTime).toHaveText("ET");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await page.reload();
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
   await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
@@ -166,13 +169,23 @@ test("inspects all reporting events and searches full event data", async ({
   await secondToggle.click();
   await expect(localTime).toHaveAttribute("aria-pressed", "false");
   await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
+  // UTC mode reads like local mode. The header leaves out milliseconds, so
+  // it fits beside the actions. The tooltip and ISO value keep them.
   await expect(panel.locator("header time")).toHaveText(
+    "Aug 7, 2026, 11:54:09 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "title",
+    "Aug 7, 2026, 11:54:09.000 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "datetime",
     report.events.find((event: { seq: number }) => event.seq === 3).createdAt,
   );
   await secondTab.close();
   await page.bringToFront();
   await localTime.click();
-  await expect(panel.locator("header time")).toContainText("07:54:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09");
   await panel.getByText("Raw JSON", { exact: true }).click();
   const rawJson = JSON.stringify(
     report.events.find((event: { seq: number }) => event.seq === 3),
@@ -231,7 +244,7 @@ test("inspects all reporting events and searches full event data", async ({
   // The sheet title names the event, so find the sheet by its label.
   const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
   await expect(
-    sheet.getByRole("heading", { name: "turn_routed", exact: true }),
+    sheet.getByRole("heading", { name: "assistant_message", exact: true }),
   ).toBeVisible();
   await expect(
     sheet.getByRole("button", { name: "Close", exact: true }),
@@ -263,7 +276,8 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(log.getByText("No events match your search.")).toBeVisible();
   await search.fill("");
   await expect(entries).toHaveCount(report.events.length);
-  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  // The title in the Event log breadcrumb leads back to the Conversation.
+  await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
   await expect(
     page.getByText(
@@ -285,8 +299,13 @@ test("inspects all reporting events and searches full event data", async ({
     forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
   ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
-  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await expect(
+    forkDialog.getByRole("textbox", { name: "Message" }),
+  ).toBeFocused();
+  await forkDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(forkDialog).toBeHidden();
+  await expect(forkAction).toBeFocused();
+  await chooseTranscriptView(page, "Event log");
   const reply = report.events.findLast(
     (event: { data: { type: string; role?: string } }) =>
       event.data.type === "message" && event.data.role === "assistant",
@@ -329,10 +348,10 @@ test("inspects all reporting events and searches full event data", async ({
     },
   );
   await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}`,
+    `**/api/conversations/${encodeURIComponent(forkId)}*`,
     (route) =>
       route.fulfill({
-        json: {
+        json: withRequestedMailbox(route, {
           ...report,
           conversationId: forkId,
           forkedFromConversationId: conversationId,
@@ -341,18 +360,7 @@ test("inspects all reporting events and searches full event data", async ({
           isParticipant: true,
           status: "completed",
           forks: [],
-        },
-      }),
-  );
-  const pendingResponse = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-  );
-  const pending = await pendingResponse.json();
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
-    (route) =>
-      route.fulfill({
-        json: { ...pending, conversationId: forkId, messages: [] },
+        }),
       }),
   );
   await forkDialog
@@ -406,7 +414,7 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
     log.getByRole("button", { name: "Event 2: tool_calls", exact: true }),
@@ -450,6 +458,99 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(page).not.toHaveURL(/[?&]event=/);
 });
 
+test("mounts only the event log rows near the viewport", async ({
+  page,
+  dashboard,
+}) => {
+  // The rich transcript renders all 2,000 events before the event log opens.
+  test.setTimeout(60_000);
+  await page.setViewportSize(desktop);
+  const conversationId = "slack:CQA456:1770021600.000600";
+  const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+  const response = await page.request.get(`${dashboard.baseURL}${api}`);
+  const report = await response.json();
+  const startedAt = Date.parse(report.startedAt);
+  report.events = Array.from({ length: 2000 }, (_, index) => ({
+    seq: index + 1,
+    createdAt: new Date(startedAt + index * 1000).toISOString(),
+    data: {
+      type: "message",
+      messageId: `message-${index + 1}`,
+      role: index % 2 ? "assistant" : "user",
+      text: `Event log row ${index + 1}.`,
+    },
+  }));
+  delete report.previousCursor;
+  await page.route(`**${api}*`, (route) =>
+    route.fulfill({ json: withRequestedMailbox(route, report) }),
+  );
+  // A link reads the page around its event. Here that page holds them all.
+  await page.route(`**${api}/events?*`, (route) =>
+    route.fulfill({
+      json: {
+        eventHistory: report.eventHistory,
+        events: report.events,
+        generatedAt: report.generatedAt,
+      },
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}${api.replace("/api", "")}`);
+  await chooseTranscriptView(page, "Event log");
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  const entry = (seq: number) =>
+    log.getByRole("button", { name: `Event ${seq}: message`, exact: true });
+  const mounted = log.locator("[data-event-seq]");
+  await expect(log.getByRole("status")).toHaveText("2000 loaded events");
+  await expect(entry(2000)).toBeInViewport();
+  expect(await mounted.count()).toBeLessThan(80);
+
+  await page
+    .locator("[data-chat-scroll]")
+    .evaluate((root) => root.scrollTo({ top: 0 }));
+  await expect(entry(1)).toBeInViewport();
+  await expect(entry(2000)).not.toBeAttached();
+  expect(await mounted.count()).toBeLessThan(80);
+
+  // Arrow keys move past the end of the mounted range and mount the rows
+  // they reach. The row that holds the reader's place can stay mounted
+  // further down, so find the first gap from the top.
+  const seqs = await mounted.evaluateAll((rows) =>
+    rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+  );
+  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
+  expect(target).toBeGreaterThan(1);
+  await expect(entry(target)).not.toBeAttached();
+  await entry(1).focus();
+  for (let seq = 2; seq <= target; seq++) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(entry(target)).toBeFocused();
+  await expect(entry(target)).toBeInViewport();
+  await expect(entry(target)).toHaveAttribute("aria-expanded", "true");
+
+  // A link to a far event mounts and reveals its row.
+  await page.goto(`${dashboard.baseURL}${api.replace("/api", "")}?event=1000`);
+  const details = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
+  await expect(entry(1000)).toBeInViewport();
+  await expect(entry(1000)).toHaveAttribute("aria-expanded", "true");
+  expect(await mounted.count()).toBeLessThan(80);
+  await details.getByRole("button", { name: "Close event details" }).click();
+  await expect(details).toBeHidden();
+  // Move the pointer off the toolbar, so no tooltip covers the capture.
+  await entry(1000).hover();
+  await screenshot(page, "conversation-event-log-virtual");
+
+  // Search reads every loaded event, not only the mounted rows.
+  await expect(entry(1234)).not.toBeAttached();
+  await log.getByRole("searchbox", { name: "Search events" }).fill("row 1234.");
+  await expect(log.getByRole("status")).toHaveText("1 of 2000 loaded events");
+  await expect(entry(1234)).toBeInViewport();
+});
+
 for (const width of [1440, 390]) {
   test(`distinguishes view switches from resumed live activity (${width}px)`, async ({
     page,
@@ -475,7 +576,9 @@ for (const width of [1440, 390]) {
       createdAt: report.lastSeenAt,
       data: { type: "message_handled", messageId: "message-39" },
     });
-    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({ json: withRequestedMailbox(route, report) }),
+    );
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
@@ -487,10 +590,8 @@ for (const width of [1440, 390]) {
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
 
-    for (const view of ["Event log", "Conversation"]) {
-      if (width < 768)
-        await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("button", { name: view, exact: true }).click();
+    for (const view of ["Event log", "Conversation"] as const) {
+      await chooseTranscriptView(page, view);
       const first =
         view === "Event log"
           ? page.getByRole("button", { name: "Event 0: message", exact: true })
@@ -504,6 +605,11 @@ for (const width of [1440, 390]) {
       ).toBeHidden();
     }
     // A later poll can wake an idle conversation while the reader is above the tail.
+    // Rows far below the reader do not mount, so the taller transcript shows
+    // that a poll brought the event.
+    const scrollHeight = () =>
+      scroll.evaluate((element) => element.scrollHeight);
+    const heightBeforeIdle = await scrollHeight();
     report.status = "completed";
     report.events.push({
       seq: 41,
@@ -515,9 +621,9 @@ for (const width of [1440, 390]) {
         text: "Idle update",
       },
     });
-    await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
-      timeout: 15_000,
-    });
+    await expect
+      .poll(scrollHeight, { timeout: 15_000 })
+      .toBeGreaterThan(heightBeforeIdle);
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
@@ -533,15 +639,14 @@ for (const width of [1440, 390]) {
       },
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
-    await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
-    // New activity must not move a reader who scrolled into history, on either
-    // mobile or desktop. Following resumes only when the reader requests it.
-    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     const jump = page.getByRole("button", {
       name: "Jump to latest update",
       exact: true,
     });
-    await expect(jump).toBeVisible();
+    await expect(jump).toBeVisible({ timeout: 15_000 });
+    // New activity must not move a reader who scrolled into history, on either
+    // mobile or desktop. Following resumes only when the reader requests it.
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     await jump.click();
     await expect(liveUpdate).toBeInViewport();
     await expect(jump).toBeHidden();
@@ -560,5 +665,134 @@ for (const width of [1440, 390]) {
       page.getByText("Next live update", { exact: true }),
     ).toBeInViewport({ timeout: 15_000 });
     await expect(jump).toBeHidden();
+  });
+}
+
+for (const view of [desktop, mobile]) {
+  test(`leads the reader to a new review item question (${view.name})`, async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(view);
+    const conversationId = "slack:CQA123:1770003600.000200";
+    const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const response = await page.request.get(`${dashboard.baseURL}${api}`);
+    const report = await response.json();
+    const mailbox = await (
+      await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
+    ).json();
+    const item = {
+      addedByConversationId: conversationId,
+      assignedToEveryone: false,
+      assignees: [
+        {
+          displayName: "Dashboard User",
+          email: "dev@example.com",
+          userId: "u-dev",
+        },
+      ],
+      body: "The rollout plan has three open decisions.",
+      canAct: true,
+      canTake: false,
+      conversationIds: [conversationId],
+      createdAt: report.startedAt,
+      id: "item-tall",
+      kind: "action",
+      request: {
+        question: "How should the payments-v42 rollout go?",
+        fields: ["Region", "Window", "Owner"].map((label) => ({
+          id: label.toLowerCase(),
+          kind: "choice",
+          label,
+          options: ["First", "Second", "Third", "Fourth"].map((option) => ({
+            description: `${option} ${label.toLowerCase()} option for the rollout.`,
+            label: `${option} ${label.toLowerCase()}`,
+          })),
+        })),
+      },
+      status: "open",
+      title: "Plan the payments-v42 rollout",
+      updatedAt: report.startedAt,
+      visibility: "public",
+    };
+    let dismissed = false;
+    const current = () =>
+      dismissed
+        ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
+        : item;
+    await page.route(`**/api/review-items/${item.id}`, (route) =>
+      route.fulfill({ json: current() }),
+    );
+    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      dismissed = true;
+      return route.fulfill({ json: current() });
+    });
+    // The Conversation also lists the open item above the message box.
+    await page.route(`**/api/review-items?*`, (route) =>
+      route.fulfill({ json: { items: dismissed ? [] : [item] } }),
+    );
+    report.events = [
+      ...Array.from({ length: 20 }, (_, seq) => ({
+        seq,
+        createdAt: report.startedAt,
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: "user",
+          text: `Message ${seq}`,
+        },
+      })),
+      {
+        seq: 20,
+        createdAt: report.lastSeenAt,
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              input: { kind: "action", title: item.title },
+              name: "addReviewItem",
+              output: JSON.stringify({ item: { id: item.id } }),
+              status: "completed",
+              toolCallId: "review-1",
+            },
+          ],
+        },
+      },
+    ];
+    // Junior asked and ended its Turn, so it waits for the answer.
+    report.status = "completed";
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
+    );
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+
+    // The reader must see the title and question first, not the end of the form.
+    const card = page.getByRole("region", {
+      name: `Review item: ${item.title}`,
+    });
+    await expect(card.getByRole("button", { name: "Send" })).toBeAttached();
+    await expect(
+      card.getByRole("heading", { name: item.title }),
+    ).toBeInViewport();
+    // The message box and queued messages hide while Junior waits, so the
+    // question is last and the reader does not type the answer as a new
+    // message.
+    const composer = page.getByLabel("Continue this conversation");
+    const queue = page.getByRole("button", { name: /queued messages/ });
+    await expect(composer).toBeHidden();
+    await expect(queue).toBeHidden();
+    await screenshot(page, "conversation-review-item-card", {
+      view: view.name,
+    });
+
+    // Dismiss closes the item and shows the message box and queue again.
+    await card.getByRole("button", { name: "Dismiss" }).click();
+    await expect(composer).toBeVisible();
+    await expect(queue).toBeVisible();
+    await screenshot(page, "conversation-review-item-dismissed", {
+      view: view.name,
+    });
   });
 }

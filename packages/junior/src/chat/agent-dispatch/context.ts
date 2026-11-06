@@ -18,6 +18,7 @@ import { findLinkedSlackUserId } from "@/chat/identities/sql";
 import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { openSlackDirectMessage } from "@/chat/slack/outbound";
@@ -111,6 +112,7 @@ export function createHeartbeatContext(args: {
     cache: createPluginCache(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
+    embedder: createPluginEmbedder(pluginName),
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {
@@ -288,6 +290,8 @@ export async function dispatchScheduledAutomation(args: {
     };
   };
 }) {
+  // Also the signed credential binding label. A rename breaks existing task
+  // credentials.
   const plugin = "scheduler";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });

@@ -7,6 +7,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   activateViewerAutomationVersion,
   changeViewerAutomationLifecycle,
+  deleteViewerTask,
   readViewerAutomationEdit,
   updateViewerAutomation,
 } from "@/chat/automations/edit";
@@ -38,7 +39,6 @@ import { requireViewer } from "@/api/viewer";
 import { getSqlExecutor } from "@/chat/db";
 import { attachAutomationMentions } from "./mentions";
 import {
-  deleteViewerTask,
   readViewerAutomationExecutions,
   readViewerAutomationRuns,
   readViewerAutomations,

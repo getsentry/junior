@@ -172,6 +172,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/logging")>();
   return {
     ...actual,
+    logWarn: vi.fn(actual.logWarn),
     withSpan: (async (name, op, context, callback, attributes = {}) => {
       const span = { name, attributes: { ...attributes } };
       recordedSpans.push(span);
@@ -190,13 +191,15 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 
+import { logWarn } from "@/chat/logging";
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/session";
+import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
+import { ensureDockerDaemon } from "@/chat/sandbox/guest-docker";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import {
   isWorkspaceSnapshotNotReadyError,
@@ -368,7 +371,6 @@ interface MockSandbox {
 function makeSandbox(
   name: string,
   options: {
-    mkDirError?: unknown;
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
@@ -378,11 +380,7 @@ function makeSandbox(
     readdir: vi.fn(async () => []),
     stat: vi.fn(async () => ({ isDirectory: () => false })),
   };
-  const mkDir = vi.fn(async () => {
-    if (options.mkDirError) {
-      throw options.mkDirError;
-    }
-  });
+  const mkDir = vi.fn(async () => {});
   const writeFiles = vi.fn(async () => {
     if (options.writeFilesError) {
       throw options.writeFilesError;
@@ -622,9 +620,42 @@ describe("createTestSandbox", () => {
     expect(resumingRunCommand).not.toHaveBeenCalled();
   });
 
+  it("creates a preview URL and keeps the ports that are already exposed", async () => {
+    const sandbox = makeSandbox("sbx_preview");
+    const routes = [{ port: 4000, subdomain: "sbx-preview-4000" }];
+    const update = vi.fn(async ({ ports }: { ports: number[] }) => {
+      routes.splice(
+        0,
+        routes.length,
+        ...ports.map((port) => ({ port, subdomain: `sbx-preview-${port}` })),
+      );
+    });
+    sandboxCreateMock.mockResolvedValueOnce({
+      ...sandbox,
+      update,
+      currentSession: () => ({
+        ...sandbox.session,
+        routes,
+        domain: (port: number) =>
+          `https://${routes.find((route) => route.port === port)!.subdomain}.vercel.run`,
+      }),
+    });
+    const workspace = await createTestSandbox().createSandbox();
+
+    await expect(workspace.createPreview!(3000)).resolves.toBe(
+      "https://sbx-preview-3000.vercel.run",
+    );
+    await expect(workspace.createPreview!(3000)).resolves.toBe(
+      "https://sbx-preview-3000.vercel.run",
+    );
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({ ports: [4000, 3000] });
+  });
+
   it("fails a stopped hinted session and reacquires it on a later call", async () => {
     const stoppedSandbox = makeSandbox("sbx_stopped", {
-      mkDirError: createApiError(
+      writeFilesError: createApiError(
         410,
         "Gone",
         "sandbox_stopped",
@@ -652,8 +683,8 @@ describe("createTestSandbox", () => {
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).not.toHaveBeenCalled();
-    expect(stoppedSandbox.mkDir).toHaveBeenCalled();
-    expect(recoveredSandbox.mkDir).toHaveBeenCalled();
+    expect(stoppedSandbox.writeFiles).toHaveBeenCalled();
+    expect(recoveredSandbox.writeFiles).toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_stopped");
   });
 
@@ -746,6 +777,7 @@ describe("createTestSandbox", () => {
     ]);
 
     expect(firstExecutors.fs).toBe(secondExecutors.fs);
+    expect(freshSandbox.mkDir).not.toHaveBeenCalled();
   });
 
   it("cancels sandbox acquisition with the tool signal", async () => {
@@ -964,6 +996,115 @@ describe("createTestSandbox", () => {
       },
     });
     expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
+  });
+
+  it("prepares a restored sandbox while its network policy applies", async () => {
+    const restoredSandbox = makeSandbox("sbx_restored_overlap");
+    const events: string[] = [];
+    let releasePolicy: () => void = () => {};
+    restoredSandbox.update.mockImplementationOnce(async () => {
+      events.push("policy:start");
+      await new Promise<void>((resolve) => {
+        releasePolicy = resolve;
+      });
+      events.push("policy:end");
+    });
+    restoredSandbox.writeFiles.mockImplementation(async () => {
+      events.push("skills");
+    });
+    vi.mocked(ensureDockerDaemon).mockImplementationOnce(async () => {
+      events.push("docker");
+    });
+    const onSandboxPrepare = vi.fn(async () => {
+      events.push("plugins");
+    });
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createTestSandboxRuntime({
+      sandboxId: "sbx_restored_overlap",
+      createNetworkPolicy: () => ({
+        credentialEgress: {
+          credentialToken: "token",
+          domains: ["api.example"],
+        },
+      }),
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    const acquired = manager.createSandbox();
+    await vi.waitFor(() =>
+      expect(events).toEqual(
+        expect.arrayContaining(["policy:start", "skills", "docker"]),
+      ),
+    );
+    expect(onSandboxPrepare).not.toHaveBeenCalled();
+
+    releasePolicy();
+    await acquired;
+
+    expect(events.slice(-2)).toEqual(["policy:end", "plugins"]);
+  });
+
+  it("fails a restored sandbox only after every preparation step settles", async () => {
+    const unavailable = createApiError(
+      410,
+      "Gone",
+      "sandbox_stopped",
+      "Sandbox has stopped execution and is no longer available",
+    );
+    const restoredSandbox = makeSandbox("sbx_restored_failure", {
+      writeFilesError: unavailable,
+    });
+    restoredSandbox.update.mockRejectedValueOnce(
+      createApiError(
+        500,
+        "Internal Server Error",
+        "sandbox_api_error",
+        "Sandbox API failed",
+      ),
+    );
+    let dockerStarted = false;
+    let releaseDocker: () => void = () => {};
+    vi.mocked(ensureDockerDaemon).mockImplementationOnce(async () => {
+      dockerStarted = true;
+      await new Promise<void>((resolve) => {
+        releaseDocker = resolve;
+      });
+    });
+    const onSandboxPrepare = vi.fn();
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createTestSandboxRuntime({
+      sandboxId: "sbx_restored_failure",
+      createNetworkPolicy: () => ({
+        credentialEgress: {
+          credentialToken: "token",
+          domains: ["api.example"],
+        },
+      }),
+      onSandboxPrepare,
+    });
+    manager.configureSkills([]);
+
+    let settled = false;
+    const acquired = manager.createSandbox().finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => {
+      expect(dockerStarted).toBe(true);
+      expect(restoredSandbox.update).toHaveBeenCalled();
+      expect(restoredSandbox.writeFiles).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    releaseDocker();
+    const error = await acquired.catch((caught: unknown) => caught);
+
+    expect(getSandboxProvider().errors.isUnavailable(error)).toBe(true);
+    expect(onSandboxPrepare).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("keeps network policy tied to the acquired session", async () => {
@@ -1545,9 +1686,56 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_switch_target");
   });
 
+  it("stops each replaced sandbox when two workspace switches overlap", async () => {
+    const initialSandbox = makeSandbox("sbx_overlap_initial");
+    const slowSandbox = makeSandbox("sbx_overlap_slow");
+    const fastSandbox = makeSandbox("sbx_overlap_fast");
+    let releaseSlow: (() => void) | undefined;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockImplementationOnce(async () => {
+        await slowGate;
+        return slowSandbox;
+      })
+      .mockResolvedValueOnce(fastSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-slow")
+      .mockReturnValueOnce("profile-fast");
+    const workspace = (id: string) => ({
+      id,
+      name: id,
+      setupScript: "",
+      vcpus: null,
+      snapshot: null,
+      repos: [],
+    });
+    const runtime = createSandboxRuntime({
+      workspace: workspace("workspace-initial"),
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+
+    const slowSwitch = runtime.switchWorkspace(workspace("workspace-slow"));
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledTimes(2));
+    await runtime.switchWorkspace(workspace("workspace-fast"));
+    releaseSlow?.();
+    await slowSwitch;
+
+    // The last switch to finish wins, and no replaced sandbox keeps running.
+    expect(runtime.sandboxRef()?.id).toBe("sbx_overlap_slow");
+    expect(initialSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(fastSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(slowSandbox.stop).not.toHaveBeenCalled();
+  });
+
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
     const forbiddenSandbox = makeSandbox("sbx_forbidden", {
-      mkDirError: createApiError(
+      writeFilesError: createApiError(
         403,
         "Forbidden",
         "forbidden",
@@ -1936,6 +2124,29 @@ describe("createTestSandbox", () => {
     expect(response.result.details.permission_denied).toBeUndefined();
   });
 
+  it("logs a Vercel firewall challenge page in bash output", async () => {
+    const sandbox = makeSandbox("sbx_challenged");
+    sandbox.runCommand.mockImplementationOnce(async () => ({
+      exitCode: 1,
+      stdout: async () =>
+        "<!DOCTYPE html><html><head><title>Vercel Security Checkpoint</title>",
+      stderr: async () => "",
+    }));
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createTestSandbox({ sandboxId: "sbx_challenged" });
+    executor.configureSkills([]);
+
+    await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "gh api rate_limit" },
+    });
+
+    expect(logWarn).toHaveBeenCalledWith("sandbox.egress.challenged", {
+      "app.sandbox.egress_id": expect.any(String),
+    });
+  });
+
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
     const sandbox = makeSandbox("sbx_created_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
@@ -1983,6 +2194,145 @@ describe("createTestSandbox", () => {
         access: "write",
       },
     });
+  });
+
+  it("keeps egress auth signals with their own command when two bash calls start together", async () => {
+    const sandbox = makeSandbox("sbx_parallel_auth_signal");
+    let releaseFirst!: () => void;
+    const firstHolds = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("gh issue create")) {
+        await setSandboxEgressAuthRequiredSignal(
+          {
+            credentials: { actor: { type: "user", userId: "U123" } },
+            egressId: "sbx_parallel_auth_signal_session",
+            expiresAtMs: Date.now() + 60_000,
+            contextId: "ctx-parallel",
+          },
+          {
+            provider: "github",
+            grant: { name: "user-write", access: "write" },
+          },
+        );
+        firstEntered();
+        await firstHolds;
+        return { exitCode: 1, stdout: async () => "", stderr: async () => "" };
+      }
+      return { exitCode: 0, stdout: async () => "ok", stderr: async () => "" };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createTestSandbox({
+      sandboxId: "sbx_parallel_auth_signal",
+    });
+    executor.configureSkills([]);
+
+    const first = executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "gh issue create" },
+    });
+    await firstStarted;
+    const second = executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "echo ok" },
+    });
+    // The second command waits; it must not clear or read the first one's
+    // signal.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult.result.details.auth_required).toMatchObject({
+      provider: "github",
+      grant: { name: "user-write", access: "write" },
+    });
+    expect(secondResult.result.details.exit_code).toBe(0);
+    expect(secondResult.result.details.auth_required).toBeUndefined();
+  });
+
+  it("runs a queued bash command on the sandbox that replaced the one it saw", async () => {
+    const initialSandbox = makeSandbox("sbx_queued_initial");
+    const nextSandbox = makeSandbox("sbx_queued_next");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(nextSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    let releaseFirst!: () => void;
+    const firstHolds = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstEntered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstEntered = resolve;
+    });
+    initialSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("first")) {
+        firstEntered();
+        await firstHolds;
+      }
+      return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+    });
+    nextSandbox.runCommand.mockImplementation(async (input) => {
+      if (String(input.args?.[1]).includes("echo second")) {
+        await setSandboxEgressAuthRequiredSignal(
+          {
+            credentials: { actor: { type: "user", userId: "U123" } },
+            egressId: "sbx_queued_next_session",
+            expiresAtMs: Date.now() + 60_000,
+            contextId: "ctx-queued",
+          },
+          {
+            provider: "github",
+            grant: { name: "user-write", access: "write" },
+          },
+        );
+      }
+      return { exitCode: 1, stdout: async () => "", stderr: async () => "" };
+    });
+    const workspace = (id: string) => ({
+      id,
+      name: id,
+      setupScript: "",
+      vcpus: null,
+      snapshot: null,
+      repos: [],
+    });
+    const sandbox = createSandbox({
+      workspace: workspace("workspace-initial"),
+      skills: [],
+      referenceFiles: [],
+    });
+    const bash = (command: string) =>
+      sandbox.tools.execute({ toolName: "bash", input: { command } });
+
+    const first = bash("echo first");
+    await firstStarted;
+    // Queued behind the first command, with the initial sandbox resolved.
+    const second = bash("echo second");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sandbox.switchWorkspace(workspace("workspace-next"));
+    releaseFirst();
+    const [, secondResult] = await Promise.all([first, second]);
+
+    // The signal comes from the session the command ran on.
+    expect(secondResult).toMatchObject({
+      details: { auth_required: { provider: "github" } },
+    });
+    const ranOn = (target: MockSandbox) =>
+      target.runCommand.mock.calls.some(([input]) =>
+        String(input.args?.[1]).includes("echo second"),
+      );
+    expect(ranOn(nextSandbox)).toBe(true);
+    expect(ranOn(initialSandbox)).toBe(false);
   });
 
   it("attaches sandbox egress auth signals to bash results with exit code 0 (pipe-masked failures)", async () => {
@@ -2548,9 +2898,28 @@ describe("createTestSandbox", () => {
 
     expect(error).toBeInstanceOf(ToolInputError);
     expect(error).toMatchObject({
-      message: "Path must stay within /vercel/sandbox: /etc/passwd",
+      message: "Path must stay within /vercel/sandbox or /tmp: /etc/passwd",
     });
     expect(sandbox.fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("allows writeFile scratch files in /tmp", async () => {
+    const sandbox = makeSandbox("sbx_write_file_tmp");
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "writeFile",
+      input: { path: "/tmp/scratch.py", content: "print(1)" },
+    });
+
+    expect(sandbox.fs.writeFile).toHaveBeenCalledWith(
+      "/tmp/scratch.py",
+      "print(1)",
+      expect.anything(),
+    );
   });
 
   it("syncs sandbox files once when the first tool call initializes the sandbox", async () => {
@@ -2699,6 +3068,28 @@ describe("createTestSandbox", () => {
     });
 
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes a cached sandbox but not one it just created or resumed", async () => {
+    const createdSandbox = makeSandbox("sbx_probe_created");
+    sandboxCreateMock.mockResolvedValueOnce(createdSandbox);
+    const created = createTestSandbox();
+    created.configureSkills([]);
+
+    await created.execute({ toolName: "bash", input: { command: "echo 1" } });
+    expect(createdSandbox.mkDir).not.toHaveBeenCalled();
+
+    await created.execute({ toolName: "bash", input: { command: "echo 2" } });
+    expect(createdSandbox.mkDir).toHaveBeenCalledOnce();
+    expect(createdSandbox.mkDir).toHaveBeenCalledWith(SANDBOX_WORKSPACE_ROOT);
+
+    const resumedSandbox = makeSandbox("sbx_probe_resumed");
+    sandboxGetMock.mockResolvedValueOnce(resumedSandbox);
+    const resumed = createTestSandbox({ sandboxId: "sbx_probe_resumed" });
+    resumed.configureSkills([]);
+
+    await resumed.execute({ toolName: "bash", input: { command: "echo 1" } });
+    expect(resumedSandbox.mkDir).not.toHaveBeenCalled();
   });
 
   it("fails a stopped cached session and reacquires it on a later tool call", async () => {

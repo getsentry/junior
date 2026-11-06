@@ -39,6 +39,9 @@ export function toStoredConversationMessage(
     messageId: message.id,
     role: message.role,
     text: message.text,
+    ...(message.authorIdentityId
+      ? { authorIdentityId: message.authorIdentityId }
+      : undefined),
     ...(Object.keys(meta).length > 0 ? { meta } : undefined),
     createdAtMs: message.createdAtMs,
   };

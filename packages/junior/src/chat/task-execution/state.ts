@@ -10,11 +10,12 @@
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -86,7 +87,11 @@ const agentInputSchema = z
   .object({
     attachments: z.array(z.unknown()).optional(),
     authorId: z.string().min(1).optional(),
+    /** Identity of the input author, resolved at ingress. */
+    authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    /** Review item change that this input reports, on any Source. */
+    reviewItemChange: reviewItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -103,8 +108,8 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
-/** Sentry trace propagation headers captured when an inbound message arrives. */
-const inboundMessageTraceContextSchema = z
+/** Sentry trace propagation headers. A malformed value is dropped, not rejected. */
+export const traceContextSchema = z
   .object({
     baggage: z.string().optional(),
     sentryTrace: z.string().min(1),
@@ -125,11 +130,13 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
-    traceContext: inboundMessageTraceContextSchema,
+    traceContext: traceContextSchema,
   })
   .strict();
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
+
+export type TraceContext = NonNullable<z.output<typeof traceContextSchema>>;
 
 /** Redis mailbox shape kept for deployed workers that still require this field. */
 const storedInboundMessageSchema = inboundMessageSchema.extend({
@@ -1940,6 +1947,59 @@ export async function cancelHumanFacingPendingMessages(args: {
   });
 }
 
+/**
+ * Mark one author's queued web messages as interrupts without a worker lease.
+ * `authorIds` lists every id that names the author.
+ *
+ * The active Turn drains them at its next model boundary when it belongs to the
+ * same author. Otherwise they start the next Turn ahead of deferred input.
+ */
+export async function steerWebPendingMessages(args: {
+  authorIds: readonly string[];
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{ steeredInboundMessageIds: string[] }> {
+  const nowMs = args.nowMs ?? now();
+  const requestedIds = new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return { steeredInboundMessageIds: [] };
+    }
+
+    const steeredInboundMessageIds: string[] = [];
+    const pendingMessages = current.execution.pendingMessages.map((message) => {
+      if (
+        message.source !== "web" ||
+        message.delivery !== "defer" ||
+        message.input.authorId === undefined ||
+        !args.authorIds.includes(message.input.authorId) ||
+        !requestedIds.has(message.inboundMessageId)
+      ) {
+        return message;
+      }
+      steeredInboundMessageIds.push(message.inboundMessageId);
+      return { ...message, delivery: "interrupt" as const };
+    });
+    if (steeredInboundMessageIds.length === 0) {
+      return { steeredInboundMessageIds };
+    }
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        { ...current.execution, pendingMessages },
+        nowMs,
+      ),
+    );
+    return { steeredInboundMessageIds };
+  });
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
@@ -2262,6 +2322,10 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
+  beforeWorkStops?: (
+    conversationId: string,
+    inboundMessageIds: readonly string[],
+  ) => Promise<void>;
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -2277,6 +2341,16 @@ export async function clearExpiredConversationLease(args: {
     }
     const retryCount = (current.execution.retryCount ?? 0) + 1;
     const stopped = retryCount >= CONVERSATION_WORK_MAX_RETRIES;
+    if (stopped) {
+      // A lost worker runs no failure path. This runs under the lock, so the
+      // worker cannot renew the lease and no message can reach the mailbox
+      // after it. When it throws, the lease stays expired and the next
+      // heartbeat runs it again.
+      await args.beforeWorkStops?.(
+        args.conversationId,
+        current.execution.inboundMessageIds,
+      );
+    }
     await writeConversation(
       state,
       lock,

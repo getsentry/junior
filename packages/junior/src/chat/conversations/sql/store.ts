@@ -3,9 +3,11 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { recordConversationParticipant } from "./participants";
-import { replaceConversationMetrics } from "../metrics";
+import {
+  readConversationRunMetrics,
+  replaceConversationMetrics,
+} from "../metrics";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,
@@ -16,6 +18,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
   ConversationExecution,
+  ConversationRunMetrics,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -27,11 +30,8 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
-import type { AgentTurnUsage } from "@/chat/usage";
-import type {
-  JuniorDestinationKind,
-  JuniorDestinationVisibility,
-} from "@/db/schema/destinations";
+import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
   getConversationIdByProviderConversation,
@@ -40,7 +40,7 @@ import {
 } from "./bindings";
 import {
   actorFromIdentityRow,
-  actorIdentityForConversation,
+  resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
 import {
@@ -48,6 +48,7 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
+import { nextDetailVersion } from "./detail-version";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
   "legacyArchivedAt"
@@ -410,6 +411,13 @@ export class SqlStore implements ConversationStore {
     return conversationFromRow(row);
   }
 
+  async getRunMetrics(args: {
+    conversationId: string;
+    runId: string;
+  }): Promise<ConversationRunMetrics | undefined> {
+    return await readConversationRunMetrics(this.executor, args);
+  }
+
   async recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
@@ -479,10 +487,7 @@ export class SqlStore implements ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    metrics: {
-      durationMs: number;
-      usage?: AgentTurnUsage;
-    } | null;
+    metrics: ConversationRunMetrics | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
@@ -506,10 +511,31 @@ export class SqlStore implements ConversationStore {
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
         existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
-      const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
+      const latestMetricRunId = existing?.executionMetrics?.runId;
+      // A Run with metric rows that no longer owns the latest metrics is older
+      // than the latest Run. Its terminal status must not replace the status
+      // of that newer Run.
+      const olderRunFinished =
+        args.metrics !== null &&
+        args.execution.runId !== undefined &&
+        latestMetricRunId !== undefined &&
+        latestMetricRunId !== args.execution.runId &&
+        (args.execution.status === "idle" ||
+          args.execution.status === "failed") &&
+        (await readConversationRunMetrics(this.executor, {
+          conversationId: args.conversationId,
+          runId: args.execution.runId,
+        })) !== undefined;
+      const incomingIsFresh =
+        !olderRunFinished && incomingExecutionAt >= existingExecutionAt;
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
+      // Root Actor and origin Source come from the saved Conversation, as in
+      // recordActivity. A later Turn, such as an event on a web Conversation,
+      // must not derive a system Actor from its own Source.
+      const actor = mergeActor(existing?.actor, args.actor);
+      const source = existing?.source ?? args.source;
       await this.upsertConversation({
         conversation: {
           schemaVersion: 1,
@@ -523,8 +549,8 @@ export class SqlStore implements ConversationStore {
           ...(existing?.location ? { location: existing.location } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
-          ...(args.actor ? { actor: args.actor } : undefined),
-          ...(args.source ? { source: args.source } : undefined),
+          ...(actor ? { actor } : undefined),
+          ...(source ? { source } : undefined),
           ...(args.title ? { title: args.title } : undefined),
           ...(args.visibility ? { visibility: args.visibility } : undefined),
           execution,
@@ -546,6 +572,7 @@ export class SqlStore implements ConversationStore {
               metricRunId: args.execution.runId,
               executionDurationMs: args.metrics.durationMs,
               executionUsage: args.metrics.usage ?? null,
+              detailVersion: nextDetailVersion,
             })
             .where(eq(juniorConversations.conversationId, args.conversationId));
         }
@@ -624,6 +651,18 @@ export class SqlStore implements ConversationStore {
       return row.visibility;
     }
     return undefined;
+  }
+
+  async recordDestinationVisibility(args: {
+    channelName?: string;
+    destination: Destination;
+    nowMs?: number;
+    visibility: ConversationPrivacy;
+  }): Promise<void> {
+    await this.upsertDestination(
+      destinationUpsertFromDestination(args),
+      args.nowMs ?? Date.now(),
+    );
   }
 
   async findSlackDestinationByName(args: {
@@ -741,14 +780,10 @@ export class SqlStore implements ConversationStore {
       location: conversation.location,
       sessionSource: conversation.sessionSource,
     });
-    const actorIdentityObservation = actorIdentityForConversation(conversation);
-    const actorIdentity = actorIdentityObservation
-      ? await upsertIdentity(
-          this.executor,
-          actorIdentityObservation,
-          conversation.updatedAtMs,
-        )
-      : undefined;
+    const actorIdentityId = await resolveConversationActorIdentityId(
+      this.executor,
+      conversation,
+    );
     const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
@@ -767,7 +802,7 @@ export class SqlStore implements ConversationStore {
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
-        actorIdentityId: actorIdentity?.id ?? null,
+        actorIdentityId: actorIdentityId ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
         actor: null,
@@ -801,7 +836,8 @@ export class SqlStore implements ConversationStore {
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
-          actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
+          // Keep the stored Identity. A human reply cannot replace a system root.
+          actorIdentityId: sql`coalesce(${juniorConversations.actorIdentityId}, excluded.actor_identity_id)`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
@@ -815,6 +851,7 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          detailVersion: nextDetailVersion,
         },
       })
       .returning({

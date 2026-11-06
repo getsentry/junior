@@ -43,7 +43,10 @@ describe("Slack Thread Status and Title", () => {
     expect(conversation.statuses[0]).not.toBe("");
     expect(conversation.statuses.at(-1)).toBe("");
     // Junior names a new assistant thread before the person writes.
-    expect(conversation.threadTitles).toEqual(["Junior", conversation.title]);
+    expect(conversation.threadTitles).toEqual([
+      expect.any(String),
+      conversation.title,
+    ]);
     expect(conversation.title).toMatch(/leak/i);
 
     const next = await conversation.continue(

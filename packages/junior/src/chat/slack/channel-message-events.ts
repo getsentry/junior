@@ -9,9 +9,9 @@ import {
   eventMatchFieldsSchema,
   type Event,
   type EventInput,
-  type PluginEvents,
 } from "@sentry/junior-plugin-api";
 import type { EventAutomation } from "@/chat/event-automations/types";
+import type { EventRegistrationInput } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
@@ -25,6 +25,12 @@ const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
 
 const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  channelId: {
+    kind: "string",
+    description:
+      "Slack channel ID of the message. It is always the channel where the automation posts.",
+    events: [MESSAGE_POSTED_EVENT],
+  },
   userId: {
     kind: "string",
     description:
@@ -32,11 +38,11 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/** Event registration for new top-level Slack channel messages. */
-export function slackChannelMessageEvents(): Pick<
-  PluginEvents,
-  "resourceTypes"
-> {
+/**
+ * Event registration for new top-level Slack channel messages. Only event
+ * automations can use it, so watchEvents rejects it.
+ */
+export function slackChannelMessageEvents(): EventRegistrationInput {
   return {
     resourceTypes: [
       {
@@ -48,20 +54,54 @@ export function slackChannelMessageEvents(): Pick<
         supportedEvents: [MESSAGE_POSTED_EVENT],
         suggestedEvents: [],
         matchFields: CHANNEL_MESSAGE_MATCH_FIELDS,
-        guidance: {
-          [MESSAGE_POSTED_EVENT]:
-            "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
-        },
       },
     ],
+    events: {
+      // A channel automation stays in its own channel.
+      // `slackChannelMessageTrigger` sets the `channelId` filter.
+      [MESSAGE_POSTED_EVENT]: {
+        reach: { anyOf: ["channelId"] },
+        guidance:
+          "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in user_id. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
+      },
+    },
+    limits: {
+      [CHANNEL_RESOURCE_TYPE]: {
+        watch: false,
+        watchUnavailableMessage:
+          "Slack channel messages can trigger only an event automation in that channel. Use createAutomation with an event trigger.",
+      },
+    },
   };
+}
+
+/**
+ * Set the `channelId` filter of a Slack channel-message trigger to the
+ * channel where the automation posts. A trigger that names another channel,
+ * or a saved trigger with an identifier, stays as it is for
+ * `requireSlackChannelMessageScope` to check.
+ */
+export function slackChannelMessageTrigger<
+  T extends {
+    identifier?: string | null;
+    match?: EventAutomation["trigger"]["match"];
+    namespace: string;
+  },
+>(trigger: T, channelId: string): T {
+  if (trigger.namespace !== SLACK_EVENT_NAMESPACE) return trigger;
+  if (trigger.identifier != null || trigger.match?.channelId !== undefined) {
+    return trigger;
+  }
+  return { ...trigger, match: { ...trigger.match, channelId } };
 }
 
 /**
  * Bind a Slack channel-message automation to its own channel.
  *
- * Resolve `current_channel` to the destination channel and reject other
- * channels, so private channel text cannot reach another channel.
+ * The trigger names the channel with a `channelId` filter. A saved trigger
+ * can name it with an identifier instead, where `current_channel` means the
+ * destination channel. Reject other channels, so private channel text cannot
+ * reach another channel.
  */
 export function requireSlackChannelMessageScope(
   automation: EventAutomation,
@@ -73,19 +113,25 @@ export function requireSlackChannelMessageScope(
       "A Slack channel-message automation works only in a channel, not in a DM.",
     );
   }
-  const identifier =
-    automation.trigger.identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
-      ? channelId
-      : automation.trigger.identifier;
-  if (identifier !== channelId) {
+  const { identifier, match } = automation.trigger;
+  const named =
+    identifier === undefined
+      ? match?.channelId
+      : identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
+        ? channelId
+        : identifier;
+  if (named !== channelId) {
     throw new ToolInputError(
-      `A Slack channel-message automation can watch only the channel where it posts. Use identifier "${SLACK_CURRENT_CHANNEL_IDENTIFIER}", or create the automation in the channel to watch.`,
+      "A Slack channel-message automation can watch only the channel where it posts. Leave out the channel_id filter, or create the automation in the channel to watch.",
     );
   }
   return {
     ...automation,
     credentialMode: "system",
-    trigger: { ...automation.trigger, identifier },
+    trigger: {
+      ...automation.trigger,
+      ...(identifier === undefined ? undefined : { identifier: channelId }),
+    },
   };
 }
 
@@ -127,6 +173,9 @@ export function slackChannelMessageEvent(input: {
 /**
  * Decide whether a channel-message Event may run one automation.
  *
+ * A message runs only automations that post in its own channel, so private
+ * channel text cannot reach another channel. The trigger already names that
+ * channel, and this check keeps the rule when it does not.
  * A bot post runs only automations whose match names its author in `userId`.
  * Bots can post often and would use up the run limit of every other
  * automation in the channel.
@@ -136,6 +185,7 @@ export function slackChannelMessageRunsAutomation(
   automation: EventAutomation,
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
+  if (event.data?.channelId !== automation.destination.channelId) return false;
   if (event.data?.postedByBot !== true) return true;
   return automation.trigger.match?.userId !== undefined;
 }

@@ -8,7 +8,6 @@ import {
   type Message,
   type ModalCloseEvent,
   type ReactionEvent,
-  type SlashCommandEvent,
   type WebhookOptions,
 } from "chat";
 import {
@@ -40,13 +39,6 @@ type ChatInternals = {
     relatedMessage: unknown;
     relatedChannel: unknown;
   }>;
-  handleSlashCommandEvent: (
-    event: Omit<SlashCommandEvent, "channel" | "openModal"> & {
-      adapter: Adapter;
-      channelId: string;
-    },
-    options: WebhookOptions | undefined,
-  ) => Promise<void>;
   modalCloseHandlers: Array<{
     callbackIds: string[];
     handler: (event: unknown) => Promise<void>;
@@ -218,32 +210,6 @@ export class JuniorChat<
           runtime.logger?.error?.("Modal close handler error", {
             error,
             callbackId: event.callbackId,
-          });
-        }
-      })(),
-    );
-  }
-
-  override processSlashCommand(
-    event: Omit<SlashCommandEvent, "channel" | "openModal"> & {
-      adapter: Adapter;
-      channelId: string;
-    },
-    options: WebhookOptions | undefined,
-  ): void {
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const runtime = this as ChatInternals;
-
-    enqueueBackgroundTask(
-      options,
-      (async (): Promise<void> => {
-        try {
-          await runtime.handleSlashCommandEvent(event, options);
-        } catch (error) {
-          runtime.logger?.error?.("Slash command processing error", {
-            error,
-            command: event.command,
-            text: event.text,
           });
         }
       })(),

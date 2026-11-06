@@ -1,6 +1,6 @@
 import type { SlackEvent } from "@slack/types";
 import { annotationCard } from "@/chat/conversations/cards";
-import { z } from "zod";
+import * as z from "zod";
 import { eq } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";

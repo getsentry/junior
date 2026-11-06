@@ -1,5 +1,5 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
@@ -10,8 +10,10 @@ import {
   type EventDoneBy,
   type TaskBatchEvent,
 } from "@/chat/task-input";
-import type { ConversationMessageEvent } from "@/chat/state/conversation";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import type {
+  ConversationMessageEvent,
+  ConversationMessageMeta,
+} from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -22,6 +24,7 @@ import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -76,15 +79,10 @@ export function eventTaskFacts(
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
 ): EventTaskFacts {
-  // Resource type guidance applies to every Watch. Watch guidance comes from
+  // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
   const guidance = [
-    eventGuidance(
-      getEventCatalog(),
-      event.namespace,
-      subscription.resourceType,
-      event.eventType,
-    ),
+    eventGuidance(getEventCatalog(), event.namespace, event.eventType),
     subscription.guidance?.[event.eventType],
   ]
     .filter((text): text is string => Boolean(text?.trim()))
@@ -207,16 +205,18 @@ function readEventTaskFacts(
 }
 
 /**
- * Write the agent input for an Event batch.
+ * Write the agent inputs for an Event batch, one prompt content part each.
  *
- * One Event keeps its own text. Several Watch Events become one task message
+ * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
- * without task facts, such as child agent results, keep their own text after
- * the task message.
+ * without task facts, such as child agent results, keep their own text as
+ * their own inputs after the task. `rendered` replaces the text of an entry
+ * by inbound message id, such as a person change to a Review item.
  */
-export function renderEventBatchText(
+export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
-): string {
+  rendered: ReadonlyMap<string, string> = new Map(),
+): string[] {
   const groups = new Map<
     string,
     {
@@ -250,6 +250,7 @@ export function renderEventBatchText(
     group.events.push({
       eventType: metadata.event.eventType,
       guidance: facts.guidance,
+      source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
       externalText: facts.externalText,
@@ -257,43 +258,81 @@ export function renderEventBatchText(
     });
   }
 
+  const ownText = (message: InboundMessage) =>
+    rendered.get(message.inboundMessageId) ?? message.input.text.trim();
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
-    return joinMailboxText(messages);
+    return messages.map(ownText).filter(Boolean);
   }
   return [
     renderTaskBatchInput({ groups: [...groups.values()] }),
-    joinMailboxText(others),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    ...others.map(ownText).filter(Boolean),
+  ];
+}
+
+/** Return the conversation message entry for one Event input. */
+function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
+  const metadata = message.input.metadata;
+  if (!isEventMailboxMetadata(metadata)) return [];
+  const label = readEventTaskFacts(message)?.facts.about;
+  return [
+    {
+      eventType: metadata.event.eventType,
+      ...(label ? { label } : undefined),
+      ...(metadata.event.objectType
+        ? { objectType: metadata.event.objectType }
+        : undefined),
+      ...(metadata.event.trustedSummary
+        ? { trustedSummary: metadata.event.trustedSummary }
+        : undefined),
+    },
+  ];
 }
 
 /**
- * List the Watch Events in a batch for the conversation message. These are the
- * Events that the task message counts, so the list and the count agree.
+ * Return the saved Message fields for the Event inputs of one Turn.
+ *
+ * A person change to a Review item is not one of the Message's own Events:
+ * its record goes to `reviewItemChanges`, and the dashboard shows it as a
+ * change row. The Message's own Event is its first Watch Event, the
+ * kind the task message counts, or else its first other input, such as an
+ * agent result. `events` lists the Watch Events when several arrived. When
+ * changes share the Message with one own Event, `events` lists that Event, so
+ * a reader can tell it from a Message that only records changes.
  */
-export function eventBatchMessageEvents(
+export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
-): ConversationMessageEvent[] {
-  return messages.flatMap((message) => {
-    const saved = readEventTaskFacts(message);
-    if (!saved) return [];
-    const { metadata } = saved;
-    const label = saved.facts.about;
-    return [
-      {
-        eventType: metadata.event.eventType,
-        ...(label ? { label } : undefined),
-        ...(metadata.event.objectType
-          ? { objectType: metadata.event.objectType }
-          : undefined),
-        ...(metadata.event.trustedSummary
-          ? { trustedSummary: metadata.event.trustedSummary }
-          : undefined),
-      },
-    ];
-  });
+): Pick<
+  ConversationMessageMeta,
+  | "eventObjectType"
+  | "eventType"
+  | "events"
+  | "reviewItemChanges"
+  | "trustedSummary"
+> {
+  const reviewItemChanges = messages.flatMap((message) =>
+    message.input.reviewItemChange ? [message.input.reviewItemChange] : [],
+  );
+  const own = messages.filter((message) => !message.input.reviewItemChange);
+  const watched = own.filter((message) => readEventTaskFacts(message));
+  const primary = watched[0] ?? own[0];
+  const metadata = (primary ?? messages[0])?.input.metadata;
+  if (!isEventMailboxMetadata(metadata)) return {};
+  const events =
+    watched.length > 1
+      ? watched.flatMap(messageEvent)
+      : reviewItemChanges.length && primary
+        ? messageEvent(primary)
+        : [];
+  return {
+    eventType: metadata.event.eventType,
+    eventObjectType: metadata.event.objectType,
+    ...(metadata.event.trustedSummary
+      ? { trustedSummary: metadata.event.trustedSummary }
+      : undefined),
+    ...(events.length ? { events } : undefined),
+    ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
+  };
 }
 
 /** Build plain conversation mailbox input for one matched watch. */
@@ -331,6 +370,8 @@ export function createEventInboundMessage(input: {
     input: {
       text: input.text,
       authorId: EVENT_AUTHOR_ID,
+      // TODO(dcramer): Use the event author Identity when plugins report it.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
     },
   };
@@ -396,7 +437,11 @@ export async function enqueueEventNotification(args: {
         id: args.subscription.id,
       },
       task,
-      text: renderTaskInput(task),
+      text: renderTaskInput({
+        ...task,
+        event: args.event.eventType,
+        source: args.event.namespace,
+      }),
     }),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,

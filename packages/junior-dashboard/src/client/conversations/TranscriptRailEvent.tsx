@@ -14,7 +14,6 @@ import {
   MessageSquareText,
   Minimize2,
   Paperclip,
-  Send,
   Sparkles,
   TriangleAlert,
   Webhook,
@@ -23,11 +22,11 @@ import {
 
 import { cn } from "../styles";
 import type { TranscriptViewStructuredEventPart } from "../types";
+import { transcriptColumnsClass } from "./TranscriptRows";
 
 type TranscriptRailEventKind =
   | "attachments_delivered"
   | "compaction"
-  | "handoff"
   | "message_context"
   | "event"
   | "structured_event"
@@ -57,16 +56,14 @@ export function TranscriptRailEvent(props: {
         "grid min-w-0 items-start",
         nested
           ? "grid-cols-[1rem_minmax(0,1fr)] gap-2"
-          : "grid-cols-[2rem_minmax(0,1fr)] gap-3",
+          : transcriptColumnsClass,
       )}
       data-transcript-rail-event={props.kind}
     >
       <span
         aria-hidden="true"
         className={cn(
-          nested
-            ? "grid h-6 w-4 place-items-center"
-            : "grid h-6 w-8 place-items-center",
+          "grid h-6 place-items-center",
           // Card rows: center the icon on the card's first line.
           !nested &&
             (props.kind === "subagent" || props.kind === "message_context") &&
@@ -117,12 +114,6 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     return {
       className: "text-cyan-200",
       icon: Bot,
-    };
-  }
-  if (kind === "handoff") {
-    return {
-      className: "text-sky-200",
-      icon: Send,
     };
   }
   return {

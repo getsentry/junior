@@ -1,14 +1,13 @@
 ---
 name: junior-qa
-description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, another `pnpm cli` command, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
+description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, sharing a preview URL of a running UI, Docker sandbox provider QA (also from inside a Vercel Sandbox), PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, another `pnpm cli` command, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
 ---
 
 Use the local Junior CLI to exercise behavior the test suite does not prove well.
 The goal is to run the same app-facing path a developer or operator would use
 from `apps/example`, inspect the result, and report concrete evidence.
 
-Start by reading `packages/junior/src/chat/local/README.md`. Read the owning
-package or module README when the changed behavior belongs elsewhere.
+Read the package or module `AGENTS.md` that owns the changed behavior.
 
 ## Running the Local CLI
 
@@ -29,7 +28,7 @@ For host or plugin CLI behavior, call the command directly through the same
 wrapper:
 
 ```sh
-pnpm cli -- memory search --scope personal --scope-key local:local-cli --limit 5
+pnpm cli -- memory search --scope private --scope-key local:local-cli --limit 5
 ```
 
 Use example app discovery probes when the change touches skill or plugin
@@ -64,6 +63,10 @@ deterministic reporting records that are hard to produce through a live local
 chat. Plugin report data is pass-through from the configured reporting provider
 and needs separate validation.
 
+Messages sent from the composer or a Quick question do not run the agent. The
+mock shows a working Turn for 2 seconds, then a fixed reply. Sent messages
+stay until the dev server restarts.
+
 The root dev command owns local auth-disabled defaults and the production-like
 Nitro preset. If it fails to start, diagnose or report the dev runner failure;
 do not change `apps/example/nitro.config.ts`, dashboard auth settings, or OAuth
@@ -72,6 +75,126 @@ configuration to make visual QA run.
 Do not treat mock dashboard data as proof of runtime ingestion, Slack delivery,
 credential behavior, or model behavior. Pair it with local CLI or integration
 tests when the changed contract crosses those boundaries.
+
+### Share a Preview
+
+When a person wants to open the UI that you changed, send a preview URL:
+
+1. Push the branch, so a later Turn can make the preview again.
+2. Start the server in the background on all interfaces:
+   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+3. Wait until `curl -s -o /dev/null -w '%{http_code}' localhost:3000/` returns
+   `200`.
+4. Call `createPreview` with port `3000`, and send the URL.
+
+Rules:
+
+- Anyone with the URL can open it. Serve mock data only. Do not give the
+  server provider credentials.
+- The URL stops working when the Sandbox stops. When the person asks to
+  refresh the preview, check out the branch, start the server again, and send
+  the new URL.
+
+## Docker Sandbox QA
+
+Use the Docker sandbox provider when the change touches sandbox, egress, or
+snapshot behavior, or when no Vercel Sandbox credentials are available. Give
+the settings to the process that starts Junior:
+
+```sh
+JUNIOR_SANDBOX_PROVIDER=docker pnpm dev
+```
+
+To prove the provider itself, run its live test. It needs a Docker daemon, and
+the first run builds the `junior-sandbox-runtime` image:
+
+```sh
+JUNIOR_DOCKER_SANDBOX_TEST=1 pnpm --filter @sentry/junior exec vitest run tests/integration/docker-sandbox-provider.test.ts
+```
+
+A Docker sandbox has a small toolset: `gh`, `jq`, and `rg`. It does not have
+other plugin CLIs, browsers, or Docker. Install a missing tool with `sudo`, for
+example `sudo npm i -g vercel`. A plain `npm i -g` fails with `EACCES`. Do not
+QA browser or Docker-in-sandbox behavior with this provider.
+
+### Inside a Vercel Sandbox
+
+A Vercel Sandbox sends some HTTPS traffic through a TLS proxy. For example,
+`ai-gateway.vercel.sh` gets a certificate from `Vercel Network Proxy CA`. A
+Docker sandbox inside the Vercel Sandbox has its own trust store. It does not
+trust that CA, so its requests to those hosts fail certificate checks.
+
+Before you start Junior, find out if you are in this environment:
+
+```sh
+openssl x509 -noout -subject \
+  -in /etc/pki/ca-trust/source/anchors/vercel-proxy-ca.pem
+```
+
+If the subject is `CN=Vercel Network Proxy CA`, give that one file to the
+process as the extra CA:
+
+```sh
+JUNIOR_SANDBOX_PROVIDER=docker \
+JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/vercel-proxy-ca.pem \
+  pnpm dev
+```
+
+Use the same settings for `pnpm cli -- chat ...` and the live provider test.
+
+Rules:
+
+- Set `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` only when the file exists and has
+  that subject. On a developer workstation, do not set it, unless that machine
+  has its own TLS proxy.
+- Do not write the setting to `.env`, `.env.local`, or other repo files. It is
+  correct only for this environment.
+- Give the proxy CA file, not the full system CA bundle. Junior always adds its
+  own egress CA, and the Docker sandbox keeps its public CAs.
+
+### Prewarm the Sandbox Snapshot
+
+The first sandbox builds a dependency snapshot. This build takes about 1
+minute and makes an image of about 840 MB. Later sandboxes start from that
+snapshot in a few seconds. Build the snapshot before the first QA turn, so the
+turn does not wait for it.
+
+After you pull new commits, build all packages before you start the dev
+server. `pnpm dev` rebuilds only core and the dashboard, so other plugin
+packages can keep old builds:
+
+```sh
+pnpm build
+```
+
+Start `pnpm dev` with the Docker settings. When the dev server is ready, run
+`snapshot create` with the same state settings as the dev server. With the
+BullMQ queue, the dev server keeps the snapshot pointer in the Compose Redis.
+`pnpm cli` uses memory state by default, so it cannot find that pointer:
+
+```sh
+JUNIOR_STATE_ADAPTER=redis \
+REDIS_URL=redis://localhost:6382 \
+JUNIOR_SANDBOX_PROVIDER=docker \
+JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS=/etc/pki/ca-trust/source/anchors/vercel-proxy-ca.pem \
+  pnpm cli -- snapshot create
+```
+
+On a developer workstation, remove the
+`JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` line. Use the rules in "Inside a Vercel
+Sandbox".
+
+The last output line shows the result. `cache_hit=true` means the snapshot was
+already ready. `resolve_outcome=rebuilt` means the command built it.
+
+Rules:
+
+- Set the state settings only for this command. Do not change the defaults of
+  `pnpm cli`. Local chat uses memory state, so it works without Redis.
+- If you run the command without the Redis settings, it builds a second
+  snapshot that the dev server does not use.
+- A snapshot stays valid until its dependency list changes or its image is
+  deleted.
 
 ## Choosing a Probe
 
@@ -158,6 +281,13 @@ environment when appropriate with `pnpm dev:env`, then rerun the same command.
 If local chat fails with a `junior_conversation_messages` or
 `junior_conversation_events` query error, the local Postgres schema predates the
 SQL conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
+If commands in a Docker sandbox fail certificate checks for a host that the
+Vercel Sandbox proxies, the extra CA is not set. See "Inside a Vercel Sandbox".
+If startup fails with `Junior plugin "<name>" events is invalid` or a similar
+plugin error after a pull, the plugin packages have old builds. Run
+`pnpm build`, then start the dev server again.
+If the first sandbox command waits for about a minute, the dependency snapshot
+is being built. See "Prewarm the Sandbox Snapshot".
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.

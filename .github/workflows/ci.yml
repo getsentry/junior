@@ -85,8 +85,10 @@ jobs:
               - packages/junior-notion/**
               - packages/junior-octolens/**
               - packages/junior-pagerduty/**
+              - packages/junior-restream/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
+              - packages/junior-xdotcom/**
             repo:
               - package.json
               - pnpm-lock.yaml
@@ -423,7 +425,7 @@ jobs:
           github.event_name != 'pull_request' ||
           steps.frameshift-baseline.outputs.found == 'true'
         id: frameshift
-        uses: dcramer/frameshift/ci@57ef8e4fa0147a7da4601d5e42bf5628e408fe82 # v0.2.0
+        uses: dcramer/frameshift/ci@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
         with:
           screenshots: .playwright/junior-dashboard/screenshots
 
@@ -442,7 +444,7 @@ jobs:
       statuses: write
     steps:
       # This job does not check out or run pull request code.
-      - uses: dcramer/frameshift/publish/workflow@57ef8e4fa0147a7da4601d5e42bf5628e408fe82 # v0.2.0
+      - uses: dcramer/frameshift/publish/workflow@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
 
   build-packages:
     name: build / packages
@@ -521,9 +523,11 @@ jobs:
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
           pnpm --filter @sentry/junior-octolens pack --pack-destination artifacts
           pnpm --filter @sentry/junior-pagerduty pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-restream pack --pack-destination artifacts
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-xdotcom pack --pack-destination artifacts
           node scripts/release-artifacts.mjs create artifacts
           ls -la artifacts
 

@@ -137,7 +137,7 @@ async function upsertIdentityRecord(
       email: email ?? null,
       emailNormalized: emailNormalized ?? null,
       emailVerified: Boolean(identity.emailVerified && emailNormalized),
-      avatarUrl: null,
+      avatarUrl: identity.avatarUrl ?? null,
       metadata: identity.metadata ?? null,
       createdAt: dateFromMs(nowMs),
       updatedAt: dateFromMs(nowMs),
@@ -160,7 +160,11 @@ async function upsertIdentityRecord(
         email: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.email}, excluded.email) when excluded.email_verified then excluded.email else coalesce(${juniorIdentities.email}, excluded.email) end`,
         emailNormalized: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) when excluded.email_verified then excluded.email_normalized else coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) end`,
         emailVerified: sql`${juniorIdentities.emailVerified} OR excluded.email_verified`,
-        avatarUrl: sql`coalesce(${juniorIdentities.avatarUrl}, excluded.avatar_url)`,
+        // The provider's latest photo wins. Without one, keep the saved photo.
+        avatarUrl:
+          identity.avatarUrl === undefined
+            ? sql`${juniorIdentities.avatarUrl}`
+            : sql`excluded.avatar_url`,
         metadata: sql`coalesce(${juniorIdentities.metadata}, excluded.metadata_json)`,
         updatedAt: sql`excluded.updated_at`,
       },
@@ -359,13 +363,19 @@ export async function deleteProviderIdentityForUser(
 
 /**
  * Save one Google sign-in. Link the Google identity to the user of its
- * verified email, and set its sign-in time.
+ * verified email, and set its sign-in time. Return the previous sign-in
+ * time, if any.
  */
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
-  account: { displayName?: string; email: string; subject: string },
+  account: {
+    avatarUrl?: string;
+    displayName?: string;
+    email: string;
+    subject: string;
+  },
   nowMs: number = Date.now(),
-): Promise<StoredIdentity> {
+): Promise<number | undefined> {
   const stored = await upsertIdentity(
     executor,
     {
@@ -375,13 +385,21 @@ export async function recordGoogleSignIn(
       email: account.email,
       emailVerified: true,
       displayName: account.displayName,
+      // Each sign-in has the current photo, so a missing photo clears it.
+      avatarUrl: account.avatarUrl ?? null,
     },
     nowMs,
   );
+  const [previous] = await executor
+    .db()
+    .select({ signedInAt: juniorIdentities.signedInAt })
+    .from(juniorIdentities)
+    .where(eq(juniorIdentities.id, stored.id))
+    .limit(1);
   await executor
     .db()
     .update(juniorIdentities)
     .set({ signedInAt: dateFromMs(nowMs) })
     .where(eq(juniorIdentities.id, stored.id));
-  return stored;
+  return previous?.signedInAt?.getTime();
 }

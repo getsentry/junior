@@ -82,9 +82,19 @@ export function getDashboardConversationLink(
   );
 }
 
+/** Build the dashboard settings URL when the core dashboard is enabled. */
+export function getDashboardSettingsLink(): string | undefined {
+  return resolveDashboardPath("/settings");
+}
+
 /** Build the dashboard task detail URL when the core dashboard is enabled. */
 export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
+}
+
+/** Build the review desk URL that selects one Review item. */
+export function getDashboardReviewItemLink(itemId: string): string | undefined {
+  return resolveDashboardPath(`/review?item=${encodeURIComponent(itemId)}`);
 }
 
 /** Public icon asset URL. Headless and local installs keep text-only identity. */

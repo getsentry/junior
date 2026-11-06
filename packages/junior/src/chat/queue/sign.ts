@@ -1,6 +1,6 @@
 /** Sign and check queue messages before public callbacks run them. */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 
 export const QUEUE_SIGNATURE_MAX_AGE_MS = 60 * 60 * 1000;
 

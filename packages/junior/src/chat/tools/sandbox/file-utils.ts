@@ -145,7 +145,11 @@ function matchesGlob(relativePath: string, pattern: string): boolean {
   );
 }
 
-/** Keep sandbox filesystem tools scoped to the mounted workspace root. */
+// Models write scratch files to /tmp by habit. `bash` can already write
+// there, so the file tools allow it too.
+const SANDBOX_FILE_ROOTS = [SANDBOX_WORKSPACE_ROOT, "/tmp"];
+
+/** Keep sandbox filesystem tools scoped to the workspace root and /tmp. */
 export function resolveWorkspacePath(
   input: string | undefined,
   fallback = ".",
@@ -156,11 +160,12 @@ export function resolveWorkspacePath(
     : path.posix.join(SANDBOX_WORKSPACE_ROOT, requested);
   const normalized = path.posix.normalize(absolute);
   if (
-    normalized !== SANDBOX_WORKSPACE_ROOT &&
-    !normalized.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`)
+    !SANDBOX_FILE_ROOTS.some(
+      (root) => normalized === root || normalized.startsWith(`${root}/`),
+    )
   ) {
     throw new ToolInputError(
-      `Path must stay within ${SANDBOX_WORKSPACE_ROOT}: ${requested}`,
+      `Path must stay within ${SANDBOX_FILE_ROOTS.join(" or ")}: ${requested}`,
     );
   }
   return normalized;

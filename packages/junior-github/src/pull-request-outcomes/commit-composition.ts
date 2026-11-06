@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { botLoginFromEmail, isBotLogin } from "../webhooks/ownership.js";
 

@@ -1,6 +1,7 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  InputImage,
   MessageAttachment,
   MessageCard,
   PluginOperationalReportFeed,
@@ -14,6 +15,7 @@ import type {
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
+  ReviewItemChangeRecord,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -54,32 +56,22 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   /** People mentioned in the summary, resolved by the API. */
   mentions?: ActorIdentity[];
-  event:
-    | {
-        createdAt: string;
-        type: "compaction";
-        modelId?: string;
-        modelProfile?: string;
-        summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
-      }
-    | {
-        createdAt: string;
-        modelId: string;
-        modelProfile: string;
-        reasoningLevel?: string;
-        summary?: string;
-        type: "handoff";
-      };
+  event: {
+    createdAt: string;
+    type: "compaction";
+    modelId?: string;
+    summary?: string;
+    details?: {
+      reason: "capacity";
+      estimatedInputTokens: number;
+      replacementInputTokens?: number;
+      triggerTokens: number;
+      inputLimitTokens: number;
+      inputMessageCount: number;
+      retainedMessageCount: number;
+      summaryChars: number;
+    };
+  };
   type: "context_event";
 };
 
@@ -89,6 +81,8 @@ export type TranscriptViewStructuredEventPart = {
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
+  /** Turn that emitted the event. */
+  turnId?: string;
   type: "structured_event";
   version: number;
 };
@@ -112,6 +106,7 @@ export type TranscriptViewTurnContext = {
   kind: string;
   loadedAt: string;
   pluginName: string;
+  turnId: string;
   version: number;
 };
 
@@ -120,6 +115,8 @@ export type TranscriptViewMessage = {
   actorIdentity?: ActorIdentity;
   /** Agent invocation whose input this is. An agent wrote it, not a person. */
   agentInvocationId?: string;
+  /** Identity id of the author. Conversation `authors` maps it to the person. */
+  actorIdentityId?: string;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
@@ -131,6 +128,10 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
+  /** Person changes to Review items that this message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
@@ -139,18 +140,13 @@ export type TranscriptViewMessage = {
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */
   pending?: boolean;
-  route?: {
-    confidence?: number;
-    modelId: string;
-    modelProfile: string;
-    reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
-  };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
+  /** Local images of a pending send that the server has not stored yet. */
+  images?: InputImage[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
@@ -165,6 +161,8 @@ export type Conversation = {
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
+  pinnedAt?: string | null;
+  pinPosition?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;

@@ -27,12 +27,6 @@ import {
   type PluginUserPageRecordAction,
 } from "./pluginUserPageData";
 
-/** Build the canonical dashboard path for a plugin-owned page. */
-export function pluginUserPagePath(pluginName: string, pageId: string): string {
-  if (pluginName === "memory" && pageId === "memories") return "/memories";
-  return `/plugins/${encodeURIComponent(pluginName)}/${encodeURIComponent(pageId)}`;
-}
-
 /** Render the memory library for its first-class permalink route. */
 export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
   const page = props.pages.find(

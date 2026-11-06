@@ -13,7 +13,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
@@ -34,13 +34,20 @@ import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
-import { botConfig } from "@/chat/config";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
+  Conversation,
   ConversationExecution,
+  ConversationRunMetrics,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
   turnCursorKey,
@@ -75,13 +82,23 @@ async function withTurnCursorMutation<T>(
   return result.value;
 }
 
-function executionMetricsForTurn(
-  conversation: Awaited<ReturnType<ConversationStore["get"]>>,
+/**
+ * Read this Turn's own totals. A newer Turn can own the latest Conversation
+ * metrics while this Turn is paused, so fall back to this Turn's metric rows.
+ */
+async function executionMetricsForTurn(
+  conversationStore: ConversationStore,
+  conversation: Conversation | undefined,
   turnId: string,
-): { durationMs: number; usage?: AgentTurnUsage } | undefined {
-  return conversation?.executionMetrics?.runId === turnId
-    ? conversation.executionMetrics
-    : undefined;
+): Promise<ConversationRunMetrics | undefined> {
+  if (!conversation) return undefined;
+  if (conversation.executionMetrics?.runId === turnId) {
+    return conversation.executionMetrics;
+  }
+  return await conversationStore.getRunMetrics({
+    conversationId: conversation.conversationId,
+    runId: turnId,
+  });
 }
 
 /** Keep only keys whose value is defined. */
@@ -113,6 +130,8 @@ export interface TurnRecord {
    * omit Actor.
    */
   actor?: Actor;
+  /** Identity id of `actor`, the Actor that started this Turn. */
+  actorIdentityId?: string;
   channelName?: string;
   /** Delegated subject the Turn started with. Resume must verify it again. */
   credentialSubject?: CredentialSubject;
@@ -139,7 +158,7 @@ export interface TurnRecord {
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Derived from committed provenance so a
-   * summary-only handoff cannot erase them. It never grants authority or
+   * summary-only history replacement cannot erase them. It never grants authority or
    * replaces the singular execution actor, which is rebuilt at resume.
    */
   actors: Actor[];
@@ -152,7 +171,8 @@ export interface TurnRecord {
   startedAtMs: number;
   state: TurnStatus;
   surface?: AgentTurnSurface;
-  traceId?: string;
+  /** Trace of the first saved slice. Resumed slices continue it. */
+  traceContext?: TraceContext;
   turnStartMessageIndex?: number;
   updatedAtMs: number;
 }
@@ -253,6 +273,7 @@ const storedTurnRecordSchema = z
   .object({
     // TODO(dcramer): Require Actor after no deployed Turn cursor can omit it.
     actor: actorSchema.optional(),
+    actorIdentityId: z.string().min(1).optional(),
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
@@ -270,7 +291,7 @@ const storedTurnRecordSchema = z
     startedAtMs: nonNegativeNumberSchema,
     state: turnStatusSchema,
     surface: turnSurfaceSchema.optional(),
-    traceId: z.string().optional(),
+    traceContext: traceContextSchema,
     updatedAtMs: nonNegativeNumberSchema,
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
@@ -460,6 +481,7 @@ function materializeTurnRecord(
     actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
+      actorIdentityId: stored.actorIdentityId,
       channelName: runtimeMetrics?.channelName,
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
@@ -474,7 +496,7 @@ function materializeTurnRecord(
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
-      traceId: stored.traceId,
+      traceContext: stored.traceContext,
       turnStartMessageIndex,
     }),
   };
@@ -523,7 +545,6 @@ async function materializeStoredTurnRecord(
   const piProjection = followsReplacement
     ? projectConversationEvents(
         await eventStore.loadCurrentHistory(conversationId),
-        { defaultProfile: botConfig.defaultProfile },
       )
     : pinnedProjection;
   const turnStartMessageIndex = followsReplacement
@@ -532,8 +553,13 @@ async function materializeStoredTurnRecord(
       ? undefined
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
-  const conversation = await getConversationStore().get({ conversationId });
-  const executionMetrics = executionMetricsForTurn(conversation, turnId);
+  const conversationStore = getConversationStore();
+  const conversation = await conversationStore.get({ conversationId });
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    turnId,
+  );
   return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
     channelName: conversation?.channelName,
     cumulativeDurationMs: executionMetrics?.durationMs,
@@ -560,6 +586,7 @@ export async function getTurnRecordForResume(
 /** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
   actor?: Actor;
+  actorIdentityId?: string;
   conversationId: string;
   credentialSubject?: CredentialSubject;
   dispatchId?: string;
@@ -579,7 +606,7 @@ function buildStoredRecord(args: {
   source?: Source;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   cumulativeToolCallCount?: number;
   turnLimitWrappedUp?: boolean;
   lostWorkerResumeCount?: number;
@@ -599,6 +626,7 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     ...definedProps({
       actor: args.actor,
+      actorIdentityId: args.actorIdentityId,
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
@@ -613,7 +641,7 @@ function buildStoredRecord(args: {
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
       surface: args.surface,
-      traceId: args.traceId,
+      traceContext: args.traceContext,
       turnStartSeq: args.turnStartSeq,
     }),
   };
@@ -730,6 +758,7 @@ async function updateTurnState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...definedProps({
+        actorIdentityId: args.existing.actorIdentityId,
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
@@ -744,7 +773,7 @@ async function updateTurnState(args: {
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
-        traceId: args.existing.traceId,
+        traceContext: args.existing.traceContext,
         turnStartSeq: parsed.turnStartSeq,
       }),
     }),
@@ -781,7 +810,7 @@ export async function upsertTurnRecord(args: {
   resumeReason?: TurnPauseReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
@@ -801,12 +830,15 @@ async function upsertTurnRecordLocked(
     args.conversationId,
     args.turnId,
   );
-  const conversation = await (
-    args.conversationStore ?? getConversationStore()
-  ).get({
+  const conversationStore = args.conversationStore ?? getConversationStore();
+  const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    args.turnId,
+  );
   const existingDispatchId =
     existingRecord?.dispatchId ??
     (await listTurnSummaries(args.conversationId)).find(
@@ -874,8 +906,17 @@ async function upsertTurnRecordLocked(
           turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
 
+  const turnActor = existingRecord?.actor ?? args.actor;
+  // The Turn keeps the Identity of its starting Actor. An event Turn runs as
+  // the system Actor, so it gets the system Identity, not the event author.
+  const actorIdentityId =
+    existingRecord?.actorIdentityId ??
+    (turnActor
+      ? await resolveActorIdentityId(getSqlExecutor(), turnActor)
+      : undefined);
+
   return await setStoredRecord({
-    actor: existingRecord?.actor ?? args.actor,
+    actor: turnActor,
     fence,
     conversationStore: args.conversationStore,
     destination: args.destination,
@@ -897,7 +938,7 @@ async function upsertTurnRecordLocked(
     ...definedProps({ indexTtlMs: args.ttlMs }),
     turnStartMessageIndex,
     record: buildStoredRecord({
-      actor: existingRecord?.actor ?? args.actor,
+      actor: turnActor,
       conversationId: args.conversationId,
       turnId: args.turnId,
       sliceId: args.sliceId,
@@ -906,6 +947,7 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
+        actorIdentityId,
         credentialSubject:
           existingRecord?.credentialSubject ?? args.credentialSubject,
         cumulativeToolCallCount:
@@ -928,7 +970,7 @@ async function upsertTurnRecordLocked(
         resumedFromSliceId: args.resumedFromSliceId,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
-        traceId: args.traceId ?? existingRecord?.traceId,
+        traceContext: args.traceContext ?? existingRecord?.traceContext,
         turnStartSeq,
       }),
     }),
@@ -977,7 +1019,11 @@ async function recordTurnSummaryOwned(
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    args.turnId,
+  );
   const priorSummary = (await listTurnSummaries(args.conversationId)).find(
     (summary) => summary.turnId === args.turnId,
   );

@@ -9,40 +9,22 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 
-/** Identify the Automation list and its selected Automation routes. */
-function isAutomationListPath(pathname: string): boolean {
-  const match = matchPath("/automations/:automationId", pathname);
-  return Boolean(match && match.params.automationId?.toLowerCase() !== "runs");
-}
-
-/** Identify Automation routes whose list scrolls on its own beside details. */
+/** Identify Automation routes whose run list scrolls on its own beside run details. */
 export function hasAutomationDetailsFrame(pathname: string): boolean {
   return (
-    isAutomationListPath(pathname) ||
     Boolean(matchPath("/automations/runs", pathname)) ||
-    Boolean(matchPath("/automations/:automationId/executions", pathname))
-  );
-}
-
-function isAutomationListTabPath(pathname: string): boolean {
-  return (
-    isAutomationListPath(pathname) ||
-    Boolean(matchPath("/automations/:automationId/edit", pathname))
+    Boolean(matchPath("/automations/:automationId/runs", pathname))
   );
 }
 
 const taskNavigationItems = [
   { end: true, label: "Overview", to: "/automations" },
-  {
-    isActive: isAutomationListTabPath,
-    label: "Automations",
-    to: "/automations/list",
-  },
+  { label: "Automations", to: "/automations/list" },
   { label: "Runs", to: "/automations/runs" },
 ];
 
-/** Keep Automation navigation consistent across lists, details, and editing. */
-export function AutomationsNavigation(props: {
+/** Keep Automation navigation consistent across the overview, list, and runs. */
+function AutomationsNavigation(props: {
   children: ReactNode;
   className?: string;
 }) {

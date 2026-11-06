@@ -171,6 +171,40 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
+### Audit tools
+
+List the MCP tools that change provider data in `mcp.audit-tools`. Each tool
+must be in `mcp.allowed-tools` or `mcp.wrapped-tools` when the plugin sets an
+allow-list:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  allowed-tools:
+    - search
+    - create-page
+  audit-tools:
+    - create-page
+```
+
+Each successful call to an audit tool emits the `mcp.tool_call.completed`
+audit event. Sentry keeps audit events in production. The event records the
+accountable person, the Conversation, the tool, and the account that made the
+call: `service_account` or `actor`. It does not record the tool arguments. The
+Conversation history keeps them.
+
+An install can change the list in `plugins.ts`:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
+  manifests: {
+    notion: { mcp: { auditTools: ["notion-create-pages"] } },
+  },
+});
+```
+
+Set `auditTools: null` to stop audit events for the plugin.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:
@@ -276,11 +310,18 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                      |
 | `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
+| `afterToolExecute(ctx)`  | Check a finished tool call, such as the files it changed. Add guidance to its result or reject the result.                                                                                   |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+
+When a hook, tool, or task belongs to a Conversation, Junior records the cost
+of each `ctx.model`, `ctx.decider`, `ctx.embedder`, and `ctx.reranker` call.
+The Conversation cost includes it. Do not put `costUsd` on your own events,
+because Junior then counts that cost two times. To show model cost in a plugin
+report, read `pluginModelCostEventNames` events with `ctx.eventStats`.
 
 In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
 
@@ -291,6 +332,23 @@ In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
 
 Both return the message to the agent as the tool result. Neither ends the
 turn, and neither is reported to Sentry as an exception.
+
+`afterToolExecute` runs after each tool call that finishes without an error,
+including `bash` and Code Mode script calls. Return early for tools that the
+check does not cover. `ctx.sandbox` runs commands in the Run's sandbox, and
+`ctx.workspace` gives the active Workspace name and its repositories with their
+checkout paths. To run a check in some Workspaces only, return early when
+`ctx.workspace?.name` is not one of them. Use `ctx.decider.decide(...)` for a fast classifier choice, or
+`ctx.model.completeObject(...)` for a judgment that needs reasoning.
+
+- `ctx.decision.nudge(message)`: add guidance after the tool result. The agent
+  reads both. The tool output does not change, so JSON output stays valid. In
+  a Code Mode script, the script gets the unchanged value, and the guidance
+  shows under that call in the `codemode` result.
+- `ctx.decision.deny(reason)`: replace the result with a policy refusal. The
+  tool already ran, so undo its effects first when they must not stay.
+
+A hook that throws is logged, and the tool result stays unchanged.
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked
@@ -354,10 +412,21 @@ it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
 model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
-Use `approvalMode: "auto"` when Junior should review an action according to its
-annotations and source. Use `review` when every tool call requires review. Use
-`approve` only when the tool is safe to run without review. Omitting the
-field leaves the tool outside action review.
+`approvalMode` sets whether Guardian reviews a call before the tool runs:
+
+- `auto` is the default. Junior sets it when you omit the field. Guardian
+  reviews each call of a plugin tool in this mode.
+- `review` makes Guardian review each call.
+- `approve` skips review. The tool runs without a Guardian decision, also in a
+  child agent.
+
+Use `approve` only when the tool code proves that each effect is safe, and no
+model judgment is necessary. For example, the GitHub tools that mark feedback
+and resolve review threads read the pull request from GitHub first. They refuse
+unless the bot authored it. Their only effect is the bot's own reaction or the
+resolved state of a thread, and you can undo both. Do not use `approve` when
+the tool writes text that can make claims, or when the tool does not check its
+target itself.
 
 Annotations describe side effects; they do not authorize an action. Junior
 selects and enforces the reviewer. Add `describeProposal(input)` only when a

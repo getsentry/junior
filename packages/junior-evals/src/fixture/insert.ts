@@ -11,20 +11,25 @@ import { onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import {
+  insertReviewItem as insertStoredReviewItem,
+  type ReviewItemContent,
+} from "@/chat/review-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
 import { fixtureId } from "./ids";
-import type { SlackAuthor } from "./inputs";
+import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
 /** A Slack channel that automations and mentions can target. */
@@ -40,7 +45,10 @@ export interface SlackChannel {
  */
 const FIXTURE_START_DATE = "2026-05-04";
 
-/** The Slack timestamp of the message that stored a setup memory. */
+/**
+ * The Slack timestamp of the setup message that stored a memory or created an
+ * automation.
+ */
 const FIXTURE_MESSAGE_TS = "1780000000.000100";
 
 /**
@@ -97,6 +105,51 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
     providerSubjectId: author.userId,
     providerTenantId: SLACK_TEAM_ID,
   });
+}
+
+/**
+ * Link a GitHub login to a Slack person, as account linking does, so Events
+ * that name the login resolve to that person.
+ */
+export async function insertLinkedGitHubIdentity(args: {
+  author?: SlackAuthor;
+  login: string;
+}): Promise<void> {
+  const slack = await insertSlackIdentity(resolveAuthor(args.author));
+  if (!slack.userId) {
+    throw new Error("Slack identity has no Junior user to link");
+  }
+  await upsertLinkedIdentity(getSqlExecutor(), slack.userId, {
+    handle: args.login,
+    kind: "user",
+    provider: "github",
+    providerSubjectId: `github-user-${args.login}`,
+  });
+}
+
+/**
+ * Store the Slack thread where a person created an automation. Like the live
+ * Slack event of that thread, it records the channel as public. Automation
+ * runs do not record channel visibility, so without it their Conversations in
+ * the channel are private.
+ */
+async function insertCreationThread(
+  destination: SlackChannel,
+): Promise<string> {
+  const conversationId = `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`;
+  await getConversationStore().recordActivity({
+    conversationId,
+    destination,
+    sessionSource: createSlackSource({
+      channelId: destination.channelId,
+      teamId: destination.teamId,
+      threadTs: FIXTURE_MESSAGE_TS,
+      visibility: "public",
+    }),
+    source: "slack",
+    visibility: "public",
+  });
+  return conversationId;
 }
 
 /**
@@ -162,6 +215,7 @@ export async function insertScheduledAutomation(args: {
     task: { text: args.task },
     updatedAtMs: nowMs - 60_000,
   };
+  await insertCreationThread(args.destination);
   await saveScheduledAutomation(getDb(), automation);
   return { id };
 }
@@ -180,6 +234,7 @@ export async function insertEventAutomation(args: {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const id = `evt_${fixtureId("event-automation", 20)}`;
+  await insertCreationThread(args.destination);
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
@@ -197,6 +252,75 @@ export async function insertEventAutomation(args: {
     trigger: args.trigger,
   });
   return { id };
+}
+
+/**
+ * Store an open Review item that an earlier run added in a public thread of
+ * `destination`. It is assigned to the Slack person `assignee`. With
+ * `automationId`, later runs of that Automation can see and change it.
+ */
+export async function insertReviewItem(args: {
+  assignee?: SlackAuthor;
+  automationId?: string;
+  body: string;
+  dedupeKey: string;
+  destination: SlackChannel;
+  kind: ReviewItemContent["kind"];
+  request?: ReviewItemContent["request"];
+  subject?: ReviewItemContent["subject"];
+  title: string;
+}): Promise<{ id: string }> {
+  const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
+  if (!identity.userId) {
+    throw new Error("insertReviewItem() needs an assignee with a Junior user");
+  }
+  const conversationId = await insertCreationThread(args.destination);
+  const item = await insertStoredReviewItem(getDb(), {
+    addedByConversationId: conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: [identity.userId],
+    body: args.body,
+    conversationIds: [conversationId],
+    dedupeKey: args.dedupeKey,
+    kind: args.kind,
+    nowMs: Date.now() - 60_000,
+    tenant: { provider: "slack", providerTenantId: args.destination.teamId },
+    title: args.title,
+    visibility: "public",
+    ...(args.automationId ? { automationId: args.automationId } : undefined),
+    ...(args.request ? { request: args.request } : undefined),
+    ...(args.subject ? { subject: args.subject } : undefined),
+  });
+  if (!item) throw new Error(`Review item ${args.dedupeKey} is already open`);
+  return { id: item.id };
+}
+
+/**
+ * Store an open Review item that an earlier Turn of a web Conversation
+ * added. It is assigned to the dashboard person `viewerEmail`.
+ */
+export async function insertWebReviewItem(args: {
+  conversationId: string;
+  item: ReviewDeskItem;
+  viewerEmail: string;
+}): Promise<{ id: string }> {
+  const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
+  if (!user) throw new Error(`No Junior user for ${args.viewerEmail}`);
+  const item = await insertStoredReviewItem(getDb(), {
+    addedByConversationId: args.conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: [user.id],
+    body: args.item.body,
+    conversationIds: [args.conversationId],
+    dedupeKey: `ask:${fixtureId("review-item", 20)}`,
+    kind: args.item.request ? "action" : "notice",
+    nowMs: Date.now() - 60_000,
+    title: args.item.title,
+    visibility: "public",
+    ...(args.item.request ? { request: args.item.request } : undefined),
+  });
+  if (!item) throw new Error(`Review item ${args.item.title} is already open`);
+  return { id: item.id };
 }
 
 /**
@@ -240,23 +364,13 @@ export async function insertMemory(args: {
   kind?: "knowledge" | "preference" | "procedure";
   /** What the memory is about. Defaults to the person. */
   subjectType?: "conversation" | "user";
-  /**
-   * `private` is a memory from a direct message, which only the person can
-   * recall. Defaults to `public`, a memory from a public channel.
-   */
-  visibility?: "private" | "public";
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.author);
   const identity = await insertSlackIdentity(author);
   if (!identity.userId) {
     throw new Error(`The Slack person ${author.userId} has no User`);
   }
-  const visibility = args.visibility ?? "public";
-  const channel = slackChannel();
-  const channelId =
-    visibility === "private"
-      ? channel.channelId.replace(/^C/, "D")
-      : channel.channelId;
+  const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
@@ -272,7 +386,7 @@ export async function insertMemory(args: {
         messageTs,
         teamId: SLACK_TEAM_ID,
         threadTs: messageTs,
-        visibility,
+        visibility: "public",
       }),
       userId: identity.userId,
     },

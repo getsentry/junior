@@ -1,26 +1,47 @@
-import { ArrowLeft, Menu, X } from "lucide-react";
+import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderLiveSlot,
+  MobileHeaderTagsSlot,
   MobileSecondaryNavigationSlot,
+  useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type DashboardHeaderNavItem = {
+  /** Shown beside the label when it is above zero. */
+  count?: number;
   key: string;
   label: string;
   to: string;
 };
 
-/** Render the primary dashboard shell header and optional mobile nav sheet. */
+const mobileBackClass =
+  "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
+
+function NavCount(props: { count?: number }) {
+  if (!props.count) return null;
+  return (
+    <span className="ml-1.5 rounded-full bg-violet-300/20 px-1.5 py-0.5 text-xs text-violet-200">
+      {props.count.toLocaleString("en-US")}
+    </span>
+  );
+}
+
+/**
+ * Render the shell header: the mobile bar and navigation sheet, and the
+ * desktop top bar on tall windows. Short desktop windows use `NavRail`.
+ */
 export function DashboardHeader(props: {
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
@@ -34,7 +55,9 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
-  /** Compact desktop header control. */
+  /** Open the command palette. */
+  onSearch(): void;
+  /** Spend and account control at the right of the tall desktop top bar. */
   profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
@@ -45,6 +68,7 @@ export function DashboardHeader(props: {
   // Conversation chrome is path-driven. Undefined title keeps the loading
   // fallback; explicit empty string means no title (create compose).
   const conversationMode = Boolean(props.mobileBackTo);
+  const mobileBack = useMobileHeaderBack();
   const mobileTitle =
     props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
 
@@ -81,19 +105,60 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg">
-      <div
-        className={cn(
-          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-7 md:py-3",
-          props.profile
-            ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
-            : "md:grid-cols-[auto_minmax(0,1fr)]",
-        )}
-      >
-        {conversationMode && props.mobileBackTo ? (
+    <header className="relative bg-dashboard-bg md:hidden md:tall:block">
+      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
+        <Link
+          aria-label={`${getDashboardAgentName()} home`}
+          className="flex items-center text-inherit no-underline"
+          to="/"
+        >
+          <JuniorLogo />
+        </Link>
+        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+          <Link
+            aria-current={props.workspaceActive ? "page" : undefined}
+            className={navLinkClass({ isActive: props.workspaceActive })}
+            to="/"
+          >
+            Conversations
+          </Link>
+          {props.navItems.map((item) => (
+            <NavLink className={navLinkClass} key={item.key} to={item.to}>
+              {item.label}
+              <NavCount count={item.count} />
+            </NavLink>
+          ))}
+        </nav>
+        <div className="flex items-center gap-3 justify-self-end">
+          <Button
+            aria-keyshortcuts="Meta+K Control+K"
+            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+            onClick={props.onSearch}
+          >
+            <Search aria-hidden="true" className="size-4 shrink-0" />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
+          </Button>
+          {props.profile}
+        </div>
+      </div>
+      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
+        {conversationMode && mobileBack ? (
+          <button
+            aria-label={mobileBack.label}
+            className={cn(
+              mobileBackClass,
+              "cursor-pointer border-0 bg-transparent",
+            )}
+            onClick={mobileBack.onClick}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
+          </button>
+        ) : conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className={mobileBackClass}
             to={props.mobileBackTo}
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
@@ -104,7 +169,7 @@ export function DashboardHeader(props: {
             aria-expanded={props.mobileNavigationOpen}
             aria-hidden={props.mobileNavigationOpen || undefined}
             aria-label="Open navigation"
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
             onClick={() => props.onMobileNavigationOpenChange(true)}
             tabIndex={props.mobileNavigationOpen ? -1 : undefined}
             type="button"
@@ -113,7 +178,7 @@ export function DashboardHeader(props: {
           </button>
         )}
         {conversationMode ? (
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
             {mobileTitle ? (
               <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
                 {mobileTitle}
@@ -125,41 +190,17 @@ export function DashboardHeader(props: {
         <Link
           aria-label={`${getDashboardAgentName()} home`}
           className={cn(
-            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
+            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
           to="/"
         >
-          <span className="truncate font-sans text-sm font-semibold md:hidden">
+          <span className="truncate font-sans text-sm font-semibold">
             {getDashboardAgentName()}
           </span>
-          <span className="hidden md:block">
-            <JuniorLogo />
-          </span>
         </Link>
-        <nav
-          aria-label="Primary"
-          className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start"
-        >
-          <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
-            to="/"
-          >
-            Conversations
-          </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
         {conversationMode ? <MobileHeaderActionsSlot /> : null}
-        {props.profile ? (
-          <div className="col-start-3 hidden justify-self-end md:block">
-            {props.profile}
-          </div>
-        ) : null}
+        {conversationMode ? <MobileHeaderTagsSlot /> : null}
       </div>
       {props.mobileNavigationOpen ? (
         <MobileNavigationSheet
@@ -188,6 +229,15 @@ export function DashboardHeader(props: {
                 <div className="mb-3">{props.mobileSpend}</div>
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
+                <Button
+                  className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
+                  data-mobile-nav-dismiss=""
+                  onClick={props.onSearch}
+                  size="menu"
+                >
+                  <Search aria-hidden="true" className="size-4" />
+                  Search
+                </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
@@ -204,6 +254,7 @@ export function DashboardHeader(props: {
                     to={item.to}
                   >
                     {item.label}
+                    <NavCount count={item.count} />
                   </NavLink>
                 ))}
               </nav>

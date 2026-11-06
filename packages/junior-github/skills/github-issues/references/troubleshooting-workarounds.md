@@ -12,13 +12,13 @@ Use this table to recover quickly while keeping operations deterministic.
 | `junior-auth-required provider=github grant=user-write`    | User-to-server OAuth is missing or stale for a human-identity operation.     | Follow the private OAuth prompt; do not ask the user to paste or manage tokens manually.                                                                                                    |
 | 403 without `permission_denied` where `source: "upstream"` | The runtime may have rejected an unsupported route before contacting GitHub. | Read the response body. Follow any required-tool instruction; do not ask for GitHub permissions unless the failure is confirmed upstream.                                                   |
 | `permission_denied` with `source: "upstream"`              | GitHub rejected the forwarded request.                                       | Read GitHub's error first. If the message says GitHub denied access, verify the target, App permissions, and installation scope. Do not request user OAuth for a bot-owned issue operation. |
-| 404 Not Found                                              | Issue number or repo is wrong.                                               | Validate repo + issue ID with `gh issue view NUMBER --repo owner/repo`.                                                                                                                     |
+| 404 Not Found                                              | Issue number or repo is wrong.                                               | Validate repo + issue ID with `github_getIssue`.                                                                                                                                            |
 | Issue label mutation fails                                 | Wrong REST payload or wrong repo context.                                    | Use the allowlisted issue labels endpoint with an explicit `owner/repo` path and valid JSON input.                                                                                          |
 | Comment command fails with empty body                      | JSON input is missing a non-empty `body`.                                    | Ensure the REST comment payload contains a non-empty `body` before retrying.                                                                                                                |
 
 ## Retry guidance
 
-- Retry once for transient transport failures after verifying repo context.
+- Retry once for transient transport failures after verifying repo context. If it fails again, call `github_getStatus`. Report a related open or recent incident with its link. With no related incident, do not blame an outage.
 - Do not loop retries on repeated 401/403/404 validation errors.
 - Treat missing or stale `user-read`/`user-write` grants as private GitHub App OAuth work. Treat all `installation-*` failures as App permission, installation scope, or host environment setup; they do not fall back to user OAuth.
 - For persistent permission problems, return explicit remediation and stop.

@@ -1,5 +1,4 @@
 import type { BundledLanguage } from "shiki/bundle/web";
-import { dashboardCodeLanguages } from "./code-languages";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
@@ -8,7 +7,6 @@ import type {
   ConversationUsage,
 } from "@sentry/junior/api/schema";
 import type {
-  CodeBlock,
   Conversation,
   ConversationTranscript,
   TranscriptViewMessage,
@@ -19,29 +17,13 @@ import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
-/** Detect the viewer's own local timezone as the default display timezone. */
-function browserTimeZone(): string {
+/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return "UTC";
   }
-}
-
-let dashboardTimeZone = browserTimeZone();
-
-/** Apply an operator-configured timezone override from the config API, if any. Otherwise the viewer's own browser timezone is used. */
-export function setDashboardTimeZone(timeZone: string | undefined): void {
-  dashboardTimeZone = timeZone || browserTimeZone();
-}
-
-/** Read the dashboard display timezone used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  return dashboardTimeZone;
-}
-
-function displayTimeZone(): string {
-  return dashboardTimeZone;
 }
 
 function isActiveSummary(summary: ConversationSummaryReport): boolean {
@@ -69,7 +51,7 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps in the configured display timezone. */
+/** Format absolute dashboard timestamps in the viewer's browser timezone. */
 export function formatTime(
   value: string | undefined,
   options?: Intl.DateTimeFormatOptions,
@@ -78,7 +60,7 @@ export function formatTime(
   if (time == null) return "none";
   return new Date(time).toLocaleString(undefined, {
     ...options,
-    timeZone: displayTimeZone(),
+    timeZone: getDashboardTimeZone(),
   });
 }
 
@@ -166,10 +148,10 @@ export function formatMessageTimestamp(
     ? date.toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "medium",
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       })
     : date.toLocaleTimeString(undefined, {
-        timeZone: displayTimeZone(),
+        timeZone: getDashboardTimeZone(),
       });
 }
 
@@ -210,7 +192,7 @@ export function formatTranscriptTimestampDetails(value: number): {
   return {
     local: date.toLocaleString(undefined, {
       ...options,
-      timeZone: displayTimeZone(),
+      timeZone: getDashboardTimeZone(),
     }),
     utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
   };
@@ -360,6 +342,25 @@ export type MessageSummary = {
   total: number;
 };
 
+/**
+ * Return the person who wrote one transcript user message. Child agent input
+ * has no person. Other messages fall back to the conversation actor.
+ */
+export function transcriptMessageActor(
+  conversation: ConversationTranscript,
+  message: TranscriptViewMessage,
+): ActorIdentity | undefined {
+  if (transcriptRoleKind(message.role) !== "user") return undefined;
+  if (message.agentInvocationId) return undefined;
+  const author = message.actorIdentityId
+    ? conversation.authors?.[message.actorIdentityId]
+    : undefined;
+  if (author) return author;
+  if (actorLabel(message.actorIdentity)) return message.actorIdentity;
+  if (actorLabel(conversation.actorIdentity)) return conversation.actorIdentity;
+  return undefined;
+}
+
 /** Return the best available actor label for one transcript message. */
 export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
@@ -371,11 +372,10 @@ export function transcriptMessageActorLabel(
     // The conversation actor started the child agent but did not write its
     // input, so do not fall back to that actor here.
     if (message.agentInvocationId) return "Agent invocation";
-    return (
-      actorLabel(message.actorIdentity) ??
-      actorLabel(conversation.actorIdentity) ??
-      "User"
-    );
+    // Show the person's name, not their email. A web send carries both, and
+    // its durable Message carries only the name.
+    const actor = transcriptMessageActor(conversation, message);
+    return actor?.fullName?.trim() || (actorLabel(actor) ?? "User");
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -786,6 +786,11 @@ export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;
 }
 
+/** Build the dashboard route for one memory's details. */
+export function memoryPath(memoryId: string): string {
+  return `/memories/${encodeURIComponent(memoryId)}`;
+}
+
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
@@ -796,31 +801,16 @@ export function workspacePath(workspaceId: string): string {
   return `/system/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
-/** Build the canonical automation detail route for an automation id. */
-export function automationPath(automationId: string): string {
-  return `/automations/${encodeURIComponent(automationId)}`;
-}
+/** Automation page tabs. Overview is the bare Automation path. */
+export type AutomationTab = "overview" | "runs" | "versions" | "edit";
 
-function normalizeLanguage(language: string | undefined): BundledLanguage {
-  const normalized = language?.trim().toLowerCase();
-  if (!normalized) return "markdown";
-  const aliases: Record<string, BundledLanguage> = {
-    console: "shellscript",
-    htm: "html",
-    js: "javascript",
-    jsonl: "json",
-    md: "markdown",
-    ndjson: "json",
-    sh: "shellscript",
-    text: "markdown",
-    txt: "markdown",
-    xml: "xml",
-    yml: "yaml",
-  };
-  const candidate = aliases[normalized] ?? normalized;
-  return Object.hasOwn(dashboardCodeLanguages, candidate)
-    ? (candidate as BundledLanguage)
-    : "markdown";
+/** Build the route for one Automation page tab, or its edit mode. */
+export function automationPath(
+  automationId: string,
+  tab: AutomationTab = "overview",
+): string {
+  const base = `/automations/${encodeURIComponent(automationId)}`;
+  return tab === "overview" ? base : `${base}/${tab}`;
 }
 
 function prettyJson(text: string): string | undefined {
@@ -849,12 +839,9 @@ function prettyJsonl(text: string): string | undefined {
   return formatted.join("\n");
 }
 
-function prettyJsonData(text: string): string | undefined {
+/** Pretty-print JSON or JSONL text, or return undefined for other text. */
+export function prettyJsonData(text: string): string | undefined {
   return prettyJson(text) ?? prettyJsonl(text);
-}
-
-function formatCodeBlock(code: string, language: BundledLanguage): string {
-  return language === "json" ? (prettyJsonData(code) ?? code) : code;
 }
 
 /**
@@ -875,44 +862,6 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
-/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
-export function parseMarkdownBlocks(text: string): CodeBlock[] {
-  const blocks: CodeBlock[] = [];
-  const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = fence.exec(text))) {
-    const prose = text.slice(cursor, match.index).trim();
-    if (prose) {
-      const language = detectOutputLanguage(prose);
-      blocks.push({
-        code: formatCodeBlock(prose, language),
-        fenced: false,
-        language,
-      });
-    }
-    const language = normalizeLanguage(match[1]);
-    blocks.push({
-      code: formatCodeBlock(match[2] ?? "", language),
-      fenced: true,
-      language,
-    });
-    cursor = match.index + match[0].length;
-  }
-  const rest = text.slice(cursor).trim();
-  if (rest) {
-    const language = detectOutputLanguage(rest);
-    blocks.push({
-      code: formatCodeBlock(rest, language),
-      fenced: false,
-      language,
-    });
-  }
-  if (blocks.length > 0) return blocks;
-  const language = detectOutputLanguage(text);
-  return [{ code: formatCodeBlock(text, language), fenced: false, language }];
-}
-
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
   summaries: ConversationSummaryReport[],
@@ -923,6 +872,8 @@ export function buildConversations(
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
+      pinnedAt: summary.pinnedAt,
+      pinPosition: summary.pinPosition,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,

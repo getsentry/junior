@@ -143,7 +143,6 @@ describe("CostMetric", () => {
       renderToStaticMarkup(
         <CostMetric
           auxiliaryCosts={{ costUsd: 0.0024, operations }}
-          detailsHint
           modelUsage={[...models].reverse()}
           summary={{ total: 0.01 }}
         />,
@@ -156,7 +155,6 @@ describe("CostMetric", () => {
     expect(html).toContain(
       "Auxiliary · $0.0024 junior · operation 2 $0.0014 junior · operation 1 $0.0004 junior · operation 4 $0.0003 2 more $0.0003",
     );
-    expect(html).toContain("Full breakdown in Details");
   });
 
   it("shows a single extra row instead of rolling it up", () => {

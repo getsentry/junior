@@ -1,10 +1,13 @@
-import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/api";
+import {
+  readCanvas,
+  writeCanvasMarkdown,
+} from "@/chat/slack/tool-support/canvas/api";
 import {
   resolveCanvasTarget,
   slackCanvasRefParam,
 } from "@/chat/slack/tool-support/canvas/context";
 import { normalizeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/markdown";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
@@ -26,13 +29,13 @@ function prepareCanvasEditArguments(input: unknown): {
 }
 
 const editReplacementSchema = z.object({
-  oldText: z
+  old_text: z
     .string()
     .min(1)
     .describe(
       "Exact Canvas markdown to replace. It must be unique in the current Canvas body and must not overlap another edit.",
     ),
-  newText: z.string().describe("Replacement Canvas markdown for this edit."),
+  new_text: z.string().describe("Replacement Canvas markdown for this edit."),
 });
 
 const slackCanvasEditOutputSchema = juniorToolOutputSchema

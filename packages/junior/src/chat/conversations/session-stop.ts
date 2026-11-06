@@ -6,6 +6,7 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import { juniorConversations } from "@/db/schema";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 
 /**
  * Record a session stop on each Conversation. Call this after their watches
@@ -22,7 +23,7 @@ export async function markConversationsStopped(
   await getSqlExecutor()
     .db()
     .update(juniorConversations)
-    .set({ stoppedAt: new Date(nowMs) })
+    .set({ stoppedAt: new Date(nowMs), detailVersion: nextDetailVersion })
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 }
 

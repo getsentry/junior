@@ -49,25 +49,23 @@ describe("Schedule Management", () => {
     );
 
     expect(
-      completedToolCalls(
-        "slackScheduleCreateAutomation",
-        proposal,
-        confirmation,
-      ),
+      completedToolCalls("createAutomation", proposal, confirmation),
     ).toEqual([]);
     const updates = completedToolCalls(
-      "slackScheduleUpdateAutomation",
+      "updateAutomation",
       proposal,
       confirmation,
     );
     expect(updates).toContainEqual(
       expect.objectContaining({
         input: expect.objectContaining({
-          schedule: expect.objectContaining({
-            kind: "recurring",
-            frequency: "weekly",
-            time: "10:00",
-            weekdays: ["tuesday"],
+          trigger: expect.objectContaining({
+            schedule: expect.objectContaining({
+              kind: "recurring",
+              frequency: "weekly",
+              time: "10:00",
+              weekdays: ["tuesday"],
+            }),
           }),
         }),
       }),
@@ -75,5 +73,32 @@ describe("Schedule Management", () => {
     for (const update of updates) {
       expect(update.input).not.toHaveProperty("nextRunAt");
     }
+  });
+
+  test("when a requester who did not create a reminder adds themselves, name them with their mention", async ({
+    run,
+  }) => {
+    const channel = slackChannel();
+    await insertScheduledAutomation({
+      createdBy: alice,
+      credentialMode: "system",
+      destination: channel,
+      task: "Post a planning reminder in this channel.",
+    });
+
+    const conversation = await run(
+      slackMention(
+        "change the scheduled planning reminder now so it also reminds me to bring the agenda.",
+        { channel },
+      ),
+    );
+
+    const updates = completedToolCalls("updateAutomation", conversation);
+    expect(updates).toHaveLength(1);
+    // Each run reads "me" and "the Automation creator" as Alice.
+    const { instruction } = updates[0]!.input as { instruction?: string };
+    expect(instruction).toContain("<@U0TEST>");
+    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
+    expect(instruction).not.toMatch(/\bAutomation creator\b/i);
   });
 });

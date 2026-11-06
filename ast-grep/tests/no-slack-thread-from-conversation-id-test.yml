@@ -1,0 +1,5 @@
+id: no-slack-thread-from-conversation-id
+valid:
+  - "const target = resolveSlackReplyTarget({ destination, location, source });"
+invalid:
+  - "const thread = parseSlackThreadId(args.conversationId);"

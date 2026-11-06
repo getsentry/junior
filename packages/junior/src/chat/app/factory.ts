@@ -13,7 +13,8 @@ import {
 } from "@/chat/slack/assistant-thread/lifecycle";
 import {
   getLocationConfigurationService,
-  persistThreadState,
+  getPersistedThreadState,
+  persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
   createPrepareTurnState,
@@ -23,7 +24,6 @@ import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelWatches } from "@/chat/events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
@@ -92,7 +92,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
   });
   const executeSlackTurn = createSlackTurn({
-    contextCompactor: services.contextCompactor,
     executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns: options.pausedTurns ?? createPausedTurns(),
@@ -109,11 +108,11 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     assistantUserName: botConfig.userName,
     cancelWatches,
     getBotUserId: () => options.getSlackAdapter().botUserId,
-    modelId: defaultModelId(botConfig),
+    modelId: botConfig.modelId,
     now: options.now ?? (() => Date.now()),
     prepareTurnState,
-    persistPreparedState: async ({ thread, preparedState }) => {
-      await persistThreadState(thread, {
+    persistPreparedState: async ({ conversationId, preparedState }) => {
+      await persistThreadStateById(conversationId, {
         conversation: preparedState.conversation,
       });
     },
@@ -140,30 +139,34 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       return decision;
     },
     recordSkippedSteeringMessage: async ({
-      thread,
+      conversationId,
       message,
       decision,
       text,
     }) => {
-      const conversation = coerceThreadConversationState(await thread.state);
+      const conversation = coerceThreadConversationState(
+        await getPersistedThreadState(conversationId),
+      );
       recordSkippedConversationMessage({
         conversation,
         message,
         skippedReason: decision.reason,
         text: text.userText,
       });
-      await persistThreadState(thread, {
+      await persistThreadStateById(conversationId, {
         conversation,
       });
     },
     recordSkippedSubscribedTurn: async ({
-      thread,
+      conversationId,
       message,
       decision,
       completedAtMs,
       text,
     }) => {
-      const conversation = coerceThreadConversationState(await thread.state);
+      const conversation = coerceThreadConversationState(
+        await getPersistedThreadState(conversationId),
+      );
       recordSkippedConversationMessage({
         conversation,
         message,
@@ -172,12 +175,12 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       });
       clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;
-      await persistThreadState(thread, {
+      await persistThreadStateById(conversationId, {
         conversation,
       });
     },
     onSubscribedMessageSkipped: async ({
-      thread,
+      conversationId,
       message,
       preparedState,
       decision,
@@ -193,7 +196,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       );
       clearSkippedTurnIfActive(preparedState.conversation, message.id);
       preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
-      await persistThreadState(thread, {
+      await persistThreadStateById(conversationId, {
         conversation: preparedState.conversation,
       });
     },

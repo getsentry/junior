@@ -5,7 +5,7 @@
  * result. The run does not deliver its final assistant text. The work owner
  * reads the declared result and applies the stored outcomes.
  */
-import { z } from "zod";
+import * as z from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   isAssistantMessage,
@@ -53,6 +53,18 @@ type RunDispatch =
  */
 export function deliversFinalText(dispatch: RunDispatch): boolean {
   return dispatch?.outcomes?.length !== 0 && !dispatch?.declaresResult;
+}
+
+/**
+ * Return whether the runtime may post a failure reply or a status notice,
+ * such as an auth prompt, for a run outside `finishedRunReply`. The rule is
+ * the same as for final text. A chat Turn may post, also in a thread that an
+ * Automation Conversation owns. A dispatch with no outcomes posts nothing. An
+ * Automation run posts only a declared message; its failed execution shows on
+ * the Automation.
+ */
+export function postsRunNotices(dispatch: RunDispatch): boolean {
+  return deliversFinalText(dispatch);
 }
 
 /**

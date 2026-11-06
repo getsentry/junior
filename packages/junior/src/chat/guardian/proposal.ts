@@ -93,6 +93,22 @@ export interface RootConversation {
   truncated: boolean;
 }
 
+/** Outcome of one earlier tool call of a Code Mode script. */
+export type ScriptCallStatus = "completed" | "failed" | "rejected";
+
+/**
+ * Code Mode script that issued the action, bounded by core. It is untrusted
+ * evidence: it shows where data in the input came from, and it never
+ * authorizes the action.
+ */
+export interface ToolActionScript {
+  /** Earlier tool calls of the same script, oldest first. */
+  calls: Array<{ input: string; status: ScriptCallStatus; toolName: string }>;
+  /** Older calls that are not in `calls`. */
+  omittedCalls: number;
+  source: string;
+}
+
 /** Exact model-review request; only core-supplied context carries authority. */
 export interface ToolActionProposal {
   context: {
@@ -125,6 +141,8 @@ export interface ToolActionProposal {
   priorRejectedActions?: ToolActionPriorRejection[];
   /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
+  /** Set when a Code Mode script made the call. */
+  script?: ToolActionScript;
   tool: {
     annotations?: ToolAnnotations;
     description: string;

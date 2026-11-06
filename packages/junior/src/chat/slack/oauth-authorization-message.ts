@@ -5,7 +5,7 @@ import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 // User OAuth connects only the requester's account. Provider consent screens
 // can look like an install for the whole workspace.
 const ACCOUNT_SCOPE_NOTE =
-  "This connects only your account. Junior sees only what you can see.";
+  "This connects only your account. I can see only what you can see.";
 
 /** Present private OAuth authorization with a clear action and text fallback. */
 export function buildSlackOAuthAuthorizationMessage(

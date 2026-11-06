@@ -10,31 +10,12 @@ import {
   summarizeCost,
 } from "../format";
 
-/** Read recorded event configuration, including reports from before model context was added. */
-export function eventLogModel(
-  event: ConversationReportEvent,
-): ConversationReportEvent["model"] {
-  if (event.model) return event.model;
-  const data = event.data;
-  if (data.type === "turn_routed" || data.type === "handoff") {
-    return {
-      modelId: data.modelId,
-      modelProfile: data.modelProfile,
-      reasoningLevel: data.reasoningLevel,
-    };
-  }
-  return undefined;
-}
-
-/** Keep call costs distinct from router cost and never repeat usage on tool results. */
+/** Show call usage once and never repeat it on tool results. */
 export function eventLogUsage(event: ConversationReportEvent): string {
   const usage = event.modelCall?.usage;
   const cost = summarizeCost(usage);
   const fields = [
     cost ? `${formatCostBreakdown(cost)} call` : undefined,
-    event.data.type === "turn_routed" && event.data.costUsd !== undefined
-      ? `${formatCostBreakdown({ total: event.data.costUsd })} router`
-      : undefined,
     ...(
       [
         ["inputTokens", "in"],
@@ -77,8 +58,6 @@ export function eventLogSummary(data: ConversationReportEventData): string {
       return data.state === "failed"
         ? `${data.state} · ${data.failureCode}${data.failureReason ? ` · ${data.failureReason}` : ""}`
         : `${data.state} · ${data.turnId}`;
-    case "turn_routed":
-      return `Route selected · ${data.source}${data.confidence !== undefined ? ` · ${Math.round(data.confidence * 100)}% confidence` : ""}`;
     case "turn_context":
       return `${data.pluginName} · ${data.kind} · v${data.version}`;
     case "guardian_action_reviewed":
@@ -91,8 +70,6 @@ export function eventLogSummary(data: ConversationReportEventData): string {
         .join(", ");
     case "compaction":
       return data.summary ?? "Agent history compacted";
-    case "handoff":
-      return "Handoff · New configuration applied";
     case "subagent":
       return `${data.agentName ?? data.subagentKind} · ${data.status} · ${data.childConversationId}`;
   }
@@ -111,6 +88,7 @@ export function eventLogTone(data: ConversationReportEventData): string {
   }
   if (
     (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
+    (data.type === "turn_lifecycle" && data.state === "blocked") ||
     (data.type === "subagent" &&
       (data.status === "aborted" || data.status === "blocked"))
   ) {
@@ -131,16 +109,10 @@ export function eventLogRows(
   events: readonly ConversationReportEvent[],
 ): EventLogRow[] {
   return events.map((event) => {
-    const model = eventLogModel(event);
     return {
       event,
       summary: eventLogSummary(event.data).replace(/\s+/g, " ").slice(0, 300),
-      metadata: [
-        model?.modelId,
-        model?.modelProfile,
-        model?.reasoningLevel && `${model.reasoningLevel} reasoning`,
-        eventLogUsage(event),
-      ]
+      metadata: [event.model?.modelId, eventLogUsage(event)]
         .filter(Boolean)
         .join(" · "),
     };

@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import * as acp from "@agentclientprotocol/sdk";
-import { z } from "zod";
+import * as z from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
 import type { AcpConversations } from "./conversations";
 import {

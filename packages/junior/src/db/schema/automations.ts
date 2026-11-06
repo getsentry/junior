@@ -15,7 +15,10 @@ import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/typ
  * One row per Automation of either kind. `record` holds the fields that have
  * no column. Each write also copies the nested fields that queries filter or
  * search on into columns: `team_id`, `channel_id`, `creator_slack_user_id`,
- * `instruction`, and the event trigger `namespace` and `identifier`.
+ * `instruction`, and the event trigger `namespace` and `identifier`. An event
+ * trigger with no identifier runs for every resource of its namespace, so its
+ * `identifier` is null. The match index finds those rows with
+ * `identifier is null`.
  */
 export const juniorAutomations = pgTable(
   "junior_automations",
@@ -60,7 +63,7 @@ export const juniorAutomations = pgTable(
     ),
     check(
       "junior_automations_trigger_check",
-      sql`(${table.kind} = 'scheduled' and ${table.namespace} is null and ${table.identifier} is null) or (${table.kind} = 'event' and ${table.namespace} is not null and ${table.identifier} is not null and ${table.nextRunAtMs} is null and ${table.runNowAtMs} is null and ${table.status} <> 'completed')`,
+      sql`(${table.kind} = 'scheduled' and ${table.namespace} is null and ${table.identifier} is null) or (${table.kind} = 'event' and ${table.namespace} is not null and ${table.nextRunAtMs} is null and ${table.runNowAtMs} is null and ${table.status} <> 'completed')`,
     ),
     index("junior_automations_team_idx")
       .on(table.teamId, table.createdAtMs, table.id)

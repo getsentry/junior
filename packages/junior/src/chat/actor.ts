@@ -4,7 +4,7 @@
  * Runtime actors are platform-scoped actors. Stored Slack actor parsing
  * remains explicit so durable conversation metadata is not repaired on read.
  */
-import { z } from "zod";
+import * as z from "zod";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 
@@ -92,7 +92,8 @@ function isSyntheticActorUserId(value: string): boolean {
   return value.toLowerCase() === "unknown";
 }
 
-function isSlackUserId(value: string): boolean {
+/** Return whether a value has the shape of a Slack user id. */
+export function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_DISPLAY_PATTERN.test(value);
 }
 

@@ -1,7 +1,22 @@
-import { automationEventCatalog } from "@/chat/events/catalog";
+import {
+  automationEventCatalog,
+  registeredEventTriggerProblems,
+} from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
+import type { AutomationViewer } from "./creator";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import {
@@ -11,48 +26,46 @@ import {
 } from "@/db/schema";
 
 /**
- * The web collection applies access before counts, filter options, and paging.
- * Keep its ownership rules aligned with the direct Automation reader. A public
- * Destination only grants access inside a viewer's linked Slack workspaces.
+ * The collection applies access before counts, filter options, and paging.
+ * It is the SQL form of `resolveViewerTaskCandidate`; keep the two aligned. A
+ * public Destination only grants access inside a viewer's linked Slack
+ * workspaces.
  */
-export function viewerAutomationCollection(user: User) {
+export function viewerAutomationCollection(viewer: AutomationViewer) {
   const db = getDb();
-  const identities = user.identities.filter(
-    (identity) => identity.provider === "slack",
+  const slackAccounts = viewer.identities.filter(
+    (identity) => identity.provider === "slack" && identity.providerTenantId,
   );
-  const teamIds = identities.flatMap((identity) =>
-    identity.providerTenantId ? [identity.providerTenantId] : [],
+  const teamIds = slackAccounts.map((identity) => identity.providerTenantId!);
+  const identityIds = viewer.identities.flatMap((identity) =>
+    identity.id ? [identity.id] : [],
   );
   const automation = juniorAutomations;
   const destination = juniorDestinations;
   const isScheduled = eq(automation.kind, "scheduled");
-  // Both kinds belong to the Junior identity that created them.
-  const owned = inArray(
-    automation.creatorIdentityId,
-    user.identities.map((identity) => identity.id),
-  );
-  const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
-  const publicToViewer = and(
-    inArray(automation.teamId, teamIds),
-    publicDestination,
-    ne(automation.status, "completed"),
-  )!;
-  // Use the same namespace/event availability rule as the direct reader.
-  const available =
-    or(
-      isScheduled,
-      ...Object.entries(automationEventCatalog(getEventCatalog())).map(
-        ([namespace, registration]) => {
-          const events = registration.resourceTypes.flatMap(
-            (resource) => resource.supportedEvents,
-          );
-          return and(
-            eq(automation.namespace, namespace),
-            sql`${automation.record}->'trigger'->'events' <@ ${JSON.stringify(events)}::jsonb`,
-          );
-        },
+  // Keep this aligned with `isAutomationCreator`.
+  const owned = or(
+    inArray(automation.creatorIdentityId, identityIds),
+    ...slackAccounts.map((account) =>
+      and(
+        eq(automation.teamId, account.providerTenantId!),
+        eq(automation.creatorSlackUserId, account.providerSubjectId),
       ),
-    ) ?? sql`false`;
+    ),
+  )!;
+  const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
+  const sharedToViewer = and(
+    ne(automation.status, "completed"),
+    or(
+      and(inArray(automation.teamId, teamIds), publicDestination),
+      viewer.location
+        ? and(
+            eq(automation.teamId, viewer.location.teamId),
+            eq(automation.channelId, viewer.location.channelId),
+          )
+        : undefined,
+    ),
+  )!;
   const runs = juniorAutomationRuns;
   const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
       where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
@@ -64,11 +77,10 @@ export function viewerAutomationCollection(user: User) {
       title: automation.title,
       createdAtMs: automation.createdAtMs,
       state: sql<string>`${automation.status}`.as("state"),
-      unavailable: sql<boolean>`not (${available})`.as("unavailable"),
-      attention:
-        sql<boolean>`${automation.status} not in ('paused', 'completed') and (${automation.status} = 'blocked' or not (${available}) or ${lastRunNeedsAttention})`.as(
-          "attention",
-        ),
+      lastRunNeedsAttention: lastRunNeedsAttention.as(
+        "last_run_needs_attention",
+      ),
+      trigger: sql<unknown>`${automation.record}->'trigger'`.as("trigger"),
       owned: sql<boolean>`${owned}`.as("owned"),
       resource:
         sql<string>`case when ${isScheduled} then '' else concat_ws(' ', ${automation.identifier}, ${automation.record}->'trigger'->>'label', ${automation.namespace}) end`.as(
@@ -102,37 +114,73 @@ export function viewerAutomationCollection(user: User) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
-    .where(and(ne(automation.status, "deleted"), or(owned, publicToViewer)))
+    .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
+}
+
+/**
+ * List the accessible event automations whose trigger cannot work with the
+ * enabled plugins. `eventTriggerProblems` decides, the same check that the
+ * tools and the dashboard use, so SQL does not keep its own copy of the rules.
+ */
+async function unavailableEventAutomationIds(
+  collection: ReturnType<typeof viewerAutomationCollection>,
+): Promise<string[]> {
+  const catalog = automationEventCatalog(getEventCatalog());
+  const rows = await getDb()
+    .select({ id: collection.id, trigger: collection.trigger })
+    .from(collection)
+    .where(eq(collection.kind, "event"));
+  return rows.flatMap((row) => {
+    const trigger = eventAutomationTriggerSchema.safeParse(row.trigger);
+    const available =
+      trigger.success &&
+      registeredEventTriggerProblems(catalog, trigger.data).length === 0;
+    return available ? [] : [row.id];
+  });
 }
 
 /** Read an SQL page and complete, access-scoped counts and filter options. */
 export async function readAutomationCollection(
-  user: User,
+  viewer: AutomationViewer,
   input: AutomationListQuery,
 ) {
   const db = getDb();
-  const collection = viewerAutomationCollection(user);
+  const collection = viewerAutomationCollection(viewer);
+  const unavailableIds = await unavailableEventAutomationIds(collection);
+  const unavailable =
+    unavailableIds.length > 0
+      ? inArray(collection.id, unavailableIds)
+      : sql`false`;
+  const attention = and(
+    notInArray(collection.state, ["paused", "completed"]),
+    or(
+      eq(collection.state, "blocked"),
+      unavailable,
+      eq(collection.lastRunNeedsAttention, true),
+    ),
+  );
   const where = and(
     input.scope === "mine"
       ? eq(collection.owned, true)
       : input.scope === "public"
         ? eq(collection.isPublic, true)
         : input.scope === "attention"
-          ? eq(collection.attention, true)
+          ? attention
           : undefined,
     input.type === "all" ? undefined : eq(collection.kind, input.type),
     input.state === "all"
       ? undefined
       : input.state === "unavailable"
-        ? eq(collection.unavailable, true)
+        ? unavailable
         : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,
+    // A pasted dashboard URL finds its Automation by ID.
     input.q
-      ? sql`strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0`
+      ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
   const [totals, counts, creators, destinations] = await Promise.all([

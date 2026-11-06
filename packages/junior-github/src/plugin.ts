@@ -4,8 +4,10 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
+import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
@@ -14,8 +16,12 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
+import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { gitHubEventDeclarations } from "./events/declarations.js";
+import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
+  loadPullRequest,
   loadPullRequestCommitPages,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -27,7 +33,7 @@ import {
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
-  GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+  GITHUB_ISSUE_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -42,10 +48,15 @@ import {
 } from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_MATCH_FIELDS,
   GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
-import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
+import {
+  GITHUB_REPOSITORY_EVENTS,
+  GITHUB_REPOSITORY_IDENTIFIER,
+  GITHUB_REPOSITORY_SUGGESTED_EVENTS,
+} from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
@@ -56,8 +67,9 @@ import {
 } from "./pull-request-outcomes/store.js";
 import {
   additionalActorCoauthorTrailers,
-  configureGit,
-  prepareCommitMsgHook,
+  gitHooksPath,
+  prepareSandboxGit,
+  setGitHooksPathEnv,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
@@ -81,6 +93,10 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+
+// A failed check suite reports incidents that are open or ended in the last
+// hour. Older incidents rarely explain a suite that just finished.
+const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -163,7 +179,7 @@ export function githubPlugin(
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
-          matchFields: GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+          matchFields: GITHUB_ISSUE_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -171,42 +187,32 @@ export function githubPlugin(
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
-          ),
         },
         {
           type: "release_source",
           identifier: GITHUB_RELEASE_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_RELEASE_EVENTS],
           suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_RELEASE_MATCH_FIELDS,
         },
         {
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
-          supportedEvents: [
-            ...GITHUB_DEPLOYMENT_EVENTS,
-            ...GITHUB_ISSUE_EVENTS,
-            ...GITHUB_PULL_REQUEST_EVENTS,
-          ],
-          suggestedEvents: [
-            "issue.opened",
-            "pull_request.opened",
-            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
-            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-          ],
-          matchFields: {
-            ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
-            ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
-            ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          },
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
+          supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+          suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+          matchFields: mergeEventMatchFields(
+            GITHUB_DEPLOYMENT_MATCH_FIELDS,
+            GITHUB_ISSUE_MATCH_FIELDS,
+            GITHUB_PULL_REQUEST_MATCH_FIELDS,
           ),
         },
       ],
+      events: gitHubEventDeclarations(
+        gitHubPullRequestEventGuidance(options.pullRequestEvents?.guidance),
+      ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceUrl: gitHubResourceUrl,
     },
     manifest: {
       name: "github",
@@ -276,26 +282,17 @@ export function githubPlugin(
               } as const
             )[reference.kind];
             // Read through host egress so policy, grants, and audit apply.
-            const response = await ctx.egress.fetch({
-              provider: "github",
+            const response = await githubApi(ctx.egress, {
               operation,
-              request: new Request(
-                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
-                {
-                  headers: {
-                    Accept: "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                  },
-                  signal: ctx.signal,
-                },
-              ),
+              path: `${repoPath(reference)}/${collection}/${encodeURIComponent(reference.id)}`,
+              signal: ctx.signal,
             });
             if (!response.ok) {
               throw new Error(
                 `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
               );
             }
-            return await response.json();
+            return response.body;
           },
         });
       },
@@ -355,6 +352,11 @@ export function githubPlugin(
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
+            loadGitHubIncidents: async () =>
+              await loadGitHubStatusIncidents(
+                ctx.cache,
+                CHECK_SUITE_INCIDENT_WINDOW_MS,
+              ),
             installationIdEnv,
             loadRepositoryRole: async (target) =>
               await loadRepositoryRole(installationEnv, ctx.cache, target),
@@ -362,6 +364,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
+            loadPullRequest: async (pullRequest) =>
+              await loadPullRequest(installationEnv, pullRequest),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
@@ -369,6 +373,7 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
+            reviewItems: ctx.reviewItems,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
@@ -381,18 +386,7 @@ export function githubPlugin(
         );
       },
       workspacePrepare: prepareWorkspace,
-      async sandboxPrepare(ctx) {
-        const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
-        await ctx.sandbox.writeFile({
-          path: `${hooksPath}/prepare-commit-msg`,
-          mode: 0o755,
-          content: prepareCommitMsgHook(),
-        });
-        await configureGit(ctx, "core.hooksPath", hooksPath);
-        await configureGit(ctx, "commit.gpgsign", "false");
-        await configureGit(ctx, "credential.helper", "");
-        await configureGit(ctx, "http.emptyAuth", "true");
-      },
+      sandboxPrepare: prepareSandboxGit,
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
           return;
@@ -413,6 +407,7 @@ export function githubPlugin(
         ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
+        setGitHooksPathEnv(ctx.env, gitHooksPath(ctx.juniorRoot));
         let currentUser;
         if (ctx.actor) {
           try {

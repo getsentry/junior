@@ -52,7 +52,20 @@ whenever a new issue is created in Linear team SRE, investigate it and comment f
 when someone posts a new message in this channel, answer it if you can, otherwise tag me
 ```
 
-A Slack channel-message automation runs for each new top-level message in the channel where you create it. It does not run for thread replies or for messages that mention Junior. It runs for a bot message, such as a Sentry alert, only when the automation names that bot's Slack user ID in `match.userId`. Junior replies in the thread of the message. Junior must be a member of the channel. The automation can watch only its own channel, and it always runs with Junior's own credentials, because anyone in the channel can write the message. Tell the channel that Junior reads every new message there.
+An event automation selects its events with filters. Filters such as `repo` and `pull_request` select one resource. Fewer filters run it for more resources:
+
+```text
+whenever any Sentry metric alert for project javascript goes critical, summarize it here
+whenever a pull request opens in getsentry/junior, review it
+```
+
+Automations that were saved with an exact resource keep it. Junior does not change it when you edit them.
+
+Each plugin decides which events can run for every resource, and each plugin page lists them. Some events need a filter. For example, GitHub issue, pull request, and release events need a `repo` filter, and Linear issue events need a `team_key` or `issue_identifier` filter. Junior names the missing filter when it cannot save the automation. Junior saves filter values in the case that event data uses, so `getsentry/Junior` matches `getsentry/junior`. One event runs the automation once, even when the plugin publishes the event for more than one resource, such as each project of a metric alert. Slack channel-message automations always need their own channel.
+
+A required filter limits how much an automation covers and how noisy it is. It is not access control. Junior does not check that the person who creates the automation can see the repository, project, or team in the filter. An automation with no exact resource posts what it receives to its destination channel. For example, a broad Sentry trigger or GitHub deployment trigger can post private project or repository names in that channel. Create broad automations only in channels where everyone can see those resources.
+
+A Slack channel-message automation runs for each new top-level message in the channel where you create it. It does not run for thread replies or for messages that mention Junior. It runs for a bot message, such as a Sentry alert, only when the automation names that bot's Slack user ID in `match.user_id`. Junior replies in the thread of the message. Junior must be a member of the channel. The automation can watch only its own channel, and it always runs with Junior's own credentials, because anyone in the channel can write the message. Tell the channel that Junior reads every new message there.
 
 If the plugin is disabled, the automation remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 
@@ -64,10 +77,12 @@ Each event automation can start at most 10 runs in a rolling minute. Set `limits
 - New automations start in the conversation where they were created; creators can later update their own automation so it delivers in another conversation they are currently talking in.
 - A automation may use its creator's connected account when access was delegated to that automation.
 - Only the creator can enable creator credential access or change a automation's destination.
+- Anyone in the workspace can find, edit, pause, resume, and delete an automation in a public channel, from the dashboard or from any Slack conversation. An automation in a private channel or DM can be managed only by its creator or from that conversation.
+- When someone other than the creator changes the instruction, schedule, or trigger, the automation switches to Junior's credentials. Someone other than the creator cannot resume or run an automation that uses the creator's connected account. They can switch it to Junior's credentials first.
 - Event content is treated as data, not as a user instruction.
 - Action review still applies when required.
 
-Signed-in users can inspect and delete their automations from the dashboard **Automations** page. Completed one-off reminders stay under **Mine** so creators can confirm they ran.
+Signed-in users can inspect and manage these automations from the dashboard **Automations** page. Completed one-off reminders stay under **Mine** so creators can confirm they ran.
 
 ## Verify Automations
 

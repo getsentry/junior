@@ -289,7 +289,7 @@ describe("conversation stats API", () => {
           }),
           expect.objectContaining({
             conversations: 1,
-            label: "Junior Scheduler",
+            label: "Scheduler",
           }),
         ]),
       );

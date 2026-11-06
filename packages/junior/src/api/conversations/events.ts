@@ -1,11 +1,14 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationEventModel,
   conversationEventModelCall,
@@ -29,11 +32,9 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "turn_routed",
   "turn_completed",
   "turn_failed",
   "compaction",
-  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -312,6 +313,33 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
+const storedReviewItemChangesSchema = z
+  .array(reviewItemChangeRecordSchema)
+  .min(1);
+
+/** Read the Review item changes that a message records. */
+function reportReviewItemChanges(
+  meta: Record<string, unknown> | undefined,
+):
+  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | undefined {
+  const parsed = storedReviewItemChangesSchema.safeParse(
+    meta?.reviewItemChanges,
+  );
+  return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
+}
+
+// The report has no `cancelled` state. A cancelled Turn has no reply.
+const TURN_COMPLETED_STATES = {
+  success: "succeeded",
+  no_reply: "no_reply",
+  cancelled: "no_reply",
+  blocked: "blocked",
+} as const satisfies Record<
+  Extract<ConversationEvent["data"], { type: "turn_completed" }>["outcome"],
+  string
+>;
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -346,8 +374,17 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        ...(args.canExposePayload &&
+        data.role === "user" &&
+        data.authorIdentityId &&
+        data.authorIdentityId !== SYSTEM_IDENTITY_ID
+          ? { actorIdentityId: data.authorIdentityId }
+          : undefined),
         ...(typeof data.meta?.agentInvocationId === "string"
           ? { agentInvocationId: data.meta.agentInvocationId }
+          : undefined),
+        ...(args.canExposePayload
+          ? reportReviewItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
@@ -357,6 +394,7 @@ function reportEventData(args: {
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
+        ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
@@ -410,19 +448,6 @@ function reportEventData(args: {
         type: "attachments_delivered",
         attachments: data.attachments,
       };
-    case "turn_routed":
-      return {
-        type: "turn_routed",
-        turnId: data.turnId,
-        modelProfile: data.modelProfile,
-        modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
-        reasoningLevel: data.reasoningLevel,
-        ...(data.confidence !== undefined
-          ? { confidence: data.confidence }
-          : undefined),
-        source: data.source,
-      };
     case "guardian_action_reviewed":
       return {
         type: "guardian_action_reviewed",
@@ -437,7 +462,7 @@ function reportEventData(args: {
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
-        state: data.outcome === "success" ? "succeeded" : "no_reply",
+        state: TURN_COMPLETED_STATES[data.outcome],
       };
     case "turn_failed": {
       const eventId = data.eventId;
@@ -459,7 +484,6 @@ function reportEventData(args: {
     case "compaction":
       return {
         type: "compaction",
-        modelProfile: data.modelProfile,
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
@@ -495,6 +519,8 @@ function reportSubagentLabel(
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
+  /** `turn_started` of the Conversation's first Turn. */
+  firstTurnStart?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -532,6 +558,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -541,6 +568,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);
@@ -625,21 +653,6 @@ export function projectConversationReportEventPage(args: {
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }
-    } else if (event.data.type === "handoff") {
-      data = {
-        type: "handoff",
-        modelProfile: event.data.modelProfile,
-        modelId: event.data.modelId,
-        ...(event.data.reasoningLevel
-          ? { reasoningLevel: event.data.reasoningLevel }
-          : undefined),
-        ...(event.data.triggeringToolCallId
-          ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : undefined),
-        ...(args.canExposePayload && event.data.summary
-          ? { summary: event.data.summary }
-          : undefined),
-      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,

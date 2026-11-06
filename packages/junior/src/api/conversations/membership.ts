@@ -192,16 +192,34 @@ export function viewerConversationMembership(args: {
   return args.actorMatch ?? args.participantMatch;
 }
 
-/** Read personal archive timestamps for a bounded set of conversation roots. */
-export async function conversationArchiveTimes(
+/** One person's archive and pin marks on a conversation root. */
+export type ConversationViewerMarks = {
+  archivedAtMs?: number;
+  pinnedAtMs?: number;
+  pinPosition?: number;
+};
+
+/** Read personal archive and pin marks for a bounded set of conversation roots. */
+export async function conversationViewerMarks(
   db: JuniorDatabase,
   conversationIds: readonly string[],
   subject: { email: string } | { userId: string } | undefined,
-): Promise<Map<string, number>> {
+): Promise<Map<string, ConversationViewerMarks>> {
   if (!subject || conversationIds.length === 0) return new Map();
+  const marked = and(
+    inArray(juniorConversationParticipants.rootConversationId, [
+      ...conversationIds,
+    ]),
+    or(
+      isNotNull(juniorConversationParticipants.archivedAt),
+      isNotNull(juniorConversationParticipants.pinnedAt),
+    ),
+  );
   const query = db
     .select({
       archivedAt: juniorConversationParticipants.archivedAt,
+      pinnedAt: juniorConversationParticipants.pinnedAt,
+      pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
@@ -210,10 +228,7 @@ export async function conversationArchiveTimes(
       ? await query.where(
           and(
             eq(juniorConversationParticipants.userId, subject.userId),
-            inArray(juniorConversationParticipants.rootConversationId, [
-              ...conversationIds,
-            ]),
-            isNotNull(juniorConversationParticipants.archivedAt),
+            marked,
           ),
         )
       : await query
@@ -222,21 +237,53 @@ export async function conversationArchiveTimes(
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(
-            and(
-              eq(juniorUsers.primaryEmailNormalized, subject.email),
-              inArray(juniorConversationParticipants.rootConversationId, [
-                ...conversationIds,
-              ]),
-              isNotNull(juniorConversationParticipants.archivedAt),
-            ),
+            and(eq(juniorUsers.primaryEmailNormalized, subject.email), marked),
           );
   return new Map(
-    rows.flatMap((row) =>
-      row.archivedAt
-        ? [[row.rootConversationId, row.archivedAt.getTime()] as const]
-        : [],
-    ),
+    rows.map((row) => [
+      row.rootConversationId,
+      {
+        ...(row.archivedAt
+          ? { archivedAtMs: row.archivedAt.getTime() }
+          : undefined),
+        ...(row.pinnedAt ? { pinnedAtMs: row.pinnedAt.getTime() } : undefined),
+        ...(row.pinnedAt && row.pinPosition !== null
+          ? { pinPosition: row.pinPosition }
+          : undefined),
+      },
+    ]),
   );
+}
+
+/** Read one viewer's archive and pin times for a conversation root. */
+export async function readConversationViewerMarks(
+  viewer: { id: string },
+  rootConversationId: string,
+): Promise<ConversationViewerMarks | undefined> {
+  const marks = await conversationViewerMarks(getDb(), [rootConversationId], {
+    userId: viewer.id,
+  });
+  return marks.get(rootConversationId);
+}
+
+/** True when one user pinned this root. Feeds sort these rows first. */
+export function conversationPinnedForUser(userId: string): SQL {
+  const pin = getDb()
+    .select({
+      rootConversationId: juniorConversationParticipants.rootConversationId,
+    })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+        eq(juniorConversationParticipants.userId, userId),
+        isNotNull(juniorConversationParticipants.pinnedAt),
+      ),
+    );
+  return exists(pin);
 }
 
 /** Find which of the supplied roots include the linked viewer as a participant. */

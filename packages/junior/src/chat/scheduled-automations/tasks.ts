@@ -1,6 +1,6 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
-import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -124,6 +124,33 @@ export async function readScheduledAutomation(
     )
     .limit(1);
   return rows[0] ? parseScheduledAutomationRow(rows[0]) : undefined;
+}
+
+/** Read live scheduled automations by ID, in the given order. */
+export async function readScheduledAutomations(
+  db: JuniorDatabase,
+  ids: readonly string[],
+): Promise<ScheduledAutomation[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(juniorAutomations)
+    .where(
+      and(
+        inArray(juniorAutomations.id, [...ids]),
+        eq(juniorAutomations.kind, "scheduled"),
+      ),
+    );
+  const tasks = new Map(
+    rows
+      .map(parseScheduledAutomationRow)
+      .filter(isListedScheduledAutomation)
+      .map((task) => [task.id, task]),
+  );
+  return ids.flatMap((id) => {
+    const task = tasks.get(id);
+    return task ? [task] : [];
+  });
 }
 
 async function readListedScheduledAutomations(
@@ -255,4 +282,25 @@ export async function saveScheduledAutomationInLock(
   current: ScheduledAutomation | undefined,
 ): Promise<void> {
   await writeScheduledAutomation(db, requireStoredTask(task), current);
+}
+
+/** Mark one live scheduled automation deleted while keeping its history. */
+export async function deleteScheduledAutomation(
+  db: JuniorDatabase,
+  id: string,
+  nowMs = Date.now(),
+): Promise<ScheduledAutomation | undefined> {
+  return await withScheduledAutomationLock(db, id, async (tx) => {
+    const current = await readScheduledAutomation(tx, id);
+    if (!current || current.status === "deleted") return undefined;
+    const deleted = requireStoredTask({
+      ...current,
+      nextRunAtMs: undefined,
+      runNowAtMs: undefined,
+      status: "deleted",
+      updatedAtMs: nowMs,
+    });
+    await writeScheduledAutomation(tx, deleted, current);
+    return deleted;
+  });
 }

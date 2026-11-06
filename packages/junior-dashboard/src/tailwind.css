@@ -1,22 +1,21 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 /*
- * Dashboard design tokens. components/README.md explains each role.
+ * Dashboard design tokens. `pnpm dashboard-style:check` enforces their use.
  * Keep structural UI colors here so a second theme can redefine them.
  * Prefer roles over opacity ladders. Status accents stay as Tailwind palette utilities.
  */
 @theme {
   /* Headings, record titles, and large metric values. */
   --font-display:
-    "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
+    "Outfit Variable", "Avenir Next", Avenir, "Segoe UI", -apple-system,
     BlinkMacSystemFont, sans-serif;
   /* UI face for prose, controls, navigation, labels, and names. */
   --font-sans:
-    "Inter", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu,
-    sans-serif;
+    "Inter Variable", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen,
+    Ubuntu, sans-serif;
   /*
    * Machine values only: code, ids, paths, file names, and raw payloads.
    * Use font-sans with tabular-nums for counts, times, and prices. Controls,
@@ -294,6 +293,10 @@
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
+/* Desktop windows tall enough to afford the top bar. Shorter windows, such as
+   most laptops, keep the nav rail so conversations get the height. */
+@custom-variant tall (@media (min-height: 62.5rem));
+
 @layer base {
   :root {
     color-scheme: var(--dashboard-color-scheme, dark);
@@ -323,6 +326,36 @@
   }
 }
 
+@utility thin-scrollbar {
+  --thin-scrollbar-thumb: color-mix(
+    in srgb,
+    var(--color-dashboard-scrollbar-thumb) 80%,
+    transparent
+  );
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-inline: 1px solid transparent;
+    background: var(--thin-scrollbar-thumb) padding-box;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-dashboard-scrollbar-thumb-hover);
+  }
+
+  @supports not selector(::-webkit-scrollbar-thumb) {
+    scrollbar-color: var(--thin-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+}
+
 @source "./app.ts";
 @source "./dashboardLoader.ts";
 @source "./client.tsx";
@@ -338,30 +371,19 @@
   }
 }
 
-@keyframes junior-active-indicator {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 0 rgba(110, 231, 183, 0),
-      0 0 8px rgba(110, 231, 183, 0.35);
-  }
-
-  50% {
-    box-shadow:
-      0 0 0 4px rgba(110, 231, 183, 0.18),
-      0 0 14px rgba(110, 231, 183, 0.65);
-  }
-}
-
 @media (max-width: 767px) {
   /* Keep long mobile feeds cheap while preserving their full scroll range. */
   .mobile-conversation-row {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
   }
+}
 
-  .mobile-transcript-row {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 12rem;
-  }
+/* The Quick question selection. Utilities cannot style a highlight. */
+::highlight(quick-question) {
+  background-color: color-mix(
+    in oklab,
+    var(--color-dashboard-accent) 30%,
+    transparent
+  );
 }

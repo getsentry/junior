@@ -28,14 +28,34 @@ export function applyJuniorDevelopmentDefaults(env, options = {}) {
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
   }
-  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
-    env.JUNIOR_STATE_ADAPTER = "memory";
-  }
   if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {
     env.JUNIOR_SCHEDULER_SECRET = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
   }
   if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(options.baseUrl)) {
     env.JUNIOR_BASE_URL = options.baseUrl.trim();
+  }
+  // Only the dev server starts queue workers, so only it passes this option.
+  // Other local commands keep the Vercel queue.
+  if (hasValue(options.queueRedisUrl)) {
+    if (!hasValue(env.JUNIOR_QUEUE_PROVIDER)) {
+      env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    }
+    if (env.JUNIOR_QUEUE_PROVIDER.trim() === "bullmq") {
+      if (!hasValue(env.JUNIOR_QUEUE_REDIS_URL)) {
+        env.JUNIOR_QUEUE_REDIS_URL = options.queueRedisUrl.trim();
+      }
+      // BullMQ jobs run in a separate worker process, so the state must be
+      // in Redis, where both processes can read it. Without an explicit state
+      // adapter, use the local queue Redis. A `REDIS_URL` from
+      // `pnpm dev:env` can be shared with preview deployments.
+      if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
+        env.JUNIOR_STATE_ADAPTER = "redis";
+        env.REDIS_URL = env.JUNIOR_QUEUE_REDIS_URL.trim();
+      }
+    }
+  }
+  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
+    env.JUNIOR_STATE_ADAPTER = "memory";
   }
 }
 

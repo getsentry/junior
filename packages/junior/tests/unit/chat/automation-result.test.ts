@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   finishedRunReply,
+  postsRunNotices,
   remindMissingAutomationResult,
   runDispatchOutcome,
   type AutomationResult,
@@ -8,12 +9,6 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
-
-const executionProfile = {
-  profile: "standard",
-  reasoningLevel: "medium" as const,
-  reason: "test",
-};
 
 function assistant(
   fields:
@@ -70,7 +65,7 @@ function automationTurnResult(args: {
     generatedFileCount: 0,
     shouldTrace: false,
     modelId: "test-model",
-    executionProfile,
+    reasoningLevel: "medium",
     requireAutomationResult: true,
   });
 }
@@ -187,6 +182,10 @@ describe("automation run result", () => {
 
     expect(finishedRunReply(failed, undefined)).toBe(failed.text);
     expect(finishedRunReply(failed, { declaresResult: true })).toBeUndefined();
+    // Failure replies and notices outside the finished run follow the rule.
+    expect(postsRunNotices(undefined)).toBe(true);
+    expect(postsRunNotices({ declaresResult: true })).toBe(false);
+    expect(postsRunNotices({ outcomes: [] })).toBe(false);
   });
 });
 

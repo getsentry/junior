@@ -3,16 +3,15 @@ import {
   destinationSchema,
   sourceSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
-import { modelProfileSchema } from "@/chat/model-profile";
 import { agentTypeSchema } from "./agent-types";
 import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
   AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
-} from "@/db/schema/agent-invocations";
+} from "@/chat/agent-invocations/statuses";
 
 const exactStringSchema = z
   .string()
@@ -54,7 +53,6 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
-    modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -91,7 +89,6 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
-    modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })

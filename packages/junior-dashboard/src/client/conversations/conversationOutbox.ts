@@ -1,14 +1,21 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
+import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
   actorIdentity?: ActorIdentity;
   createdAt: string;
   idempotencyKey: string;
+  /**
+   * Sent while Junior was idle and the queue was empty. The transcript shows
+   * the row in place, so it does not pass through the queue first.
+   */
+  inline?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -22,6 +29,22 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   idempotencyKey?: string;
 };
 
+/** Identity of the viewer, for the outbox rows that they send. */
+export function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
+
 /** Stable React Query key for one conversation's local send outbox. */
 export function conversationOutboxQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "outbox"] as const;
@@ -31,6 +54,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 export function conversationOutboxMessageForSubmit(input: {
   actorIdentity?: ActorIdentity;
   idempotencyKey: string;
+  inline?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -41,6 +65,7 @@ export function conversationOutboxMessageForSubmit(input: {
     actorIdentity: input.actorIdentity,
     createdAt,
     idempotencyKey: input.idempotencyKey,
+    ...(input.inline ? { inline: true } : undefined),
     message: input.message,
     ...(input.images?.length ? { images: input.images } : undefined),
     messageId: input.messageId,
@@ -133,10 +158,20 @@ function sameMailboxMessage(
     left.createdAt === right.createdAt &&
     left.receivedAt === right.receivedAt &&
     left.idempotencyKey === right.idempotencyKey &&
-    // Pending rows render actorLabel(actorIdentity). Live polls may enrich
-    // identity after the first accept; keep that change visible.
-    sameActorIdentity(left.actorIdentity, right.actorIdentity)
+    // Pending rows render actorLabel(actorIdentity) and mention names. Live
+    // polls may enrich them after the first accept; keep that change visible.
+    sameActorIdentity(left.actorIdentity, right.actorIdentity) &&
+    sameMentions(left.mentions, right.mentions)
   );
+}
+
+function sameMentions(
+  left: ConversationMailboxMessage["mentions"],
+  right: ConversationMailboxMessage["mentions"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((person, index) => sameActorIdentity(person, right[index]));
 }
 
 function sameActorIdentity(
@@ -146,11 +181,51 @@ function sameActorIdentity(
   if (left === right) return true;
   if (!left || !right) return false;
   return (
+    left.avatarUrl === right.avatarUrl &&
     left.email === right.email &&
     left.fullName === right.fullName &&
     left.slackUserId === right.slackUserId &&
     left.slackUserName === right.slackUserName
   );
+}
+
+/** True while an outbox row belongs in the transcript instead of the queue. */
+export function isInlineOutboxMessage(
+  message: ConversationOutboxMessage,
+): boolean {
+  // A failed send moves to the queue, which owns the retry action.
+  return Boolean(message.inline) && message.status !== "failed";
+}
+
+/**
+ * Split pending rows between the queue and the transcript.
+ *
+ * Inline rows prefer the server copy once the mailbox has it, so attachments
+ * and identity match what the queue would show.
+ */
+export function splitInlineMailboxMessages(
+  merged: readonly ConversationMailboxMessage[],
+  server: readonly ConversationPendingMessage[] | undefined,
+  outbox: readonly ConversationOutboxMessage[],
+): {
+  inline: ConversationMailboxMessage[];
+  queued: ConversationMailboxMessage[];
+} {
+  const inlineRows = outbox.filter(isInlineOutboxMessage);
+  if (inlineRows.length === 0) {
+    return { inline: [], queued: merged as ConversationMailboxMessage[] };
+  }
+  const inlineIds = new Set(inlineRows.map((message) => message.messageId));
+  const serverById = new Map(
+    (server ?? []).map((message) => [message.messageId, message]),
+  );
+  return {
+    inline: inlineRows.map(
+      (message) =>
+        serverById.get(message.messageId) ?? mailboxMessageFromOutbox(message),
+    ),
+    queued: merged.filter((message) => !inlineIds.has(message.messageId)),
+  };
 }
 
 /** Append or replace one outbox row by idempotency key. */

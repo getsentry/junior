@@ -30,6 +30,7 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
+  AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
   PluginEgress,
   PluginToolDefinition,
@@ -80,9 +81,19 @@ export interface PluginHooks {
   conversationSidebar?(
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
+  /**
+   * Return static guidance for the system prompt. Return the same text for one
+   * deployment and platform, so the system prompt stays cacheable. Put text
+   * that changes per request in `userPrompt`. See `policies/system-prompt.md`.
+   */
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];
+  /**
+   * Return per-request context for a new prompt, such as recalled memories.
+   * Junior runs this hook at the same time as Turn routing and sandbox setup,
+   * so it must not depend on either.
+   */
   userPrompt?(
     ctx: UserPromptContext,
   ):
@@ -90,6 +101,11 @@ export interface PluginHooks {
     | UserPromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  /**
+   * Check a tool call after it runs, such as a judge for the files that it
+   * changed. Use `ctx.decision` to add guidance or reject the result.
+   */
+  afterToolExecute?(ctx: AfterToolExecuteHookContext): Promise<void> | void;
   /**
    * Run after a successful hosted MCP tool call.
    *

@@ -15,6 +15,7 @@ import {
 } from "./eventLog";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { useVirtualRows } from "./virtualRows";
 
 const rowClass =
   "grid grid-cols-[12ch_minmax(0,1fr)] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)]";
@@ -28,6 +29,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
   onSearchChange(value: string): void;
   onSelectedSeqChange?(seq: number | undefined): void;
+  /** The row that holds the reader's place, from the scroll owner. */
+  scrollAnchorKey?: () => string | undefined;
   selectedSeq?: number;
 }) {
   const { conversation } = props;
@@ -50,17 +53,46 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   );
   // Resolve the selection from current data so polling cannot leave stale details.
   const selected = events.find((event) => event.seq === selectedSeq);
+  // An arrow key can select a row that mounts only on the next render.
+  const focusSeqRef = useRef<number>(undefined);
+  const focusedSeqRef = useRef<number>(undefined);
+  const indexBySeq = useMemo(
+    () => new Map(visibleRows.map((row, index) => [row.event.seq, index])),
+    [visibleRows],
+  );
+  const indexOf = (seq: number | undefined) =>
+    seq === undefined ? undefined : indexBySeq.get(seq);
+  // The open entry, the focused row, and the row that holds the reader's
+  // place stay mounted.
+  const virtualizer = useVirtualRows({
+    count: visibleRows.length,
+    defaultSize: (sizeClass) => (sizeClass === "metadata" ? 56 : 40),
+    getItemKey: (index) => visibleRows[index]?.event.seq ?? index,
+    keptIndexes: [
+      indexOf(selectedSeq),
+      indexOf(focusedSeqRef.current),
+      indexOf(anchorSeq(props.scrollAnchorKey?.())),
+    ],
+    listRef,
+    sizeClass: (index) => (visibleRows[index]?.metadata ? "metadata" : "plain"),
+  });
+  const virtualRows = virtualizer.getVirtualItems();
   useEffect(() => {
-    if (selectedSeq === undefined || revealedSeqRef.current === selectedSeq) {
-      return;
-    }
+    if (selectedSeq === undefined) return;
     const row = listRef.current?.querySelector(
       `[data-event-seq="${selectedSeq}"]`,
     );
     if (!row) return;
+    if (focusSeqRef.current === selectedSeq) {
+      focusSeqRef.current = undefined;
+      row
+        .querySelector<HTMLButtonElement>("button")
+        ?.focus({ preventScroll: true });
+    }
+    if (revealedSeqRef.current === selectedSeq) return;
     revealedSeqRef.current = selectedSeq;
     row.scrollIntoView({ block: "nearest" });
-  }, [selectedSeq, visibleRows]);
+  }, [selectedSeq, virtualRows]);
 
   if (conversation.eventHistory.status === "expired") {
     return (
@@ -101,83 +133,112 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
         <EventLogColumns />
       </div>
       <div className="font-mono text-xs">
+        {/* Only rows near the viewport mount. Each row is placed at its
+            measured offset, so the list keeps its full height. */}
         <ol
           aria-label="Events"
-          className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
+          className="relative m-0 list-none p-0"
           ref={listRef}
+          style={{ height: virtualizer.getTotalSize() }}
         >
-          {visibleRows.map(({ event, summary, metadata }, index) => (
-            <li
-              className="scroll-mt-32 scroll-mb-2"
-              data-event-seq={event.seq}
-              key={event.seq}
-            >
-              <button
-                aria-expanded={selectedSeq === event.seq}
-                aria-label={`Event ${event.seq}: ${event.data.type}`}
+          {virtualRows.map((virtualRow) => {
+            const { event, summary, metadata } = visibleRows[virtualRow.index]!;
+            const index = virtualRow.index;
+            return (
+              <li
                 className={cn(
-                  rowClass,
-                  "relative min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
-                  selectedSeq === event.seq &&
-                    "bg-dashboard-fill-strong before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-dashboard-accent before:content-['']",
+                  "absolute left-0 top-0 w-full scroll-mt-32 scroll-mb-2",
+                  index > 0 && "border-t border-dashboard-border-subtle",
                 )}
-                onClick={() => {
-                  revealedSeqRef.current = event.seq;
-                  setSelectedSeq(event.seq);
+                data-event-seq={event.seq}
+                data-index={index}
+                data-scroll-anchor={`event:${event.seq}`}
+                key={virtualRow.key}
+                onBlur={() => {
+                  if (focusedSeqRef.current === event.seq) {
+                    focusedSeqRef.current = undefined;
+                  }
                 }}
-                onKeyDown={(keyEvent) => {
-                  if (
-                    keyEvent.altKey ||
-                    keyEvent.ctrlKey ||
-                    keyEvent.metaKey ||
-                    keyEvent.shiftKey ||
-                    (keyEvent.key !== "ArrowUp" && keyEvent.key !== "ArrowDown")
-                  )
-                    return;
-                  keyEvent.preventDefault();
-                  const next =
-                    visibleRows[
-                      index + (keyEvent.key === "ArrowDown" ? 1 : -1)
-                    ];
-                  if (!next) return;
-                  setSelectedSeq(next.event.seq);
-                  listRef.current
-                    ?.querySelector<HTMLButtonElement>(
-                      `[data-event-seq="${next.event.seq}"] button`,
-                    )
-                    ?.focus({ preventScroll: true });
+                onFocus={() => {
+                  focusedSeqRef.current = event.seq;
                 }}
-                type="button"
+                ref={virtualizer.measureElement}
+                style={{
+                  transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+                }}
               >
-                <time
-                  className="tabular-nums text-dashboard-text-muted"
-                  dateTime={event.createdAt}
-                  title={time.formatTimestamp(event.createdAt)}
+                <button
+                  aria-expanded={selectedSeq === event.seq}
+                  aria-label={`Event ${event.seq}: ${event.data.type}`}
+                  className={cn(
+                    rowClass,
+                    "relative min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
+                    selectedSeq === event.seq &&
+                      "bg-dashboard-fill-strong before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-dashboard-accent before:content-['']",
+                  )}
+                  onClick={() => {
+                    revealedSeqRef.current = event.seq;
+                    setSelectedSeq(event.seq);
+                  }}
+                  onKeyDown={(keyEvent) => {
+                    if (
+                      keyEvent.altKey ||
+                      keyEvent.ctrlKey ||
+                      keyEvent.metaKey ||
+                      keyEvent.shiftKey ||
+                      (keyEvent.key !== "ArrowUp" &&
+                        keyEvent.key !== "ArrowDown")
+                    )
+                      return;
+                    keyEvent.preventDefault();
+                    const next =
+                      visibleRows[
+                        index + (keyEvent.key === "ArrowDown" ? 1 : -1)
+                      ];
+                    if (!next) return;
+                    setSelectedSeq(next.event.seq);
+                    // Focus a mounted row now, so the next key press reaches
+                    // it. A row past the mounted range gets focus after it
+                    // mounts.
+                    const nextButton =
+                      listRef.current?.querySelector<HTMLButtonElement>(
+                        `[data-event-seq="${next.event.seq}"] button`,
+                      );
+                    if (nextButton) nextButton.focus({ preventScroll: true });
+                    else focusSeqRef.current = next.event.seq;
+                  }}
+                  type="button"
                 >
-                  {time.formatClock(event.createdAt)}
-                </time>
-                <span
-                  className={cn("truncate", eventLogTone(event.data))}
-                  title={event.data.type}
-                >
-                  <HighlightText text={event.data.type} />
-                </span>
-                <span className="col-span-2 row-start-2 grid min-w-0 gap-0.5 text-dashboard-text @min-[32rem]:col-span-1 @min-[32rem]:row-auto">
-                  <span className="truncate" title={summary}>
-                    <HighlightText text={summary} />
+                  <time
+                    className="tabular-nums text-dashboard-text-muted"
+                    dateTime={event.createdAt}
+                    title={time.formatTimestamp(event.createdAt)}
+                  >
+                    {time.formatClock(event.createdAt)}
+                  </time>
+                  <span
+                    className={cn("truncate", eventLogTone(event.data))}
+                    title={event.data.type}
+                  >
+                    <HighlightText text={event.data.type} />
                   </span>
-                  {metadata ? (
-                    <span
-                      className="truncate text-dashboard-text-muted"
-                      title={metadata}
-                    >
-                      <HighlightText text={metadata} />
+                  <span className="col-span-2 row-start-2 grid min-w-0 gap-0.5 text-dashboard-text @min-[32rem]:col-span-1 @min-[32rem]:row-auto">
+                    <span className="truncate" title={summary}>
+                      <HighlightText text={summary} />
                     </span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          ))}
+                    {metadata ? (
+                      <span
+                        className="truncate text-dashboard-text-muted"
+                        title={metadata}
+                      >
+                        <HighlightText text={metadata} />
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ol>
         {visibleRows.length === 0 ? (
           <p className="m-0 px-3 py-6 text-sm text-dashboard-text-muted">
@@ -203,6 +264,11 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     </section>
   );
 });
+
+/** Read the event seq from a `data-scroll-anchor` key. */
+function anchorSeq(key: string | undefined): number | undefined {
+  return key?.startsWith("event:") ? Number(key.slice(6)) : undefined;
+}
 
 const loadingRowWidths = ["w-3/5", "w-2/5", "w-4/5", "w-1/2", "w-2/3", "w-1/3"];
 

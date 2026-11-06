@@ -14,7 +14,9 @@ export const SANDBOX_WORKSPACE_ROOT = normalizeWorkspaceRoot(
 export const SANDBOX_REPOS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/repos`;
 export const SANDBOX_SKILLS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/skills`;
 export const SANDBOX_DATA_ROOT = `${SANDBOX_WORKSPACE_ROOT}/data`;
-const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
+/** Runtime-owned files inside the sandbox, outside every repository. */
+export const SANDBOX_JUNIOR_ROOT = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
+const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_JUNIOR_ROOT}/bin`;
 
 /**
  * PATH for sandbox commands. Plugin runtime binaries come last so they never

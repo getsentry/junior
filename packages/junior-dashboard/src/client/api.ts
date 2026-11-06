@@ -1,4 +1,8 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  queryOptions,
+  useQuery,
+} from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -28,32 +32,40 @@ import {
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
 
-import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import {
+  dashboardBootstrapSchema,
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+} from "../api/schema";
+import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
-const dashboardMetadataStaleTimeMs = 5 * 60_000;
-const PERSONAL_SPEND_REFRESH_MS = 5 * 60_000;
-const MIN_PERSONAL_SPEND_REFRESH_MS = 1_000;
-
-/** Schedule the next spend refresh from the age of the server-cached report. */
-export function personalSpendRefreshDelay(
-  generatedAt: string | undefined,
-  nowMs = Date.now(),
-): number {
-  if (!generatedAt) return PERSONAL_SPEND_REFRESH_MS;
-  const generatedAtMs = Date.parse(generatedAt);
-  if (!Number.isFinite(generatedAtMs)) return PERSONAL_SPEND_REFRESH_MS;
-  const ageMs = Math.max(0, nowMs - generatedAtMs);
-  return Math.max(
-    MIN_PERSONAL_SPEND_REFRESH_MS,
-    PERSONAL_SPEND_REFRESH_MS - ageMs,
-  );
+declare global {
+  interface Window {
+    __JUNIOR_DASHBOARD_BOOTSTRAP__?: unknown;
+  }
 }
 
-/** Fetch dashboard shell data shared across browser routes. */
-export function useDashboardCoreData() {
-  return useQuery({
+const dashboardMetadataStaleTimeMs = 5 * 60_000;
+
+// The shell embeds core data for the first read only. Taking it once means a
+// later cache entry for the same key reads the API instead of stale data.
+function takeDashboardBootstrap(): DashboardCoreData | undefined {
+  if (typeof window === "undefined") return undefined;
+  const embedded = window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  const parsed = dashboardBootstrapSchema.safeParse(embedded);
+  return parsed.success ? parsed.data : undefined;
+}
+
+// The server reuses its cached report until the viewer's spend changes, so a
+// short poll shows a finished Turn without a full aggregate query each time.
+const PERSONAL_SPEND_REFRESH_MS = 10_000;
+
+/** Query options for dashboard shell data, seeded from the page shell. */
+export function dashboardCoreQueryOptions() {
+  return queryOptions({
     queryKey: ["dashboard", "core"],
     queryFn: async ({ signal }): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
@@ -65,9 +77,17 @@ export function useDashboardCoreData() {
         me,
       };
     },
+    initialData: takeDashboardBootstrap,
+    // The server built the embedded data while it served the page.
+    initialDataUpdatedAt: () => performance.timeOrigin,
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });
+}
+
+/** Fetch dashboard shell data shared across browser routes. */
+export function useDashboardCoreData() {
+  return useQuery(dashboardCoreQueryOptions());
 }
 
 /** Fetch safe plugin metadata used by dashboard navigation and System pages. */
@@ -94,7 +114,11 @@ export function usePluginUserPagesData() {
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
+  const pinOrderSaving = usePinOrderSaving();
   return useQuery({
+    // A read that ends during a Pinned order save can hold the old order.
+    // The feed keeps its data and refetches when the save ends.
+    enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -314,8 +338,7 @@ export function usePersonalSpendData(enabled: boolean) {
         "/api/people/me/spend",
         signal,
       ),
-    refetchInterval: (query) =>
-      personalSpendRefreshDelay(query.state.data?.generatedAt),
+    refetchInterval: PERSONAL_SPEND_REFRESH_MS,
     retry: false,
     staleTime: 0,
   });

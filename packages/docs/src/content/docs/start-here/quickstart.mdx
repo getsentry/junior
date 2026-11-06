@@ -74,11 +74,8 @@ Set these values before running real turns:
 | `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background automation records.  |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox actor context.        |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                          |
-| `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                      |
-| `AI_MODEL`                | No                     | Deprecated default model setting.                                 |
-| `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.                |
-| `AI_HANDOFF_MODEL`        | No                     | Deprecated handoff model setting.                                 |
-| `AI_MODEL_PROFILES`       | No                     | Deprecated JSON map of named profiles.                            |
+| `AI_MODEL`                | No                     | Agent model override.                                             |
+| `AI_FAST_MODEL`           | No                     | Lightweight classification model override.                        |
 | `AI_EMBEDDING_MODEL`      | No                     | Embedding model override for plugin vector retrieval.             |
 | `AI_VISION_MODEL`         | No                     | Defaults to `openai/gpt-5.6-sol`; an empty value disables vision. |
 | `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                            |

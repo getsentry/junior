@@ -1,14 +1,17 @@
+import type { GitHubStatusIncident } from "../github-status.js";
 import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginConversationReviewItems,
   PluginLogger,
   PluginRoute,
   EventInput,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
@@ -36,6 +39,14 @@ import {
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
+import {
+  loadGitHubMergeConflictEvents,
+  type GitHubPullRequestRef,
+} from "./merge-conflict.js";
+import {
+  pullRequestReadyTargets,
+  syncGitHubPullRequestReadyNotices,
+} from "./pull-request-ready.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -99,11 +110,13 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
-interface FeedbackTarget {
-  commentId: number;
-  commentKind: "conversation" | "review";
-  repo: string;
-}
+/** The pull request comment data that the feedback reaction needs. */
+const feedbackTargetSchema = z.object({
+  commentId: z.number(),
+  commentKind: z.enum(["conversation", "review"]),
+  repo: z.string().min(1),
+});
+type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
@@ -114,20 +127,8 @@ function pullRequestFeedbackTarget(
       candidate.eventType === "pull_request.comment.created" ||
       candidate.eventType === "pull_request.review_comment.created",
   );
-  const data = event?.data;
-  if (
-    !data ||
-    typeof data.repo !== "string" ||
-    typeof data.commentId !== "number" ||
-    (data.commentKind !== "conversation" && data.commentKind !== "review")
-  ) {
-    return undefined;
-  }
-  return {
-    commentId: data.commentId,
-    commentKind: data.commentKind,
-    repo: data.repo,
-  };
+  const parsed = feedbackTargetSchema.safeParse(event?.data);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function githubCodeChange(
@@ -173,6 +174,10 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestCommitPages?(
     target: GitHubPullRequestTarget,
   ): Promise<GitHubCommitPageLoader>;
+  /** Read open and recent GitHub incidents for failed check suites. */
+  loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
+  /** Read one pull request for its mergeability. */
+  loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -181,6 +186,7 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
+  reviewItems: PluginConversationReviewItems;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -344,6 +350,9 @@ export function createGitHubWebhookRoute(args: {
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              ...(args.loadGitHubIncidents
+                ? { loadGitHubIncidents: args.loadGitHubIncidents }
+                : undefined),
               loadPullRequestFacts:
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
@@ -414,6 +423,19 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
+      // GitHub sends no webhook for a new conflict, so check on every other
+      // event for a watched pull request. Add these after the feedback
+      // reaction, so a Watch that wants only conflicts does not mark a comment.
+      events.push(
+        ...(await loadGitHubMergeConflictEvents({
+          deliveryId,
+          events,
+          hasMatch,
+          loadPullRequest: args.loadPullRequest,
+          log: args.log,
+          pullRequestPayload: eventName === "pull_request" ? body : undefined,
+        })),
+      );
       for (const event of events) {
         await args.events.publish({
           ...event,
@@ -426,6 +448,18 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      await syncGitHubPullRequestReadyNotices({
+        db: args.db,
+        deliveryId,
+        env: {
+          appIdEnv: args.appIdEnv,
+          installationIdEnv: args.installationIdEnv,
+          privateKeyEnv: args.privateKeyEnv,
+        },
+        log: args.log,
+        reviewItems: args.reviewItems,
+        targets: pullRequestReadyTargets(eventName, body),
+      });
       if (
         !pullRequestOutcome &&
         !issueOutcome &&

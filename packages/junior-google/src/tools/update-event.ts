@@ -3,7 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   emailListSchema,
   googleApiError,
@@ -21,7 +21,7 @@ import {
 
 const inputSchema = z
   .object({
-    eventId: ownEventIdSchema,
+    event_id: ownEventIdSchema,
     title: z.string().trim().min(1).max(200).optional(),
     description: z
       .string()
@@ -38,7 +38,7 @@ const inputSchema = z
       .datetime({ offset: true })
       .optional()
       .describe("New end, RFC 3339 with offset. Give start too."),
-    timeZone: timeZoneSchema,
+    time_zone: timeZoneSchema,
     location: z
       .string()
       .trim()
@@ -47,16 +47,16 @@ const inputSchema = z
       .describe(
         "Replacement location, such as a room name or address. Use an empty string to clear it.",
       ),
-    addAttendees: emailListSchema(50)
+    add_attendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to invite as required attendees."),
-    addOptionalAttendees: emailListSchema(50)
+    add_optional_attendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to invite as optional attendees."),
-    removeAttendees: emailListSchema(50)
+    remove_attendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to remove from the event."),
-    addVideoCall: z
+    add_video_call: z
       .literal(true)
       .optional()
       .describe("Add a Google Meet link when the event has none."),
@@ -74,10 +74,10 @@ const inputSchema = z
       input.description !== undefined ||
       input.start !== undefined ||
       input.location !== undefined ||
-      input.addVideoCall !== undefined ||
-      input.addAttendees.length > 0 ||
-      input.addOptionalAttendees.length > 0 ||
-      input.removeAttendees.length > 0,
+      input.add_video_call !== undefined ||
+      input.add_attendees.length > 0 ||
+      input.add_optional_attendees.length > 0 ||
+      input.remove_attendees.length > 0,
     { message: "Give at least one change." },
   );
 
@@ -108,22 +108,22 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
           (input.location
             ? `set the location to ${input.location}`
             : "clear the location"),
-        input.addVideoCall && "add a Google Meet link",
-        input.addAttendees.length > 0 &&
-          `invite ${input.addAttendees.join(", ")}`,
-        input.addOptionalAttendees.length > 0 &&
-          `invite ${input.addOptionalAttendees.join(", ")} as optional`,
-        input.removeAttendees.length > 0 &&
-          `remove ${input.removeAttendees.join(", ")}`,
+        input.add_video_call && "add a Google Meet link",
+        input.add_attendees.length > 0 &&
+          `invite ${input.add_attendees.join(", ")}`,
+        input.add_optional_attendees.length > 0 &&
+          `invite ${input.add_optional_attendees.join(", ")} as optional`,
+        input.remove_attendees.length > 0 &&
+          `remove ${input.remove_attendees.join(", ")}`,
       ].filter(Boolean);
-      return `Update Google Calendar event ${input.eventId}: ${changes.join("; ")}. Attendees get an email about the change.`;
+      return `Update Google Calendar event ${input.event_id}: ${changes.join("; ")}. Attendees get an email about the change.`;
     },
     description:
-      "Change a Google Calendar event organized by Junior's own Google account: title, description, time, location, video call, or attendees. Use it to reschedule, add or remove people, or fix details. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. Junior cannot change events other people organize. For a repeating event, an occurrence id changes only that occurrence; its seriesEventId changes every occurrence. Confirm the change with the requester first unless they already stated it exactly.",
+      "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Use it to reschedule, add or remove people, or fix details. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. For a repeating event, an occurrence id changes only that occurrence; its series_event_id changes every occurrence. Confirm the change with the requester first unless they already stated it exactly.",
     inputSchema,
     outputSchema,
     async execute(input) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
+      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       if (input.start && input.end) {
         const durationMs = Date.parse(input.end) - Date.parse(input.start);
         if (durationMs <= 0) {
@@ -134,10 +134,14 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         }
       }
       requireAllowedEmails(
-        [...input.addAttendees, ...input.addOptionalAttendees],
+        [...input.add_attendees, ...input.add_optional_attendees],
         ctx.allowedDomains,
       );
-      const read = await readOwnEventForRequester(ctx, input.eventId, "change");
+      const read = await readOwnEventForRequester(
+        ctx,
+        input.event_id,
+        "change",
+      );
       if (read.status === "cancelled") {
         throw new PluginToolInputError(
           "This event is cancelled. Create a new event instead.",
@@ -147,7 +151,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       const attendees = event.attendees ?? [];
       // Google can return directory capitalization; inputs are lowercased.
       const emailKey = (email: string) => email.toLowerCase();
-      const removed = new Set(input.removeAttendees);
+      const removed = new Set(input.remove_attendees);
       const kept = attendees.filter(
         (attendee) => !removed.has(emailKey(attendee.email)),
       );
@@ -155,8 +159,8 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         kept.map((attendee) => emailKey(attendee.email)),
       );
       const added = [
-        ...input.addAttendees.map((email) => ({ email })),
-        ...input.addOptionalAttendees.map((email) => ({
+        ...input.add_attendees.map((email) => ({ email })),
+        ...input.add_optional_attendees.map((email) => ({
           email,
           optional: true,
         })),
@@ -166,7 +170,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         return true;
       });
       const attendeesChanged = kept.length !== attendees.length || added.length;
-      const addVideoCall = input.addVideoCall && !event.hangoutLink;
+      const addVideoCall = input.add_video_call && !event.hangoutLink;
 
       const response = await googleApiRequest(ctx, {
         body: {
@@ -202,7 +206,11 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       }
       return {
         target: "updateCalendarEvent" as const,
-        ...ownEventResult(ownEventSchema.parse(response.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(response.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });

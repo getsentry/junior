@@ -9,7 +9,8 @@ import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
-type SavedTurnResult =
+/** How a Turn ends after its result is saved. */
+export type SavedTurnResult =
   | {
       finishedAtMs?: number;
       outcome: CompleteConversationTurnInput["outcome"];
@@ -58,13 +59,23 @@ export async function executeTurn(
   }
 
   const saved = await saveResult(outcome.result);
+  await finishTurn(run.conversationId, run.turnId, saved);
+  return { status: "completed" };
+}
+
+/** Record the terminal lifecycle event of a Turn from its saved result. */
+export async function finishTurn(
+  conversationId: string,
+  turnId: string,
+  saved: SavedTurnResult,
+): Promise<void> {
   const lifecycle = new ConversationTurnLifecycleService(
     getConversationEventStore(),
   );
   const common = {
-    conversationId: run.conversationId,
+    conversationId,
     createdAtMs: saved.finishedAtMs ?? Date.now(),
-    turnId: run.turnId,
+    turnId,
   };
   if (saved.outcome === "failed") {
     await lifecycle.fail({
@@ -81,8 +92,6 @@ export async function executeTurn(
       outcome: saved.outcome,
     });
   }
-
-  return { status: "completed" };
 }
 
 /** Run the agent and finish a Turn after its caller saves the result. */

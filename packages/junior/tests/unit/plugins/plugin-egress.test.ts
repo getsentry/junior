@@ -212,7 +212,7 @@ describe("plugin egress", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "Junior cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss Junior's own review instead.",
+        "You cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss your own review instead.",
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

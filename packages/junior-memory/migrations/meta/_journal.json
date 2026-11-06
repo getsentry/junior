@@ -92,6 +92,20 @@
       "when": 1791927304434,
       "tag": "0012_memory_signals",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793620762440,
+      "tag": "0013_memory_embedding_models",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793829580242,
+      "tag": "0014_delete_private_memories",
+      "breakpoints": true
     }
   ]
 }

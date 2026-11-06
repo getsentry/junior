@@ -5,12 +5,19 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
-import { createWebSource, type Destination } from "@sentry/junior-plugin-api";
+import {
+  createWebSource,
+  type Destination,
+  type User,
+} from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { getActiveTraceContext } from "@/chat/logging";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -47,6 +54,8 @@ export interface AppendWebMessageInput {
   message: string;
   images?: SandboxFileUpload[];
   idempotencyKey: string;
+  /** Review item change that this Message reports. */
+  reviewItemChange?: ReviewItemChangeRecord;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -108,17 +117,33 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
   };
 }
 
-/** Rebuild the web Actor from durable Conversation identity. */
-export function webActorFromEmail(
-  email: string,
-  profile?: { fullName?: string; userName?: string },
+/**
+ * Return whether a person can add a web Message to an existing
+ * Conversation: a dashboard Conversation or a Slack thread.
+ */
+export function acceptsWebMessages(
+  conversationId: string,
+  destination: Destination | undefined,
+): boolean {
+  if (destination?.platform === "slack") return true;
+  return (
+    destination?.platform === "local" && conversationId.startsWith("local:web:")
+  );
+}
+
+/**
+ * Build the web Actor for one signed-in User. Junior is the web provider,
+ * so the provider-scoped Actor id is the User id.
+ */
+export function webActorFromUser(
+  user: Pick<User, "displayName" | "email" | "id">,
+  profile?: { userName?: string },
 ): WebActor {
-  const normalized = normalizeEmail(email);
   return {
     platform: "web",
-    userId: `dashboard:${stableHex(normalized)}`,
-    email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
+    userId: user.id,
+    email: normalizeEmail(user.email),
+    ...(user.displayName ? { fullName: user.displayName } : undefined),
     ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
 }
@@ -126,6 +151,8 @@ export function webActorFromEmail(
 /** Build one web mailbox entry. */
 export function buildWebInboundMessage(args: {
   actor: WebActor;
+  /** Identity of the web Actor, resolved at ingress. */
+  authorIdentityId?: string;
   conversationId: string;
   createdAtMs?: number;
   /** Existing Conversation Destination, when the root already exists. */
@@ -134,6 +161,7 @@ export function buildWebInboundMessage(args: {
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
+  reviewItemChange?: ReviewItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -147,6 +175,8 @@ export function buildWebInboundMessage(args: {
     existing: args.destination,
   });
   const nowMs = args.nowMs ?? Date.now();
+  // The Turn continues the trace of the request that sent this Message.
+  const traceContext = getActiveTraceContext();
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
@@ -157,9 +187,15 @@ export function buildWebInboundMessage(args: {
     inboundMessageId: args.messageId,
     input: {
       authorId: args.actor.userId,
+      ...(args.authorIdentityId
+        ? { authorIdentityId: args.authorIdentityId }
+        : undefined),
       text,
       ...(args.attachments?.length
         ? { attachments: args.attachments }
+        : undefined),
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
         : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
@@ -176,6 +212,7 @@ export function buildWebInboundMessage(args: {
     // TODO(dcramer): Replace this string after deployed mailbox readers and
     // writers use a complete web Source.
     source: "web",
+    ...(traceContext ? { traceContext } : undefined),
   };
 }
 
@@ -289,12 +326,19 @@ export async function appendAndEnqueueWebMessage(
   const result = await enqueue({
     message: buildWebInboundMessage({
       actor: input.actor,
+      authorIdentityId: await resolveActorIdentityId(
+        getSqlExecutor(),
+        input.actor,
+      ),
       conversationId: input.conversationId,
       destination,
       message: text,
       attachments,
       messageId,
       nowMs,
+      ...(input.reviewItemChange && {
+        reviewItemChange: input.reviewItemChange,
+      }),
     }),
     conversationStore: options.conversationStore,
     nowMs,

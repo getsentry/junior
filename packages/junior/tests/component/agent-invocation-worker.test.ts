@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
-import type { AgentSteeringMessage } from "@/chat/agent/types";
+import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
@@ -11,7 +11,7 @@ import {
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
-import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
@@ -271,6 +271,7 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
@@ -339,13 +340,14 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is labeled as agent-written and has no Actor.
+      // The parent's text is a runtime input tag and has no Actor.
       expect(steered).toEqual([
         [
           expect.objectContaining({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: expect.stringMatching(
-              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+              /^<parent-agent-task>\n[\s\S]*Also check the retry path\.\n<\/parent-agent-task>$/,
             ),
           }),
         ],
@@ -376,7 +378,7 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
       await expect(
-        createListAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
+        createSearchAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
           .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [
@@ -517,6 +519,57 @@ describe("agent invocation worker", () => {
       // call, which a model request would reject.
       expect(histories).toEqual([
         readRound.map((item) => expect.objectContaining(item)),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("lets child agents spawn only down to maxAgentDepth", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const child = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "depth-child",
+      });
+      const helper = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "depth-helper",
+        parentConversationId: child.childConversationId,
+      });
+      const runs: AgentRun[] = [];
+      const worker = createAgentInvocationWorker(
+        {
+          run: async (run) => {
+            runs.push(run);
+            throw new Error("stop after reading the run");
+          },
+        },
+        { maxAgentDepth: 1 },
+      );
+      // With maxAgentDepth 1, depth 1 can spawn and depth 2 cannot.
+      for (const invocation of [child, helper]) {
+        await expect(
+          worker(
+            {
+              attempt: {
+                ack: vi.fn(),
+                conversationId: invocation.childConversationId,
+                drain: vi.fn(),
+                isFinalAttempt: false,
+                messages: [buildAgentInvocationInboundMessage(invocation)],
+              },
+              checkIn: vi.fn(),
+              conversationId: invocation.childConversationId,
+              shouldYield: () => false,
+            },
+            invocation.invocationId,
+          ),
+        ).rejects.toThrow("stop after reading the run");
+      }
+      expect(runs.map((run) => run.disabledFeatures)).toEqual([
+        ["interactive-auth"],
+        ["interactive-auth", "subagents"],
       ]);
     } finally {
       await fixture.close();

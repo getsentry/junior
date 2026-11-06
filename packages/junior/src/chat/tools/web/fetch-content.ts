@@ -1,12 +1,11 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import {
   DEFAULT_MAX_CHARS,
-  FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
   MAX_FETCH_CHARS,
 } from "@/chat/tools/web/constants";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { readResponseBody, withTimeout } from "@/chat/tools/web/network";
+import { readResponseBytes } from "@/chat/tools/web/network";
 
 export { MAX_FETCH_CHARS };
 
@@ -23,6 +22,8 @@ const htmlToMarkdownConverter = new NodeHtmlMarkdown({
 
 export interface WebFetchResponseContent {
   content: string;
+  /** All extracted text before the character limit. */
+  fullContent: string;
   title?: string;
   truncated: boolean;
   extractedChars: number;
@@ -36,6 +37,8 @@ export type WebFetchResponse = {
   source_bytes: number;
   extracted_chars: number;
   truncated: boolean;
+  /** The page was over the byte limit, so all extracted text stops early. */
+  source_truncated?: true;
 } & Record<string, unknown>;
 
 function normalizeWhitespace(text: string): string {
@@ -170,6 +173,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(normalizedMarkdown, maxChars);
       return {
         content: truncated.content,
+        fullContent: normalizedMarkdown,
         title: extractTitle(normalizedBody),
         truncated: truncated.truncated,
         extractedChars: normalizedMarkdown.length,
@@ -186,6 +190,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(formatted, maxChars);
       return {
         content: truncated.content,
+        fullContent: formatted,
         truncated: truncated.truncated,
         extractedChars: formatted.length,
       };
@@ -194,6 +199,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(normalizedText, maxChars);
       return {
         content: truncated.content,
+        fullContent: normalizedText,
         truncated: truncated.truncated,
         extractedChars: normalizedText.length,
       };
@@ -204,6 +210,7 @@ export function extractContentDetails(
   const truncated = truncateWebFetchContent(normalizedText, maxChars);
   return {
     content: truncated.content,
+    fullContent: normalizedText,
     truncated: truncated.truncated,
     extractedChars: normalizedText.length,
   };
@@ -222,15 +229,20 @@ export function extractContent(
 // Response extraction
 // ---------------------------------------------------------------------------
 
-/** Extract text content from a web fetch response, validating content type and size. */
+/**
+ * Extract text content from a web fetch response, validating content type and
+ * size. Also return all extracted text, so the caller can keep the part that
+ * the character limit removed.
+ */
 export async function extractWebFetchResponse(
   url: URL,
   response: Response,
   maxChars = DEFAULT_MAX_CHARS,
-): Promise<WebFetchResponse> {
+): Promise<{ result: WebFetchResponse; fullContent: string }> {
   const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
 
   if (!response.ok) {
+    await response.body?.cancel();
     const message = `fetch failed: ${response.status}`;
     // Client-side misses are model-repairable. Upstream 5xx stays a system error.
     if (response.status >= 400 && response.status < 500) {
@@ -247,24 +259,31 @@ export async function extractWebFetchResponse(
     !contentType.includes("json") &&
     !contentType.includes("xml")
   ) {
+    await response.body?.cancel();
     throw new ToolInputError(
       `unsupported content type: ${contentType || "unknown"}`,
     );
   }
 
-  const body = await withTimeout(
-    readResponseBody(response, MAX_FETCH_BYTES),
-    FETCH_TIMEOUT_MS,
-    "read",
+  // A page over the byte limit is cut, not rejected. Extraction keeps what was
+  // read, and the result says that the page stops early.
+  const { bytes, truncated: sourceTruncated } = await readResponseBytes(
+    response,
+    MAX_FETCH_BYTES,
   );
+  const body = new TextDecoder().decode(bytes);
   const extracted = extractContentDetails(body, contentType, safeMaxChars);
   return {
-    url: url.toString(),
-    content: extracted.content,
-    ...(extracted.title ? { title: extracted.title } : undefined),
-    content_type: contentType || "unknown",
-    source_bytes: Buffer.byteLength(body, "utf8"),
-    extracted_chars: extracted.extractedChars,
-    truncated: extracted.truncated,
+    result: {
+      url: url.toString(),
+      content: extracted.content,
+      ...(extracted.title ? { title: extracted.title } : undefined),
+      content_type: contentType || "unknown",
+      source_bytes: bytes.byteLength,
+      extracted_chars: extracted.extractedChars,
+      truncated: extracted.truncated || sourceTruncated,
+      ...(sourceTruncated ? { source_truncated: true } : undefined),
+    },
+    fullContent: extracted.fullContent,
   };
 }

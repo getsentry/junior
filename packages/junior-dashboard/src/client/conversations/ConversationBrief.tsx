@@ -1,7 +1,11 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
+import { ClampedPreview } from "../components/ClampedPreview";
 import { Detail, DetailList } from "../components/DetailList";
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
 import {
@@ -11,11 +15,13 @@ import {
 } from "../components/ui/collapsible";
 import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
-import { MentionPeopleProvider, renderMentionText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
 type BriefContent = ConversationBriefReport["content"];
+
+const SUMMARY_PREVIEW_LINES = 4;
 
 const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
   {
@@ -32,33 +38,17 @@ export function ConversationBrief(props: {
   brief: ConversationBriefReport;
   variant?: "summary" | "full";
 }) {
-  return (
-    <MentionPeopleProvider mentions={props.brief.mentions ?? []}>
-      <BriefContentView brief={props.brief} variant={props.variant} />
-    </MentionPeopleProvider>
-  );
-}
-
-function BriefContentView(props: {
-  brief: ConversationBriefReport;
-  variant?: "summary" | "full";
-}) {
   const { content } = props.brief;
+  const mentions = props.brief.mentions;
   if (props.variant === "summary") {
     return (
-      <div className="grid min-w-0 gap-4">
-        <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-          <BriefText text={content.summary} />
-        </p>
-        {content.openDecisions.length > 0 ? (
-          <div className="grid gap-2">
-            <h4 className="m-0 text-sm font-medium text-dashboard-text">
-              Open decisions
-            </h4>
-            <BriefOpenDecisions decisions={content.openDecisions} />
-          </div>
-        ) : null}
-      </div>
+      <ClampedPreview
+        className="leading-6"
+        label="Brief summary"
+        lines={SUMMARY_PREVIEW_LINES}
+      >
+        <DisplayText compact mentions={mentions} text={content.summary} />
+      </ClampedPreview>
     );
   }
   return (
@@ -75,33 +65,20 @@ function BriefContentView(props: {
           })}
         </span>
       </div>
-      <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-        <BriefText text={content.summary} />
-      </p>
+      <DisplayText mentions={mentions} text={content.summary} />
       <BriefSection title="Intent & outcome">
         <DetailList>
           <Detail label="Intent">
-            <BriefText text={content.intent} />
+            <DisplayText mentions={mentions} text={content.intent} />
           </Detail>
           <Detail label="Outcome">
-            <BriefText text={content.outcome.text} />
+            <DisplayText mentions={mentions} text={content.outcome.text} />
           </Detail>
         </DetailList>
       </BriefSection>
-      {content.decisions.length || content.openDecisions.length ? (
+      {content.decisions.length ? (
         <BriefSection title="Decisions">
-          <DetailList>
-            {content.decisions.length ? (
-              <Detail label="Decisions">
-                <BriefDecisions decisions={content.decisions} />
-              </Detail>
-            ) : null}
-            {content.openDecisions.length ? (
-              <Detail label="Open decisions">
-                <BriefOpenDecisions decisions={content.openDecisions} />
-              </Detail>
-            ) : null}
-          </DetailList>
+          <BriefDecisions decisions={content.decisions} mentions={mentions} />
         </BriefSection>
       ) : null}
       {content.facts.length ||
@@ -111,7 +88,7 @@ function BriefContentView(props: {
           <DetailList>
             {content.facts.length ? (
               <Detail label="Facts">
-                <BriefList items={content.facts} />
+                <BriefList items={content.facts} mentions={mentions} />
               </Detail>
             ) : null}
             {content.links.length ? (
@@ -184,7 +161,10 @@ function BriefSection(props: { children: ReactNode; title: string }) {
   );
 }
 
-function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
+function BriefDecisions(props: {
+  decisions: BriefContent["decisions"];
+  mentions?: readonly ActorIdentity[];
+}) {
   return (
     <ul className="m-0 grid list-none gap-2.5 p-0">
       {props.decisions.map((decision, index) => (
@@ -197,12 +177,21 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
               {decision.kind}
             </StatusChip>
             <span className="min-w-0">
-              <BriefText text={decision.text} />
+              <DisplayText
+                inline
+                mentions={props.mentions}
+                text={decision.text}
+              />
             </span>
           </div>
           {decision.by ? (
             <div className="mt-0.5 text-xs text-dashboard-text-muted">
-              by · <BriefText text={decision.by} />
+              by ·{" "}
+              <DisplayText
+                inline
+                mentions={props.mentions}
+                text={decision.by}
+              />
             </div>
           ) : null}
         </li>
@@ -211,41 +200,19 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
   );
 }
 
-function BriefOpenDecisions(props: {
-  decisions: BriefContent["openDecisions"];
+function BriefList(props: {
+  items: string[];
+  mentions?: readonly ActorIdentity[];
 }) {
-  return (
-    <ul className="m-0 grid list-none gap-2 p-0">
-      {props.decisions.map((decision, index) => (
-        <li key={`${decision.text}:${index}`}>
-          <div>
-            <BriefText text={decision.text} />
-          </div>
-          {decision.owner ? (
-            <div className="mt-1 text-xs text-dashboard-text-muted">
-              Owner: <BriefText text={decision.owner} />
-            </div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function BriefList(props: { items: string[] }) {
   return (
     <ul className="my-0 grid gap-1.5 pl-4">
       {props.items.map((item, index) => (
         <li key={`${item}:${index}`}>
-          <BriefText text={item} />
+          <DisplayText inline mentions={props.mentions} text={item} />
         </li>
       ))}
     </ul>
   );
-}
-
-function BriefText(props: { text: string }) {
-  return <>{renderMentionText(props.text, "brief")}</>;
 }
 
 function displayLabel(value: string): string {

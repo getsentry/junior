@@ -1,11 +1,11 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   actorIdentitySchema,
   conversationSummaryReportSchema,
 } from "./conversation";
 import { conversationStatsItemSchema } from "./conversation-stats";
 import { dailyConversationActivitySchema } from "../activity";
-import { juniorDestinationKindSchema } from "@/db/schema/destinations";
+import { juniorDestinationKindSchema } from "@/db/schema/destination-kind";
 
 export const locationParamsSchema = z
   .object({ locationId: z.string().min(1) })

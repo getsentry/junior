@@ -1,5 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
+import * as z from "zod";
 
 import { fetchDashboardJson } from "../../http";
 
@@ -7,9 +7,8 @@ const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
 
 const memoryDaySchema = z
   .object({
+    count: z.number().int().min(0),
     date: memoryBucketSchema,
-    personal: z.number().int().min(0),
-    public: z.number().int().min(0),
   })
   .strict();
 
@@ -38,10 +37,8 @@ export const memoryDashboardSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
-        personal: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
-        public: z.number().int().min(0),
       })
       .strict(),
   })
@@ -61,39 +58,6 @@ export function useMemoryDashboardData() {
         signal,
       ),
     queryKey: ["dashboard", "plugin-user-page", "memory", "summary"],
-    retry: false,
-  });
-}
-
-const memoryCountsSchema = z
-  .object({
-    active: z.number().int().min(0),
-    personal: z.number().int().min(0),
-    public: z.number().int().min(0),
-  })
-  .strict();
-
-/**
- * Load viewer-scoped memory totals that match a search query. The query stays
- * idle without a search, because the dashboard summary owns unfiltered totals.
- */
-export function useMemorySearchCounts(searchQuery: string) {
-  return useQuery({
-    enabled: Boolean(searchQuery),
-    placeholderData: keepPreviousData,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        memoryCountsSchema,
-        `/api/plugins/memory/counts?${new URLSearchParams({ q: searchQuery })}`,
-        signal,
-      ),
-    queryKey: [
-      "dashboard",
-      "plugin-user-page",
-      "memory",
-      "counts",
-      searchQuery,
-    ],
     retry: false,
   });
 }

@@ -1,9 +1,11 @@
+import { getChatConfig } from "@/chat/config";
+import { bullmqQueueProvider } from "@/chat/queue/bullmq";
 import { vercelQueueProvider } from "@/chat/queue/vercel";
 
 // Module overview: the one place that chooses a queue provider.
 //
 // Queue code calls `getQueueProvider()` and uses only this contract.
-// Provider modules, such as `vercel.ts`, implement it. Only this module
+// Provider modules, such as `vercel.ts` and `bullmq.ts`, implement it. Only this module
 // imports a provider module.
 
 /** Delivery facts that a queue provider passes with each message. */
@@ -63,11 +65,27 @@ export interface QueueProvider {
   createCallback(
     consumer: QueueConsumer,
   ): (request: Request) => Promise<Response>;
-  /** Receive messages in this process during local development. */
-  registerDevConsumer(consumer: QueueConsumer): () => void;
+  /**
+   * Receive messages in the process that sends them during local development.
+   * Only providers that deliver this way implement it.
+   */
+  registerDevConsumer?(consumer: QueueConsumer): () => void;
+  /**
+   * Pull messages for these consumers in this process until `close()`.
+   * Only providers whose consumers pull messages implement it.
+   */
+  startWorker?(consumers: QueueConsumer[]): Promise<QueueWorker>;
+}
+
+/** Consumers that pull messages in one process. */
+export interface QueueWorker {
+  /** Stop taking messages, wait for running ones, and release connections. */
+  close(): Promise<void>;
 }
 
 /** Return the queue provider for this deployment. */
 export function getQueueProvider(): QueueProvider {
-  return vercelQueueProvider;
+  return getChatConfig().queue.provider === "bullmq"
+    ? bullmqQueueProvider
+    : vercelQueueProvider;
 }

@@ -24,7 +24,7 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
-      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+      "[View Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
     );
   });
 
@@ -39,7 +39,7 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
-      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001)",
+      "[View Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001)",
     );
   });
 
@@ -48,7 +48,7 @@ describe("GitHub conversation footer", () => {
     process.env.SENTRY_ORG_SLUG = "acme";
 
     expect(appendGitHubFooter("PR body", conversationId)).toContain(
-      "[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+      "[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
     );
   });
 

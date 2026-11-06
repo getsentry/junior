@@ -54,8 +54,8 @@ export const fileLengthExceptions = {
     "Existing broad provider retry suite; split by behavior.",
   "packages/junior/tests/integration/sandbox-egress-proxy.test.ts":
     "Existing broad sandbox egress suite; split by behavior.",
-  "packages/junior/tests/integration/slack-schedule-tools.test.ts":
-    "Existing broad Slack scheduler suite; split by tool.",
+  "packages/junior/tests/integration/scheduled-automation-tools.test.ts":
+    "Existing broad scheduled automation tool suite; split by tool.",
   "packages/junior/tests/unit/api/conversation-events.test.ts":
     "Existing broad conversation events suite; split by behavior.",
   "packages/junior/tests/unit/plugins/agent-hooks.test.ts":

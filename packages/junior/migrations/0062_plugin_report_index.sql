@@ -1,10 +1,10 @@
--- For a busy database, first run the index definition below with CONCURRENTLY,
--- as one statement outside a transaction. Before junior upgrade, check its
--- pg_get_indexdef, pg_index.indisvalid, and pg_index.indisready.
+-- Before this migration runs, junior upgrade builds the marked index with
+-- CREATE INDEX CONCURRENTLY, so the build below does not block writes.
 DO $$
 BEGIN
   -- Even CREATE INDEX IF NOT EXISTS takes a write-blocking table lock.
   IF to_regclass('junior_conversation_events_plugin_report_idx') IS NULL THEN
+    -- junior:concurrent-index
     CREATE INDEX "junior_conversation_events_plugin_report_idx" ON "junior_conversation_events" USING btree (("payload"->>'namespace'),("payload"->>'name'),"created_at") WHERE "junior_conversation_events"."type" = 'structured_event';
   END IF;
 

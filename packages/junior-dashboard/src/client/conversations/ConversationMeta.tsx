@@ -6,11 +6,10 @@ import {
   CircleX,
   GitMerge,
   GitPullRequest,
-  Globe2,
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -30,7 +29,6 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
@@ -44,6 +42,10 @@ import {
   type SidebarAnnotation,
   type SidebarAnnotationBadgeGroup,
 } from "./sidebarAnnotationBadges";
+import {
+  linkStatusLabel,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -72,51 +74,26 @@ export function PendingAuthorization(props: {
   );
 }
 
-/** Show whether the selected conversation is public or private. */
+/**
+ * Mark a private conversation with a lock icon. Public is the default, so it
+ * gets no marker, which keeps the title bar short.
+ */
 export function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
-  if (!props.visibility) return null;
-  const isPublic = props.visibility === "public";
-  const Icon = isPublic ? Globe2 : LockKeyhole;
-  const shortLabel = isPublic ? "Public" : "Private";
-  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
-  const detail = isPublic
-    ? "Anyone in this workspace can see this transcript."
-    : "Only members of this conversation can see this transcript.";
+  if (props.visibility !== "private") return null;
+  const label =
+    "Private conversation. Only members of this conversation can see this transcript.";
   return (
     <span
-      className={
-        isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-      }
+      className="inline-flex items-center text-dashboard-text-muted"
       role="note"
-      title={`${fullLabel}. ${detail}`}
+      title={label}
     >
-      <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span aria-hidden="true" className="truncate">
-        {shortLabel}
-      </span>
-      <span className="sr-only">
-        {fullLabel}. {detail}
-      </span>
+      <LockKeyhole aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="sr-only">{label}</span>
     </span>
   );
-}
-
-type ResourceLinkStatus = NonNullable<
-  Extract<
-    NonNullable<ConversationDetailReport["annotations"]>[number],
-    { kind: "resource_link" }
-  >["status"]
->;
-
-/** True when the conversation has at least one resource-link annotation. */
-export function hasConversationAnnotations(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-): boolean {
-  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -418,74 +395,39 @@ function SidebarAnnotationIcon(props: {
   );
 }
 
-/** Render resource-link annotations under the conversation title. */
+/** Render linked work as a compact strip under the conversation title. */
 export function ConversationAnnotations(props: {
-  detail: ConversationDetailReport | undefined;
-  layout?: "list" | "strip";
+  links: readonly ConversationLink[];
 }) {
-  const links =
-    props.detail?.annotations?.filter(
-      (annotation) => annotation.url !== null,
-    ) ?? [];
-  if (links.length === 0) return null;
   return (
-    <div
-      className={cn(
-        "flex gap-x-4 gap-y-2",
-        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
-      )}
-    >
-      {links.map((link) => (
+    <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
+      {props.links.map((link) => (
         <a
-          className={cn(
-            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-            props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
-              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
-          )}
-          href={link.url ?? undefined}
-          key={`${link.plugin}:${link.key}`}
+          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          href={link.url}
+          key={link.key}
           rel="noreferrer"
           target="_blank"
-          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
+          title={[
+            link.label,
+            link.plugin,
+            linkStatusLabel(link.status),
+            link.description,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         >
           <ObjectIcon
-            objectType={
-              link.objectType ??
-              props.detail?.sidebarAnnotations?.find(
-                (annotation) => annotation.key === link.key,
-              )?.objectType ??
-              "item"
-            }
-            status={link.status}
-            facts={link.kind === "object" ? link.facts : undefined}
+            facts={link.facts}
+            objectType={link.objectType}
             size={16}
+            status={link.status}
           />
           <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
     </div>
   );
-}
-
-function resourceLinkTitle(link: {
-  description?: string;
-  label: string;
-  plugin: string;
-  status?: ResourceLinkStatus;
-}): string {
-  const statusLabel = link.status
-    ? {
-        open: "Open",
-        draft: "Draft",
-        closed: "Closed",
-        merged: "Merged",
-        warning: "Needs attention",
-      }[link.status]
-    : undefined;
-  return [link.label, link.plugin, statusLabel, link.description]
-    .filter(Boolean)
-    .join(" · ");
 }
 
 function LocationLink(props: { label: string; locationUrl?: string }) {
@@ -521,7 +463,7 @@ function SourceTask(props: {
   );
 }
 
-/** Resolve the model still running an open turn, including mid-turn handoffs. */
+/** Resolve the model that an open turn last called. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
 ): string | undefined {
@@ -536,73 +478,108 @@ export function liveModelId(
       if (openTurns.size === 0) modelId = undefined;
       continue;
     }
-    if (openTurns.size === 0) continue;
-    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
-      modelId = data.modelId;
-      continue;
-    }
-    if (data.type === "handoff") modelId = data.modelId;
+    if (openTurns.size > 0 && event.model) modelId = event.model.modelId;
   }
   return openTurns.size > 0 ? modelId : undefined;
 }
 
-/** True when runtime stats have content for the requested presentation. */
-export function hasConversationStats(props: {
+type ConversationStatsProps = {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}): boolean {
+  showUsageBreakdown?: boolean;
+};
+
+/** True when runtime stats have content to show in details. */
+export function hasConversationStats(props: ConversationStatsProps): boolean {
   return conversationStatItems(props).length > 0;
 }
 
-type ConversationStatItem = MetricListItem & { label: string };
+type ConversationStatItem = {
+  content: ReactNode;
+  key: string;
+  label: string;
+  /** Shown below `md` only, where the title bar is hidden. */
+  mobileOnly?: boolean;
+};
 
-/**
- * Render runtime, source, token, and cost metadata. The compact variant is one
- * line under the conversation title. The full variant is a labeled list for
- * conversation details.
- */
-export function ConversationStats(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}) {
+/** Render runtime, source, token, and cost metadata as a labeled list. */
+export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
-
-  if ((props.variant ?? "full") === "full") {
-    return (
-      <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
-        {stats.map((item) => (
-          <div
-            className="flex min-w-0 items-baseline justify-between gap-4"
-            key={item.key}
-          >
-            <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
-            <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
-              {item.content}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-
   return (
-    <MetricList
-      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-      items={stats}
+    <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
+      {stats.map((item) => (
+        <div
+          className={cn(
+            "flex min-w-0 items-baseline justify-between gap-4",
+            item.mobileOnly && "md:hidden",
+          )}
+          key={item.key}
+        >
+          <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
+          <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+            {item.content}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * Name where a conversation runs, linked when the source has a URL. Returns
+ * null without a location, so callers can drop the slot around it.
+ */
+export function conversationLocation(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+): ReactNode {
+  if (!conversation) return null;
+  const location = slackLocationLabel(conversation, { includeId: false });
+  if (!location) return null;
+  return (
+    <LocationLink
+      label={location}
+      locationUrl={detail?.locationUrl ?? conversation.locationUrl}
     />
   );
 }
 
-function conversationStatItems(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}): ConversationStatItem[] {
+/**
+ * Show the estimated cost of a conversation with its breakdown tooltip.
+ * Returns null until there is a cost or a live run to show.
+ */
+export function conversationCost(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+  tooltipPlacement?: "above" | "below",
+): ReactNode {
+  if (!conversation) return null;
+  const costSummary = summarizeCost(
+    detail?.cumulativeUsage ?? conversation.cumulativeUsage,
+  );
+  const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
+  const live = (detail?.status ?? conversation.status) === "active";
+  if (!costSummary && !auxiliaryCosts && !live) return null;
+  return (
+    <CostMetric
+      auxiliaryCosts={auxiliaryCosts}
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      live={live}
+      liveModelId={liveModelId(detail)}
+      modelUsage={detail?.modelUsage}
+      summary={costSummary}
+      tooltipPlacement={tooltipPlacement}
+    />
+  );
+}
+
+function conversationStatItems(
+  props: ConversationStatsProps,
+): ConversationStatItem[] {
   if (!props.conversation) return [];
-  const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
@@ -610,12 +587,6 @@ function conversationStatItems(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const costSummary = summarizeCost(usage);
-  const location = slackLocationLabel(props.conversation, {
-    includeId: false,
-  });
-  const locationUrl =
-    props.detail?.locationUrl ?? props.conversation.locationUrl;
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -623,22 +594,28 @@ function conversationStatItems(props: {
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
+  const location = conversationLocation(props.conversation, props.detail);
+  const cost = props.showUsageBreakdown
+    ? null
+    : conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
+    // The desktop title bar shows the location. Mobile hides that bar.
     location
       ? {
-          content: <LocationLink label={location} locationUrl={locationUrl} />,
+          content: location,
           key: "location",
           label: "Location",
+          mobileOnly: true,
         }
       : undefined,
-    variant === "full" && sourceTask
+    sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
           label: "Source",
         }
       : undefined,
-    variant === "full" && lastActivityAt
+    lastActivityAt
       ? {
           content: (
             <time
@@ -670,11 +647,10 @@ function conversationStatItems(props: {
           label: "Runtime",
         }
       : undefined,
-    tokenSummary
+    tokenSummary && !props.showUsageBreakdown
       ? {
           content: (
             <TokenMetric
-              detailsHint={variant === "compact"}
               childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
@@ -693,25 +669,9 @@ function conversationStatItems(props: {
           label: "Tokens",
         }
       : undefined,
-    costSummary ||
-    props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts ||
-    live
+    cost
       ? {
-          content: (
-            <CostMetric
-              detailsHint={variant === "compact"}
-              auxiliaryCosts={
-                props.detail?.auxiliaryCosts ??
-                props.conversation.auxiliaryCosts
-              }
-              childAgentTotals={childAgentTotals}
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={costSummary}
-            />
-          ),
+          content: cost,
           key: "cost",
           label: "Cost",
         }

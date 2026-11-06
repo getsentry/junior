@@ -2,12 +2,6 @@ import { describe, expect, it } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 
-const executionProfile = {
-  profile: "standard",
-  reasoningLevel: "medium" as const,
-  reason: "test",
-};
-
 describe("buildTurnResult", () => {
   it("requires a completed answer after a progress message and tool result", () => {
     const reply = buildTurnResult({
@@ -33,7 +27,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -69,7 +63,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -104,7 +98,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 1,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -136,7 +130,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -171,7 +165,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Updated answer.");
@@ -208,7 +202,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe(
@@ -245,7 +239,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -276,7 +270,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Handled it.");
@@ -298,7 +292,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -327,7 +321,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -354,7 +348,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -384,7 +378,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 1,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Here's the image.");
@@ -406,7 +400,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
       usage: {
         inputTokens: 321,
         outputTokens: 144,

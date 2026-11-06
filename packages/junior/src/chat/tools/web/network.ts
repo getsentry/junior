@@ -2,7 +2,12 @@ import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { FETCH_TIMEOUT_MS, USER_AGENT } from "@/chat/tools/web/constants";
+import { Readable } from "node:stream";
+import {
+  FETCH_ACCEPT,
+  FETCH_TIMEOUT_MS,
+  USER_AGENT,
+} from "@/chat/tools/web/constants";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function isPrivateIpv4(ip: string): boolean {
@@ -170,6 +175,7 @@ async function fetchWithPinnedLookup(
       redirect: "manual",
       signal,
       headers: {
+        accept: FETCH_ACCEPT,
         "user-agent": USER_AGENT,
       },
     });
@@ -190,37 +196,42 @@ async function fetchWithPinnedLookup(
           ? { servername: url.hostname }
           : undefined),
         headers: {
+          accept: FETCH_ACCEPT,
           "user-agent": USER_AGENT,
           "accept-encoding": "identity",
         },
       },
       (response) => {
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer | string) => {
-          chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+        response.on("close", () => {
+          signal.removeEventListener("abort", onAbort);
         });
-        response.on("end", () => {
-          try {
-            signal.removeEventListener("abort", onAbort);
-            const headers = new Headers();
-            const rawHeaders = response.rawHeaders;
-            for (let i = 0; i + 1 < rawHeaders.length; i += 2) {
-              headers.append(rawHeaders[i] ?? "", rawHeaders[i + 1] ?? "");
-            }
-
-            const rawStatus = response.statusCode ?? 500;
-            const status =
-              rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 502;
-            resolve(
-              new Response(Buffer.concat(chunks), {
-                status,
-                headers,
-              }),
-            );
-          } catch (error) {
-            reject(error);
+        try {
+          const headers = new Headers();
+          const rawHeaders = response.rawHeaders;
+          for (let i = 0; i + 1 < rawHeaders.length; i += 2) {
+            headers.append(rawHeaders[i] ?? "", rawHeaders[i + 1] ?? "");
           }
-        });
+
+          const rawStatus = response.statusCode ?? 500;
+          const status = rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 502;
+          const hasBody = ![204, 205, 304].includes(status);
+          if (!hasBody) {
+            response.resume();
+          }
+          // Stream the body so readers can stop at a byte limit instead of
+          // holding the whole page in memory.
+          resolve(
+            new Response(
+              hasBody
+                ? (Readable.toWeb(response) as ReadableStream<Uint8Array>)
+                : null,
+              { status, headers },
+            ),
+          );
+        } catch (error) {
+          response.destroy();
+          reject(error);
+        }
       },
     );
 
@@ -312,6 +323,7 @@ export async function fetchTextWithRedirects(
   if (!isRedirect) {
     return response;
   }
+  await response.body?.cancel();
 
   if (redirectsLeft <= 0) {
     throw new ToolInputError("Too many redirects");
@@ -327,29 +339,49 @@ export async function fetchTextWithRedirects(
   return fetchTextWithRedirects(safeUrl, redirectsLeft - 1);
 }
 
-export async function readResponseBody(
+/**
+ * Read at most `maxBytes` of a response body within the fetch timeout. A
+ * longer body is cut at the limit, and a slow body fails. Both cancel the rest
+ * of the body, so the connection stops downloading.
+ */
+export async function readResponseBytes(
   response: Response,
   maxBytes: number,
-): Promise<string> {
+): Promise<{ bytes: Buffer; truncated: boolean }> {
   if (!response.body) {
-    return "";
+    return { bytes: Buffer.alloc(0), truncated: false };
   }
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    // Cancel ends the pending read. A cancel failure must not hide the timeout.
+    reader.cancel().catch(() => undefined);
+  }, FETCH_TIMEOUT_MS);
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (!value) continue;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (timedOut) {
+        throw new Error("read timed out");
+      }
+      if (done) {
+        return { bytes: Buffer.concat(chunks), truncated: false };
+      }
 
-    total += value.byteLength;
-    if (total > maxBytes) {
-      throw new ToolInputError("Response body too large");
+      const room = maxBytes - total;
+      if (value.byteLength > room) {
+        chunks.push(value.subarray(0, room));
+        await reader.cancel();
+        return { bytes: Buffer.concat(chunks), truncated: true };
+      }
+      chunks.push(value);
+      total += value.byteLength;
     }
-    chunks.push(value);
+  } finally {
+    clearTimeout(timer);
   }
-
-  return new TextDecoder().decode(Buffer.concat(chunks));
 }

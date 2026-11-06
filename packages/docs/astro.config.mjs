@@ -21,6 +21,7 @@ export default defineConfig({
     "/extend/figma": "/extend/figma-plugin",
     "/extend/hex": "/extend/hex-plugin",
     "/extend/pagerduty": "/extend/pagerduty-plugin",
+    "/extend/restream": "/extend/restream-plugin",
     "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
     "/plugins/amplitude": "/extend/amplitude-plugin",
@@ -36,6 +37,7 @@ export default defineConfig({
     "/plugins/sentry": "/extend/sentry-plugin",
     "/plugins/vercel": "/extend/vercel-plugin",
     "/extend/vercel": "/extend/vercel-plugin",
+    "/extend/xdotcom": "/extend/xdotcom-plugin",
     "/operate/telemetry-runbooks": "/operate/reliability-runbooks",
     "/operate/security": "/operate/security-hardening",
     "/operate/reliability": "/operate/reliability-runbooks",
@@ -49,7 +51,11 @@ export default defineConfig({
       description:
         "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
       favicon: "/favicon.png",
-      customCss: ["./src/styles/custom.css", "./src/styles/homepage-mocks.css"],
+      customCss: [
+        "@fontsource/caveat/500.css",
+        "@fontsource/caveat/700.css",
+        "./src/styles/custom.css",
+      ],
       social: [
         {
           icon: "github",
@@ -143,8 +149,10 @@ export default defineConfig({
               label: "PagerDuty Plugin",
               link: "/extend/pagerduty-plugin/",
             },
+            { label: "Restream Plugin", link: "/extend/restream-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
+            { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },
         {
@@ -160,6 +168,7 @@ export default defineConfig({
               link: "/operate/security-hardening/",
             },
             { label: "Dashboard", link: "/operate/dashboard/" },
+            { label: "MCP Server", link: "/operate/mcp-server/" },
             {
               label: "Sandbox Snapshots",
               link: "/operate/sandbox-snapshots/",

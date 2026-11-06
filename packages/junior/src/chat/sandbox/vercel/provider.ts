@@ -73,6 +73,16 @@ function adaptSession(
     sandboxId: sandbox.name,
     sessionId: session.sessionId,
     fs,
+    createPreview(port) {
+      return run(async () => {
+        // `ports` replaces the whole list, so keep the routes that exist.
+        const ports = new Set(session.routes.map((route) => route.port));
+        if (!ports.has(port)) {
+          await sandbox.update({ ports: [...ports, port] });
+        }
+        return session.domain(port);
+      });
+    },
     extendTimeout(duration) {
       return run(async () => await session.extendTimeout(duration));
     },

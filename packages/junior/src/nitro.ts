@@ -4,9 +4,9 @@ import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
-  copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
+  resolveDashboardPublicAssetsDir,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
@@ -14,15 +14,19 @@ import {
 } from "@/build/virtual-config";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -96,6 +100,10 @@ type RollupLikeConfig = {
 
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
+// Code Mode loads `quickjs.wasm` and its worker file from the installed
+// packages at run time. A trailing `*` tells Nitro to keep these packages
+// external and copy each whole package into the server output.
+const CODEMODE_TRACE_DEPS = ["@earendil-works/pi-codemode*", "quickjs-wasi*"];
 
 function isPluginModuleReference(
   value: JuniorNitroPluginSource | undefined,
@@ -177,6 +185,16 @@ function configureVercelDeployment(
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
     });
   }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_AUTO_ARCHIVE_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+      schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+    });
+  }
 
   nitro.options.vercel.functions ??= {};
   nitro.options.vercel.functions.maxDuration = defaultMaxDuration;
@@ -256,6 +274,32 @@ function configureVercelDeployment(
     ],
   };
 
+  const existingCompactionRule =
+    nitro.options.vercel.functionRules[
+      JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE
+    ] ?? {};
+  const existingCompactionTriggers = Array.isArray(
+    existingCompactionRule.experimentalTriggers,
+  )
+    ? existingCompactionRule.experimentalTriggers
+    : [];
+  const otherCompactionTriggers = existingCompactionTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+
+  nitro.options.vercel.functionRules[JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE] =
+    {
+      ...existingCompactionRule,
+      maxDuration: defaultMaxDuration,
+      experimentalTriggers: [
+        ...otherCompactionTriggers,
+        {
+          type: VERCEL_QUEUE_TRIGGER_TYPE,
+          topic: BACKGROUND_COMPACTION_QUEUE_TOPIC,
+        },
+      ],
+    };
+
   return defaultMaxDuration;
 }
 
@@ -276,6 +320,22 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         );
 
         applyRolldownTreeshakeWorkaround(nitro);
+        if (dashboardEnabled(options.dashboard)) {
+          // Nitro resolves configured public assets before modules run, so
+          // this entry must already have its final shape. The dashboard
+          // package serves the same files from `/_junior/dashboard/assets/*`
+          // when no static file matches.
+          nitro.options.publicAssets.push({
+            baseURL: "/_junior/dashboard/assets",
+            dir: resolveDashboardPublicAssetsDir(cwd),
+            fallthrough: false,
+            maxAge: 31_536_000,
+          });
+        }
+        nitro.options.traceDeps = [
+          ...(nitro.options.traceDeps ?? []),
+          ...CODEMODE_TRACE_DEPS,
+        ];
         const pluginSource = options.plugins;
         const pluginModule = isPluginModuleReference(pluginSource)
           ? resolvePluginModule(cwd, pluginSource)
@@ -322,9 +382,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
-          if (dashboardEnabled(options.dashboard)) {
-            copyDashboardAssets(cwd, nitro.options.output.serverDir);
-          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,

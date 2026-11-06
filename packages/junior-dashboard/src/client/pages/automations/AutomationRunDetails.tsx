@@ -186,7 +186,6 @@ function AutomationRunContent(props: {
   showAutomation: boolean;
 }) {
   const { run } = props;
-  const versionsPath = `${automationPath(run.automationId)}/versions`;
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
@@ -255,7 +254,10 @@ function AutomationRunContent(props: {
           ) : null}
           {run.automationVersion ? (
             <RunFact label="Version">
-              <Link className={dashboardInlineLinkClass} to={versionsPath}>
+              <Link
+                className={dashboardInlineLinkClass}
+                to={`${automationPath(run.automationId, "versions")}?version=${run.automationVersion}`}
+              >
                 Version {run.automationVersion}
               </Link>
             </RunFact>

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
 import {
   extractContent,
   extractContentDetails,
@@ -102,7 +103,7 @@ describe("web fetch content conversion", () => {
     const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
     const html = `<html><body>${paragraph.repeat(30)}</body></html>`;
 
-    const result = await extractWebFetchResponse(
+    const { result, fullContent } = await extractWebFetchResponse(
       new URL("https://docs.example.com/large"),
       new Response(html, {
         status: 200,
@@ -117,6 +118,54 @@ describe("web fetch content conversion", () => {
     expect(result.source_bytes).toBe(Buffer.byteLength(html));
     expect(result.extracted_chars).toBeGreaterThan(result.content.length);
     expect(result.truncated).toBe(true);
+    expect(fullContent.length).toBe(result.extracted_chars);
+  });
+
+  it("keeps the first part of a page over the byte limit", async () => {
+    const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
+    const html = `<html><body><main>${paragraph.repeat(80)}</main></body></html>`;
+
+    const { result } = await extractWebFetchResponse(
+      new URL("https://docs.example.com/huge"),
+      new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+      1200,
+    );
+
+    expect(Buffer.byteLength(html)).toBeGreaterThan(MAX_FETCH_BYTES);
+    expect(result.content).toContain("Slack streaming docs");
+    expect(result.source_bytes).toBe(MAX_FETCH_BYTES);
+    expect(result.truncated).toBe(true);
+    expect(result.source_truncated).toBe(true);
+  });
+
+  it("cancels a body that stalls past the read timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("<html><body>"));
+        },
+        cancel,
+      });
+
+      const read = extractWebFetchResponse(
+        new URL("https://docs.example.com/stalled"),
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      ).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS);
+
+      expect(await read).toMatchObject({ message: "read timed out" });
+      expect(cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports client-side fetch failures as repairable tool errors", async () => {

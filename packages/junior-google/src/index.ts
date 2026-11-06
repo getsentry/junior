@@ -46,7 +46,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling, Meet transcripts, and Google Docs, Sheets, and Slides reading as Junior's own Google Workspace account",
+        "Google Calendar scheduling, Meet transcripts, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
       domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},

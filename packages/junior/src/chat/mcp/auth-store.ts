@@ -9,6 +9,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -357,9 +358,20 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseStoredCredentials(
+  const stored = parseStoredCredentials(
     await stateAdapter.get(credentialsKey(userId, provider)),
   );
+  if (stored) return stored;
+  // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
+  // remain. Web Actors saved them before they used the User id, so move them.
+  const legacyUserId = await findLegacyWebActorUserId(userId);
+  if (!legacyUserId) return undefined;
+  const legacyKey = credentialsKey(legacyUserId, provider);
+  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  if (!legacy) return undefined;
+  await putMcpStoredOAuthCredentials(userId, provider, legacy);
+  await stateAdapter.delete(legacyKey);
+  return legacy;
 }
 
 export async function putMcpStoredOAuthCredentials(
@@ -382,6 +394,12 @@ export async function deleteMcpStoredOAuthCredentials(
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
   await stateAdapter.delete(credentialsKey(userId, provider));
+  // TODO(dcramer): Delete with the legacy read above. A read moves legacy
+  // credentials only when the User id has none, so delete both keys.
+  const legacyUserId = await findLegacyWebActorUserId(userId);
+  if (legacyUserId) {
+    await stateAdapter.delete(credentialsKey(legacyUserId, provider));
+  }
 }
 
 export async function getMcpServerSessionId(

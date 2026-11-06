@@ -1,4 +1,4 @@
-import type { Event } from "@sentry/junior-plugin-api";
+import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -11,6 +11,7 @@ import {
   collectEventMatchKeys,
   findMatchingWatches,
 } from "@/chat/events/store";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -18,6 +19,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 export type EventAppPublisher = {
   hasMatch(event: Event): Promise<boolean>;
   neededMatchKeys(input: {
+    data?: EventData;
     eventTypes: string[];
     identifiers: string[];
     namespace: string;
@@ -48,7 +50,12 @@ export function createEventAppPublisher(args: {
           state: work.state,
         }),
         eventAutomationTeamId
-          ? findMatchingEventAutomations(getDb(), event, eventAutomationTeamId)
+          ? findMatchingEventAutomations(
+              getDb(),
+              event,
+              eventAutomationTeamId,
+              getEventCatalog(),
+            )
           : Promise.resolve([]),
       ]);
       return subscriptions.length > 0 || tasks.length > 0;
@@ -65,6 +72,8 @@ export function createEventAppPublisher(args: {
         }),
         eventAutomationTeamId
           ? collectEventAutomationMatchKeys(getDb(), {
+              catalog: getEventCatalog(),
+              ...(input.data ? { data: input.data } : undefined),
               eventTypes: input.eventTypes,
               identifiers: input.identifiers,
               namespace: input.namespace,

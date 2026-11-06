@@ -1,7 +1,10 @@
 /** Receive queue messages for Workspace snapshot builds. */
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import type { QueueMessageMetadata } from "@/chat/queue/provider";
+import type {
+  QueueConsumer,
+  QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import { processWorkspaceSnapshotJob } from "./job-runner";
 import {
   verifyWorkspaceSnapshotJobMessage,
@@ -40,6 +43,11 @@ export function createVercelWorkspaceSnapshotJobCallback(): (
   request: Request,
 ) => Promise<Response> {
   return workspaceSnapshotJobCallback().create();
+}
+
+/** Return the queue consumer for snapshot builds, for a pulling queue worker. */
+export function workspaceSnapshotJobQueueConsumer(): QueueConsumer {
+  return workspaceSnapshotJobCallback().consumer;
 }
 
 /** Receive snapshot build messages during local development. */

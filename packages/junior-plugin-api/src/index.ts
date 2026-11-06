@@ -22,6 +22,7 @@ export {
 } from "./prompt";
 export * from "./dispatch";
 export * from "./events";
+export * from "./event-triggers";
 export * from "./tasks";
 export * from "./tools";
 export * from "./operations";
@@ -32,4 +33,5 @@ export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
+export * from "./review-items";
 export * from "./user-pages";

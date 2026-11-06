@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, ExternalLink } from "lucide-react";
+import { Bot, CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
@@ -11,6 +11,8 @@ import {
 } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
@@ -22,7 +24,6 @@ import {
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { transcriptEmptyClass } from "./transcriptStyles";
 
 /** One child Conversation to show, with what its parent already knows. */
 export interface SubagentTranscriptTarget {
@@ -108,6 +109,8 @@ function SubagentTranscriptDrawerContent(props: {
         </>
       }
       closeLabel="Close subagent transcript"
+      // The event log owns its row insets and sticky toolbar, like the page.
+      flush={view === "raw"}
       header={
         <>
           <div className="flex min-w-0 items-center gap-2">
@@ -178,9 +181,19 @@ function SubagentTranscriptDrawerContent(props: {
       {query.isPending ? (
         <TranscriptLoading />
       ) : query.error && !detail ? (
-        <DrawerEmptyState tone="error">
-          Conversation failed to load.
-        </DrawerEmptyState>
+        <Alert
+          className="gap-1 px-4 py-3 has-[>svg]:gap-x-3"
+          variant="destructive"
+        >
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle className="font-display text-base font-semibold leading-tight">
+            Conversation failed to load.
+          </AlertTitle>
+          <AlertDescription className="leading-relaxed">
+            Junior could not get this child conversation. Use Open conversation
+            to view it on its own page.
+          </AlertDescription>
+        </Alert>
       ) : detail ? (
         <Transcript
           hasPreviousPage={query.hasPreviousPage}
@@ -194,7 +207,7 @@ function SubagentTranscriptDrawerContent(props: {
           view={view}
         />
       ) : (
-        <DrawerEmptyState>Conversation unavailable.</DrawerEmptyState>
+        <EmptyTelemetry>Conversation unavailable.</EmptyTelemetry>
       )}
     </Drawer>
   );
@@ -208,20 +221,4 @@ function statusLabel(
     return status;
   }
   return detailStatus ?? status;
-}
-
-function DrawerEmptyState(props: {
-  children: string;
-  tone?: "default" | "error";
-}) {
-  const isError = props.tone === "error";
-  return (
-    <div
-      className={transcriptEmptyClass(isError ? "error" : "default")}
-      data-tone={props.tone ?? "default"}
-      role={isError ? "alert" : undefined}
-    >
-      {props.children}
-    </div>
-  );
 }

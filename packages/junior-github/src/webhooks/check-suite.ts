@@ -2,14 +2,24 @@
  * GitHub check suite events.
  */
 import type { EventInput } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   githubRequest,
   isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubStatusIncident } from "../github-status.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
+import {
+  gitHubCommitShaDataSchema,
+  gitHubRepoDataSchema,
+} from "../events/scope.js";
+import {
+  definedValues,
+  gitHubEventKey,
+  pullRequestTargets,
+} from "./event-targets.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -18,21 +28,6 @@ const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
   "openerRole",
   "openerUsername",
 ]);
-
-function gitHubEventKey(deliveryId: string, eventType: string): string {
-  return `github:${deliveryId}:${eventType}`;
-}
-
-function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
-  const { terminal: _terminal, ...repositoryEvent } = event;
-  return [
-    event,
-    {
-      ...repositoryEvent,
-      identifier: gitHubRepositoryResource({ repo }).identifier,
-    },
-  ];
-}
 
 /**
  * Check suite pull_requests use GitHub's CheckRunPullRequest shape:
@@ -163,6 +158,8 @@ export type GitHubCheckSuitePullRequestFacts = {
 /** Optional values for one check suite event. */
 export type GitHubCheckSuiteFacts = {
   failingChecks?: GitHubFailingCheck[];
+  /** Open or recent githubstatus.com incidents when the suite failed. */
+  githubIncidents?: GitHubStatusIncident[];
   /** Pull request values by number when a match filter needs them. */
   pullRequestFactsByNumber?: Record<number, GitHubCheckSuitePullRequestFacts>;
 };
@@ -193,6 +190,43 @@ function checkSuiteHeadBranch(
   return branch ? branch : undefined;
 }
 
+/**
+ * Trusted data on every check suite event. `pullRequest` is missing when
+ * GitHub links the suite to no pull request, such as on the main branch.
+ * `commitSha` is missing when GitHub sends no full SHA. `suiteConclusion`
+ * stays as a detail, not a filter: the event type already tells failed from
+ * recovered.
+ */
+const checkSuiteEventDataSchema = z
+  .object({
+    repo: gitHubRepoDataSchema,
+    pullRequest: z.number().optional(),
+    commitSha: gitHubCommitShaDataSchema.optional(),
+    suiteConclusion: z.string().min(1),
+    isDraft: z.boolean().optional(),
+    openerUsername: z.string().min(1).optional(),
+    openerEmail: z.string().min(1).optional(),
+    headBranch: z.string().min(1).optional(),
+    checkSuiteId: z.number().optional(),
+    checkSuiteUrl: z.string().min(1).optional(),
+    appName: z.string().min(1).optional(),
+    latestCheckRunsCount: z.number().optional(),
+    // Only system-set handles. Check names come from workflow YAML, so they
+    // go in the untrusted text.
+    failingChecks: z
+      .array(
+        z
+          .object({
+            conclusion: z.string(),
+            htmlUrl: z.string().optional(),
+            checkRunId: z.number(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
 /** Build the trusted data and summary for one check-suite event. */
 export function buildCheckSuiteEvent(args: {
   appName?: string;
@@ -202,6 +236,7 @@ export function buildCheckSuiteEvent(args: {
   deliveryId: string;
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
   failingChecks?: GitHubFailingCheck[];
+  githubIncidents?: GitHubStatusIncident[];
   headBranch?: string;
   headSha?: string;
   isDraft?: boolean;
@@ -223,43 +258,51 @@ export function buildCheckSuiteEvent(args: {
   const failingChecks = (args.failingChecks ?? []).slice(0, 12);
   const failingCount = failingChecks.length;
   const branchSuffix = args.headBranch ? ` on ${args.headBranch}` : "";
+  const incidents =
+    args.eventType === "pull_request.checks.failed"
+      ? (args.githubIncidents ?? [])
+      : [];
+  const incidentSuffix =
+    incidents.length > 0
+      ? ` githubstatus.com lists ${incidents.length} open or recent GitHub incident${incidents.length === 1 ? "" : "s"}.`
+      : "";
   const trustedSummary =
     args.eventType === "pull_request.checks.failed"
-      ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`
+      ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.${incidentSuffix}`
       : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`;
 
-  const data: Record<string, unknown> = {
-    repo: args.repo,
-    scope: "check_suite",
-    suiteConclusion: args.suiteConclusion,
-  };
-  if (pullRequestNumber !== undefined) data.pullRequest = pullRequestNumber;
-  if (typeof args.isDraft === "boolean") data.isDraft = args.isDraft;
-  if (args.openerUsername) data.openerUsername = args.openerUsername;
-  if (args.openerEmail) data.openerEmail = args.openerEmail;
-  if (args.headBranch) data.headBranch = args.headBranch;
-  if (args.headSha) data.headSha = args.headSha;
-  if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
-  if (args.checkSuiteId !== undefined && args.headSha) {
-    data.checkSuiteUrl = buildCheckSuiteUrl({
-      checkSuiteId: args.checkSuiteId,
-      headSha: args.headSha,
+  const data = checkSuiteEventDataSchema.parse(
+    definedValues({
       repo: args.repo,
-    });
-  }
-  if (args.appName) data.appName = oneLineLabel(args.appName, 120);
-  if (args.latestCheckRunsCount !== undefined) {
-    data.latestCheckRunsCount = args.latestCheckRunsCount;
-  }
-  // Keep only system-controlled handles in trusted data. Check names come from
-  // workflow YAML and belong in untrustedText.
-  if (args.eventType === "pull_request.checks.failed" && failingCount > 0) {
-    data.failingChecks = failingChecks.map((check) => ({
-      conclusion: check.conclusion,
-      ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : undefined),
-      checkRunId: check.checkRunId,
-    }));
-  }
+      pullRequest: pullRequestNumber,
+      // A short SHA counts as missing, so a commitSha filter does not match.
+      commitSha: gitHubCommitShaDataSchema.safeParse(args.headSha).data,
+      suiteConclusion: args.suiteConclusion,
+      isDraft: args.isDraft,
+      openerUsername: args.openerUsername,
+      openerEmail: args.openerEmail,
+      headBranch: args.headBranch,
+      checkSuiteId: args.checkSuiteId,
+      checkSuiteUrl:
+        args.checkSuiteId !== undefined && args.headSha
+          ? buildCheckSuiteUrl({
+              checkSuiteId: args.checkSuiteId,
+              headSha: args.headSha,
+              repo: args.repo,
+            })
+          : undefined,
+      appName: args.appName ? oneLineLabel(args.appName, 120) : undefined,
+      latestCheckRunsCount: args.latestCheckRunsCount,
+      failingChecks:
+        args.eventType === "pull_request.checks.failed" && failingCount > 0
+          ? failingChecks.map((check) => ({
+              conclusion: check.conclusion,
+              ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : undefined),
+              checkRunId: check.checkRunId,
+            }))
+          : undefined,
+    }),
+  );
 
   const untrustedParts =
     args.eventType === "pull_request.checks.failed"
@@ -271,12 +314,28 @@ export function buildCheckSuiteEvent(args: {
           })
           .filter((part): part is string => part !== undefined)
       : [];
+  const untrustedSections = [
+    ...(untrustedParts.length > 0
+      ? [
+          [`Failed checks:`, ...untrustedParts.map((part) => `- ${part}`)].join(
+            "\n",
+          ),
+        ]
+      : []),
+    ...(incidents.length > 0
+      ? [
+          [
+            "GitHub status incidents:",
+            ...incidents.map(
+              (incident) =>
+                `- ${oneLineLabel(incident.name, 160)} (${incident.status}; ${incident.components.join(", ") || "no components"}; started ${incident.startedAt}${incident.resolvedAt ? `, resolved ${incident.resolvedAt}` : ""}): ${incident.url}`,
+            ),
+          ].join("\n"),
+        ]
+      : []),
+  ];
   const untrustedText =
-    untrustedParts.length > 0
-      ? [`Failed checks:`, ...untrustedParts.map((part) => `- ${part}`)].join(
-          "\n",
-        )
-      : undefined;
+    untrustedSections.length > 0 ? untrustedSections.join("\n\n") : undefined;
 
   return {
     eventKey: gitHubEventKey(
@@ -371,6 +430,10 @@ export function normalizeCheckSuiteEvents(
       eventType === "pull_request.checks.failed"
         ? options?.failingChecks
         : undefined,
+    githubIncidents:
+      eventType === "pull_request.checks.failed"
+        ? options?.githubIncidents
+        : undefined,
     headSha,
     latestCheckRunsCount:
       typeof suite.latest_check_runs_count === "number"
@@ -417,9 +480,27 @@ export function normalizeCheckSuiteEvents(
   });
 }
 
+/** The same-repository pull requests of one completed check suite. */
+export function checkSuitePullRequests(
+  body: unknown,
+): Array<{ number: number; repositoryFullName: string }> {
+  const parsed = checkSuiteWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "completed") return [];
+  const repository = parsed.data.repository;
+  return parsed.data.check_suite.pull_requests
+    .filter((pullRequest) =>
+      isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
+    )
+    .map((pullRequest) => ({
+      number: pullRequest.number,
+      repositoryFullName: repository.full_name,
+    }));
+}
+
 /** Identifiers and event types one completed check suite may publish. */
 export function parseCheckSuitePublishTargets(body: unknown):
   | {
+      data: { repo: string };
       eventTypes: string[];
       identifiers: string[];
     }
@@ -442,6 +523,9 @@ export function parseCheckSuitePublishTargets(body: unknown):
     );
   }
   return {
+    // Every copy sets this repo, so a broad trigger for another repo adds
+    // no lazy keys.
+    data: { repo: gitHubRepoDataSchema.parse(repo) },
     eventTypes: [eventType],
     identifiers: [...identifiers],
   };
@@ -549,6 +633,8 @@ export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
   installationIdEnv: string;
+  /** Open or recent githubstatus.com incidents, shared through a cache. */
+  loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   loadPullRequestFacts?: boolean;
   log?: { error(message: string, metadata?: Record<string, unknown>): void };
   privateKeyEnv: string;
@@ -584,6 +670,18 @@ export async function loadCheckSuiteFacts(args: {
         checkSuiteId: target.checkSuiteId,
         errorType: error instanceof Error ? error.name : "UnknownError",
         repository: `${target.owner}/${target.repoName}`,
+      });
+    }
+  }
+
+  if (target.loadFailingChecks && args.loadGitHubIncidents) {
+    // Fail open: a status page outage must not block the check event.
+    try {
+      const incidents = await args.loadGitHubIncidents();
+      if (incidents.length > 0) facts.githubIncidents = incidents;
+    } catch (error) {
+      args.log?.error("GitHub status load failed", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
       });
     }
   }

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";

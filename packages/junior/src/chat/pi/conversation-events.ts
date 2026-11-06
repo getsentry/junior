@@ -4,7 +4,6 @@
  * Conversation storage owns the ordered event log. This module turns its
  * stored messages into the active Pi context.
  */
-import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ConversationEvent,
   ConversationEventData,
@@ -23,7 +22,6 @@ type AuthorizationCompletedEventData = Extract<
 export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
-  modelProfile: ModelProfile;
   replacementSeq: number | undefined;
 }
 
@@ -32,6 +30,9 @@ export interface PiConversationEventProjection extends PiConversationProjection 
   seqs: number[];
 }
 
+// Only the newest auth-blocked Turn resumes: `pendingAuth` holds one Turn, and
+// a newer pause abandons the older one. The note names the newest request so
+// the agent does not continue an older request that the person replaced.
 function authorizationObservationMessage(
   data: AuthorizationCompletedEventData,
   createdAtMs: number,
@@ -42,7 +43,7 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
+        text: `${label} completed for provider "${data.provider}". Continue the newest request that waited for it and retry the provider operation. If a later message from the person dropped that request, do not continue it; say only that ${data.provider} is connected.`,
       },
     ],
     timestamp: createdAtMs,
@@ -103,20 +104,19 @@ function historyItemProvenance(
 /**
  * Project ordered Junior events into Pi context.
  *
- * Compaction and handoff start with replacement history. Later native history
- * events append after it.
+ * Compaction and legacy handoff events start with replacement history. Later
+ * native history events append after it.
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options: { defaultProfile: ModelProfile; maxSeq?: number },
+  options: { maxSeq?: number } = {},
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = options.defaultProfile;
   let replacementSeq: number | undefined;
 
   for (const event of events) {
@@ -128,8 +128,15 @@ export function projectConversationEvents(
         `Unsupported conversation event "${event.data.originalType}" at seq ${event.seq} (schema version ${event.schemaVersion})`,
       );
     }
+    // Background compaction bookkeeping. A prepared summary enters model
+    // context only through the `compaction` event that swaps it in.
+    if (
+      event.data.type === "compaction_requested" ||
+      event.data.type === "compaction_prepared"
+    ) {
+      continue;
+    }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
-      modelProfile = event.data.modelProfile;
       replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
         const message = piMessageFromHistoryItem(replacement.item);
@@ -163,7 +170,6 @@ export function projectConversationEvents(
     messages,
     provenance,
     seqs,
-    modelProfile,
     replacementSeq,
   };
 }

@@ -4,12 +4,12 @@
  * Shared MSW handlers mock the Slack Web API. This module adds the parts a
  * Conversation needs: the bot identity, unique reply timestamps, thread
  * history for `conversations.replies`, and profiles for `users.info`. It also
- * signs Events API webhooks and slash commands for the app route.
+ * signs Events API webhooks and App Home actions for the app route.
  */
 import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
-import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
+import { getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
@@ -503,20 +503,21 @@ async function postSlackEvent(
   );
 }
 
-/** Deliver one slash command of Junior to the app route as Slack does. */
-export async function postSlackCommand(
+/** Deliver one App Home "Unlink" click to the app route as Slack does. */
+export async function postSlackAppHomeUnlink(
   app: RequestApp,
-  command: { channel: string; text: string; user: string },
+  action: { provider: string; user: string },
 ): Promise<void> {
   await postSignedSlackRequest(
     app,
     "application/x-www-form-urlencoded",
     new URLSearchParams({
-      channel_id: command.channel,
-      command: getChatConfig().slack.slashCommand,
-      team_id: SLACK_TEAM_ID,
-      text: command.text,
-      user_id: command.user,
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: SLACK_TEAM_ID },
+        user: { id: action.user, team_id: SLACK_TEAM_ID },
+        actions: [{ action_id: "app_home_disconnect", value: action.provider }],
+      }),
     }).toString(),
   );
 }

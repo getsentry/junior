@@ -1,0 +1,5 @@
+ALTER TABLE "junior_review_items" DROP CONSTRAINT "junior_review_items_closed_by_user_id_junior_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "junior_review_item_slack_cards" ADD CONSTRAINT "junior_review_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_added_by_conversation_id_junior_conversations_conversation_id_fk" FOREIGN KEY ("added_by_conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_closed_by_user_id_junior_users_id_fk" FOREIGN KEY ("closed_by_user_id") REFERENCES "public"."junior_users"("id") ON DELETE set null ON UPDATE no action;

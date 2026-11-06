@@ -17,7 +17,7 @@ import {
   type TextSearchResultDetails,
   type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
@@ -512,7 +512,7 @@ export function createGrepTool() {
         .min(1)
         .describe("Optional glob filter such as '*.ts' or '**/*.test.ts'.")
         .optional(),
-      ignoreCase: booleanInput(
+      ignore_case: booleanInput(
         "Whether matching should ignore case.",
       ).optional(),
       literal: booleanInput(

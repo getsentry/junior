@@ -102,7 +102,6 @@ export function createSlackDispatchTurnRunner(options: {
           dispatch.destination,
         ),
         credentialContext: routing.credentialContext,
-        destinationVisibility: dispatch.destinationVisibility,
         dispatch: routing.dispatch,
         skipProviderDefaultConfig: true,
         source: dispatch.source,

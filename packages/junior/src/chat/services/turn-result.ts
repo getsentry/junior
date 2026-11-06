@@ -3,7 +3,7 @@ import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
-import type { TurnRoute } from "@/chat/services/turn-router";
+import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
@@ -34,7 +34,7 @@ export interface AgentTurnDiagnostics {
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
-  reasoningLevel?: TurnRoute["reasoningLevel"];
+  reasoningLevel?: TurnReasoningLevel;
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -68,7 +68,7 @@ export interface TurnResultInput {
   generatedFileCount: number;
   shouldTrace: boolean;
   usage?: AgentTurnUsage;
-  executionProfile: TurnRoute;
+  reasoningLevel: TurnReasoningLevel;
   assistantUserName?: string;
   modelId: string;
   /** Automation runs succeed only with one declared result. */
@@ -215,7 +215,7 @@ function buildDiagnostics(
     outcome,
     modelId: input.modelId,
     assistantMessageCount: input.newMessages.filter(isAssistantMessage).length,
-    reasoningLevel: input.executionProfile.reasoningLevel,
+    reasoningLevel: input.reasoningLevel,
     toolCalls: input.toolCalls,
     toolResultCount: toolResults.length,
     toolErrorCount: toolResults.filter((toolResult) => toolResult.isError)

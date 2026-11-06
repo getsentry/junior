@@ -4,6 +4,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../styles";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { Button } from "../components/ui/button";
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "../components/ui/button-group";
 import { Skeleton } from "../components/ui/skeleton";
 import type { ConversationTranscript } from "../types";
 import { useEventTime } from "./eventTime";
@@ -11,8 +15,9 @@ import { EventDetails } from "./EventDetails";
 import { ForkConversationButton } from "./ForkConversationButton";
 
 // Step buttons keep focus at the ends of the log, so style the ARIA state.
+// They sit in one bordered group, so they are a little smaller than `size-9`.
 const stepButtonClass =
-  "data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted";
+  "size-8 data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted";
 
 /**
  * Show the selected event without blocking the main conversation's event log.
@@ -30,14 +35,21 @@ export function ConversationEventDetails(props: {
 }) {
   const { conversation, event, onSelect } = props;
   const time = useEventTime();
+  // The sequence number matches the `event` link parameter and the row label.
+  // The line stays on one row beside the actions. The tooltip keeps the
+  // milliseconds that the short timestamp leaves out.
   const timestamp = event ? (
-    <time
-      className="block break-words font-mono text-xs text-dashboard-text-muted"
-      dateTime={event.createdAt}
-      title={event.createdAt}
-    >
-      {time.formatTimestamp(event.createdAt)}
-    </time>
+    <p className="m-0 flex min-w-0 gap-x-1.5 whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <span className="shrink-0">#{event.seq}</span>
+      <span aria-hidden="true">·</span>
+      <time
+        className="min-w-0 truncate"
+        dateTime={event.createdAt}
+        title={time.formatTimestamp(event.createdAt)}
+      >
+        {time.formatShortTimestamp(event.createdAt)}
+      </time>
+    </p>
   ) : null;
   const title = event ? (
     <>
@@ -54,7 +66,10 @@ export function ConversationEventDetails(props: {
   );
   const actions =
     onSelect && event ? (
-      <>
+      <ButtonGroup
+        aria-label="Event navigation"
+        className="rounded-md border border-dashboard-border"
+      >
         <Button
           aria-label="Previous event"
           className={stepButtonClass}
@@ -68,6 +83,7 @@ export function ConversationEventDetails(props: {
         >
           <ChevronUp aria-hidden="true" size={15} />
         </Button>
+        <ButtonGroupSeparator />
         <Button
           aria-label="Next event"
           className={stepButtonClass}
@@ -81,7 +97,7 @@ export function ConversationEventDetails(props: {
         >
           <ChevronDown aria-hidden="true" size={15} />
         </Button>
-      </>
+      </ButtonGroup>
     ) : undefined;
 
   return (

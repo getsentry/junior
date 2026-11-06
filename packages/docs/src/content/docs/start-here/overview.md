@@ -20,7 +20,7 @@ Junior apps are small Hono apps that use Nitro to build and deploy. `createApp()
 
 | Layer      | What it controls                                                                         |
 | ---------- | ---------------------------------------------------------------------------------------- |
-| Slack app  | Events, interactivity, app home, slash commands, and bot token permissions.              |
+| Slack app  | Events, interactivity, app home, and bot token permissions.                              |
 | Junior app | Runtime routes, queue-backed turns, state, and reply delivery.                           |
 | App files  | `SOUL.md`, `WORLD.md`, `DESCRIPTION.md`, local skills, and local plugins.                |
 | Plugins    | Provider manifests, credentials, MCP surfaces, runtime dependencies, and bundled skills. |

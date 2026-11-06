@@ -519,6 +519,18 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Mark one author's queued web messages as interrupts. */
+export async function steerWebPendingMessages(args: {
+  authorIds: readonly string[];
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  // Delivery mode is not part of execution metadata, so there is nothing to record.
+  return await workState.steerWebPendingMessages(args);
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
@@ -608,6 +620,10 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
+  beforeWorkStops?: (
+    conversationId: string,
+    inboundMessageIds: readonly string[],
+  ) => Promise<void>;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;

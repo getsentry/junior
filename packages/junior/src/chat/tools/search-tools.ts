@@ -1,5 +1,5 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { z } from "zod";
+import * as z from "zod";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -63,7 +63,7 @@ const searchToolsToolSchema = z
   .object({
     tool_name: z.string(),
     description: z.string(),
-    exposure: z.enum(["direct", "deferred", "modelOnly", "hidden"]),
+    exposure: z.enum(["direct", "deferred", "modelOnly", "codemode", "hidden"]),
     source: z.string().optional(),
     input_schema: z.unknown(),
     call_notes: z.array(z.string()),
@@ -389,6 +389,7 @@ export function createSearchToolsTool(
   const knownSources = sourceSummaries(catalogTools);
   return zodTool({
     description: renderSearchToolsDescription(knownSources),
+    exposure: "modelOnly",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

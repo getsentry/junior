@@ -32,6 +32,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
@@ -135,12 +136,52 @@ const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
+/** Process-local pins so the Pinned section can be exercised in visual QA. */
+const mockPinnedConversationIds = new Set<string>();
+/** Process-local Pinned order from drag reorders. */
+const mockPinPositions = new Map<string, number>();
 
-/** Restore process-local archive state so tests sharing a worker do not leak state. */
-export function resetMockConversationArchiveState(): void {
+/** Process-local renames so rename can be exercised in visual QA. */
+const mockTitles = new Map<string, string>();
+
+/** Process-local auto-archive choices for mock visual QA. */
+const mockAutoArchiveByConversationId = new Map<string, boolean>();
+
+/**
+ * Restore process-local archive, pin, and auto-archive state so tests sharing
+ * a worker do not leak state.
+ */
+export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.clear();
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
+  mockPinnedConversationIds.clear();
+  mockPinPositions.clear();
+  mockTitles.clear();
+  mockAutoArchiveByConversationId.clear();
 }
+
+/** Add the viewer's mock archive and pin times and any rename to one conversation. */
+function withMockViewerState<
+  T extends { conversationId: string; displayTitle: string },
+>(
+  report: T & { archivedAt?: string | null },
+): T & {
+  archivedAt: string | undefined;
+  pinnedAt: string | null;
+  pinPosition?: number;
+} {
+  const pinPosition = mockPinPositions.get(report.conversationId);
+  return {
+    ...report,
+    displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
+    archivedAt: mockArchivedConversationIds.has(report.conversationId)
+      ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
+      : undefined,
+    pinnedAt: mockPinnedConversationIds.has(report.conversationId) ? NOW : null,
+    ...(pinPosition === undefined ? undefined : { pinPosition }),
+  };
+}
+
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -292,14 +333,6 @@ function mockBrief(
               kind: "confirmed",
             },
           ],
-      openDecisions: live
-        ? [
-            {
-              text: "Roll back payments-v42 or patch the serializer path.",
-              owner: "Morgan Lee",
-            },
-          ]
-        : [],
       facts: live
         ? [
             "Checkout p95 increased from 210ms to 890ms.",
@@ -369,6 +402,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#42",
         label: "getsentry/payments#42",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/42",
@@ -452,16 +486,27 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
-      reportEvent(3, iso(Date.parse(startedAt), 9_000), {
-        type: "turn_routed",
-        turnId: "active-turn",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-        costUsd: 0.0012,
-      }),
+      reportEvent(
+        3,
+        iso(Date.parse(startedAt), 9_000),
+        {
+          type: "assistant_message",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Compare the latest deploy with the previous baseline.",
+            },
+          ],
+        },
+        {
+          model: { modelId: "openai/gpt-5.6-sol" },
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+          },
+        },
+      ),
       reportEvent(
         4,
         iso(Date.parse(startedAt), 10_000),
@@ -476,11 +521,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
           modelCall: {
             provider: "vercel-ai-gateway",
             api: "openai-responses",
@@ -528,11 +569,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
         },
       ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
@@ -572,7 +609,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         type: "message",
         messageId: "active-user-followup",
         role: "user",
-        text: "Compare the pre/post deploy spans next.",
+        // Quoted reply keeps blockquote and nested-list rendering in visual QA.
+        text: [
+          "> error volume is flat, so this looks like slow path not hard fail",
+          "",
+          "Agreed. Compare the pre/post deploy spans next:",
+          "1. `checkout.complete` p95",
+          "   - stable hosts",
+          "   - canary hosts",
+          "2. ~~error rate~~ serializer span time",
+        ].join("\n"),
       }),
       reportEvent(8, iso(Date.parse(startedAt), 42_000), {
         type: "turn_lifecycle",
@@ -592,6 +638,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+      }),
+      reportEvent(10, iso(Date.parse(startedAt), 46_000), {
+        type: "turn_context",
+        turnId: "active-turn",
+        pluginName: "junior",
+        kind: "user_customization",
+        version: 1,
+        content: {
+          text: "Keep replies short and simple.\nLead with the answer, then the evidence.",
+        },
       }),
     ],
   });
@@ -639,6 +695,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21571",
         label: "getsentry/getsentry#21571",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/getsentry/pull/21571",
@@ -649,6 +706,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21572",
         label: "getsentry/getsentry#21572",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/getsentry/pull/21572",
@@ -659,6 +717,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21569",
         label: "getsentry/getsentry#21569",
+        objectType: "code_change",
         plugin: "github",
         status: "draft",
         url: "https://github.com/getsentry/getsentry/pull/21569",
@@ -669,6 +728,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/sentry#121727",
         label: "getsentry/sentry#121727",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/sentry/pull/121727",
@@ -870,7 +930,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(11, iso(Date.parse(startedAt), 56_000), {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         details: {
           reason: "capacity",
@@ -947,6 +1006,18 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             filename: "chart.png",
             contentType: "image/png",
             bytes: 18211,
+          },
+          {
+            id: "qa-chart-png",
+            filename: "chart-detail.png",
+            contentType: "image/png",
+            bytes: 18211,
+          },
+          {
+            id: "qa-demo-mp4",
+            filename: "demo.mp4",
+            contentType: "video/mp4",
+            bytes: 5922,
           },
           {
             id: "qa-notes-txt",
@@ -1076,7 +1147,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
   events.push(
     reportEvent(nextSeq, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       summary:
         "The release is complete. Preserve the published version and continue by checking the update pull request.",
@@ -1090,17 +1160,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         retainedMessageCount: 1,
         summaryChars: 980,
       },
-    }),
-  );
-  nextSeq += 1;
-  events.push(
-    reportEvent(nextSeq, iso(Date.parse(startedAt), 90_000), {
-      type: "handoff",
-      modelProfile: "fast",
-      modelId: "openai/gpt-5-mini",
-      reasoningLevel: "medium",
-      summary:
-        "Investigate the remaining deployment checks and report any actionable failure.",
     }),
   );
   nextSeq += 1;
@@ -1147,6 +1206,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/junior#2201",
         label: "getsentry/junior#2201",
+        objectType: "code_change",
         plugin: "github",
         status: "draft",
         url: "https://github.com/getsentry/junior/pull/2201",
@@ -1157,6 +1217,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#91",
         label: "getsentry/payments#91",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
@@ -1167,6 +1228,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/relay#44",
         label: "getsentry/relay#44",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/relay/pull/44",
@@ -1235,6 +1297,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#77",
         label: "getsentry/payments#77",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/payments/pull/77",
@@ -1245,6 +1308,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#61",
         label: "getsentry/payments#61",
+        objectType: "task",
         plugin: "github",
         status: "closed",
         url: "https://github.com/getsentry/payments/issues/61",
@@ -1446,17 +1510,12 @@ function eventAutomationRunConversation(
             slackUserName: "junior",
           },
           text: [
-            "[task]",
-            "",
-            "This is a task, not a message from a person.",
-            "",
-            "About: Issue · ACME-42",
-            'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
-            "Instructions: Summarize the closed issue",
-            "",
-            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-            "",
+            '<task about="Issue · ACME-42" event="issue.closed">',
+            '<created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>',
+            "<instructions>Summarize the closed issue</instructions>",
+            "<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>",
             "End with `finishAutomationRun`.",
+            "</task>",
           ].join("\n"),
         },
         { mentions: [MOCK_MENTION_MORGAN] },
@@ -1510,7 +1569,12 @@ function usage(cost: number) {
   };
 }
 
+/** Fixture Conversations with the mock sends of this process. */
 function mockConversations(nowMs: number): MockConversation[] {
+  return withMockSends(fixtureConversations(nowMs));
+}
+
+function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -1626,6 +1690,9 @@ function summaryFromConversation(
     brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
+    forkedFromConversationId: _forkedFromConversationId,
+    forkedFromTitle: _forkedFromTitle,
+    forks: _forks,
     generatedAt: _generatedAt,
     modelUsage: _modelUsage,
     parentConversationId: _parentConversationId,
@@ -1638,19 +1705,11 @@ function summaryFromConversation(
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
   };
-  const withArchiveState = mockArchivedConversationIds.has(
-    conversation.conversationId,
-  )
-    ? {
-        ...summaryWithActivity,
-        archivedAt:
-          summaryWithActivity.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...summaryWithActivity, archivedAt: undefined };
-  return withArchiveState.channel &&
-    PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
-    ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
-    : withArchiveState;
+  const withViewerState = withMockViewerState(summaryWithActivity);
+  return withViewerState.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withViewerState.channel)
+    ? { ...withViewerState, locationId: `mock:${withViewerState.channel}` }
+    : withViewerState;
 }
 
 function mockConversationFeed(nowMs: number): ConversationFeed {
@@ -1658,7 +1717,11 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     source: "conversation_index",
     generatedAt: iso(nowMs),
     conversations: mockConversations(nowMs)
-      .filter((conversation) => !conversation.parentConversationId)
+      .filter(
+        (conversation) =>
+          !conversation.parentConversationId &&
+          !isUnlistedMockConversation(conversation.conversationId),
+      )
       .map(summaryFromConversation),
   };
 }
@@ -1905,9 +1968,96 @@ export function setMockConversationArchived(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
-  if (archived) mockArchivedConversationIds.add(conversationId);
-  else mockArchivedConversationIds.delete(conversationId);
+  if (archived) {
+    mockArchivedConversationIds.add(conversationId);
+    // Match the API: archive also unpins.
+    mockPinnedConversationIds.delete(conversationId);
+    mockPinPositions.delete(conversationId);
+  } else {
+    mockArchivedConversationIds.delete(conversationId);
+    // Match the API: a manual restore turns auto-archive off.
+    mockAutoArchiveByConversationId.set(conversationId, false);
+  }
   return { archivedAt: archived ? NOW : null };
+}
+
+/** Pin or unpin one mock conversation for local dashboard visual QA. */
+export function setMockConversationPinned(
+  conversationId: string,
+  pinned: boolean,
+): { pinnedAt: string | null } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  // Match the API: a new or removed pin has no place.
+  mockPinPositions.delete(conversationId);
+  if (pinned) {
+    mockPinnedConversationIds.add(conversationId);
+    // Match the API: a pin also restores an archived conversation.
+    mockArchivedConversationIds.delete(conversationId);
+  } else {
+    mockPinnedConversationIds.delete(conversationId);
+  }
+  return { pinnedAt: pinned ? NOW : null };
+}
+
+/** Rename one mock conversation for local dashboard visual QA. */
+export function setMockConversationTitle(
+  conversationId: string,
+  title: string,
+): { title: string } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockTitles.set(conversationId, title);
+  return { title };
+}
+
+/** Save the mock Pinned order, like the pin-order API. */
+export function setMockPinOrder(conversationIds: string[]): {
+  conversationIds: string[];
+} {
+  const placed = conversationIds.flatMap((conversationId, index) => {
+    if (!mockPinnedConversationIds.has(conversationId)) return [];
+    mockPinPositions.set(conversationId, index);
+    return [conversationId];
+  });
+  return { conversationIds: placed };
+}
+
+/** Archive every done mock conversation once, like the archive-done API. */
+export function archiveMockDoneConversations(): { archived: number } {
+  let archived = 0;
+  for (const summary of mockConversationFeed(NOW_MS).conversations) {
+    if (
+      summary.archivedAt ||
+      summary.pinnedAt ||
+      !summary.assignedWork ||
+      summary.unfinishedWork ||
+      !summary.finishedWorkAt ||
+      mockAutoArchiveByConversationId.get(summary.conversationId) === false
+    ) {
+      continue;
+    }
+    mockArchivedConversationIds.add(summary.conversationId);
+    archived += 1;
+  }
+  return { archived };
+}
+
+/** Save a mock auto-archive choice for local dashboard visual QA. */
+export function setMockConversationAutoArchive(
+  conversationId: string,
+  autoArchive: boolean,
+): { autoArchive: boolean } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockAutoArchiveByConversationId.set(conversationId, autoArchive);
+  return { autoArchive };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -1944,6 +2094,14 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            attachments: [
+              {
+                id: "qa-chart-png",
+                filename: "queued-chart.png",
+                contentType: "image/png",
+                bytes: 18211,
+              },
+            ],
           },
           {
             actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1977,6 +2135,28 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Fifth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -800),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-sixth`,
+            messageId: `${conversationId}:pending-sixth`,
+            receivedAt: iso(nowMs, -400),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Sixth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -600),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-seventh`,
+            messageId: `${conversationId}:pending-seventh`,
+            receivedAt: iso(nowMs, -300),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Seventh queued message.",
           },
         ]
       : [];
@@ -2101,23 +2281,25 @@ export function readMockConversationDetail(
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !parentConversationId &&
+      !isUnlistedMockConversation(conversationId) &&
       conversationDetail.eventHistory.status !== "redacted",
-  };
-  const withArchiveState = mockArchivedConversationIds.has(conversationId)
-    ? {
-        ...detail,
-        archivedAt: detail.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...detail, archivedAt: undefined };
-  const events = withArchiveState.events.slice(-limit);
-  const bounded =
-    events.length < withArchiveState.events.length && events[0]
+    ...(conversationDetail.isParticipant
       ? {
-          ...withArchiveState,
+          autoArchive:
+            mockAutoArchiveByConversationId.get(conversationId) ?? false,
+        }
+      : undefined),
+  };
+  const withViewerState = withMockViewerState(detail);
+  const events = withViewerState.events.slice(-limit);
+  const bounded =
+    events.length < withViewerState.events.length && events[0]
+      ? {
+          ...withViewerState,
           events,
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
-      : withArchiveState;
+      : withViewerState;
   return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
     ? { ...bounded, locationId: `mock:${bounded.channel}` }
     : bounded;
@@ -2163,6 +2345,39 @@ export function readMockConversationEvents(
       : conversation.previousCursor
         ? { previousCursor: conversation.previousCursor }
         : {}),
+  };
+}
+
+/**
+ * Return the page around a linked event or Turn. Mock transcripts fit one
+ * page, so it holds every event of the Conversation.
+ */
+export function readMockConversationEventsAround(
+  conversationId: string,
+  link: { event: number } | { turn: string },
+): ConversationEventPage | "turn-not-found" | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (
+    "turn" in link &&
+    !conversation.events.some(
+      ({ data }) =>
+        data.type === "turn_lifecycle" &&
+        data.state === "started" &&
+        data.turnId === link.turn,
+    )
+  ) {
+    return "turn-not-found";
+  }
+  return {
+    events: conversation.events,
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+    ...(conversation.previousCursor
+      ? { previousCursor: conversation.previousCursor }
+      : undefined),
   };
 }
 
@@ -2949,6 +3164,7 @@ function mockTasks(): AutomationSummary[] {
       nextRunAt: "2026-08-10T16:00:00.000Z",
       credentialMode: "creator",
       ownedByViewer: true,
+      costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
@@ -2972,7 +3188,6 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["issue.closed"],
       id: "event-1",
       instruction: "Summarize the closed issue",
       kind: "event",
@@ -2981,12 +3196,17 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
+      costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
-      triggerAvailable: true,
+      trigger: {
+        events: ["issue closed"],
+        filters: ["labels includes bug", "repository is api or web"],
+        problems: [],
+      },
       status: "active",
     },
     {
@@ -2999,13 +3219,13 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["incident.updated"],
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
       credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
+      costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [
@@ -3016,7 +3236,11 @@ function mockTasks(): AutomationSummary[] {
       ],
       title: "Incident change alerts",
       totalRuns: 0,
-      triggerAvailable: false,
+      trigger: {
+        events: ["incident updated"],
+        filters: [],
+        problems: ["The plugin for this source is not enabled."],
+      },
       status: "active",
     },
   ];

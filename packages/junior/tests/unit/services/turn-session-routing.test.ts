@@ -56,6 +56,8 @@ function conversationStore(
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(),

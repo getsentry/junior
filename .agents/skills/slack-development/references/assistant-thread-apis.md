@@ -110,10 +110,6 @@ This file intentionally separates:
 
 - `packages/junior/src/chat/slack/assistant-thread/title.ts`
 
-5. Current delivery contract:
-
-- `packages/junior/src/chat/slack/README.md`
-
 ## Audit Checklist
 
 When changing code or guidance in this area, verify all of the following:

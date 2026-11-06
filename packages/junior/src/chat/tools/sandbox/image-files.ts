@@ -33,7 +33,7 @@ export async function readSandboxImage(
   const mimeType = detectImageMediaType(data);
   if (!mimeType) {
     throw new ToolInputError(
-      `unsupported image format: ${targetPath}; use PNG, JPEG, GIF, or WebP`,
+      `not a readable image: ${targetPath} exists, but its content is not PNG, JPEG, GIF, or WebP data`,
     );
   }
   return { data, mimeType };

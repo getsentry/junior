@@ -9,17 +9,22 @@ import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 
 const ORIGINAL_ENV = { ...process.env };
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+]);
 
 async function createRuntime(
   args: Parameters<
     typeof import("../../fixtures/chat-runtime").createTestChatRuntime
   >[0],
+  env: NodeJS.ProcessEnv = {},
 ) {
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "",
     SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
+    ...env,
   };
   vi.resetModules();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
@@ -47,11 +52,12 @@ describe("Slack behavior: mixed attachment media", () => {
     vi.resetModules();
   });
 
-  it("keeps raw image attachments when AI_VISION_MODEL is explicitly empty", async () => {
-    const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
+  it("sends current-message images natively when every profile model reads images", async () => {
+    const imageFetch = vi.fn(async () => PNG_BYTES);
 
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
+    const capturedImageData: Array<Buffer | undefined> = [];
     const capturedOmittedImageCounts: number[] = [];
 
     const { slackRuntime } = await createRuntime({
@@ -64,6 +70,7 @@ describe("Slack behavior: mixed attachment media", () => {
           capturedAttachmentNames.push(
             attachments.map((attachment) => attachment.filename ?? ""),
           );
+          capturedImageData.push(attachments[0]?.data);
           capturedOmittedImageCounts.push(
             request.instruction.omittedImageAttachmentCount ?? 0,
           );
@@ -86,7 +93,8 @@ describe("Slack behavior: mixed attachment media", () => {
       attachments: [
         {
           type: "image",
-          mimeType: "image/png",
+          // Slack can mislabel a file; the type detected from the bytes wins.
+          mimeType: "image/jpeg",
           name: "chart.png",
           url: "https://files.slack.com/private/chart.png",
           fetchData: imageFetch,
@@ -109,10 +117,11 @@ describe("Slack behavior: mixed attachment media", () => {
       ["image/png", "application/pdf"],
     ]);
     expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
-    expect(capturedOmittedImageCounts).toEqual([1]);
+    expect(capturedImageData).toEqual([PNG_BYTES]);
+    expect(capturedOmittedImageCounts).toEqual([0]);
   });
 
-  it("still runs the assistant when only images are attached and vision is disabled", async () => {
+  it("still runs the assistant when nothing can read the attached images", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const capturedOmittedImageCounts: number[] = [];
     const streamForRun = vi.fn((request) => {
@@ -127,11 +136,15 @@ describe("Slack behavior: mixed attachment media", () => {
       ]);
     });
 
-    const { slackRuntime } = await createRuntime({
-      services: {
-        agentRunner: createModelAgentRunnerForRun(streamForRun),
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
+        },
       },
-    });
+      // A text-only profile model with no vision model cannot read images.
+      { AI_MODEL: "alibaba/qwen3.7-max" },
+    );
 
     const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700004012.000",

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Permissive schema for durable Pi SDK messages whose content shape may evolve. */
 export const piMessageSchema = z

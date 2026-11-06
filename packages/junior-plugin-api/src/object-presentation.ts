@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Native object types. `task` is the stored name for a Ticket. */
 export const objectTypeSchema = z.enum([

@@ -122,7 +122,7 @@ function clientMetadata(redirectUrl: string): OAuthClientMetadata {
 }
 
 function reconnectMessage(provider: string): string {
-  return `The ${provider} service account is not authorized anymore. A Junior admin must run \`junior service-account connect ${provider}\`.`;
+  return `The ${provider} service account is not authorized anymore. An admin must run \`junior service-account connect ${provider}\`.`;
 }
 
 /**

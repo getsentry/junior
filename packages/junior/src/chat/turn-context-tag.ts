@@ -16,4 +16,5 @@ export const REQUEST_CONTEXT_SECTION_TAG = {
   pluginContext: "plugin-context",
   conversationNotes: "conversation-notes",
   disabledTools: "disabled-tools",
+  userCustomization: "user-customization",
 } as const;

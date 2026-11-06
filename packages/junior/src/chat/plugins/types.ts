@@ -133,6 +133,7 @@ export interface PluginManifestConfig {
     oauthClient?: PluginMcpConfig["oauthClient"];
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
+    auditTools?: string[] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
   accounts?: {

@@ -1,13 +1,17 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   ConversationForkError,
   forkConversation,
+  keepQuickQuestion,
 } from "@/chat/conversations/fork";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ForkConversationBody } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccessReader,
+} from "./access";
 import { throwApiError } from "../http";
 
 /** Fork a Conversation that the viewer can read into a new root they own. */
@@ -28,8 +32,7 @@ export async function forkConversationForViewer(
     return await forkConversation({
       sourceConversationId,
       ...body,
-      actorEmail: viewer.email,
-      ...(viewer.displayName ? { actorName: viewer.displayName } : undefined),
+      viewer,
     });
   } catch (error) {
     if (error instanceof ConversationForkError) {
@@ -39,13 +42,30 @@ export async function forkConversationForViewer(
   }
 }
 
+/** Keep the viewer's Quick question as a fork that lists show. */
+export async function keepQuickQuestionForViewer(
+  viewer: User,
+  conversationId: string,
+): Promise<{ conversationId: string }> {
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    viewer,
+  );
+  if (!access.get(conversationId)?.isParticipant) {
+    throwApiError(404, "Conversation not found.");
+  }
+  await keepQuickQuestion(conversationId);
+  return { conversationId };
+}
+
 /**
  * Read fork state for the viewer: whether they can fork, and the source and
  * fork links that they can open.
  */
 export async function readConversationForks(
   conversationId: string,
-  viewer?: User,
+  readAccess: ConversationAccessReader,
 ): Promise<{
   canFork: boolean;
   forkedFromConversationId?: string;
@@ -63,16 +83,21 @@ export async function readConversationForks(
   const forks = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
-    .where(eq(juniorConversations.forkedFromConversationId, conversationId))
+    .where(
+      and(
+        eq(juniorConversations.forkedFromConversationId, conversationId),
+        isNull(juniorConversations.quickQuestionAt),
+      ),
+    )
     .orderBy(asc(juniorConversations.createdAt))
     .limit(50);
   const forkedFrom = row?.forkedFrom ?? undefined;
   const ids = forks.map((fork) => fork.conversationId);
-  const access = await readConversationAccessFromSql(
-    db,
-    [conversationId, ...ids, ...(forkedFrom ? [forkedFrom] : [])],
-    viewer,
-  );
+  const access = await readAccess([
+    conversationId,
+    ...ids,
+    ...(forkedFrom ? [forkedFrom] : []),
+  ]);
   const canOpen = (id: string) => access.get(id)?.canViewPrivateContent;
   if (!canOpen(conversationId)) return { canFork: false, forks: [] };
   const result: {

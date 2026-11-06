@@ -16,6 +16,7 @@ import {
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
+  logAudit,
   logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
@@ -612,7 +613,7 @@ export class McpToolManager {
     }
     if (serviceAccountOnly(plugin.manifest)) {
       throw new McpToolError(
-        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+        `${plugin.manifest.displayName} tool ${toolName} is not available: the shared ${plugin.manifest.displayName} account cannot use it`,
       );
     }
     const existing = this.actorClientsByProvider.get(provider);
@@ -622,6 +623,28 @@ export class McpToolManager {
     const actorClient = await this.newClient(plugin);
     this.actorClientsByProvider.set(provider, actorClient);
     return actorClient;
+  }
+
+  /**
+   * Record a completed call to an audit tool, with the account that made it.
+   * Arguments stay out: the conversation history keeps them.
+   */
+  private logToolCallAudit(
+    plugin: PluginDefinition,
+    toolName: string,
+    attributes: Record<string, string>,
+  ): void {
+    const usedServiceAccount =
+      this.serviceAccountProviders.has(plugin.manifest.name) &&
+      serviceAccountAllows(plugin.manifest, { tool: toolName });
+    logAudit("mcp.tool_call.completed", {
+      ...attributes,
+      "mcp.method.name": "tools/call",
+      "app.plugin.name": plugin.manifest.name,
+      "app.credential.account": usedServiceAccount
+        ? "service_account"
+        : "actor",
+    });
   }
 
   private toManagedTool(
@@ -696,6 +719,14 @@ export class McpToolManager {
               );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
+              }
+              if (plugin.manifest.mcp?.auditTools?.includes(tool.name)) {
+                this.logToolCallAudit(plugin, tool.name, {
+                  "gen_ai.tool.name": managedToolName,
+                  ...(options?.toolCallId
+                    ? { "gen_ai.tool.call.id": options.toolCallId }
+                    : undefined),
+                });
               }
 
               const resultAttribute = serializeMcpPayload(

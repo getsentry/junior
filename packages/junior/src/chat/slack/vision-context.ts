@@ -1,10 +1,13 @@
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import type { completeText } from "@/chat/pi/client";
+import { resolveGatewayModel, type completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { getSqlExecutor } from "@/chat/db";
-import { isVisionImageMediaType } from "@/chat/attachments/media";
+import {
+  detectImageMediaType,
+  isVisionImageMediaType,
+} from "@/chat/attachments/media";
 import { storeAttachment } from "@/chat/attachments/store";
 import {
   readAttachmentVisionSummary,
@@ -115,6 +118,16 @@ export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
 }
 
+/** Report whether the main agent model accepts image input. */
+function agentModelAcceptsImages(): boolean {
+  return resolveGatewayModel(botConfig.modelId).input.includes("image");
+}
+
+/** Report whether the agent can read current-message images by any path. */
+export function canReadImages(): boolean {
+  return isVisionEnabled() || agentModelAcceptsImages();
+}
+
 class ImageAttachmentProcessingError extends Error {
   constructor(message: string) {
     super(message);
@@ -177,7 +190,7 @@ function buildAttachmentResolutionFailurePromptText(args: {
     `filename: ${args.filename ?? "unnamed"}`,
     `media_type: ${args.mediaType}`,
     "<resolution-error>",
-    "The user attached this file, but Junior could not download its content " +
+    "The user attached this file, but you could not download its content " +
       "from Slack. Tell the user the attachment could not be read; do not " +
       "say no attachment was sent.",
     "</resolution-error>",
@@ -273,7 +286,7 @@ function createImageAttachmentProcessingError(attachment: {
 }): ImageAttachmentProcessingError {
   const label = attachment.filename ? `"${attachment.filename}"` : "this image";
   return new ImageAttachmentProcessingError(
-    `Image attachment ${label} could not be analyzed`,
+    `Image attachment ${label} arrived, but the vision model could not read it`,
   );
 }
 
@@ -382,6 +395,21 @@ async function resolveUserAttachmentsWithDeps(
         });
         results.push(resolvedAttachment);
       }
+      continue;
+    }
+
+    // Providers reject an image whose bytes do not match its media type, so
+    // send the detected type. Slack's declared type can be wrong.
+    const nativeImageMediaType =
+      isImageAttachment && agentModelAcceptsImages()
+        ? detectImageMediaType(data)
+        : undefined;
+    if (nativeImageMediaType) {
+      // Keep later cached summaries aligned with their attachment positions.
+      nextCachedImageSummaryIndex += 1;
+      resolvedAttachment.mediaType = nativeImageMediaType;
+      resolvedAttachment.data = data;
+      results.push(resolvedAttachment);
       continue;
     }
 
