@@ -1,5 +1,12 @@
 import { ThumbsDown, ThumbsUp } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useDashboardCoreData } from "../api";
 import { Button } from "../components/ui/button";
@@ -25,66 +32,110 @@ import {
 // Good waits this long before it sends, so a mistaken click can be undone.
 const GOOD_SEND_DELAY_MS = 5000;
 
+type ReplyRatingState = {
+  rating?: ReplyRating;
+  sent: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  // Sends a pending Good now.
+  sendGood?: () => void;
+};
+
+type ReplyRatings = {
+  states: Map<string, ReplyRatingState>;
+  listeners: Set<() => void>;
+};
+
+const UNRATED: ReplyRatingState = { sent: false };
+
+/**
+ * Reply ratings for the rows of one transcript list. Rows far from the
+ * viewport unmount, so a pending or sent rating must outlive them.
+ */
+export const TranscriptReplyRatings = createContext<ReplyRatings | null>(null);
+
+/**
+ * Hold the Reply ratings of one transcript list. A pending Good sends at once
+ * when the reader leaves the page or the list.
+ */
+export function useTranscriptReplyRatings() {
+  const [ratings] = useState<ReplyRatings>(() => ({
+    listeners: new Set(),
+    states: new Map(),
+  }));
+  useEffect(() => {
+    const flush = () => {
+      for (const state of ratings.states.values()) state.sendGood?.();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [ratings]);
+  return ratings;
+}
+
 /**
  * Rate one Junior Reply with thumbs up or down. Good sends after a short
  * delay, so the reader can clear it or switch to Bad first. Bad asks for an
  * optional comment and sends on Send. Each Reply sends at most one Sentry
- * feedback. Ratings are not stored: a remount can rate again.
+ * feedback while its transcript list stays mounted.
  */
 export function ReplyRatingActions(props: {
   conversationId: string;
   messageId: string;
 }) {
   const reader = useDashboardCoreData().data?.me.user;
-  const [rating, setRating] = useState<ReplyRating>();
-  const [sent, setSent] = useState(false);
+  const ratings = useContext(TranscriptReplyRatings);
+  if (!ratings) throw new Error("Reply ratings need TranscriptReplyRatings");
+  const read = () => ratings.states.get(props.messageId) ?? UNRATED;
+  const { rating, sent } = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => {
+        ratings.listeners.add(listener);
+        return () => ratings.listeners.delete(listener);
+      },
+      [ratings],
+    ),
+    read,
+  );
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
-  // State updates after the next render, so a fast second submit still sees
-  // no rating. The ref blocks it at once.
-  const sentRef = useRef(false);
-  const goodTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const sendPendingGood = useRef<() => void>(undefined);
-
-  // Send a pending Good now when the reader leaves the page or the row goes.
-  useEffect(() => {
-    const flush = () => sendPendingGood.current?.();
-    window.addEventListener("pagehide", flush);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      flush();
-    };
-  }, []);
 
   if (!canSendReplyRating()) return null;
 
+  // Handlers read the store, not the render values, so a fast second submit
+  // sees `sent`, and a Good timer still works after its row unmounts.
+  const write = (state: ReplyRatingState) => {
+    ratings.states.set(props.messageId, state);
+    for (const listener of ratings.listeners) listener();
+  };
   const send = (next: ReplyRating, text?: string) => {
-    if (sentRef.current) return;
-    sentRef.current = true;
-    setRating(next);
-    setSent(true);
+    if (read().sent) return;
+    write({ rating: next, sent: true });
     sendReplyRating({ ...props, comment: text, rating: next, reader });
   };
   const cancelGood = () => {
-    clearTimeout(goodTimer.current);
-    sendPendingGood.current = undefined;
+    clearTimeout(read().timer);
+    write(UNRATED);
   };
   const toggleGood = () => {
-    if (sentRef.current) return;
-    cancelGood();
-    if (rating === "good") {
-      setRating(undefined);
+    const current = read();
+    if (current.sent) return;
+    if (current.rating === "good") {
+      cancelGood();
       return;
     }
-    setRating("good");
-    sendPendingGood.current = () => {
-      cancelGood();
+    const sendGood = () => {
+      clearTimeout(read().timer);
       send("good");
     };
-    goodTimer.current = setTimeout(
-      () => sendPendingGood.current?.(),
-      GOOD_SEND_DELAY_MS,
-    );
+    write({
+      rating: "good",
+      sendGood,
+      sent: false,
+      timer: setTimeout(sendGood, GOOD_SEND_DELAY_MS),
+    });
   };
   const sendBad = () => {
     setCommentOpen(false);
@@ -111,11 +162,8 @@ export function ReplyRatingActions(props: {
           // A rated Reply keeps this button, so focus returns to it after
           // Send, but it opens nothing. Opening it drops a pending Good.
           onOpenChange={(open) => {
-            if (open && sentRef.current) return;
-            if (open && rating === "good") {
-              cancelGood();
-              setRating(undefined);
-            }
+            if (open && read().sent) return;
+            if (open && read().rating === "good") cancelGood();
             setCommentOpen(open);
           }}
           open={commentOpen}

@@ -487,8 +487,8 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
   name and email, and the message is `Good reply` or `Bad reply`, plus the
   reader's optional comment on a bad rating. It has no Reply text. Each Reply
-  sends at most one rating per page load. The dashboard hides the thumbs when
-  it has no DSN.
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their
