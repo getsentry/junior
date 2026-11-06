@@ -158,11 +158,13 @@ test("starts and continues conversations from the dashboard", async ({
   expect(createRequests).toHaveLength(1);
   releaseFirstCreate?.();
   await expect(
-    page.getByText("Could not create the conversation. Try again."),
+    page.getByText("Message failed to send. Try again."),
   ).toBeVisible();
   // New roots have no mailbox outbox, so a failed create keeps the draft and
-  // the same idempotency key for a safe retry.
+  // the same idempotency key for a safe retry. Focus returns, so Enter
+  // retries.
   await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toBeFocused();
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   expect(createRequests[0]?.images).toEqual([
     { filename: "pasted.png", contentType: "image/png", data: imageBase64 },

@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
@@ -358,7 +359,10 @@ export const ConversationComposer = memo(function ConversationComposer(
       try {
         await send();
       } catch {
-        // The parent shows the error. The draft stays for a retry.
+        // The parent shows the error. The draft stays for a retry, with
+        // focus, so Enter sends it again.
+        flushSync(() => setHoldPending(false));
+        textareaRef.current?.focus({ preventScroll: true });
         return;
       } finally {
         submittingRef.current = false;

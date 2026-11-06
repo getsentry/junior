@@ -2,6 +2,7 @@ import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
@@ -167,7 +168,7 @@ export function ConversationWorkspace(props: {
       composerRef={createComposer}
       error={
         createConversation.error
-          ? "Could not create the conversation. Try again."
+          ? "Message failed to send. Try again."
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
@@ -190,7 +191,9 @@ export function ConversationWorkspace(props: {
             visibility,
           });
         } catch (error) {
-          setPendingCreate(undefined);
+          // Show home before the composer takes the failure, so it can
+          // focus the draft for a retry.
+          flushSync(() => setPendingCreate(undefined));
           throw error;
         }
         // The page then opens with its transcript, not a skeleton. The

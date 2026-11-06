@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -18,6 +17,7 @@ import type {
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
+import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import {
   useArchiveConversation,
   type ArchivedFromConversationState,
@@ -128,14 +128,6 @@ import type {
 
 export { liveModelId } from "./ConversationMeta";
 
-const detailsDefaultOpenQuery = "(min-width: 1440px)";
-
-function subscribeToDetailsLayout(onChange: () => void) {
-  const media = window.matchMedia(detailsDefaultOpenQuery);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
-
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
@@ -149,11 +141,7 @@ export function ConversationPage(props: {
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
-  const detailsDefaultOpen = useSyncExternalStore(
-    subscribeToDetailsLayout,
-    () => window.matchMedia(detailsDefaultOpenQuery).matches,
-    () => false,
-  );
+  const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
