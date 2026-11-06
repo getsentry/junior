@@ -26,7 +26,7 @@ When sandbox traffic reaches a domain registered by a plugin, Junior fetches a s
 
 The current user is the default credential owner. Their account can be used only within the active turn and provider scope.
 
-Scheduled and event automations run as Junior, not as the creator. A automation may use the creator's connected account when access was delegated to that exact automation. The delegation does not apply to other automations or conversations.
+Scheduled and event automations run as Junior, not as the creator. An automation may use the creator's connected account when access was delegated to that exact automation. The delegation does not apply to other automations or conversations.
 
 ## OAuth
 

@@ -62,9 +62,7 @@ pnpm exec junior upgrade && pnpm build
 
 `junior upgrade` applies each core and plugin SQL migration only once. The
 `junior snapshot create` command inside `pnpm build` prepares the sandbox
-dependencies declared by enabled plugins. Existing pre-Drizzle deployments
-must complete the bridge-release procedure below before this build command can
-succeed.
+dependencies declared by enabled plugins.
 
 For an existing pre-Drizzle deployment, follow the bridge-release drain,
 upgrade, verification, and restart procedure in
