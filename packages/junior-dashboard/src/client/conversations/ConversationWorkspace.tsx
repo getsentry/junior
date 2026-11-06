@@ -36,7 +36,10 @@ import {
   type NewConversationState,
   type PendingNewConversation,
 } from "./NewConversationPending";
-import { takeStoredDraftText } from "./ConversationComposer";
+import {
+  restoreStoredDraftText,
+  takeStoredDraftText,
+} from "./ConversationComposer";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -154,6 +157,8 @@ export function ConversationWorkspace(props: {
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
   const homeVisit = useRef<AbortSignal>(undefined);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   useEffect(() => {
     if (!home) return;
     const visit = new AbortController();
@@ -205,12 +210,20 @@ export function ConversationWorkspace(props: {
         // The page then opens with its transcript, not a skeleton. The
         // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
-        if (visit?.aborted) {
-          takeStoredDraftText(pendingDraftId);
+        const left = visit?.aborted;
+        if (left && selectedIdRef.current !== accepted.conversationId) {
+          // The reply typed meanwhile waits in the new Conversation.
+          restoreStoredDraftText(
+            accepted.conversationId,
+            takeStoredDraftText(pendingDraftId),
+          );
           return;
         }
+        // The reader may have opened the new Conversation already. Its
+        // reply box is mounted then, so pass the draft through the route.
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
+          replace: left,
           // The page's reply box takes focus and the text typed meanwhile.
           state: {
             composerDraftFrom: pendingDraftId,
