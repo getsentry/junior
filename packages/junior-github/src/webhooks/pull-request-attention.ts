@@ -2,7 +2,7 @@
  * Webhook facts that decide whether a Junior pull request needs fixes, for
  * Needs attention. A pull request needs fixes while a check suite on its
  * head commit failed, or while a reviewer requests changes with no push
- * since. A push starts over: it is the answer to both.
+ * since. A push of a new head commit starts over: it is the answer to both.
  */
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -54,6 +54,7 @@ const reviewSchema = z.object({
   repository: repositorySchema,
   review: z.object({
     state: z.string(),
+    submitted_at: z.string().datetime({ offset: true }),
     user: z.object({ login: z.string().min(1) }).passthrough(),
   }),
 });
@@ -124,6 +125,8 @@ function attentionUpdates(eventName: string, body: unknown): AttentionUpdate[] {
             action === "submitted" && state === "changes_requested",
           kind: "review",
           login: review.user.login,
+          submittedAt:
+            action === "submitted" ? new Date(review.submitted_at) : null,
         },
         target: {
           number: parsed.data.pull_request.number,

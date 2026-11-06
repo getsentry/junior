@@ -277,7 +277,13 @@ export type GitHubPullRequestAttentionChange =
       headSha: string;
       kind: "check_suite";
     }
-  | { changesRequested: boolean; kind: "review"; login: string };
+  | {
+      changesRequested: boolean;
+      kind: "review";
+      login: string;
+      /** When the review was submitted; null for a dismissal. */
+      submittedAt: Date | null;
+    };
 
 /** Array literal with one value added once. */
 function arrayWith(column: SQL, value: string): SQL {
@@ -285,11 +291,15 @@ function arrayWith(column: SQL, value: string): SQL {
 }
 
 /**
- * Save one change to the "needs fixes" state of a Junior pull request. A
- * push starts a new head commit with no failures and no change requests; a
- * push that is not newer than the saved one is ignored. A check suite of
- * another commit than the saved head is ignored. Rows that
- * Junior does not own are not changed.
+ * Save one change to the "needs fixes" state of a Junior pull request.
+ * GitHub can deliver webhooks late or more than once, so:
+ * - A push of a new head commit clears failures and change requests. A push
+ *   of the saved head keeps them, and a push that is not newer than the
+ *   saved one is ignored.
+ * - A check suite of another commit than the saved head is ignored.
+ * - A review submitted before the saved push is ignored. A dismissal always
+ *   applies.
+ * Rows that Junior does not own are not changed.
  */
 export async function recordGitHubPullRequestAttention(
   db: GitHubDb,
@@ -298,13 +308,15 @@ export async function recordGitHubPullRequestAttention(
 ): Promise<void> {
   const t = juniorGitHubPullRequests;
   if (change.kind === "push") {
+    // A check suite can save the head commit before its push arrives.
+    const sameHead = sql`${t.checksHeadSha} is not distinct from ${change.headSha}`;
     await db
       .update(t)
       .set({
-        changesRequestedBy: [],
+        changesRequestedBy: sql`CASE WHEN ${sameHead} THEN ${t.changesRequestedBy} ELSE '{}'::text[] END`,
         checksHeadAt: change.pushedAt,
         checksHeadSha: change.headSha,
-        failingCheckSuiteIds: [],
+        failingCheckSuiteIds: sql`CASE WHEN ${sameHead} THEN ${t.failingCheckSuiteIds} ELSE '{}'::text[] END`,
       })
       .where(
         and(
@@ -339,7 +351,14 @@ export async function recordGitHubPullRequestAttention(
         ? arrayWith(sql`${t.changesRequestedBy}`, login)
         : sql`array_remove(${t.changesRequestedBy}, ${login})`,
     })
-    .where(pullRequestRow(target));
+    .where(
+      and(
+        pullRequestRow(target),
+        change.submittedAt
+          ? sql`(${t.checksHeadAt} is null or ${t.checksHeadAt} < ${change.submittedAt.toISOString()})`
+          : undefined,
+      ),
+    );
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */

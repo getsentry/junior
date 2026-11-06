@@ -2957,11 +2957,16 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         repository: checkSuiteRepository("getsentry/junior", 2001),
       });
-      const review = (action: string, state: string, login: string) => ({
+      const review = (
+        action: string,
+        state: string,
+        login: string,
+        submittedAt = "2026-07-03T12:00:00.000Z",
+      ) => ({
         action,
         pull_request: { number: 946 },
         repository: { full_name: "getsentry/junior", id: 2001 },
-        review: { state, user: { login } },
+        review: { state, submitted_at: submittedAt, user: { login } },
         sender: { login },
       });
       const attention = async () => {
@@ -2993,12 +2998,6 @@ describe("GitHub-owned pull request outcomes", () => {
         review("submitted", "commented", "hubot"),
         "pull_request_review",
       );
-      await expect(attention()).resolves.toEqual({
-        changesRequestedBy: ["octocat"],
-        failingCheckSuiteIds: ["11"],
-      });
-      await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
-
       const push = (headSha: string, updatedAt: string) =>
         pullRequestPayload({
           action: "synchronize",
@@ -3008,9 +3007,28 @@ describe("GitHub-owned pull request outcomes", () => {
             updated_at: updatedAt,
           },
         });
-      // A push answers both. A late suite of the old commit changes nothing.
+      // A late push of the commit that the suite already ran on keeps its
+      // state.
+      await send(push("aaaaaaa", "2026-07-01T09:00:00.000Z"), "pull_request");
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: ["octocat"],
+        failingCheckSuiteIds: ["11"],
+      });
+      await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
+
+      // A push answers both. A late suite or review of the old commit
+      // changes nothing.
       await send(push("bbbbbbb", "2026-07-02T12:00:00.000Z"), "pull_request");
       await send(suite(11, "aaaaaaa", "failure"), "check_suite");
+      await send(
+        review(
+          "submitted",
+          "changes_requested",
+          "octocat",
+          "2026-07-02T11:00:00.000Z",
+        ),
+        "pull_request_review",
+      );
       await expect(attention()).resolves.toEqual({
         changesRequestedBy: [],
         failingCheckSuiteIds: [],
