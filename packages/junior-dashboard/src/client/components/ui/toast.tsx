@@ -186,9 +186,8 @@ function ToastList() {
           <ToastTitle />
           <ToastDescription />
         </div>
-        {toastItem.actionProps ? (
-          <ToastAction {...toastItem.actionProps} />
-        ) : null}
+        {/* ToastAction reads actionProps from the toast; spreading them too runs onClick twice. */}
+        {toastItem.actionProps ? <ToastAction /> : null}
         <ToastClose />
       </ToastContent>
     </Toast>

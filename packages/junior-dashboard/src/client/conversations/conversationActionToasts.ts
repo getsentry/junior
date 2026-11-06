@@ -59,10 +59,16 @@ export function useConversationActionToasts() {
       clearActionError(conversation);
       const title = conversationDisplayTitle(conversation);
       const undoLabel = `Undo archive for ${title}`;
-      const restore = () => {
+      const undoAction = {
+        "aria-label": undoLabel,
+        children: "Undo",
+        onClick: restore,
+      };
+      // The loading type stops the auto-dismiss timer while the request runs.
+      function restore() {
         update(ARCHIVED_TOAST_ID, {
           actionProps: {
-            "aria-label": undoLabel,
+            ...undoAction,
             children: "Restoring…",
             disabled: true,
           },
@@ -73,20 +79,26 @@ export function useConversationActionToasts() {
           archiveConversationMutationOptions(queryClient, conversation.id),
         )
           .mutate({ archived: false, lastSeenAt: conversation.lastSeenAt })
-          .then(
-            () => close(ARCHIVED_TOAST_ID),
-            () => {
-              close(ARCHIVED_TOAST_ID);
-              showActionError(conversation, "Could not restore");
-            },
-          );
-      };
+          .then(() => close(ARCHIVED_TOAST_ID), restoreFailed);
+      }
+      // Keep Undo available for a retry, unless a newer archive took the toast.
+      function restoreFailed() {
+        let kept = false;
+        update(ARCHIVED_TOAST_ID, (toast) => {
+          if (toast.data?.conversationId !== conversation.id) return {};
+          kept = true;
+          return {
+            actionProps: undoAction,
+            timeout: ARCHIVE_UNDO_TIMEOUT_MS,
+            title: "Could not restore",
+            type: "error",
+          };
+        });
+        if (!kept) showActionError(conversation, "Could not restore");
+      }
       add({
-        actionProps: {
-          "aria-label": undoLabel,
-          children: "Undo",
-          onClick: restore,
-        },
+        actionProps: undoAction,
+        data: { conversationId: conversation.id },
         description: title,
         id: ARCHIVED_TOAST_ID,
         timeout: ARCHIVE_UNDO_TIMEOUT_MS,

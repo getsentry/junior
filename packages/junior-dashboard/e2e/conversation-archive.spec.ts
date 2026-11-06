@@ -203,6 +203,63 @@ test.describe("expires the archive undo notice", () => {
   });
 });
 
+test.describe("keeps undo through a slow failed restore", () => {
+  test.use({ controlTimers: true });
+  test("keeps undo through a slow failed restore", async ({
+    page,
+    dashboard,
+  }) => {
+    let releaseRestore!: () => void;
+    const restoreReleased = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    let restoreRequests = 0;
+    await page.route("**/api/conversations/*/archive", async (route) => {
+      const archived = route.request().postDataJSON().archived;
+      if (archived) {
+        await route.fulfill({
+          json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+        });
+        return;
+      }
+      restoreRequests += 1;
+      if (restoreRequests === 1) {
+        await restoreReleased;
+        await route.fulfill({ json: { error: "Restore failed" }, status: 500 });
+        return;
+      }
+      await route.fulfill({ json: { archivedAt: null } });
+    });
+    await page.goto(dashboard.baseURL);
+
+    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+    await page
+      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+      .click();
+    const undo = page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    });
+    await page.clock.fastForward(5_000);
+    await undo.click();
+    await expect(undo).toHaveText("Restoring…");
+    await expect(undo).toBeDisabled();
+
+    // A pending restore outlives the undo window.
+    await page.clock.fastForward(3_000);
+    await expect(undo).toHaveText("Restoring…");
+
+    releaseRestore();
+    const restoreError = page.getByRole("dialog").filter({
+      hasText: "Could not restore",
+    });
+    await expect(restoreError).toContainText("Dashboard QA edge cases");
+    await expect(undo).toHaveText("Undo");
+    await undo.click();
+    await expect(undo).toHaveCount(0);
+    expect(restoreRequests).toBe(2);
+  });
+});
+
 test.describe("resets the archive undo timer when archiving another conversation", () => {
   test.use({ controlTimers: true });
   test("resets the archive undo timer when archiving another conversation", async ({
