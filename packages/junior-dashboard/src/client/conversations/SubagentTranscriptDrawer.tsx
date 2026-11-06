@@ -13,7 +13,6 @@ import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
 import { CopyButton } from "../components/CopyButton";
@@ -23,6 +22,7 @@ import {
 } from "./ConversationHeaderActions";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /** One child Conversation to show, with what its parent already knows. */
@@ -79,6 +79,11 @@ function SubagentTranscriptDrawerContent(props: {
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (search.length > 0) setSearch("");
+  };
+
   const titleId = "subagent-transcript-drawer-title";
 
   return (
@@ -90,8 +95,7 @@ function SubagentTranscriptDrawerContent(props: {
               inputRef={searchInputRef}
               onClick={() => {
                 if (searchOpenVisible) {
-                  setSearchOpen(false);
-                  if (search.length > 0) setSearch("");
+                  closeSearch();
                   return;
                 }
                 setSearchOpen(true);
@@ -167,17 +171,13 @@ function SubagentTranscriptDrawerContent(props: {
             {props.target.conversationId}
           </code>
           {searchOpenVisible ? (
-            <div className="mt-3 min-w-0">
-              <SearchInput
-                className="min-w-0"
-                inputRef={searchInputRef}
-                label="Search transcript"
-                onChange={setSearch}
-                placeholder="Search transcript…"
-                size="compact"
-                value={search}
-              />
-            </div>
+            <TranscriptSearchBar
+              className="inset-x-4 md:left-auto md:right-5 md:w-80"
+              inputRef={searchInputRef}
+              onChange={setSearch}
+              onClose={closeSearch}
+              value={search}
+            />
           ) : null}
         </>
       }

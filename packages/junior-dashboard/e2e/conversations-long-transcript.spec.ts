@@ -259,6 +259,11 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     "data-find-prevented",
     "false",
   );
+
+  // Escape closes the search, not the details panel.
+  await search.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(details).toBeVisible();
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {

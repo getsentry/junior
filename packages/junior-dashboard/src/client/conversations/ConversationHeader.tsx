@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, PanelRight } from "lucide-react";
 
-import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
@@ -19,6 +18,7 @@ import {
   type ConversationPinAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /**
@@ -81,10 +81,14 @@ export function ConversationHeader(props: {
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (props.search.length > 0) props.onSearchChange("");
+  };
+
   const toggleSearch = () => {
     if (searchOpenVisible) {
-      setSearchOpen(false);
-      if (props.search.length > 0) props.onSearchChange("");
+      closeSearch();
       return;
     }
     setSearchOpen(true);
@@ -262,17 +266,13 @@ export function ConversationHeader(props: {
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
         {searchOpenVisible ? (
-          <div className="px-4 py-3 md:px-7">
-            <SearchInput
-              className="min-w-0"
-              inputRef={searchInputRef}
-              label="Search transcript"
-              onChange={props.onSearchChange}
-              placeholder="Search transcript…"
-              size="compact"
-              value={props.search}
-            />
-          </div>
+          <TranscriptSearchBar
+            className="inset-x-3 md:left-auto md:right-4 md:w-[max(20rem,25vw)]"
+            inputRef={searchInputRef}
+            onChange={props.onSearchChange}
+            onClose={closeSearch}
+            value={props.search}
+          />
         ) : null}
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">

@@ -712,7 +712,12 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search transcript" }),
   ).toHaveCount(1);
-  await drawer.getByRole("button", { name: "Hide search" }).click();
+  // Escape closes only the search, not the drawer.
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(0);
+  await expect(drawer).toBeVisible();
 
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
