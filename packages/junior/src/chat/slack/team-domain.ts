@@ -1,9 +1,17 @@
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
 import { parseSlackTeamDomain } from "@/chat/slack/location-url";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 const TEAM_DOMAIN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const TEAM_DOMAIN_NEGATIVE_CACHE_TTL_MS = 60 * 1000;
+
+// The process cache saves a state read on a warm instance. The state entry
+// lets a new instance skip `team.info`. Only found domains are shared, so a
+// transient Slack failure stays local to one instance.
+function sharedTeamDomainKey(teamId: SlackTeamId): string {
+  return `slack-team-domain:${teamId}`;
+}
 
 type TeamDomainCacheEntry =
   | { kind: "hit"; domain: string; expiresAt: number }
@@ -69,6 +77,23 @@ async function fetchSlackTeamDomain(
   }
 }
 
+async function loadSlackTeamDomain(
+  teamId: SlackTeamId,
+): Promise<string | undefined> {
+  const state = getStateAdapter();
+  const key = sharedTeamDomainKey(teamId);
+  const shared = parseSlackTeamDomain(await state.get(key));
+  if (shared) {
+    writeTeamDomainCache(teamId, shared);
+    return shared;
+  }
+  const domain = await fetchSlackTeamDomain(teamId);
+  if (domain) {
+    await state.set(key, domain, TEAM_DOMAIN_CACHE_TTL_MS);
+  }
+  return domain;
+}
+
 /** Resolve a workspace subdomain via `team.info`, cached by team id. */
 export async function resolveSlackTeamDomain(
   teamId: string,
@@ -84,7 +109,7 @@ export async function resolveSlackTeamDomain(
   const pending = teamDomainInflight.get(parsedTeamId);
   if (pending) return pending;
 
-  const lookup = fetchSlackTeamDomain(parsedTeamId).finally(() => {
+  const lookup = loadSlackTeamDomain(parsedTeamId).finally(() => {
     teamDomainInflight.delete(parsedTeamId);
   });
   teamDomainInflight.set(parsedTeamId, lookup);
