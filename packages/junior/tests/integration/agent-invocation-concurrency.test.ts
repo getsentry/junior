@@ -34,7 +34,6 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import { stopConversation } from "@/chat/conversations/stop";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
@@ -684,52 +683,6 @@ describe("agent invocation identity and concurrency", () => {
         "agent_invocation",
         "event",
       ]);
-
-      // While a person's stop of the child lasts, its timer is saved to its
-      // transcript. New work from the parent ends the stop.
-      await execute(
-        childTools.watchTimer!,
-        { after_ms: 60_000, intent: "Check after the person stop." },
-        "child-timer-5",
-      );
-      await execute(
-        childTools.watchTimer!,
-        { after_ms: 600_000, intent: "Check after the parent's message." },
-        "child-timer-6",
-      );
-      clock.mockReturnValue(clock() + 1_000);
-      await stopConversation({
-        conversationId: child.childConversationId,
-        queue: harness.queue,
-      });
-      clock.mockReturnValue(clock() + 120_000);
-      await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
-      clock.mockReturnValue(clock() + 120_000);
-      await harness.drainQueuedWork();
-      expect(harness.requests()).toHaveLength(4);
-      await expect(
-        stoppedConversationMessageTexts(child.childConversationId),
-      ).resolves.toEqual([
-        expect.stringContaining("Check once more."),
-        expect.stringContaining("Check after the person stop."),
-      ]);
-      clock.mockReturnValue(clock() + 1_000);
-      await harness.message({
-        childConversationId: child.childConversationId,
-        idempotencyKey: "message-2",
-        input: "Keep watching.",
-      });
-      await harness.drainQueuedWork();
-      clock.mockReturnValue(clock() + 600_000);
-      await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
-      clock.mockReturnValue(clock() + 120_000);
-      await harness.drainQueuedWork();
-      expect(
-        harness
-          .requests()
-          .slice(4)
-          .map((request) => request.source.kind),
-      ).toEqual(["agent_invocation", "event"]);
     } finally {
       clock.mockRestore();
       await harness.close();

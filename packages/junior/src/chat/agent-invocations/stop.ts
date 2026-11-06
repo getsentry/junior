@@ -12,13 +12,15 @@ import {
 import { juniorAgentInvocations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
-import { getChildAgentLockName } from "./ids";
+import {
+  getChildAgentLockName,
+  parseAgentInvocationResultMessageId,
+} from "./ids";
 import {
   getLatestAgentInvocationForConversation,
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-  parseAgentInvocationResultMessageId,
 } from "./store";
 import type { TerminalAgentInvocation } from "./types";
 

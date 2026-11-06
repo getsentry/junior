@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
+import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -418,4 +420,41 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     expect.stringContaining("Check soon."),
     expect.stringContaining("Check much later."),
   ]);
+
+  // New work from its parent ends the stop of the child, so its next timer
+  // starts it.
+  await execute(
+    childTools.watchTimer!,
+    { after_ms: 600_000, intent: "Check after the parent's message." },
+    "child-timer-4",
+  );
+  clock.mockReturnValue(clock() + 1_000);
+  const message = await createAgentInvocationForMessage({
+    actor: child.actor,
+    childConversationId: child.childConversationId,
+    destination: child.destination,
+    idempotencyKey: "parent-message",
+    input: "Keep watching.",
+    parentConversationId: conversationId,
+    parentToolCallId: "parent-message",
+  });
+  await enqueueAgentInvocation(message.invocation, {
+    conversationStore,
+    queue,
+    state,
+  });
+  await drain();
+  await expect(
+    getConversationStoppedAtMs(child.childConversationId),
+  ).resolves.toBeUndefined();
+  clock.mockReturnValue(clock() + 600_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  clock.mockReturnValue(clock() + 120_000);
+  await drain();
+  expect(
+    agentRuns
+      .filter((run) => run.conversationId === child.childConversationId)
+      .slice(1)
+      .map((run) => run.source.kind),
+  ).toEqual(["agent_invocation", "event"]);
 });
