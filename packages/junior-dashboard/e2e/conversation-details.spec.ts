@@ -12,23 +12,23 @@ test("opens conversation details beside the chat", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(page).toHaveTitle("Junior");
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
-  const privateConversation = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
+  const sidebar = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const privateConversation = sidebar.getByRole("link", {
+    name: /Direct Message/,
+  });
   await expect(
     privateConversation.getByLabel("Private conversation"),
   ).toBeVisible();
-  const publicConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
+  const publicConversation = sidebar.getByRole("link", {
+    name: /Checkout latency triage/,
   });
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
-  const runningConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Investigate checkout latency" }),
+  const runningConversation = sidebar.getByRole("link", {
+    name: /Investigate checkout latency/,
   });
   await expect(
     runningConversation.getByRole("status", { name: "Running" }),
@@ -36,7 +36,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     publicConversation.getByRole("status", { name: "Running" }),
   ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
+  await publicConversation.click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );

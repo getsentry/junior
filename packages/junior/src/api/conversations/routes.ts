@@ -25,6 +25,8 @@ import {
 import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
   archiveConversationBodySchema,
@@ -50,7 +52,7 @@ import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
-import { pinConversation } from "./pin";
+import { pinConversation, reorderPinnedConversations } from "./pin";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
@@ -296,6 +298,24 @@ export function createConversationRoutes(
         await markConversationRead(viewer, conversationId, body),
       );
     },
+  );
+
+  app.put(
+    "/pin-order",
+    requireViewer,
+    validateRequest(
+      "json",
+      reorderPinnedConversationsBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        reorderPinnedConversationsResponseSchema,
+        await reorderPinnedConversations(
+          context.get("viewer"),
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.post("/archive-done", requireViewer, async (context) =>

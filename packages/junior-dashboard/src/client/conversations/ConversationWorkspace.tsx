@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
@@ -18,7 +18,12 @@ import {
   ConversationFeedLoadMore,
   type ConversationFeedMorePages,
 } from "./ConversationFeedLoadMore";
-import { ConversationComposer } from "./ConversationComposer";
+import { useConversationActionToasts } from "./conversationActionToasts";
+import { useConversationPageArchiveResult } from "./conversationArchive";
+import {
+  ConversationComposer,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
@@ -41,6 +46,7 @@ import {
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
+import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -51,13 +57,20 @@ import {
 
 const SIDEBAR_PANEL_ID = "conversation-list";
 
-/** Render the conversation home page or one selected conversation. */
+/**
+ * Render the conversation list beside the create view or one selected
+ * conversation. Narrow screens without room for the list get a stacked home.
+ */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
+  // Home reports an archive that started on a conversation page. Do it here,
+  // not in a list, because the list can be hidden.
+  const { showArchiveError, showArchived } = useConversationActionToasts();
+  useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const sidebarGroup = useRef<HTMLDivElement>(null);
@@ -69,7 +82,9 @@ export function ConversationWorkspace(props: {
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
+  const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const createComposer = useRef<ConversationComposerHandle>(null);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -82,6 +97,7 @@ export function ConversationWorkspace(props: {
   const openCreate = () => {
     createConversation.reset();
     if (selectedId) navigate(NEW_CONVERSATION_PATH);
+    else createComposer.current?.focus();
   };
 
   const waitingConversations = useWaitingConversations();
@@ -116,6 +132,7 @@ export function ConversationWorkspace(props: {
 
   const createView = (
     <NewConversationView
+      composerRef={createComposer}
       error={
         createConversation.error
           ? "Could not create the conversation. Try again."
@@ -133,11 +150,48 @@ export function ConversationWorkspace(props: {
     />
   );
 
-  if (home) {
-    return (
-      <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mx-auto grid w-full max-w-6xl gap-8">
-          {createView}
+  const toggleSidebar = () => {
+    const panel = sidebarPanel.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
+    else panel.collapse();
+  };
+  const sidebarToggle = (
+    <HeaderIconButton
+      controls={sidebarId}
+      expanded={sidebarOpen}
+      label={sidebarOpen ? "Hide conversation list" : "Show conversation list"}
+      onClick={toggleSidebar}
+    >
+      <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
+    </HeaderIconButton>
+  );
+
+  // One tree for every width, so the create draft and its images survive a
+  // resize across the breakpoint.
+  const homePane = (
+    <main
+      className={cn(
+        "h-full min-h-0 w-full",
+        sidebarFits
+          ? "grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          : "overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
+      )}
+    >
+      {sidebarFits ? (
+        <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
+      ) : null}
+      <div
+        className={
+          sidebarFits
+            ? // The bottom pad matches the toggle row, so the create view
+              // sits in the middle of the pane.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
+            : "mx-auto grid w-full max-w-6xl gap-8"
+        }
+      >
+        {createView}
+        {sidebarFits ? null : (
           <section aria-label="Conversations" className="grid gap-3">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
@@ -151,6 +205,8 @@ export function ConversationWorkspace(props: {
               emptyLabel={feedError}
               finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
+              // Search shows only some pins, so a drop could not place the rest.
+              onReorderPins={search ? undefined : reorderPins}
               timeZone={getDashboardTimeZone()}
               waitingConversationIds={waitingConversationIds}
             />
@@ -161,17 +217,10 @@ export function ConversationWorkspace(props: {
               />
             )}
           </section>
-        </div>
-      </main>
-    );
-  }
-
-  const toggleSidebar = () => {
-    const panel = sidebarPanel.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
-    else panel.collapse();
-  };
+        )}
+      </div>
+    </main>
+  );
 
   return (
     <ResizablePanelGroup
@@ -218,6 +267,7 @@ export function ConversationWorkspace(props: {
                 morePages={morePages}
                 onNewConversation={openCreate}
                 onQueryChange={setQuery}
+                onReorderPins={reorderPins}
                 query={query}
                 selectedId={selectedId}
                 timeZone={getDashboardTimeZone()}
@@ -232,48 +282,40 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        <section
-          aria-label="Selected conversation"
-          className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-        >
-          <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-            <ConversationPage
-              conversationId={selectedId}
-              detail={props.detail}
-              data={
-                feed.data
-                  ? {
-                      conversations: feed.data,
-                    }
-                  : undefined
-              }
-              onRead={markRead}
-              pendingArchiveUpdate={pendingArchiveUpdates.find(
-                (update) => update.conversationId === selectedId,
-              )}
-              sidebarToggle={
-                <HeaderIconButton
-                  controls={sidebarId}
-                  expanded={sidebarOpen}
-                  label={
-                    sidebarOpen
-                      ? "Hide conversation list"
-                      : "Show conversation list"
-                  }
-                  onClick={toggleSidebar}
-                >
-                  <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
-                </HeaderIconButton>
-              }
-            />
-          </UnsentAnswersProvider>
-        </section>
+        {home ? (
+          homePane
+        ) : (
+          <section
+            aria-label="Selected conversation"
+            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+          >
+            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
+              <ConversationPage
+                conversationId={selectedId}
+                detail={props.detail}
+                data={
+                  feed.data
+                    ? {
+                        conversations: feed.data,
+                      }
+                    : undefined
+                }
+                onRead={markRead}
+                pendingArchiveUpdate={pendingArchiveUpdates.find(
+                  (update) => update.conversationId === selectedId,
+                )}
+                sidebarToggle={sidebarToggle}
+              />
+            </UnsentAnswersProvider>
+          </section>
+        )}
       </ResizablePanel>
     </ResizablePanelGroup>
   );
 }
 
 function NewConversationView(props: {
+  composerRef: Ref<ConversationComposerHandle>;
   error?: string;
   onSubmit(
     message: string,
@@ -315,6 +357,7 @@ function NewConversationView(props: {
           </ToggleGroup>
         }
         label="Start a conversation"
+        ref={props.composerRef}
         restoreDraftOnError
         submitLabel="Send"
         onSubmit={(message, idempotencyKey, images) =>

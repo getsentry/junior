@@ -873,6 +873,7 @@ export function buildConversations(
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
+      pinPosition: summary.pinPosition,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,

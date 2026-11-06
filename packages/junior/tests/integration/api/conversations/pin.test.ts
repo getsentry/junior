@@ -11,6 +11,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
   pinConversationResponseSchema,
+  reorderPinnedConversationsResponseSchema,
 } from "@/api/schema";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -65,6 +66,26 @@ function setPin(
       headers: { "content-type": "application/json" },
       method: "PATCH",
     },
+  );
+}
+
+function setPinOrder(app: Hono<JuniorApiEnv>, conversationIds: string[]) {
+  return app.request("http://localhost/api/conversations/pin-order", {
+    body: JSON.stringify({ conversationIds }),
+    headers: { "content-type": "application/json" },
+    method: "PUT",
+  });
+}
+
+async function pinPositions(
+  viewer: Awaited<ReturnType<typeof authenticatedApi>>["viewer"],
+) {
+  const feed = await readConversationFeed({ viewer });
+  return Object.fromEntries(
+    feed.conversations.map((conversation) => [
+      conversation.conversationId,
+      conversation.pinPosition,
+    ]),
   );
 }
 
@@ -170,6 +191,65 @@ describe("conversation pin API", () => {
         await readConversationDetail(older, { viewer }),
       ).pinnedAt,
     ).toBeNull();
+  });
+
+  it("keeps the viewer's Pinned order until a pin changes", async () => {
+    const [first, second, third, unpinned] = [
+      "local:test:pin-order-first",
+      "local:test:pin-order-second",
+      "local:test:pin-order-third",
+      "local:test:pin-order-unpinned",
+    ];
+    const { app, viewer } = await authenticatedApi("orderer@example.com");
+    const other = await authenticatedApi("order-other@example.com");
+    for (const [index, id] of [first, second, third, unpinned].entries()) {
+      await storeConversation({
+        conversationId: id,
+        nowMs: 1_000 + index,
+        visibility: "private",
+      });
+      await addParticipant(id, viewer.id);
+      await addParticipant(id, other.viewer.id);
+    }
+    for (const id of [first, second, third]) {
+      expect((await setPin(app, id, true)).status).toBe(200);
+    }
+    expect((await setPin(other.app, first, true)).status).toBe(200);
+
+    // An unpinned id gets no place.
+    const reorder = await setPinOrder(app, [third, first, unpinned, second]);
+    expect(reorder.status).toBe(200);
+    expect(
+      reorderPinnedConversationsResponseSchema.parse(await reorder.json()),
+    ).toEqual({ conversationIds: [third, first, second] });
+    await expect(pinPositions(viewer)).resolves.toEqual({
+      [first]: 1,
+      [second]: 3,
+      [third]: 0,
+      [unpinned]: undefined,
+    });
+    // The order belongs to the viewer.
+    await expect(pinPositions(other.viewer)).resolves.toEqual({
+      [first]: undefined,
+      [second]: undefined,
+      [third]: undefined,
+      [unpinned]: undefined,
+    });
+
+    // A placed pin that the list leaves out moves after the listed pins.
+    expect((await setPinOrder(app, [second, third])).status).toBe(200);
+    await expect(pinPositions(viewer)).resolves.toMatchObject({
+      [first]: 3,
+      [second]: 0,
+      [third]: 1,
+    });
+
+    // A pin made again has no place, so it sorts first.
+    await setPin(app, first, false);
+    await setPin(app, first, true);
+    expect((await pinPositions(viewer))[first]).toBeUndefined();
+
+    expect((await setPinOrder(app, [second, second])).status).toBe(400);
   });
 
   it("lets only participants pin, so a pin grants no access", async () => {

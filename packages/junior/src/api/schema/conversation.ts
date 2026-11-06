@@ -259,6 +259,8 @@ export const conversationSummaryReportSchema = z
     participants: z.array(actorIdentitySchema).optional(),
     archivedAt: z.string().datetime().nullable().optional(),
     pinnedAt: z.string().datetime().nullable().optional(),
+    /** The viewer's place in Pinned. Unset until they reorder their pins. */
+    pinPosition: z.number().int().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),

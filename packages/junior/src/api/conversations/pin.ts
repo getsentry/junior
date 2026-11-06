@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
@@ -10,6 +10,8 @@ import { throwApiError } from "../http";
 import type {
   PinConversationBody,
   PinConversationResponse,
+  ReorderPinnedConversationsBody,
+  ReorderPinnedConversationsResponse,
 } from "../schema/conversation-pin";
 import { readConversationAccessFromSql } from "./access";
 
@@ -47,7 +49,7 @@ export async function pinConversation(
     // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
     await db
       .update(juniorConversationParticipants)
-      .set({ pinnedAt: null })
+      .set({ pinnedAt: null, pinPosition: null })
       .where(
         and(
           eq(juniorConversationParticipants.userId, viewer.id),
@@ -81,7 +83,40 @@ export async function pinConversation(
         juniorConversationParticipants.userId,
         juniorConversationParticipants.rootConversationId,
       ],
-      set: { archivedAt: null, pinnedAt },
+      // A new pin has no place yet, so it sorts first in Pinned.
+      set: { archivedAt: null, pinnedAt, pinPosition: null },
     });
   return { pinnedAt: pinnedAt.toISOString() };
+}
+
+/**
+ * Save the viewer's Pinned order. Each listed pin takes its index as its
+ * place. The update reads only the viewer's own pinned rows, so an id that
+ * the viewer did not pin changes nothing and grants nothing.
+ */
+export async function reorderPinnedConversations(
+  viewer: User,
+  body: ReorderPinnedConversationsBody,
+): Promise<ReorderPinnedConversationsResponse> {
+  const ids = body.conversationIds;
+  const participants = juniorConversationParticipants;
+  const positions = sql.join(
+    ids.map((id, index) => sql`when ${id} then ${index}::integer`),
+    sql` `,
+  );
+  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
+  const updated = await getDb()
+    .update(participants)
+    .set({
+      // The client can see only the pins in one feed page. A placed pin that
+      // is not in the list moves after the listed pins and keeps its order,
+      // so its old place cannot collide with a new index.
+      pinPosition: sql`case ${participants.rootConversationId} ${positions} else ${participants.pinPosition} + ${ids.length}::integer end`,
+    })
+    .where(
+      and(eq(participants.userId, viewer.id), isNotNull(participants.pinnedAt)),
+    )
+    .returning({ rootConversationId: participants.rootConversationId });
+  const updatedIds = new Set(updated.map((row) => row.rootConversationId));
+  return { conversationIds: ids.filter((id) => updatedIds.has(id)) };
 }

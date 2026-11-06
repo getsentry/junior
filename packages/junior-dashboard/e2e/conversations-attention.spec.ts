@@ -89,33 +89,35 @@ test.describe("conversation sections", () => {
     await mockWaitingConversation(page);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const attention = list.getByRole("button", { name: "Needs attention" });
-    const waitingCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Checkout latency triage" }),
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
     });
-    await expect(list.getByRole("button").first()).toHaveText(
+    const attention = sidebar.getByRole("button", { name: "Needs attention" });
+    const waitingRow = sidebar.getByRole("link", {
+      name: /Checkout latency triage/,
+    });
+    await expect(sidebar.getByRole("button").first()).toHaveText(
       /^Needs attention/,
     );
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Checkout latency triage",
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Checkout latency triage/,
     );
     await expect(
-      waitingCard.getByRole("img", { name: "Waiting on you" }),
+      waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
     await screenshot(page, "conversations-needs-attention");
 
     await attention.click();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
     await screenshot(page, "conversations-sections-collapsed");
 
     await page.reload();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
 
     await attention.click();
-    await expect(waitingCard).toBeVisible();
+    await expect(waitingRow).toBeVisible();
   });
 
   test("pinning moves a conversation to Pinned only", async ({
@@ -200,26 +202,20 @@ test.describe("conversation sections", () => {
     }, FINISHED_CONVERSATION_ID);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const finishedCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Closed issue summary" }),
-    });
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Closed issue summary",
-    );
-    await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toBeVisible();
-
-    await finishedCard
-      .getByRole("link", { name: "Open Closed issue summary" })
-      .click();
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Closed issue summary/,
+    );
+    await expect(
+      finishedRow.getByRole("img", { name: "Unread" }),
+    ).toBeVisible();
+
+    await finishedRow.click();
     await expect(finishedRow).toHaveAttribute("aria-current", "page");
     // Read now, but held at the top so the row does not move under the pointer.
     await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
@@ -235,9 +231,10 @@ test.describe("conversation sections", () => {
     );
 
     await page.goto(dashboard.baseURL);
-    await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toHaveCount(0);
+    await expect(finishedRow).toBeVisible();
+    await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
+      0,
+    );
   });
 
   test("the sidebar review chip opens details at Needs you", async ({

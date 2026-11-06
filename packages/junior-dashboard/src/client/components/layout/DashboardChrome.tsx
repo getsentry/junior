@@ -16,6 +16,8 @@ type DashboardChromeContextValue = {
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
   mobileHeaderLiveSlot: HTMLElement | null;
   mobileHeaderLiveSlotRef: RefCallback<HTMLDivElement>;
+  mobileHeaderTagsSlot: HTMLElement | null;
+  mobileHeaderTagsSlotRef: RefCallback<HTMLDivElement>;
   mobileSecondarySlot: HTMLElement | null;
   mobileSecondarySlotRef: RefCallback<HTMLDivElement>;
   openMobileNavigation(): void;
@@ -35,6 +37,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   const [mobileHeaderActionsSlot, setMobileHeaderActionsSlot] =
     useState<HTMLElement | null>(null);
   const [mobileHeaderLiveSlot, setMobileHeaderLiveSlot] =
+    useState<HTMLElement | null>(null);
+  const [mobileHeaderTagsSlot, setMobileHeaderTagsSlot] =
     useState<HTMLElement | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
   const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
@@ -58,6 +62,12 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     },
     [],
   );
+  const mobileHeaderTagsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
+    (node) => {
+      setMobileHeaderTagsSlot(node);
+    },
+    [],
+  );
   const registerOpenMobileNavigation = useCallback(
     (open: (() => void) | null) => {
       openMobileNavigationRef.current = open;
@@ -73,6 +83,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       mobileHeaderActionsSlotRef,
       mobileHeaderLiveSlot,
       mobileHeaderLiveSlotRef,
+      mobileHeaderTagsSlot,
+      mobileHeaderTagsSlotRef,
       mobileSecondarySlot,
       mobileSecondarySlotRef,
       openMobileNavigation,
@@ -85,6 +97,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       mobileHeaderActionsSlotRef,
       mobileHeaderLiveSlot,
       mobileHeaderLiveSlotRef,
+      mobileHeaderTagsSlot,
+      mobileHeaderTagsSlotRef,
       mobileSecondarySlot,
       mobileSecondarySlotRef,
       openMobileNavigation,
@@ -170,6 +184,23 @@ export function MobileHeaderLiveSlot() {
   );
 }
 
+/**
+ * Tags row under the mobile conversation title. It starts at the title's
+ * left edge and runs to the screen edge. It collapses when empty.
+ */
+export function MobileHeaderTagsSlot() {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("MobileHeaderTagsSlot requires DashboardChromeProvider");
+  }
+  return (
+    <div
+      className="col-span-2 col-start-2 row-start-2 -mr-3 min-w-0 empty:hidden md:hidden"
+      ref={chrome.mobileHeaderTagsSlotRef}
+    />
+  );
+}
+
 /** Mount conversation tools into the mobile shell header trailing slot. */
 export function MobileHeaderActionsPortal(props: { children: ReactNode }) {
   const chrome = useContext(DashboardChromeContext);
@@ -182,6 +213,13 @@ export function MobileHeaderLivePortal(props: { children: ReactNode }) {
   const chrome = useContext(DashboardChromeContext);
   if (!chrome?.mobileHeaderLiveSlot) return null;
   return createPortal(props.children, chrome.mobileHeaderLiveSlot);
+}
+
+/** Mount conversation tags into the row under the mobile title. */
+export function MobileHeaderTagsPortal(props: { children: ReactNode }) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome?.mobileHeaderTagsSlot) return null;
+  return createPortal(props.children, chrome.mobileHeaderTagsSlot);
 }
 
 /** Open the mobile app navigation sheet from conversation chrome. */

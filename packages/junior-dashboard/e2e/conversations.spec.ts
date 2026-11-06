@@ -15,7 +15,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Loading conversations")).toBeAttached();
+  await expect(page.getByText("Loading your conversations")).toBeAttached();
   await expect(page.getByText("No conversations match this view.")).toHaveCount(
     0,
   );
@@ -87,6 +87,24 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     exact: true,
   });
   await expect(details).toBeVisible();
+  const resizeDetails = page.getByRole("separator", {
+    name: "Resize details panel",
+  });
+  // The separator reports the transcript share, which grows as details shrink.
+  const transcriptSize = async () =>
+    Number(await resizeDetails.getAttribute("aria-valuenow"));
+  const startTranscriptSize = await transcriptSize();
+  await resizeDetails.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(transcriptSize).toBeGreaterThan(startTranscriptSize);
+  const resizedTranscriptSize = await transcriptSize();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await expect(details).toBeVisible();
+  // The saved width rounds to whole pixels.
+  await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
   const usage = details.getByRole("button", { name: /^Usage/ });
   const modelBreakdown = details.getByRole("table", { name: "Model" });
   await expect(usage).toHaveAttribute("aria-expanded", "false");
@@ -238,7 +256,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("region", { name: "Conversations" }),
+    page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -277,7 +295,7 @@ test("loads more conversations as the list scrolls and retries a failed page", a
   });
 
   await page.goto(dashboard.baseURL);
-  const list = page.getByRole("region", { name: "Conversations" });
+  const list = page.getByRole("navigation", { name: "Your conversations" });
   const firstRow = list
     .getByRole("link", { name: /Investigate checkout latency/ })
     .first();
