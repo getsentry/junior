@@ -14,8 +14,11 @@ import {
   ResizablePanelGroup,
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
-import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -54,7 +57,6 @@ import {
   useSidebarFits,
 } from "./conversationSidebarLayout";
 
-const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
@@ -65,7 +67,6 @@ export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
@@ -112,28 +113,25 @@ export function ConversationWorkspace(props: {
       !search,
     );
 
-  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  const pagedConversations = useMemo(
+  const homeConversations = useMemo(
     () =>
-      pageItems(
-        pinnedAndAttentionFirst(
-          conversations,
-          attentionConversationIds(
-            waitingConversationIds,
-            finishedConversationIds,
-          ),
+      pinnedAndAttentionFirst(
+        conversations,
+        attentionConversationIds(
+          waitingConversationIds,
+          finishedConversationIds,
         ),
-        page,
-        CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, finishedConversationIds, page, waitingConversationIds],
+    [conversations, finishedConversationIds, waitingConversationIds],
   );
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  // A failed next page keeps the loaded rows; the load-more control shows it.
+  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  const morePages: ConversationFeedMorePages = {
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loading: feed.isFetchingNextPage,
+    onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
+  };
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
@@ -224,30 +222,21 @@ export function ConversationWorkspace(props: {
               value={query}
             />
             <ConversationHomeList
-              conversations={pagedConversations}
-              emptyLabel={feed.error?.message}
+              conversations={homeConversations}
+              emptyLabel={feedError}
               finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
-              // Search, or more pins than one page holds, shows only some
-              // pins, so a drop could not place the rest.
-              onReorderPins={
-                search ||
-                conversations.filter((conversation) => conversation.pinnedAt)
-                  .length > CONVERSATION_PAGE_SIZE
-                  ? undefined
-                  : reorderPins
-              }
+              // Search shows only some pins, so a drop could not place the rest.
+              onReorderPins={search ? undefined : reorderPins}
               timeZone={getDashboardTimeZone()}
               waitingConversationIds={waitingConversationIds}
             />
-            <PagePagination
-              className="pt-1"
-              onPageChange={setPage}
-              page={page}
-              pageCount={totalPages}
-              pageSize={CONVERSATION_PAGE_SIZE}
-              total={conversations.length}
-            />
+            {feedError || conversations.length === 0 ? null : (
+              <ConversationFeedLoadMore
+                {...morePages}
+                loadedCount={conversations.length}
+              />
+            )}
           </section>
         )}
       </div>
@@ -292,10 +281,11 @@ export function ConversationWorkspace(props: {
             >
               <ConversationSidebar
                 conversations={conversations}
-                error={feed.error?.message}
+                error={feedError}
                 finishedConversationIds={finishedConversationIds}
                 heldConversationId={heldConversationId}
                 loading={feed.isPending}
+                morePages={morePages}
                 onUnreadChange={setUnread}
                 onNewConversation={openCreate}
                 onQueryChange={setQuery}
