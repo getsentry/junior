@@ -2058,7 +2058,10 @@ export function readMockConversationFeed(
   return { ...feed, conversations };
 }
 
-/** Archive or restore one mock conversation for local dashboard visual QA. */
+/**
+ * Archive or restore one mock conversation for local dashboard visual QA.
+ * Like the API, it refuses a Task.
+ */
 export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
@@ -2066,7 +2069,7 @@ export function setMockConversationArchived(
   const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
-  if (!conversation) return undefined;
+  if (!conversation || conversation.kind === "task") return undefined;
   if (conversation.kind === "thread") {
     if (archived) mockThreadArchivedAt.set(conversationId, NOW);
     else mockThreadArchivedAt.delete(conversationId);

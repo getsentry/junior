@@ -293,6 +293,8 @@ describe("conversation archive API", () => {
 
     const threadLastSeenAt = new Date(2_000).toISOString();
     expect((await archive(threadId, true, lastSeenAt)).status).toBe(409);
+    // A Task has no archive of its own, so it never archives its root.
+    expect((await archive(taskId, true, lastSeenAt)).status).toBe(409);
     const archivedThread = await archive(threadId, true, threadLastSeenAt);
     expect(archivedThread.status).toBe(200);
     const { archivedAt: threadArchivedAt } =

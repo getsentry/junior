@@ -716,7 +716,11 @@ export function ConversationPage(props: {
               }}
               archive={{
                 archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
+                // The API refuses to archive a Task.
+                disabled:
+                  !conversation ||
+                  detail.data?.kind === "task" ||
+                  archive.isPending,
                 error: Boolean(archive.error),
                 onClick: () => {
                   const archived = !conversation!.archivedAt;

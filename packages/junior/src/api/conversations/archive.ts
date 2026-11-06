@@ -149,15 +149,16 @@ export async function archiveConversation(
     .select({
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
-      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
   if (!target) throwApiError(404, "Conversation not found.");
-  // A Task archive archives its root for the viewer, the same as a root.
+  const kind = conversationKindFromRow(target);
+  // A Task has no archive state of its own. Its root or Thread holds it.
+  if (kind === "task") throwApiError(409, "A Task cannot be archived.");
   const result =
-    conversationKindFromRow(target) === "thread"
+    kind === "thread"
       ? await setThreadArchive({
           archived: body.archived,
           conversationId,
@@ -166,7 +167,7 @@ export async function archiveConversation(
       : await setViewerArchive({
           archived: body.archived,
           lastSeenAt: body.lastSeenAt,
-          rootConversationId: target.rootConversationId ?? conversationId,
+          rootConversationId: conversationId,
           userId: viewer.id,
         });
   if (result.status === "updated") {

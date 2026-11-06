@@ -21,7 +21,7 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it only for you. Archiving a Thread hides it for everyone. A new message from a person restores either one.",
+        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it only for you. Archiving a Thread hides it for everyone. A Task cannot be archived. A new message from a person restores either one.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z
