@@ -165,13 +165,10 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await inputImage.click();
   const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
   await expect(inputPreview).toBeVisible();
-  // The preview pages through every image in the transcript.
-  await expect(inputPreview.getByText("1 of 2")).toBeVisible();
-  await inputPreview.getByRole("button", { name: "Next image" }).click();
-  const deliveredPreview = page.getByRole("dialog", { name: "chart.png" });
-  await expect(deliveredPreview.getByText("2 of 2")).toBeVisible();
-  await page.keyboard.press("ArrowLeft");
-  await expect(inputPreview.getByText("1 of 2")).toBeVisible();
+  // The sent image is not part of the response, so it has no pager.
+  await expect(
+    inputPreview.getByRole("button", { name: "Next image" }),
+  ).toHaveCount(0);
   await inputPreview
     .getByRole("button", { name: "Close", exact: true })
     .click();
@@ -188,7 +185,14 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await image.click();
   const preview = page.getByRole("dialog", { name: "chart.png" });
   await expect(preview).toBeVisible();
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await screenshot(page, "conversation-attachment-modal");
+  // The preview pages through the images of one response.
+  await preview.getByRole("button", { name: "Next image" }).click();
+  const detailPreview = page.getByRole("dialog", { name: "chart-detail.png" });
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
 });

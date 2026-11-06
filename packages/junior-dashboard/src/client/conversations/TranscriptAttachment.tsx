@@ -42,45 +42,70 @@ function attachmentMeta(attachment: MessageAttachment): string {
   );
 }
 
-/** List the stored images of a transcript in reading order. */
-function transcriptPreviewImages(
+function previewImages(
+  conversationId: string,
+  attachments: readonly MessageAttachment[],
+): PreviewImage[] {
+  return attachments.filter(isInlineImage).map((attachment) => ({
+    context: attachmentMeta(attachment),
+    filename: attachment.filename,
+    src: conversationAttachmentUrl(conversationId, attachment.id),
+  }));
+}
+
+/**
+ * Group stored transcript images so one preview pages through one group. A
+ * user message keeps its own images. The images Junior sends after it, across
+ * any number of messages, form that message's response.
+ */
+export function transcriptImageGroups(
   conversationId: string,
   messages: readonly TranscriptViewMessage[],
-): PreviewImage[] {
-  return messages.flatMap((message) =>
-    [
+): PreviewImage[][] {
+  const groups: PreviewImage[][] = [];
+  let response: PreviewImage[] | undefined;
+  for (const message of messages) {
+    if (message.role === "user") {
+      const sent = previewImages(conversationId, message.attachments ?? []);
+      if (sent.length > 0) groups.push(sent);
+      // A context message can arrive during a response. It does not start one.
+      if (!message.context) response = undefined;
+      continue;
+    }
+    const delivered = previewImages(conversationId, [
       ...(message.attachments ?? []),
       ...message.parts.flatMap((part) =>
         part.type === "attachments_delivered" ? part.attachments : [],
       ),
-    ]
-      .filter(isInlineImage)
-      .map((attachment) => ({
-        context: attachmentMeta(attachment),
-        filename: attachment.filename,
-        src: conversationAttachmentUrl(conversationId, attachment.id),
-      })),
-  );
+    ]);
+    if (delivered.length === 0) continue;
+    if (!response) {
+      response = [];
+      groups.push(response);
+    }
+    response.push(...delivered);
+  }
+  return groups;
 }
 
-// One preview pages through every image in the transcript, so a reader does
-// not open and close each image.
-const TranscriptImagesContext = createContext<readonly PreviewImage[]>([]);
+const TranscriptImageGroupsContext = createContext<
+  readonly (readonly PreviewImage[])[]
+>([]);
 
-/** Share the transcript images with each image preview below it. */
+/** Share the transcript image groups with each image preview below it. */
 export function TranscriptImagesProvider(props: {
   children: ReactNode;
   conversationId: string;
   messages: readonly TranscriptViewMessage[];
 }) {
-  const images = useMemo(
-    () => transcriptPreviewImages(props.conversationId, props.messages),
+  const groups = useMemo(
+    () => transcriptImageGroups(props.conversationId, props.messages),
     [props.conversationId, props.messages],
   );
   return (
-    <TranscriptImagesContext.Provider value={images}>
+    <TranscriptImageGroupsContext.Provider value={groups}>
       {props.children}
-    </TranscriptImagesContext.Provider>
+    </TranscriptImageGroupsContext.Provider>
   );
 }
 
@@ -131,10 +156,16 @@ function TranscriptAttachment(props: {
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
-  const gallery = useContext(TranscriptImagesContext);
+  const groups = useContext(TranscriptImageGroupsContext);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
+  );
+  const gallery = groups.find((group) =>
+    group.some(
+      (image) =>
+        image.src === href && image.filename === props.attachment.filename,
+    ),
   );
   const meta = attachmentMeta(props.attachment);
 

@@ -991,6 +991,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             bytes: 18211,
           },
           {
+            id: "qa-chart-png",
+            filename: "chart-detail.png",
+            contentType: "image/png",
+            bytes: 18211,
+          },
+          {
             id: "qa-notes-txt",
             filename: "notes.txt",
             contentType: "text/plain",
