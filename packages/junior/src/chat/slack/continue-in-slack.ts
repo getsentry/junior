@@ -3,7 +3,7 @@ import type { ConversationAccess } from "@/api/conversations/access";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import type { Conversation } from "@/chat/conversations/store";
 import {
-  bindProviderConversation,
+  claimProviderConversation,
   getConversationIdByProviderConversation,
 } from "@/chat/conversations/sql/bindings";
 import { setFirstConversationLocation } from "@/chat/conversations/sql/location";
@@ -23,6 +23,7 @@ import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
 const BUSY = "Wait for Junior to finish, then try again.";
+const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
 
 /** The Slack channel that a dashboard Conversation moves to. */
 export interface ContinueInSlackChannel {
@@ -221,36 +222,46 @@ export async function continueConversationInSlack(args: {
   const moved = await moveIdleConversationDestination({
     conversationId,
     destination,
-    move: () =>
-      withConversationMutationLock(executor, conversationId, async () => {
-        if (
-          await getConversationIdByProviderConversation(
-            executor,
-            binding(threadTs),
-          )
-        ) {
-          return false;
-        }
-        const stored = await setFirstConversationLocation(executor, {
-          ...(posted.channelName
-            ? { channelName: posted.channelName }
-            : undefined),
+    move: async () => {
+      try {
+        return await withConversationMutationLock(
+          executor,
           conversationId,
-          location: {
-            id: locationId,
-            provider: "slack",
-            teamId: channel.teamId,
-            channelId: channel.channelId,
-            threadTs,
+          async () => {
+            // Claim the thread first. Moves of other Conversations to the
+            // same thread hold other locks, so only the unique binding
+            // decides which one wins.
+            if (
+              !(await claimProviderConversation(executor, {
+                conversationId,
+                ...binding(threadTs),
+              }))
+            ) {
+              return false;
+            }
+            const stored = await setFirstConversationLocation(executor, {
+              ...(posted.channelName
+                ? { channelName: posted.channelName }
+                : undefined),
+              conversationId,
+              location: {
+                id: locationId,
+                provider: "slack",
+                teamId: channel.teamId,
+                channelId: channel.channelId,
+                threadTs,
+              },
+            });
+            // Roll back the claim: this Conversation moved somewhere else.
+            if (!stored) throw MOVED_ELSEWHERE;
+            return true;
           },
-        });
-        if (!stored) return false;
-        await bindProviderConversation(executor, {
-          conversationId,
-          ...binding(threadTs),
-        });
-        return true;
-      }),
+        );
+      } catch (error) {
+        if (error === MOVED_ELSEWHERE) return false;
+        throw error;
+      }
+    },
   });
   if (moved !== "moved") {
     // A Run started, or another move won the race. Remove the extra post.

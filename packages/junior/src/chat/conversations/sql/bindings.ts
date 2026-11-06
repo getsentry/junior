@@ -42,11 +42,14 @@ export async function getConversationIdByProviderConversation(
   return rows[0]?.conversationId;
 }
 
-/** Bind provider coordinates to a durable conversation in the caller's SQL scope. */
-export async function bindProviderConversation(
+/**
+ * Bind provider coordinates to a durable conversation unless another
+ * conversation has them. Return whether they belong to this conversation.
+ */
+export async function claimProviderConversation(
   executor: JuniorSqlDatabase,
   args: ProviderConversationBinding,
-): Promise<void> {
+): Promise<boolean> {
   const rows = await executor
     .db()
     .insert(juniorConversationBindings)
@@ -56,7 +59,15 @@ export async function bindProviderConversation(
   const boundConversationId =
     rows[0]?.conversationId ??
     (await getConversationIdByProviderConversation(executor, args));
-  if (boundConversationId !== args.conversationId) {
+  return boundConversationId === args.conversationId;
+}
+
+/** Bind provider coordinates to a durable conversation in the caller's SQL scope. */
+export async function bindProviderConversation(
+  executor: JuniorSqlDatabase,
+  args: ProviderConversationBinding,
+): Promise<void> {
+  if (!(await claimProviderConversation(executor, args))) {
     throw new Error(
       "Provider conversation is already bound to another conversation",
     );

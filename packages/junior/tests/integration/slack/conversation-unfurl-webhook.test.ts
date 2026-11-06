@@ -17,7 +17,11 @@ import { webTestActor } from "../../fixtures/conversation";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
+import { chatPostMessageOk } from "../../fixtures/slack/factories/api";
 
 const ORIGINAL_ENV = { ...process.env };
 const DASHBOARD = "https://junior.example.com";
@@ -90,12 +94,15 @@ function harness() {
     queue,
     state,
     /** A dashboard conversation started by Alice. */
-    async startConversation(visibility: "private" | "public") {
+    async startConversation(
+      visibility: "private" | "public",
+      idempotencyKey = `root-${visibility}`,
+    ) {
       await state.connect();
       const { conversationId } = await createAndEnqueueConversation(
         {
           actor: webTestActor,
-          idempotencyKey: `root-${visibility}`,
+          idempotencyKey,
           message: "Draft the rollout plan.",
           visibility,
         },
@@ -106,7 +113,7 @@ function harness() {
         url: `${DASHBOARD}/conversations/${encodeURIComponent(conversationId)}`,
       };
     },
-    shareLink: (url: string) =>
+    shareLink: (...urls: string[]) =>
       send(
         client.event({
           type: "event_callback",
@@ -119,7 +126,7 @@ function harness() {
             message_ts: SHARED_TS,
             unfurl_id: "C123.1712345.0001.abc",
             source: "conversations_history",
-            links: [{ domain: "junior.example.com", url }],
+            links: urls.map((url) => ({ domain: "junior.example.com", url })),
           },
         }),
       ),
@@ -241,6 +248,47 @@ describe("Slack webhook: dashboard conversation links", () => {
     // A new share of a moved conversation has no button.
     await slack.shareLink(url);
     expect(continueHereValue(url)).toBeUndefined();
+  });
+
+  it("moves only one of two conversations that race for the same thread", async () => {
+    const slack = harness();
+    const first = await slack.startConversation("public", "first");
+    const second = await slack.startConversation("public", "second");
+    await linkSlackUser(webTestActor.email, "U123");
+    await slack.shareLink(first.url, second.url);
+    const values = [
+      continueHereValue(first.url),
+      continueHereValue(second.url),
+    ];
+
+    // Hold the first reply until the second click posts too, so both
+    // clicks pass the early thread check.
+    let secondPosted!: () => void;
+    const bothPosted = new Promise<void>((resolve) => {
+      secondPosted = resolve;
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ ts: "1712345.0101" }),
+      waitFor: bothPosted,
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ ts: "1712345.0102" }),
+      onRequest: () => secondPosted(),
+    });
+    await Promise.all(values.map((value) => slack.click("U123", value!)));
+    const locations = await Promise.all(
+      [first, second].map(
+        async ({ conversationId }) =>
+          (await getConversationStore().get({ conversationId }))?.location,
+      ),
+    );
+    expect(locations.filter(Boolean)).toHaveLength(1);
+    // The loser removes its extra reply and tells the clicker.
+    expect(
+      slackApiOutbox.messages().length -
+        slackApiOutbox.calls("chat.delete").length,
+    ).toBe(1);
+    expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(1);
   });
 
   it("refuses a click from someone outside the conversation", async () => {
