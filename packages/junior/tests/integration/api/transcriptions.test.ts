@@ -77,6 +77,33 @@ describe("transcriptions API", () => {
     ]);
   });
 
+  it("tells the viewer when AI Gateway denies the model", async () => {
+    mswServer.use(
+      http.post(GATEWAY_TRANSCRIPTION_URL, () =>
+        HttpResponse.json(
+          {
+            error: {
+              message: "Add a payment method to use free credits.",
+              type: "customer_verification_required",
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    const response = await postAudio(
+      api("person@example.com"),
+      new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1]),
+      "audio/webm",
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: expect.stringContaining("denied access to this model"),
+    });
+  });
+
   it("rejects anonymous, non-audio, and empty requests before the model", async () => {
     const requests = fakeGateway();
     const signedIn = api("person@example.com");
