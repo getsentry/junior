@@ -96,12 +96,15 @@ function TranscriptAttachment(props: {
     );
   }
 
+  // `target="_blank"`: an installed iOS home screen app has no back button.
+  // Opening a file in the same window traps the user in the iOS file preview.
   return (
     <a
       className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"
+      target="_blank"
     >
       <span
         aria-hidden="true"
