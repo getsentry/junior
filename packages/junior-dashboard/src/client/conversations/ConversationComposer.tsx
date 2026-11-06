@@ -28,6 +28,7 @@ import {
 } from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
+import { ComposerDictation } from "./ComposerDictation";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
@@ -153,6 +154,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [imageError, setImageError] = useState<string>();
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
+  const [dictationError, setDictationError] = useState<string>();
+  // The mic button takes focus, so remember where dictated text goes.
+  const dictationCursorRef = useRef<{ end: number; start: number }>(undefined);
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -293,6 +297,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   const replaceMessage = (draft: ConversationDraft) => {
     draftRef.current = draft;
+    dictationCursorRef.current = undefined;
     const textarea = textareaRef.current;
     if (textarea) textarea.value = draft.text;
     updateCanSend(draft.text);
@@ -382,6 +387,28 @@ export const ConversationComposer = memo(function ConversationComposer(
     await send().catch(() => {});
   };
 
+  const insertDictation = (text: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea || textarea.disabled) return;
+    const { value } = textarea;
+    const cursor = dictationCursorRef.current;
+    const start = Math.min(cursor?.start ?? value.length, value.length);
+    const end = Math.min(cursor?.end ?? value.length, value.length);
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const spaceBefore = before && !/\s$/.test(before) ? " " : "";
+    const spaceAfter = after && !/^\s/.test(after) ? " " : "";
+    textarea.setRangeText(
+      `${spaceBefore}${text}${spaceAfter}`,
+      start,
+      end,
+      "end",
+    );
+    setMessage(textarea.value);
+    syncTextareaHeight();
+    textarea.focus({ preventScroll: true });
+  };
+
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
     const next = withPrependedText(draftRef.current, text);
@@ -459,12 +486,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error || imageError ? (
+      {props.error || imageError || dictationError ? (
         <div
           aria-live="polite"
           className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
-          {imageError ?? props.error}
+          {imageError ?? dictationError ?? props.error}
         </div>
       ) : null}
       <form
@@ -572,6 +599,12 @@ export const ConversationComposer = memo(function ConversationComposer(
             setMessage(event.target.value);
             syncTextareaHeight();
           }}
+          onBlur={(event) => {
+            dictationCursorRef.current = {
+              end: event.currentTarget.selectionEnd,
+              start: event.currentTarget.selectionStart,
+            };
+          }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
           placeholder={props.placeholder ?? "Message Junior…"}
@@ -619,6 +652,11 @@ export const ConversationComposer = memo(function ConversationComposer(
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <ComposerDictation
+              disabled={sendLocked || !online}
+              onError={setDictationError}
+              onText={insertDictation}
+            />
             {props.onStop ? (
               <Button
                 aria-label={props.stopPending ? "Stopping" : "Stop"}

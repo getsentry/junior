@@ -67,6 +67,7 @@ import {
   DEFAULT_NOTIFICATION_SCHEDULE,
   notificationScheduleSchema,
   notificationSettingsSchema,
+  transcriptionSchema,
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
@@ -277,6 +278,15 @@ export function createMockReportingApi(): Hono<{
       conversations: [...conversations.values()].filter((conversation) =>
         conversation.displayTitle.toLowerCase().includes(search),
       ),
+    });
+  });
+  // Dictation gets fixed text instead of a model call, after a short wait so
+  // the transcribing state shows.
+  app.post("/transcriptions", async (c) => {
+    if (!c.get("viewer")) return errorResponse("Sign in to dictate.", 401);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return jsonResponse(transcriptionSchema, {
+      text: "Can you check why the deploy failed and post a summary here?",
     });
   });
   // Sends get a fixed reply instead of an agent run. See `./sends`.
