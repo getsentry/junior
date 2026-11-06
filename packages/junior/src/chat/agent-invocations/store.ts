@@ -440,6 +440,7 @@ export async function createAgentInvocation(
 
     await getConversationStore().createChild({
       childConversationId,
+      kind: "task",
       parentConversationId: input.parentConversationId,
       nowMs,
       source: "internal",

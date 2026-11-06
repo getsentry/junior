@@ -478,6 +478,7 @@ async function generateLocalReply(
 ) {
   const { instruction: instructionOverrides, ...rest } = context;
   const outcome = await executeAgentRun({
+    conversationKind: "root",
     conversationId: context.conversationId ?? LOCAL_DESTINATION.conversationId,
     turnId: context.turnId ?? "turn-agent-run-sandbox",
     instruction: {

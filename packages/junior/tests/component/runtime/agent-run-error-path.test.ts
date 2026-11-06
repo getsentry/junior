@@ -32,6 +32,7 @@ describe("executeAgentRun error path", () => {
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
     const outcome = await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-sandbox-failure",
       instruction: { text: "hello" },
@@ -67,6 +68,7 @@ describe("executeAgentRun error path", () => {
 
     try {
       await executeAgentRun({
+        conversationKind: "root",
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-context-failure",
         runId: "run-context-failure",
@@ -100,6 +102,7 @@ describe("executeAgentRun error path", () => {
 
   it("preserves configured reasoning in failure diagnostics", async () => {
     const outcome = await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-reasoning-failure",
       instruction: { text: "hello" },
@@ -117,6 +120,7 @@ describe("executeAgentRun error path", () => {
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
       executeAgentRun({
+        conversationKind: "root",
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-input-failure",
         instruction: { text: "hello" },
@@ -144,6 +148,7 @@ describe("executeAgentRun error path", () => {
   it("hard-fails Actor platform and Source kind mismatches", async () => {
     await expect(
       executeAgentRun({
+        conversationKind: "root",
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-actor-mismatch",
         instruction: { text: "hello" },
@@ -163,6 +168,7 @@ describe("executeAgentRun error path", () => {
   it("hard-fails conflicting local conversation identities", async () => {
     await expect(
       executeAgentRun({
+        conversationKind: "root",
         conversationId: "local:test:different-conversation",
         turnId: "turn-conversation-mismatch",
         instruction: { text: "hello" },

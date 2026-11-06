@@ -177,6 +177,7 @@ describe("plugin prompt hook composition", () => {
 
   it("renders prompt messages from plugin hooks", async () => {
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-hooks",
       instruction: {
@@ -227,6 +228,7 @@ describe("plugin prompt hook composition", () => {
 
     const turnId = "turn-plugin-structured-context";
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId,
       instruction: { text: "hello" },
@@ -291,6 +293,7 @@ describe("plugin prompt hook composition", () => {
     const turnId = "turn-plugin-context-input-redelivery";
     const request = {
       conversationId: LOCAL_DESTINATION.conversationId,
+      conversationKind: "root" as const,
       turnId,
       instruction: { text: "hello" },
       destination: LOCAL_DESTINATION,
@@ -330,6 +333,7 @@ describe("plugin prompt hook composition", () => {
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-follow-up-1",
       instruction: {
@@ -343,6 +347,7 @@ describe("plugin prompt hook composition", () => {
     captured.promptMessages = [];
 
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-follow-up-2",
       instruction: {
@@ -368,6 +373,7 @@ describe("plugin prompt hook composition", () => {
 
   it("does not run user prompt hooks for steering messages", async () => {
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-steering",
       instruction: {
@@ -406,6 +412,7 @@ describe("plugin prompt hook composition", () => {
     });
 
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-resume-before-prompt",
       instruction: {
@@ -440,6 +447,7 @@ describe("plugin prompt hook composition", () => {
     });
 
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-resume-after-prompt",
       instruction: {

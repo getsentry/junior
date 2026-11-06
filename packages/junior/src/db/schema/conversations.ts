@@ -16,6 +16,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
+  ConversationKind,
   ConversationSource,
   ConversationStatus,
 } from "@/chat/conversations/store";
@@ -67,6 +68,10 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // `root` exactly when parent_conversation_id is null. Set once at create.
+    // TODO(dcramer): Add NOT NULL and a check constraint after every deployed
+    // writer sets kind.
+    kind: text("kind").$type<ConversationKind>(),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(

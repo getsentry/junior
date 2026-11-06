@@ -567,7 +567,7 @@ export async function assemblePrompt(args: {
     | "slackConversation"
     | "location"
     | "delivery"
-    | "parentConversationId"
+    | "agentInvocationId"
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
@@ -601,7 +601,7 @@ export async function assemblePrompt(args: {
     !hasRuntimeTurnContext(promptHistoryMessages);
   const promptMode = args.run.dispatch?.declaresResult
     ? "automation"
-    : args.run.parentConversationId
+    : args.run.agentInvocationId
       ? "child_agent"
       : "conversation";
   // Automation runs have no Delivery port. Their declared message still goes

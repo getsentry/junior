@@ -167,6 +167,46 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("keeps the kind that each Conversation gets at create", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "kind-root",
+        destination: inboundMessage("activity").destination,
+        nowMs: 1,
+      });
+      await store.createChild({
+        childConversationId: "agent:kind-task",
+        kind: "task",
+        parentConversationId: "kind-root",
+        nowMs: 2,
+      });
+      await store.recordActivity({
+        conversationId: "agent:kind-task",
+        nowMs: 3,
+      });
+
+      await expect(
+        store.get({ conversationId: "kind-root" }),
+      ).resolves.toMatchObject({ kind: "root" });
+      await expect(
+        store.get({ conversationId: "agent:kind-task" }),
+      ).resolves.toMatchObject({ kind: "task" });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-task",
+          kind: "thread",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation kind changed for agent:kind-task");
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("requires a destination on first root upsert", async () => {
     const fixture = await createJuniorSqlFixture();
 

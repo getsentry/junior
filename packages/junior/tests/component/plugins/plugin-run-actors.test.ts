@@ -162,6 +162,7 @@ describe("run actor composition", () => {
 
   it("seeds the live actors getter with the run actor and grows it as steering drains", async () => {
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-run-actors",
       instruction: {
@@ -210,6 +211,7 @@ describe("run actor composition", () => {
     });
 
     await executeAgentRun({
+      conversationKind: "root",
       conversationId,
       turnId: sessionId,
       instruction: { text: "hello" },
@@ -224,6 +226,7 @@ describe("run actor composition", () => {
 
   it("does not credit an unresolvable steering actor", async () => {
     await executeAgentRun({
+      conversationKind: "root",
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-run-actors-unresolved",
       instruction: {

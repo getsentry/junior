@@ -44,6 +44,7 @@ const parentActor = slackInvocationInput.actor;
 
 function parentRun(): AgentRun {
   return {
+    conversationKind: "root",
     actor: parentActor,
     conversationId: slackParentConversationId,
     destination: slackDestination,
@@ -93,6 +94,7 @@ function topLevelRun(
 /** The Run of one child agent invocation, as the invocation worker builds it. */
 function childRun(invocation: AgentInvocation): AgentRun {
   return {
+    conversationKind: "task",
     actor: invocation.actor,
     conversationId: invocation.childConversationId,
     destination: invocation.destination,
@@ -666,6 +668,7 @@ describe("messageAgent", () => {
       // through a child agent.
       const publicChild = "agent:public-child";
       await getConversationStore().createChild({
+        kind: "task",
         childConversationId: publicChild,
         parentConversationId: publicTarget,
       });

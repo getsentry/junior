@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
@@ -275,6 +276,7 @@ function conversationFromRow(row: ConversationRow): Conversation {
     schemaVersion: 1,
     conversationId: value.conversationId,
     createdAtMs: value.createdAt.getTime(),
+    kind: conversationKindFromRow(value),
     lastActivityAtMs: value.lastActivityAt.getTime(),
     updatedAtMs: value.updatedAt.getTime(),
     execution: {

@@ -323,6 +323,7 @@ async function runLocalAgentTurnInContext(
         : undefined;
       return await deps.agentRunner.run({
         conversationId: input.conversationId,
+        conversationKind: "root",
         turnId,
         runId: currentRunId,
         instruction: {

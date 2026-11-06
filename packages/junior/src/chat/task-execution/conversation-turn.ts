@@ -623,6 +623,8 @@ export function createConversationTurnWorker(
             agentRunner,
             {
               conversationId: context.conversationId,
+              // A Conversation with no stored row yet is a new root.
+              conversationKind: storedConversation?.kind ?? "root",
               turnId,
               runId: currentRunId,
               instruction: {

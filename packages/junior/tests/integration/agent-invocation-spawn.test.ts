@@ -149,6 +149,7 @@ describe("agent invocation spawn and result delivery", () => {
     try {
       const request = {
         conversationId: parentConversationId,
+        conversationKind: "root",
         turnId: "parent-turn",
         instruction: { text: "Delegate the investigation." },
         actor: { platform: "local", userId: "local-user" },

@@ -83,6 +83,7 @@ describe("Slack resume result handling", () => {
         conversationId,
         turnId,
         run: {
+          conversationKind: "root",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
           },
@@ -143,6 +144,7 @@ describe("Slack resume result handling", () => {
       initialText: "Connected. Continuing...",
       initialStatus: { text: "Continuing request" },
       run: {
+        conversationKind: "root",
         credentialContext: {
           actor: { type: "user", userId: "U456" },
         },
@@ -178,6 +180,7 @@ describe("Slack resume result handling", () => {
       channelId: "C123",
       threadTs,
       run: {
+        conversationKind: "root",
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -219,6 +222,7 @@ describe("Slack resume result handling", () => {
       threadTs: "1700000000.008",
       initialText: "",
       run: {
+        conversationKind: "root",
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -263,6 +267,7 @@ describe("Slack resume result handling", () => {
       threadTs: "1700000000.006",
       initialText: "Connected. Continuing...",
       run: {
+        conversationKind: "root",
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -299,6 +304,7 @@ describe("Slack resume result handling", () => {
         channelId: "C123",
         threadTs: "1700000000.011",
         run: {
+          conversationKind: "root",
           credentialContext: {
             actor: { type: "user", userId: "U123" },
           },
@@ -340,6 +346,7 @@ describe("Slack resume result handling", () => {
       channelId: "C123",
       threadTs: "1700000000.014",
       run: {
+        conversationKind: "root",
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
