@@ -50,7 +50,12 @@ export default defineConfig({
       description:
         "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
       favicon: "/favicon.png",
-      customCss: ["./src/styles/custom.css", "./src/styles/homepage-mocks.css"],
+      customCss: [
+        "@fontsource/caveat/500.css",
+        "@fontsource/caveat/700.css",
+        "./src/styles/custom.css",
+        "./src/styles/homepage-mocks.css",
+      ],
       social: [
         {
           icon: "github",

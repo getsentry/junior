@@ -3,67 +3,33 @@ title: Junior
 description: Junior investigates issues, gathers company context, and takes action with your connected tools from a Slack thread.
 template: splash
 hero:
-  title: '<span class="jr-home-mega" aria-label="Junior">JUNIOR</span>'
-  tagline: "Ask in Slack. Junior digs through your tools, shows its work, and handles the next annoying step."
+  title: 'Meet <span class="jr-hero-name">Junior.</span>'
+  tagline: '<p class="jr-hero-kicker">// a slack bot, built at sentry</p><p>Tag Junior in Slack. It digs in and does the grunt work.</p>'
+  image:
+    html: |
+      <div class="jr-hero-stage">
+        <div class="jr-pad">
+          <p class="jr-pad-title">why i'm good</p>
+          <ul>
+            <li>multiplayer: anyone can steer</li>
+            <li>your logins stay locked down</li>
+            <li>new tool? add a plugin</li>
+            <li>i link my sources</li>
+            <li>i ask before anything risky</li>
+            <li>i open the PR, skip the lecture</li>
+            <li>i keep going after you log off</li>
+            <li>open source. you host it.</li>
+          </ul>
+        </div>
+        <img class="jr-hero-mascot" src="/junior-character.png" alt="Junior, a one-eyed robot in a purple cap and pink hoodie" width="576" height="920" />
+      </div>
   actions:
     - text: Set Up Junior
       link: /start-here/quickstart/
       icon: right-arrow
-    - text: How to Ask
-      link: /start-here/using-junior/
-      icon: right-arrow
 ---
 
 <div class="jr-home">
-  <section class="jr-sticker-scene" aria-label="Junior connects Slack to your tools">
-    <div class="jr-sticker jr-sticker-slack">
-      <span class="jr-sticker-kicker">ASK HERE</span>
-      <svg aria-hidden="true" viewBox="0 0 120 96" xmlns="http://www.w3.org/2000/svg">
-        <path d="M10 12h100v58H65L43 88V70H10z" fill="#ff3cac" stroke="#000" stroke-width="7" stroke-linejoin="round" />
-        <circle cx="35" cy="41" r="6" fill="#000" />
-        <circle cx="59" cy="41" r="6" fill="#000" />
-        <circle cx="83" cy="41" r="6" fill="#000" />
-      </svg>
-      <strong>Slack</strong>
-    </div>
-
-    <div class="jr-flow-arrow jr-flow-arrow-pink" aria-hidden="true">
-      <span>a vague question</span>
-      <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
-        <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </div>
-
-    <div class="jr-mascot">
-      <span class="jr-mascot-note">goes digging</span>
-      <img src="/junior-character.png" alt="Junior, a one-eyed robot in a purple cap and pink hoodie holding a music player" width="576" height="920" />
-    </div>
-
-    <div class="jr-flow-arrow jr-flow-arrow-yellow" aria-hidden="true">
-      <span>answer + next step</span>
-      <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
-        <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </div>
-
-    <div class="jr-tool-pile">
-      <div class="jr-sticker jr-sticker-tool jr-sticker-github">
-        <img src="/integrations/github.svg" alt="" />
-        <strong>GitHub</strong>
-      </div>
-      <div class="jr-sticker jr-sticker-tool jr-sticker-sentry">
-        <img src="/integrations/sentry.svg" alt="" />
-        <strong>Sentry</strong>
-      </div>
-      <div class="jr-sticker jr-sticker-tool jr-sticker-more">
-        <strong>+ the rest of your stack</strong>
-      </div>
-    </div>
-
-  </section>
-
   <section class="jr-proof" aria-labelledby="jr-proof-title">
     <div class="jr-proof-copy">
       <div class="jr-section-number">ONE SLACK MESSAGE</div>
@@ -207,33 +173,6 @@ hero:
     </article>
 
   </div>
-</section>
-
-<section class="jr-cards" aria-label="What Junior does">
-  <article class="jr-card jr-card-violet">
-    <span>01</span>
-    <h2>Find it.</h2>
-    <p>
-      Errors, deploys, logs, code changes, owners. Junior digs through the pile
-      so you don't have to.
-    </p>
-  </article>
-  <article class="jr-card jr-card-pink">
-    <span>02</span>
-    <h2>Prove it.</h2>
-    <p>
-      No mystery vibes. Every answer links the issue, commit, or log line it
-      came from.
-    </p>
-  </article>
-  <article class="jr-card jr-card-cream">
-    <span>03</span>
-    <h2>Do it.</h2>
-    <p>
-      Draft the update. Open the issue. Make the approved change. Anything but
-      another giant blob of advice.
-    </p>
-  </article>
 </section>
 
 <section class="jr-integrations" aria-labelledby="jr-integrations-title">
