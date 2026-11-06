@@ -163,6 +163,9 @@ importers:
       '@astrojs/starlight':
         specifier: ^0.41.5
         version: 0.41.5(astro@7.3.3(tsx@4.22.3))(typescript@6.0.3)
+      '@fontsource/caveat':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@sentry/starlight-theme':
         specifier: 'catalog:'
         version: 0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(tsx@4.22.3))(typescript@6.0.3))
@@ -2551,6 +2554,9 @@ packages:
 
   '@fontsource-variable/rubik@5.2.8':
     resolution: {integrity: sha512-vGDExLzB4a2Fj9mca5LqNoA2ZKcU9o+x5FEBLte/nxYkCB9hOQwZS6ZlItUv+Ssn7YMzKauGuI/Po+YueFuZbg==}
+
+  '@fontsource/caveat@5.3.0':
+    resolution: {integrity: sha512-eHTfzQxFSW9ABERRLNruHoNJmKed2J7pqTUc5lp4a4POMgXGKpxmWj3d9Hz10kmAg6iuTTLe6UagbA4bnsmfQw==}
 
   '@fontsource/ibm-plex-mono@5.2.7':
     resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
@@ -11824,6 +11830,8 @@ snapshots:
   '@fontsource-variable/outfit@5.3.0': {}
 
   '@fontsource-variable/rubik@5.2.8': {}
+
+  '@fontsource/caveat@5.3.0': {}
 
   '@fontsource/ibm-plex-mono@5.2.7': {}
 
