@@ -140,6 +140,9 @@ const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
 
+/** Process-local renames so rename can be exercised in visual QA. */
+const mockTitles = new Map<string, string>();
+
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
@@ -152,11 +155,14 @@ export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
+  mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
 }
 
-/** Add the viewer's mock archive and pin times to one conversation. */
-function withMockViewerState<T extends { conversationId: string }>(
+/** Add the viewer's mock archive and pin times and any rename to one conversation. */
+function withMockViewerState<
+  T extends { conversationId: string; displayTitle: string },
+>(
   report: T & { archivedAt?: string | null },
 ): T & {
   archivedAt: string | undefined;
@@ -166,6 +172,7 @@ function withMockViewerState<T extends { conversationId: string }>(
   const pinPosition = mockPinPositions.get(report.conversationId);
   return {
     ...report,
+    displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedConversationIds.has(report.conversationId)
       ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
       : undefined,
@@ -1985,6 +1992,19 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
+}
+
+/** Rename one mock conversation for local dashboard visual QA. */
+export function setMockConversationTitle(
+  conversationId: string,
+  title: string,
+): { title: string } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockTitles.set(conversationId, title);
+  return { title };
 }
 
 /** Save the mock Pinned order, like the pin-order API. */

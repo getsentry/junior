@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   Mail,
   MailOpen,
+  Pencil,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -15,6 +16,8 @@ import { Link } from "react-router";
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { usePinConversation } from "./usePinConversation";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
 import {
   PinnedConversationOrder,
   usePinnedRowDrag,
@@ -95,6 +98,11 @@ export function ConversationSidebar(props: {
         wasPinning ? "Could not pin" : "Could not unpin",
       );
     },
+    [showActionError],
+  );
+  const handleRenameError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not rename"),
     [showActionError],
   );
   const { collapsedKeys, toggle: toggleSection } =
@@ -200,6 +208,7 @@ export function ConversationSidebar(props: {
                     onArchived={showArchived}
                     onPinError={handlePinError}
                     onPinned={clearActionError}
+                    onRenameError={handleRenameError}
                     onUnreadChange={props.onUnreadChange}
                     selected={entry.conversation.id === props.selectedId}
                     unread={props.finishedConversationIds.has(
@@ -283,6 +292,7 @@ type ConversationSidebarRowProps = {
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
+  onRenameError(conversation: Conversation): void;
   onUnreadChange(conversation: Conversation, unread: boolean): void;
   selected: boolean;
   unread: boolean;
@@ -325,6 +335,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
     onError: (pinned) => props.onPinError(props.conversation, pinned),
     onSuccess: () => props.onPinned(props.conversation),
   });
+  const rename = useRenameConversation(props.conversation.id, {
+    onError: () => props.onRenameError(props.conversation),
+  });
+  const [renaming, setRenaming] = useState(false);
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
@@ -498,6 +512,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             {pinned ? "Unpin" : "Pin"}
           </ContextMenuItem>
         )}
+        <ContextMenuItem onClick={() => setRenaming(true)}>
+          <Pencil aria-hidden="true" />
+          Rename
+        </ContextMenuItem>
         <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
           {archived ? (
             <ArchiveRestore aria-hidden="true" />
@@ -507,6 +525,13 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           {archived ? "Restore" : "Archive"}
         </ContextMenuItem>
       </ContextMenuContent>
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
+        />
+      ) : null}
     </ContextMenu>
   );
 });

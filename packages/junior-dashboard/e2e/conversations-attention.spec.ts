@@ -250,6 +250,7 @@ test.describe("conversation sections", () => {
     await expect(page.getByRole("menuitem")).toHaveText([
       "Mark as read",
       "Pin",
+      "Rename",
       "Archive",
     ]);
     await screenshot(page, "conversation-sidebar-context-menu", {
@@ -266,6 +267,40 @@ test.describe("conversation sections", () => {
     await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
       0,
     );
+  });
+
+  test("renames a conversation from the row menu", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const renameRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/title"),
+    );
+    await sidebar
+      .getByRole("link", { name: /Closed issue summary/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const titleInput = page.getByRole("textbox", { name: "Title" });
+    await expect(titleInput).toBeFocused();
+    await expect(titleInput).toHaveValue("Closed issue summary");
+    await titleInput.fill("  Closed issue follow-up ");
+    await page.getByRole("button", { name: "Save" }).click();
+    expect((await renameRequest).postDataJSON()).toEqual({
+      title: "Closed issue follow-up",
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const renamedRow = sidebar.getByRole("link", {
+      name: /Closed issue follow-up/,
+    });
+    await expect(renamedRow).toBeVisible();
+
+    await page.reload();
+    await expect(renamedRow).toBeVisible();
   });
 
   test("the sidebar review chip opens details at Needs you", async ({
