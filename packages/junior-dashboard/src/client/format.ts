@@ -664,7 +664,10 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
   return (parseTime(b) ?? 0) - (parseTime(a) ?? 0);
 }
 
-/** Return a loaded Conversation's title. A child uses its agent label. */
+/**
+ * Return the title of a loaded Conversation. A child agent Conversation uses
+ * its agent label from the agent tree, because it has no title of its own.
+ */
 export function conversationDetailTitle(
   detail:
     | Pick<ConversationTranscript, "agentTree" | "displayTitle">
