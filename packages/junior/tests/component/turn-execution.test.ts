@@ -6,7 +6,6 @@ import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 const conversationId = "local:test:turn-execution";
 const run = {
   conversationId,
-  conversationKind: "root",
   destination: { conversationId, platform: "local" },
   instruction: { text: "Run the task." },
   source: createLocalSource(conversationId),

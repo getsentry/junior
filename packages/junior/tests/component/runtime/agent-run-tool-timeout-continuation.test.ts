@@ -250,7 +250,6 @@ describe("tool timeout continuation composition", () => {
     const turnId = "turn-tool-timeout-continuation";
     const request = {
       conversationId: conversationId,
-      conversationKind: "root" as const,
       turnId: turnId,
       instruction: {
         text: "Run the targeted test and create the PR.",

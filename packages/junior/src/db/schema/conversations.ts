@@ -69,8 +69,8 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     // `root` exactly when parent_conversation_id is null. Set once at create.
-    // TODO(dcramer): Add NOT NULL and a check constraint after every deployed
-    // writer sets kind.
+    // TODO(dcramer): After every deployed writer sets kind, rerun the
+    // `kind IS NULL` backfill, then add NOT NULL and a check constraint.
     kind: text("kind").$type<ConversationKind>(),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.

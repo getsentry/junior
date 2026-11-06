@@ -732,7 +732,6 @@ function makeAgentRun(
     ...runOverrides
   } = overrides;
   return {
-    conversationKind: "root",
     conversationId: args.conversationId,
     turnId: args.turnId,
     instruction: {

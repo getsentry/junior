@@ -712,7 +712,6 @@ describe("agent run continuation", () => {
 
     const result = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId: "conversation-active-compaction",
         turnId: "turn-active-compaction",
         instruction: {
@@ -779,7 +778,6 @@ describe("agent run continuation", () => {
 
     const result = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId: "conversation-preflight-compaction",
         turnId: "turn-preflight-compaction",
         instruction: {
@@ -802,7 +800,6 @@ describe("agent run continuation", () => {
 
   it("continues from the last safe boundary after an HTTP request timeout", async () => {
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-1",
       turnId: "turn-1",
       instruction: {
@@ -882,7 +879,6 @@ describe("agent run continuation", () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-cancelled-backoff",
       turnId: "turn-cancelled-backoff",
       instruction: {
@@ -919,7 +915,6 @@ describe("agent run continuation", () => {
     agentMode.value = "pendingProviderCall";
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-cancelled-provider",
       turnId: "turn-cancelled-provider",
       instruction: {
@@ -972,7 +967,6 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId: "slack:C123:1712345.0001",
         turnId: "turn-steering",
         instruction: {
@@ -1047,7 +1041,6 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-steering-delivery",
       turnId: "turn-steering-delivery",
       instruction: {
@@ -1086,7 +1079,6 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-terminal-delivery-yield",
       turnId: "turn-terminal-delivery-yield",
       instruction: {
@@ -1110,7 +1102,6 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-delivery-steering-yield",
       turnId: "turn-delivery-steering-yield",
       instruction: {
@@ -1157,7 +1148,6 @@ describe("agent run continuation", () => {
     repositoryState.availableAtBoundary = true;
 
     const outcome = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-yield",
       turnId: "turn-yield",
       instruction: {
@@ -1284,7 +1274,6 @@ describe("agent run continuation", () => {
 
     const result = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId,
         turnId,
         instruction: { text: "Delete preview-42 after I confirm." },
@@ -1308,7 +1297,6 @@ describe("agent run continuation", () => {
     agentMode.value = "cooperativeYield";
 
     const outcome = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-yield-steering",
       turnId: "turn-yield-steering",
       instruction: {
@@ -1367,7 +1355,6 @@ describe("agent run continuation", () => {
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-yield-persist-failure",
       turnId: "turn-yield-persist-failure",
       instruction: {
@@ -1401,7 +1388,6 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId: "conversation-tool-activity",
         turnId: "turn-tool-activity",
         instruction: {
@@ -1440,7 +1426,6 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(
       await executeAgentRun({
-        conversationKind: "root",
         conversationId,
         turnId: sessionId,
         instruction: { text: "help me" },
@@ -1471,7 +1456,6 @@ describe("agent run continuation", () => {
     let injectCompleted = false;
 
     await executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-steering-failure",
       turnId: "turn-steering-failure",
       instruction: {

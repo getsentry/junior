@@ -31,8 +31,9 @@ Canonical words for Junior code and docs. One concept, one word.
   has one; a Turn stores the one that started it.
 - **Destination**: an explicit target for output or a side effect. Not a
   synonym for Location; a new Conversation stores it as its Location.
-- **Location**: the one outside place (Slack channel or thread) a Conversation
-  is delivered to. The Run carries it. It grants no delivery or visibility.
+- **Location**: the one outside place (a Slack channel or a Slack thread) a
+  Conversation is delivered to. The Run carries it. It grants no delivery or
+  visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
   assistant Messages are stored.
 - **Conversation execution**: mutable operational state (mailbox, worker

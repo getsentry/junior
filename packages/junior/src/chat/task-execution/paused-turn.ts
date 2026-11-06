@@ -622,8 +622,6 @@ async function runPausedTurnInContext(
           inputMessageIds: [userMessage.id],
           initialStatus: latestProgressStatus(turnMessages),
           run: {
-            // A paused Turn resumes in a Slack thread, so it is a root.
-            conversationKind: "root",
             instruction: {
               ...(conversationContext
                 ? { context: conversationContext }

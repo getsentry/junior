@@ -11,10 +11,7 @@ import {
   agentInstructionProvenance,
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
-import type {
-  ConversationKind,
-  ConversationStore,
-} from "@/chat/conversations/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -729,7 +726,6 @@ export function createAgentInvocationWorker(
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
-    let conversationKind: ConversationKind;
     let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
@@ -779,21 +775,13 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, tree, child] = await Promise.all([
+      const [persisted, projection, tree] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
         readChildDepthAndRootLocation(invocation.childConversationId),
-        getConversationStore().get({
-          conversationId: invocation.childConversationId,
-        }),
       ]);
-      if (!child?.parentConversationId) {
-        throw new Error(
-          `Agent invocation conversation ${invocation.childConversationId} is not a child`,
-        );
-      }
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
       // read it from the child's own Conversation.
@@ -803,7 +791,6 @@ export function createAgentInvocationWorker(
           ? await loadForkHistory(invocation)
           : projection.messages;
       location = tree.location;
-      conversationKind = child.kind;
       canSpawn = tree.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
@@ -829,7 +816,6 @@ export function createAgentInvocationWorker(
         agentRunner,
         {
           conversationId: invocation.childConversationId,
-          conversationKind,
           agentInvocationId: invocation.invocationId,
           parentConversationId: invocation.parentConversationId,
           turnId,

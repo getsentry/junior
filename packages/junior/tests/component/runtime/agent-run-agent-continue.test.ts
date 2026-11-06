@@ -323,7 +323,6 @@ describe("paused turn composition", () => {
 
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-1",
       turnId: "turn-1",
       instruction: {
@@ -381,7 +380,6 @@ describe("paused turn composition", () => {
     });
 
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-timeout-cap",
       turnId: "turn-timeout-cap",
       instruction: {
@@ -417,7 +415,6 @@ describe("paused turn composition", () => {
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-short-deadline",
       turnId: "turn-short-deadline",
       instruction: {
@@ -446,7 +443,6 @@ describe("paused turn composition", () => {
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-2",
       turnId: "turn-2",
       instruction: {
@@ -486,7 +482,6 @@ describe("paused turn composition", () => {
   it("persists paused turn state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-hung",
       turnId: "turn-hung",
       instruction: {
@@ -529,7 +524,6 @@ describe("paused turn composition", () => {
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
     const replyPromise = executeAgentRun({
-      conversationKind: "root",
       conversationId: "conversation-retry",
       turnId: "turn-retry",
       instruction: {

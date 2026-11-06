@@ -1055,7 +1055,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           )?.location;
           const run: AgentRun = {
             conversationId,
-            conversationKind: "root",
             turnId,
             ...(runId ? { runId } : undefined),
             instruction: {
