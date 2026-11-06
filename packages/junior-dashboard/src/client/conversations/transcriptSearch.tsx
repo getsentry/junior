@@ -165,7 +165,7 @@ export function HighlightText({ text }: { text: string }) {
     parts.push(
       <mark
         key={key++}
-        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        className="rounded-[2px] bg-amber-400/20 text-inherit not-italic"
       >
         {text.slice(idx, idx + normalizedQuery.length)}
       </mark>,
