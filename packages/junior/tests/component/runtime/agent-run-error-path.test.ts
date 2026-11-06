@@ -58,7 +58,7 @@ describe("executeAgentRun error path", () => {
     });
     expect(reply!.diagnostics.outcome).toBe("provider_error");
     expect(reply!.diagnostics.modelId).toBe("openai/gpt-5.4");
-    expect(reply!.diagnostics.reasoningLevel).toBe("high");
+    expect(reply!.diagnostics.reasoningLevel).toBe("medium");
   });
 
   it("binds authoritative request context before startup failures", async () => {

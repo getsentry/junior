@@ -515,7 +515,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
+    expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {

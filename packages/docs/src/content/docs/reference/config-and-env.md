@@ -25,7 +25,7 @@ related:
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
-| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `high`.                                                                                |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `medium`.                                                                              |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and classification passes. Defaults to `openai/gpt-6-luna`.                                                                              |
 | `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
@@ -281,7 +281,7 @@ const app = await createApp({
 
 ## Models
 
-Without overrides, Junior runs every agent Turn on Claude Opus 5.5 with high reasoning. Keep this default unless the app needs different behavior.
+Without overrides, Junior runs every agent Turn on Claude Opus 5.5 with medium reasoning. Keep this default unless the app needs different behavior.
 
 To override it, pass `modelId` to `createApp()`, or set `AI_MODEL`. Set `AI_REASONING_LEVEL` to change the reasoning level. Pass auxiliary model ids on the same `createApp()` options object. App config overrides the model env settings.
 

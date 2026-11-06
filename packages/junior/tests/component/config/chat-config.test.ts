@@ -78,11 +78,11 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("anthropic/claude-opus-5.5");
   });
 
-  it("uses high reasoning by default", async () => {
+  it("uses medium reasoning by default", async () => {
     delete process.env.AI_REASONING_LEVEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.reasoningLevel).toBe("high");
+    expect(botConfig.reasoningLevel).toBe("medium");
   });
 
   it("uses an explicitly configured reasoning level", async () => {

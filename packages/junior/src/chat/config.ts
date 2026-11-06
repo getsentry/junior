@@ -240,7 +240,7 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
 }
 
 const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
-const DEFAULT_REASONING_LEVEL: TurnReasoningLevel = "high";
+const DEFAULT_REASONING_LEVEL: TurnReasoningLevel = "medium";
 const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
