@@ -159,8 +159,8 @@ export function ConversationHeader(props: {
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       {props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
-          {/* One row under the title. Tags keep their width and scroll. */}
-          <div className="-mt-1.5 flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+          {/* One row. Tags keep their width; the slot scrolls. */}
+          <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
             {props.contextTags}
             {props.linkedWork ? (
               <div aria-label="Linked work">{props.linkedWork}</div>

@@ -207,7 +207,7 @@ describe("event automations with no identifier", () => {
       // gets it too.
       expect(dispatch?.input).toContain("Check the description.");
       expect(dispatch?.input).toContain(
-        "About: New pull requests in getsentry/junior",
+        '<task about="New pull requests in getsentry/junior"',
       );
 
       // An update changes only the filters that it names, so it cannot

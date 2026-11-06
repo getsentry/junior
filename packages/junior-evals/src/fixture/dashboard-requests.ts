@@ -73,3 +73,30 @@ export async function steerQueuedWebMessage(
     throw new Error("The message left the queue before the steer");
   }
 }
+
+/**
+ * Answer or dismiss one Review item as the person on the review desk does.
+ * Junior tells each linked Conversation about the change.
+ */
+export async function actOnReviewItem(
+  api: Hono<JuniorApiEnv>,
+  args: {
+    action: "submit" | "dismiss";
+    id: string;
+    values?: Record<string, string[]>;
+    viewerEmail: string;
+  },
+): Promise<void> {
+  const response = await api.request(
+    `/api/review-items/${encodeURIComponent(args.id)}/actions`,
+    jsonRequest(args.viewerEmail, {
+      action: args.action,
+      ...(args.values ? { answer: { values: args.values } } : undefined),
+    }),
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Review item action returned ${response.status}: ${await response.text()}`,
+    );
+  }
+}

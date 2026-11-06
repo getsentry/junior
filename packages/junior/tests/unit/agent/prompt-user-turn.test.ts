@@ -108,7 +108,34 @@ describe("buildUserTurnText", () => {
     });
   });
 
-  it("marks unstructured thread background as evidence only", () => {
+  it("gives each Turn input its own content part, in order", () => {
+    const input = buildPromptInput({
+      instruction: {
+        // A batch has one Actor, so each person part has the same attributes.
+        actor: { authorId: "U1", authorName: "Ada" },
+        text: "joined",
+        inputs: [
+          { kind: "runtime", text: "<task>\nwatch\n</task>" },
+          { kind: "person", text: "ship <it>" },
+          { kind: "person", text: "after lunch" },
+        ],
+      },
+    });
+
+    expect(input.userContentParts).toEqual([
+      { type: "text", text: "<task>\nwatch\n</task>" },
+      {
+        type: "text",
+        text: '<current-instruction author_id="U1" author_name="Ada">\nship &lt;it&gt;\n</current-instruction>',
+      },
+      {
+        type: "text",
+        text: '<current-instruction author_id="U1" author_name="Ada">\nafter lunch\n</current-instruction>',
+      },
+    ]);
+  });
+
+  it("marks unstructured thread background as untrusted", () => {
     const input = buildPromptInput({
       instruction: {
         text: "summarize",

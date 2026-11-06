@@ -126,6 +126,15 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
+export {
+  CONVERSATION_TITLE_MAX_LENGTH,
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "./schema/conversation-title";
+export type {
+  RenameConversationBody,
+  RenameConversationResponse,
+} from "./schema/conversation-title";
 export type {
   AcceptedConversationMessage,
   ActorIdentity,

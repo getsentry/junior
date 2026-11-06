@@ -359,11 +359,13 @@ export function QuickQuestionPanel(props: {
       }
     >
       <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+        {/* One shrinkable column: a long word in the quote or an answer must
+            wrap, not widen the panel into a horizontal scroll. */}
         <div
-          className="grid content-start gap-5 overflow-y-auto px-5 py-4"
+          className="grid content-start grid-cols-[minmax(0,1fr)] gap-5 overflow-y-auto px-4 py-4"
           ref={scrollerRef}
         >
-          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-3 text-sm text-dashboard-text-muted">
+          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-2.5 text-sm text-dashboard-text-muted">
             {/* Long selections fold, so the questions stay in view. */}
             <ClampedPreview
               className="leading-relaxed break-words whitespace-pre-wrap"
