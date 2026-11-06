@@ -213,7 +213,8 @@ export function renderDashboard(
   <script>${DASHBOARD_THEME_SCRIPT}</script>
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- No apple-mobile-web-app-status-bar-style: iOS 26.1+ draws a blur over pages under a
+       black-translucent bar. Without it, the bar is opaque and takes the theme-color. -->
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
