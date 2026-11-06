@@ -10,7 +10,6 @@ import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
-  MobileHeaderLiveSlot,
   MobileHeaderTagsSlot,
   MobileSecondaryNavigationSlot,
   useMobileHeaderBack,
@@ -184,7 +183,6 @@ export function DashboardHeader(props: {
                 {mobileTitle}
               </h1>
             ) : null}
-            <MobileHeaderLiveSlot />
           </div>
         ) : null}
         <Link

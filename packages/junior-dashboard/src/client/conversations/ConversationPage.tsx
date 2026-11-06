@@ -732,7 +732,6 @@ export function ConversationPage(props: {
                 },
                 pending: archive.isPending,
               }}
-              live={live}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={

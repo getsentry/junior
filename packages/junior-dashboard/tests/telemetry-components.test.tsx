@@ -379,7 +379,6 @@ describe("dashboard canonical-event components", () => {
           conversationId="conversation-1"
           detailsOpen={false}
           onDetailsClick={() => {}}
-          live={false}
           onSearchChange={() => {}}
           onViewChange={() => {}}
           pin={{
