@@ -16,19 +16,25 @@ import {
   type PageContentSkeletonVariant,
 } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
+import { UsageMeter } from "./components/UsageMeter";
 import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { NavRail, NavRailProvider } from "./components/layout/NavRail";
+import {
+  NavRail,
+  NavRailProvider,
+  useNavSidebar,
+} from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
+  peoplePath,
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
@@ -227,6 +233,7 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const navSidebar = useNavSidebar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -288,22 +295,34 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <NavRailProvider>
+      <NavRailProvider open={navSidebar.open}>
         <CommandPalette
           navItems={primaryNavItems}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
         <NavRail
+          canExpand={navSidebar.canExpand}
           navItems={primaryNavItems}
           onSearch={openCommandPalette}
+          onToggle={navSidebar.toggle}
+          open={navSidebar.open}
           profile={
             loggedIn ? (
               <ProfileMenu
                 identity={data!.me}
                 onSignOut={signOut}
-                spend={personalSpendQuery.data}
                 userPages={userPages}
+              />
+            ) : undefined
+          }
+          usage={
+            loggedIn ? (
+              <UsageMeter
+                detailsTo={peoplePath(data!.me.user.email!)}
+                spend={personalSpendQuery.data}
+                unavailable={personalSpendQuery.isError}
+                variant="sidebar"
               />
             ) : undefined
           }
@@ -333,23 +352,11 @@ export function DashboardShell() {
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
                 onSearch={openCommandPalette}
-                profile={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="top-bar"
-                    />
-                  ) : undefined
-                }
                 mobileIdentity={
                   loggedIn ? (
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
-                      spend={personalSpendQuery.data}
                       userPages={userPages}
                       variant="sheet-identity"
                     />
@@ -360,20 +367,18 @@ export function DashboardShell() {
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
-                      spend={personalSpendQuery.data}
                       userPages={userPages}
                       variant="sheet-links"
                     />
                   ) : undefined
                 }
-                mobileSpend={
+                mobileUsage={
                   loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
+                    <UsageMeter
+                      detailsTo={peoplePath(data!.me.user.email!)}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="sheet-spend"
+                      unavailable={personalSpendQuery.isError}
+                      variant="sheet"
                     />
                   ) : undefined
                 }

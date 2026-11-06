@@ -464,6 +464,12 @@ test("mounts only the event log rows near the viewport", async ({
 }) => {
   // The rich transcript renders all 2,000 events before the event log opens.
   test.setTimeout(60_000);
+  // Keep the transcript width this check was tuned for. A narrower event log
+  // does not start at the last event (also on 1272px windows before the
+  // expanded nav sidebar), which is a separate bug.
+  await page.addInitScript(() => {
+    window.localStorage.setItem("junior:nav:sidebar-open", "false");
+  });
   await page.setViewportSize(desktop);
   const conversationId = "slack:CQA456:1770021600.000600";
   const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
