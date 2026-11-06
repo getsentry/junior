@@ -4,20 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type (ignored when version is set). auto picks it from the commits; pre cuts a prerelease of that version.
+        # Releases are pinned to minor for now. Add options back to unpin.
+        description: Version bump type
         required: true
         type: choice
-        default: auto
+        default: minor
         options:
-          - auto
-          - pre
-          - patch
           - minor
-          - major
-      version:
-        description: Exact version override (for example, 0.212.0)
-        required: false
-        type: string
       force:
         description: Force release (bypass blockers)
         required: false
@@ -66,6 +59,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          version: ${{ inputs.version || inputs.bump }}
+          version: ${{ inputs.bump }}
           force: ${{ inputs.force }}
           llm_api_key: ${{ github.token }}

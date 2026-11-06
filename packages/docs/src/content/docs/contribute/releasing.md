@@ -37,11 +37,7 @@ Junior uses lockstep package releases for:
 ## Package release
 
 1. Open GitHub Actions `Release` workflow.
-2. Choose bump. `auto` (the default) picks it from the commit titles: features
-   and breaking changes bump the minor version, other changes bump the patch
-   version. `pre` releases a prerelease of the version that `auto` picks, for
-   example `0.280.0-alpha.0`. Choose `patch`, `minor` or `major` to override
-   it.
+2. Keep the `minor` bump. Releases are pinned to a minor bump for now.
 3. Use `force=true` only when intentionally bypassing blockers.
 
 Required configuration:

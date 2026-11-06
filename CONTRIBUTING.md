@@ -128,8 +128,7 @@ Run `pnpm release:check` after you change this list. It keeps CI, the bump
 script, and the release docs aligned. Craft publishes every public workspace
 package, so `.craft.yml` has no package list.
 
-To release, open **Actions → Release** and run it with a `bump` (`auto`,
-`pre`, `patch`, `minor`, or `major`). `auto` picks the bump from the commit
-titles, and `pre` releases a prerelease of that version.
+To release, open **Actions → Release** and run it. Releases are pinned to a
+`minor` bump for now.
 Set `force=true` only to bypass release blockers on purpose. `contribute/releasing.md` has the full process and the required repository
 configuration.
