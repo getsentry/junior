@@ -407,6 +407,44 @@ test("holds the top row while earlier pages load above it", async ({
   );
 });
 
+test("keeps the current search match while earlier pages load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  let release = () => {};
+  mock.holdEarlier = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  // The latest page holds 1969, 1979, 1989, and 1999.
+  await search.fill("9 with");
+  await expect(page.getByText("1/4", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("2/4", { exact: true })).toBeVisible();
+
+  // The earlier page adds four matches before 1979, which stays current.
+  mock.holdEarlier = new Promise(() => {});
+  release();
+  await expect(page.getByText("6/8", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("7/8", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1989 "),
+  ).toBeInViewport();
+});
+
 test("opens far behind at the marker and jumps to the latest", async ({
   page,
   dashboard,

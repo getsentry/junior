@@ -215,7 +215,7 @@ function SubagentTranscriptDrawerContent(props: {
           search={search}
           onSearchChange={setSearch}
           searchMatch={searchMatch.index}
-          onSearchMatchCount={searchMatch.setCount}
+          onSearchMatches={searchMatch.setMatches}
           transcript={detail}
           view={view}
         />

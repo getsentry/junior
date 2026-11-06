@@ -823,7 +823,7 @@ export function ConversationPage(props: {
                           search={search}
                           onSearchChange={setSearch}
                           searchMatch={searchMatch.index}
-                          onSearchMatchCount={searchMatch.setCount}
+                          onSearchMatches={searchMatch.setMatches}
                           selectedEventSeq={selectedEventSeq}
                           startAtLink={startAtLink}
                           startAtUnread={startAtUnread}

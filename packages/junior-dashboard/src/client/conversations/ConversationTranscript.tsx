@@ -438,10 +438,19 @@ function TranscriptEntryList(
     [rows],
   );
   const matchCount = searchQuery === undefined ? 0 : rows.length;
-  const { match, onMatchCount } = search;
+  const { match, onMatches } = search;
+  const firstMatch = useRef<{ key?: string; query?: string }>({});
   useEffect(() => {
-    onMatchCount?.(matchCount);
-  }, [matchCount, onMatchCount]);
+    const previous = firstMatch.current;
+    firstMatch.current = { key: rows[0]?.key, query: searchQuery };
+    const prepended =
+      matchCount > 0 &&
+      previous.query === searchQuery &&
+      previous.key !== undefined
+        ? (indexByKey.get(previous.key) ?? 0)
+        : 0;
+    onMatches?.(matchCount, prepended);
+  }, [indexByKey, matchCount, onMatches, rows, searchQuery]);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.

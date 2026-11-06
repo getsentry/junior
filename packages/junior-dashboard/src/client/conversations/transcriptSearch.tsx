@@ -2,6 +2,7 @@ import {
   type ReactNode,
   type RefObject,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -27,8 +28,11 @@ type TranscriptSearchContextValue = {
   active: boolean;
   /** Index of the current match among the matching rows. */
   match: number;
-  /** The transcript list reports how many rows match. */
-  onMatchCount?(count: number): void;
+  /**
+   * The transcript list reports how many rows match, and how many matches
+   * loaded history put before the first one it showed.
+   */
+  onMatches?(count: number, prepended: number): void;
 };
 
 const defaultValue: TranscriptSearchContextValue = {
@@ -44,12 +48,12 @@ const TranscriptSearchContext =
 export function TranscriptSearchProvider({
   children,
   match = 0,
-  onMatchCount,
+  onMatches,
   query,
 }: {
   children: ReactNode;
   match?: number;
-  onMatchCount?(count: number): void;
+  onMatches?(count: number, prepended: number): void;
   query: string;
 }) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -60,7 +64,7 @@ export function TranscriptSearchProvider({
         normalizedQuery,
         active: normalizedQuery.length > 0,
         match,
-        onMatchCount,
+        onMatches,
       }}
     >
       {children}
@@ -86,10 +90,23 @@ export function useTranscriptSearchMatch(query: string) {
     position.query === query
       ? Math.max(0, Math.min(position.index, count - 1))
       : 0;
+  const setMatches = useCallback(
+    (next: number, prepended: number) => {
+      setCount(next);
+      if (prepended === 0) return;
+      // Earlier history put matches before the current one. Keep the same
+      // row current.
+      setPosition((current) => ({
+        index: (current.query === query ? current.index : 0) + prepended,
+        query,
+      }));
+    },
+    [query],
+  );
   return {
     count,
     index,
-    setCount,
+    setMatches,
     step(delta: 1 | -1) {
       if (count === 0) return;
       setPosition({ index: (index + delta + count) % count, query });
