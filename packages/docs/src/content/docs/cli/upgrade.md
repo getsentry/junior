@@ -13,6 +13,9 @@ related:
 
 Use `junior upgrade` after installing a new Junior release. The command applies
 pending Drizzle migrations to the database configured by `DATABASE_URL`.
+For Neon, it connects to the direct endpoint: `DATABASE_URL_UNPOOLED` when set,
+else the `DATABASE_URL` host without `-pooler`. The migration lock does not work
+through a pooler.
 
 ## Usage
 
