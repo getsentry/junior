@@ -6,9 +6,9 @@
  * period in `autoArchiveGraceHours`. The scheduled sweep archives only for
  * users whose effective choice is on. A conversation is done when:
  *
- * - a plugin reported assigned work, none of it is unfinished, and all of it
- *   finished at least the grace period ago
- * - no human message arrived after the work finished
+ * - no plugin reported unfinished work on it or a child conversation
+ * - any reported work finished at least the grace period ago, and no human
+ *   message arrived after it finished
  * - the root and every child conversation are idle
  * - no open Review item on it waits on the user
  * - the user did not pin it
@@ -79,13 +79,15 @@ export const DEFAULT_AUTO_ARCHIVE_SETTINGS: AutoArchiveSettings = {
 
 /**
  * Decide whether a conversation's work is done long enough to auto-archive.
- * Conversations without plugin-reported work are never done.
+ * A conversation without plugin-reported work has nothing to wait for, so
+ * the quiet-tree checks alone decide it.
  */
 export function isConversationWorkDone(
   conversation: ConversationDoneInput,
   cutoffMs: number,
 ): boolean {
-  if (!conversation.assignedWork || conversation.unfinishedWork) return false;
+  if (conversation.unfinishedWork) return false;
+  if (!conversation.assignedWork) return true;
   const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
   if (!Number.isFinite(finishedAt) || finishedAt > cutoffMs) return false;
   const lastUserMessageAt = Date.parse(conversation.lastUserMessageAt ?? "");
@@ -243,14 +245,15 @@ async function selectCandidateRoots(run: ArchiveRun, after?: CandidateCursor) {
 }
 
 /**
- * Keep the roots whose work is done. Work comes first because most roots
- * have none, so the message history read covers only finished work.
+ * Keep the roots whose work is done. Work comes first, so the message
+ * history read covers only roots with finished work.
  */
 async function selectDoneRoots(
   rootIds: string[],
   cutoffMs: number,
 ): Promise<string[]> {
   const work = await listConversationWork(rootIds);
+  const assigned = new Set(work.assignedIds);
   const unfinished = new Set(work.unfinishedIds);
   const finished = work.assignedIds.filter(
     (id) =>
@@ -260,17 +263,17 @@ async function selectDoneRoots(
         cutoffMs,
       ),
   );
-  if (finished.length === 0) return [];
   const lastUserMessageAtById = await readLastUserMessageAtByConversation(
     getDb(),
     finished,
   );
-  return finished.filter((id) =>
+  return rootIds.filter((id) =>
     isConversationWorkDone(
       {
-        assignedWork: true,
+        assignedWork: assigned.has(id),
         finishedWorkAt: work.finishedAtById[id],
         lastUserMessageAt: lastUserMessageAtById.get(id),
+        unfinishedWork: unfinished.has(id),
       },
       cutoffMs,
     ),

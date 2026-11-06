@@ -248,6 +248,11 @@ describe("conversation archive API", () => {
     // The root is quiet, but its child had activity inside the grace period.
     const busyChildId = "local:test:auto-archive-busy-child";
     const pinnedId = "local:test:auto-archive-pinned";
+    // No plugin reported work, so only the quiet checks decide it.
+    const noWorkId = "local:test:auto-archive-no-work";
+    // A child agent opened the pull request, so the work is on the child.
+    const childDoneId = "local:test:auto-archive-child-done";
+    const childOpenId = "local:test:auto-archive-child-open";
     for (const conversationId of [
       doneId,
       unfinishedId,
@@ -255,6 +260,9 @@ describe("conversation archive API", () => {
       oldId,
       busyChildId,
       pinnedId,
+      noWorkId,
+      childDoneId,
+      childOpenId,
     ]) {
       await getConversationStore().recordActivity({
         destination: { platform: "local" as const, conversationId },
@@ -268,6 +276,13 @@ describe("conversation archive API", () => {
       nowMs: nowMs - 2 * hour,
       parentConversationId: busyChildId,
     });
+    for (const parentConversationId of [childDoneId, childOpenId]) {
+      await getConversationStore().createChild({
+        childConversationId: `${parentConversationId}:child`,
+        nowMs: nowMs - 48 * hour,
+        parentConversationId,
+      });
+    }
     const viewer = await addParticipant({
       conversationId: doneId,
       email: "auto@example.com",
@@ -279,6 +294,9 @@ describe("conversation archive API", () => {
       oldId,
       busyChildId,
       pinnedId,
+      noWorkId,
+      childDoneId,
+      childOpenId,
     ]) {
       await getDb()
         .insert(juniorConversationParticipants)
@@ -322,9 +340,12 @@ describe("conversation archive API", () => {
                 oldId,
                 busyChildId,
                 pinnedId,
+                `${childDoneId}:child`,
+                `${childOpenId}:child`,
               ],
-              conversationIds: [unfinishedId],
+              conversationIds: [unfinishedId, `${childOpenId}:child`],
               finishedWorkAtByConversationId: {
+                [`${childDoneId}:child`]: finishedAt,
                 [busyChildId]: finishedAt,
                 [pinnedId]: finishedAt,
                 [doneId]: finishedAt,
@@ -377,8 +398,8 @@ describe("conversation archive API", () => {
     ).toBe(false);
 
     await expect(sweep()).resolves.toEqual({
-      archived: 2,
-      scanned: 4,
+      archived: 4,
+      scanned: 7,
     });
     const archivedIds = async (userId: string) =>
       (
@@ -395,7 +416,7 @@ describe("conversation archive API", () => {
         .map((row) => row.rootConversationId);
     await expect(
       archivedIds(viewer.id).then((ids) => ids.sort()),
-    ).resolves.toEqual([oldId, doneId].sort());
+    ).resolves.toEqual([oldId, doneId, noWorkId, childDoneId].sort());
     await expect(archivedIds(otherViewer.id)).resolves.toEqual([]);
 
     // A manual restore turns auto-archive off, so the next sweep keeps it.
@@ -417,7 +438,9 @@ describe("conversation archive API", () => {
       ).autoArchive,
     ).toBe(false);
     await sweep();
-    await expect(archivedIds(viewer.id)).resolves.toEqual([oldId]);
+    await expect(
+      archivedIds(viewer.id).then((ids) => ids.sort()),
+    ).resolves.toEqual([oldId, noWorkId, childDoneId].sort());
   });
 
   it("archives the viewer's done conversations once on request", async () => {

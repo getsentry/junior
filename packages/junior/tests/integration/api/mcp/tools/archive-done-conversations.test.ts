@@ -9,7 +9,7 @@ import { seedMcpConversation } from "../../../../fixtures/mcp-tools";
 mockMcpDashboardConfig();
 
 describe("archiveDoneConversations MCP tool", () => {
-  it("keeps Conversations without finished work", async () => {
+  it("archives idle Conversations that have no work to wait for", async () => {
     await seedMcpConversation({
       conversationId: "slack:C123:1700000000.000300",
       email: MCP_TEST_VIEWER,
@@ -20,13 +20,7 @@ describe("archiveDoneConversations MCP tool", () => {
     const result = await call("archiveDoneConversations");
     const listed = await call("searchConversations");
 
-    expect(result.structuredContent).toEqual({ archived: 0 });
-    expect(listed.structuredContent).toEqual({
-      conversations: [
-        expect.objectContaining({
-          conversationId: "slack:C123:1700000000.000300",
-        }),
-      ],
-    });
+    expect(result.structuredContent).toEqual({ archived: 1 });
+    expect(listed.structuredContent).toEqual({ conversations: [] });
   });
 });
