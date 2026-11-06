@@ -6,6 +6,7 @@ import {
   countDistinct,
   desc,
   eq,
+  gt,
   inArray,
   lt,
   ne,
@@ -50,11 +51,6 @@ const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "completed",
   "failed",
   "stopped",
-] as const satisfies readonly AgentInvocationStatus[];
-/** Statuses of an agent invocation that owns its child's Turn. */
-export const ACTIVE_AGENT_INVOCATION_STATUSES = [
-  "running",
-  "paused",
 ] as const satisfies readonly AgentInvocationStatus[];
 /** Statuses of an agent invocation that has not finished. */
 export const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
@@ -231,10 +227,9 @@ export async function getAgentInvocation(
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
-/** List the agent invocations of one child Conversation in the given statuses. */
-export async function listAgentInvocationsForConversation(
+/** List the running and paused agent invocations of one child Conversation. */
+export async function listActiveAgentInvocationsForConversation(
   childConversationId: string,
-  statuses: readonly AgentInvocationStatus[],
 ): Promise<AgentInvocation[]> {
   const rows = await getSqlExecutor()
     .db()
@@ -243,7 +238,7 @@ export async function listAgentInvocationsForConversation(
     .where(
       and(
         eq(juniorAgentInvocations.childConversationId, childConversationId),
-        inArray(juniorAgentInvocations.status, [...statuses]),
+        inArray(juniorAgentInvocations.status, ["running", "paused"]),
       ),
     )
     .orderBy(asc(juniorAgentInvocations.createdAt));
@@ -254,10 +249,8 @@ export async function listAgentInvocationsForConversation(
 export async function getActiveAgentInvocationForConversation(
   childConversationId: string,
 ): Promise<AgentInvocation | undefined> {
-  const active = await listAgentInvocationsForConversation(
-    childConversationId,
-    ACTIVE_AGENT_INVOCATION_STATUSES,
-  );
+  const active =
+    await listActiveAgentInvocationsForConversation(childConversationId);
   if (active.length > 1) {
     throw new Error(
       `Child conversation ${childConversationId} has multiple active agent invocations`,
@@ -749,6 +742,48 @@ export async function listPendingAgentInvocationMailboxAppends(
     )
     .orderBy(asc(juniorAgentInvocations.createdAt))
     .limit(limit);
+  return rows.map(invocationFromRow);
+}
+
+/**
+ * List open agent invocations whose input reached the child mailbox, oldest
+ * first. Pass the last agent invocation of a page to read the next page.
+ */
+export async function listAppendedOpenAgentInvocations(args: {
+  after?: AgentInvocation;
+  limit: number;
+}): Promise<AgentInvocation[]> {
+  const { after } = args;
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.mailboxStatus, "appended"),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+        after
+          ? or(
+              gt(juniorAgentInvocations.createdAt, new Date(after.createdAtMs)),
+              and(
+                eq(
+                  juniorAgentInvocations.createdAt,
+                  new Date(after.createdAtMs),
+                ),
+                gt(juniorAgentInvocations.invocationId, after.invocationId),
+              ),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(
+      asc(juniorAgentInvocations.createdAt),
+      asc(juniorAgentInvocations.invocationId),
+    )
+    .limit(args.limit);
   return rows.map(invocationFromRow);
 }
 

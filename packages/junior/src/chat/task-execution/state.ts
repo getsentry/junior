@@ -2322,10 +2322,6 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -2341,16 +2337,6 @@ export async function clearExpiredConversationLease(args: {
     }
     const retryCount = (current.execution.retryCount ?? 0) + 1;
     const stopped = retryCount >= CONVERSATION_WORK_MAX_RETRIES;
-    if (stopped) {
-      // A lost worker runs no failure path. This runs under the lock, so the
-      // worker cannot renew the lease and no message can reach the mailbox
-      // after it. When it throws, the lease stays expired and the next
-      // heartbeat runs it again.
-      await args.beforeWorkStops?.(
-        args.conversationId,
-        current.execution.inboundMessageIds,
-      );
-    }
     await writeConversation(
       state,
       lock,

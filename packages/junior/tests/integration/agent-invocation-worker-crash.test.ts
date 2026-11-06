@@ -7,12 +7,14 @@ import {
 import {
   buildAgentInvocationInboundMessage,
   createAndEnqueueAgentInvocation,
+  enqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
+  recordConversationRetry,
 } from "@/chat/task-execution/store";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
@@ -50,7 +52,7 @@ describe("agent invocation worker crash", () => {
       const { childConversationId, invocationId } = created;
 
       let followUpId = "";
-      let unappendedId = "";
+      const statuses: (string | undefined)[] = [];
       for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
         // Injected fault: the worker of this try is killed mid-run.
         await killWorker(queue.takeMessageFor(childConversationId));
@@ -75,38 +77,16 @@ describe("agent invocation worker crash", () => {
             state,
           });
           followUpId = invocation.invocationId;
-          // A task whose append has not run yet starts new work instead.
-          const { invocation: unappended } =
-            await createAgentInvocationForMessage({
-              actor: invocationInput.actor,
-              childConversationId,
-              destination: invocationInput.destination,
-              idempotencyKey: "crash-unappended",
-              input: "Then check the docs.",
-              parentConversationId,
-              parentToolCallId: "call-message-2",
-            });
-          unappendedId = unappended.invocationId;
         }
         await runHeartbeatAfterLeasesExpire(queue);
+        statuses.push((await getAgentInvocation(invocationId))?.status);
       }
 
-      const child = await getConversationWorkState({
-        conversationId: childConversationId,
-      });
-      expect(child?.execution.pendingMessages).toEqual([
-        expect.objectContaining({
-          input: expect.objectContaining({
-            metadata: expect.objectContaining({
-              agentInvocationId: unappendedId,
-            }),
-          }),
-        }),
+      // Each try before the last leaves it running for the next try.
+      expect(statuses).toEqual([
+        ...Array(CONVERSATION_WORK_MAX_RETRIES - 1).fill("running"),
+        "failed",
       ]);
-      await expect(getAgentInvocation(unappendedId)).resolves.toMatchObject({
-        mailboxStatus: "appended",
-        status: "pending",
-      });
       for (const id of [invocationId, followUpId]) {
         await expect(getAgentInvocation(id)).resolves.toMatchObject({
           parentMailboxStatus: "appended",
@@ -132,6 +112,87 @@ describe("agent invocation worker crash", () => {
       ).resolves.not.toMatchObject({
         state: expect.stringMatching(/running|paused/),
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("tells the parent about dropped work when a child worker fails past its last retry", async () => {
+    vi.useFakeTimers({
+      now: 1_800_000_000_000,
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const { killWorker, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+    try {
+      const { childConversationId, invocationId } =
+        await createAndEnqueueAgentInvocation(
+          { ...invocationInput, idempotencyKey: "retry-1" },
+          { conversationStore, queue, state },
+        );
+      // Injected fault: the worker is killed mid-run, so it keeps its lease.
+      await killWorker(queue.takeMessageFor(childConversationId));
+      // The parent gives the running child more work.
+      const { invocation: followUp } = await createAgentInvocationForMessage({
+        actor: invocationInput.actor,
+        childConversationId,
+        destination: invocationInput.destination,
+        idempotencyKey: "retry-follow-up",
+        input: "Also check the retry path.",
+        parentConversationId,
+        parentToolCallId: "call-message",
+      });
+      await enqueueAgentInvocation(followUp, {
+        conversationStore,
+        queue,
+        state,
+      });
+      const leaseToken = (
+        await getConversationWorkState({ conversationId: childConversationId })
+      )?.execution.lease?.token;
+      // Injected fault: an error escapes the agent invocation worker on each
+      // try, so the worker records a retry until the work stops and drops its
+      // mailbox. No harness fault throws past the agent invocation worker.
+      let retry = "recorded";
+      while (retry !== "stopped") {
+        retry = await recordConversationRetry({
+          conversationId: childConversationId,
+          leaseToken: leaseToken!,
+          state,
+        });
+      }
+      // The parent gives the stopped child new work before the heartbeat.
+      const { invocation: next } = await createAgentInvocationForMessage({
+        actor: invocationInput.actor,
+        childConversationId,
+        destination: invocationInput.destination,
+        idempotencyKey: "retry-next",
+        input: "Now check the docs.",
+        parentConversationId,
+        parentToolCallId: "call-next",
+      });
+      await enqueueAgentInvocation(next, { conversationStore, queue, state });
+      await runHeartbeatAfterLeasesExpire(queue);
+
+      // The stop dropped the follow-up, so it can never run.
+      await expect(
+        getAgentInvocation(followUp.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "appended",
+        status: "failed",
+      });
+      // The child has new work, so the next agent invocation ends the first.
+      for (const id of [invocationId, next.invocationId]) {
+        await expect(getAgentInvocation(id)).resolves.not.toMatchObject({
+          status: "failed",
+        });
+      }
+      const parent = await getConversationWorkState({
+        conversationId: parentConversationId,
+      });
+      expect(parent?.messages).toHaveLength(1);
     } finally {
       await fixture.close();
     }

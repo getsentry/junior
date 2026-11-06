@@ -620,10 +620,6 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
