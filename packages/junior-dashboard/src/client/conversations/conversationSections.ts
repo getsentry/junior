@@ -63,12 +63,17 @@ export function buildConversationSections(
     .map(({ order: _order, ...section }) => section);
 }
 
-/** Join the conversations that wait on the viewer or finished unseen. */
+/** Join the conversations that wait on the viewer or are unread. */
 export function attentionConversationIds(
-  waitingConversationIds: ReadonlySet<string>,
-  finishedConversationIds: ReadonlySet<string>,
+  conversations: readonly Conversation[],
+  waitingConversationIds: Iterable<string>,
 ): ReadonlySet<string> {
-  return new Set([...waitingConversationIds, ...finishedConversationIds]);
+  return new Set([
+    ...waitingConversationIds,
+    ...conversations
+      .filter((conversation) => conversation.unread)
+      .map((conversation) => conversation.id),
+  ]);
 }
 
 /**

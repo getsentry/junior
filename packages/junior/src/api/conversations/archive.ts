@@ -46,6 +46,7 @@ async function setViewerArchive(args: {
         .values({
           archivedAt,
           lastMessageAt,
+          readAt: archivedAt,
           rootConversationId: args.rootConversationId,
           userId: args.userId,
         })
@@ -55,8 +56,10 @@ async function setViewerArchive(args: {
             juniorConversationParticipants.rootConversationId,
           ],
           // Archive also unpins, so the Pinned section holds only active rows.
+          // It is an act on the conversation, so it also marks it read.
           set: {
             archivedAt,
+            readAt: archivedAt,
             pinnedAt: null,
             pinPosition: null,
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,

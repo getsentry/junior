@@ -126,6 +126,14 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
+export {
+  markConversationUnreadBodySchema,
+  markConversationUnreadResponseSchema,
+} from "./schema/conversation-unread";
+export type {
+  MarkConversationUnreadBody,
+  MarkConversationUnreadResponse,
+} from "./schema/conversation-unread";
 export type {
   AcceptedConversationMessage,
   ActorIdentity,

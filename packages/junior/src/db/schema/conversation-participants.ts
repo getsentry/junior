@@ -39,6 +39,14 @@ export const juniorConversationParticipants = pgTable(
      * user's `autoArchiveDefault`.
      */
     autoArchive: boolean("auto_archive"),
+    /**
+     * When this user last acted on the conversation: sent a message, archived
+     * it, or marked it read. Activity after it on an idle conversation makes
+     * it unread for them, so it stays in Needs attention. A new row starts
+     * read: first sight is not unread. Mark unread moves it just before the
+     * root's last activity.
+     */
+    readAt: timestamptz("read_at").notNull().defaultNow(),
   },
   (table) => [
     primaryKey({

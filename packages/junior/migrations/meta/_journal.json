@@ -575,6 +575,13 @@
       "when": 1793927683295,
       "tag": "0081_conversation_pin_position",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793975573870,
+      "tag": "0082_conversation_participant_read_at",
+      "breakpoints": true
     }
   ]
 }

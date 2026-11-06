@@ -231,6 +231,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number;
   pinPosition?: number;
+  /** When the viewer last acted on the conversation. Unset: never unread. */
+  readAtMs?: number;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -263,6 +265,11 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
+  const status = statusFromConversation(conversation);
+  const unread =
+    status === "completed" &&
+    args.readAtMs !== undefined &&
+    conversation.lastActivityAtMs > args.readAtMs;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -281,7 +288,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation),
+    status,
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }
@@ -303,6 +310,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(args.pinPosition === undefined
       ? undefined
       : { pinPosition: args.pinPosition }),
+    ...(unread ? { unread: true } : undefined),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

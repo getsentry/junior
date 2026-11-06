@@ -24,7 +24,9 @@ export async function resolveRootConversationId(
 
 /**
  * Upsert one linked user as a participant on a root conversation.
- * No-ops when the identity is missing, unlinked, or not a user.
+ * No-ops when the identity is missing, unlinked, or not a user. A new row
+ * starts read at `atMs`. `read` marks a message that the user wrote, which
+ * also moves the read time forward on an existing row.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -32,6 +34,7 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
+    read?: boolean;
     restoreArchive?: boolean;
   },
 ): Promise<void> {
@@ -64,6 +67,7 @@ export async function recordConversationParticipant(
       userId: identity.userId,
       rootConversationId,
       lastMessageAt: at,
+      readAt: at,
     })
     .onConflictDoUpdate({
       target: [
@@ -72,6 +76,11 @@ export async function recordConversationParticipant(
       ],
       set: {
         lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
+        ...(args.read
+          ? {
+              readAt: sql`greatest(${juniorConversationParticipants.readAt}, excluded.read_at)`,
+            }
+          : undefined),
         ...(args.restoreArchive ? { archivedAt: null } : undefined),
       },
     });

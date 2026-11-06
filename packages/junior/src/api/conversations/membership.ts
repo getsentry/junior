@@ -192,34 +192,30 @@ export function viewerConversationMembership(args: {
   return args.actorMatch ?? args.participantMatch;
 }
 
-/** One person's archive and pin marks on a conversation root. */
+/** One person's archive, pin, and read marks on a conversation root. */
 export type ConversationViewerMarks = {
   archivedAtMs?: number;
   pinnedAtMs?: number;
   pinPosition?: number;
+  readAtMs?: number;
 };
 
-/** Read personal archive and pin marks for a bounded set of conversation roots. */
+/** Read personal marks for a bounded set of conversation roots. */
 export async function conversationViewerMarks(
   db: JuniorDatabase,
   conversationIds: readonly string[],
   subject: { email: string } | { userId: string } | undefined,
 ): Promise<Map<string, ConversationViewerMarks>> {
   if (!subject || conversationIds.length === 0) return new Map();
-  const marked = and(
-    inArray(juniorConversationParticipants.rootConversationId, [
-      ...conversationIds,
-    ]),
-    or(
-      isNotNull(juniorConversationParticipants.archivedAt),
-      isNotNull(juniorConversationParticipants.pinnedAt),
-    ),
-  );
+  const marked = inArray(juniorConversationParticipants.rootConversationId, [
+    ...conversationIds,
+  ]);
   const query = db
     .select({
       archivedAt: juniorConversationParticipants.archivedAt,
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
+      readAt: juniorConversationParticipants.readAt,
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
@@ -250,12 +246,13 @@ export async function conversationViewerMarks(
         ...(row.pinnedAt && row.pinPosition !== null
           ? { pinPosition: row.pinPosition }
           : undefined),
+        readAtMs: row.readAt.getTime(),
       },
     ]),
   );
 }
 
-/** Read one viewer's archive and pin times for a conversation root. */
+/** Read one viewer's marks for a conversation root. */
 export async function readConversationViewerMarks(
   viewer: { id: string },
   rootConversationId: string,

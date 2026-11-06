@@ -9,6 +9,8 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  markConversationUnreadBodySchema,
+  markConversationUnreadResponseSchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   archiveDoneConversationsResponseSchema,
@@ -78,6 +80,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
+  setMockConversationUnread,
   setMockPinOrder,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
@@ -360,6 +363,23 @@ export function createMockReportingApi(): Hono<{
     );
     return result
       ? jsonResponse(pinConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/unread", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = markConversationUnreadBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationUnread(
+      params.data.conversationId,
+      body.data.unread,
+    );
+    return result
+      ? jsonResponse(markConversationUnreadResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.put("/conversations/pin-order", async (c) => {

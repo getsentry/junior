@@ -29,6 +29,10 @@ import {
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
+  markConversationUnreadBodySchema,
+  markConversationUnreadResponseSchema,
+} from "../schema/conversation-unread";
+import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   archiveDoneConversationsResponseSchema,
@@ -53,6 +57,7 @@ import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
+import { markConversationUnread } from "./unread";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
@@ -265,6 +270,30 @@ export function createConversationRoutes(
       jsonResponse(
         pinConversationResponseSchema,
         await pinConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
+    "/:conversationId/unread",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      markConversationUnreadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        markConversationUnreadResponseSchema,
+        await markConversationUnread(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),

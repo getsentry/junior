@@ -145,7 +145,6 @@ export function ConversationPage(props: {
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
@@ -234,7 +233,6 @@ export function ConversationPage(props: {
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
-  const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   // The page keeps the start preference from when the Conversation opened.
@@ -373,10 +371,6 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
-  useEffect(() => {
-    if (!conversation) return;
-    onRead?.(conversation.id, conversation.lastSeenAt);
-  }, [conversation, onRead]);
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {

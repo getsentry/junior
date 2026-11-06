@@ -4,7 +4,6 @@ import { screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
-const FINISHED_CONVERSATION_ID = "agent-dispatch:event-1";
 
 const reviewItem = {
   assignedToEveryone: false,
@@ -184,22 +183,10 @@ test.describe("conversation sections", () => {
     );
   });
 
-  test("keeps an opened unread conversation in place until another opens", async ({
+  test("keeps an unread conversation in Needs attention until marked read", async ({
     page,
     dashboard,
   }) => {
-    // The viewer last read the conversation before its final activity. Seed
-    // it once, before the app reads storage on the first load.
-    await page.addInitScript((conversationId) => {
-      if (window.sessionStorage.getItem("qa:seeded")) return;
-      window.sessionStorage.setItem("qa:seeded", "true");
-      window.localStorage.setItem(
-        "junior:conversation-finished-indicators",
-        JSON.stringify({
-          [conversationId]: { lastReadAt: "2026-08-07T08:00:00.000Z" },
-        }),
-      );
-    }, FINISHED_CONVERSATION_ID);
     await page.goto(dashboard.baseURL);
 
     const sidebar = page.getByRole("navigation", {
@@ -208,43 +195,42 @@ test.describe("conversation sections", () => {
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
-    await expect(
-      finishedRow.getByRole("img", { name: "Unread" }),
-    ).toBeVisible();
+    const unreadDot = finishedRow.getByRole("img", { name: "Unread" });
+    await expect(finishedRow).toBeVisible();
+    await expect(unreadDot).toHaveCount(0);
 
-    await finishedRow.click();
-    await expect(finishedRow).toHaveAttribute("aria-current", "page");
-    // Read now, but held at the top so the row does not move under the pointer.
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
+    const unreadRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/unread"),
     );
-    await expect(sidebar.getByRole("img", { name: "Unread" })).toHaveCount(0);
-
-    await sidebar
-      .getByRole("link", { name: /Checkout latency triage/ })
-      .click();
-    await expect(sidebar.getByRole("link").first()).not.toHaveAccessibleName(
-      /Closed issue summary/,
-    );
-
-    // Mark the open conversation unread. It stays unread after leaving it.
-    await finishedRow.click();
-    await expect(finishedRow).toHaveAttribute("aria-current", "page");
     await finishedRow.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Mark as unread" }).click();
-    await expect(
-      finishedRow.getByRole("img", { name: "Unread" }),
-    ).toBeVisible();
+    expect((await unreadRequest).postDataJSON()).toEqual({ unread: true });
+    await expect(unreadDot).toBeVisible();
+    await expect(sidebar.getByRole("button").first()).toHaveText(
+      /^Needs attention/,
+    );
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Closed issue summary/,
+    );
+
+    // The server keeps it, so a reload or another device sees it too.
+    await page.reload();
+    await expect(unreadDot).toBeVisible();
+
+    // Opening it is not an act on it, so it stays unread and in place.
+    await finishedRow.click();
+    await expect(finishedRow).toHaveAttribute("aria-current", "page");
+    await expect(unreadDot).toBeVisible();
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Closed issue summary/,
+    );
+    await screenshot(page, "conversation-open-unread", { view: "desktop" });
     await sidebar
       .getByRole("link", { name: /Checkout latency triage/ })
       .click();
     await expect(finishedRow).not.toHaveAttribute("aria-current", "page");
-    await expect(
-      finishedRow.getByRole("img", { name: "Unread" }),
-    ).toBeVisible();
+    await expect(unreadDot).toBeVisible();
 
     await finishedRow.click({ button: "right" });
     await expect(page.getByRole("menuitem")).toHaveText([
@@ -257,15 +243,14 @@ test.describe("conversation sections", () => {
       view: "desktop",
     });
     await page.getByRole("menuitem", { name: "Mark as read" }).click();
-    await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
-      0,
+    await expect(unreadDot).toHaveCount(0);
+    await expect(sidebar.getByRole("button").first()).not.toHaveText(
+      /^Needs attention/,
     );
 
-    await page.goto(dashboard.baseURL);
+    await page.reload();
     await expect(finishedRow).toBeVisible();
-    await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
-      0,
-    );
+    await expect(unreadDot).toHaveCount(0);
   });
 
   test("the sidebar review chip opens details at Needs you", async ({
