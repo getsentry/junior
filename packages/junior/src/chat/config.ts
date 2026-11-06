@@ -251,7 +251,7 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
-const DEFAULT_TRANSCRIPTION_MODEL_ID = "openai/gpt-transcribe";
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "spacexai/grok-stt";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
