@@ -121,7 +121,7 @@ describe("CostMetric", () => {
       ),
     );
     expect(html).toContain("this agent $0.1900");
-    expect(html).toContain("3 subagents $0.1100");
+    expect(html).toContain("3 child conversations $0.1100");
   });
 
   it("lists the largest models and operations, then rolls up the rest", () => {

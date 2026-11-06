@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
+import { ChevronRight, CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
@@ -7,7 +7,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Spinner } from "../components/ui/spinner";
-import { cn } from "../styles";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
 import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
@@ -62,6 +62,31 @@ export const ConversationSidebarThreadRow = memo(
     );
   },
 );
+
+/** Show or hide the Threads that the sidebar left out under one root. */
+export function ConversationSidebarThreadToggle(props: {
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle(): void;
+}) {
+  return (
+    <button
+      aria-expanded={props.expanded}
+      className={cn(
+        "group grid min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg py-1 pr-3 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+        DEPTH_INDENT[0],
+      )}
+      onClick={props.onToggle}
+      type="button"
+    >
+      <ChevronRight
+        aria-hidden="true"
+        className={dashboardDisclosureChevronClass}
+      />
+      {props.expanded ? "Show fewer" : `Show ${props.hiddenCount} more`}
+    </button>
+  );
+}
 
 /**
  * Mark a Thread with the status that exists today: waiting on the viewer,
