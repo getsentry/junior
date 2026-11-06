@@ -3,11 +3,9 @@ import { Menu, PanelRight } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
-  MobileHeaderLivePortal,
   MobileHeaderTagsPortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
@@ -41,7 +39,6 @@ export function ConversationHeader(props: {
   forks?: ReactNode;
   /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
-  live: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
@@ -123,15 +120,6 @@ export function ConversationHeader(props: {
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
-  const liveIndicator = props.live ? (
-    <span className="inline-flex shrink-0" title="Working">
-      <Spinner
-        aria-label="Working"
-        className="size-3.5 text-dashboard-text-muted motion-safe:[animation-duration:1.25s]"
-      />
-    </span>
-  ) : null;
-
   return (
     <>
       <MobileHeaderActionsPortal>
@@ -156,7 +144,6 @@ export function ConversationHeader(props: {
           )}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
-      <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       {props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
           {/* One row. Tags keep their width; the slot scrolls. */}
@@ -210,7 +197,6 @@ export function ConversationHeader(props: {
                 {props.title}
               </h2>
             )}
-            {liveIndicator}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}
