@@ -2868,7 +2868,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "junior_conversations_kind_check": {
+          "name": "junior_conversations_kind_check",
+          "value": "\"junior_conversations\".\"kind\" in ('root', 'thread', 'task')"
+        },
+        "junior_conversations_kind_parent_check": {
+          "name": "junior_conversations_kind_parent_check",
+          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" = 'root') = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.junior_destinations": {

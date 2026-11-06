@@ -1,6 +1,7 @@
 import { getTableColumns, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  check,
   index,
   integer,
   jsonb,
@@ -69,8 +70,10 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     // `root` exactly when parent_conversation_id is null. Set once at create.
+    // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
-    // `kind IS NULL` backfill, then add NOT NULL and a check constraint.
+    // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
+    // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
@@ -102,6 +105,14 @@ export const juniorConversations = pgTable(
     legacyArchivedAt: timestamptz("archived_at"),
   },
   (table) => [
+    check(
+      "junior_conversations_kind_check",
+      sql`${table.kind} in ('root', 'thread', 'task')`,
+    ),
+    check(
+      "junior_conversations_kind_parent_check",
+      sql`${table.kind} is null or ((${table.kind} = 'root') = (${table.parentConversationId} is null))`,
+    ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
       table.conversationId,

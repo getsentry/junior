@@ -202,6 +202,47 @@ describe("conversation SQL store", () => {
           parentConversationId: "kind-root",
         }),
       ).rejects.toThrow("Conversation kind changed for agent:kind-task");
+
+      const at = new Date(4);
+      const row = {
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle" as const,
+      };
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-root-child",
+            kind: "root",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "kind-task-root",
+            kind: "task",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
     } finally {
       await fixture.close();
     }
