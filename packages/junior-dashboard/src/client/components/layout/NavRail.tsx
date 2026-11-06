@@ -53,9 +53,9 @@ const RAIL_STYLE = {
 
 function readOpenPreference(): boolean {
   try {
-    return window.localStorage.getItem(OPEN_KEY) !== "false";
+    return window.localStorage.getItem(OPEN_KEY) === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -80,9 +80,9 @@ function useWideWindow(): boolean {
 }
 
 /**
- * Own the nav sidebar state. Wide windows show labels unless the viewer
- * collapsed the sidebar; narrower desktop windows always use the icon rail
- * and keep the saved choice for later. Cmd/Ctrl+B toggles it.
+ * Own the nav sidebar state. Wide windows use the icon rail until the viewer
+ * expands the sidebar; narrower desktop windows always use the icon rail and
+ * keep the saved choice for later. Cmd/Ctrl+B toggles it.
  */
 export function useNavSidebar() {
   const wide = useWideWindow();

@@ -535,10 +535,20 @@ test("keeps usage in the nav sidebar footer in both widths", async ({
   const usage = sidebar.getByRole("button", {
     name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
   });
-  await expect(usage).toBeVisible();
+  // The sidebar starts as the icon rail, with only the ring.
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(usage.locator("[data-usage-ring]")).toBeVisible();
+  await expect(usage.locator("[data-usage-totals]")).toBeHidden();
+
+  // An expanded sidebar adds the totals, and the choice survives a reload.
+  await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
   await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
     useInnerText: true,
   });
+  await page.reload();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+
   await usage.click();
   const usagePopover = page.locator("#usage-popover");
   await expect(usagePopover).toContainText("Weekly soft cap");
@@ -549,16 +559,6 @@ test("keeps usage in the nav sidebar footer in both widths", async ({
     usagePopover.getByRole("link", { name: "Details" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await page.keyboard.press("Escape");
-
-  // A collapsed sidebar keeps the ring, and the choice survives a reload.
-  await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await expect(usage.locator("[data-usage-totals]")).toBeHidden();
-  await expect(usage.locator("[data-usage-ring]")).toBeVisible();
-  await page.reload();
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
 
   // Narrower desktop windows always use the icon rail.
   await page.setViewportSize({ width: 1100, height: 900 });
