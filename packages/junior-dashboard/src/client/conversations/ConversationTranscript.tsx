@@ -464,13 +464,21 @@ function TranscriptEntryList(
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
   // Search rows are all matches. The current one stays mounted, so it can
-  // scroll into view like a reveal.
+  // scroll into view like a reveal. Scroll only when the reader steps to
+  // another match. A new query or a loaded history page does not scroll,
+  // because a scroll to the top match shows the history sentinel, and each
+  // loaded page would then load the next one.
+  const shownMatch = useRef({ match, searchQuery });
   useEffect(() => {
-    if (matchCount === 0) return;
+    const previous = shownMatch.current;
+    shownMatch.current = { match, searchQuery };
+    if (previous.searchQuery !== searchQuery || previous.match === match) {
+      return;
+    }
     listRef.current
       ?.querySelector(`[data-index="${match}"]`)
       ?.scrollIntoView({ block: "center" });
-  }, [match, matchCount, searchQuery]);
+  }, [match, searchQuery]);
   // Rows render again only when the renderers change, not on each scroll.
   const {
     renderAttachmentsDelivered,

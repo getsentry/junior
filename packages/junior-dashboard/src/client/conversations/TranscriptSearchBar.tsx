@@ -25,7 +25,7 @@ export function TranscriptSearchBar(props: {
         props.className,
       )}
       onKeyDown={(event) => {
-        if (event.key === "Enter") {
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
           event.preventDefault();
           props.match.step(event.shiftKey ? -1 : 1);
           return;
