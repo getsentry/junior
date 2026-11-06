@@ -114,21 +114,57 @@ export function TranscriptImagesProvider(props: {
   );
 }
 
-/** Keep message attachments at their own size and wrap them when the row is full. */
+// Every media tile shares one column width and one 4:3 frame, so images and
+// videos of any size line up. Files use a row of the same width below them.
+const ATTACHMENT_COLUMNS_CLASS = "sm:grid-cols-[repeat(auto-fill,15rem)]";
+const MEDIA_GRID_CLASS = `grid min-w-0 grid-cols-2 gap-2 ${ATTACHMENT_COLUMNS_CLASS}`;
+// A file row needs the full phone width to show its name and size.
+const FILE_GRID_CLASS = `grid min-w-0 grid-cols-1 gap-2 ${ATTACHMENT_COLUMNS_CLASS}`;
+const MEDIA_FRAME_CLASS =
+  "block aspect-[4/3] w-full overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-fill-faint";
+const TRANSCRIPT_IMAGE_CLASS = "size-full object-cover";
+const TRANSCRIPT_IMAGE_TRIGGER_CLASS = `${MEDIA_FRAME_CLASS} transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-dashboard-focus`;
+
+/** Show message media in equal tiles, then files in equal rows below them. */
 export function TranscriptAttachments(props: {
   attachments: MessageAttachment[];
   conversationId: string;
 }) {
+  const search = useTranscriptSearch();
   if (props.attachments.length === 0) return null;
+  // Search highlights filenames, so every attachment shows as a file row.
+  const isMedia = (attachment: MessageAttachment) =>
+    !search.active && (isInlineImage(attachment) || isInlineVideo(attachment));
+  const entries = props.attachments.map((attachment, index) => ({
+    attachment,
+    key: `${attachment.id}:${index}`,
+  }));
+  const media = entries.filter((entry) => isMedia(entry.attachment));
+  const files = entries.filter((entry) => !isMedia(entry.attachment));
   return (
-    <div className="flex min-w-0 flex-wrap items-start gap-2">
-      {props.attachments.map((attachment, index) => (
-        <TranscriptAttachment
-          attachment={attachment}
-          conversationId={props.conversationId}
-          key={`${attachment.id}:${index}`}
-        />
-      ))}
+    <div className="grid min-w-0 gap-2">
+      {media.length > 0 ? (
+        <div className={MEDIA_GRID_CLASS}>
+          {media.map((entry) => (
+            <TranscriptMediaTile
+              attachment={entry.attachment}
+              conversationId={props.conversationId}
+              key={entry.key}
+            />
+          ))}
+        </div>
+      ) : null}
+      {files.length > 0 ? (
+        <div className={FILE_GRID_CLASS}>
+          {files.map((entry) => (
+            <TranscriptFileRow
+              attachment={entry.attachment}
+              conversationId={props.conversationId}
+              key={entry.key}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -136,93 +172,124 @@ export function TranscriptAttachments(props: {
 /** Show the images of a send before the server stores them. */
 export function TranscriptLocalImages(props: { images: InputImage[] }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-start gap-2">
+    <div className={MEDIA_GRID_CLASS}>
       {props.images.map((image, index) => (
-        <ImageAttachment
-          filename={image.filename}
-          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+        <figure
+          className="grid min-w-0 gap-1"
           key={`${image.filename}:${index}`}
-          src={inputImageSrc(image)}
-          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
-        />
+        >
+          <ImageAttachment
+            filename={image.filename}
+            imageClassName={TRANSCRIPT_IMAGE_CLASS}
+            src={inputImageSrc(image)}
+            triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
+          />
+          <MediaCaption filename={image.filename} />
+        </figure>
       ))}
     </div>
   );
 }
 
-const TRANSCRIPT_IMAGE_CLASS =
-  "max-h-48 w-auto max-w-full h-auto rounded-lg object-contain";
-const TRANSCRIPT_IMAGE_TRIGGER_CLASS =
-  "block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+function MediaCaption(props: {
+  bytes?: number;
+  download?: { filename: string; href: string };
+  filename: string;
+}) {
+  return (
+    <figcaption className="flex h-6 min-w-0 items-center gap-1.5 px-0.5 font-mono text-xs">
+      <span className="min-w-0 flex-1 truncate text-dashboard-text">
+        {props.filename}
+      </span>
+      {typeof props.bytes === "number" ? (
+        <span className="flex-none text-dashboard-text-muted">
+          {formatAttachmentBytes(props.bytes)}
+        </span>
+      ) : null}
+      {props.download ? (
+        <a
+          aria-label={`Download ${props.download.filename}`}
+          className="grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          download={props.download.filename}
+          href={props.download.href}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <Download size={13} />
+        </a>
+      ) : null}
+    </figcaption>
+  );
+}
 
-/** Render one stored user or assistant attachment using the private read route. */
-function TranscriptAttachment(props: {
+/** Render one stored image or video in a fixed media frame. */
+function TranscriptMediaTile(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
-  const search = useTranscriptSearch();
   const groups = useContext(TranscriptImageGroupsContext);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
   );
-  const gallery = groups.find((group) =>
-    group.some(
-      (image) =>
-        image.src === href && image.filename === props.attachment.filename,
-    ),
-  );
-  const meta = attachmentMeta(props.attachment);
+  const { filename, bytes } = props.attachment;
 
-  if (isInlineImage(props.attachment) && !search.active) {
-    return (
-      <ImageAttachment
-        context={meta}
-        filename={props.attachment.filename}
-        gallery={gallery}
-        imageClassName={TRANSCRIPT_IMAGE_CLASS}
-        loading="lazy"
-        src={href}
-        triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
-      />
+  if (isInlineImage(props.attachment)) {
+    const gallery = groups.find((group) =>
+      group.some((image) => image.src === href && image.filename === filename),
     );
-  }
-
-  if (isInlineVideo(props.attachment) && !search.active) {
     return (
-      <figure className="grid w-full min-w-0 max-w-md flex-none gap-1">
-        <video
-          aria-label={props.attachment.filename}
-          className="max-h-80 w-full rounded-lg border border-dashboard-border bg-dashboard-fill-faint"
-          controls
-          playsInline
-          preload="metadata"
+      <figure className="grid min-w-0 gap-1">
+        <ImageAttachment
+          context={attachmentMeta(props.attachment)}
+          filename={filename}
+          gallery={gallery}
+          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+          loading="lazy"
           src={href}
+          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
         />
-        <figcaption className="flex min-w-0 items-center justify-between gap-2 px-1">
-          <span className="truncate font-mono text-xs text-dashboard-text-muted">
-            {props.attachment.filename} · {meta}
-          </span>
-          <a
-            aria-label={`Download ${props.attachment.filename}`}
-            className="grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-            download={props.attachment.filename}
-            href={href}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <Download size={13} />
-          </a>
-        </figcaption>
+        <MediaCaption bytes={bytes} filename={filename} />
       </figure>
     );
   }
 
+  // A small frame crowds the native controls on a phone, so a video takes
+  // the full row there.
+  return (
+    <figure className="col-span-2 grid min-w-0 gap-1 sm:col-span-1">
+      <video
+        aria-label={filename}
+        className={`${MEDIA_FRAME_CLASS} bg-dashboard-ink object-contain`}
+        controls
+        playsInline
+        preload="metadata"
+        src={href}
+      />
+      <MediaCaption
+        bytes={bytes}
+        download={{ filename, href }}
+        filename={filename}
+      />
+    </figure>
+  );
+}
+
+/** Render one stored file as a download row. */
+function TranscriptFileRow(props: {
+  attachment: MessageAttachment;
+  conversationId: string;
+}) {
+  const href = conversationAttachmentUrl(
+    props.conversationId,
+    props.attachment.id,
+  );
+  const meta = attachmentMeta(props.attachment);
   // `target="_blank"`: an installed iOS home screen app has no back button.
   // Opening a file in the same window traps the user in the iOS file preview.
   return (
     <a
-      className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"
@@ -238,7 +305,7 @@ function TranscriptAttachment(props: {
         <div className="truncate font-mono text-xs text-dashboard-text">
           <HighlightText text={props.attachment.filename} />
         </div>
-        <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+        <div className="truncate font-mono text-xs text-dashboard-text-muted">
           <HighlightText text={meta} />
         </div>
       </div>
