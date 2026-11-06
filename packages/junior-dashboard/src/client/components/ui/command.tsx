@@ -18,7 +18,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden text-dashboard-text",
+        "flex size-full min-h-0 flex-col overflow-hidden text-dashboard-text",
         className,
       )}
       {...props}
@@ -26,7 +26,10 @@ function Command({
   );
 }
 
-/** Show a `Command` in a dialog near the top of the page. */
+/**
+ * Show a `Command` in a dialog near the top of the page. Small screens let the
+ * list fill the dialog, so every row fits without a hidden scroll.
+ */
 function CommandDialog({
   children,
   className,
@@ -42,7 +45,7 @@ function CommandDialog({
     <Dialog {...props}>
       <DialogContent
         className={cn(
-          "max-w-xl gap-0 overflow-hidden p-0 sm:top-[15vh] sm:translate-y-0",
+          "flex max-w-xl flex-col gap-0 overflow-hidden p-0 sm:top-[15vh] sm:translate-y-0",
           className,
         )}
       >
@@ -90,7 +93,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "thin-scrollbar max-h-[min(24rem,60dvh)] scroll-py-2 overflow-y-auto overscroll-contain p-2",
+        "thin-scrollbar min-h-0 scroll-py-2 overflow-y-auto overscroll-contain p-2 sm:max-h-[min(24rem,60dvh)]",
         className,
       )}
       {...props}
