@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
@@ -13,8 +13,11 @@ import {
   ResizablePanelGroup,
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
-import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { ConversationComposer } from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
@@ -46,7 +49,6 @@ import {
   useSidebarFits,
 } from "./conversationSidebarLayout";
 
-const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
 /** Render the conversation home page or one selected conversation. */
@@ -54,7 +56,6 @@ export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   const sidebarFits = useSidebarFits();
@@ -93,28 +94,25 @@ export function ConversationWorkspace(props: {
       !search,
     );
 
-  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  const pagedConversations = useMemo(
+  const homeConversations = useMemo(
     () =>
-      pageItems(
-        pinnedAndAttentionFirst(
-          conversations,
-          attentionConversationIds(
-            waitingConversationIds,
-            finishedConversationIds,
-          ),
+      pinnedAndAttentionFirst(
+        conversations,
+        attentionConversationIds(
+          waitingConversationIds,
+          finishedConversationIds,
         ),
-        page,
-        CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, finishedConversationIds, page, waitingConversationIds],
+    [conversations, finishedConversationIds, waitingConversationIds],
   );
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  // A failed next page keeps the loaded rows; the load-more control shows it.
+  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  const morePages: ConversationFeedMorePages = {
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loading: feed.isFetchingNextPage,
+    onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
+  };
 
   const createView = (
     <NewConversationView
@@ -149,21 +147,19 @@ export function ConversationWorkspace(props: {
               value={query}
             />
             <ConversationHomeList
-              conversations={pagedConversations}
-              emptyLabel={feed.error?.message}
+              conversations={homeConversations}
+              emptyLabel={feedError}
               finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
               timeZone={getDashboardTimeZone()}
               waitingConversationIds={waitingConversationIds}
             />
-            <PagePagination
-              className="pt-1"
-              onPageChange={setPage}
-              page={page}
-              pageCount={totalPages}
-              pageSize={CONVERSATION_PAGE_SIZE}
-              total={conversations.length}
-            />
+            {feedError || conversations.length === 0 ? null : (
+              <ConversationFeedLoadMore
+                {...morePages}
+                loadedCount={conversations.length}
+              />
+            )}
           </section>
         </div>
       </main>
@@ -215,10 +211,11 @@ export function ConversationWorkspace(props: {
             >
               <ConversationSidebar
                 conversations={conversations}
-                error={feed.error?.message}
+                error={feedError}
                 finishedConversationIds={finishedConversationIds}
                 heldConversationId={heldConversationId}
                 loading={feed.isPending}
+                morePages={morePages}
                 onNewConversation={openCreate}
                 onQueryChange={setQuery}
                 query={query}

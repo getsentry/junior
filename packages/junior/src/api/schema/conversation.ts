@@ -124,6 +124,8 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    /** `nextCursor` from the previous page of the same feed. */
+    cursor: z.string().min(1).max(500).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -856,6 +858,8 @@ export const conversationFeedSchema = z
     conversations: z.array(conversationSummaryReportSchema),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
+    /** Present when older conversations follow this page. */
+    nextCursor: z.string().optional(),
   })
   .strict();
 

@@ -23,6 +23,10 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
+import {
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
@@ -66,6 +70,8 @@ export function ConversationSidebar(props: {
   /** Opened while unread; keeps its unread place until another one opens. */
   heldConversationId?: string;
   loading: boolean;
+  /** Older feed pages, loaded as the reader scrolls to the end. */
+  morePages: ConversationFeedMorePages;
   query: string;
   selectedId?: string;
   timeZone: string;
@@ -219,6 +225,12 @@ export function ConversationSidebar(props: {
               )
             }
             role="navigation"
+          />
+        )}
+        {props.error || entries.length === 0 ? null : (
+          <ConversationFeedLoadMore
+            {...props.morePages}
+            loadedCount={props.conversations.length}
           />
         )}
       </div>

@@ -7,13 +7,17 @@ import {
 } from "@tanstack/react-query";
 import type {
   ConversationDetailReport,
-  ConversationFeed,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
 import type { Conversation } from "../types";
+import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
@@ -52,7 +56,7 @@ type ArchiveConversationMutationContext = {
   detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
   previousArchivedSnapshot?: ArchivedConversationSnapshot;
   previousDetail?: ConversationDetailReport;
-  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
+  previousFeeds: Array<[readonly unknown[], ConversationFeedCache | undefined]>;
 };
 
 export type PendingArchiveConversationUpdate = {
@@ -148,7 +152,7 @@ export function archiveConversationMutationOptions(
         queryClient.cancelQueries({ queryKey: detailQueryKey }),
       ]);
       const previousFeeds =
-        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
+        queryClient.getQueriesData<ConversationFeedCache>(conversationQueries);
       const previousDetail =
         queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
       const previousArchivedSnapshot =
@@ -168,7 +172,7 @@ export function archiveConversationMutationOptions(
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
-        const conversationExists = feed.conversations.some(
+        const conversationExists = conversationFeedCacheRows(feed).some(
           (conversation) => conversation.conversationId === conversationId,
         );
         const feedStatus = conversationFeedStatus(queryKey);
@@ -177,25 +181,28 @@ export function archiveConversationMutationOptions(
           !conversationExists &&
           Boolean(archivedSnapshot) &&
           feedStatus !== "archived";
-        const conversations = shouldRestore
-          ? [
-              ...feed.conversations,
-              // The archive cleared the pin, so the restored row is unpinned.
-              {
-                ...archivedSnapshot!.conversation,
-                archivedAt: null,
-                pinnedAt: null,
-              },
-            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, ...viewerMarks }
-                : conversation,
-            );
-        queryClient.setQueryData<ConversationFeed>(queryKey, {
-          ...feed,
-          conversations,
-        });
+        queryClient.setQueryData<ConversationFeedCache>(
+          queryKey,
+          mapConversationFeedCache(feed, (conversations, first) =>
+            shouldRestore
+              ? first
+                ? [
+                    ...conversations,
+                    // The archive cleared the pin, so the restored row is unpinned.
+                    {
+                      ...archivedSnapshot!.conversation,
+                      archivedAt: null,
+                      pinnedAt: null,
+                    },
+                  ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
+                : conversations
+              : conversations.map((conversation) =>
+                  conversation.conversationId === conversationId
+                    ? { ...conversation, ...viewerMarks }
+                    : conversation,
+                ),
+          ),
+        );
       });
       queryClient.setQueryData<ConversationSnapshot>(
         detailQueryKey,
@@ -278,15 +285,17 @@ export function archiveConversationMutationOptions(
 }
 
 function buildArchivedConversationSnapshot(
-  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
+  feeds: Array<[readonly unknown[], ConversationFeedCache | undefined]>,
   conversationId: string,
 ): ArchivedConversationSnapshot | undefined {
   let conversation: ConversationSummaryReport | undefined;
   const feedQueryHashes: string[] = [];
   for (const [queryKey, feed] of feeds) {
-    const feedConversation = feed?.conversations.find(
-      (item) => item.conversationId === conversationId,
-    );
+    const feedConversation = feed
+      ? conversationFeedCacheRows(feed).find(
+          (item) => item.conversationId === conversationId,
+        )
+      : undefined;
     if (!feedConversation) continue;
     conversation ??= feedConversation;
     feedQueryHashes.push(JSON.stringify(queryKey));

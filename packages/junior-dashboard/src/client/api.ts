@@ -1,6 +1,7 @@
 import {
   keepPreviousData,
   queryOptions,
+  useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
@@ -25,6 +26,7 @@ import {
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
+import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -113,19 +115,30 @@ export function usePluginUserPagesData() {
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["dashboard", "conversations", "viewer", { search }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      if (pageParam) params.set("cursor", pageParam);
+      const query = params.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
         signal,
-      ),
+      );
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
     // Active rows change while no Conversation is open, such as a new title.
+    // A refetch reads every loaded page again.
     refetchInterval: (query) =>
-      query.state.data?.conversations.some(
-        (conversation) => conversation.status === "active",
+      query.state.data?.pages.some((page) =>
+        page.conversations.some(
+          (conversation) => conversation.status === "active",
+        ),
       )
         ? 10_000
         : false,

@@ -106,9 +106,20 @@ describe("dashboard canonical-event mock routes", () => {
         cumulativeDurationMs: number;
         locationId?: string;
       }>;
+      nextCursor?: string;
       source: string;
     };
     expect(body.source).toBe("conversation_index");
+    // The mock pages the feed like the API, so read the next page too.
+    expect(body.nextCursor).toBeDefined();
+    const nextPage = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations?cursor=${encodeURIComponent(body.nextCursor!)}`,
+      ),
+    );
+    const nextBody = (await nextPage.json()) as typeof body;
+    expect(nextBody.nextCursor).toBeUndefined();
+    const allConversations = [...body.conversations, ...nextBody.conversations];
     expect(body.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
@@ -184,9 +195,9 @@ describe("dashboard canonical-event mock routes", () => {
       windowEnd: string;
       windowStart: string;
     };
-    expect(statsBody.conversations).toBe(body.conversations.length);
+    expect(statsBody.conversations).toBe(allConversations.length);
     expect(statsBody.durationMs).toBe(
-      body.conversations.reduce(
+      allConversations.reduce(
         (sum, conversation) => sum + conversation.cumulativeDurationMs,
         0,
       ),
@@ -235,7 +246,7 @@ describe("dashboard canonical-event mock routes", () => {
         (sum, item) => sum + item.conversations,
         locationBody.privateActivity.conversations,
       ),
-    ).toBe(body.conversations.length);
+    ).toBe(allConversations.length);
     const locationResponse = await app.fetch(
       new Request(
         `http://localhost/api/locations/${encodeURIComponent(
