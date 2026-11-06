@@ -69,6 +69,11 @@ type ConversationSidebarEntry =
 const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
 
+// While the row actions show, the row content fades out under them, so the
+// title does not end in a hard cut. --row-actions-width is set per row.
+const ROW_ACTIONS_FADE_CLASS =
+  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
+
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
 /** Render the compact personal conversation picker beside the workspace. */
@@ -350,6 +355,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
           props.selected && "bg-dashboard-surface-active",
           drag?.dragging && "opacity-40",
+          archived
+            ? "[--row-actions-width:2.25rem]"
+            : "[--row-actions-width:4.25rem]",
         )}
         onKeyDown={drag?.onKeyDown}
         ref={drag?.setNodeRef}
@@ -359,6 +367,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
             "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            ROW_ACTIONS_FADE_CLASS,
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
             "[-webkit-touch-callout:none]",
@@ -421,11 +430,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             />
           </Link>
         ) : null}
-        {/* One solid background behind both buttons, so the title does not
-          show between them. Mobile rows pin from the conversation menu, so
-          only the archive button takes row space there. Archived rows
-          restore before they pin. */}
-        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 rounded-md bg-dashboard-surface-active transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+        {/* Mobile rows pin from the conversation menu, so only the archive
+          button takes row space there. Archived rows restore before they pin. */}
+        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
           {archived ? null : (
             <Tooltip>
               <TooltipTrigger
