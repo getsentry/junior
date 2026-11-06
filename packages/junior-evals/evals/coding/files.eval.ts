@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Coding File Tools", () => {
@@ -62,6 +62,26 @@ describe("Coding File Tools", () => {
           JSON.stringify(call.input).includes("project/src/config.ts"),
         ),
     ).not.toHaveLength(0);
+  });
+
+  test("when changing a web page, share a preview URL without being asked", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/coding-workspace-fixture On the alert status page in project/web/index.html, change the retries line to say 3.",
+      ),
+    );
+
+    const previewUrls = completedToolCalls("createPreview", conversation).map(
+      (call) => (toolOutput(call) as { url?: string }).url,
+    );
+    expect(previewUrls).not.toHaveLength(0);
+    expect(
+      conversation.replies.some((reply) =>
+        previewUrls.some((url) => url && reply.text.includes(url)),
+      ),
+    ).toBe(true);
   });
 
   test("when comparing fixture behavior, cite the relevant files and leave them unchanged", async ({
