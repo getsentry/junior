@@ -187,11 +187,11 @@ thread does not send these notifications. Slack notifies people there.
 
 2. Set the environment variables:
 
-   | Variable                      | Required | Purpose                                                                         |
-   | ----------------------------- | -------- | ------------------------------------------------------------------------------- |
-   | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                             |
-   | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                              |
-   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to `JUNIOR_BASE_URL`. |
+   | Variable                      | Required | Purpose                                                                                                                                 |
+   | ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+   | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                                                                                     |
+   | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                                                                                      |
+   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
 
 3. Redeploy. Each person opens **Settings** and selects **Turn on for this
    device**.

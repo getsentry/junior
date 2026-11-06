@@ -34,9 +34,15 @@ function subjectFromBaseUrl(): string | undefined {
   return /^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
 }
 
+/** Web Push accepts only an `https:` or `mailto:` VAPID subject. */
+function isVapidSubject(subject: string): boolean {
+  return /^(https:\/\/|mailto:)/.test(subject);
+}
+
 /**
  * Read VAPID settings from the environment. Phone notifications are off when
- * either key is missing.
+ * either key is missing or the subject is not `https:` or `mailto:`, such as
+ * an `http://` base URL.
  */
 export function readWebPushConfig(): WebPushConfig | undefined {
   const publicKey = process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY?.trim();
@@ -44,7 +50,7 @@ export function readWebPushConfig(): WebPushConfig | undefined {
   if (!publicKey || !privateKey) return undefined;
   const subject =
     process.env.JUNIOR_WEB_PUSH_SUBJECT?.trim() || subjectFromBaseUrl();
-  if (!subject) return undefined;
+  if (!subject || !isVapidSubject(subject)) return undefined;
   return { privateKey, publicKey, subject };
 }
 

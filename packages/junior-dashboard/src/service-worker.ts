@@ -93,8 +93,16 @@ self.addEventListener("notificationclick", (event) => {
       );
       if (existing) {
         await existing.focus();
-        if (existing.url !== url.href && "navigate" in existing) {
-          await existing.navigate(url.href).catch(() => undefined);
+        if (existing.url !== url.href) {
+          // navigate() fails for a window that this worker does not control,
+          // and Safari can lack it. The page then opens the URL itself.
+          const navigated =
+            "navigate" in existing
+              ? await existing.navigate(url.href).catch(() => null)
+              : null;
+          if (!navigated) {
+            existing.postMessage({ type: "junior:open", url: url.href });
+          }
         }
       } else {
         await self.clients.openWindow(url.href);

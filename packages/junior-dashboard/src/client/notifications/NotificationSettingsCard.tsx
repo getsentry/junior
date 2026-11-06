@@ -21,6 +21,7 @@ import { del, fetchDashboardJson, post, put } from "../http";
 import {
   currentPushSubscription,
   pushSupport,
+  registerDashboardServiceWorker,
   subscribeThisDevice,
   unsubscribeThisDevice,
 } from "./push";
@@ -112,6 +113,13 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     queryKey: deviceQueryKey,
     queryFn: async () => (await currentPushSubscription())?.endpoint ?? null,
   });
+  // Install the worker before the user taps "Turn on", so the subscribe call
+  // does not wait for it.
+  const canEnable = support === "supported" && Boolean(settings.publicKey);
+  useEffect(() => {
+    if (canEnable)
+      void registerDashboardServiceWorker()?.catch(() => undefined);
+  }, [canEnable]);
   const saveSettings = (next: NotificationSettings) =>
     queryClient.setQueryData(notificationSettingsQueryKey, next);
 

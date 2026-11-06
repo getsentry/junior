@@ -99,12 +99,14 @@ export async function currentPushSubscription(): Promise<
 export async function subscribeThisDevice(
   publicKey: string,
 ): Promise<PushSubscriptionJSON> {
+  // Start the worker install before the permission prompt. A long gap after
+  // the click can make iOS reject the subscribe call.
+  const ready = registerDashboardServiceWorker();
+  if (!ready) throw new Error("Service workers are not available.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     throw new Error("Notification permission was not granted.");
   }
-  const ready = registerDashboardServiceWorker();
-  if (!ready) throw new Error("Service workers are not available.");
   const { pushManager } = await ready;
   const key = applicationServerKey(publicKey);
   const existing = await pushManager.getSubscription();
